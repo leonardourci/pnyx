@@ -14,7 +14,6 @@ import {
   type ComponentProps,
   type KeyboardEvent as KeyEvent,
 } from 'react'
-import { SentencePart } from './action-bubble.tsx'
 import {
   CARET_CSS,CARET_HOST,CARET_KEY,CARET_SUPPORTED,QUESTION_CONTROLS,
   caretBounds,
@@ -41,9 +40,9 @@ import {
   MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
   type CommentPassage,
 } from './message-selection.ts'
-import { pnyxCalls,type PnyxCall,type PnyxLookup } from './pnyx-action.ts'
+import { type PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
-import { Trace, roleLabel } from './trace-row.tsx'
+import { Trace,roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
 const PILL_GAP = 6
@@ -149,13 +148,7 @@ export function Messages({
     comment.id,
     index + 1,
   ]))
-  const {
-    entries,
-    calls,
-  } = pnyxCalls({
-    entries: all,
-    lookup,
-  })
+  const entries = all
   const lookColumn = ({ id }: { id: string }) => columnLook({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
@@ -830,9 +823,7 @@ export function Messages({
                   }}
                 />
               ) : (
-                calls.has(entry.id)
-                  ? <PnyxCallRow call={calls.get(entry.id)!} />
-                  : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
+                <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
               ))}
               {entry.delivery ? (
                 <span className="receipt" role="status">
@@ -915,25 +906,5 @@ export function Messages({
         )}
       </div>
     </TaskReferencesProvider>
-  )
-}
-
-// Pnyx's own commands read as what they did; the command itself is one click away.
-function PnyxCallRow({ call }: { call: PnyxCall }) {
-  return (
-    <details className="trace pnyx-call" data-expandable="true" data-failed={!!call.failed || undefined}>
-      <summary>
-        <Icon name="tool" size={14} />
-        <span className="pnyx-sentence">
-          {call.sentence.map((
-            part,
-            index,
-          ) => <SentencePart key={index} part={part} />)}
-          {call.failed && <span className="pnyx-failed"> · failed: {call.failed}</span>}
-        </span>
-        <CopyButton className="trace-copy" label="Copy command" text={() => call.command} />
-      </summary>
-      <pre className="trace-text">{call.output ? `${call.command}\n\n${call.output}` : call.command}</pre>
-    </details>
   )
 }

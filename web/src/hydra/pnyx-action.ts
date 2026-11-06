@@ -1,9 +1,8 @@
 import type { HydraState } from '#app/model.ts'
-import { PROVIDERS } from '#workers/providers.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
+import { commandOf,firstLine,obj } from '#hydra/calls.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import type { ThreadEntry } from '#hydra/transcripts-read.ts'
-import { commandOf, firstLine, obj } from '#hydra/calls.ts'
+import type { HydraColumn } from '#tasks/columns-model.ts'
+import { PROVIDERS } from '#workers/providers.ts'
 
 // A sentence about a Pnyx command, with the tasks and columns it touched kept apart so they show as chips.
 export type Segment = string | {
@@ -16,13 +15,6 @@ export type Segment = string | {
 
 // Starts the sentence for a Pnyx command this file has no words for.
 export const UNKNOWN_COMMAND = 'Pnyx: '
-
-export interface PnyxCall {
-  command: string
-  sentence: Segment[]
-  output?: string
-  failed?: string
-}
 
 export interface PnyxLookup {
   task({ ref }: { ref: string }): {
@@ -152,19 +144,6 @@ const STATES: Record<string, string> = {
   paused: 'waiting (reported)',
   blocked: 'blocked',
   done: 'done',
-}
-
-// Tool output is plain text, or Claude's list of text blocks.
-function toolOutput({ text }: { text: string }): string {
-  try {
-    const blocks = JSON.parse(text) as unknown
-
-    if (Array.isArray(blocks)) {
-      return blocks.map(block => typeof block === 'object' && block && 'text' in block ? String(block.text) : '').join('\n')
-    }
-  } catch { /* Plain output. */ }
-
-  return text
 }
 
 export function pnyxSentence({
@@ -403,115 +382,3 @@ const memory = ({
   action?: string
   key?: string
 }) => MEMORY_VERBS[action] ? `${MEMORY_VERBS[action]} ${layer} memory “${key ?? ''}”` : `Read ${layer} memory`
-
-// TOON quotes a value only when it has to.
-const unquote = ({ text }: { text: string }) => {
-  try {
-    return text.startsWith('"') ? String(JSON.parse(text)) : text
-  } catch {
-    return text
-  }
-}
-
-const errorOf = ({ output }: { output: string }) => {
-  const line = /^error: (.*)$/m.exec(output)?.[1]
-
-  return line === undefined ? undefined : unquote({ text: line })
-}
-
-// Pnyx command rows absorb their results, and the chat line a command posted is not repeated.
-export function pnyxCalls<Entry extends ThreadEntry>({
-  entries,
-  lookup,
-}: {
-  entries: Entry[]
-  lookup: PnyxLookup
-}): {
-  entries: Entry[]
-  calls: Map<string, PnyxCall>
-} {
-  const found = new Map<string, {
-    entry: ThreadEntry
-    command: string
-    words: string[]
-  }>()
-
-  for (const entry of entries) {
-    const command = entry.kind === 'tool' && entry.call ? shellCommand({ text: entry.text }) : undefined
-    const words = command === undefined ? undefined : pnyxWords({ command })
-
-    if (words && entry.call && !found.has(entry.call)) {
-      found.set(
-        entry.call,
-        {
-          entry,
-          command: command!,
-          words,
-        },
-      )
-    }
-  }
-
-  const outputs = new Map<string, string>(), posted = new Set<string>()
-
-  const result = ({ entry }: { entry: ThreadEntry }) => {
-    const call = entry.call ? found.get(entry.call) : undefined
-
-    return call && call.entry !== entry ? call : undefined
-  }
-
-  for (const entry of entries) {
-    const call = result({ entry })
-
-    if (call) {
-      const output = toolOutput({ text: entry.text })
-      const line = /^posted: (.*)$/m.exec(output)?.[1]
-      outputs.set(
-        call.entry.id,
-        output,
-      )
-
-      if (line) {
-        posted.add(unquote({ text: line }).trim())
-      }
-    }
-  }
-
-  // A confirmation request says nothing new once the confirmed command follows it.
-  const unconfirmed = ({ words }: { words: string[] }) => words.filter((
-    word,
-    index,
-  ) => word !== '--confirm' && words[index - 1] !== '--confirm').join(' ')
-  const confirmed = new Set([...found.values()].filter(call => call.words.includes('--confirm'))
-    .map(call => unconfirmed(call)))
-  const superseded = new Set([...found.values()].filter(call => !call.words.includes('--confirm')
-    && /^confirmation: needed$/m.test(outputs.get(call.entry.id) ?? '') && confirmed.has(unconfirmed(call)))
-    .map(call => call.entry))
-  const kept = entries.filter(entry => !result({ entry }) && !superseded.has(entry)
-    && !(entry.kind === 'message' && entry.role.startsWith('assistant') && posted.has(entry.text.trim())))
-
-  return {
-    entries: kept,
-    calls: new Map([...found.values()].map(({
-      entry,
-      command,
-      words,
-    }) => {
-      const output = outputs.get(entry.id)
-
-      return [
-        entry.id,
-        {
-          command,
-          sentence: pnyxSentence({
-            words,
-            output,
-            lookup,
-          }),
-          output,
-          failed: output === undefined ? undefined : errorOf({ output }),
-        },
-      ]
-    })),
-  }
-}
