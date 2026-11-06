@@ -1103,3 +1103,63 @@ test(
     )
   },
 )
+
+test(
+  'a task started through the Hydra command runs it in the task folder and records the launch, and without a command the start is refused',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'by-command' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Run the Hydra command',
+        '--key',
+        'by-command',
+        '--folder',
+        folder,
+      ],
+    })
+    const start = [
+      'task',
+      'start',
+      'by-command',
+      '--via',
+      'command',
+    ]
+    assert.equal(
+      await s.ownerRefused({ args: start }),
+      'NO_COMMAND',
+    )
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--command',
+        'touch "$PNYX_FOLDER/ran"',
+      ],
+    })
+    await s.owner({ args: start })
+    await until({
+      what: 'the Hydra command to run in the task folder',
+      check: () => existsSync(join(
+        folder,
+        'ran',
+      )),
+    })
+    const card = s.task({ key: 'by-command' })
+    assert.deepEqual(
+      [
+        card.launch?.via,
+        card.launch?.command,
+        card.status?.state,
+      ],
+      [
+        'command',
+        'touch "$PNYX_FOLDER/ran"',
+        'working',
+      ],
+    )
+  },
+)
