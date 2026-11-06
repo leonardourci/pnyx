@@ -1,11 +1,17 @@
 import { transcriptProvider } from '#workers/usage.ts'
-import type { RecordedUsage, TranscriptUsageReader, Provider } from '#workers/provider.ts'
+import type { RecordedUsage, TranscriptUsageReader } from '#workers/provider.ts'
 
 export type { RecordedUsage } from '#workers/provider.ts'
 
 export interface UsageReader extends TranscriptUsageReader {
   provider: string
-  read: Provider['readUsage']
+  read({
+    reader,
+    value,
+  }: {
+    reader: TranscriptUsageReader
+    value: unknown
+  }): void
 }
 
 export const usageReader = ({ provider }: { provider: string }): UsageReader => ({
