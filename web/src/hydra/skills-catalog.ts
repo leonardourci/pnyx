@@ -100,7 +100,7 @@ export function useSkillsCatalog({
   command: Command
   connected: boolean
   open: boolean
-  // Names the skills before the server's catalog, which carries its own provider, arrives.
+  // Sets the skill prefix until the server's catalog arrives with its own provider.
   provider?: string
 }): Catalog | null {
   const scope = storageKey({ key: `skills:${identity}` })
