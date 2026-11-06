@@ -796,13 +796,6 @@ function termExpr({ term }: { term: Term }): string {
   return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
 }
 
-export const ftsQuery = ({ text }: {
-  text: string
-}): string => queryTerms({
-  text,
-}).map(term => termExpr({ term }))
-  .join(' AND ')
-
 const trigrams = ({ word }: { word: string }) =>
   Array.from(
     {
