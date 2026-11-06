@@ -1,0 +1,54 @@
+{
+  "claude": {
+    "type": "assistant",
+    "timestamp": "2026-10-22T10:00:00.000Z",
+    "message": {
+      "model": "opus",
+      "content": [
+        {"type": "text", "text": "Ready"},
+        {"type": "thinking", "thinking": "Check the build"},
+        {"type": "tool_use", "id": "build", "name": "Bash", "input": {"command": "pnpm build"}}
+      ]
+    }
+  },
+  "codex": {
+    "type": "response_item",
+    "timestamp": "2026-10-22T10:00:00.000Z",
+    "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Ready"}]}
+  },
+  "codexCall": {
+    "type": "response_item",
+    "timestamp": "2026-10-22T10:00:00.000Z",
+    "payload": {"type": "function_call", "call_id": "build", "name": "shell", "arguments": "{\"command\":\"pnpm build\"}"}
+  },
+  "codexContext": {
+    "type": "turn_context",
+    "payload": {
+      "model": "gpt-6.1",
+      "effort": "high",
+      "service_tier": "priority",
+      "approval_policy": {"on-request": {}},
+      "sandbox_policy": {"type": "workspace-write"},
+      "collaboration_mode": {"mode": "default"}
+    }
+  },
+  "codexImage": {
+    "type": "response_item",
+    "timestamp": "2026-10-22T10:00:00.000Z",
+    "payload": {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {"type": "input_text", "text": "<image>"},
+        {"type": "input_image", "image_url": "data:image/png;base64,fixture"},
+        {"type": "input_text", "text": "</image>"},
+        {"type": "input_text", "text": "Describe this image"}
+      ]
+    }
+  },
+  "codexWake": {
+    "type": "response_item",
+    "timestamp": "2026-10-22T10:00:00.000Z",
+    "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<pnyx-wake>Worker finished</pnyx-wake>"}]}
+  }
+}
