@@ -20,6 +20,7 @@ import { nativeIdle } from '#workers/native-session.ts'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { agentSettings } from './agent-choice.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { HydraAgentChange, HydraOperation } from './model.ts'
 import { operationEvent } from './operations.ts'
@@ -420,18 +421,7 @@ export function createAgentSwitch({
             prefer: candidate.account,
           })
           const cwd = hydraAgentFolder({ hydraId })
-          const settings = Object.fromEntries(Object.entries(candidate)
-            .filter(([
-              key,
-              value,
-            ]) => key !== 'harness' && key !== 'account' && value !== undefined)
-            .map(([
-              key,
-              value,
-            ]) => [
-              key,
-              String(value),
-            ]))
+          const settings = agentSettings({ agent: candidate })
           const provider = providerOf({ provider: providerIdOf({ harness: candidate.harness }) })
           const summarySettings = {
             ...settings,

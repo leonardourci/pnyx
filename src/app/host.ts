@@ -3,7 +3,7 @@ import { accountFor, harnessAccount } from '#workers/account-choice.ts'
 import { agentInput } from './agent-input.ts'
 import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
 import { hydraActor } from './request-context.ts'
-import { hydraCandidate } from '#hydra/agent-choice.ts'
+import { agentSettings, hydraCandidate } from '#hydra/agent-choice.ts'
 import { HYDRA_COMMANDS } from './command-registry.ts'
 import { PROVIDERS, harnessOf, knownProvider, providerIdOf, providerLabel } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
@@ -55,7 +55,7 @@ import { findCard } from '#tasks/push-rules.ts'
 import { HYDRA_ACTOR, ownerActor } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
-import type { AgentRef, AgentSession, AgentSettings, Attention } from '#workers/model.ts'
+import type { AgentRef, AgentSession, Attention } from '#workers/model.ts'
 import type { HydraAgentChange, HydraMessage } from '#hydra/model.ts'
 import { harnessControls } from '#workers/controls.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -1904,17 +1904,7 @@ export function createHost({
             provider: account.provider,
             folder: loginFolder({ account }),
           } : undefined
-          const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([
-            key,
-            value,
-          ]) => key !== 'harness' && key !== 'account' && value !== undefined)
-            .map(([
-              key,
-              value,
-            ]) => [
-              key,
-              String(value),
-            ]))
+          const settings = agentSettings({ agent: candidate })
           const cwd = hydraAgentFolder({ hydraId })
           prepareHydraFolder({ folder: cwd })
           let card = previous
