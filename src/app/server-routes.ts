@@ -42,8 +42,6 @@ export function createServerRoutes({
     path,
     search,
   }: HydraRequest) => {
-    // The CLI asks here to start or message an agent this server runs. A page cannot
-    // send this header cross-origin without a preflight, which this server never answers.
     // An image dropped or pasted into a composer; the message then carries its path.
     if (req.method === 'POST' && path === '/attachments') {
       if (!authorized({
