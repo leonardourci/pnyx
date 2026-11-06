@@ -54,6 +54,8 @@ One folder per feature. Code for a feature lives in its folder. Inside a feature
 
 Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it. For pull requests, follow [write-pull-request](.agents/skills/write-pull-request/SKILL.md). Before PR readiness, run `pnpm verify` to select the required checks and reviews for the changed files. Follow the required checklists in order: `review-code`, `audit-tests`, then `deslop`. These are checklists for humans and agents alike. Tick only the required PR checkboxes after completing them, and describe what you fixed in the PR description. `write-front-end` also applies to changes under `web/`.
 
+CodeRabbit is the on-request challenger before merge, replacing a separate agent challenger review. Once a PR is green and ready for review, only the owner or Hydra requests it; resolve or answer its comments. The local review checklists above still apply. Follow the [CodeRabbit review flow](CONTRIBUTING.md#coderabbit-challenger-review); `pnpm verify` neither requests nor requires CodeRabbit.
+
 ## Design rules
 
 - Pnyx is a view plus a reply queue over existing tools. Pnyx runs the agents it is asked to start; Hydra still decides what to do. `task start` runs Claude Code through the Agent SDK or Codex through its app-server inside the Pnyx server, which stops them when it stops and resumes a turn it cut from the saved session when it starts again; a start can instead go through the local Paseo daemon, a Firstmate home or the Hydra's own command, and Pnyx never watches over those.

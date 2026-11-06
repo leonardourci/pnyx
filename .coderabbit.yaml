@@ -1,0 +1,23 @@
+reviews:
+  profile: assertive
+  high_level_summary_in_walkthrough: true
+  poem: false
+  auto_review:
+    enabled: false
+    auto_incremental_review: false
+  path_filters:
+    - '!pnpm-lock.yaml'
+  path_instructions:
+    - path: '**'
+      instructions: 'Act as the challenger for this change against the PR description. Check that the diff solves the Problem and implements the Fix, and that the Validation proves the claimed behavior. Find broken callers, missed edge cases, regressions and duplicated existing code. Flag claims the diff does not support and changes the description leaves out. Skip formatting and other findings already covered by lint. Apply AGENTS.md and only the configured skill guidelines within their applyTo scopes; ignore other auto-discovered skills. Use the review-code checklist and its Must fix / Recommended tags; skip its process steps (running pnpm verify, ticking PR boxes and agent-only notes).'
+knowledge_base:
+  code_guidelines:
+    filePatterns:
+      - files: '.agents/skills/follow-conventions/SKILL.md'
+        applyTo: '**'
+      - files: '.agents/skills/review-code/SKILL.md'
+        applyTo: '**'
+      - files: '.agents/skills/write-front-end/SKILL.md'
+        applyTo: 'web/**'
+      - files: '.agents/skills/write-ci-workflow/SKILL.md'
+        applyTo: '.github/workflows/**'

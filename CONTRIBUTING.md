@@ -30,6 +30,12 @@ A pull request has two GitHub checks:
 
 Both must pass before merging. The repository owner reviews and merges with a merge commit. [Development](docs/development.md#verification) has the details, including which checks each kind of change runs and `pnpm verify --mechanical` for renames and moves.
 
+## CodeRabbit challenger review
+
+After `pnpm verify` passes and CI is green on a PR that is ready for review, the owner or Hydra may request the challenger review with a PR comment: `@coderabbitai review`. Contributors and workers leave that request to them. CodeRabbit replaces the separate agent challenger before merge; the required local review checklists still apply. Resolve each finding or answer it with a reason, then update the description and rerun verification after any fixes. A later review is requested explicitly again. `pnpm verify` neither requests nor requires CodeRabbit.
+
+[.coderabbit.yaml](.coderabbit.yaml) disables automatic and incremental reviews, uses the assertive profile and keeps the summary in the walkthrough comment so the PR description, review boxes and verification marker stay intact. Configured guideline additions are follow-conventions and review-code for all paths, write-front-end for `web/**` and write-ci-workflow for `.github/workflows/**`; CodeRabbit discovers `AGENTS.md` by default. It skips `pnpm-lock.yaml`. See the [configuration reference](https://docs.coderabbit.ai/reference/configuration) for the supported settings.
+
 ## Reporting bugs
 
 For bugs, include the Pnyx version, OS, harness, reproduction steps, expected behavior and actual behavior. Use made-up tasks and an isolated home for a reproduction; remove private paths, transcripts, tokens and account details from logs.
