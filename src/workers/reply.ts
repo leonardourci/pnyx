@@ -30,7 +30,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from '#app/cli-support.ts'
-import { askAnswer } from '#tasks/questions.ts'
+import { askAnswer } from '#tasks/ask-decide.ts'
 import { isManagedTask } from '#tasks/select.ts'
 
 export interface ReplyRequest {

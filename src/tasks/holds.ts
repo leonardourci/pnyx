@@ -5,7 +5,7 @@ import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from './model.ts'
-import { askAnswer } from './questions.ts'
+import { askAnswer } from './ask-decide.ts'
 import { openAsks } from './ask-state.ts'
 import { isManagedTask } from './select.ts'
 
