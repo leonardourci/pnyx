@@ -81,10 +81,17 @@ export function optimisticState({
       return state
     }
 
+    const before = option({ flag: '--before' })
     const first = columnCards({
       state,
       column,
     })[0]
+    const top = first ? rankOf({ card: first }) - 1 : 0
+    const rank = before ? createBeforeRank({
+      state,
+      column,
+      before,
+    }) : top
     const pending: Card = {
       id: key,
       key,
@@ -98,11 +105,7 @@ export function optimisticState({
       tracking: 'declared',
       parentId,
       column,
-      rank: option({ flag: '--before' }) ? createBeforeRank({
-        state,
-        column,
-        before: option({ flag: '--before' })!,
-      }) : first ? rankOf({ card: first }) - 1 : 0,
+      rank,
       revision: 0,
       createdSeq: 0,
       updatedSeq: 0,
