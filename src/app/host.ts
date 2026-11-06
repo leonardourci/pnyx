@@ -10,7 +10,6 @@ import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
 import { decideReply } from '#workers/reply-rules.ts'
-import { enqueueSteering } from '#workers/inbox.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
@@ -67,7 +66,6 @@ import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import type { InputReceipt } from '#workers/provider.ts'
 import { HYDRA_TURN_POLL_MS, IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
@@ -75,8 +73,8 @@ import { WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakesThrough, wakeCursor,
 import { createStallChecks } from '#hydra/stalls.ts'
 import { createWakeQueue } from '#hydra/wake-queue.ts'
 import { createWorkerStarts } from '#workers/hosted-start.ts'
+import { createHostedDelivery } from '#workers/hosted-delivery.ts'
 import { createHydraOperations, createHydraOutage, operationEvent } from '#hydra/operations.ts'
-import { deliveringMessage } from '#routine-helper/leases.ts'
 import { COMPACTION_DEADLINE_MS, createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
 import { inbox } from '#hydra/update-queue.ts'
@@ -1432,259 +1430,23 @@ export function createHost({
     return entry
   }
 
-  // A direct input's reply moves on from queued only on what the provider says about it.
-  const directReply = ({
-    card,
-    inputId,
-    state,
-    detail,
-  }: {
-    card: string
-    inputId: string
-    state: 'delivered' | 'failed' | 'delivery_unknown'
-    detail?: string
-  }) => note({
-    fn: ({ writer }) => {
-      const reply = writer.state.cards[card]?.replies?.find(item => item.id === inputId)
-
-      if (!reply || reply.state !== 'queued') {
-        return
-      }
-
-      const data: Parameters<typeof decideReply>[0]['data'] = {
-        reply: inputId,
-        state,
-        route: 'pnyx',
-      }
-
-      if (detail) {
-        data.detail = detail
-      }
-
-      // A delivered answer marks its questions answered, as the reply's first record would have.
-      if (reply.answers) {
-        data.answers = reply.answers
-      }
-
-      applyDecision({
-        writer,
-        decision: decideReply({
-          state: writer.state,
-          ref: card,
-          data,
-          meta: {
-            at: at(),
-            actor: 'pnyx',
-            id: `direct:${inputId}:${state}`,
-          },
-        }),
-      })
-    },
+  const {
+    directReply,
+    settleDirect,
+    send,
+  } = createHostedDelivery({
+    live,
+    at,
+    write,
+    note,
+    hosted,
+    folderOf,
+    record,
+    holdCompact,
+    open,
+    ringSteering,
+    unnotifiedSteering,
   })
-
-  const settleDirect = ({
-    entry,
-    inputId,
-    phase,
-  }: {
-    entry: Live
-    inputId: string
-    phase: InputReceipt['phase']
-  }) => {
-    const pending = entry.pendingDirect.get(inputId)
-
-    if (!pending) {
-      return
-    }
-
-    if (phase === 'taken') {
-      pending.taken = true
-
-      return
-    }
-
-    if (phase !== 'confirmed' && phase !== 'carried' && phase !== 'settled' && phase !== 'refused') {
-      return
-    }
-
-    entry.pendingDirect.delete(inputId)
-    directReply({
-      card: pending.card,
-      inputId,
-      state: phase === 'refused' ? 'failed' : 'delivered',
-      detail: phase === 'refused' ? 'the agent refused this message; nothing was delivered' : undefined,
-    })
-  }
-
-  // eventId names the turn's working record, as a resumed turn's does.
-  const send = ({
-    card: ref,
-    text,
-    original,
-    actor,
-    eventId,
-    steering,
-    attempt,
-    direct,
-    inputId,
-  }: {
-    card: string
-    text: string
-    original?: string
-    actor: string
-    eventId?: string
-    steering?: string
-    attempt?: string
-    direct?: boolean
-    inputId?: string
-  }) => {
-    if (attempt !== undefined && (!attempt.trim() || !steering)) {
-      throw new HydraError({
-        message: 'A notification attempt needs a persisted steering ID',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    direct ||= compactCommand({ text })
-    const card = deliveringMessage.run(
-      true,
-      () => write({
-        fn: ({ writer }) => {
-          const card = hosted({
-            writer,
-            ref,
-          })
-
-          if (!direct && card.id !== HYDRA_CARD) {
-            if (steering) {
-              if (!card.steering?.some(message => message.id === steering)) {
-                throw new HydraError({
-                  message: 'Steering message was not persisted',
-                  code: 'VALIDATION_ERROR',
-                })
-              }
-            } else {
-              steering = inputId ?? randomUUID()
-              enqueueSteering({
-                writer,
-                ref: card.id,
-                id: steering,
-                text,
-                source: actor,
-                meta: {
-                  actor,
-                  at: at(),
-                },
-              })
-            }
-
-            if (steeringHeld({ card })) {
-              return writer.state.cards[card.id] as Card & { agent: AgentRef }
-            }
-
-            const current = writer.state.cards[card.id]!
-            const running = live.get(sessionId({ agent: card.agent }))
-            const unread = unnotifiedSteering({
-              card: current,
-              entry: running,
-              message: steering,
-              attempt,
-            }).length
-
-            if (!unread) {
-              return undefined
-            }
-          }
-
-          if (!live.has(sessionId({ agent: card.agent }))) {
-            folderOf({ card })
-          }
-
-          if (card.attention.some(a => a.key === INTERRUPTED)) {
-            const attention = card.attention.filter(a => a.key !== INTERRUPTED)
-            const meta = {
-              at: at(),
-              actor,
-            }
-            const input = { attention }
-            const decision = decidePush({
-              state: writer.state,
-              key: card.key,
-              input,
-              meta,
-            })
-            applyDecision({
-              writer,
-              decision,
-            })
-          }
-
-          record({
-            writer,
-            agent: card.agent,
-            input: { activity: 'working' },
-            actor,
-            eventId,
-          })
-
-          return writer.state.cards[card.id] as Card & { agent: AgentRef }
-        },
-      }),
-    )
-
-    if (!card) {
-      return
-    }
-
-    if (!direct && steeringHeld({ card })) {
-      return { deferred: true }
-    }
-
-    if (holdCompact({
-      card,
-      input: {
-        id: steering ?? inputId ?? randomUUID(),
-        text,
-        original,
-        actor,
-        route: steering ? 'steering' : 'direct',
-      },
-    })) {
-      return { queued: true }
-    }
-
-    const entry = open({ card })
-    entry.activity = 'working'
-    entry.sentAt = Date.now()
-
-    if (direct || card.id === HYDRA_CARD) {
-      entry.input.push({
-        text,
-        original,
-        id: inputId,
-      })
-
-      // Its reply stays queued until the provider confirms the agent got it.
-      if (inputId && card.id !== HYDRA_CARD) {
-        entry.pendingDirect.set(
-          inputId,
-          {
-            card: card.id,
-            taken: false,
-          },
-        )
-
-        return { pending: true }
-      }
-    } else {
-      ringSteering({
-        card,
-        entry,
-        message: steering,
-        attempt,
-      })
-    }
-  }
 
   const helperFailed = ({ state }: { state: HydraState }) => Object.values(state.helper?.runs ?? {})
     .some(batch => batch.error)
