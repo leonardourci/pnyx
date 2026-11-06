@@ -1,16 +1,16 @@
 import { AxiError } from 'axi-sdk-js'
-import { type createIndexSync } from '#oracle/index-sync.ts'
+import type { createIndexSync } from '#oracle/index-sync.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import type { createHost } from '#app/host.ts'
 import type { HydraState } from '#app/model.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from '#app/save-receipts.ts'
 import type { createServerClients } from '#app/server-clients.ts'
-import { commandTimeout } from '#app/server-protocol.ts'
-import { CLI_COMMANDS, type HydraClient } from '#app/server-transport.ts'
-import { COMMAND_WORKER, type createServerWorkers } from '#app/server-workers.ts'
+import type { HydraClient } from '#app/server-transport.ts'
+import type { createServerWorkers } from '#app/server-workers.ts'
 import { loadHydra } from '#app/store.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
+import { cliCommand } from './cli-command.ts'
 import { compactCommand } from './compact.ts'
 import { hydraAgentChangeCommand, hydraAgentCommand } from './hydra-agent.ts'
 import { hydrasCommand } from './hydras.ts'
@@ -302,84 +302,16 @@ export function createServerCommands({
       return
     }
 
-    if (typeof name !== 'string' || !(CLI_COMMANDS as readonly string[]).includes(name)) {
-      return fail({
-        error: `unknown command: ${String(name)}`,
-        code: 'NOT_FOUND',
-        help: [`Use one of ${CLI_COMMANDS.join(', ')}`],
-      })
-    }
-
-    if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
-      return fail({
-        error: 'args must be [string, ...]',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
-      return fail({
-        error: `--hydra is not allowed; this server writes Hydra ${hydraId}`,
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const actor = name === 'history' || name === 'card' || name === 'integrations' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : [
-      '--actor',
-      'web',
-    ]
-
-    startWorker({
-      file: COMMAND_WORKER,
-      timeout: commandTimeout({
-        name,
-        args,
-      }),
-      args: [
-        name,
-        ...args,
-        ...actor,
-        '--hydra',
-        hydraId,
-      ],
-      done: ({
-        error,
-        stdout,
-      }) => {
-        kick()
-
-        try {
-          const result = JSON.parse(stdout)
-
-          if (error) {
-            if (typeof result.error?.message === 'string' && typeof result.error.code === 'string') {
-              fail({
-                error: result.error.message,
-                code: result.error.code,
-                help: result.error.help,
-              })
-
-              return
-            }
-
-            throw error
-          }
-
-          send({
-            ws,
-            message: {
-              ...result,
-              type: 'receipt',
-              id,
-            },
-          })
-        } catch {
-          fail({
-            error: 'Command could not be confirmed; check history before sending again',
-            code: 'DELIVERY_UNKNOWN',
-          })
-        }
-      },
+    cliCommand({
+      ws,
+      id,
+      name,
+      args,
+      fail,
+      send,
+      hydraId,
+      kick,
+      startWorker,
     })
   }
 
