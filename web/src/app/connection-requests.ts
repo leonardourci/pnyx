@@ -294,16 +294,14 @@ export function createConnectionRequests({
 
   const respond = ({
     scope,
+    id,
     message,
   }: {
     scope: Scope
+    id: string
     message: Extract<ServerMessage, { type: 'receipt' | 'error' }>
   }) => {
-    if (!message.id) {
-      return
-    }
-
-    const request = requests.get(message.id)
+    const request = requests.get(id)
 
     if (!request || request.scope !== scope) {
       publish(); flush()
@@ -324,7 +322,7 @@ export function createConnectionRequests({
     }
 
     clearTimeout(request.timer)
-    requests.delete(message.id)
+    requests.delete(id)
     persistSaves({ scope })
 
     if (message.type === 'error') {
