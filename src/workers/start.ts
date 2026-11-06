@@ -1,7 +1,4 @@
-import {
-  ORCHESTRATE_SKILL,
-  HYDRA_SKILLS,
-} from '#setup/skill-names.ts'
+import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, startCandidates, type DispatchChoice, type Override } from './dispatch.ts'
@@ -9,9 +6,6 @@ import { modelIds, type ModelOption } from './provider.ts'
 import { effectiveDispatch } from './dispatch-config.ts'
 import { openPaseo } from '#integrations/paseo/client.ts'
 import { randomUUID } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -21,13 +15,11 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
-import type { HydraConfig } from '#hydra/model.ts'
 import { paseoUrl } from '#integrations/paseo/url.ts'
 import { liveTask } from '#tasks/select.ts'
 import { sessionId } from './session-attachments.ts'
 import { taskFolder } from '#projects/copy-create.ts'
-import { resolveHome } from '#integrations/firstmate/home.ts'
-import { copySkills, removeLegacyHydraSkills } from '#setup/skills.ts'
+import { setupHydra } from '#integrations/firstmate/home.ts'
 import { fmNote } from '#integrations/firstmate/reply.ts'
 import { createPaseoAgent, startAgent } from '#integrations/paseo/launch.ts'
 import type { Harness } from '#workers/providers.ts'
@@ -53,11 +45,6 @@ const VIAS = [
   'command',
 ] as const
 type Via = (typeof VIAS)[number]
-const HOME_SKILL = join(
-  '.agents',
-  'skills',
-  ORCHESTRATE_SKILL,
-)
 
 function chooseVia({
   state,
@@ -802,188 +789,4 @@ export async function startHydra({
       }
     },
   })
-}
-
-export async function setupHydra({
-  hydraId,
-  home,
-  meta,
-}: {
-  hydraId: string
-  home: string
-  meta: Meta
-}): Promise<Output> {
-  const real = resolveHome({ path: home })
-  const dir = join(
-    real,
-    HOME_SKILL,
-  )
-
-  // ponytail: local `git check-ignore` and `rev-parse` stay synchronous; they take milliseconds and only the owner's setup runs them.
-  const owns = ({ path }: { path: string }) => {
-    const ignored = spawnSync(
-      'git',
-      [
-        '-C',
-        real,
-        'check-ignore',
-        '-v',
-        '-z',
-        '--stdin',
-      ],
-      {
-        input: `${relative(
-          real,
-          join(
-            path,
-            'SKILL.md',
-          ),
-        )}\0`,
-        encoding: 'utf8',
-      },
-    )
-    const [
-      source, ,
-      pattern,
-    ] = ignored.stdout?.split('\0') ?? []
-
-    // Pnyx records each copied skill in info/exclude; tracked and owner skills stay untouched.
-    return ignored.status === 0 && !!source?.endsWith('/info/exclude')
-        && pattern === `/${relative(
-          real,
-          path,
-        )}/`
-  }
-
-  removeLegacyHydraSkills({
-    folder: real,
-    owns,
-  })
-  const excluded = copySkills({
-    folder: real,
-    names: HYDRA_SKILLS,
-    owns,
-  })
-    .map(folder => exclude({
-      home: real,
-      path: `/${relative(
-        real,
-        folder,
-      )}/`,
-    }))
-    .every(Boolean)
-
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      drainSpool({ writer })
-      const config = hydraConfig({
-        state: writer.state,
-        id: hydraId,
-      })
-
-      if (config.hydra.kind === 'firstmate' && config.hydra.home === real) {
-        return
-      }
-
-      const data: HydraConfig = {
-        ...config,
-        hydra: {
-          id: `firstmate:${basename(real)}`,
-          kind: 'firstmate',
-          name: config.hydra.name,
-          home: real,
-        },
-      }
-      applyDecision({
-        writer,
-        decision: hydraEvent({
-          state: writer.state,
-          meta,
-          cardId: '$board',
-          change: {
-            type: 'board.configured',
-            data,
-          },
-        }),
-      })
-    },
-  })
-
-  const text = [
-    `Pnyx Hydra ${hydraId} uses this home as its Hydra.`,
-    `Load the ${ORCHESTRATE_SKILL} skill (${join(
-      HOME_SKILL,
-      'SKILL.md',
-    )}) and follow it for that Hydra.`,
-    `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`,
-  ].join('\n')
-  const sent = await fmNote({
-    home: real,
-    requestId: `pnyx:${hydraId}:hydra-skill`,
-    text,
-  })
-
-  return {
-    hydraId,
-    hydra: {
-      kind: 'firstmate',
-      home: real,
-    },
-    skill: join(
-      dir,
-      'SKILL.md',
-    ),
-    excluded: excluded ? 'yes' : 'no: not a git clone',
-    note: sent.state,
-    ...(sent.detail ? { detail: sent.detail } : {}),
-    help: ['A running `pnyx-axi serve` starts syncing Firstmate tasks from this home; run it if none is running'],
-  }
-}
-
-function exclude({
-  home,
-  path,
-}: {
-  home: string
-  path: string
-}): boolean {
-  const found = spawnSync(
-    'git',
-    [
-      '-C',
-      home,
-      'rev-parse',
-      '--git-path',
-      'info/exclude',
-    ],
-    { encoding: 'utf8' },
-  )
-
-  if (found.status !== 0 || !found.stdout.trim()) {
-    return false
-  }
-
-  const given = found.stdout.trim()
-  const file = isAbsolute(given) ? given : join(
-    home,
-    given,
-  )
-  mkdirSync(
-    dirname(file),
-    { recursive: true },
-  )
-  const current = existsSync(file) ? readFileSync(
-    file,
-    'utf8',
-  ) : ''
-
-  if (!current.split('\n').includes(path)) {
-    appendFileSync(
-      file,
-      `${current && !current.endsWith('\n') ? '\n' : ''}${path}\n`,
-    )
-  }
-
-  return true
 }
