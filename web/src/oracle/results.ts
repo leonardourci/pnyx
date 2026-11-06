@@ -413,7 +413,7 @@ export function resultMeta({
   }
 }
 
-export const conversationMeta = ({
+const conversationMeta = ({
   result,
   now,
 }: {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { sendableComment, type ChatComment } from './chat.ts'
 
-export function savedComments({ comments }: { comments: Record<string, ChatComment[]> }) {
+function savedComments({ comments }: { comments: Record<string, ChatComment[]> }) {
   return Object.fromEntries(Object.entries(comments).map(([
     card,
     items,
@@ -11,7 +11,7 @@ export function savedComments({ comments }: { comments: Record<string, ChatComme
   ]))
 }
 
-export function readComments({ value }: { value: string | null }): Record<string, ChatComment[]> {
+function readComments({ value }: { value: string | null }): Record<string, ChatComment[]> {
   try {
     return savedComments({ comments: JSON.parse(value ?? '{}') as Record<string, ChatComment[]> })
   } catch {

@@ -10,7 +10,7 @@ import { ReferenceBadge } from './reference-badge.tsx'
 import { SkillBadge } from './skill-badge.tsx'
 
 // Display text from `from` to `to`, with the request paths in it marked.
-export function markedPaths({
+function markedPaths({
   display,
   from,
   to,
@@ -66,7 +66,7 @@ function UploadBar({ fraction }: { fraction: number }) {
   )
 }
 
-export function DraftCard({
+function DraftCard({
   chip,
   progress = 0,
   open,
