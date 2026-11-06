@@ -1,4 +1,3 @@
-export { commandOf, SHELL_WRAPPER } from '#workers/tool-input.ts'
 import type { NativeWork, TranscriptCall } from '#workers/provider.ts'
 import { redact } from '#oracle/text.ts'
 
