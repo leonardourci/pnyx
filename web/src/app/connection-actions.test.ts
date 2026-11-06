@@ -1,3 +1,4 @@
+import { hydraConfig } from '#hydra/config.ts'
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
@@ -50,9 +51,11 @@ class BrowserSocket {
 function browserFixture({
   t,
   cached = {},
+  origin = `http://${crypto.randomUUID()}.test`,
 }: {
   t: TestContext
   cached?: Record<string, string>
+  origin?: string
 }) {
   const events = new EventTarget()
   const stored = new Map(Object.entries(cached))
@@ -84,7 +87,10 @@ function browserFixture({
       addEventListener: events.addEventListener.bind(events),
       removeEventListener: events.removeEventListener.bind(events),
     },
-    location: new URL('http://example.test/hydra/default/'),
+    location: new URL(
+      '/hydra/default/',
+      origin,
+    ),
     history: {
       replaceState() {},
       pushState() {},
@@ -430,6 +436,54 @@ test(
       stored.has(legacy),
       false,
     )
-    assert.ok([...stored.keys()].some(key => key.includes('http://example.test:test/hydra/default/')))
+    assert.ok([...stored.keys()].some(key => key.endsWith('/hydra/default/:hydra-state')))
+  },
+)
+
+test(
+  'a cached snapshot from an older build cannot persist live totals again',
+  t => {
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: 'task',
+        type: 'task.created',
+        data: {
+          key: 'task',
+          title: 'Task',
+        },
+      },
+    })
+    state.config = hydraConfig({ state })
+    state.cards.task!.spend = {
+      total: 9,
+      unavailable: 0,
+      sharedHydra: false,
+    }
+    const origin = 'http://cache-migration.test'
+    const key = `pnyx:${origin}:test/hydra/default/:hydra-state`
+    const {
+      connection,
+      stored,
+      events,
+    } = browserFixture({
+      t,
+      cached: { [key]: JSON.stringify(state) },
+      origin,
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+    events.dispatchEvent(new Event('pagehide'))
+    assert.equal(
+      JSON.parse(stored.get(key)!).cards.task.spend,
+      undefined,
+    )
   },
 )
