@@ -26,28 +26,28 @@ import { doneDeadline } from '#tasks/retention-rules.ts'
 import { effectiveView, readSettings } from '#settings/store.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { settleDone, settles } from '#projects/copies.ts'
-import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from '#hydra/transcripts-read.ts'
-import { LATEST_DELAY_MS, createLatestFeed } from './latest-feed.ts'
+import { threadPath, THREAD_CURSOR } from '#hydra/transcripts-read.ts'
+import { createLatestFeed } from './latest-feed.ts'
+import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { Catalog, CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
-import { paseoHistory, PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
+import { PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { search as oracleSearch } from '#oracle/search.ts'
 import { indexedThrough } from '#oracle/status.ts'
 import { createIndexSync, workerError } from '#oracle/index-sync.ts'
 import { replyRoute } from '#workers/reply-route.ts'
-import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
-import { basename, dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import type { HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -142,237 +142,10 @@ export async function mountOwnedHydra({
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   let homes = (given ?? []).map(path => resolveHome({ path }))
-  type Subscription = {
-    card: string
-    path?: string
-    paseo?: string
-    watcher?: { close(): unknown }
-    native?: Promise<PaseoConversation>
-  }
   const clients = new Set<HydraClient>()
-  const subscriptions = new Map<HydraClient, Subscription>()
-  const hydraSubscriptions = new Map<HydraClient, Subscription>()
-  const threadSubscriptions = [
-    subscriptions,
-    hydraSubscriptions,
-  ]
   const hydraSubscribers = new WeakSet<HydraClient>()
-  const subscriptionMap = ({ card }: { card: string }) =>
-    card === HYDRA_CARD ? hydraSubscriptions : subscriptions
-  const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
-
-  const refreshThread = ({ ws }: { ws: HydraClient }) => {
-    if (closed || threadTimers.has(ws)) {
-      return
-    }
-
-    threadTimers.set(
-      ws,
-      setTimeout(
-        () => background({
-          name: 'conversation refresh',
-          run: () => {
-            threadTimers.delete(ws)
-
-            if (ws.readyState !== ws.OPEN) {
-              return
-            }
-
-            for (const map of threadSubscriptions) {
-              const sub = map.get(ws), card = sub && state.cards[sub.card]
-
-              if (!card) {
-                continue
-              }
-
-              const unavailable = () => send({
-                ws,
-                message: {
-                  type: 'error',
-                  id: null,
-                  code: 'THREAD_UNAVAILABLE',
-                  error: 'Conversation could not be refreshed',
-                },
-              })
-
-              if (sub.native) {
-                const native = sub.native
-                background({
-                  name: 'native conversation refresh',
-                  run: () => paseoHistory({
-                    card: card.id,
-                    conversation: { read: async ({ before }) => (await native).read({ before }) },
-                    readSaved: ({ before }) => readThread({
-                      hydraId,
-                      state,
-                      card,
-                      homes,
-                      before,
-                    }),
-                  }).then(
-                    thread => {
-                      if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
-                        send({
-                          ws,
-                          message: {
-                            type: 'thread',
-                            thread,
-                          },
-                        })
-                      }
-                    },
-                    unavailable,
-                  ),
-                })
-
-                continue
-              }
-
-              try {
-                send({
-                  ws,
-                  message: {
-                    type: 'thread',
-                    thread: agents.thread({
-                      card,
-                      page: readThread({
-                        hydraId,
-                        state,
-                        card,
-                        homes,
-                      }),
-                    }),
-                  },
-                })
-              } catch {
-                unavailable()
-              }
-            }
-          },
-        }),
-        LATEST_DELAY_MS,
-      ),
-    )
-  }
-
-  const threadPage = async ({
-    sub,
-    card,
-    before,
-  }: {
-    sub: Subscription
-    card: Card
-    before?: string
-  }): Promise<ThreadPage> => {
-    const native = sub.native
-
-    if (!native) {
-      const page = readThread({
-        hydraId,
-        state,
-        card,
-        homes,
-        before,
-      })
-
-      return before ? page : agents.thread({
-        card,
-        page,
-      })
-    }
-
-    return paseoHistory({
-      card: card.id,
-      conversation: { read: async ({ before }) => (await native).read({ before }) },
-      readSaved: ({ before }) => readThread({
-        hydraId,
-        state,
-        card,
-        homes,
-        before,
-      }),
-      before,
-    })
-  }
-
-  const bindThread = ({
-    ws,
-    card,
-  }: {
-    ws: HydraClient
-    card: Card
-  }) => {
-    const map = subscriptionMap({ card: card.id })
-    map.get(ws)?.watcher?.close()
-    const path = threadPath({ card })
-    const sub: Subscription = {
-      card: card.id,
-      path,
-    }
-    const paseo = card.agent?.paseoAgentId
-
-    if (paseo) {
-      const native = paseoConversation({
-        card,
-        changed: () => refreshThread({ ws }),
-      })
-      native.catch(() => undefined)
-      const watcher = {
-        close: () => void native.then(
-          n => n.close(),
-          () => undefined,
-        ),
-      }
-      Object.assign(
-        sub,
-        {
-          paseo,
-          native,
-          watcher,
-        },
-      )
-    } else if (path) {
-      let file: PathWatch | undefined
-
-      const followFile = () => {
-        file?.close()
-        file = undefined
-
-        try {
-          file = watchPath({
-            path,
-            changed: () => refreshThread({ ws }),
-          })
-        } catch { /* The folder watcher retries when the transcript appears. */ }
-      }
-
-      try {
-        const folder = watchPath({
-          path: dirname(path),
-          changed: ({ filename }) => {
-            if (!filename || String(filename) === basename(path)) {
-              followFile()
-              refreshThread({ ws })
-            }
-          },
-        })
-        sub.watcher = {
-          close: () => {
-            folder.close()
-            file?.close()
-          },
-        }
-        followFile()
-      } catch { /* Missing transcript remains explicit. */ }
-    }
-
-    map.set(
-      ws,
-      sub,
-    )
-  }
 
   const dir = hydraDir({ hydraId })
   privateDir({ dir: spoolDir({ dir }) })
@@ -388,6 +161,27 @@ export async function mountOwnedHydra({
     offset,
   } = loadHydra({ hydraId })
   const catalogIndex = createCatalogIndex({ locations: catalogLocations })
+  const {
+    threadSubscriptions,
+    subscriptionMap,
+    threadTimers,
+    refreshThread,
+    threadPage,
+    bindThread,
+  } = createThreadSubscriptions({
+    hydraId,
+    state: () => state,
+    homes: () => homes,
+    closed: () => closed,
+    send: ({
+      ws,
+      message,
+    }) => send({
+      ws,
+      message,
+    }),
+    agents: () => agents,
+  })
 
   const catalogCard = ({
     card,
