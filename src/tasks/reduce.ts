@@ -154,11 +154,14 @@ export function applyTask({
         column,
         held,
       }),
-      ...(event.data.rank === undefined ? {} : { rank: event.data.rank }),
       revision: 1,
       createdSeq: event.seq,
       updatedSeq: event.seq,
       updatedAt: event.at,
+    }
+
+    if (event.data.rank !== undefined) {
+      state.cards[event.cardId]!.rank = event.data.rank
     }
 
     if (kind === 'investigation') {

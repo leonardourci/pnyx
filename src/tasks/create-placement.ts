@@ -1,7 +1,7 @@
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from './push-rules.ts'
-import { columnCards, rankOf } from './select.ts'
+import { columnCards, rankWithin } from './select.ts'
 
 export function createBeforeRank({
   state,
@@ -30,8 +30,9 @@ export function createBeforeRank({
     })
   }
 
-  const next = rankOf({ card: target })
-  const previous = cards[index - 1]
-
-  return previous ? (rankOf({ card: previous }) + next) / 2 : next - 1
+  return rankWithin({
+    card: target,
+    others: cards,
+    at: index,
+  })
 }
