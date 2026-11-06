@@ -1,6 +1,4 @@
 import { AxiError } from 'axi-sdk-js'
-import { THREAD_CURSOR } from '#hydra/transcripts-read.ts'
-import { PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { workerError, type createIndexSync } from '#oracle/index-sync.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
@@ -19,6 +17,7 @@ import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
 import { hydraAgentChangeCommand, hydraAgentCommand } from './hydra-agent.ts'
 import { hydrasCommand } from './hydras.ts'
 import { oracleCommand } from './oracle.ts'
+import { threadCommand } from './thread.ts'
 
 type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 
@@ -299,63 +298,17 @@ export function createServerCommands({
             hydraSubscribers,
           })
         } else if (name === 'thread') {
-          const map = subscriptionMap({ card: args[0] ?? '' })
-          const old = map.get(ws); old?.watcher?.close(); map.delete(ws)
-
-          if (!args[0]) {
-            send({
-              ws,
-              message: {
-                type: 'receipt',
-                id,
-              },
-            })
-
-            return
-          }
-
-          const card = findCard({
-            state: state(),
-            ref: args[0],
-          })
-
-          const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
-          const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
-
-          if (args[1] !== undefined && (args[1].length > cursorLimit || !cursor.test(args[1]))) {
-            throw new HydraError({
-              message: 'invalid thread cursor',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          bindThread({
+          threadCommand({
             ws,
-            card,
+            id,
+            args,
+            fail,
+            send,
+            state,
+            subscriptionMap,
+            bindThread,
+            threadPage,
           })
-          const sub = map.get(ws)!
-          void threadPage({
-            sub,
-            card,
-            before: args[1],
-          }).then(
-            thread => {
-              if (ws.readyState === ws.OPEN) {
-                send({
-                  ws,
-                  message: {
-                    type: 'receipt',
-                    id,
-                    thread,
-                  },
-                })
-              }
-            },
-            (error: Error) => fail({
-              error: error.message,
-              code: error instanceof HydraError ? error.code : 'UNKNOWN',
-            }),
-          )
         } else {
           const agent = name === 'agent'
           const answering = name === 'answer'
