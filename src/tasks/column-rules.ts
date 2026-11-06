@@ -57,7 +57,23 @@ export function taskColumn({
   return columns.find(c => c.id === ref || c.title === ref || c.role === ref)
 }
 
-// Where a new task lands: a held one waits in the queued column, any other in the column it names, or queued, or parked.
+// The column a new task asks for: the queued column when it is held, else the one it names.
+export function heldPlacement({
+  columns,
+  column,
+  held,
+}: {
+  columns: HydraColumn[]
+  column?: Column
+  held: boolean
+}): Column | undefined {
+  return held ? roleColumn({
+    columns,
+    role: 'queued',
+  }) : column
+}
+
+// Where a new task lands: the column it asks for, else the queued column, else parked.
 export function createdColumn({
   columns,
   column,
@@ -67,12 +83,14 @@ export function createdColumn({
   column?: Column
   held: boolean
 }): Column {
-  const queued = roleColumn({
+  return heldPlacement({
+    columns,
+    column,
+    held,
+  }) ?? roleColumn({
     columns,
     role: 'queued',
-  })
-
-  return (held ? queued : column) ?? queued ?? 'parked'
+  }) ?? 'parked'
 }
 
 export function roleColumn({
