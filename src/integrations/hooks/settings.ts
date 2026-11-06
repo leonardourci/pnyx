@@ -3,9 +3,6 @@ import { object } from '#workers/transcript-usage.ts'
 import type { AgentRef, AgentSettings } from '#workers/model.ts'
 
 import type { FoundSettings } from '#workers/provider.ts'
-import { readTranscriptRecord } from '#workers/transcripts.ts'
-
-export type { FoundSettings } from '#workers/provider.ts'
 
 // Settings a harness's hooks report on nearly every event, so the latest hook holds
 // the live value: Claude Code sends its model only at session start and after a switch.
@@ -37,19 +34,6 @@ export function hookSettings({ payload }: {
       mode: transcriptString({ value: payload.permission_mode }),
     },
   })
-}
-
-export function transcriptSettings({
-  record,
-  subagent = false,
-}: {
-  record: unknown
-  subagent?: boolean
-}): FoundSettings | undefined {
-  return readTranscriptRecord({
-    record,
-    subagent,
-  }).settings
 }
 
 export function observedSettings({
