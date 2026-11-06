@@ -47,9 +47,15 @@ class BrowserSocket {
   }
 }
 
-function browserFixture({ t }: { t: TestContext }) {
+function browserFixture({
+  t,
+  cached = {},
+}: {
+  t: TestContext
+  cached?: Record<string, string>
+}) {
   const events = new EventTarget()
-  const stored = new Map<string, string>()
+  const stored = new Map(Object.entries(cached))
   const storage = {
     // eslint-disable-next-line pnyx/object-params -- Storage owns the method signature.
     getItem: (key: string) => stored.get(key) ?? null,
@@ -375,5 +381,55 @@ test(
       connection.snapshot().state.cards.task!.spend,
       undefined,
     )
+  },
+)
+
+test(
+  'the legacy Hydra cache is removed and never restored or written',
+  t => {
+    const legacy = 'pnyx:test:hydra-state'
+    const {
+      connection,
+      stored,
+      events,
+    } = browserFixture({
+      t,
+      cached: {
+        [legacy]: JSON.stringify({
+          ...emptyHydra(),
+          config: { name: 'Old Hydra' },
+        }),
+      },
+    })
+    assert.equal(
+      connection.snapshot().loaded,
+      false,
+    )
+    assert.equal(
+      stored.has(legacy),
+      false,
+    )
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: 0,
+        state: emptyHydra(),
+      },
+    })
+    events.dispatchEvent(new Event('pagehide'))
+    assert.equal(
+      stored.has(legacy),
+      false,
+    )
+    assert.ok([...stored.keys()].some(key => key.includes('http://example.test:test/hydra/default/')))
   },
 )

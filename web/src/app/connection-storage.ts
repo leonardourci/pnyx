@@ -26,3 +26,9 @@ export function save({
     )
   } catch { /* The open tab retains its pending work when storage is full or blocked. */ }
 }
+
+export function removeStored({ key }: { key: string }) {
+  try {
+    sessionStorage.removeItem(key)
+  } catch { /* Storage may be blocked. */ }
+}

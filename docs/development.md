@@ -23,6 +23,8 @@ See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conve
 
 Owner actions in the app run in the server, which holds each Hydra in memory and is its only writer, so no command waits on another writer's lock. A validation or permission refusal returns its reason at once. The writer applies a batch to its own loaded state and retains changed properties for the lifecycle rules' before-state; its saved snapshot must match a cold replay of the log.
 
+The browser caches confirmed Hydra state under the installation and Hydra URL. The former identity-only `pnyx:<identity>:hydra-state` cache is removed on access; an older tab without a current cache loads a fresh snapshot from the server.
+
 ## Run a development server
 
 ```sh
