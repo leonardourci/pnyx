@@ -86,11 +86,18 @@ export function descriptionBlockers({ body }: { body: string }): string[] {
       continue
     }
 
-    const prose = content.filter(line => line.trim()
-      && !/^\s*[-*] \[[ xX]\]/.test(line)
-      && !/^(?: {4}|\t)/.test(line)
-      && /[\p{L}\p{N}]/u.test(line)
-      && !line.trim().startsWith('Complete [review-code]'))
+    const prose = content.filter(line => {
+      const reviewBox = /^\s*[-*] \[[ xX]\] Ran `(.+)`\s*$/.exec(line)?.[1]
+      const templateBox = REVIEW_CHECKLISTS.some(review => review === reviewBox)
+
+      return line.trim()
+        && !templateBox
+        && !/^(?: {4}|\t)/.test(line)
+        && !/^\s*\[[^\]]+\]:\s*\S+/.test(line)
+        && !/^\s*(?:<[^>]*>\s*)+$/.test(line)
+        && /[\p{L}\p{N}]/u.test(line)
+        && !line.trim().startsWith('Complete [review-code]')
+    })
 
     if (prose.length === 0) {
       blockers.push(`PR description needs content in ## ${name}`)

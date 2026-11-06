@@ -375,6 +375,15 @@ test(
 
     for (const body of [
       template,
+      passing + '\n## Problem\nAnother problem.',
+      passing.replace(
+        'Missing checks.',
+        '[only]: https://example.com',
+      ),
+      passing.replace(
+        'Missing checks.',
+        '<br>',
+      ),
       passing.replace(
         '## Problem',
         '## Context',
@@ -442,5 +451,33 @@ test(
         /PR description|template placeholders/,
       )
     }
+  },
+)
+
+test(
+  'substantive checklists fill Fix and Validation sections',
+  async () => {
+    const body = passing.replace(
+      'Require complete descriptions.',
+      '- [x] Reject missing sections.\n- [x] Preserve the existing marker.',
+    ).replace(
+      'Parser tests passed.',
+      '- [x] Parser tests passed.\n- [ ] CI is pending approval.',
+    )
+    assert.deepEqual(
+      markerBlockers({
+        failedSteps: 0,
+        changedPaths: 0,
+        headSha: 'tested',
+        headAfter: 'tested',
+        pullRequestHead: 'tested',
+        pullRequestBody: body,
+      }),
+      [],
+    )
+    await check({
+      body,
+      headSha: 'tested',
+    })
   },
 )
