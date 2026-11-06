@@ -736,6 +736,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     <TaskCreate
                                       key={`${c.id}:${creatingTask.parent ?? ''}`}
                                       {...creatingTask}
+                                      before={items[0]?.id}
                                       command={command}
                                       connected={connected}
                                       notify={notify}
@@ -757,21 +758,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                           id,
                                           column: c.id,
                                         })
-                                        const first = items[0]
-
-                                        if (first) {
-                                          void command({
-                                            name: 'move',
-                                            args: [
-                                              id,
-                                              c.id,
-                                              '--before',
-                                              first.id,
-                                              '--event-id',
-                                              crypto.randomUUID(),
-                                            ],
-                                          }).catch(e => notify({ text: e.message }))
-                                        }
                                       }}
                                     />
                                   )}

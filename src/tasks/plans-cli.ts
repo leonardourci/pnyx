@@ -19,6 +19,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
     'folder',
     'parent',
     'column',
+    'before',
     'kind',
     'hold',
   ],
