@@ -1328,6 +1328,10 @@ test(
         what: 'Codex to start the held turn',
         check: () => agent.received.length === 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
       })
+      await until({
+        what: 'the page’s queue to show Hydra working',
+        check: () => page.queues.at(-1)?.chat?.working,
+      })
       await send({
         s,
         text: 'Also check the docs',

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { test } from 'node:test'
+import { test, type TestContext } from 'node:test'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { runFixture } from '#test-harness/child-fixture.ts'
-import { until } from '#test-harness/harness.ts'
+import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 const HELD = 'Held while compacting'
@@ -29,10 +29,12 @@ const compacted = (): SDKMessage => ({
 
 // Sends /compact to a Hydra that has answered once, holds it after `before` while the owner sends a message, and returns the operations once Hydra is back.
 async function compact({
+  t,
   s,
   before,
   after,
 }: {
+  t: TestContext
   s: Scenario
   before: SDKMessage[]
   after: SDKMessage[]
@@ -49,6 +51,11 @@ async function compact({
     before,
     after,
   })
+  const page = await openPage({
+    port: pnyx.port(),
+    hydraId: s.hydraId,
+  })
+  t.after(() => page.close())
 
   try {
     await s.chat({ text: '/compact' })
@@ -71,6 +78,39 @@ async function compact({
         && s.state().hydraMessages?.some(message => message.text === HELD),
     })
     assert.ok(!s.received({ cwd: agent.cwd }).some(text => text.includes(HELD)))
+    // The page shows it held, and a tab that connects now gets the same queue with its snapshot.
+    const heldId = s.state().hydraMessages!.find(message => message.text === HELD)!.id
+    const shown = await until({
+      what: 'the page’s queue to hold the owner’s message',
+      check: () => page.queues.at(-1)?.chat?.held.includes(heldId) && page.queues.at(-1)!.chat,
+    })
+    assert.deepEqual(
+      {
+        holding: shown.holding,
+        compactionRunning: shown.compactionRunning,
+        held: shown.held,
+        inputs: shown.compactInputs.map(input => input.text),
+      },
+      {
+        holding: true,
+        compactionRunning: true,
+        held: [heldId],
+        inputs: [HELD],
+      },
+    )
+    const reconnected = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => reconnected.close())
+    const first = await until({
+      what: 'the queue a new tab gets with its snapshot',
+      check: () => reconnected.queues[0],
+    })
+    assert.deepEqual(
+      first.chat?.held,
+      shown.held,
+    )
   } finally {
     turn.release()
   }
@@ -82,15 +122,24 @@ async function compact({
       && s.received({ cwd: agent.cwd }).some(text => text.includes('back after a stop') && text.includes(HELD)),
   })
   assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider'))
+  await until({
+    what: 'the page’s queue to release the held message',
+    check: () => {
+      const chat = page.queues.at(-1)?.chat
+
+      return chat?.holding === false && chat.held.length === 0
+    },
+  })
 
   return s.state().cards[HYDRA_CARD]!.compaction!.operations
 }
 
 test(
   'a long manual /compact stays one operation through Claude Code’s repeated statuses, and its result releases held input',
-  async () => {
+  async t => {
     const s = await pnyx.scenario()
     const operations = await compact({
+      t,
       s,
       before: [compacting()],
       after: [
@@ -119,9 +168,10 @@ test(
 
 test(
   'a compaction that leads straight into another shows them one after the other, and held input waits for the last',
-  async () => {
+  async t => {
     const s = await pnyx.scenario()
     const operations = await compact({
+      t,
       s,
       before: [compacting()],
       after: [
