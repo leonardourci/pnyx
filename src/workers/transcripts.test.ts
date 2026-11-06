@@ -183,7 +183,7 @@ test(
     assert.deepEqual(
       transcriptMessages({
         record: {
-          ...records.codex,
+          ...records.claude,
           isMeta: true,
         },
       }),
