@@ -1,5 +1,5 @@
 import { matchesProject } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, branchStart, commonDir, git, gitProject, onBranch } from './git.ts'
+import { COPY_TIMEOUT_MS, branchExists, branchStart, commonDir, git, gitProject, onBranch, taskBranch } from './git.ts'
 import { landedWork } from '#tasks/delivery/proof.ts'
 
 import { workerQueue } from '#workers/queue.ts'
@@ -415,7 +415,10 @@ async function worktreeCopy({
     copiesDir({ hydraId }),
     { recursive: true },
   )
-  const branch = `pnyx/${hydraId}-${card.id}`
+  const branch = taskBranch({
+    hydraId,
+    task: card.id,
+  })
   const {
     base,
     start,
