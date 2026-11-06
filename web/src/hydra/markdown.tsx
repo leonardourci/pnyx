@@ -11,8 +11,6 @@ import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
-export { markdown, markdownText } from './markdown-text.ts'
-
 // Tokens become React elements, never HTML. Raw HTML remains visible text;
 // images remain links so transcripts cannot trigger remote tracking requests.
 export function markdownHref({ href }: { href: string }): string | undefined {

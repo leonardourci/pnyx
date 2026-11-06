@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { shownImageNames } from '#hydra/images.ts'
-import { Markdown, MarkdownBlocks, markdown } from './markdown.tsx'
+import { Markdown, MarkdownBlocks } from './markdown.tsx'
+import { markdown } from './markdown-text.ts'
 import {
   EDGE,
   arrivalRate,

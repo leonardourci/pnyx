@@ -1,7 +1,7 @@
 import { useId, useMemo, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { CollapsibleText } from './disclosure.tsx'
-import { markdownText } from '#web-hydra/markdown.tsx'
+import { markdownText } from '#web-hydra/markdown-text.ts'
 import { RichText } from './rich-text.tsx'
 
 export function ChoiceOption({
