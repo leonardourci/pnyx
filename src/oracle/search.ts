@@ -4,7 +4,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import { HydraError } from '#store/errors.ts'
 import { nearest, prefixed } from './fuzzy.ts'
 import { openReader, searchPath } from './index.ts'
-import type { Hit, Kind, Match, Query } from './model.ts'
+import type { Hit, Kind, Match, Query, Snippet } from './model.ts'
+import { MATCH_END, MATCH_START, markedParts } from './snippet.ts'
 import { queryTerms, termExpr, type Term } from './query.ts'
 
 const NOTE_WEIGHT = 2
@@ -197,8 +198,8 @@ function run(
     snippets: (
       top.all({
         match: snippetMatch,
-        startMark: query.highlight === false ? '' : '\uE000',
-        endMark: query.highlight === false ? '' : '\uE001',
+        startMark: query.highlight === false ? '' : MATCH_START,
+        endMark: query.highlight === false ? '' : MATCH_END,
         card: r.card,
         kind: query.kind ?? null,
         n: query.card ? query.limit : SNIPPETS,
@@ -212,39 +213,23 @@ function run(
         /\s+/g,
         ' ',
       )
-      const parts: {
-        text: string
-        matched: boolean
-      }[] = []
-      let matched = false
-
-      for (const part of text.split(/([\uE000\uE001])/)) {
-        if (part === '\uE000') {
-          matched = true
-        } else if (part === '\uE001') {
-          matched = false
-        } else if (part) {
-          parts.push({
-            text: part,
-            matched,
-          })
-        }
-      }
-
-      const snippet = text.replaceAll(
-        '\uE000',
-        '[',
-      ).replaceAll(
-        '\uE001',
-        ']',
-      )
-
-      return {
+      const found: Snippet = {
         kind: t.kind,
         at: t.at || 'unknown',
-        snippet,
-        ...(query.highlight === true ? { parts } : {}),
+        snippet: text.replaceAll(
+          MATCH_START,
+          '[',
+        ).replaceAll(
+          MATCH_END,
+          ']',
+        ),
       }
+
+      if (query.highlight === true) {
+        found.parts = markedParts({ text })
+      }
+
+      return found
     }),
   }))
 
