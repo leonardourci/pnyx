@@ -28,8 +28,13 @@ export function threadCommand({
   const map = subscriptionMap({ card: args[0] ?? '' })
   const old = map.get(ws)
 
+  const unbind = () => {
+    old?.watcher?.close()
+    map.delete(ws)
+  }
+
   if (!args[0]) {
-    old?.watcher?.close(); map.delete(ws)
+    unbind()
     send({
       ws,
       message: {
@@ -56,8 +61,9 @@ export function threadCommand({
     })
   }
 
+  // Loading earlier history keeps the subscription, and with it the history already loaded.
   if (!args[1] || old?.card !== card.id) {
-    old?.watcher?.close(); map.delete(ws)
+    unbind()
     bindThread({
       ws,
       card,
