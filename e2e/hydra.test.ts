@@ -1533,3 +1533,128 @@ test(
     )
   },
 )
+
+test(
+  'the page creates a Hydra once per attempt, renames and reorders the list, and refuses an unknown action or attempt',
+  async t => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    type Listed = {
+      hydras: {
+        id: string
+        name: string
+      }[]
+    }
+    const create = {
+      name: 'hydras',
+      args: [
+        'create',
+        'Atlas',
+        'atlas-attempt',
+      ],
+    }
+    const first = await page.command(create) as Listed & { creation: { hydraId: string } }
+    const atlas = first.creation.hydraId
+    const retried = await page.command(create)
+    const boreas = (await page.command({
+      name: 'hydras',
+      args: [
+        'create',
+        'Boreas',
+      ],
+    }) as Listed & { url: string }).url.split('/').at(-2)!
+    await page.command({
+      name: 'hydras',
+      args: [
+        'edit',
+        atlas,
+        'Atlas Prime',
+      ],
+    })
+    await page.command({
+      name: 'hydras',
+      args: [
+        'move',
+        boreas,
+        '1',
+      ],
+    })
+    const moved = await page.command({
+      name: 'hydras',
+      args: [
+        'move',
+        atlas,
+        '2',
+      ],
+    }) as Listed
+    assert.deepEqual(
+      [
+        first.creation,
+        retried.creation,
+        moved.hydras.filter(h => h.id === atlas || h.id === boreas).map(h => [
+          h.id,
+          h.name,
+        ]),
+      ],
+      [
+        {
+          attempt: 'atlas-attempt',
+          hydraId: atlas,
+          status: 'saved',
+          mount: 'pending',
+        },
+        {
+          attempt: 'atlas-attempt',
+          hydraId: atlas,
+          status: 'saved',
+          mount: 'pending',
+        },
+        [
+          [
+            boreas,
+            'Boreas',
+          ],
+          [
+            atlas,
+            'Atlas Prime',
+          ],
+        ],
+      ],
+    )
+
+    const refusals = [
+      await page.refusal({
+        name: 'hydras',
+        args: ['delete'],
+      }),
+      await page.refusal({
+        name: 'hydras',
+        args: [
+          'create',
+          'Cronus',
+          'not an attempt',
+        ],
+      }),
+    ]
+    assert.deepEqual(
+      refusals.map(refusal => [
+        refusal.code,
+        refusal.error,
+      ]),
+      [
+        [
+          'VALIDATION_ERROR',
+          'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',
+        ],
+        [
+          'VALIDATION_ERROR',
+          'Invalid Hydra creation attempt',
+        ],
+      ],
+    )
+  },
+)
