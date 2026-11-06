@@ -75,4 +75,3 @@ export function useFolders({
 
   return result?.query === query ? result : undefined
 }
-

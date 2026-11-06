@@ -1,12 +1,57 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
-import { harnessOf } from '#workers/providers.ts'
 import type { HydraState } from '#app/model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { Catalog } from '#hydra/transcripts-catalog.ts'
+import type { HydraProject } from '#projects/model.ts'
+import type { HydraColumn } from '#tasks/columns-model.ts'
+import type { Card,SavedLabelColor } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
-import { ComposerSourcesProvider, type ComposerSources } from '#web-shared/ui/composer-field.tsx'
+import { harnessOf } from '#workers/providers.ts'
+import { createContext,useCallback,useContext,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useSkillsCatalog } from './skills-catalog.ts'
+
+// What every composer field offers to mention, open and invoke; the app provides it once.
+export interface ComposerSources {
+  cards: Card[]
+  projects: HydraProject[]
+  columns: HydraColumn[]
+  taskReferences: Record<string, TaskReferenceData>
+  openTask({ id }: { id: string }): void
+  catalog: Catalog | null
+  // A field asks for the skills catalog while its / menu is open.
+  catalogOpen({ open }: { open: boolean }): void
+  labelColors?: SavedLabelColor[]
+  // Projects of the owner's other Hydras, offered under Folders in the @ picker.
+  otherProjects: {
+    name: string
+    path: string
+    hydra: string
+  }[]
+  notify({ text }: { text: string }): void
+}
+
+const Sources = createContext<ComposerSources | null>(null)
+
+export function ComposerSourcesProvider({
+  sources,
+  children,
+}: {
+  sources: ComposerSources
+  children: ReactNode
+}) {
+  return <Sources.Provider value={sources}>{children}</Sources.Provider>
+}
+
+export function useComposerSources() {
+  const sources = useContext(Sources)
+
+  if (!sources) {
+    throw new Error('A composer field needs a ComposerSourcesProvider above it.')
+  }
+
+  return sources
+}
 
 // Every composer field in a Hydra mentions its tasks, projects and columns and offers Hydra's skills.
 export function HydraComposerSources({
