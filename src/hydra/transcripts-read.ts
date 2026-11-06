@@ -7,12 +7,14 @@ import type { Card } from '#tasks/model.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
-import { redact, transcriptMessages } from '#oracle/text.ts'
+import { redact } from '#oracle/text.ts'
+import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
 import { traces } from '#preferences/view.ts'
 import { taskReceipt } from './transcripts-task.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
-import { obj, readAction, recordBlocks, shortened, type ActionRead } from './calls.ts'
+import { shortened, type ActionRead } from './calls.ts'
+import { readAction } from './transcript-calls.ts'
 import { effectiveView } from '#settings/store.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import type { TurnActions } from './conversation.ts'
@@ -147,61 +149,32 @@ export function recordEntries({
   thinking?: boolean
   boundaries?: boolean
 }): ThreadEntry[] {
-  const r = obj({ v: record })
-
-  if (r.isMeta === true) {
-    return []
-  }
-
-  const payload = obj({ v: r.payload })
-  const role = typeof payload.role === 'string' ? payload.role : String(r.type)
-  const at = typeof r.timestamp === 'string' ? r.timestamp : undefined
-  const entries: ThreadEntry[] = transcriptMessages({
-    record,
-    includeInternal: boundaries,
-  }).map((
-    m,
-    i,
+  const parsed = readTranscriptRecord({ record })
+  const messages = parsed.messages.filter(message => boundaries || !message.internal)
+  const entries: ThreadEntry[] = messages.map((
+    message,
+    index,
   ) => ({
-    id: `${offset}:m${i}`,
+    id: `${offset}:m${index}`,
     kind: 'message',
-    role,
-    text: m.text,
-    at: m.at,
-    hidden: m.internal,
+    role: parsed.role,
+    text: message.text,
+    at: message.at,
+    hidden: message.internal,
   }))
-  const blocks = recordBlocks({ record })
 
-  for (const [
-    i,
-    raw,
-  ] of blocks.entries()) {
-    const b = obj({ v: raw })
-    const kind = [
-      'tool_use',
-      'tool_result',
-      'function_call',
-      'function_call_output',
-      'custom_tool_call',
-      'custom_tool_call_output',
-    ].includes(String(b.type)) ? 'tool' : [
-        'thinking',
-        'reasoning',
-      ].includes(String(b.type)) ? 'thinking' : null
-
-    if (!kind || (kind === 'tool' && !tools) || (kind === 'thinking' && !thinking)) {
+  for (const trace of parsed.traces) {
+    if ((trace.kind === 'tool' && !tools) || (trace.kind === 'thinking' && !thinking)) {
       continue
     }
 
-    const text = b.thinking ?? b.summary ?? b.content ?? b.output ?? b.arguments ?? b.input ?? 'Recorded details unavailable'
-    const call = b.tool_use_id ?? b.call_id ?? b.id
     entries.push({
-      id: `${offset}:t${i}`,
-      kind,
-      role: typeof b.name === 'string' ? b.name : kind,
-      at,
-      text: typeof text === 'string' ? text : JSON.stringify(text),
-      ...(kind === 'tool' && typeof call === 'string' ? { call } : {}),
+      id: `${offset}:t${trace.index}`,
+      kind: trace.kind,
+      role: trace.role,
+      at: parsed.at,
+      text: trace.text,
+      ...(trace.call !== undefined ? { call: trace.call } : {}),
     })
   }
 
@@ -237,14 +210,10 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
       continue
     }
 
-    const messages = transcriptMessages({ record })
+    const parsed = readTranscriptRecord({ record })
+    const messages = parsed.messages.filter(message => !message.internal)
 
-    const r = obj({ v: record }), role = obj({ v: r.payload }).role ?? r.type
-
-    if (!messages.length || ![
-      'assistant',
-      'response_item',
-    ].includes(String(role))) {
+    if (!messages.length || parsed.role !== 'assistant') {
       continue
     }
 
@@ -568,8 +537,10 @@ export function readThread(
               newline,
             ).toString())
 
-            if (beforeItem !== undefined && offset === beforeOffset && typeof record.timestamp === 'string') {
-              excludedAt.push(record.timestamp)
+            const at = readTranscriptRecord({ record }).at
+
+            if (beforeItem !== undefined && offset === beforeOffset && at !== undefined) {
+              excludedAt.push(at)
             }
 
             // Hidden traces must not use up the conversation page.
