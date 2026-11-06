@@ -39,7 +39,7 @@ import { paseoHistory, PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.
 import { findCard } from '#tasks/push-rules.ts'
 import { search as oracleSearch } from '#oracle/search.ts'
 import { indexedThrough } from '#oracle/status.ts'
-import { indexRuns } from '#oracle/index-runs.ts'
+import { INDEX_WORKER, createIndexSync, workerError } from '#oracle/index-sync.ts'
 import { replyRoute } from '#workers/reply-route.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
@@ -60,8 +60,6 @@ import { traces } from '#preferences/view.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
 import { saveSnapshot, withWriter } from './writer.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { upgradeUnderway } from '#upgrade/queue.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
@@ -111,34 +109,6 @@ const WORKER_GRACE_MS = 5000
 const REPLY_WORKER = 'reply'
 const COMMAND_WORKER = 'command'
 const REPLY_WORKER_TIMEOUT_MS = 130_000
-// node:sqlite is synchronous, so the Oracle index catches up in a child as well.
-const INDEX_WORKER = join(
-  import.meta.dirname,
-  '..',
-  'oracle',
-  import.meta.url.endsWith('.ts') ? 'index-process.ts' : 'index-process.js',
-)
-// A first build of a long history takes seconds; this only ends a stuck one.
-const INDEX_WORKER_TIMEOUT_MS = 10 * 60_000
-
-// A worker entry that fails knowingly prints { error: { message, code, help } }.
-function workerError({ stdout }: { stdout: string }): {
-  message: string
-  code: string
-  help?: string[]
-} | undefined {
-  try {
-    const known = JSON.parse(stdout).error
-
-    if (typeof known?.message === 'string' && typeof known.code === 'string') {
-      return known
-    }
-  } catch {
-    // Not JSON: the worker failed before it could say why.
-  }
-
-  return undefined
-}
 
 export async function mountOwnedHydra({
   hydraId,
@@ -1109,54 +1079,9 @@ export async function mountOwnedHydra({
     )
   }
 
-  // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
-  // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
-  const harvestForIndex = () => {
-    try {
-      withWriter({
-        hydraId,
-        fn: ({ writer }) => harvestTranscripts({
-          writer,
-          cardIds: Object.keys(writer.state.cards),
-          at: new Date().toISOString(),
-        }),
-      })
-    } catch (error) {
-      console.error(`pnyx oracle index: transcripts not harvested: ${(error as Error).message}`)
-    }
-  }
-
-  const historyIndex = indexRuns({
-    start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
-      // The next change, or the restarted server, catches the index up.
-      if (upgradeUnderway()) {
-        resolve(undefined)
-
-        return
-      }
-
-      harvestForIndex()
-      startWorker({
-        file: INDEX_WORKER,
-        timeout: INDEX_WORKER_TIMEOUT_MS,
-        args: [hydraId],
-        done: ({
-          error,
-          stdout,
-        }) => {
-          if (!error) {
-            return resolve(undefined)
-          }
-
-          const failure = workerError({ stdout }) ?? {
-            message: error.message,
-            code: 'UNKNOWN',
-          }
-          console.error(`pnyx oracle index: ${failure.message}`)
-          resolve(failure)
-        },
-      })
-    }),
+  const historyIndex = createIndexSync({
+    hydraId,
+    startWorker,
   })
   historyIndex.changed()
 
