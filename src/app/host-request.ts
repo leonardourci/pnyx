@@ -9,7 +9,7 @@ import { field } from '#workers/http.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { overrideOf, ruleCandidates, validateChoice, chooseCandidate, hostedOverride, chosenSettings, readQuota } from '#workers/dispatch.ts'
 import { catalogOffers } from '#workers/model-catalog.ts'
-import { providerIdOf } from '#workers/providers.ts'
+import { HARNESSES, isHarness, providerIdOf, type Harness } from '#workers/providers.ts'
 import { hydraFastReaches, modelIds } from '#workers/provider.ts'
 import { SETTINGS } from '#workers/host.ts'
 import { raisesPermission, workerMode } from '#workers/permission-level.ts'
@@ -140,10 +140,8 @@ export async function hostRequestUnlocked({
           override,
           offers: await catalogOffers({
             host,
-            harnesses: harness === 'claude' || harness === 'codex' ? [harness] : override?.model ? [
-              'claude',
-              'codex',
-            ] : named.map(c => c.harness),
+            harnesses: isHarness({ harness }) ? [harness as Harness]
+              : override?.model ? [...HARNESSES] : named.map(c => c.harness),
           }),
         })
 
@@ -266,7 +264,7 @@ export async function hostRequestUnlocked({
         name: 'harness',
       })
 
-      if (harness !== 'claude' && harness !== 'codex') {
+      if (!isHarness({ harness })) {
         throw new HydraError({
           message: 'models expects claude or codex',
           code: 'VALIDATION_ERROR',
@@ -275,7 +273,7 @@ export async function hostRequestUnlocked({
 
       return {
         models: await host.models({
-          harness,
+          harness: harness as Harness,
           account: field({
             body,
             name: 'account',

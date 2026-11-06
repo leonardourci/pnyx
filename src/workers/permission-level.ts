@@ -3,7 +3,7 @@ import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from './controls.ts'
-import { providerIdOf } from './providers.ts'
+import { PROVIDERS, harnessOf, providerIdOf } from './providers.ts'
 
 const PERMISSION_LEVELS: Record<Harness, Record<string, number>> = {
   claude: {
@@ -55,7 +55,7 @@ export function agentPermissionNeedsOwner({
   card: Card
   value: string
 }): boolean {
-  const harness = card.agent?.provider === 'codex' ? 'codex' : 'claude'
+  const harness = harnessOf({ provider: card.agent?.provider })
 
   return raisesPermission({
     harness,
@@ -79,8 +79,8 @@ export function raisesPermission({
     return false
   }
 
-  const beforeDefault = beforeHarness === 'claude' ? 'default' : 'on-request'
-  const afterDefault = harness === 'claude' ? 'default' : 'on-request'
+  const beforeDefault = PROVIDERS[beforeHarness].defaultMode
+  const afterDefault = PROVIDERS[harness].defaultMode
   const previous = PERMISSION_LEVELS[beforeHarness][before ?? beforeDefault]
   const next = PERMISSION_LEVELS[harness][after ?? afterDefault]
 

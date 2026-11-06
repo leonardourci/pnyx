@@ -6,7 +6,7 @@ import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
 import { hydraActor } from './request-context.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { HYDRA_COMMANDS } from './command-registry.ts'
-import { harnessOf, providerIdOf, providerLabel } from '#workers/providers.ts'
+import { DEFAULT_PROVIDER, PROVIDERS, harnessOf, isProviderId, providerIdOf, providerLabel, type ProviderId } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
@@ -150,8 +150,8 @@ export function createHost({
   restart?(): void | Promise<void>
 }): Host {
   const providers = {
-    'claude-code': claudeProvider({ query }),
-    codex: codexProvider({ spawnCodex }),
+    [PROVIDERS.claude.provider]: claudeProvider({ query }),
+    [PROVIDERS.codex.provider]: codexProvider({ spawnCodex }),
   }
   const children = trackChildren({ hydraId })
   const controller = new AbortController()
@@ -655,10 +655,7 @@ export function createHost({
   }): AgentSession => {
     const agent = card.agent
 
-    if (!liveTask({ card }) || !agent || ![
-      'claude-code',
-      'codex',
-    ].includes(agent.provider)
+    if (!liveTask({ card }) || !agent || !isProviderId({ provider: agent.provider })
       || agent.host || agent.agentId || agent.paseoAgentId) {
       throw new HydraError({
         message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
@@ -893,14 +890,14 @@ export function createHost({
   }
 
   const providerOf = ({ provider }: { provider: string }) => {
-    if (provider !== 'claude-code' && provider !== 'codex') {
+    if (!isProviderId({ provider })) {
       throw new HydraError({
         message: `unsupported hosted provider: ${provider}`,
         code: 'VALIDATION_ERROR',
       })
     }
 
-    return providers[provider]
+    return providers[provider as ProviderId]
   }
 
   const askPermission = ({
@@ -3626,7 +3623,7 @@ export function createHost({
             const provider = providerOf({ provider: providerIdOf({ harness: candidate.harness }) })
             const summarySettings = {
               ...settings,
-              mode: candidate.harness === 'claude' ? 'default' : 'on-request',
+              mode: PROVIDERS[candidate.harness].defaultMode,
             }
             const session = await provider.open({
               cwd,
@@ -3962,7 +3959,7 @@ export function createHost({
         })
       }
 
-      const provider = settings.provider ?? 'claude-code'
+      const provider = settings.provider ?? DEFAULT_PROVIDER
       const {
         provider: _provider,
         ...options
@@ -4259,7 +4256,7 @@ export function createHost({
                 ...agent,
                 host: 'pnyx',
                 resume: true,
-                ...(agent.provider === 'claude-code' && !agent.transcriptPath ? {
+                ...(agent.provider === PROVIDERS.claude.provider && !agent.transcriptPath ? {
                   transcriptPath: transcriptPath({
                     cwd,
                     session: agent.sessionId,
