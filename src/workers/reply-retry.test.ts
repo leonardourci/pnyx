@@ -470,6 +470,145 @@ test(
   },
 )
 
+const recorded = ({ record }: { record: unknown }) => appendFileSync(
+  transcript,
+  `${JSON.stringify(record)}\n`,
+)
+
+// One follow-up pass that fails if the reply is reported, returning what it resent.
+const followUpOnce = async () => {
+  const fake = lostResend()
+  await followUpReplies({
+    hydraId: 'lab',
+    tried: new Map(),
+    resend: fake.resend,
+    unconfirmed: () => assert.fail('a reply is not reported on its first follow-up'),
+    now: SENT + 2 * MINUTE,
+  })
+
+  return fake.resent
+}
+
+const arrivalDetail = () => {
+  const arrived = readEvents({ hydraId: 'lab' }).findLast(event => event.type === 'card.replied')
+
+  return arrived?.type === 'card.replied' ? arrived.data.detail : undefined
+}
+
+test(
+  'a reply a Claude Code transcript records as a user turn is confirmed without a resend',
+  async () => {
+    unconfirmedReply({ text: 'Rebase onto main' })
+    recorded({
+      record: {
+        type: 'user',
+        timestamp: new Date(SENT + 5000).toISOString(),
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Rebase onto main',
+            },
+          ],
+        },
+      },
+    })
+    assert.deepEqual(
+      await followUpOnce(),
+      [],
+    )
+    assert.deepEqual(
+      [
+        task().replies?.find(reply => reply.id === 'r1')?.state,
+        arrivalDetail(),
+      ],
+      [
+        'delivered',
+        'found in the session transcript',
+      ],
+    )
+  },
+)
+
+test(
+  'a reply a Codex transcript records as a user message is confirmed without a resend',
+  async () => {
+    unconfirmedReply({ text: 'Rebase onto main' })
+    recorded({
+      record: {
+        type: 'response_item',
+        timestamp: new Date(SENT + 5000).toISOString(),
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: 'Rebase onto main',
+            },
+          ],
+        },
+      },
+    })
+    assert.deepEqual(
+      await followUpOnce(),
+      [],
+    )
+    assert.deepEqual(
+      [
+        task().replies?.find(reply => reply.id === 'r1')?.state,
+        arrivalDetail(),
+      ],
+      [
+        'delivered',
+        'found in the session transcript',
+      ],
+    )
+  },
+)
+
+test(
+  'the reply text in an assistant turn or a Pnyx wake does not confirm it, so it is resent',
+  async () => {
+    unconfirmedReply({ text: 'Rebase onto main' })
+    recorded({
+      record: {
+        type: 'assistant',
+        timestamp: new Date(SENT + 5000).toISOString(),
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: 'Rebase onto main',
+            },
+          ],
+        },
+      },
+    })
+    recorded({
+      record: {
+        type: 'response_item',
+        timestamp: new Date(SENT + 6000).toISOString(),
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: '<pnyx-wake>Rebase onto main</pnyx-wake>',
+            },
+          ],
+        },
+      },
+    })
+    assert.deepEqual(
+      await followUpOnce(),
+      ['r1~retry1'],
+    )
+  },
+)
+
 test(
   'a resend that arrives marks the original delivered',
   async () => {
