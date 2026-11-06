@@ -1,5 +1,5 @@
 import { AxiError } from 'axi-sdk-js'
-import { guard, parse, WRITE, required, meta, commit } from '#app/cli-support.ts'
+import { guard, parse, WRITE, required, meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { effectiveView, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
@@ -205,3 +205,39 @@ export const layout = guard({
     }
   },
 })
+
+export function hydraResize({
+  values,
+  hydraId,
+}: {
+  values: Record<string, string | boolean | undefined>
+  hydraId: string
+}): Output {
+  const width = integer({
+    value: values.width,
+    flag: '--width',
+  })
+
+  if (width === undefined) {
+    throw new HydraError({
+      message: 'pass --width <pixels>',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const m = meta({ values })
+
+  return commit({
+    hydraId,
+    meta: m,
+    intent: {
+      type: 'board.view',
+      card: '$board',
+    },
+    decide: ({ state }) => decideView({
+      state,
+      patch: { hydraWidth: width },
+      meta: m,
+    }),
+  })
+}
