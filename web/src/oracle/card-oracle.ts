@@ -12,10 +12,12 @@ export const findCards = async ({
   command,
   query,
   live = false,
+  filters,
 }: {
   command: Command
   query: string
   live?: boolean
+  filters?: Search['filters']
 }) => {
   const result = await command({
     name: 'oracle',
@@ -23,7 +25,8 @@ export const findCards = async ({
       query,
       // The workspace comes second; an empty one searches every workspace.
       '',
-      ...(live ? ['hydra'] : []),
+      ...(live || filters ? [live ? 'hydra' : ''] : []),
+      ...(filters ? [JSON.stringify(filters)] : []),
     ],
   })
 
@@ -32,9 +35,10 @@ export const findCards = async ({
 
 export interface Search {
   text: string
+  filters?: Pick<import('#oracle/model.ts').Query, 'columns' | 'projects' | 'since'>
 }
 
-const keyOf = ({ search }: { search: Search }) => search.text
+const keyOf = ({ search }: { search: Search }) => `${search.text}${search.filters ? `\n${JSON.stringify(search.filters)}` : ''}`
 
 // Events only refresh the shown query, so they never postpone a search; stale answers are dropped.
 export function searchSchedule({
@@ -152,10 +156,12 @@ export function useFoundCards({
   command,
   query,
   revision,
+  filters,
 }: {
   command: Command
   query: string
   revision: number
+  filters?: Search['filters']
 }): {
   hits: Hit[]
   pending: boolean
@@ -170,7 +176,10 @@ export function useFoundCards({
     failed: boolean
   } | null>(null)
   const text = query.trim()
-  const search = text ? { text } : null
+  const search = text ? {
+    text,
+    filters,
+  } : null
   const key = search ? keyOf({ search }) : ''
   const latest = useRef(search); latest.current = search
   const schedule = useRef<ReturnType<typeof searchSchedule> | null>(null)
@@ -181,6 +190,7 @@ export function useFoundCards({
           command,
           query: search.text,
           live: true,
+          filters: search.filters,
         }),
         show: setFound,
       })

@@ -52,11 +52,9 @@ const KIND_NAMES: Record<string, string> = {
 
 function Snippets({
   hit,
-  terms,
   now,
 }: {
   hit?: Hit
-  terms: string[]
   now: number
 }) {
   if (!hit?.snippets.length) {
@@ -76,7 +74,11 @@ function Snippets({
             now,
           })}
           </span>
-          <span><Highlight text={markdownText({ text: snippet.snippet })} terms={terms} /></span>
+          <span>{snippet.parts ? snippet.parts.map((
+            part,
+            index,
+          ) => part.matched ? <mark key={index}>{part.text}</mark> : part.text) : snippet.snippet}
+          </span>
         </p>
       ))}
     </section>
@@ -144,7 +146,7 @@ function TaskPreview({
         {said && <p className="oracle-card-said"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
         <CardLinks links={card.links} expanded={false} />
       </div>
-      <Snippets hit={hit} terms={terms} now={now} />
+      <Snippets hit={hit} now={now} />
     </>
   )
 }
@@ -424,7 +426,7 @@ export function ResultPreview({
       {result.kind === 'conversation' && !card && (
         <>
           <h3 className="oracle-preview-title"><Icon name="comments" size={16} />{result.title}</h3>
-          <Snippets hit={result.hit} terms={terms} now={now} />
+          <Snippets hit={result.hit} now={now} />
         </>
       )}
       {result.kind === 'project' && <ProjectPreview project={result.summary} state={state} />}

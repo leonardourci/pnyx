@@ -1,3 +1,4 @@
+import { tokens } from '#oracle/query.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -32,9 +33,7 @@ export function filterCards({
   query?: string
   actions?: Record<string, CurrentAction>
 }): Card[] {
-  const words = query.toLowerCase().trim()
-    .split(/\s+/)
-    .filter(Boolean)
+  const words = tokens({ text: query })
 
   return Object.values(state.cards).filter(c => liveTask({ card: c })
     && words.every(w => [

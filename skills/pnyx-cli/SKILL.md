@@ -17,3 +17,5 @@ Hydra follows `pnyx-orchestrate`; workers follow `pnyx-report-progress`. Lifecyc
 On recovery, read your task and steering inbox before repeating side effects. Preserve idempotency keys and reconcile uncertain delivery using its existing receipt.
 
 Use `task create --before <task>` to insert a task before an existing task in its destination column with one event.
+
+Narrow Oracle before its result limit with `oracle <words> --column <id> --project <path> --since <date>`; column and project flags can repeat for alternatives.
