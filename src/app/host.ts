@@ -29,15 +29,15 @@ import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
-import { accountEnv, accountEnvironment, agentExhausted, readUsage } from '#workers/dispatch.ts'
+import { accountEnv, accountEnvironment, agentExhausted } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
-import { usageFor } from '#workers/usage.ts'
-import { hydraFastReaches, mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
+import { createUsageTracker } from '#workers/usage-tracker.ts'
+import { hydraFastReaches, type HostedSession, type PermissionDecision } from '#workers/provider.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
@@ -164,28 +164,10 @@ export function createHost({
       card.id,
       steeringAssignment({ card }),
     ]))
-  // The latest size and spend each session reported, kept after its process idles out.
-  const usages = new Map<string, Omit<HostedUsage, 'type'>>()
-  const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
-
-  const usageAccount = ({ agent }: { agent: AgentRef }) => {
-    const harness = harnessOf({ provider: agent.provider })
-    const effective = effectiveDispatch()
-    const name = agent.account ?? harnessAccount({
-      effective,
-      harness,
-    })
-    const account = name ? effective.accounts[name] : undefined
-    const configuredFolder = account?.provider === harness ? account.folder : undefined
-    const folder = agent.loginFolder ?? configuredFolder ?? defaultLogin({ provider: harness })
-
-    return {
-      name,
-      folder,
-      harness,
-      key: `${harness}:${folder}`,
-    }
-  }
+  const usageTracker = createUsageTracker({
+    hydraId,
+    streamed,
+  })
 
   const pending = new Map<string, {
     card: string
@@ -1459,33 +1441,10 @@ export function createHost({
         }
 
         if (typeof activity !== 'string' && activity.type === 'usage') {
-          const before = usages.get(key) ?? {}
-          usages.set(
+          usageTracker.mergeUsage({
             key,
-            {
-              ...before,
-              ...Object.fromEntries(([
-                'used',
-                'window',
-                'cost',
-                'inputTokens',
-                'plan',
-              ] as const).flatMap(field => activity[field] === undefined ? [] : [
-                [
-                  field,
-                  activity[field],
-                ],
-              ])),
-              ...(activity.limits ? {
-                limits: mergeWindows({
-                  base: before.limits ?? [],
-                  over: activity.limits,
-                }),
-              } : {}),
-            },
-          )
-
-          streamed?.({ session: key })
+            activity,
+          })
           continue
         }
 
@@ -3798,99 +3757,9 @@ export function createHost({
 
       return { stopped: 'hydra' }
     },
-    usageViews: ({
-      spend = {},
-      readings = {},
-    }) => {
-      const state = loadHydra({ hydraId }).state
-
-      return Object.fromEntries(Object.values(state.cards).flatMap(card => {
-        const agent = card.agent
-
-        if (!agent) {
-          return []
-        }
-
-        const key = sessionId({ agent })
-        const account = usageAccount({ agent })
-
-        return [
-          [
-            card.id,
-            usageFor({
-              agent: card.agent,
-              model: card.settings?.model,
-              live: usages.get(key),
-              transcript: readings[key],
-              plan: plans.get(account.key),
-              account: account.name,
-              spend: spend[card.id],
-              helper: card.id === HYDRA_CARD ? state.helper?.usage : undefined,
-            }),
-          ],
-        ]
-      }))
-    },
-    usage: async ({
-      card: ref,
-      spend = {},
-      readings = {},
-    } = {}) => {
-      const state = loadHydra({ hydraId }).state
-      const card = ref ? findCard({
-        state,
-        ref,
-      }) : state.cards[HYDRA_CARD]
-      const agent = card?.agent
-
-      if (!agent) {
-        return { usage: ref ? 'none: task has no agent session' : 'none: Hydra has not started a session' }
-      }
-
-      const key = sessionId({ agent })
-      const account = usageAccount({ agent })
-
-      return usageFor({
-        agent,
-        account: account.name,
-        model: card.settings?.model,
-        live: usages.get(key),
-        transcript: readings[key],
-        plan: plans.get(account.key),
-        spend: spend[card.id],
-        helper: card.id === HYDRA_CARD ? state.helper?.usage : undefined,
-      })
-    },
-    refreshUsage: async ({
-      card: ref,
-      force = false,
-    }) => {
-      const state = loadHydra({ hydraId }).state
-      const card = ref ? findCard({
-        state,
-        ref,
-      }) : state.cards[HYDRA_CARD]
-
-      if (!card?.agent) {
-        return { refreshed: 'none: no agent session' }
-      }
-
-      const account = usageAccount({ agent: card.agent })
-      const plan = await readUsage({
-        refresh: force,
-        account: {
-          provider: account.harness,
-          folder: account.folder,
-        },
-      })
-      plans.set(
-        account.key,
-        plan,
-      )
-      streamed({ session: sessionId({ agent: card.agent }) })
-
-      return { refreshed: 'plan limits' }
-    },
+    usageViews: usageTracker.usageViews,
+    usage: usageTracker.usage,
+    refreshUsage: usageTracker.refreshUsage,
     start: async ({
       task,
       prompt,
