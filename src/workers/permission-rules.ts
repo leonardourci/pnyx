@@ -12,7 +12,7 @@ const text = ({ value }: { value: unknown }) => typeof value === 'string' && val
 
 // What a person reads to judge a request: what runs, on which files, where and why.
 export function permissionDetails({ request }: {
-  request: PermissionRequest
+  request: Pick<PermissionRequest, 'input' | 'description'>
 }): {
   label: string
   text: string
@@ -64,6 +64,17 @@ export function permissionDetails({ request }: {
     label: string
     text: string
   } => !!row.text)
+}
+
+export function permissionCommand({
+  tool,
+  input,
+}: Pick<PermissionRequest, 'tool' | 'input'>): string | undefined {
+  if (tool !== 'Bash' && tool !== 'Command') {
+    return undefined
+  }
+
+  return permissionDetails({ request: { input } }).find(detail => detail.label === 'Command')?.text
 }
 
 function permissionText({ request }: { request: PermissionRequest }): string {
