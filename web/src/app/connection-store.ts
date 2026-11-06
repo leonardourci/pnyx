@@ -673,6 +673,7 @@ export function createHydraConnection() {
     } else if ('id' in message && message.id) {
       respond({
         scope,
+        id: message.id,
         message,
       })
 
