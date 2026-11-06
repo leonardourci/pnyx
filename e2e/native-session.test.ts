@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { claudeProvider } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
-import { permissionDetails } from '#workers/permission-rules.ts'
+import { permissionCommand, permissionDetails } from '#workers/permission-rules.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { inbox } from '#hydra/update-queue.ts'
@@ -263,6 +263,13 @@ test(
         display: 'build',
       },
     )
+    assert.equal(
+      permissionCommand({
+        tool: asked.request.tool,
+        input: asked.request.input,
+      }),
+      'build',
+    )
     assert.deepEqual(
       permissionDetails({ request: asked.request }),
       [
@@ -305,6 +312,50 @@ test(
       [
         'received',
         'submitted',
+      ],
+    )
+    await native.sessions[0]!.ask!({
+      id: 'chained',
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        command: "/bin/zsh -lc 'npm install && npm test'",
+        commandActions: [
+          { command: 'npm install' },
+          { command: 'npm test' },
+        ],
+      },
+    })
+    const chained = await until({
+      what: 'the chained command permission',
+      check: () => observed.events.find(event => typeof event === 'object' && event.type === 'permission' && event.request.id === 'string:chained'),
+    })
+    assert.ok(typeof chained === 'object' && chained.type === 'permission')
+    assert.deepEqual(
+      permissionDetails({ request: chained.request }),
+      [
+        {
+          label: 'Command',
+          text: "/bin/zsh -lc 'npm install && npm test'",
+        },
+      ],
+    )
+    await native.sessions[0]!.ask!({
+      id: 'plain',
+      method: 'item/commandExecution/requestApproval',
+      params: { command: 'make' },
+    })
+    const plain = await until({
+      what: 'the plain command permission',
+      check: () => observed.events.find(event => typeof event === 'object' && event.type === 'permission' && event.request.id === 'string:plain'),
+    })
+    assert.ok(typeof plain === 'object' && plain.type === 'permission')
+    assert.deepEqual(
+      permissionDetails({ request: plain.request }),
+      [
+        {
+          label: 'Command',
+          text: 'make',
+        },
       ],
     )
     native.sessions[0]!.notify!({
