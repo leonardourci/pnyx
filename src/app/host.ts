@@ -77,9 +77,9 @@ import type { InputReceipt } from '#workers/provider.ts'
 import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
-import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
+import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakeText, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
-import { createHydraOperations, operationEvent } from '#hydra/operations.ts'
+import { createHydraOperations, createHydraOutage, operationEvent } from '#hydra/operations.ts'
 import { deliveringMessage } from '#routine-helper/leases.ts'
 import { createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
@@ -170,9 +170,6 @@ export function createHost({
   let closing = false
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
-  // Retries a failed start on a growing wait; each failed try plans the next one.
-  let retryTimer: ReturnType<typeof setTimeout> | undefined
-  let retries = 0
   // Recorded wakes, or wakeStart before the first, say how far Hydra has checked.
   let wakeThrough = 0, wakeStart: number | undefined
   let wakeTimer: ReturnType<typeof setTimeout> | undefined
@@ -1888,120 +1885,21 @@ export function createHost({
     }
   }
 
-  // The outage a queued recap turn reports; its text is built when the turn starts, so it leaves out messages answered first.
-  let outage: NonNullable<HydraState['hydraStatus']> | undefined
-
-  // One recap per outage: its id names the down event, so a retried or repeated recap starts at most one turn.
-  const recapTurn = ({ down }: { down: NonNullable<HydraState['hydraStatus']> }) => background({
-    name: 'Hydra recap',
-    retry: planRetry,
-    run: () => host.hydra({
-      id: `back:${down.seq}`,
-      actor: 'pnyx',
-      text: recapText({
-        state: loadHydra({ hydraId }).state,
-        since: down.since,
-        after: down.after ?? down.seq,
-        now: Date.now(),
-      }),
-    }),
+  const {
+    back,
+    takeRecap,
+    startFailed,
+    planRetry,
+    close: stopRetry,
+  } = createHydraOutage({
+    hydraId,
+    retryDelays,
+    closing: () => closing,
+    at,
+    write,
+    record,
+    host: () => host,
   })
-
-  // A start worked after Hydra was down: say so in Pnyx's voice, then give Hydra the recap once the turn that started it ends.
-  const back = ({
-    down,
-    turn,
-    hydra,
-  }: {
-    down: NonNullable<HydraState['hydraStatus']>
-    turn: string
-    hydra: string
-  }) => {
-    clearTimeout(retryTimer)
-    retryTimer = undefined
-    retries = 0
-    const now = Date.now()
-    write({
-      fn: ({ writer }) => {
-        const meta = {
-          at: new Date(now).toISOString(),
-          actor: 'pnyx',
-        }
-        applyDecision({
-          writer,
-          decision: hydraEvent({
-            state: writer.state,
-            meta,
-            cardId: HYDRA_CARD,
-            change: {
-              type: 'hydra.status',
-              data: {
-                state: 'up',
-                since: meta.at,
-              },
-            },
-          }),
-        })
-        applyDecision({
-          writer,
-          decision: hydraEvent({
-            state: writer.state,
-            meta,
-            cardId: HYDRA_CARD,
-            change: {
-              type: 'hydra.message',
-              data: {
-                action: 'send',
-                hydra,
-                text: `Hydra is back after ${outageMinutes({
-                  since: down.since,
-                  now,
-                })} min.`,
-              },
-            },
-          }),
-        })
-      },
-    })
-
-    outage = down
-
-    if (turn !== `back:${down.seq}`) {
-      recapTurn({ down })
-    }
-  }
-
-  // The recap turn tries the start again; a Hydra that is up, or no longer Pnyx's to run, needs no retry.
-  const retryStart = () => {
-    retryTimer = undefined
-    const state = loadHydra({ hydraId }).state
-    const status = state.hydraStatus
-
-    if (closing || status?.state !== 'down' || !pnyxRunsHydra({ state })) {
-      return
-    }
-
-    recapTurn({ down: status })
-  }
-
-  const planRetry = () => {
-    if (retryTimer || closing) {
-      return
-    }
-
-    retryTimer = setTimeout(
-      () => background({
-        name: 'Hydra retry',
-        run: retryStart,
-        retry: planRetry,
-      }),
-      retryDelays[Math.min(
-        retries,
-        retryDelays.length - 1,
-      )],
-    )
-    retries += 1
-  }
 
   let outcomesPresented = 0
   const helperBatchesPresented = new Set<string>()
@@ -2805,16 +2703,7 @@ export function createHost({
 
           const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
           const memoryNote = waking ? await memoryChangeNote() : ''
-          const recap = outage && id === `back:${outage.seq}` ? recapText({
-            state: loadHydra({ hydraId }).state,
-            since: outage.since,
-            after: outage.after ?? outage.seq,
-            now: Date.now(),
-          }) : undefined
-
-          if (recap) {
-            outage = undefined
-          }
+          const recap = takeRecap({ id })
 
           const helperState = loadHydra({ hydraId }).state
           const helperLines = outcomeLines({ state: helperState })
@@ -2898,99 +2787,13 @@ export function createHost({
             return { state: 'failed' }
           }
 
-          const reason = (error as Error).message
-          // An outside agent is not Pnyx's to start, so it is refused once rather than retried.
-          const retried = !(error instanceof HydraError && error.code === 'NO_ROUTE')
-          const detail = retried
-            ? `Hydra could not start: ${reason}. Pnyx is retrying; check the harness login and settings if this lasts.`
-            : `Hydra could not start: ${reason}`
-          // Finished rather than interrupted, so a retry or the next wake starts Hydra again; a cut turn's attention still waits for the owner.
-          write({
-            fn: ({ writer }) => {
-              const down = writer.state.hydraStatus?.state === 'down'
-              const now = at()
-
-              if (previous?.agent?.host === 'pnyx') {
-                record({
-                  writer,
-                  agent: previous.agent,
-                  input: { activity: 'finished' },
-                  actor: 'pnyx',
-                })
-              }
-
-              applyDecision({
-                writer,
-                decision: decidePush({
-                  state: writer.state,
-                  key: HYDRA_CARD,
-                  input: { activity: 'finished' },
-                  meta: {
-                    at: now,
-                    actor: 'pnyx',
-                  },
-                }),
-              })
-
-              if (retried && !down) {
-                applyDecision({
-                  writer,
-                  decision: hydraEvent({
-                    state: writer.state,
-                    meta: {
-                      at: now,
-                      actor: 'pnyx',
-                    },
-                    cardId: HYDRA_CARD,
-                    change: {
-                      type: 'hydra.status',
-                      data: {
-                        state: 'down',
-                        since: now,
-                        detail: reason,
-                        after: Math.min(
-                          writer.state.seq,
-                          (writer.state.eventIds[id] ?? Infinity) - 1,
-                        ),
-                      },
-                    },
-                  }),
-                })
-              }
-
-              // Retries fail quietly; the owner hears of each failure their own message meets.
-              if (!down || ownerActor({ actor })) {
-                applyDecision({
-                  writer,
-                  decision: hydraEvent({
-                    state: writer.state,
-                    meta: {
-                      at: now,
-                      actor: 'pnyx',
-                    },
-                    cardId: HYDRA_CARD,
-                    change: {
-                      type: 'hydra.message',
-                      data: {
-                        action: 'send',
-                        hydra: config.hydra.id,
-                        text: detail,
-                      },
-                    },
-                  }),
-                })
-              }
-            },
+          return startFailed({
+            error,
+            previous,
+            id,
+            actor,
+            hydra: config.hydra.id,
           })
-
-          if (retried) {
-            planRetry()
-          }
-
-          return {
-            state: 'failed',
-            detail,
-          }
         }
       })
       hydraTurn = turn.then(
@@ -4456,7 +4259,7 @@ export function createHost({
       midTurnChecks.delete(midTurn)
       helper.close()
       clearTimeout(wakeTimer)
-      clearTimeout(retryTimer)
+      stopRetry()
       stalls.close()
       controller.abort()
 
