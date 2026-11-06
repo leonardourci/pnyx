@@ -363,7 +363,6 @@ export function useTaskNavigation({
     expandedIds,
     cards,
     columns,
-    filteredCards,
     cancelOpen,
     clearSelection,
     expand,

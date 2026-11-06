@@ -229,7 +229,6 @@ export function useCommentDrafts({
 
   return {
     addComment,
-    attach,
     paste,
     remove,
     release,
