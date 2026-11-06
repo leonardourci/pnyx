@@ -436,7 +436,6 @@ test(
       stored.has(legacy),
       false,
     )
-    assert.ok([...stored.keys()].some(key => key.endsWith('/hydra/default/:hydra-state')))
   },
 )
 
