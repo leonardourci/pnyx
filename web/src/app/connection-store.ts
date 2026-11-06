@@ -251,25 +251,64 @@ export function createHydraConnection() {
 
   const selection = () => scopeFor({ id: selected })
 
+  let shown: {
+    view: HydraState
+    spend: Scope['spend']
+    usage: Scope['usage']
+    state: HydraState
+  } | undefined
+
+  // Live spend and usage join only their own cards, so every other card keeps its identity between publishes.
+  const liveView = ({
+    scope,
+    view,
+  }: {
+    scope: Scope
+    view: HydraState
+  }): HydraState => {
+    if (shown?.view === view && shown.spend === scope.spend && shown.usage === scope.usage) {
+      return shown.state
+    }
+
+    const cards = { ...view.cards }
+
+    for (const id of new Set([
+      ...Object.keys(scope.spend),
+      ...Object.keys(scope.usage),
+    ])) {
+      const card = view.cards[id]
+
+      if (card) {
+        cards[id] = {
+          ...card,
+          spend: scope.spend[id],
+          usage: scope.usage[id],
+        }
+      }
+    }
+
+    shown = {
+      view,
+      spend: scope.spend,
+      usage: scope.usage,
+      state: {
+        ...view,
+        cards,
+      },
+    }
+
+    return shown.state
+  }
+
   const visible = () => {
     const scope = selection()
     const resource = scope.resource.snapshot()
 
     return {
-      state: scope.hasSnapshot ? {
-        ...resource.view,
-        cards: Object.fromEntries(Object.entries(resource.view.cards).map(([
-          id,
-          card,
-        ]) => [
-          id,
-          {
-            ...card,
-            spend: scope.spend[id],
-            usage: scope.usage[id],
-          },
-        ])),
-      } : shell({ scope }),
+      state: scope.hasSnapshot ? liveView({
+        scope,
+        view: resource.view,
+      }) : shell({ scope }),
       viewKey: scope.viewKey,
       connected: scope.ready && socket?.readyState === WebSocket.OPEN,
       loaded: scope.hasSnapshot || scope.failed,
