@@ -17,7 +17,7 @@ export function recordCalls({ record }: { record: unknown }): RecordCalls {
   return found
 }
 
-const parsed = ({ line }: { line: string }): unknown => {
+const parseLine = ({ line }: { line: string }): unknown => {
   try {
     return JSON.parse(line)
   } catch {
@@ -39,7 +39,7 @@ export function readAction({
   const answered = new Set(prev?.answered)
 
   for (const line of lines) {
-    const record = parsed({ line })
+    const record = parseLine({ line })
 
     if (record === undefined) {
       continue

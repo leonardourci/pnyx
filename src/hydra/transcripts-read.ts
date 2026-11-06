@@ -168,14 +168,19 @@ export function recordEntries({
       continue
     }
 
-    entries.push({
+    const entry: ThreadEntry = {
       id: `${offset}:t${trace.index}`,
       kind: trace.kind,
       role: trace.role,
       at: parsed.at,
       text: trace.text,
-      ...(trace.call !== undefined ? { call: trace.call } : {}),
-    })
+    }
+
+    if (trace.call !== undefined) {
+      entry.call = trace.call
+    }
+
+    entries.push(entry)
   }
 
   return entries.flatMap(entry => splitEntry({ entry }))
