@@ -1817,11 +1817,11 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
     }
   }
 
-  if (entry.isMeta === true || entry.type !== 'response_item') {
+  if (entry.type !== 'response_item') {
     return parsed
   }
 
-  if (entry.isCompactSummary !== true && payload.type === 'message' && (payload.role === 'user' || payload.role === 'assistant')) {
+  if (payload.type === 'message' && (payload.role === 'user' || payload.role === 'assistant')) {
     const content = payload.content
     const blocks = typeof content === 'string' ? [content] : Array.isArray(content) ? content : []
     parsed.messages = transcriptText({
@@ -1857,14 +1857,10 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
       index: 0,
       kind: tool ? 'tool' : 'thinking',
       name: payload.name,
-      detail: payload.thinking ?? payload.summary ?? payload.content
-        ?? payload.output ?? payload.arguments ?? payload.input,
-      call: payload.tool_use_id ?? payload.call_id ?? payload.id,
+      detail: payload.summary ?? payload.content ?? payload.output
+        ?? payload.arguments ?? payload.input,
+      call: payload.call_id ?? payload.id,
     }))
-  }
-
-  if (entry.isSidechain === true) {
-    return parsed
   }
 
   if (payload.type === 'function_call' && typeof payload.call_id === 'string') {

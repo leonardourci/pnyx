@@ -896,7 +896,6 @@ type Rec = {
   aiTitle?: unknown
   message?: { content?: unknown }
   toolUseResult?: unknown
-  payload?: { message?: unknown }
 }
 
 function contentText({ content }: { content: unknown }): string {
@@ -1106,9 +1105,8 @@ export const readClaudeTranscript: TranscriptReader = ({
         index,
         kind: tool ? 'tool' : 'thinking',
         name: block.name,
-        detail: block.thinking ?? block.summary ?? block.content
-          ?? block.output ?? block.arguments ?? block.input,
-        call: block.tool_use_id ?? block.call_id ?? block.id,
+        detail: block.thinking ?? block.content ?? block.input,
+        call: block.tool_use_id ?? block.id,
       }))
     }
 
