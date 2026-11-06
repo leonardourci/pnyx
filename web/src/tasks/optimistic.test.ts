@@ -258,10 +258,12 @@ test(
       [
         moved?.column,
         moved?.rank,
+        decision.event.data.rank,
       ],
       [
         'custom:todo',
-        decision.event.data.rank,
+        2.5,
+        2.5,
       ],
     )
 
@@ -298,35 +300,48 @@ test(
       undefined,
     )
 
-    for (const hours of [
-      '-1',
-      'soon',
-      '876001',
-      '',
-    ]) {
-      assert.equal(
-        preview({
+    const hideAfter = ({ hours }: { hours: string }) => preview({
+      name: 'task',
+      args: [
+        'hide-after',
+        'one',
+        hours,
+      ],
+    })
+    assert.equal(
+      hideAfter({ hours: '-1' }),
+      state,
+    )
+    assert.equal(
+      hideAfter({ hours: 'soon' }),
+      state,
+    )
+    assert.equal(
+      hideAfter({ hours: '876001' }),
+      state,
+    )
+    assert.equal(
+      hideAfter({ hours: '' }),
+      state,
+    )
+
+    assert.equal(
+      hideAfter({ hours: '12' }).cards.one?.doneAfterHours,
+      12,
+    )
+    assert.equal(
+      optimisticState({
+        state: hideAfter({ hours: '12' }),
+        edit: {
           name: 'task',
           args: [
             'hide-after',
             'one',
-            hours,
+            'default',
           ],
-        }),
-        state,
-      )
-    }
-
-    assert.equal(
-      preview({
-        name: 'task',
-        args: [
-          'hide-after',
-          'one',
-          '12',
-        ],
+        },
       }).cards.one?.doneAfterHours,
-      12,
+      undefined,
     )
 
     assert.deepEqual(
@@ -351,6 +366,18 @@ test(
       preview({
         name: 'column',
         args: [
+          'reorder',
+          'done',
+          '--before',
+          'nowhere',
+        ],
+      }),
+      state,
+    )
+    assert.equal(
+      preview({
+        name: 'column',
+        args: [
           'delete',
           'parked',
           '--to',
@@ -358,6 +385,31 @@ test(
         ],
       }),
       state,
+    )
+    const parked = optimisticState({
+      state,
+      edit: {
+        name: 'move',
+        args: [
+          'one',
+          'parked',
+        ],
+      },
+    })
+    assert.equal(
+      optimisticState({
+        state: parked,
+        edit: {
+          name: 'column',
+          args: [
+            'delete',
+            'parked',
+            '--to',
+            'queued',
+          ],
+        },
+      }).cards.one?.column,
+      'custom:todo',
     )
   },
 )
