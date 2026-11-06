@@ -1,39 +1,32 @@
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
-import { agentInput } from './agent-input.ts'
 import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
 import { hydraActor } from './request-context.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
-import { PROVIDERS, harnessOf, knownProvider, providerIdOf, providerLabel } from '#workers/providers.ts'
+import { PROVIDERS, harnessOf, knownProvider, providerIdOf } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { background } from './background.ts'
 import { decideReply } from '#workers/reply-rules.ts'
-import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
+import { activeCompaction } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
 import { trackChildren } from '#workers/children.ts'
-import { pendingSteering, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
-import { steeringMessages } from '#workers/inbox-notice.ts'
+import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
 import { helperAgent } from '#routine-helper/route.ts'
 import { outcomeLines, type HelperAgent } from '#routine-helper/state.ts'
 import { accountEnv, accountEnvironment, agentExhausted } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
-import { join } from 'node:path'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
 import { createUsageTracker } from '#workers/usage-tracker.ts'
 import { createPermissionBridge } from '#workers/permission-bridge.ts'
-import { hydraFastReaches, type HostedSession } from '#workers/provider.ts'
-import { liveReplies } from '#workers/streaming.ts'
+import { hydraFastReaches } from '#workers/provider.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
 import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { permissionEvent } from '#workers/permission-rules.ts'
-import { declareTask } from '#tasks/declarations.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hostedHydra, hydraEvent, pnyxRunsHydra } from '#hydra/hydra.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
@@ -54,19 +47,19 @@ import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { HYDRA_TURN_POLL_MS, IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
+import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, INHERITED, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { WAKE_TURN, wakesThrough, wakeCursor, findHydraTurnToResume } from '#hydra/wakes.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
 import { createWakeQueue } from '#hydra/wake-queue.ts'
+import { createLiveSessions } from '#workers/live-sessions.ts'
 import { createHydraTurns } from '#hydra/turns.ts'
 import { createWorkerStarts } from '#workers/hosted-start.ts'
 import { createHostedDelivery } from '#workers/hosted-delivery.ts'
 import { createHydraOperations, createHydraOutage, operationEvent } from '#hydra/operations.ts'
 import { COMPACTION_DEADLINE_MS, createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
-import { inbox } from '#hydra/update-queue.ts'
 import { applyDecision } from './decision.ts'
 
 export type { QueryFn } from '#workers/claude.ts'
@@ -163,25 +156,6 @@ export function createHost({
   }
 
   const sessionKey = ({ agent }: { agent: AgentRef }) => `${harnessOf({ provider: agent.provider })}:${agent.sessionId}`
-
-  const retire = ({
-    key,
-    entry,
-  }: {
-    key: string
-    entry: Live
-  }) => {
-    clearTimeout(entry.idle)
-    expireEntry({ entry })
-
-    if (live.get(key) === entry) {
-      live.delete(key)
-    }
-
-    entry.input.end()
-    entry.session?.close()
-    streamed({ session: key })
-  }
 
   const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
     const { cwd } = card.agent
@@ -307,8 +281,6 @@ export function createHost({
     compactChange,
     holdCompact,
     releaseCompact,
-    sessionOwner,
-    settleCompaction,
     syncCompactions,
   } = compaction
 
@@ -500,786 +472,40 @@ export function createHost({
     note,
   })
 
-  const consume = async ({
-    key,
-    card,
-    entry,
-  }: {
-    key: string
-    card: Card & { agent: AgentRef }
-    entry: Live
-  }) => {
-    let failure: string | undefined
-    const env = environment(card.id === HYDRA_CARD ? { hydra: true } : {
-      task: card.id,
-      steeringWorker: steeringWorkerIdentity({
-        state: loadHydra({ hydraId }).state,
-        card,
-      }),
-    })
-
-    const compactOwner = () => {
-      const state = loadHydra({ hydraId }).state
-
-      return sessionOwner({
-        state,
-        session: key,
-        fallback: card.id,
-      })
-    }
-
-    try {
-      entry.session ??= await providerOf({ provider: card.agent.provider }).open({
-        cwd: folderOf({ card }),
-        agent: card.agent,
-        settings: card.settings ?? {},
-        ...(card.id === HYDRA_CARD ? hydraSession() : { allow: WORKER_COMMANDS }),
-        env: card.agent.loginFolder ? accountEnvironment({
-          account: {
-            provider: harnessOf({ provider: card.agent.provider }),
-            folder: card.agent.loginFolder,
-          },
-          env,
-        }) : env,
-        signal: controller.signal,
-        spawned: children.spawned,
-      })
-
-      if (closing || live.get(key) !== entry) {
-        entry.session.close()
-
-        return
-      }
-
-      const current = loadHydra({ hydraId }).state.cards[card.id]
-
-      if (current?.agent && sessionId({ agent: current.agent }) === key
-        && current.steeringGeneration === card.steeringGeneration) {
-        ringSteering({
-          card: current,
-          entry,
-        })
-      }
-
-      // Messages taken between turns open the next turn together; one taken mid-turn joins the running turn.
-      // ponytail: the agent may split or merge what it read ahead, so a turn's answers can be credited one turn off; the agent naming what each turn took would make it exact.
-      const opening: {
-        id: string | undefined
-        offset: number
-      }[] = []
-      let answering: string[] = []
-      let turnRunning = false
-      // Messages taken mid-turn, so one the agent carries to its next turn can move there.
-      let joined: {
-        id: string | undefined
-        offset: number
-      }[] = []
-      let completedOffset = 0
-
-      const transcriptSize = () => {
-        try {
-          return statSync(entry.session?.path ?? card.agent.transcriptPath ?? '').size
-        } catch {
-          return 0
-        }
-      }
-
-      const input = async function* () {
-        for await (const item of entry.input) {
-          const current = compactOwner()
-
-          const compaction = activeCompaction({ card: current })
-          const restartingCompact = compactCommand({ text: item.text }) && compaction?.id === `manual:${item.id}`
-
-          if (current && compaction && !restartingCompact) {
-            if (item.steeringIds) {
-              for (const id of item.steeringIds) {
-                const message = current.steering?.find(message => message.id === id && !message.ack)
-                entry.steering.delete(id)
-
-                if (message) {
-                  holdCompact({
-                    card: current,
-                    input: {
-                      id,
-                      text: message.text,
-                      actor: message.source,
-                      route: 'steering',
-                    },
-                  })
-                }
-              }
-            } else {
-              holdCompact({
-                card: current,
-                input: {
-                  id: item.id ?? randomUUID(),
-                  text: item.text,
-                  original: item.original,
-                  actor: item.id ? loadHydra({ hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
-                  route: card.id === HYDRA_CARD ? 'hydra' : 'direct',
-                  accepted: card.id === HYDRA_CARD,
-                  agent: item.agent,
-                },
-              })
-            }
-
-            continue
-          }
-
-          if (compactCommand({ text: item.text })) {
-            while (!closing && live.get(key) === entry && turnRunning) {
-              await new Promise(resolve => setTimeout(
-                resolve,
-                HYDRA_TURN_POLL_MS,
-              ))
-            }
-
-            if (closing || live.get(key) !== entry) {
-              return
-            }
-
-            if (!activeCompaction({ card: loadHydra({ hydraId }).state.cards[card.id] })) {
-              compactChange({
-                card: card.id,
-                change: {
-                  kind: 'status',
-                  operation: {
-                    id: `manual:${item.id ?? randomUUID()}`,
-                    session: key,
-                    trigger: 'manual',
-                    state: 'running',
-                    startedAt: at(),
-                  },
-                },
-              })
-            }
-          }
-
-          if (item.steeringIds) {
-            const current = loadHydra({ hydraId }).state.cards[card.id]
-
-            const ids = pendingSteeringIds({
-              card: current,
-              key,
-              generation: card.steeringGeneration,
-              ids: item.steeringIds,
-            })
-
-            if (!current || !ids.length) {
-              for (const id of item.steeringIds) {
-                entry.steering.delete(id)
-              }
-
-              continue
-            }
-
-            if (item.inline && item.id) {
-              item.text = steeringMessages({
-                task: current.id,
-                hydraId,
-                messages: (current.steering ?? []).filter(message => ids.includes(message.id)),
-              })
-              entry.delivered.set(
-                item.id,
-                ids,
-              )
-            } else {
-              item.text = inboxNotice({
-                card: current,
-                ids,
-              })
-            }
-          }
-
-          if (!turnRunning) {
-            opening.push({
-              id: item.id,
-              offset: transcriptSize(),
-            })
-          } else {
-            joined.push({
-              id: item.id,
-              offset: transcriptSize(),
-            })
-            answering = item.id ? [
-              ...answering,
-              item.id,
-            ] : answering
-          }
-
-          const owner = compactOwner()
-
-          if (item.id && owner?.compaction?.inputs.some(input => input.id === item.id && input.route === 'direct')) {
-            compactChange({
-              card: owner.id,
-              change: {
-                kind: 'taken',
-                id: item.id,
-              },
-            })
-          }
-
-          const original = item.original ?? item.text
-
-          yield agentInput({
-            id: item.id ?? randomUUID(),
-            text: item.text,
-            original,
-            hydras: join(
-              pnyxHome(),
-              'hydras',
-            ),
-          })
-        }
-      }
-
-      const armIdle = () => {
-        clearTimeout(entry.idle)
-
-        if (!entry.session || entry.activity !== 'finished' || !nativeIdle({ work: entry.session.snapshot().work })) {
-          return
-        }
-
-        if (entry.stale) {
-          retire({
-            key,
-            entry,
-          })
-
-          return
-        }
-
-        entry.idle = setTimeout(
-          () => background({
-            name: 'idle agent cleanup',
-            run: () => {
-              if (entry.session && nativeIdle({ work: entry.session.snapshot().work })) {
-                retire({
-                  key,
-                  entry,
-                })
-              }
-            },
-          }),
-          IDLE_MS,
-        ).unref()
-      }
-
-      const compactionIds = new Map<string, string>()
-
-      for await (const received of entry.session.run({
-        input: input(),
-        permission: ({
-          id,
-          tool,
-          input,
-          signal,
-          description,
-          questions,
-          form,
-        }) => askPermission({
-          id,
-          key,
-          entry,
-          tool,
-          input,
-          signal,
-          description,
-          questions,
-          form,
-        }),
-      })) {
-        const activity = typeof received === 'object' && received.type === 'turn-ended' ? 'finished' : received
-
-        if (typeof activity === 'object' && activity.type === 'input' && entry.pendingDirect.has(activity.receipt.inputId)) {
-          settleDirect({
-            entry,
-            inputId: activity.receipt.inputId,
-            phase: activity.receipt.phase,
-          })
-        }
-
-        if (typeof activity === 'object' && activity.type === 'input' && activity.receipt.phase === 'confirmed'
-          && entry.delivered.has(activity.receipt.inputId)) {
-          const ids = entry.delivered.get(activity.receipt.inputId)!
-          entry.delivered.delete(activity.receipt.inputId)
-          markRead({
-            card: card.id,
-            ids,
-          })
-          continue
-        }
-
-        if (typeof activity === 'object' && activity.type === 'answer') {
-          write({
-            fn: ({ writer }) => {
-              const current = writer.state.cards[card.id]
-              const request = current?.permissions?.find(request =>
-                request.nativeId === activity.receipt.permission && request.session === key)
-
-              if (request && request.status !== 'pending') {
-                writer.append({
-                  event: permissionEvent({
-                    state: writer.state,
-                    card: current,
-                    request: {
-                      ...request,
-                      delivery: activity.receipt.phase,
-                    },
-                    meta: {
-                      at: at(),
-                      actor: 'pnyx',
-                    },
-                  }),
-                })
-              }
-            },
-          })
-          continue
-        }
-
-        // A turn the server's own stop cuts stays working, so the next start resumes it.
-        if (closing && typeof received === 'object' && received.type === 'turn-ended' && received.outcome.status !== 'completed') {
-          continue
-        }
-
-        if (typeof received === 'object' && received.type === 'turn-ended') {
-          const outcome = received.outcome
-          note({
-            fn: ({ writer }) => record({
-              writer,
-              agent: card.agent,
-              input: { activity: 'finished' },
-              actor: 'pnyx',
-              eventId: `native:${outcome.turn}:finished`,
-            }),
-          })
-
-          for (const text of outcome.assistant) {
-            entry.replies.update(text)
-          }
-        }
-
-        if (entry.replaced || !closing && live.get(key) !== entry) {
-          return
-        }
-
-        if (typeof activity !== 'string' && activity.type === 'compaction') {
-          syncCompactions({ state: loadHydra({ hydraId }).state })
-          const current = compactOwner()
-
-          if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
-            continue
-          }
-
-          const known = compactionIds.get(activity.id)
-          const mapped = current.compaction?.operations.find(operation => operation.id === known)
-
-          if (mapped && mapped.state !== 'running') {
-            continue
-          }
-
-          const operation = mapped ?? activeCompaction({ card: current }) ?? {
-            id: activity.id,
-            session: key,
-            trigger: activity.trigger,
-            state: 'running' as const,
-            startedAt: at(),
-          }
-          compactionIds.set(
-            activity.id,
-            operation.id,
-          )
-          compactChange({
-            card: current.id,
-            change: {
-              kind: 'status',
-              operation: {
-                ...operation,
-                state: activity.state,
-                ...(activity.state !== 'running' ? { endedAt: at() } : {}),
-                ...(activity.error ? { error: activity.error } : {}),
-                ...(activity.unsupported ? { unsupported: true } : {}),
-              },
-            },
-          })
-
-          if (activity.state !== 'running') {
-            settleCompaction({
-              card: current.id,
-              settling: true,
-            })
-          }
-
-          continue
-        }
-
-        // Claude Code can compact again after a result, so held input waits until it moves on.
-        if (activity === 'finished' || typeof activity !== 'string' && [
-          'text',
-          'tool',
-          'thinking',
-        ].includes(activity.type)) {
-          const owner = compactOwner()
-
-          if (owner && compaction.settling.has(owner.id)) {
-            settleCompaction({
-              card: owner.id,
-              settling: false,
-            })
-          }
-        }
-
-        if (typeof activity !== 'string' && activity.type === 'usage') {
-          usageTracker.mergeUsage({
-            key,
-            activity,
-          })
-          continue
-        }
-
-        if (typeof activity !== 'string' && activity.type === 'thinking') {
-          const wasThinking = entry.thinking.size > 0
-
-          if (activity.running) {
-            entry.thinking.add(activity.id)
-          } else {
-            entry.thinking.delete(activity.id)
-          }
-
-          if (wasThinking !== (entry.thinking.size > 0)) {
-            streamed({ session: key })
-          }
-
-          continue
-        }
-
-        if (typeof activity !== 'string' && activity.type === 'tool') {
-          if (activity.running) {
-            entry.toolNames.set(
-              activity.id,
-              activity.tool ?? 'tool',
-            )
-            entry.tools.set(
-              activity.id,
-              Date.now(),
-            )
-          } else {
-            entry.tools.delete(activity.id)
-            entry.toolNames.delete(activity.id)
-          }
-
-          streamed({ session: key })
-
-          continue
-        }
-
-        if (typeof activity !== 'string' && activity.type === 'structured') {
-          continue
-        }
-
-        if (typeof activity !== 'string' && activity.type === 'work') {
-          streamed({ session: key })
-          armIdle()
-          continue
-        }
-
-        if (typeof activity !== 'string' && activity.type !== 'text') {
-          continue
-        }
-
-        if (typeof activity !== 'string') {
-          entry.replies.update(activity)
-          streamed({ session: key })
-
-          continue
-        }
-
-        if (activity === 'carried') {
-          const carried = joined.pop()
-
-          if (carried) {
-            answering = answering.filter(id => id !== carried.id)
-            opening.unshift(carried)
-          }
-
-          continue
-        }
-
-        if (activity === 'finished') {
-          const owner = compactOwner()
-          const unfinished = activeCompaction({ card: owner })
-
-          if (unfinished) {
-            compactChange({
-              card: owner!.id,
-              change: {
-                kind: 'status',
-                operation: {
-                  ...unfinished,
-                  state: entry.stopping ? 'cancelled' : 'failed',
-                  endedAt: at(),
-                  ...(!entry.stopping ? {
-                    error: 'The agent ended its turn without reporting a compaction outcome. Native compact is unavailable in this session.',
-                    unsupported: true,
-                  } : {}),
-                },
-              },
-            })
-            releaseCompact({ card: owner!.id })
-          }
-
-          turnRunning = false
-          entry.stopping = false
-          entry.tools.clear()
-          entry.toolNames.clear()
-          entry.thinking.clear()
-          completedOffset = transcriptSize()
-          entry.replies.finish()
-          streamed({ session: key })
-
-          if (card.id === HYDRA_CARD) {
-            turnFinished({
-              entry,
-              answering,
-            })
-          }
-        } else {
-          const opened = opening.splice(0)
-          const answers = opened.flatMap(item => item.id ? [item.id] : [])
-          const startOffset = opened.length ? opened[0]!.offset : 0
-          answering = answers
-          joined = []
-          turnRunning = true
-          let ownerStarted: boolean | undefined
-
-          if (card.id === HYDRA_CARD) {
-            ownerStarted = startedByOwner({ answers })
-          }
-
-          entry.replies.start({
-            ownerStarted,
-            offset: Math.max(
-              startOffset,
-              completedOffset,
-            ),
-          })
-          streamed({ session: key })
-        }
-
-        if (activity === 'finished') {
-          const current = loadHydra({ hydraId }).state.cards[card.id]
-          const pending = entry.input.pending({
-            includes: ({ steeringIds }) => {
-              if (!steeringIds) {
-                return true
-              }
-
-              return pendingSteeringIds({
-                card: current,
-                key,
-                generation: card.steeringGeneration,
-                ids: steeringIds,
-              }).length > 0
-            },
-          })
-
-          if (pending) {
-            continue
-          }
-        }
-
-        if (activity !== entry.activity) {
-          entry.activity = activity
-
-          if (card.id === HYDRA_CARD && activity !== 'working') {
-            activityChanged({ activity })
-          }
-
-          note({
-            fn: ({ writer }) => {
-              const eventId = activityEventId({
-                writer,
-                card,
-                activity,
-              })
-
-              record({
-                writer,
-                agent: card.agent,
-                input: { activity },
-                actor: 'pnyx',
-                eventId,
-              })
-            },
-          })
-          clearTimeout(entry.idle)
-
-          if (activity === 'finished') {
-            if (card.id === HYDRA_CARD) {
-              turnRecorded()
-            }
-
-            armIdle()
-          }
-        }
-      }
-    } catch (error) {
-      failure = (error as Error).message
-    }
-
-    // A session that ended before confirming a direct input: an input the agent took may have arrived; one it never took did not.
-    if (!closing && !entry.replaced) {
-      for (const [
-        inputId,
-        pending,
-      ] of entry.pendingDirect) {
-        directReply({
-          card: pending.card,
-          inputId,
-          state: pending.taken ? 'delivery_unknown' : 'failed',
-          detail: pending.taken
-            ? `the agent stopped before confirming this message${failure ? `: ${failure.slice(
-              0,
-              300,
-            )}` : ''}; check the conversation, and send it again if it did not arrive`
-            : `the agent stopped before taking this message${failure ? `: ${failure.slice(
-              0,
-              300,
-            )}` : ''}; nothing was delivered`,
-        })
-      }
-
-      entry.pendingDirect.clear()
-    }
-
-    const compactCard = compactOwner()
-    const unfinishedCompact = activeCompaction({ card: compactCard })
-
-    if (unfinishedCompact && !closing) {
-      compactChange({
-        card: compactCard!.id,
-        change: {
-          kind: 'status',
-          operation: {
-            ...unfinishedCompact,
-            state: 'failed',
-            endedAt: at(),
-            error: failure ?? 'The agent stopped during compaction',
-          },
-        },
-      })
-      releaseCompact({ card: card.id })
-    }
-
-    if (entry.replaced || !closing && live.get(key) !== entry) {
-      return
-    }
-
-    retire({
-      key,
-      entry,
-    })
-
-    if (card.id === HYDRA_CARD) {
-      sessionEnded({ entry })
-    }
-
-    if (!closing && entry.activity === 'working') {
-      const name = providerLabel({ provider: card.agent.provider })
-      const text = `${name} stopped during this turn${failure ? `: ${failure.slice(
-        0,
-        300,
-      )}` : ''}. Send a message to continue it.`
-      note({
-        fn: ({ writer }) => {
-          interrupt({
-            writer,
-            agent: card.agent,
-            note: text,
-          })
-
-          const attached = writer.state.cards[card.id]?.sessionIds?.includes(key)
-
-          const done = writer.state.cards[card.id]?.status?.state === 'done'
-
-          if (failure && card.id !== HYDRA_CARD && attached && !done) {
-            applyDecision({
-              writer,
-              decision: declareTask({
-                state: writer.state,
-                ref: card.id,
-                status: 'blocked',
-                note: text,
-                meta: {
-                  at: at(),
-                  actor: 'pnyx',
-                },
-              }),
-            })
-          }
-        },
-      })
-    }
-  }
-
-  const open = ({
-    card,
-    session,
-  }: {
-    card: Card & { agent: AgentRef }
-    session?: HostedSession
-  }): Live => {
-    const key = sessionId({ agent: card.agent })
-    const running = live.get(key)
-
-    const reassigned = running && (running.task !== card.id
-      || running.generation !== card.steeringGeneration)
-
-    const staleIdle = running && running.stale && running.activity !== 'working'
-    const retireStale = staleIdle && running.session
-      && nativeIdle({ work: running.session.snapshot().work })
-
-    if (running && (reassigned || retireStale)) {
-      running.replaced = true
-      retire({
-        key,
-        entry: running,
-      })
-    } else if (running) {
-      clearTimeout(running.idle)
-
-      return running
-    }
-
-    folderOf({ card })
-    const entry: Live = {
-      input: inbox(),
-      replies: liveReplies(),
-      activity: 'finished',
-      steering: new Set(),
-      delivered: new Map(),
-      pendingDirect: new Map(),
-      task: card.id,
-      generation: card.steeringGeneration,
-      session,
-      thinking: new Set(),
-      tools: new Map(),
-      toolNames: new Map(),
-    }
-    live.set(
-      key,
-      entry,
-    )
-    entry.consumed = consume({
-      key,
-      card,
-      entry,
-    })
-
-    return entry
-  }
+  const {
+    retire,
+    open,
+    action,
+    thread,
+    close: closeSessions,
+  } = createLiveSessions({
+    hydraId,
+    live,
+    closing: () => closing,
+    controller,
+    children,
+    streamed,
+    usageTracker,
+    compaction,
+    at,
+    write,
+    note,
+    record,
+    interrupt,
+    folderOf,
+    providerOf,
+    environment,
+    expireEntry,
+    askPermission,
+    pendingSteeringIds,
+    inboxNotice,
+    markRead,
+    ringSteering,
+    // Defined below, once the delivery that opens sessions exists; each is read when a receipt arrives or a session ends.
+    settleDirect: ({ ...input }) => settleDirect(input),
+    directReply: ({ ...input }) => directReply(input),
+    turns: () => turns,
+  })
 
   const {
     directReply,
@@ -1473,18 +699,7 @@ export function createHost({
     host: () => host,
   })
 
-  const {
-    hydraTurn,
-    digest,
-    hydraSession,
-    hydra,
-    startedByOwner,
-    turnFinished,
-    activityChanged,
-    activityEventId,
-    turnRecorded,
-    sessionEnded,
-  } = createHydraTurns({
+  const turns = createHydraTurns({
     hydraId,
     live,
     queuedHydra,
@@ -1517,6 +732,11 @@ export function createHost({
     handBack,
     armWake,
   })
+  const {
+    hydraTurn,
+    digest,
+    hydra,
+  } = turns
 
   // A stall or an ended wait makes no event, so it is polled.
   const stalls = createStallChecks({
@@ -1857,43 +1077,9 @@ export function createHost({
 
     queue,
 
-    action: ({
-      card,
-      action,
-    }) => {
-      const entry = card.agent && live.get(sessionId({ agent: card.agent }))
+    action,
 
-      if (!entry?.session) {
-        return action
-      }
-
-      const work = entry.session.snapshot().work
-      const calls = work.runningTools.map(id => {
-        const recorded = action?.calls.find(call => call.id === id)
-
-        return recorded ?? {
-          id,
-          tool: entry.toolNames.get(id) ?? 'tool',
-        }
-      })
-
-      return {
-        ...action,
-        calls,
-        done: nativeIdle({ work }),
-        thinking: entry.thinking.size > 0 && calls.length === 0,
-        work,
-      }
-    },
-
-    thread: ({
-      card,
-      page,
-    }) => {
-      const entry = card.agent && live.get(sessionId({ agent: card.agent }))
-
-      return entry ? entry.replies.page({ page }) : page
-    },
+    thread,
 
     reconcile: ({ state }) => {
       syncCompactions({ state })
@@ -2268,15 +1454,7 @@ export function createHost({
 
       compaction.close()
 
-      for (const [
-        key,
-        entry,
-      ] of live) {
-        retire({
-          key,
-          entry,
-        })
-      }
+      closeSessions()
     },
   }
 
