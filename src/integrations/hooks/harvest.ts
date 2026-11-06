@@ -7,12 +7,13 @@ import { EVENT_VERSION } from '#store/events.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { AgentSession, SessionEvent } from '#workers/model.ts'
 import { cardSessionId, taskForMessage } from '#workers/session-attachments.ts'
-import { recordEntries } from '#hydra/transcripts-read.ts'
+import { transcriptEntries } from '#hydra/transcripts-read.ts'
 import type { Writer } from '#app/writer.ts'
 import { readTranscript } from '#oracle/index.ts'
 import { redact } from '#oracle/text.ts'
-import { codexThreadTitle, transcriptNotes } from './notes.ts'
-import { LIVE_HOOK_SETTINGS, observedSettings, transcriptSettings, type FoundSettings } from './settings.ts'
+import { codexThreadTitle } from '#workers/codex.ts'
+import type { FoundSettings } from '#workers/provider.ts'
+import { LIVE_HOOK_SETTINGS, observedSettings } from './settings.ts'
 
 const CURSORS = 'harvest.json'
 
@@ -238,12 +239,16 @@ export function harvestTranscripts({
     let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
 
     for (const line of tail.lines) {
+      const parsed = readTranscriptRecord({
+        record: line.record,
+        subagent,
+      })
       const card = writer.state.cards[id]!
       const session = detached?.session.id ?? cardSessionId({ card })
 
       if (session && (detached || card.tracking === 'declared' || id === '$hydra')) {
-        for (const entry of recordEntries({
-          record: line.record,
+        for (const entry of transcriptEntries({
+          parsed,
           offset: line.pos,
         }).filter(e => e.kind === 'message')) {
           const messageId = noteId({
@@ -282,7 +287,7 @@ export function harvestTranscripts({
         }
       }
 
-      for (const note of transcriptNotes({ record: line.record })) {
+      for (const note of parsed.notes) {
         if (id === '$hydra' && note.kind === 'summary' && /^(compact:|compacted:)/.test(note.ref)) {
           const timestamp = note.at ?? at
           note.operation = writer.state.cards[id]?.compaction?.operations.findLast(operation =>
@@ -314,13 +319,12 @@ export function harvestTranscripts({
       const found = observedSettings({
         agent: agent!,
         held,
-        observed: transcriptSettings({
-          record: line.record,
-          subagent,
-        }),
+        observed: parsed.settings,
       })
-      const stamp = Date.parse(readTranscriptRecord({ record: line.record }).at ?? '')
-      const stale = hooked > 0 && !(stamp >= hooked)
+      const recordedAt = parsed.at === undefined ? undefined : Date.parse(parsed.at)
+      // A record without a valid time may predate the latest hook.
+      const afterHook = recordedAt !== undefined && recordedAt >= hooked
+      const stale = hooked > 0 && !afterHook
 
       Object.assign(
         settings,
