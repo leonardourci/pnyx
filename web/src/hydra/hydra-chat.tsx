@@ -1,5 +1,6 @@
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
+import type { HydraChatQueue } from '#hydra/chat-queue.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -40,6 +41,25 @@ import { REDUCED_MOTION } from './streaming.tsx'
 const OWNER_SCROLL_MS = 1000
 // The share of the distance to the bottom that following covers per frame.
 const GLIDE = 0.3
+
+// What the chat shows until the server's first queue arrives.
+const EMPTY_CHAT_QUEUE: HydraChatQueue = {
+  compacting: undefined,
+  upgrades: [],
+  held: [],
+  compactOperations: [],
+  shownUpgrades: [],
+  upgrading: false,
+  holding: false,
+  runningChange: false,
+  compactionRunning: false,
+  upgradeRunning: false,
+  compactInputs: [],
+  received: {},
+  hosted: false,
+  working: false,
+  through: 0,
+}
 
 // Sends the server has not recorded yet; a confirmed one waits for its message to arrive.
 interface Sending {
@@ -184,26 +204,30 @@ export function HydraChat({
     },
     [liveThread],
   )
-  const chatQueue = queue.chat
-  const held = new Set(chatQueue?.held ?? [])
+  const chatQueue = queue.chat ?? EMPTY_CHAT_QUEUE
+  const held = new Set(chatQueue.held)
   const pending = sending.filter(item => {
-    const deliveredAt = chatQueue?.received[item.id]
+    const deliveredAt = chatQueue.received[item.id]
     const recorded = deliveredAt !== undefined
     const rendered = (deliveredAt ?? 0) <= (page?.conversation?.through ?? 0)
 
     return !recorded || !rendered
   })
-  const compacting = chatQueue?.compacting
-  const upgrades = chatQueue?.upgrades ?? []
-  const compactOperations = chatQueue?.compactOperations ?? []
-  const shownUpgrades = chatQueue?.shownUpgrades ?? []
-  const upgrading = chatQueue?.upgrading ?? false
-  const holding = chatQueue?.holding ?? false
-  const runningChange = chatQueue?.runningChange ?? false
-  const compactionRunning = chatQueue?.compactionRunning ?? false
-  const upgradeRunning = chatQueue?.upgradeRunning ?? false
+  const {
+    compacting,
+    upgrades,
+    compactOperations,
+    shownUpgrades,
+    upgrading,
+    holding,
+    runningChange,
+    compactionRunning,
+    upgradeRunning,
+    working,
+    hosted,
+  } = chatQueue
   const compactInputs = [
-    ...chatQueue?.compactInputs ?? [],
+    ...chatQueue.compactInputs,
     ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
       ...item,
       actor: 'web',
@@ -241,7 +265,6 @@ export function HydraChat({
   const transcript = page?.entries ?? []
   const olderCursor = page?.older
   const firstAt = transcript[0]?.at
-  const working = chatQueue?.working ?? false
   const conversation = page?.conversation
   const chat = {
     entries: conversation?.entries ?? [],
@@ -401,7 +424,6 @@ export function HydraChat({
     }
   }
 
-  const hosted = chatQueue?.hosted ?? false
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
   // A send counts from the owner's message until the server says the turn began.
@@ -576,8 +598,6 @@ export function HydraChat({
     actions: taskActions,
     connected,
   })
-  // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
-  const queueReading = queue.reading
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
   // Hydra's own state, apart from the browser's connection that the offline badge shows.
@@ -736,7 +756,7 @@ export function HydraChat({
               since={running ? since : null}
               running={running}
               label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
-              reading={queueReading}
+              reading={queue.reading}
               waiting={queue.waiting}
               state={state}
             >
