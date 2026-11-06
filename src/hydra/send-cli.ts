@@ -9,9 +9,9 @@ import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { hydraConfig } from './config.ts'
+import { hydraCandidate } from './agent-choice.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
-import { HYDRA_CARD } from './identity.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
 
 export function hydraSend({
@@ -91,14 +91,10 @@ export function hydraSend({
           value: values.text as string | undefined,
           what: '--text',
         })
-      const config = hydraConfig({
+      const provider = hydraCandidate({
         state,
-        id: hydraId,
-      })
-      const provider = config.hydra.agent?.harness
-        ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
-        ?? effective.dispatch.default[0]?.harness
-        ?? state.cards[HYDRA_CARD]?.agent?.provider
+        dispatch: effective.dispatch,
+      }).harness
       const text = resolveSkillReferences({
         text: entered,
         provider,

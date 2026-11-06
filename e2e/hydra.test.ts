@@ -1455,6 +1455,11 @@ test(
     })
     assert.ok('catalog' in result)
     const catalog = result.catalog as Catalog
+    // The page names Hydra's skills with the receipt's provider, so the server always says which harness receives them.
+    assert.equal(
+      catalog.provider,
+      'claude',
+    )
     assert.deepEqual(
       catalog.suggestions.filter(item => item.source === 'Built-in').map(item => [
         item.command,
@@ -1521,6 +1526,10 @@ test(
     })
     assert.ok('catalog' in switched)
     const switchedCatalog = switched.catalog as Catalog
+    assert.equal(
+      switchedCatalog.provider,
+      'codex',
+    )
     assert.deepEqual(
       switchedCatalog.suggestions.filter(item => item.source === 'Built-in').map(item => item.command),
       [
