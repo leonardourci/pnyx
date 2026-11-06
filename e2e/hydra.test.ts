@@ -667,13 +667,7 @@ test(
           (await useTool({
             tool: 'Command',
             input: {
-              command: `/bin/zsh -lc '${historyCommand}'`,
-              commandActions: [
-                {
-                  type: 'unknown',
-                  command: historyCommand,
-                },
-              ],
+              command: historyCommand,
             },
           }))?.behavior,
           'allow',

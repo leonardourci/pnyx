@@ -19,20 +19,13 @@ export function permissionDetails({ request }: {
   text: string
 }[] {
   const input = request.input
-  // Codex wraps a command in its shell (`zsh -lc '...'`) and also reports the command it parsed.
-  const actions = Array.isArray(input.commandActions) ? input.commandActions : []
-  const parsed = actions.length === 1
-    ? text({ value: (actions[0] as { command?: unknown })?.command })
-    : undefined
-  const command = parsed ?? (Array.isArray(input.command)
-    ? input.command.join(' ')
-    : text({ value: input.command }))
-  const changes = (Array.isArray(input.changes) ? input.changes : [])
-    .flatMap(c => text({ value: (c as { path?: unknown })?.path }) ?? [])
+  const command = text({ value: input.command })
+  const paths = (Array.isArray(input.paths) ? input.paths : [])
+    .flatMap(path => text({ value: path }) ?? [])
   const file = text({ value: input.file_path ?? input.notebook_path ?? input.path })
   const files = [
     file ?? [],
-    changes,
+    paths,
   ].flat()
   const rows = [
     {
