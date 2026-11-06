@@ -28,13 +28,45 @@ export type HostedUsage = {
   // Plan windows the agent reported itself, by label; a later report replaces the same label.
   limits?: PlanWindow[]
 }
-// What `hydra usage` answers: the session's own numbers and its account's plan windows.
-export type HydraUsage = Omit<HostedUsage, 'type' | 'limits'> & {
-  harness: 'claude' | 'codex'
-  account?: string
-  windows?: PlanWindow[]
+export type UsageReading = Omit<HostedUsage, 'type'>
+export type AgentUsage = {
+  who: {
+    provider: string
+    icon: string
+    model?: string
+    account?: string
+    plan?: string
+  }
+  context?: {
+    used: number
+    window?: number
+    left?: number
+    source: 'reported'
+  }
+  recorded: {
+    tokens?: number
+    cost?: number
+    worker?: number
+    hydra?: number
+    unavailable: number
+    sharedHydra: boolean
+  }
+  windows: PlanWindow[]
+  unavailable?: string
   helper?: HelperUsageTotal
   combinedCost?: number
+}
+export interface RecordedUsage {
+  at?: string
+  tokens: number
+  tasks: string[]
+}
+export interface TranscriptUsageReader {
+  rows: RecordedUsage[]
+  messages: Map<string, number>
+  previousTotal: number
+  tasks: string[]
+  current: UsageReading
 }
 
 const named = ({ label }: PlanWindow) => label.toLowerCase()
@@ -272,6 +304,13 @@ export async function hydraFastReaches({
 }
 
 export interface Provider {
+  readUsage({
+    reader,
+    value,
+  }: {
+    reader: TranscriptUsageReader
+    value: unknown
+  }): void
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({

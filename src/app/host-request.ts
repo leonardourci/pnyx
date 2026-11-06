@@ -1,4 +1,4 @@
-import type { Host } from './host-types.ts'
+import type { Host, UsageInputs } from './host-types.ts'
 import { isHelper, taskLease } from '#routine-helper/leases.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from './store.ts'
@@ -25,9 +25,11 @@ const HELPER_ACTIONS: Record<string, HelperAction> = {
 export async function hostRequestUnlocked({
   host,
   body: raw,
+  usage = {},
 }: {
   host: Host
   body: unknown
+  usage?: UsageInputs
 }): Promise<Record<string, unknown>> {
   const body = (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
   const actor = field({
@@ -66,7 +68,24 @@ export async function hostRequestUnlocked({
       return host.stop()
 
     case 'usage':
-      return host.usage()
+      return host.usage({
+        card: field({
+          body,
+          name: 'card',
+          optional: true,
+        }),
+        ...usage,
+      })
+
+    case 'usage-refresh':
+      return host.refreshUsage({
+        card: field({
+          body,
+          name: 'card',
+          optional: true,
+        }),
+        force: body.force === true,
+      })
 
     case 'start': {
       const folder = field({
@@ -407,9 +426,11 @@ export async function hostRequestUnlocked({
 export async function hostRequest({
   host,
   body,
+  usage = {},
 }: {
   host: Host
   body: unknown
+  usage?: UsageInputs
 }): Promise<Record<string, unknown>> {
   const request = typeof body === 'object' && body !== null ? body as Record<string, unknown> : {}
   const actor = typeof request.actor === 'string' ? request.actor : 'cli'
@@ -468,6 +489,7 @@ export async function hostRequest({
     return await hostRequestUnlocked({
       host,
       body,
+      usage,
     })
   } finally {
     release()

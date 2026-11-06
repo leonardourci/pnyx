@@ -23,10 +23,14 @@ export function Tooltip({
   content,
   delay = 0,
   children,
+  interactive = false,
+  label,
 }: {
   content: ReactNode
   delay?: number
   children: ReactNode
+  interactive?: boolean
+  label?: string
 }) {
   const id = useId()
   const anchor = useRef<HTMLSpanElement>(null)
@@ -191,8 +195,18 @@ export function Tooltip({
       onPointerEnter={show}
       onPointerLeave={leave}
       onFocus={show}
-      onBlur={hide}
-      onPointerDown={hide}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          hide()
+        }
+      }}
+      onPointerDown={event => {
+        if (event.target instanceof Node && panel.current?.contains(event.target)) {
+          return
+        }
+
+        hide()
+      }}
       onKeyDown={event => {
         if (event.key === 'Escape') {
           hide()
@@ -204,7 +218,8 @@ export function Tooltip({
         <span
           ref={panel}
           id={id}
-          role="tooltip"
+          role={interactive ? 'dialog' : 'tooltip'}
+          aria-label={label}
           popover="manual"
           className="tooltip"
           onPointerEnter={() => clearTimeout(closeTimer.current)}

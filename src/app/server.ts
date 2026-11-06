@@ -6,6 +6,7 @@ import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
 import { sourceDeadline } from '#task-sources/state.ts'
+import type { AgentUsage } from '#workers/provider.ts'
 import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
 import { spendCounter } from '#workers/spend-counter.ts'
 import { advanceQueues } from '#workers/advance-queue.ts'
@@ -562,6 +563,10 @@ export async function mountOwnedHydra({
       message: {
         type: 'latest',
         ...spendNow,
+        usage: agents.usageViews({
+          spend: spendNow.spend,
+          readings: readingsNow,
+        }),
         messages: latest,
         actions,
       },
@@ -654,18 +659,31 @@ export async function mountOwnedHydra({
   // File watches and stat polling cover content writes a native folder watch does not report.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   // Task tokens, counted off the event loop; tabs get them once the first count is in.
+  let readingsNow: Record<string, import('#workers/provider.ts').UsageReading> = {}
+  let usageNow: Record<string, AgentUsage> = {}
   let spendNow: { spend?: Record<string, TaskSpend> } = {}
   const spend = spendCounter({
     inputs: () => spendInputs({
       state,
       events: derivationEvents(),
     }),
-    onSpend: ({ spend }) => {
-      if (JSON.stringify(spend) === JSON.stringify(spendNow.spend)) {
+    onSpend: ({
+      spend,
+      readings,
+    }) => {
+      readingsNow = readings
+      const usage = agents.usageViews({
+        spend,
+        readings,
+      })
+
+      if (JSON.stringify(spend) === JSON.stringify(spendNow.spend)
+        && JSON.stringify(usage) === JSON.stringify(usageNow)) {
         return
       }
 
       spendNow = { spend }
+      usageNow = usage
 
       for (const ws of clients) {
         send({
@@ -673,6 +691,7 @@ export async function mountOwnedHydra({
           message: {
             type: 'latest',
             spend,
+            usage,
             messages: {},
             actions: {},
           },
@@ -1470,6 +1489,10 @@ export async function mountOwnedHydra({
     ask: ({ body }) => hostRequest({
       host: agents,
       body,
+      usage: {
+        spend: spendNow.spend,
+        readings: readingsNow,
+      },
     }),
   })
 
@@ -2653,6 +2676,10 @@ export async function mountOwnedHydra({
       message: {
         type: 'latest',
         ...spendNow,
+        usage: agents.usageViews({
+          spend: spendNow.spend,
+          readings: readingsNow,
+        }),
         messages: latest,
         actions,
       },

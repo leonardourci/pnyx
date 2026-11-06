@@ -1,11 +1,20 @@
+import type { UsageReading } from './provider.ts'
 import { isMainThread, parentPort, Worker } from 'node:worker_threads'
-import { spendFor, type SpendInputs, type TaskSpend } from './task-spend.ts'
+import { spendFor, sessionReadings, type SpendInputs, type TaskSpend } from './task-spend.ts'
 
 if (!isMainThread) {
   parentPort!.on(
     'message',
-    (inputs: SpendInputs) => parentPort!.postMessage(spendFor({ inputs })),
+    (inputs: SpendInputs) => parentPort!.postMessage({
+      spend: spendFor({ inputs }),
+      readings: sessionReadings({ inputs }),
+    }),
   )
+}
+
+type SpendResult = {
+  spend: Record<string, TaskSpend>
+  readings: Record<string, UsageReading>
 }
 
 // Counting reads transcripts, so it runs in a worker thread, off the server's event loop.
@@ -15,7 +24,10 @@ export function spendCounter({
   onSpend,
 }: {
   inputs(): SpendInputs
-  onSpend({ spend }: { spend: Record<string, TaskSpend> }): void
+  onSpend({
+    spend,
+    readings,
+  }: SpendResult): void
 }) {
   let worker: Worker | undefined
   let busy = false
@@ -36,9 +48,9 @@ export function spendCounter({
     thread.unref()
     thread.on(
       'message',
-      (spend: Record<string, TaskSpend>) => {
+      (result: SpendResult) => {
         if (!closed) {
-          onSpend({ spend })
+          onSpend(result)
         }
 
         finish()

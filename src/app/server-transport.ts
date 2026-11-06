@@ -79,6 +79,7 @@ type ServerPayload =
   | {
     type: 'latest'
     spend?: Record<string, TaskSpend>
+    usage?: Record<string, import('#workers/provider.ts').AgentUsage>
     messages: Record<string, LatestMessage | null>
     actions: Record<string, CurrentAction | null>
   }

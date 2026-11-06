@@ -3,11 +3,15 @@ export const PROVIDERS = {
   claude: {
     provider: 'claude-code',
     name: 'Claude Code',
+    usageName: 'Claude',
+    icon: 'claude-code',
     skillPrefix: '/',
   },
   codex: {
     provider: 'codex',
     name: 'Codex',
+    usageName: 'Codex',
+    icon: 'codex',
     skillPrefix: '$',
   },
 } as const

@@ -149,6 +149,7 @@ export interface Card {
   ask?: OwnerAsk[]
   // Derived transcript totals sent to the browser; never used as Hydra state.
   spend?: TaskSpend
+  usage?: import('#workers/provider.ts').AgentUsage
   brief?: string
   // The card's Intent: what the owner wants from the task, newest version.
   intent?: string

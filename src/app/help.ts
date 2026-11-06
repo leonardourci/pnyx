@@ -92,7 +92,9 @@ Omit --kind progress for actionable results: queue a report for Hydra to relay; 
 pnyx-axi hydra stop
 hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
 pnyx-axi hydra usage
-hydra usage prints the hosted Hydra's context window use and session cost when known, and its account's plan windows from quota-axi.
+hydra usage prints current context, recorded task totals and plan windows. --task <id> reads a task session.
+pnyx-axi hydra usage refresh [--task <id>] [--force]
+Refresh plan limits from quota-axi; --force bypasses its cache.
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
 Standing worker instructions are included verbatim in every new worker header.

@@ -31,6 +31,10 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 - Throw a `HydraError` with its code at the failure site; `guard()` turns it into the CLI's structured error. A `catch` that doesn't recognize an error rethrows it.
 - Never drop an error to make code tidy. A deliberate fire-and-forget says in a short comment why losing the failure is safe.
 
+## Provider boundaries
+
+- Provider-specific usage formats and names belong in that provider's adapter, with display metadata in `src/workers/providers.ts`. Live readings and transcript parsing go through the shared provider interface. Server consumers and UI use the neutral usage shape and shared mapping in `src/workers/usage.ts`; neither interprets raw provider fields. Both usage surfaces render `web/src/workers/usage.tsx` without provider branches or token counting.
+
 ## Changes
 
 - A refactor changes form, never outcomes: every input path keeps its result, guard order, side effects and error. Run `pnpm run lint` after each structural edit.

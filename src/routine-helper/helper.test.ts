@@ -377,6 +377,7 @@ function helperLab({
   let ownerWakes = 0
   const harnesses: string[] = []
   const provider: Provider = {
+    readUsage: () => {},
     models: async () => [],
     defaults: async ({ models }) => models,
     // eslint-disable-next-line pnyx/object-params -- The provider owns this callback signature.
@@ -1154,6 +1155,7 @@ test(
       loginFolder?: string
     }[] = []
     const fixture: Provider = {
+      readUsage: () => {},
       models: async () => [],
       defaults: async ({ models }) => models,
       open: async () => {

@@ -23,6 +23,7 @@ Each finding is tagged:
 
 - [ ] Trace each changed path from input to observable result, including empty input, invalid input, failures, cancellation and recovery. Check permissions at the write boundary and keep useful error feedback.
 - [ ] Check Pnyx's boundaries (must fix): only `pnyx-axi` writes Hydra state; the event log stays append-only; the reducer stays pure and deterministic; snapshots and Oracle indexes stay derived. Hooks stay fast and exit 0, never wait on the network, and print only the session-start summary. Integrations use their own supported read and reply interfaces.
+- [ ] Check the [provider boundaries](../follow-conventions/SKILL.md#provider-boundaries) (must fix): usage parsing stays in each provider adapter; server and UI consume the shared interface and neutral shape, with no provider branches or duplicate counting.
 - [ ] Keep one owner for each fact and one place for each shared decision. Two flags or caches holding the same fact drift apart. Before accepting a new helper or component, search for an existing one shaped like it. Keep feature code in its feature folder; avoid speculative abstractions and dependencies.
 - [ ] Remove dead branches (an arm an earlier guard handled, a check on an already narrowed value, a fallback for a value that is always present) and dead code (unused exports, references to removed features, debug output, TODO markers). Search for them; don't guess.
 - [ ] Use static imports. A dynamic `import()` requires a comment explaining its real need, such as a module that must load lazily.
