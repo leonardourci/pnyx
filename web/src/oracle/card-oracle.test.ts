@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
-import type { Hit } from '#oracle/index.ts'
+import type { Hit } from '#oracle/model.ts'
 import { REFRESH_DELAY, SEARCH_DELAY, searchSchedule, type Search } from './card-oracle.ts'
 
 const hit = ({ card }: { card: string }): Hit => ({

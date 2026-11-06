@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Hit } from '#oracle/index.ts'
+import type { Hit } from '#oracle/model.ts'
 import type { Command } from '#web-app/connection.ts'
 
 // Typing waits this long before searching; a Hydra event refreshes the results at most this often.
