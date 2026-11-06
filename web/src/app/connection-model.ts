@@ -1,3 +1,5 @@
+import type { TaskSpend } from '#workers/task-spend.ts'
+import type { AgentUsage } from '#workers/provider.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { LatestMessage,ThreadPage } from '#hydra/transcripts-read.ts'
@@ -30,6 +32,8 @@ export interface Scope {
   error: string
   thread: ThreadPage | null
   queue: HydraQueue
+  spend: Record<string, TaskSpend>
+  usage: Record<string, AgentUsage>
   latest: Record<string, LatestMessage>
   actions: Record<string, CurrentAction>
   command: Command

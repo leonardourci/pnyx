@@ -162,6 +162,8 @@ export function createHydraConnection() {
       error: '',
       thread: null,
       queue: emptyQueue(),
+      spend: {},
+      usage: {},
       latest: {},
       actions: {},
       leases: 0,
@@ -254,7 +256,20 @@ export function createHydraConnection() {
     const resource = scope.resource.snapshot()
 
     return {
-      state: scope.hasSnapshot ? resource.view : shell({ scope }),
+      state: scope.hasSnapshot ? {
+        ...resource.view,
+        cards: Object.fromEntries(Object.entries(resource.view.cards).map(([
+          id,
+          card,
+        ]) => [
+          id,
+          {
+            ...card,
+            spend: scope.spend[id],
+            usage: scope.usage[id],
+          },
+        ])),
+      } : shell({ scope }),
       viewKey: scope.viewKey,
       connected: scope.ready && socket?.readyState === WebSocket.OPEN,
       loaded: scope.hasSnapshot || scope.failed,
@@ -547,6 +562,8 @@ export function createHydraConnection() {
     } else if (message.type === 'snapshot') {
       scope.resource.confirm({ state: message.state })
       scope.actions = {}
+      scope.spend = {}
+      scope.usage = {}
       scope.hasSnapshot = true
       confirmSaves({ scope })
       scope.queue = emptyQueue()
@@ -591,41 +608,14 @@ export function createHydraConnection() {
 
       persistSoon({ scope })
     } else if (message.type === 'latest') {
-      if (message.spend || message.usage) {
-        const state = scope.resource.snapshot().confirmed
-        const cards = { ...state.cards }
-
-        for (const [
-          id,
-          spend,
-        ] of Object.entries(message.spend ?? {})) {
-          if (cards[id]) {
-            cards[id] = {
-              ...cards[id],
-              spend,
-            }
-          }
-        }
-
-        for (const [
-          id,
-          usage,
-        ] of Object.entries(message.usage ?? {})) {
-          if (cards[id]) {
-            cards[id] = {
-              ...cards[id],
-              usage,
-            }
-          }
-        }
-
-        scope.resource.confirm({
-          state: {
-            ...state,
-            cards,
-          },
-        })
-      }
+      scope.spend = withChanges({
+        current: scope.spend,
+        changes: message.spend ?? {},
+      })
+      scope.usage = withChanges({
+        current: scope.usage,
+        changes: message.usage ?? {},
+      })
 
       scope.latest = withChanges({
         current: scope.latest,
