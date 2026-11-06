@@ -14,6 +14,7 @@ import { taskReceipt } from './transcripts-task.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
 import { obj, readAction, recordBlocks, shortened, type ActionRead } from './calls.ts'
 import { effectiveView } from '#settings/store.ts'
+import { isManagedTask } from '#tasks/select.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -709,7 +710,7 @@ export function readThread(
       const inPage = afterStart && beforeEnd
 
       return inPage && event.actor === 'hydra' && event.type !== 'chat.message'
-        && task !== undefined && !task.automaticTask && task.id !== HYDRA_CARD
+        && task !== undefined && !isManagedTask({ card: task })
     })
   }
 

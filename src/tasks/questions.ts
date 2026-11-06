@@ -10,9 +10,9 @@ import { PERMISSION_PREFIX } from '#workers/permission-rules.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { touch } from './touch.ts'
+import { isManagedTask } from './select.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500
@@ -60,7 +60,7 @@ const askableTask = ({
     ref,
   })
 
-  if (card.automaticTask || card.id === HYDRA_CARD) {
+  if (isManagedTask({ card })) {
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
@@ -814,7 +814,7 @@ export function reconcileAsks({
 }): HydraEvent[] {
   const card = state.cards[event.cardId]
 
-  if (!card || card.id === HYDRA_CARD || card.automaticTask || state.config?.hydra.kind === 'firstmate') {
+  if (!card || isManagedTask({ card }) || state.config?.hydra.kind === 'firstmate') {
     return []
   }
 

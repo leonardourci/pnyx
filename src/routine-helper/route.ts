@@ -1,7 +1,6 @@
 import { ownerGates } from '#tasks/owner-gates.ts'
 import { openAsks } from '#tasks/questions.ts'
 import { openDecisions } from '#tasks/decisions.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -9,6 +8,7 @@ import { eventReasons, type WakeKind } from '#hydra/wake-reasons.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import { readSettings } from '#settings/store.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
+import { isManagedTask } from '#tasks/select.ts'
 
 const NUDGES: WakeKind[] = [
   'turn ended',
@@ -87,7 +87,7 @@ export function helperScope({
 }): HelperScope | undefined {
   const card = state.cards[task]
 
-  if (!card || card.id === HYDRA_CARD || card.automaticTask || card.hold) {
+  if (!card || isManagedTask({ card }) || card.hold) {
     return undefined
   }
 

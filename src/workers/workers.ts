@@ -28,6 +28,7 @@ import { lifecycleMove } from '#tasks/lifecycle.ts'
 import { COMMON, guard, integer, parse, type Output, summarize } from '#app/cli-support.ts'
 import { commands } from '#app/cli.ts'
 import { requestEnv } from '#app/request-context.ts'
+import { isManagedTask } from '#tasks/select.ts'
 
 const TRACKED: readonly EventType[] = [
   'task.queue',
@@ -126,7 +127,8 @@ export async function hydraCheck({
         drainSpool({ writer })
         harvestTranscripts({
           writer,
-          cardIds: Object.values(writer.state.cards).filter(c => c.id !== '$hydra' && !c.automaticTask && c.sessionIds?.length)
+          cardIds: Object.values(writer.state.cards)
+            .filter(c => !isManagedTask({ card: c }) && c.sessionIds?.length)
             .map(c => c.id),
           at: new Date().toISOString(),
         })
