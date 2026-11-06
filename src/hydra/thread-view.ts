@@ -5,7 +5,7 @@ import { hydraConfig } from './config.ts'
 import { joinMessageParts } from './history.ts'
 import { hydraConversation } from './conversation.ts'
 import { injectedInstructions } from './chat-messages.ts'
-import { hydraQueueView } from './chat-queue.ts'
+import { hydraChatQueue } from './chat-queue.ts'
 
 export function hydraThreadView({
   state,
@@ -32,19 +32,17 @@ export function hydraThreadView({
     } : entry)
   const transcript = joinMessageParts({ entries })
   const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id)
-  const { held } = hydraQueueView({
-    state,
-    card,
-    messages,
-    pending: [],
-  })
+  const {
+    held,
+    working,
+  } = hydraChatQueue({ state })
   const conversation = hydraConversation({
-    messages: messages.filter(message => !held.has(message.id)),
+    messages: messages.filter(message => !held.includes(message.id)),
     transcript,
     provider: card?.agent?.provider,
     actions: page.actions ?? [],
     columns: config.columns,
-    working: config.hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working',
+    working,
     thinking,
     titles: Object.fromEntries(Object.values(state.cards).map(card => [
       card.id,
