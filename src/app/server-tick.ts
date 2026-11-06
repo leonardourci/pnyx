@@ -1,0 +1,282 @@
+import type { startReviewTimer } from '#hydra/review-timer.ts'
+import { ingestSpool } from '#integrations/hooks/ingest.ts'
+import { settleDone, settles } from '#projects/copies.ts'
+import { readSettings } from '#settings/store.ts'
+import { spoolFiles } from '#store/storage.ts'
+import type { createSourceRunner } from '#task-sources/runner.ts'
+import { sourceDeadline } from '#task-sources/state.ts'
+import { followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
+import { fireReminders } from '#tasks/fire-reminders.ts'
+import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
+import { reminderDeadline } from '#tasks/reminders.ts'
+import { hideDone } from '#tasks/retention.ts'
+import { doneDeadline } from '#tasks/retention-rules.ts'
+import { advanceQueues } from '#workers/advance-queue.ts'
+import { steeringToFollow } from '#workers/inbox-follow-up.ts'
+import { QUEUE_POLL_MS } from '#workers/queue.ts'
+import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
+import { background } from './background.ts'
+import type { createHost } from './host.ts'
+import type { HydraState } from './model.ts'
+import type { createServerWorkers } from './server-workers.ts'
+
+// How often replies a route could not confirm are checked for a resend.
+const REPLY_POLL_MS = 30_000
+
+type ServerWorkers = ReturnType<typeof createServerWorkers>
+
+// The one coalesced scheduler tick of a mounted Hydra: read the log, run what is due, and set the next wake.
+export function createServerTick({
+  hydraId,
+  dir,
+  state,
+  closed,
+  pump,
+  followDelay,
+  reminderScheduler,
+  runWorker,
+  triedResends,
+  resendReply,
+  agents,
+  sources,
+  review,
+}: {
+  hydraId: string
+  dir: string
+  state(): HydraState
+  closed(): boolean
+  pump(): void
+  followDelay: number
+  reminderScheduler: ReminderScheduler
+  runWorker: ServerWorkers['runWorker']
+  triedResends: ServerWorkers['triedResends']
+  resendReply: ServerWorkers['resendReply']
+  agents(): Pick<ReturnType<typeof createHost>, 'unconfirmed'>
+  sources(): ReturnType<typeof createSourceRunner>
+  review(): ReturnType<typeof startReviewTimer>
+}) {
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let cancelReminder = () => {}
+  let queueRun: Promise<void> | undefined
+  let queueCheckedAt = 0
+  let queueNeedsRetry = false
+  let followRun: Promise<void> | undefined
+  let settling: Promise<void> | undefined
+  let followCheckedAt = 0
+  let replyRun: Promise<void> | undefined
+  let replyCheckedAt = 0
+  let scheduled = false
+
+  const kick = () => {
+    if (closed() || scheduled) {
+      return
+    }
+
+    scheduled = true
+    setImmediate(() => {
+      scheduled = false
+
+      if (closed()) {
+        return
+      }
+
+      let repliesPending = false
+
+      try {
+        if (spoolFiles({ dir }).length > 0) {
+          ingestSpool({ hydraId })
+        }
+
+        pump()
+
+        if (!queueRun && Date.now() - queueCheckedAt >= QUEUE_POLL_MS) {
+          queueCheckedAt = Date.now()
+          queueRun = (async () => {
+            try {
+              queueNeedsRetry = await advanceQueues({
+                hydraId,
+                active: () => !closed(),
+                state: state(),
+              })
+            } catch (error) {
+              queueNeedsRetry = true
+              console.error(`pnyx-axi queue: ${(error as Error).message}`)
+            } finally {
+              queueRun = undefined
+              kick()
+            }
+          })()
+        }
+
+        const following = needsPullRequestFollow({ state: state() })
+
+        if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
+          followCheckedAt = Date.now()
+          followRun = (async () => {
+            try {
+              await followPullRequests({
+                hydraId,
+                active: () => !closed(),
+              })
+            } catch (error) {
+              console.error(`pnyx-axi follow: ${(error as Error).message}`)
+            } finally {
+              followRun = undefined
+              kick()
+            }
+          })()
+        }
+
+        const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
+        repliesPending = repliesToFollow({ state: state() }) || steeringToFollow({ state: state() })
+
+        if (!replyRun && repliesPending && replyCheckDue) {
+          replyCheckedAt = Date.now()
+          replyRun = (async () => {
+            try {
+              if (steeringToFollow({ state: state() })) {
+                await runWorker({
+                  args: [
+                    'inbox-follow',
+                    hydraId,
+                  ],
+                })
+              }
+
+              if (closed()) {
+                return
+              }
+
+              await followUpReplies({
+                hydraId,
+                tried: triedResends,
+                resend: resendReply,
+                unconfirmed: agents().unconfirmed,
+              })
+            } catch (error) {
+              if (!closed()) {
+                console.error(`pnyx-axi replies: ${(error as Error).message}`)
+              }
+            } finally {
+              replyRun = undefined
+              kick()
+            }
+          })()
+        }
+
+        sources().reconcile()
+        background({
+          name: 'review',
+          run: review().check,
+        })
+        fireReminders({
+          hydraId,
+          at: new Date(reminderScheduler.now()).toISOString(),
+          state: state(),
+        })
+        pump()
+        const deadline = doneDeadline({
+          state: state(),
+          hours: readSettings().settings.doneAfterHours,
+        })
+
+        if (deadline !== undefined && deadline <= Date.now()) {
+          hideDone({ hydraId })
+          pump()
+        }
+
+        // One settle at a time; it reads the copies with git, off the event loop.
+        if (!settling && Object.values(state().cards).some(card => settles({ card }))) {
+          const settle = async () => {
+            try {
+              await settleDone({ hydraId })
+            } catch (error) {
+              console.error(`pnyx-axi serve: settling copies: ${(error as Error).message}`)
+
+              return
+            } finally {
+              settling = undefined
+            }
+
+            pump()
+          }
+
+          settling = settle()
+        }
+      } catch (error) {
+        // A held lock or a damaged log; the next change retries.
+        console.error(`pnyx-axi serve: ${(error as Error).message}`)
+      } finally {
+        clearTimeout(expiryTimer)
+        cancelReminder()
+        const reminder = reminderDeadline({ state: state() })
+
+        if (reminder !== undefined) {
+          cancelReminder = reminderScheduler.schedule({
+            at: reminder,
+            fire: kick,
+          })
+        }
+
+        const deadlines = [
+          sourceDeadline({ state: state() }),
+          sources().deadline(),
+          doneDeadline({
+            state: state(),
+            hours: readSettings().settings.doneAfterHours,
+          }),
+          ...(!queueRun && (queueNeedsRetry || Object.values(state().cards).some(c => c.queue))
+            ? [queueCheckedAt + QUEUE_POLL_MS] : []),
+        ]
+          .filter((at): at is number => at !== undefined)
+
+        if (!followRun && needsPullRequestFollow({ state: state() })) {
+          deadlines.push(followCheckedAt + followDelay)
+        }
+
+        const replyFollowUpDue = !replyRun && repliesPending
+
+        if (replyFollowUpDue) {
+          deadlines.push(replyCheckedAt + REPLY_POLL_MS)
+        }
+
+        const deadline = deadlines.length ? Math.min(...deadlines) : undefined
+
+        if (deadline !== undefined) {
+          expiryTimer = setTimeout(
+            kick,
+            Math.max(
+              100,
+              Math.min(
+                60_000,
+                deadline - Date.now(),
+              ),
+            ),
+          )
+        }
+      }
+    })
+  }
+
+  return {
+    kick,
+    get queueRun() {
+      return queueRun
+    },
+    get replyRun() {
+      return replyRun
+    },
+    get followRun() {
+      return followRun
+    },
+    get settling() {
+      return settling
+    },
+    get expiryTimer() {
+      return expiryTimer
+    },
+    get cancelReminder() {
+      return cancelReminder
+    },
+  }
+}
