@@ -44,15 +44,35 @@ export function tokens({
   ))
 }
 
+// Each space-separated token is split into words the way every search box splits them. A token of
+// several words, such as a path, a branch name or don't, stays one phrase with no synonyms or typos,
+// so it matches those words only side by side.
 export function queryTerms({ text }: { text: string }): Term[] {
-  const typed = tokens({
-    text,
+  const typed = text.split(/\s+/).map(token => tokens({
+    text: token,
     prefixes: true,
-  })
+  }))
+    .filter(runs => runs.length)
   const terms: Term[] = []
 
   for (let i = 0; i < typed.length; i += 1) {
-    const token = typed[i]!
+    const runs = typed[i]!
+
+    if (runs.length > 1) {
+      terms.push({
+        alts: [
+          runs.map(run => run.replace(
+            /\*$/,
+            '',
+          )).join(' '),
+        ],
+        prefix: runs.at(-1)!.endsWith('*'),
+        typo: false,
+      })
+      continue
+    }
+
+    const token = runs[0]!
 
     if (token.endsWith('*')) {
       terms.push({
@@ -68,13 +88,14 @@ export function queryTerms({ text }: { text: string }): Term[] {
       continue
     }
 
-    const pair = i + 1 < typed.length ? synonymGroup.get(`${bare({ token })} ${bare({ token: typed[i + 1]! })}`.toLowerCase()) : undefined
+    const next = typed[i + 1]
+    const pair = next?.length === 1 ? synonymGroup.get(`${token} ${bare({ token: next[0]! })}`) : undefined
 
     if (pair) {
       i += 1
     }
 
-    const group = pair ?? synonymGroup.get(bare({ token }).toLowerCase())
+    const group = pair ?? synonymGroup.get(token)
     terms.push(
       group
         ? {
