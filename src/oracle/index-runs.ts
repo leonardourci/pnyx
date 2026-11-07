@@ -75,8 +75,9 @@ export function indexRuns<Outcome>({ start }: { start(): Promise<Outcome> }) {
       waiting = setTimeout(
         () => acquire({
           granted: () => {
-            // A Hydra stopped while its catch-up waited for a turn no longer writes or indexes.
-            if (stopped) {
+            // A Hydra stopped, or already caught up by another run, while its catch-up waited for a
+            // turn no longer writes or indexes.
+            if (stopped || !waiting) {
               release()
 
               return
