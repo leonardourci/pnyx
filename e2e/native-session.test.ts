@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { claudeProvider } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
+import { permissionCommand, permissionDetails } from '#workers/permission-rules.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { inbox } from '#hydra/update-queue.ts'
@@ -243,8 +244,49 @@ test(
     const decision = await native.sessions[0]!.ask!({
       id: 'approval',
       method: 'item/commandExecution/requestApproval',
-      params: { command: 'build' },
+      params: {
+        command: "/bin/zsh -lc 'build'",
+        commandActions: [{ command: 'build' }],
+        cwd: root,
+        reason: 'Build the project',
+      },
     })
+    const asked = observed.events.find(event => typeof event === 'object' && event.type === 'permission')
+    assert.ok(typeof asked === 'object' && asked.type === 'permission')
+    assert.deepEqual(
+      asked.request.input,
+      {
+        command: "/bin/zsh -lc 'build'",
+        commandActions: [{ command: 'build' }],
+        cwd: root,
+        reason: 'Build the project',
+        display: 'build',
+      },
+    )
+    assert.equal(
+      permissionCommand({
+        tool: asked.request.tool,
+        input: asked.request.input,
+      }),
+      'build',
+    )
+    assert.deepEqual(
+      permissionDetails({ request: asked.request }),
+      [
+        {
+          label: 'Command',
+          text: 'build',
+        },
+        {
+          label: 'Folder',
+          text: root,
+        },
+        {
+          label: 'Reason',
+          text: 'Build the project',
+        },
+      ],
+    )
     assert.deepEqual(
       decision,
       { decision: 'decline' },
@@ -270,6 +312,100 @@ test(
       [
         'received',
         'submitted',
+      ],
+    )
+    await native.sessions[0]!.ask!({
+      id: 'chained',
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        command: "/bin/zsh -lc 'npm install && npm test'",
+        commandActions: [
+          { command: 'npm install' },
+          { command: 'npm test' },
+        ],
+      },
+    })
+    const chained = await until({
+      what: 'the chained command permission',
+      check: () => observed.events.find(event => typeof event === 'object' && event.type === 'permission' && event.request.id === 'string:chained'),
+    })
+    assert.ok(typeof chained === 'object' && chained.type === 'permission')
+    assert.deepEqual(
+      permissionDetails({ request: chained.request }),
+      [
+        {
+          label: 'Command',
+          text: "/bin/zsh -lc 'npm install && npm test'",
+        },
+      ],
+    )
+    await native.sessions[0]!.ask!({
+      id: 'plain',
+      method: 'item/commandExecution/requestApproval',
+      params: { command: 'make' },
+    })
+    const plain = await until({
+      what: 'the plain command permission',
+      check: () => observed.events.find(event => typeof event === 'object' && event.type === 'permission' && event.request.id === 'string:plain'),
+    })
+    assert.ok(typeof plain === 'object' && plain.type === 'permission')
+    assert.deepEqual(
+      permissionDetails({ request: plain.request }),
+      [
+        {
+          label: 'Command',
+          text: 'make',
+        },
+      ],
+    )
+    native.sessions[0]!.notify!({
+      method: 'item/started',
+      params: {
+        item: {
+          id: 'patch',
+          type: 'fileChange',
+          changes: [
+            { path: 'src/one.ts' },
+            { path: 'src/two.ts' },
+          ],
+        },
+      },
+    })
+    await native.sessions[0]!.ask!({
+      id: 'files',
+      method: 'item/fileChange/requestApproval',
+      params: {
+        itemId: 'patch',
+        reason: 'Update sources',
+      },
+    })
+    const files = observed.events.findLast(event => typeof event === 'object' && event.type === 'permission')
+    assert.ok(typeof files === 'object' && files.type === 'permission')
+    assert.deepEqual(
+      files.request.input,
+      {
+        changes: [
+          { path: 'src/one.ts' },
+          { path: 'src/two.ts' },
+        ],
+        paths: [
+          'src/one.ts',
+          'src/two.ts',
+        ],
+        reason: 'Update sources',
+      },
+    )
+    assert.deepEqual(
+      permissionDetails({ request: files.request }),
+      [
+        {
+          label: 'Files',
+          text: 'src/one.ts, src/two.ts',
+        },
+        {
+          label: 'Reason',
+          text: 'Update sources',
+        },
       ],
     )
     native.control.refuse = 'turn/steer'

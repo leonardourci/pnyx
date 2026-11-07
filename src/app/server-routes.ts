@@ -5,26 +5,21 @@ import { hydraImageFile } from '#hydra/image-files.ts'
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#hydra/images.ts'
 import { listFolders } from '#projects/folders.ts'
 import { privateDir } from '#store/storage.ts'
-import { waitingReminders } from '#tasks/reminders.ts'
-import type { HydraState } from './model.ts'
 import { buildId, readBytes, reply, serveStatic } from './server-http.ts'
 import type { HydraRequest } from './server-transport.ts'
 
-// The HTTP routes of one mounted Hydra: image uploads and reads, folders, reminders, health and its page.
 export function createServerRoutes({
   hydraId,
   dir,
   url,
   token,
   identity,
-  state,
 }: {
   hydraId: string
   dir: string
   url: string
   token: Buffer
   identity: string
-  state(): HydraState
 }) {
   const authorized = ({ given }: { given: string | null }) => {
     const bytes = Buffer.from(given ?? '')
@@ -209,19 +204,6 @@ export function createServerRoutes({
           },
         }),
       )
-    }
-
-    if (path === '/reminders') {
-      const reminders = waitingReminders({ state: state() })
-
-      return reply({
-        res,
-        status: 200,
-        body: {
-          count: reminders.length,
-          reminders,
-        },
-      })
     }
 
     if (path === '/health') {

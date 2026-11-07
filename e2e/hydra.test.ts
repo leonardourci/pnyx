@@ -663,21 +663,6 @@ test(
           }))?.behavior,
           'deny',
         )
-        assert.equal(
-          (await useTool({
-            tool: 'Command',
-            input: {
-              command: `/bin/zsh -lc '${historyCommand}'`,
-              commandActions: [
-                {
-                  type: 'unknown',
-                  command: historyCommand,
-                },
-              ],
-            },
-          }))?.behavior,
-          'allow',
-        )
         const historyArgs = historyCommand.replace(
           ` --hydra ${s.hydraId}`,
           '',

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { decidePush } from '#tasks/push.ts'
-import { permissionEvent } from './permission-rules.ts'
+import { permissionDetails, permissionEvent } from './permission-rules.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { PermissionRequest } from './model.ts'
@@ -157,6 +157,46 @@ test(
     assert.equal(
       state.cards.task!.attention[0]!.blocking,
       true,
+    )
+  },
+)
+
+test(
+  'a Codex permission logged with only its native fields still shows its parsed command and changed files',
+  () => {
+    assert.deepEqual(
+      permissionDetails({
+        request: {
+          input: {
+            command: "/bin/zsh -lc 'build'",
+            commandActions: [{ command: 'build' }],
+          },
+        },
+      }),
+      [
+        {
+          label: 'Command',
+          text: 'build',
+        },
+      ],
+    )
+    assert.deepEqual(
+      permissionDetails({
+        request: {
+          input: {
+            changes: [
+              { path: 'src/one.ts' },
+              { path: 'src/two.ts' },
+            ],
+          },
+        },
+      }),
+      [
+        {
+          label: 'Files',
+          text: 'src/one.ts, src/two.ts',
+        },
+      ],
     )
   },
 )

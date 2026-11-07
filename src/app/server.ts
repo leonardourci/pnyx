@@ -374,7 +374,6 @@ export async function mountOwnedHydra({
     url,
     token,
     identity,
-    state: () => state,
   })
 
   const {
