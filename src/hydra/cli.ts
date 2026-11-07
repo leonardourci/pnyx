@@ -1,17 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { basename } from 'node:path'
-import { HOME_LIMIT, parse, WRITE, required, meta, commit, integer, explained, HISTORY_LIMIT, HISTORY_MAX, guard, type Output } from '#app/cli-support.ts'
+import { parse, WRITE, required, meta, commit, guard, type Output } from '#app/cli-support.ts'
 import { hideDone } from '#tasks/retention.ts'
-import { DEFAULT_HYDRA, hydraIds, hydraDir } from '#app/home-migration.ts'
+import { hydraIds, hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { liveTask, rankOf } from '#tasks/select.ts'
+import { liveTask } from '#tasks/select.ts'
 import { hydraConfig } from './config.ts'
 import { readServer, askHost } from '#app/server-state.ts'
 import { projectRows } from '#projects/read.ts'
-import { spoolFiles } from '#store/storage.ts'
-import type { Card } from '#tasks/model.ts'
-import { cardRow } from '#tasks/cli.ts'
 import { firstmateHomes } from '#integrations/cli.ts'
 import { HydraError } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
@@ -19,202 +16,18 @@ import { findSession } from '#workers/session-attachments.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
 import { HYDRA_ICONS, HYDRA_MARK, isHydraIcon, pickName } from './hydra-names.ts'
-import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
-import { mentionContext } from './mentions.ts'
-import { decideView } from '#preferences/decisions.ts'
-import { memoryList, memoryChange } from '#memory/cli.ts'
-import { HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget } from '#memory/budgets.ts'
-import { checkWorkerNotes, workerNotesNotice } from '#memory/workers.ts'
-import { withWriter } from '#app/writer.ts'
-import { readEvents } from '#app/event-log.ts'
-import { startHydra } from '#workers/start.ts'
-import { HYDRA_ACTOR } from '#app/actors.ts'
-import { findCard } from '#tasks/push-rules.ts'
-import { effectiveDispatch } from '#workers/dispatch-config.ts'
+import { otherHydraNames } from './taken-names.ts'
+import { hydraEvent } from './hydra.ts'
+import { hydraMessages, hydraSend } from './send-cli.ts'
+import { hydraResize } from '#preferences/cli.ts'
+import { hydraMemory } from '#memory/cli.ts'
+import { startHydra } from './start.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { resolveSkillReferences } from './skill-invocation.ts'
-import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
-import type { Settings } from '#settings/model.ts'
-import type { AgentConfig } from '#workers/model.ts'
-import { HELPER_MODELS } from '#settings/model.ts'
-import { requestEnv, hydraActor } from '#app/request-context.ts'
+import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
+import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
-import { historyCommand, inscribeOperation, readHistory } from './history.ts'
-import { operationEvent } from './operations.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-
-export async function home(): Promise<Output> {
-  const hydraId = requestEnv().PNYX_HYDRA || DEFAULT_HYDRA
-  hideDone({ hydraId })
-  const {
-    dir,
-    state,
-    tornBytes,
-  } = loadHydra({ hydraId })
-  const cards = Object.values(state.cards).filter(card => liveTask({ card }))
-  const config = hydraConfig({ state })
-  const columns = Object.fromEntries(
-    config.columns.map(c => [
-      c.id,
-      cards.filter(card => card.column === c.id).length,
-    ]),
-  )
-  const server = await readServer({ hydraId })
-  const out: Output = {
-    projects: projectRows({ state }),
-    hydraId,
-    hydra: config.hydra.id,
-    server: server ? `running at ${server.url}` : 'not running',
-    columns,
-  }
-
-  if (tornBytes > 0) {
-    out.warning = 'events.jsonl has a torn tail; run `pnyx-axi repair`'
-  }
-
-  const serveHint = server ? [] : [`Run \`pnyx-axi serve --hydra ${hydraId}\` to start the Hydra server`]
-  const spooled = spoolFiles({ dir }).length
-
-  if (spooled > 0) {
-    out.spool = `${spooled} hook events waiting; the next write ingests them`
-  }
-
-  if (cards.length === 0) {
-    out.cards = 'none: no cards yet'
-    out.help = [
-      `Run \`pnyx-axi task create --title <title> --hydra ${hydraId}\` to add work`,
-      'Run `pnyx-axi --help` for command groups; add --help to any command for syntax',
-      ...serveHint,
-    ]
-
-    return out
-  }
-
-  const order = ({ c }: { c: Card }) => config.columns.findIndex(column => column.id === c.column)
-  const sorted = cards.sort((
-    a,
-    b,
-  ) => order({
-    c: a,
-  }) - order({
-    c: b,
-  }) || rankOf({ card: a }) - rankOf({ card: b }))
-  out.cards = sorted.slice(
-    0,
-    HOME_LIMIT,
-  ).map(card => cardRow({
-    state,
-    card,
-  }))
-  out.help = [
-    `Run \`pnyx-axi task show ${sorted[0]!.id} --hydra ${hydraId}\` for task details`,
-    'Run `pnyx-axi --help` for command groups; add --help to any command for syntax',
-    `Run \`pnyx-axi history --hydra ${hydraId}\` for recent events`,
-    ...serveHint,
-  ]
-
-  if (sorted.length > HOME_LIMIT) {
-    out.more = `${sorted.length - HOME_LIMIT} more cards not shown`
-  }
-
-  return out
-}
-
-const HELPER_FLAGS = [
-  'helper',
-  'helper-model',
-  'helper-account',
-  'helper-effort',
-  'helper-fast',
-]
-
-// The hydra set flags that write shared settings; any other flag changes this Hydra, so the Hydra event is committed too.
-const SETTING_FLAGS = [
-  'done-after-hours',
-  'review-minutes',
-  ...HELPER_FLAGS,
-]
-
-function sharedSettingFlags({
-  values,
-  hydraId,
-}: {
-  values: Record<string, string | boolean | undefined>
-  hydraId: string
-}): Partial<Settings> | undefined {
-  const patch: Partial<Settings> = {}
-  const done = values['done-after-hours']
-
-  if (done !== undefined) {
-    const raw = String(done).trim()
-    patch.doneAfterHours = raw === 'off' ? 'off' : Number(raw || Number.NaN)
-  }
-
-  if (values['review-minutes'] !== undefined) {
-    const raw = String(values['review-minutes']).trim()
-
-    if (!raw) {
-      throw new HydraError({
-        message: '--review-minutes takes a number of minutes (0 turns reviews off)',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    patch.reviewMinutes = Number(raw)
-  }
-
-  if (HELPER_FLAGS.some(flag => values[flag] !== undefined)) {
-    const current = readSettings().settings.helper
-    const agent = typeof current === 'object' ? current : undefined
-    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
-
-    if (harness === 'off' || harness === 'auto') {
-      patch.helper = harness
-    } else if (harness === 'claude' || harness === 'codex') {
-      const previous = agent?.harness === harness ? agent : undefined
-      const effort = values['helper-effort'] ?? previous?.effort
-      const helper: AgentConfig = {
-        harness,
-        model: String(values['helper-model'] ?? previous?.model ?? HELPER_MODELS[harness]),
-      }
-
-      const account = values['helper-account'] ?? previous?.account
-
-      if (account) {
-        helper.account = String(account)
-      }
-
-      if (effort !== undefined) {
-        helper.effort = String(effort)
-      }
-
-      const fast = values['helper-fast']
-
-      if (fast !== undefined && fast !== 'on' && fast !== 'off') {
-        throw new HydraError({
-          message: '--helper-fast takes on or off',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      const fastOn = fast === undefined ? previous?.fast : fast === 'on'
-
-      if (fastOn) {
-        helper.fast = true
-      }
-
-      patch.helper = helper
-    } else {
-      throw new HydraError({
-        message: '--helper takes auto, off, claude or codex',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-  }
-
-  return Object.keys(patch).length ? patch : undefined
-}
+import { harvestHydra, hydraHistory, hydraInscribe } from './history-cli.ts'
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
   const {
@@ -541,23 +354,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   }
 }
 
-// An unreadable Hydra counts as none: a repeated name is harmless.
-export function otherHydraNames({ id }: { id: string }): string[] {
-  return hydraIds().filter(other => other !== id)
-    .flatMap(other => {
-      try {
-        return [
-          hydraConfig({
-            state: loadHydra({ hydraId: other }).state,
-            id: other,
-          }).name,
-        ]
-      } catch {
-        return []
-      }
-    })
-}
-
 function homeHydraId({ home }: { home: string }): string {
   return basename(home).toLowerCase()
     .replace(
@@ -634,237 +430,40 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const readingHistory = positionals[0] === 'history' || (positionals[0] === 'messages' && values.inscribe)
 
   if (readingHistory || (positionals[0] === 'inscribe' && positionals[1] === 'start')) {
-    withWriter({
+    harvestHydra({
+      values,
       hydraId,
-      fn: ({ writer }) => harvestTranscripts({
-        writer,
-        cardIds: [HYDRA_CARD],
-        at: meta({ values }).at,
-      }),
     })
   }
 
   if (readingHistory) {
-    const state = loadHydra({ hydraId }).state
-    const page = readHistory({
-      state,
-      events: readEvents({ hydraId }),
-      since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
-      after: values.after as string | undefined,
-      through: integer({
-        value: values.through,
-        flag: '--through',
-      }),
-      budget: integer({
-        value: values.budget,
-        flag: '--budget',
-      }),
+    return hydraHistory({
+      values,
+      hydraId,
     })
-
-    if (values.count) {
-      return {
-        totalTokens: page.totalTokens,
-        boundary: page.boundary,
-        snapshot: page.snapshot,
-      }
-    }
-
-    return {
-      ...page,
-      help: page.more ? [
-        `Run \`${historyCommand({
-          hydraId,
-          since: page.since,
-          budget: page.budget,
-        })} --after ${page.after}\` for the next page`,
-      ] : [],
-    }
   }
 
   if (positionals[0] === 'inscribe') {
-    const action = positionals[1]
-    const state = loadHydra({ hydraId }).state
-    const running = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')
-    const operationId = values.key === undefined ? running?.id ?? randomUUID() : String(values.key)
-    const through = integer({
-      value: values.through,
-      flag: '--through',
-    })
-    const error = values.error as string | undefined
-    const operation = inscribeOperation({
-      state,
-      id: operationId,
-      action,
-      through,
-      error,
-    })
-
-    const m = meta({ values })
-    const result = commit({
+    return hydraInscribe({
+      values,
+      positionals,
       hydraId,
-      meta: m,
-      intent: {
-        type: 'hydra.operation',
-        card: HYDRA_CARD,
-      },
-      decide: ({ state }) => operationEvent({
-        state,
-        meta: m,
-        operation: inscribeOperation({
-          state,
-          id: operationId,
-          action,
-          through,
-          error,
-        }),
-      }),
     })
-    const since = operation.historySince ?? 'origin'
-
-    return {
-      ...result,
-      milestone: operationId,
-      through: operation.through,
-      command: historyCommand({
-        hydraId,
-        since,
-        through: operation.through,
-      }),
-    }
   }
 
   if (positionals[0] === 'resize') {
-    const width = integer({
-      value: values.width,
-      flag: '--width',
-    })
-
-    if (width === undefined) {
-      throw new HydraError({
-        message: 'pass --width <pixels>',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const m = meta({ values })
-
-    return commit({
+    return hydraResize({
+      values,
       hydraId,
-      meta: m,
-      intent: {
-        type: 'board.view',
-        card: '$board',
-      },
-      decide: ({ state }) => decideView({
-        state,
-        patch: { hydraWidth: width },
-        meta: m,
-      }),
     })
   }
 
   if (positionals[0] === 'memory') {
-    const action = positionals[1] ?? 'list'
-
-    if (action === 'list') {
-      const state = loadHydra({ hydraId }).state
-
-      return memoryList({
-        memory: state.hydraMemory ?? {},
-        budget: HYDRA_MEMORY_BUDGET,
-        empty: 'none: no Hydra memory yet',
-      })
-    }
-
-    const {
-      key,
-      after,
-    } = memoryChange({
-      action,
+    return hydraMemory({
       values,
-      usage: 'use hydra memory list|set|forget',
-    })
-
-    if (key === 'inscribe-cursor' && after !== null) {
-      throw new HydraError({
-        message: 'Finish the inscribe milestone with hydra inscribe finish --through <snapshot>',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (after !== null && Object.hasOwn(
-      OWNER_DOCUMENTS,
-      key,
-    )) {
-      throw new HydraError({
-        message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} are Pnyx-wide owner memory`,
-        code: 'VALIDATION_ERROR',
-        help: [`Run \`pnyx-axi owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
-      })
-    }
-
-    const m = meta({ values })
-
-    if (key === 'workers') {
-      explained({ meta: m })
-      checkWorkerNotes({
-        text: after,
-        reason: m.reason,
-      })
-    }
-
-    const result = commit({
+      positionals,
       hydraId,
-      meta: m,
-      intent: {
-        type: 'hydra.memory',
-        card: '$board',
-      },
-      decide: ({ state }) => {
-        const before = state.hydraMemory?.[key]?.text ?? null
-        checkBudget({
-          memory: state.hydraMemory ?? {},
-          key,
-          after,
-          budget: HYDRA_MEMORY_BUDGET,
-          layer: 'Hydra',
-        })
-
-        return before === after ? { skipped: 'unchanged' } : hydraEvent({
-          state,
-          meta: m,
-          cardId: '$board',
-          change: {
-            type: 'hydra.memory',
-            data: {
-              key,
-              before,
-              after,
-            },
-          },
-        })
-      },
     })
-
-    if (key === 'workers' && result.event === 'none: unchanged') {
-      withWriter({
-        hydraId,
-        fn: ({ writer }) => {
-          const saved = readEvents({ hydraId }).findLast(event => event.type === 'hydra.memory'
-            && event.data.key === 'workers')
-
-          if (saved) {
-            workerNotesNotice({
-              writer,
-              target: `Hydra ${hydraId}`,
-              meta: saved,
-            })
-          }
-        },
-      })
-    }
-
-    return result
   }
 
   if (positionals[0] === 'start') {
@@ -882,64 +481,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (positionals[0] === 'messages') {
-    const state = loadHydra({ hydraId }).state
-    const after = integer({
-      value: values.after,
-      flag: '--after',
-    }) ?? 0
-    const limit = Math.min(
-      integer({
-        value: values.limit,
-        flag: '--limit',
-      }) ?? HISTORY_LIMIT,
-      HISTORY_MAX,
-    )
-
-    if (limit < 1) {
-      throw new HydraError({
-        message: '--limit must be positive',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const events = readEvents({ hydraId }).filter(e => e.seq > after
-      && (e.type === 'hydra.message' || e.type === 'task.reminder-due'))
-    const page = events.slice(
-      0,
-      limit,
-    )
-
-    const through = page.at(-1)?.seq ?? after
-
-    return {
-      hydra: hydraConfig({
-        state,
-        id: hydraId,
-      }).hydra.id,
-      messages: page.length
-        ? page.map(e => {
-          if (e.type !== 'hydra.message' && e.type !== 'task.reminder-due') {
-            throw new Error(`Unexpected ${e.type} in Hydra messages`)
-          }
-
-          const data = e.type === 'task.reminder-due' ? e.data.message : e.data
-
-          return values.full ? e : {
-            seq: e.seq,
-            id: e.id,
-            at: e.at,
-            actor: e.type === 'task.reminder-due' ? HYDRA_ACTOR : e.actor,
-            task: data.task ?? 'none',
-            action: data.action,
-            text: data.text,
-            ...(data.details ? { details: data.details } : {}),
-            ...('context' in data && data.context ? { context: data.context } : {}),
-          }
-        })
-        : `none: no messages after seq ${after}`,
-      through,
-      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
-    }
+    return hydraMessages({
+      values,
+      hydraId,
+    })
   }
 
   if (positionals[0] === 'stop' || positionals[0] === 'usage') {
@@ -964,159 +509,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
-  const m = meta({ values })
-
-  const ref = values.task === undefined ? undefined : required({
-    value: values.task as string,
-    what: '--task',
-  })
-
-  if (!ref && values.action !== undefined) {
-    throw new HydraError({
-      message: '--action needs --task',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  if (values.kind !== undefined && values.kind !== 'progress') {
-    throw new HydraError({
-      message: '--kind must be progress',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  const progress = values.kind === 'progress'
-
-  const misused = !ref || !reportActor({ actor: m.actor }) || values.action !== undefined
-    || values.text === undefined
-
-  if (progress && misused) {
-    throw new HydraError({
-      message: '--kind progress is an agent\'s report: pass --task and --text, no --action, and --actor worker:<task> when PNYX_ACTOR is unset',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  // Read before the Hydra writer, so the shared registry lock is never taken inside it.
-  const effective = effectiveDispatch()
-  const result = commit({
+  return hydraSend({
+    values,
     hydraId,
-    meta: m,
-    intent: {
-      type: 'hydra.message',
-      card: ref ?? '$board',
-    },
-    decide: ({ state }) => {
-      const task = ref ? findCard({
-        state,
-        ref,
-      }) : undefined
-
-      if (task && !liveTask({ card: task })) {
-        throw new HydraError({
-          message: 'choose a task, not an unassigned session',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      const action = String(values.action ?? 'send')
-
-      if (action !== 'send' && action !== 'worker') {
-        throw new HydraError({
-          message: '--action must be send or worker',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      const entered = task
-        ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
-        : required({
-          value: values.text as string | undefined,
-          what: '--text',
-        })
-      const config = hydraConfig({
-        state,
-        id: hydraId,
-      })
-      const provider = config.hydra.agent?.harness
-        ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
-        ?? effective.dispatch.default[0]?.harness
-        ?? state.cards[HYDRA_CARD]?.agent?.provider
-      const text = resolveSkillReferences({
-        text: entered,
-        provider,
-      })
-      const context = mentionContext({
-        state,
-        text,
-      })
-      const decision = hydraEvent({
-        state,
-        meta: m,
-        cardId: task?.id ?? '$board',
-        change: {
-          type: 'hydra.message',
-          data: {
-            ...(task ? { task: task.id } : {}),
-            action,
-            ...(progress ? { kind: 'progress' as const } : {}),
-            text,
-            ...(text !== entered ? { enteredText: entered } : {}),
-            ...(m.details ? { details: m.details } : {}),
-            ...(context ? { context } : {}),
-            hydra: hydraConfig({
-              state,
-              id: hydraId,
-            }).hydra.id,
-          },
-        },
-      })
-
-      if ('event' in decision) {
-        decision.event.messageId = decision.event.id
-      }
-
-      return decision
-    },
   })
-
-  const config = hydraConfig({
-    state: loadHydra({ hydraId }).state,
-    id: hydraId,
-  })
-
-  if (progress && result.event !== 'none: duplicate') {
-    return {
-      ...result,
-      help: ['Progress recorded on the card; Hydra reads it on its next wake. Send actionable results with hydra send --task <id> --text <result> (omit --kind progress); questions use task ask, blockers use task status blocked'],
-    }
-  }
-
-  // Pnyx runs its own commands even for a Firstmate-linked Hydra.
-  const pnyxRuns = config.hydra.kind !== 'firstmate' || upgradeCommand({ text: String(values.text ?? '') })
-    || restartCommand({ text: String(values.text ?? '') })
-
-  if (!pnyxRuns || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
-    return result
-  }
-
-  const message = loadHydra({ hydraId }).state.hydraMessages
-    ?.find(message => message.id === result.message)
-  const text = message ? hydraDelivery({ message }) : String(values.text ?? '')
-
-  return readServer({ hydraId }).then(server => server ? askHost({
-    hydraId,
-    body: {
-      action: 'hydra',
-      id: String(result.message),
-      text,
-      actor: m.actor,
-    },
-  }).then(hosted => ({
-    ...result,
-    ...hosted,
-    help: ['The Pnyx server runs Hydra; replies and startup errors appear in its chat'],
-  })) : result)
 }
 
 export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })

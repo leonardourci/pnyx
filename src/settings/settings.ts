@@ -2,6 +2,7 @@ import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { AGENT_FLAG, type AgentConfig } from '#workers/model.ts'
+import { knownHarness } from '#workers/providers.ts'
 import { NAME, NAME_RULE } from '#workers/dispatch-check.ts'
 import { HydraError } from '#store/errors.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
@@ -109,7 +110,9 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
     return invalid({ detail: 'helper fast is true or false' })
   }
 
-  if (agent.harness !== 'claude' && agent.harness !== 'codex') {
+  const harness = knownHarness({ name: agent.harness })
+
+  if (!harness) {
     return invalid({ detail: 'helper harness is claude or codex' })
   }
 
@@ -125,7 +128,7 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
   }
 
   const helper: AgentConfig = {
-    harness: agent.harness,
+    harness,
     model: agent.model,
   }
 

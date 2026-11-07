@@ -856,7 +856,6 @@ export function codexProvider({
 }: { spawnCodex?: SpawnCodex }): Provider {
   return {
     compact: true,
-    readUsage: readCodexUsage,
     async models({
       cwd,
       env,

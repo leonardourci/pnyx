@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { HydraState, HydraEvent, Decision, SourceRef } from './model.ts'
 import type { ObservedEvent, PushedEvent } from '#tasks/model.ts'
 import type { Meta } from './command-meta.ts'
+import type { Writer } from './writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { requireReportReview } from '#investigations/inventory.ts'
 import { checkRevision, strip } from '#tasks/push-rules.ts'
@@ -169,4 +170,16 @@ export function decided({
     event,
     reduced,
   }) : { event }
+}
+
+export function applyDecision({
+  writer,
+  decision,
+}: {
+  writer: Writer
+  decision: Decision
+}): void {
+  if ('event' in decision) {
+    writer.append({ event: decision.event })
+  }
 }

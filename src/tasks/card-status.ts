@@ -1,5 +1,6 @@
 import type { Card, TaskStatus } from './model.ts'
-import { openAsks, ownerQuestions, type OwnerQuestion } from './questions.ts'
+import { ownerQuestions, type OwnerQuestion } from './questions.ts'
+import { openAsks } from './ask-state.ts'
 import { reportActor } from '#hydra/hydra.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'

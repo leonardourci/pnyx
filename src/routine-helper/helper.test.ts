@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
-import { askAnswer } from '#tasks/questions.ts'
+import { askAnswer } from '#tasks/ask-decide.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { PermissionRequest } from '#workers/model.ts'
@@ -377,7 +377,6 @@ function helperLab({
   let ownerWakes = 0
   const harnesses: string[] = []
   const provider: Provider = {
-    readUsage: () => {},
     models: async () => [],
     defaults: async ({ models }) => models,
     // eslint-disable-next-line pnyx/object-params -- The provider owns this callback signature.
@@ -1155,7 +1154,6 @@ test(
       loginFolder?: string
     }[] = []
     const fixture: Provider = {
-      readUsage: () => {},
       models: async () => [],
       defaults: async ({ models }) => models,
       open: async () => {

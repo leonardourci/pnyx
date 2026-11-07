@@ -1,5 +1,6 @@
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
+import { touch } from './touch.ts'
 
 export function waitingReminders({ state }: { state: HydraState }) {
   return Object.values(state.cards)
@@ -80,9 +81,10 @@ export function applyReminder({
     ]
   }
 
-  card.revision++
-  card.updatedSeq = event.seq
-  card.updatedAt = event.at
+  touch({
+    card,
+    event,
+  })
 
   return true
 }

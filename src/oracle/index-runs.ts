@@ -1,5 +1,40 @@
+import { availableParallelism } from 'node:os'
+
 // A change waits this long for others to fold into the same catch-up.
 export const INDEX_DELAY_MS = 5000
+
+// Background catch-ups across every Hydra this process serves share half the CPUs: a start
+// mounts every Hydra at once, and each one launching its index process together starves the
+// server's own work. A query waiting on its index never queues here.
+export const BACKGROUND_CATCHUPS = Math.max(
+  1,
+  Math.floor(availableParallelism() / 2),
+)
+let active = 0
+const queued: (() => void)[] = []
+
+const acquire = ({ granted }: { granted(): void }) => {
+  if (active < BACKGROUND_CATCHUPS) {
+    active += 1
+    granted()
+
+    return
+  }
+
+  queued.push(granted)
+}
+
+const release = () => {
+  const next = queued.shift()
+
+  if (next) {
+    next()
+
+    return
+  }
+
+  active -= 1
+}
 
 // One catch-up at a time; changes during one fold into a single follow-up. start never rejects.
 export function indexRuns<Outcome>({ start }: { start(): Promise<Outcome> }) {
@@ -38,7 +73,18 @@ export function indexRuns<Outcome>({ start }: { start(): Promise<Outcome> }) {
       }
 
       waiting = setTimeout(
-        run,
+        () => acquire({
+          granted: () => {
+            // A Hydra stopped while its catch-up waited for a turn no longer writes or indexes.
+            if (stopped) {
+              release()
+
+              return
+            }
+
+            void run().finally(release)
+          },
+        }),
         INDEX_DELAY_MS,
       )
     },

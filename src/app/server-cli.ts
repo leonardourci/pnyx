@@ -1,9 +1,9 @@
 import { parseArgs } from 'node:util'
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
-import { SERVE_OPTIONS, serverPids } from './server.ts'
+import { SERVE_OPTIONS } from './server.ts'
 import { flagError } from './cli-support.ts'
-import { DEFAULT_PORT, infoPath, type ServerInfo } from './server-state.ts'
+import { DEFAULT_PORT, infoPath, readServer, type ServerInfo } from './server-state.ts'
 import { STOP_TIMEOUT_MS, type RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
 import { PNYX_ROOT } from '#upgrade/runner.ts'
@@ -118,7 +118,8 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
     )
   }
 
-  const pids = await serverPids()
+  const info = await readServer({ hydraId: 'default' })
+  const pids = info ? [info.pid] : []
 
   if (pids.length === 0) {
     return {

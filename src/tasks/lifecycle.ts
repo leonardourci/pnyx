@@ -2,9 +2,9 @@ import { ownerGates } from './owner-gates.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Column } from './columns-model.ts'
 import type { Card, TaskStatus } from './model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { cardFacts, placeCard } from './columns.ts'
+import { isManagedTask } from './select.ts'
 
 type Stage = 'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done'
 
@@ -84,7 +84,7 @@ export function lifecycleMoves({
 
     const unmanaged = !state.configured && card.tracking !== 'declared'
 
-    if (card.automaticTask || card.id === HYDRA_CARD || unmanaged
+    if (isManagedTask({ card }) || unmanaged
       || (!previous && event?.type !== 'task.created')) {
       return []
     }
@@ -170,7 +170,7 @@ export function operationDeclarations({
   }) => {
     const card = state.cards[cardId]
 
-    if (card && !card.automaticTask && card.id !== HYDRA_CARD) {
+    if (card && !isManagedTask({ card })) {
       changes.push({
         cardId,
         status,

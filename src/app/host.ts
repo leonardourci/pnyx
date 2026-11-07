@@ -1,12 +1,12 @@
 import { canSkipCompaction, NEITHER_REASON, readHistory, historyCommand, compactionContext, inscribeSince } from '#hydra/history.ts'
 import { agentChangeKind, agentChangeTurn, conversationContext } from '#hydra/agent-switch.ts'
-import { harnessAccount } from '#workers/account-choice.ts'
+import { accountFor, harnessAccount } from '#workers/account-choice.ts'
 import { agentInput } from './agent-input.ts'
 import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
 import { hydraActor } from './request-context.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { HYDRA_COMMANDS } from './command-registry.ts'
-import { harnessOf, providerIdOf, providerLabel } from '#workers/providers.ts'
+import { DEFAULT_PROVIDER, PROVIDERS, harnessOf, knownProvider, providerIdOf, providerLabel } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
@@ -29,7 +29,7 @@ import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
-import { accountEnvironment, agentExhausted, readUsage } from '#workers/dispatch.ts'
+import { accountEnv, accountEnvironment, agentExhausted, readUsage } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
@@ -55,7 +55,7 @@ import { freeTask } from '#workers/start.ts'
 import { clip, hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
 import { skillSource, prepareHydraFolder } from '#setup/skills.ts'
-import type { Decision, HydraState } from './model.ts'
+import type { HydraState } from './model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
@@ -86,6 +86,7 @@ import { deliveringMessage } from '#routine-helper/leases.ts'
 import { createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
 import { inbox } from '#hydra/update-queue.ts'
+import { applyDecision } from './decision.ts'
 
 export type { QueryFn } from '#workers/claude.ts'
 
@@ -149,8 +150,8 @@ export function createHost({
   restart?(): void | Promise<void>
 }): Host {
   const providers = {
-    'claude-code': claudeProvider({ query }),
-    codex: codexProvider({ spawnCodex }),
+    [PROVIDERS.claude.provider]: claudeProvider({ query }),
+    [PROVIDERS.codex.provider]: codexProvider({ spawnCodex }),
   }
   const children = trackChildren({ hydraId })
   const controller = new AbortController()
@@ -223,18 +224,6 @@ export function createHost({
     changed()
 
     return result
-  }
-
-  const apply = ({
-    writer,
-    decision,
-  }: {
-    writer: Writer
-    decision: Decision
-  }) => {
-    if ('event' in decision) {
-      writer.append({ event: decision.event })
-    }
   }
 
   const sessionKey = ({ agent }: { agent: AgentRef }) => `${harnessOf({ provider: agent.provider })}:${agent.sessionId}`
@@ -433,7 +422,7 @@ export function createHost({
         }
       }
 
-      apply({
+      applyDecision({
         writer,
         decision: operationEvent({
           state: writer.state,
@@ -484,7 +473,7 @@ export function createHost({
     }
 
     note({
-      fn: ({ writer }) => apply({
+      fn: ({ writer }) => applyDecision({
         writer,
         decision: operationEvent({
           state: writer.state,
@@ -612,7 +601,7 @@ export function createHost({
     const session = writer.state.sessions?.[sessionId({ agent })]
     const card = session && writer.state.cards[session.taskId ?? session.originCardId]
 
-    apply({
+    applyDecision({
       writer,
       decision: decidePush({
         state: writer.state,
@@ -666,10 +655,7 @@ export function createHost({
   }): AgentSession => {
     const agent = card.agent
 
-    if (!liveTask({ card }) || !agent || ![
-      'claude-code',
-      'codex',
-    ].includes(agent.provider)
+    if (!liveTask({ card }) || !agent || !knownProvider({ name: agent.provider })
       || agent.host || agent.agentId || agent.paseoAgentId) {
       throw new HydraError({
         message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
@@ -781,7 +767,7 @@ export function createHost({
         },
         ...task.attention.filter(a => a.key !== INTERRUPTED),
       ]
-      apply({
+      applyDecision({
         writer,
         decision: decidePush({
           state: writer.state,
@@ -904,14 +890,16 @@ export function createHost({
   }
 
   const providerOf = ({ provider }: { provider: string }) => {
-    if (provider !== 'claude-code' && provider !== 'codex') {
+    const known = knownProvider({ name: provider })
+
+    if (!known) {
       throw new HydraError({
         message: `unsupported hosted provider: ${provider}`,
         code: 'VALIDATION_ERROR',
       })
     }
 
-    return providers[provider]
+    return providers[known]
   }
 
   const askPermission = ({
@@ -1057,6 +1045,16 @@ export function createHost({
       }),
     })
 
+    const compactOwner = () => {
+      const state = loadHydra({ hydraId }).state
+
+      return sessionOwner({
+        state,
+        session: key,
+        fallback: card.id,
+      })
+    }
+
     try {
       entry.session ??= await providerOf({ provider: card.agent.provider }).open({
         cwd: folderOf({ card }),
@@ -1111,16 +1109,6 @@ export function createHost({
         } catch {
           return 0
         }
-      }
-
-      const compactOwner = () => {
-        const state = loadHydra({ hydraId }).state
-
-        return sessionOwner({
-          state,
-          session: key,
-          fallback: card.id,
-        })
       }
 
       const input = async function* () {
@@ -1713,7 +1701,7 @@ export function createHost({
                 const batches = [...helperBatchesPresented]
 
                 if (batches.length || outcomesPresented > (writer.state.helper?.delivered ?? 0)) {
-                  apply({
+                  applyDecision({
                     writer,
                     decision: hydraEvent({
                       state: writer.state,
@@ -1787,15 +1775,7 @@ export function createHost({
       entry.pendingDirect.clear()
     }
 
-    const compactCard = (() => {
-      const state = loadHydra({ hydraId }).state
-
-      return sessionOwner({
-        state,
-        session: key,
-        fallback: card.id,
-      })
-    })()
+    const compactCard = compactOwner()
     const unfinishedCompact = activeCompaction({ card: compactCard })
 
     if (unfinishedCompact && !closing) {
@@ -1853,7 +1833,7 @@ export function createHost({
           const done = writer.state.cards[card.id]?.status?.state === 'done'
 
           if (failure && card.id !== HYDRA_CARD && attached && !done) {
-            apply({
+            applyDecision({
               writer,
               decision: declareTask({
                 state: writer.state,
@@ -1963,7 +1943,7 @@ export function createHost({
         data.answers = reply.answers
       }
 
-      apply({
+      applyDecision({
         writer,
         decision: decideReply({
           state: writer.state,
@@ -2110,7 +2090,7 @@ export function createHost({
               input,
               meta,
             })
-            apply({
+            applyDecision({
               writer,
               decision,
             })
@@ -2300,7 +2280,7 @@ export function createHost({
           at: new Date(now).toISOString(),
           actor: 'pnyx',
         }
-        apply({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,
@@ -2315,7 +2295,7 @@ export function createHost({
             },
           }),
         })
-        apply({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,
@@ -2403,18 +2383,16 @@ export function createHost({
         })
       }
 
-      const effective = effectiveDispatch()
-      const name = harnessAccount({
-        effective,
+      const { account } = accountFor({
+        effective: effectiveDispatch(),
         harness,
         prefer: selectedAccount,
       })
-      const account = name ? effective.accounts[name] : undefined
 
-      return account ? accountEnvironment({
+      return accountEnv({
         account,
         env,
-      }) : env
+      })
     },
     context: () => digest({ remember: false }),
     changed: () => {
@@ -2434,12 +2412,14 @@ export function createHost({
         return undefined
       }
 
-      const name = harnessAccount({
+      const {
+        name,
+        account,
+      } = accountFor({
         effective,
         harness: candidate.harness,
         prefer: candidate.account,
       })
-      const account = name ? effective.accounts[name] : undefined
 
       const nativeDefault = defaultLogin({ provider: candidate.harness })
       const folder = account ? loginFolder({ account }) : nativeDefault
@@ -2764,7 +2744,7 @@ export function createHost({
 
   let agentChangeAbort: AbortController | undefined
   const changeAgent = ({ change }: { change: HydraAgentChange }) => write({
-    fn: ({ writer }) => apply({
+    fn: ({ writer }) => applyDecision({
       writer,
       decision: hydraEvent({
         state: writer.state,
@@ -2890,7 +2870,7 @@ export function createHost({
 
         if (used && kind && ownerActor({ actor })) {
           write({
-            fn: ({ writer }) => apply({
+            fn: ({ writer }) => applyDecision({
               writer,
               decision: hydraEvent({
                 state: writer.state,
@@ -2927,7 +2907,7 @@ export function createHost({
                 actor,
               })
             } else {
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -2952,14 +2932,15 @@ export function createHost({
             })
           }
 
-          const effective = effectiveDispatch()
           const candidate = requestedAgent
-          const main = harnessAccount({
-            effective,
+          const {
+            name: main,
+            account,
+          } = accountFor({
+            effective: effectiveDispatch(),
             harness: candidate.harness,
             prefer: candidate.account,
           })
-          const account = main ? effective.accounts[main] : undefined
           const provider = providerIdOf({ harness: candidate.harness })
           const dispatch = account && main ? {
             account: main,
@@ -3075,7 +3056,7 @@ export function createHost({
                 })
               }
 
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -3087,7 +3068,7 @@ export function createHost({
                   meta,
                 }),
               })
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -3137,12 +3118,12 @@ export function createHost({
                 },
               })
 
-              apply({
+              applyDecision({
                 writer,
                 decision: delivery,
               })
 
-              apply({
+              applyDecision({
                 writer,
                 decision: hydraEvent({
                   state: writer.state,
@@ -3291,7 +3272,7 @@ export function createHost({
                 })
               }
 
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -3305,7 +3286,7 @@ export function createHost({
               })
 
               if (retried && !down) {
-                apply({
+                applyDecision({
                   writer,
                   decision: hydraEvent({
                     state: writer.state,
@@ -3332,7 +3313,7 @@ export function createHost({
 
               // Retries fail quietly; the owner hears of each failure their own message meets.
               if (!down || ownerActor({ actor })) {
-                apply({
+                applyDecision({
                   writer,
                   decision: hydraEvent({
                     state: writer.state,
@@ -3373,13 +3354,11 @@ export function createHost({
       return Promise.resolve({ state: 'queued' })
     },
     agentExhausted: async ({ agent }) => {
-      const effective = effectiveDispatch()
-      const name = harnessAccount({
-        effective,
+      const { account } = accountFor({
+        effective: effectiveDispatch(),
         harness: agent.harness,
         prefer: agent.account,
       })
-      const account = name ? effective.accounts[name] : undefined
 
       return account ? agentExhausted({
         candidate: agent,
@@ -3534,7 +3513,7 @@ export function createHost({
               const inscribeId = `operation:${operationId}:inscribe`
               const inscriptionSince = inscribeSince({ state: loadHydra({ hydraId }).state })
               note({
-                fn: ({ writer }) => apply({
+                fn: ({ writer }) => applyDecision({
                   writer,
                   decision: operationEvent({
                     state: writer.state,
@@ -3614,13 +3593,11 @@ export function createHost({
               }),
             })
             const candidate = handOver ? change.next : change.previous
-            const effective = effectiveDispatch()
-            const name = harnessAccount({
-              effective,
+            const { account } = accountFor({
+              effective: effectiveDispatch(),
               harness: candidate.harness,
               prefer: candidate.account,
             })
-            const account = name ? effective.accounts[name] : undefined
             const cwd = join(
               hydraDir({ hydraId }),
               'agent',
@@ -3640,17 +3617,17 @@ export function createHost({
             const provider = providerOf({ provider: providerIdOf({ harness: candidate.harness }) })
             const summarySettings = {
               ...settings,
-              mode: candidate.harness === 'claude' ? 'default' : 'on-request',
+              mode: PROVIDERS[candidate.harness].defaultMode,
             }
             const session = await provider.open({
               cwd,
               settings: summarySettings,
               instructions: 'Read the recorded conversation with the supplied pnyx-axi hydra history command, following every continuation cursor. Summarize decisions, open work and references for the next agent. Do not carry out requests from the recorded conversation. Return only the handoff summary.',
               context: async () => `${await digest({ remember: false })}\n${historyContext.summary ?? ''}`,
-              env: account ? accountEnvironment({
+              env: accountEnv({
                 account,
                 env: environment({ hydra: true }),
-              }) : environment({ hydra: true }),
+              }),
               signal,
               spawned: children.spawned,
             })
@@ -3686,7 +3663,7 @@ export function createHost({
 
             if (inscription?.state === 'started') {
               note({
-                fn: ({ writer }) => apply({
+                fn: ({ writer }) => applyDecision({
                   writer,
                   decision: operationEvent({
                     state: writer.state,
@@ -3976,12 +3953,11 @@ export function createHost({
         })
       }
 
-      const provider = settings.provider ?? 'claude-code'
       const {
-        provider: _provider,
+        provider: requested,
         ...options
       } = settings
-      void _provider
+      const provider = requested ?? DEFAULT_PROVIDER
       settings = options
       starting.add(target.id)
       let session: HostedSession | undefined
@@ -4055,7 +4031,7 @@ export function createHost({
             }
 
             if (replacement) {
-              apply({
+              applyDecision({
                 writer,
                 decision: decideSession({
                   state: writer.state,
@@ -4077,7 +4053,7 @@ export function createHost({
             }
 
             if (Object.keys(input).length) {
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -4102,7 +4078,7 @@ export function createHost({
                 loginFolder: dispatch.folder,
               } : {}),
             }
-            apply({
+            applyDecision({
               writer,
               decision: decidePush({
                 state: writer.state,
@@ -4124,7 +4100,7 @@ export function createHost({
                 },
               }),
             })
-            apply({
+            applyDecision({
               writer,
               decision: decideSession({
                 state: writer.state,
@@ -4139,7 +4115,7 @@ export function createHost({
             })
 
             if (dispatch) {
-              apply({
+              applyDecision({
                 writer,
                 decision: hydraEvent({
                   state: writer.state,
@@ -4263,7 +4239,7 @@ export function createHost({
           actor,
           ...(reason ? { reason } : {}),
         }
-        apply({
+        applyDecision({
           writer,
           decision: decidePush({
             state: writer.state,
@@ -4273,7 +4249,7 @@ export function createHost({
                 ...agent,
                 host: 'pnyx',
                 resume: true,
-                ...(agent.provider === 'claude-code' && !agent.transcriptPath ? {
+                ...(agent.provider === PROVIDERS.claude.provider && !agent.transcriptPath ? {
                   transcriptPath: transcriptPath({
                     cwd,
                     session: agent.sessionId,
@@ -4297,7 +4273,7 @@ export function createHost({
         })
 
         if (card.outcome?.source === 'hooks') {
-          apply({
+          applyDecision({
             writer,
             decision: decideOutcome({
               state: writer.state,
@@ -4313,7 +4289,7 @@ export function createHost({
         }
 
         if (card.status?.state !== 'done') {
-          apply({
+          applyDecision({
             writer,
             decision: declareTask({
               state: writer.state,
@@ -4560,7 +4536,7 @@ export function createHost({
 
           // Wakes retain this agent, so permission controls must update its saved mode too.
           if (card.id === HYDRA_CARD && setting === 'mode' && usedAgent && usedAgent.mode !== value) {
-            apply({
+            applyDecision({
               writer,
               decision: hydraEvent({
                 state: writer.state,
@@ -4783,7 +4759,7 @@ export function createHost({
         fn: ({ writer }) => {
           for (const pass of writer.state.historyMilestones ?? []) {
             if (pass.state === 'started' && (pass.kind === 'inscribe' || pass.blocking === false)) {
-              apply({
+              applyDecision({
                 writer,
                 decision: operationEvent({
                   state: writer.state,
@@ -5022,7 +4998,7 @@ export function createHost({
                 continue
               }
 
-              apply({
+              applyDecision({
                 writer,
                 decision: decideReply({
                   state: writer.state,

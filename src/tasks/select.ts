@@ -1,6 +1,11 @@
 import type { Card } from './model.ts'
 import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+
+export function isManagedTask({ card }: { card: Card }): boolean {
+  return Boolean(card.automaticTask) || card.id === HYDRA_CARD
+}
 
 export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true && !card.automaticTask

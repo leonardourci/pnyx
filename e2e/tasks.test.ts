@@ -42,12 +42,54 @@ function followsProject({ prompt }: { prompt: string }): void {
 }
 
 test(
-  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, and the card survives a restart',
+  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, the card survives a restart, and Hydra\'s own card refuses task-only commands',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'mobile' })
     const hydraAgent = await s.chat({ text: 'Fix the login crash on mobile.' })
     const hydra = s.as({ agent: hydraAgent })
+    assert.deepEqual(
+      [
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hold',
+            '$hydra',
+            '--reason',
+            'discuss first',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'remind',
+            '$hydra',
+            'in 1 hour',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide-after',
+            '$hydra',
+            '24',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide',
+            '$hydra',
+          ],
+        }),
+      ],
+      [
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+      ],
+    )
     const create = [
       'task',
       'create',
@@ -384,9 +426,18 @@ test(
         'Comparing options',
       ],
     })
-    assert.equal(
-      s.task({ key: 'research' }).column,
-      s.column({ role: 'parked' }),
+    const declared = s.events().find(event => event.type === 'task.declared' && event.cardId === s.task({ key: 'research' }).id)
+    assert.deepEqual(
+      [
+        s.task({ key: 'research' }).column,
+        s.task({ key: 'research' }).updatedAt,
+        s.task({ key: 'research' }).updatedSeq,
+      ],
+      [
+        s.column({ role: 'parked' }),
+        declared?.at,
+        declared?.seq,
+      ],
     )
     const question = await run({
       args: [
@@ -1049,6 +1100,66 @@ test(
     assert.equal(
       s.events().filter(event => event.type === 'task.copy' && event.cardId === task.id).length,
       1,
+    )
+  },
+)
+
+test(
+  'a task started through the Hydra command runs it in the task folder and records the launch, and without a command the start is refused',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'by-command' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Run the Hydra command',
+        '--key',
+        'by-command',
+        '--folder',
+        folder,
+      ],
+    })
+    const start = [
+      'task',
+      'start',
+      'by-command',
+      '--via',
+      'command',
+    ]
+    assert.equal(
+      await s.ownerRefused({ args: start }),
+      'NO_COMMAND',
+    )
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--command',
+        'touch "$PNYX_FOLDER/ran"',
+      ],
+    })
+    await s.owner({ args: start })
+    await until({
+      what: 'the Hydra command to run in the task folder',
+      check: () => existsSync(join(
+        folder,
+        'ran',
+      )),
+    })
+    const card = s.task({ key: 'by-command' })
+    assert.deepEqual(
+      [
+        card.launch?.via,
+        card.launch?.command,
+        card.status?.state,
+      ],
+      [
+        'command',
+        'touch "$PNYX_FOLDER/ran"',
+        'working',
+      ],
     )
   },
 )

@@ -1,11 +1,12 @@
 import { sameProjectPath } from '#projects/identity.ts'
+import { taskBranch } from '#projects/git.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { execFile } from 'node:child_process'
 import { runProcess } from '#app/run-process.ts'
 import { statSync, realpathSync } from 'node:fs'
 import { promisify } from 'node:util'
-import type { Decision, HydraState } from '#app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
@@ -14,7 +15,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import type { Card } from '#tasks/model.ts'
 import type { LinkState } from '#tasks/delivery/model.ts'
 import type { AgentSession, SessionEvent } from './model.ts'
-import { taskPrompt } from './start.ts'
+import { taskPrompt } from './worker-brief.ts'
 import { confirmedMerge } from '#tasks/delivery/confirmed.ts'
 import { mergeObservation } from '#tasks/delivery/merge-observation.ts'
 import { sendReply } from './reply.ts'
@@ -24,8 +25,10 @@ import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
-import { withWriter, type Writer } from '#app/writer.ts'
+import { withWriter } from '#app/writer.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './queue.ts'
+import { pendingPermissions } from './permission-rules.ts'
+import { applyDecision } from '#app/decision.ts'
 
 const GIT_TIMEOUT_MS = 30_000
 const exec = promisify(execFile)
@@ -33,18 +36,6 @@ const meta = () => ({
   actor: 'pnyx',
   at: new Date().toISOString(),
 })
-
-function append({
-  writer,
-  decision,
-}: {
-  writer: Writer
-  decision: Decision
-}) {
-  if ('event' in decision) {
-    writer.append({ event: decision.event })
-  }
-}
 
 async function git({
   cwd,
@@ -112,7 +103,7 @@ function releaseQueue({
         state: writer.state,
         session,
       })) {
-        append({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,
@@ -421,7 +412,7 @@ async function refreshLinks({
               })
             }
 
-            append({
+            applyDecision({
               writer,
               decision: decideLink({
                 state: writer.state,
@@ -556,7 +547,7 @@ export async function advanceQueues({
     const current = state.cards[session!.taskId!]!
 
     if (session!.activity === 'working' || session!.attention.some(a => a.blocking && !a.answered)
-      || current.permissions?.some(p => p.status === 'pending')) {
+      || pendingPermissions({ card: current }).length > 0) {
       continue
     }
 
@@ -616,7 +607,10 @@ export async function advanceQueues({
         continue
       }
 
-      const branch = `pnyx/${hydraId}-${next.id}`
+      const branch = taskBranch({
+        hydraId,
+        task: next.id,
+      })
       const brief = await taskPrompt({
         hydraId,
         card: next,

@@ -9,7 +9,7 @@ import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ReplyState } from './model.ts'
 import { withWriter } from '#app/writer.ts'
-import { fmNote } from '#integrations/firstmate/reply.ts'
+import { fmNote, noteRequestId } from '#integrations/firstmate/reply.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { sendReply, type ReplyRequest } from './reply.ts'
 
@@ -155,7 +155,11 @@ export async function sendTaskMessage({
     if (target.home && (hydra.state === 'queued' || hydra.state === 'failed')) {
       hydra = await fmNote({
         home: target.home,
-        requestId: `pnyx:${hydraId}:${target.id}:${reply}`,
+        requestId: noteRequestId({
+          hydraId,
+          card: target.id,
+          reply,
+        }),
         text: `Message on task ${target.id}: ${target.title}\n\n${[
           request.text,
           target.context,

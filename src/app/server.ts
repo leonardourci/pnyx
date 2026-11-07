@@ -1,5 +1,5 @@
 import { AxiError } from 'axi-sdk-js'
-import { providerIdOf } from '#workers/providers.ts'
+import { DEFAULT_HARNESS, HARNESSES, knownHarness, providerIdOf } from '#workers/providers.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { commandTimeout } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -37,7 +37,8 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { indexedThrough, search as oracleSearch } from '#oracle/index.ts'
+import { search as oracleSearch } from '#oracle/search.ts'
+import { indexedThrough } from '#oracle/status.ts'
 import { indexRuns } from '#oracle/index-runs.ts'
 import { replyRoute } from '#workers/reply-route.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
@@ -65,7 +66,7 @@ import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { hydraIdentity, localToken, offerHost, readServer, socketPath } from './server-state.ts'
+import { hydraIdentity, localToken, offerHost, socketPath } from './server-state.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
@@ -459,7 +460,7 @@ export async function mountOwnedHydra({
         ...card.agent,
         sessionId: card.agent?.sessionId ?? '',
         cwd,
-        provider: provider ?? card.agent?.provider ?? 'claude',
+        provider: provider ?? card.agent?.provider ?? DEFAULT_HARNESS,
       },
     }
   }
@@ -471,10 +472,7 @@ export async function mountOwnedHydra({
       return
     }
 
-    await Promise.all([
-      'claude',
-      'codex',
-    ].map(provider => catalogIndex.read({
+    await Promise.all(HARNESSES.map(provider => catalogIndex.read({
       card: catalogCard({
         card,
         provider,
@@ -1883,9 +1881,9 @@ export async function mountOwnedHydra({
             }),
           )
         } else if (name === 'models') {
-          const harness = args[0]
+          const harness = knownHarness({ name: args[0] })
 
-          if (args.length < 1 || args.length > 2 || (harness !== 'claude' && harness !== 'codex')) {
+          if (args.length < 1 || args.length > 2 || !harness) {
             throw new HydraError({
               message: 'models expects claude or codex and an optional account name',
               code: 'VALIDATION_ERROR',
@@ -2876,12 +2874,3 @@ export const SERVE_OPTIONS = {
     multiple: true,
   },
 } as const
-
-// A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
-export { DEFAULT_PORT } from './server-state.ts'
-
-export async function serverPids(): Promise<number[]> {
-  const info = await readServer({ hydraId: 'default' })
-
-  return info ? [info.pid] : []
-}

@@ -7,8 +7,8 @@ import { HARNESSES, harnessOf, providerIdOf, type ProviderId } from './providers
 import type { Host } from '#app/host-types.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { accountEnvironment } from './dispatch.ts'
-import { harnessAccount } from './account-choice.ts'
+import { accountEnv } from './dispatch.ts'
+import { accountFor } from './account-choice.ts'
 import { sessionId } from './session-attachments.ts'
 
 const modelsPath = () => join(
@@ -240,17 +240,15 @@ export function createCatalogs({
     harness,
     account: selectedAccount,
   }) => {
-    const effective = effectiveDispatch()
-    const main = harnessAccount({
-      effective,
+    const { account } = accountFor({
+      effective: effectiveDispatch(),
       harness,
       prefer: selectedAccount,
     })
-    const account = main ? effective.accounts[main] : undefined
-    const env = account ? accountEnvironment({
+    const env = accountEnv({
       account,
       env: environment(),
-    }) : environment()
+    })
 
     const key = `${harness}:${account ? loginFolder({ account }) : ''}`
     let catalog = modelCatalogs.get(key)

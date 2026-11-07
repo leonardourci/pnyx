@@ -18,7 +18,7 @@ import { applyDependencies } from '#tasks/dependencies.ts'
 import { applyQueue } from '#workers/queue.ts'
 import { applyReminder } from '#tasks/reminders.ts'
 import { applyPermission } from '#workers/permission-rules.ts'
-import { applyAsk, applyAskChoice } from '#tasks/questions.ts'
+import { applyAsk, applyAskChoice } from '#tasks/ask-reducer.ts'
 import { applyHelper } from '#routine-helper/state.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from '#workers/session-attachments.ts'
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from '#tasks/events.ts'
@@ -26,8 +26,9 @@ import { isStaleLink } from '#tasks/delivery/events.ts'
 import { requestId } from '#workers/answers.ts'
 import type { Reply } from '#workers/model.ts'
 import { refreshDone } from '#tasks/retention-rules.ts'
+import { touch } from '#tasks/touch.ts'
 
-export function applyHydra({
+function applyHydra({
   state,
   event,
 }: {
@@ -169,9 +170,10 @@ export function applyHydra({
         card.project = event.data.after
       }
 
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     return true
@@ -207,9 +209,10 @@ export function applyHydra({
         delete card.hold
       }
 
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     return true
@@ -223,9 +226,10 @@ export function applyHydra({
         ...(card.ask ?? []),
         structuredClone(event.data),
       ]
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     return true
@@ -263,9 +267,10 @@ export function applyHydra({
         }
       }
 
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     return true
@@ -354,9 +359,10 @@ export function applyHydra({
       }
 
       if (placement) {
-        card.revision++
-        card.updatedSeq = event.seq
-        card.updatedAt = event.at
+        touch({
+          card,
+          event,
+        })
       }
     }
 
@@ -488,9 +494,10 @@ export function applyHydra({
       delete card.landing
     }
 
-    card.revision++
-    card.updatedSeq = event.seq
-    card.updatedAt = event.at
+    touch({
+      card,
+      event,
+    })
 
     return true
   }
@@ -517,9 +524,10 @@ export function applyHydra({
         card.mirror = structuredClone(event.data)
       }
 
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
       refreshTasks({
         state,
         ids: [card.id],
@@ -544,9 +552,10 @@ export function applyHydra({
         }
       }
 
-      card.revision++
-      card.updatedAt = event.at
-      card.updatedSeq = event.seq
+      touch({
+        card,
+        event,
+      })
     }
 
     return true
@@ -584,9 +593,10 @@ export function applyHydra({
         }
       }
 
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     return true
@@ -698,9 +708,10 @@ function apply({
         placed.column = placement.after
       }
 
-      placed.revision += 1
-      placed.updatedSeq = event.seq
-      placed.updatedAt = event.at
+      touch({
+        card: placed,
+        event,
+      })
     }
 
     refreshTasks({ state })
@@ -748,9 +759,10 @@ function apply({
     })
 
     if (card && event.data.before !== card.id) {
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     return true

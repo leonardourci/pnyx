@@ -125,22 +125,46 @@ test(
   },
 )
 
+// fs.watchFile is mocked: the sharing is under test, not how soon Node's stat poll notices a write.
 test(
-  'shared stat subscribers follow replacements and stop receiving changes when closed',
-  async t => {
-    const root = fs.mkdtempSync(join(
-      tmpdir(),
-      'pnyx-stat-watch-',
-    ))
+  'stat subscribers share one watch, each hears a change, and a closed one stops hearing them',
+  t => {
     const path = join(
-      root,
+      tmpdir(),
+      'pnyx-stat-watch',
       'transcript',
     )
-    fs.writeFileSync(
-      path,
-      'first',
+    const listeners: (() => void)[] = []
+    const released: (() => void)[] = []
+    t.mock.method(
+      fs,
+      'watchFile',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.watchFile's signature.
+      (
+        _path: string,
+        _options: unknown,
+        listener: () => void,
+      ) => {
+        listeners.push(listener)
+      },
     )
-    const seen = new Map<number, string>()
+    t.mock.method(
+      fs,
+      'unwatchFile',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.unwatchFile's signature.
+      (
+        _path: string,
+        listener: () => void,
+      ) => {
+        released.push(listener)
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    })
+    const heard: number[] = []
     const watchers = Array.from(
       { length: SUBSCRIBERS },
       (
@@ -149,91 +173,78 @@ test(
       ) => pollPath({
         path,
         interval: POLL_MS,
-        changed: () => seen.set(
-          index,
-          fs.readFileSync(
-            path,
-            'utf8',
-          ),
-        ),
+        changed: () => heard.push(index),
       }),
     )
-    t.after(() => {
-      watchers.forEach(watcher => watcher.close())
-      fs.rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    })
-    // fs.watchFile reads its first stat asynchronously, so a write before that reading is its baseline, not a change;
-    // writing again until every subscriber has seen one keeps the test from racing that first reading.
-    await until({
-      check: () => {
-        if (seen.size < SUBSCRIBERS) {
-          fs.writeFileSync(
-            path,
-            'second',
-          )
-        }
-
-        return seen.size === SUBSCRIBERS
-      },
-    })
-    assert.deepEqual(
-      new Set(seen.values()),
-      new Set(['second']),
-    )
-    watchers[0]!.close()
-    watchers[0]!.close()
-    seen.clear()
-    fs.unlinkSync(path)
-    fs.writeFileSync(
-      path,
-      'recreated',
-    )
-    await until({ check: () => seen.size === SUBSCRIBERS - 1 })
     assert.equal(
-      seen.has(0),
-      false,
+      listeners.length,
+      1,
+    )
+    listeners[0]!()
+    assert.deepEqual(
+      heard,
+      Array.from(
+        { length: SUBSCRIBERS },
+        (
+          _,
+          index,
+        ) => index,
+      ),
+    )
+
+    watchers[0]!.close()
+    watchers[0]!.close()
+    heard.length = 0
+    listeners[0]!()
+    assert.deepEqual(
+      heard,
+      Array.from(
+        { length: SUBSCRIBERS - 1 },
+        (
+          _,
+          index,
+        ) => index + 1,
+      ),
     )
     assert.deepEqual(
-      new Set(seen.values()),
-      new Set(['recreated']),
+      released,
+      [],
     )
+
     watchers.forEach(watcher => watcher.close())
-    seen.clear()
+    assert.deepEqual(
+      released,
+      [listeners[0]],
+    )
 
     for (let cycle = 0; cycle < SUBSCRIBERS; cycle++) {
-      const owner = pollPath({
+      pollPath({
         path,
         interval: POLL_MS,
         changed: () => {},
-      })
-      owner.close()
+      }).close()
     }
 
-    let reopened = ''
+    assert.equal(
+      listeners.length,
+      1 + SUBSCRIBERS,
+    )
+    assert.deepEqual(
+      released,
+      listeners,
+    )
+    heard.length = 0
     const next = pollPath({
       path,
       interval: POLL_MS,
-      changed: () => reopened = fs.readFileSync(
-        path,
-        'utf8',
-      ),
+      changed: () => heard.push(-1),
     })
     t.after(() => next.close())
     watchers[0]!.close()
-    fs.writeFileSync(
-      path,
-      'after reopening',
-    )
-    await until({ check: () => reopened === 'after reopening' })
-    assert.equal(
-      seen.size,
-      0,
+    listeners.at(-1)!()
+    assert.deepEqual(
+      heard,
+      [-1],
     )
   },
 )

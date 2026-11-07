@@ -3,7 +3,10 @@ import { findCard } from '#tasks/push-rules.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
-import { KINDS, SNIPPETS, indexStatus, rebuildIndex, search, updateIndex, type Hit, type IndexResult, type Kind, type Match } from './index.ts'
+import { KINDS, type Hit, type IndexResult, type Kind, type Match } from './model.ts'
+import { rebuildIndex, updateIndex } from './index.ts'
+import { SNIPPETS, search } from './search.ts'
+import { indexStatus } from './status.ts'
 
 const LIMIT = 20
 const MAX = 100

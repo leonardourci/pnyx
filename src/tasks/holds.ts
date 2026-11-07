@@ -1,12 +1,13 @@
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from './model.ts'
-import { askAnswer, openAsks } from './questions.ts'
+import { askAnswer } from './ask-decide.ts'
+import { openAsks } from './ask-state.ts'
+import { isManagedTask } from './select.ts'
 
 export function requireUnheld({ card }: { card: Card }): void {
   if (card.hold) {
@@ -36,7 +37,7 @@ export function decideHold({
     ref,
   })
 
-  if (card.id === HYDRA_CARD || card.automaticTask) {
+  if (isManagedTask({ card })) {
     throw new HydraError({
       message: 'hold a task card',
       code: 'VALIDATION_ERROR',

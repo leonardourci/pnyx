@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { providerIdOf } from './providers.ts'
+import { knownHarness, providerIdOf } from './providers.ts'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from './controls.ts'
@@ -62,6 +62,19 @@ export interface DispatchChoice {
 }
 
 export const AUTH_ENV = /^(ANTHROPIC_|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR$|OPENAI_|CODEX_HOME$|CODEX_API_KEY$)/
+
+export function accountEnv({
+  account,
+  env,
+}: {
+  account: Account | undefined
+  env: NodeJS.ProcessEnv
+}): NodeJS.ProcessEnv {
+  return account ? accountEnvironment({
+    account,
+    env,
+  }) : env
+}
 
 export function accountEnvironment({
   account,
@@ -457,7 +470,7 @@ export async function chooseCandidate({
     })
   }
 
-  if (harness && harness !== 'claude' && harness !== 'codex') {
+  if (harness && !knownHarness({ name: harness })) {
     throw new HydraError({
       message: `unknown harness: ${harness}`,
       code: 'VALIDATION_ERROR',

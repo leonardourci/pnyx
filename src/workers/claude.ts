@@ -180,7 +180,6 @@ export function claudeProvider({
 }): Provider {
   return {
     compact: true,
-    readUsage: readClaudeUsage,
     async models({
       cwd,
       env,
