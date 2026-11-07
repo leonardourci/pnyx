@@ -55,7 +55,6 @@ const EMPTY_CHAT_QUEUE: HydraChatQueue = {
   compactionRunning: false,
   upgradeRunning: false,
   compactInputs: [],
-  received: {},
   hosted: false,
   working: false,
   through: 0,
@@ -207,7 +206,7 @@ export function HydraChat({
   const chatQueue = queue.chat ?? EMPTY_CHAT_QUEUE
   const held = new Set(chatQueue.held)
   const pending = sending.filter(item => {
-    const deliveredAt = chatQueue.received[item.id]
+    const deliveredAt = state.eventIds[item.id]
     const recorded = deliveredAt !== undefined
     const rendered = (deliveredAt ?? 0) <= (page?.conversation?.through ?? 0)
 
