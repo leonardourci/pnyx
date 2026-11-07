@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
-import { BACKGROUND_CATCHUPS, INDEX_DELAY_MS, indexRuns } from './index-runs.ts'
+import { BACKGROUND_CATCHUPS, backgroundCatchups, INDEX_DELAY_MS, indexRuns } from './index-runs.ts'
 
 // Catch-ups that finish only when the test says so, on mocked timers.
 function fixture({ t }: { t: TestContext }) {
@@ -220,5 +220,23 @@ test(
       `${h.inFlight.size} catch-ups in flight, limit ${BACKGROUND_CATCHUPS}`,
     )
     await h.drain()
+  },
+)
+
+test(
+  'background catch-ups get half the CPUs and at least one',
+  () => {
+    assert.deepEqual(
+      [
+        1,
+        2,
+        8,
+      ].map(cpus => backgroundCatchups({ cpus })),
+      [
+        1,
+        1,
+        4,
+      ],
+    )
   },
 )

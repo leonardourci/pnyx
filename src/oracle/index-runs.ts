@@ -6,10 +6,14 @@ export const INDEX_DELAY_MS = 5000
 // Background catch-ups across every Hydra this process serves share half the CPUs: a start
 // mounts every Hydra at once, and each one launching its index process together starves the
 // server's own work. A query waiting on its index never queues here.
-export const BACKGROUND_CATCHUPS = Math.max(
-  1,
-  Math.floor(availableParallelism() / 2),
-)
+export function backgroundCatchups({ cpus }: { cpus: number }): number {
+  return Math.max(
+    1,
+    Math.floor(cpus / 2),
+  )
+}
+
+export const BACKGROUND_CATCHUPS = backgroundCatchups({ cpus: availableParallelism() })
 let active = 0
 const queued: (() => void)[] = []
 
