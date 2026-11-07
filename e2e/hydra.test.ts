@@ -6,6 +6,8 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
+import { LATEST_DELAY_MS } from '#app/latest-feed.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -1678,7 +1680,7 @@ test(
 )
 
 test(
-  'the Hydra thread keeps what it loaded when an older page arrives, and pushes a newer version after a change',
+  'the Hydra thread keeps what it loaded when an older page arrives, skips unrelated card events, and pushes a newer version when its conversation changes',
   async t => {
     const s = await pnyx.scenario()
     // Long enough to split into more parts than one page holds.
@@ -1734,6 +1736,10 @@ test(
       ],
     )
 
+    const newer = () => page.threads.filter(thread => thread.conversation!.version!
+      > older.conversation!.version!)
+
+    // A card Hydra's conversation does not show leaves the thread as it was.
     await s.owner({
       args: [
         'task',
@@ -1742,17 +1748,35 @@ test(
         'Ship the plan',
       ],
     })
+    await delay(3 * LATEST_DELAY_MS)
+    assert.deepEqual(
+      newer(),
+      [],
+    )
+
+    pnyx.claude.plan({
+      text: 'Ship it',
+      reply: 'Shipping now.',
+    })
+    await send({
+      s,
+      text: 'Ship it',
+      id: 'ship',
+    })
     const pushed = await until({
-      what: 'a newer Hydra thread after the change',
-      check: () => page.threads.find(thread => thread.conversation!.version!
-        > older.conversation!.version!),
+      what: 'a newer Hydra thread with the new message',
+      check: () => newer().find(thread => thread.conversation!.entries
+        .some(entry => entry.text === 'Ship it')),
     })
     assert.equal(
       pushed.conversation!.stream,
       older.conversation!.stream,
     )
     assert.deepEqual(
-      conversation({ page: pushed }),
+      conversation({ page: pushed }).slice(
+        0,
+        2,
+      ),
       conversation({ page: older }),
     )
   },

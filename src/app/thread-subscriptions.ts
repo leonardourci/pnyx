@@ -12,7 +12,7 @@ import type { Card } from '#tasks/model.ts'
 import { background } from './background.ts'
 import type { createHost } from './host.ts'
 import { LATEST_DELAY_MS } from './latest-feed.ts'
-import type { HydraState } from './model.ts'
+import type { EventType, HydraEvent, HydraState } from './model.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { watchPath, type PathWatch } from './watch.ts'
 
@@ -27,7 +27,38 @@ export type Subscription = {
   paseo?: string
   watcher?: { close(): unknown }
   native?: Promise<PaseoConversation>
+  // The Hydra thread last sent: its card titles, and the page apart from the seq it was read at.
+  titles?: Record<string, string>
+  sent?: string
 }
+
+// The events that can change what hydraThreadView shows: anything on Hydra's own card, its messages,
+// operations and settings, the columns and view, the compactions and upgrades that hold messages,
+// and a new title for a card it names.
+export function changesHydraThread({
+  event,
+  sub,
+  state,
+}: {
+  event: HydraEvent
+  sub: Subscription
+  state: HydraState
+}): boolean {
+  return event.cardId === HYDRA_CARD
+    || HYDRA_THREAD_PREFIXES.some(prefix => event.type.startsWith(prefix))
+    || HYDRA_THREAD_EVENTS.includes(event.type)
+    || state.cards[event.cardId]?.title !== sub.titles?.[event.cardId]
+}
+
+const HYDRA_THREAD_PREFIXES = [
+  'hydra.',
+  'board.',
+]
+const HYDRA_THREAD_EVENTS: readonly EventType[] = [
+  'chat.message',
+  'session.compaction',
+  'pnyx.upgrade',
+]
 
 // Each tab's open conversation page: the transcript or Paseo conversation it follows and the debounced refresh it gets.
 export function createThreadSubscriptions({
@@ -65,11 +96,14 @@ export function createThreadSubscriptions({
     sub,
     page,
     older = false,
+    push = false,
   }: {
     sub: Subscription
     page: ThreadPage
     older?: boolean
-  }) => {
+    // A push the tab did not ask for is skipped when the page has not changed.
+    push?: boolean
+  }): ThreadPage | undefined => {
     if (page.card !== HYDRA_CARD) {
       return page
     }
@@ -89,6 +123,24 @@ export function createThreadSubscriptions({
         card: HYDRA_CARD,
       }).thinking,
     })
+
+    const sent = JSON.stringify({
+      ...prepared,
+      conversation: {
+        ...prepared.conversation,
+        through: 0,
+      },
+    })
+
+    if (push && sent === sub.sent) {
+      return undefined
+    }
+
+    sub.sent = sent
+    sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
+      card.id,
+      card.title,
+    ]))
 
     if (!sub.view) {
       sub.view = {
@@ -156,16 +208,23 @@ export function createThreadSubscriptions({
                       before,
                     }),
                   }).then(
-                    thread => {
-                      if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
+                    page => {
+                      if (map.get(ws) !== sub || ws.readyState !== ws.OPEN) {
+                        return
+                      }
+
+                      const thread = prepareThread({
+                        sub,
+                        page,
+                        push: true,
+                      })
+
+                      if (thread) {
                         send({
                           ws,
                           message: {
                             type: 'thread',
-                            thread: prepareThread({
-                              sub,
-                              page: thread,
-                            }),
+                            thread,
                           },
                         })
                       }
@@ -178,24 +237,29 @@ export function createThreadSubscriptions({
               }
 
               try {
-                send({
-                  ws,
-                  message: {
-                    type: 'thread',
-                    thread: prepareThread({
-                      sub,
-                      page: agents().thread({
-                        card,
-                        page: readThread({
-                          hydraId,
-                          state: state(),
-                          card,
-                          homes: homes(),
-                        }),
-                      }),
+                const thread = prepareThread({
+                  sub,
+                  page: agents().thread({
+                    card,
+                    page: readThread({
+                      hydraId,
+                      state: state(),
+                      card,
+                      homes: homes(),
                     }),
-                  },
+                  }),
+                  push: true,
                 })
+
+                if (thread) {
+                  send({
+                    ws,
+                    message: {
+                      type: 'thread',
+                      thread,
+                    },
+                  })
+                }
               } catch {
                 unavailable()
               }
@@ -236,7 +300,7 @@ export function createThreadSubscriptions({
         sub,
         page: latest,
         older: before !== undefined,
-      })
+      })!
     }
 
     const page = await paseoHistory({
@@ -256,7 +320,7 @@ export function createThreadSubscriptions({
       sub,
       page,
       older: before !== undefined,
-    })
+    })!
   }
 
   const bindThread = ({
