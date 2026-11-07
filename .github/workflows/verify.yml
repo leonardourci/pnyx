@@ -1,8 +1,8 @@
 name: Verify
 
-# It runs for every PR, including a stacked PR whose base is another PR's branch. The checker
-# always comes from the default branch, so a pull request cannot change the check that judges
-# it. It reads the PR through the API only and never checks out or runs PR code.
+# The Verify check runs for every PR, including a stacked PR whose base is another PR's branch.
+# Its checker scripts are checked out from the default branch, so a PR's base branch cannot
+# supply them. It reads the PR through the API only and never checks out or runs PR code.
 on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
