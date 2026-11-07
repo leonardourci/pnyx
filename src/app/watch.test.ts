@@ -134,27 +134,32 @@ test(
       'pnyx-stat-watch',
       'transcript',
     )
-    const listeners: (() => void)[] = []
-    const released: (() => void)[] = []
-    t.mock.method(
+    // eslint-disable-next-line pnyx/object-params -- Node owns fs.watchFile's listener signature.
+    type Listener = (
+      curr: { ino: number },
+      prev: { ino: number },
+    ) => void
+    const listeners: Listener[] = []
+    const released: Listener[] = []
+    const watched = t.mock.method(
       fs,
       'watchFile',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.watchFile's signature.
       (
         _path: string,
         _options: unknown,
-        listener: () => void,
+        listener: Listener,
       ) => {
         listeners.push(listener)
       },
     )
-    t.mock.method(
+    const unwatched = t.mock.method(
       fs,
       'unwatchFile',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.unwatchFile's signature.
       (
         _path: string,
-        listener: () => void,
+        listener: Listener,
       ) => {
         released.push(listener)
       },
@@ -180,7 +185,11 @@ test(
       listeners.length,
       1,
     )
-    listeners[0]!()
+    // A replaced file reaches fs.watchFile's listener as a new inode.
+    listeners[0]!(
+      { ino: 2 },
+      { ino: 1 },
+    )
     assert.deepEqual(
       heard,
       Array.from(
@@ -195,7 +204,10 @@ test(
     watchers[0]!.close()
     watchers[0]!.close()
     heard.length = 0
-    listeners[0]!()
+    listeners[0]!(
+      { ino: 2 },
+      { ino: 2 },
+    )
     assert.deepEqual(
       heard,
       Array.from(
@@ -241,10 +253,24 @@ test(
     })
     t.after(() => next.close())
     watchers[0]!.close()
-    listeners.at(-1)!()
+    assert.deepEqual(
+      released,
+      listeners.slice(
+        0,
+        -1,
+      ),
+    )
+    listeners.at(-1)!(
+      { ino: 2 },
+      { ino: 2 },
+    )
     assert.deepEqual(
       heard,
       [-1],
     )
+    assert.ok([
+      ...watched.mock.calls,
+      ...unwatched.mock.calls,
+    ].every(call => call.arguments[0] === path))
   },
 )
