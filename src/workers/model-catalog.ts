@@ -7,8 +7,8 @@ import { HARNESSES, harnessOf, providerIdOf, type ProviderId } from './providers
 import type { Host } from '#app/host-types.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { accountEnvironment } from './dispatch.ts'
-import { harnessAccount } from './account-choice.ts'
+import { accountEnv } from './dispatch.ts'
+import { accountFor } from './account-choice.ts'
 import { sessionId } from './session-attachments.ts'
 
 const modelsPath = () => join(
@@ -83,32 +83,6 @@ export function storeModels({
       { force: true },
     )
   }
-}
-
-// A harness whose catalog cannot be read is left out, so its models are not checked.
-export async function catalogOffers({
-  host,
-  harnesses,
-  account,
-}: {
-  host: Host
-  harnesses: Harness[]
-  account?: string
-}) {
-  const offers: Partial<Record<Harness, string[]>> = {}
-
-  await Promise.all([...new Set(harnesses)].map(harness => host.models({
-    harness,
-    account,
-  })
-    .then(
-      models => {
-        offers[harness] = modelIds({ models })
-      },
-      () => {},
-    )))
-
-  return offers
 }
 
 type CommandSuggestion = {
@@ -240,17 +214,15 @@ export function createCatalogs({
     harness,
     account: selectedAccount,
   }) => {
-    const effective = effectiveDispatch()
-    const main = harnessAccount({
-      effective,
+    const { account } = accountFor({
+      effective: effectiveDispatch(),
       harness,
       prefer: selectedAccount,
     })
-    const account = main ? effective.accounts[main] : undefined
-    const env = account ? accountEnvironment({
+    const env = accountEnv({
       account,
       env: environment(),
-    }) : environment()
+    })
 
     const key = `${harness}:${account ? loginFolder({ account }) : ''}`
     let catalog = modelCatalogs.get(key)

@@ -1,5 +1,6 @@
+import type { RefObject, Dispatch, SetStateAction } from 'react'
 import { reference } from '#hydra/mentions.ts'
-import { displayAt } from './draft.ts'
+import { displayAt, draftView, replaceDisplay } from './draft.ts'
 import type { MentionItem } from './mention-picker.tsx'
 
 // Add project asks Hydra in the composer: the @ opens the project and folder picker, and the goal is an optional blank.
@@ -77,5 +78,69 @@ export function sendableRequest({ text }: { text: string }): {
       '',
     ),
     unpicked: UNPICKED.test(text),
+  }
+}
+
+export function projectRequestActions({
+  input,
+  view,
+  draft,
+  write,
+  trackMention,
+  setGoal,
+}: {
+  input: RefObject<HTMLTextAreaElement | null>
+  view: ReturnType<typeof draftView>
+  draft: string
+  write({
+    text,
+    caret,
+    anchor,
+  }: {
+    text: string
+    caret: number
+    anchor?: number
+  }): void
+  trackMention({
+    text,
+    cursor,
+  }: {
+    text: string
+    cursor: number
+  }): void
+  setGoal: Dispatch<SetStateAction<number | null>>
+}) {
+  const requestProject = ({ text }: { text: string }) => {
+    const edit = withProjectRequest({ text })
+    write(edit)
+    input.current?.focus()
+    trackMention({
+      text: edit.text,
+      cursor: edit.caret,
+    })
+  }
+
+  const fillGoal = ({ text }: { text: string }) => {
+    // The goal the caret is on, so a second request never fills the first one's blank.
+    const caret = input.current?.selectionStart ?? 0
+    const slots = view.chips.filter(chip => chip.kind === 'slot')
+    const onCaret = slots.find(chip => chip.from <= caret && caret <= chip.to)
+    const slot = onCaret ?? slots.find(chip => chip.from >= caret)
+
+    if (slot) {
+      write(replaceDisplay({
+        text: draft,
+        from: slot.from,
+        to: slot.to,
+        insert: text,
+      }))
+    }
+
+    setGoal(null); input.current?.focus()
+  }
+
+  return {
+    requestProject,
+    fillGoal,
   }
 }

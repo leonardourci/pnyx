@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Card } from '#tasks/model.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
-import { ComposerField, type ComposerFieldHandle } from '#web-shared/ui/composer-field.tsx'
+import { ComposerField, type ComposerFieldHandle } from '#web-hydra/composer-field.tsx'
 import { hasPendingImage } from '#web-hydra/draft.ts'
 import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'

@@ -1,11 +1,9 @@
-import { mergeThreadPages } from './conversation-history.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { HydraEvent } from '#app/model.ts'
-import { recordEntries, type ThreadEntry } from '#hydra/transcripts-read.ts'
 import { hydraConversation } from './conversation.ts'
-import { copiedText } from './chat.ts'
-import { taskMention } from '#hydra/mentions.ts'
+import { mergeThreadPages } from './thread-history.ts'
+import { recordEntries, type ThreadEntry, type ThreadPage } from './transcripts-read.ts'
 
 const at = ({ minute }: { minute: number }) => `2026-10-22T10:${String(minute).padStart(
   2,
@@ -267,7 +265,7 @@ test(
         )).toISOString(),
       }),
     )
-    const page = ({ items }: { items: ThreadEntry[] }): import('#hydra/transcripts-read.ts').ThreadPage => ({
+    const page = ({ items }: { items: ThreadEntry[] }): ThreadPage => ({
       card: '$hydra',
       session: 'fixture:one',
       entries: items,
@@ -324,55 +322,6 @@ test(
         latest: newSession,
       }).entries,
       entries.slice(-1),
-    )
-  },
-)
-
-test(
-  'copying a reply that opens with its task chip keeps the task',
-  () => {
-    const timing = ({ text }: { text: string }) => hydraConversation({
-      messages: [],
-      transcript: [
-        entry({
-          id: 'owner',
-          minute: 0,
-          role: 'user',
-        }),
-        {
-          ...entry({
-            id: 'reply',
-            minute: 1,
-            text,
-          }),
-          task: 't1',
-        },
-      ],
-      columns: [],
-      working: false,
-      thinking: false,
-      actions: [],
-    }).timings.get('reply')
-    const reply = timing({ text: 'The worker found the cause.' })!
-    assert.equal(
-      copiedText({
-        text: reply.reply,
-        task: reply.task,
-        title: 'Fix the login',
-      }),
-      `${taskMention({
-        id: 't1',
-        title: 'Fix the login',
-      })} The worker found the cause.`,
-    )
-    assert.equal(
-      timing({
-        text: `${taskMention({
-          id: 't1',
-          title: 'Fix the login',
-        })} found the cause.`,
-      })?.task,
-      undefined,
     )
   },
 )

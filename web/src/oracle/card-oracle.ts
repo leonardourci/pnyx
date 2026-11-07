@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Hit } from '#oracle/index.ts'
+import type { Hit } from '#oracle/model.ts'
+import type { SearchFilters } from '#oracle/filters.ts'
 import type { Command } from '#web-app/connection.ts'
 
 // Typing waits this long before searching; a Hydra event refreshes the results at most this often.
@@ -11,21 +12,33 @@ export const REFRESH_DELAY = 2000
 export const findCards = async ({
   command,
   query,
-  workspace = '',
   live = false,
+  filters,
 }: {
   command: Command
   query: string
-  workspace?: string
   live?: boolean
+  filters?: Search['filters']
 }) => {
+  // The workspace comes second, where an empty one searches every workspace, then the scope, where hydra keeps to live tasks.
+  const args = [
+    query,
+    '',
+  ]
+  const scope = live ? 'hydra' : ''
+
+  if (filters) {
+    args.push(
+      scope,
+      JSON.stringify(filters),
+    )
+  } else if (live) {
+    args.push(scope)
+  }
+
   const result = await command({
     name: 'oracle',
-    args: [
-      query,
-      workspace,
-      ...(live ? ['hydra'] : []),
-    ],
+    args,
   })
 
   return result.hits as Hit[]
@@ -33,10 +46,10 @@ export const findCards = async ({
 
 export interface Search {
   text: string
-  workspace: string
+  filters?: SearchFilters
 }
 
-const keyOf = ({ search }: { search: Search }) => `${search.text}\n${search.workspace}`
+const keyOf = ({ search }: { search: Search }) => `${search.text}${search.filters ? `\n${JSON.stringify(search.filters)}` : ''}`
 
 // Events only refresh the shown query, so they never postpone a search; stale answers are dropped.
 export function searchSchedule({
@@ -153,13 +166,13 @@ export function searchSchedule({
 export function useFoundCards({
   command,
   query,
-  workspace,
   revision,
+  filters,
 }: {
   command: Command
   query: string
-  workspace: string
   revision: number
+  filters?: Search['filters']
 }): {
   hits: Hit[]
   pending: boolean
@@ -176,7 +189,7 @@ export function useFoundCards({
   const text = query.trim()
   const search = text ? {
     text,
-    workspace,
+    filters,
   } : null
   const key = search ? keyOf({ search }) : ''
   const latest = useRef(search); latest.current = search
@@ -187,8 +200,8 @@ export function useFoundCards({
         find: ({ search }) => findCards({
           command,
           query: search.text,
-          workspace: search.workspace,
           live: true,
+          filters: search.filters,
         }),
         show: setFound,
       })

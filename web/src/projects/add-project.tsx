@@ -2,7 +2,7 @@ import { useProjectsResource } from './project-resource.ts'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { useEffect, useRef, useState } from 'react'
-import type { FolderListing } from '#projects/folders.ts'
+import { useFolders } from './folders.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { FolderSearch } from './folder-search.tsx'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
@@ -20,81 +20,6 @@ type Confirmation = {
     name: string
     url: string
   }[]
-}
-
-export function useFolders({
-  path,
-  repository,
-  connected,
-}: {
-  path: string
-  repository: string
-  connected: boolean
-}) {
-  const [
-    result,
-    setResult,
-  ] = useState<{
-    query: string
-    listing?: FolderListing
-    error?: string
-  }>()
-  const query = new URLSearchParams({
-    path,
-    repository,
-  }).toString()
-  useEffect(
-    () => {
-      if (!connected) {
-        return
-      }
-
-      const abort = new AbortController()
-      const timer = setTimeout(
-        () => {
-          void fetch(
-            new URL(
-              `folders?${query}`,
-              document.baseURI,
-            ),
-            { signal: abort.signal },
-          ).then(async response => {
-            const body = await response.json()
-
-            if (!response.ok) {
-              throw new Error(body.error ?? 'Folders could not be listed.')
-            }
-
-            if (!abort.signal.aborted) {
-              setResult({
-                query,
-                listing: body as FolderListing,
-              })
-            }
-          })
-            .catch((error: Error) => {
-              if (!abort.signal.aborted) {
-                setResult({
-                  query,
-                  error: error.message,
-                })
-              }
-            })
-        },
-        150,
-      )
-
-      return () => {
-        clearTimeout(timer); abort.abort()
-      }
-    },
-    [
-      query,
-      connected,
-    ],
-  )
-
-  return result?.query === query ? result : undefined
 }
 
 export function AddProject({

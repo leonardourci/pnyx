@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { readAction, recordCalls } from './calls.ts'
+import { readAction, recordCalls } from './transcript-calls.ts'
 import { latestMessage, recordEntries } from './transcripts-read.ts'
 
 const claudeCall = ({

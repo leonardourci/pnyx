@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
-import { ComposerField } from '#web-shared/ui/composer-field.tsx'
+import { ComposerField } from '#web-hydra/composer-field.tsx'
 import { hasPendingImage } from '#web-hydra/draft.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -14,6 +14,7 @@ export interface TaskDraft {
 export function TaskCreate({
   column,
   parent,
+  before,
   command,
   connected,
   submitted,
@@ -24,6 +25,7 @@ export function TaskCreate({
 }: {
   column: string
   parent?: string
+  before?: string
   command: Command
   connected: boolean
   submitted({ id }: { id: string }): void
@@ -57,23 +59,37 @@ export function TaskCreate({
         }
 
         setBusy(true)
+        const args = [
+          'create',
+          '--title',
+          title.trim(),
+          '--ask',
+          prompt,
+          '--column',
+          column,
+        ]
+
+        if (before) {
+          args.push(
+            '--before',
+            before,
+          )
+        }
+
+        if (parent) {
+          args.push(
+            '--parent',
+            parent,
+          )
+        }
+
+        args.push(
+          '--event-id',
+          attempt.current,
+        )
         const saving = command({
           name: 'task',
-          args: [
-            'create',
-            '--title',
-            title.trim(),
-            '--ask',
-            prompt,
-            '--column',
-            column,
-            ...(parent ? [
-              '--parent',
-              parent,
-            ] : []),
-            '--event-id',
-            attempt.current,
-          ],
+          args,
         })
         submitted({ id: `task:${attempt.current}` })
         void saving.catch((error: Error) => {

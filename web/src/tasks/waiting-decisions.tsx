@@ -4,7 +4,7 @@ import type { HydraState } from '#app/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { conversationMessages, latestAgentMessage, placeMessageCaret } from '#web-hydra/caret.ts'
 import { Popover } from '#web-shared/ui/popover.tsx'
-import { markdownText } from '#web-hydra/markdown.tsx'
+import { markdownText } from '#web-hydra/markdown-text.ts'
 
 export function WaitingDecisions({
   state,

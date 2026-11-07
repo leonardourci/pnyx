@@ -6,6 +6,7 @@ import { HydraError } from '#store/errors.ts'
 import { hydraDir } from './home-migration.ts'
 import { pnyxHome, withRegistryLock } from '#store/storage.ts'
 
+// A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
 export const DEFAULT_PORT = 4747
 // A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.
 const HEALTH_TIMEOUT_MS = 60_000

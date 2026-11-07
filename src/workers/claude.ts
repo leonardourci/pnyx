@@ -1,3 +1,6 @@
+import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
+import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
+import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
@@ -180,7 +183,6 @@ export function claudeProvider({
 }): Provider {
   return {
     compact: true,
-    readUsage: readClaudeUsage,
     async models({
       cwd,
       env,
@@ -839,4 +841,293 @@ export function readClaudeUsage({
       + count({ value: usage.cache_read_input_tokens })
       + count({ value: usage.cache_creation_input_tokens })
   }
+}
+
+function claudeSettings(
+  {
+    record,
+    subagent,
+  }: {
+    record: Record<string, unknown>
+    subagent: boolean
+  },
+): FoundSettings | undefined {
+  // A subagent's own transcript contains sidechain records, so its settings are read there.
+  if (record.isSidechain === true && !subagent) {
+    return undefined
+  }
+
+  // Separate permission-mode records retain the starting mode after a live mode change.
+  if (record.type === 'user') {
+    return foundSettings({ settings: { mode: transcriptString({ value: record.permissionMode }) } })
+  }
+
+  if (record.type !== 'assistant') {
+    return undefined
+  }
+
+  const message = object({ value: record.message })
+  const model = transcriptString({ value: message.model })
+  const speed = transcriptString({ value: object({ value: message.usage }).speed })
+  const requested = transcriptString({ value: record.requestedModel })
+
+  return foundSettings({
+    settings: {
+      // A synthetic turn, such as an error, names no real model.
+      model: model?.startsWith('<') ? undefined : model,
+      effort: transcriptString({ value: record.effort }),
+      fast: onOff({ fast: speed === undefined ? undefined : speed === 'fast' }),
+      context: requested === undefined ? undefined : /\[1m\]$/i.test(requested) ? '1M' : null,
+      client: transcriptString({ value: record.entrypoint }),
+      version: transcriptString({ value: record.version }),
+    },
+  })
+}
+
+const COMPACT_PREAMBLE = /^This session is being continued from a previous conversation[^\n]*\n+(?:Summary:\s*\n)?/
+
+type Rec = {
+  type?: unknown
+  uuid?: unknown
+  timestamp?: unknown
+  isCompactSummary?: unknown
+  summary?: unknown
+  leafUuid?: unknown
+  customTitle?: unknown
+  aiTitle?: unknown
+  message?: { content?: unknown }
+  toolUseResult?: unknown
+}
+
+function contentText({ content }: { content: unknown }): string {
+  if (typeof content === 'string') {
+    return content
+  }
+
+  if (!Array.isArray(content)) {
+    return ''
+  }
+
+  return content.map(b => (b?.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('\n')
+}
+
+function answers({
+  r,
+  at,
+}: {
+  r: Rec
+  at: string | undefined
+}): SourceNote[] {
+  const result = r.toolUseResult as {
+    questions?: unknown
+    answers?: unknown
+    annotations?: unknown
+  } | undefined
+
+  if (typeof result !== 'object' || result === null || !Array.isArray(result.questions)) {
+    return []
+  }
+
+  const given = result.answers
+
+  if (typeof given !== 'object' || given === null) {
+    return []
+  }
+
+  const content = r.message?.content
+  const blocks = Array.isArray(content) ? content as { tool_use_id?: unknown }[] : []
+  const call = blocks.find(b => trimmedString({ value: b?.tool_use_id }))
+  const id = trimmedString({ value: call?.tool_use_id }) ?? trimmedString({ value: r.uuid })
+
+  if (!id) {
+    return []
+  }
+
+  const notes = (result.annotations ?? {}) as Record<string, { notes?: unknown } | undefined>
+
+  return result.questions.flatMap((
+    q: { question?: unknown },
+    i: number,
+  ) => {
+    const question = trimmedString({ value: q?.question })
+    const answer = question && trimmedString({
+      value: (given as Record<string, unknown>)[question],
+    })
+
+    if (!question || !answer) {
+      return []
+    }
+
+    const note = trimmedString({ value: notes[question]?.notes })
+    const text = [
+      question,
+      `Answer: ${answer}`,
+      ...(note ? [`Notes: ${note}`] : []),
+    ].join('\n')
+
+    return [
+      {
+        kind: 'decision' as const,
+        source: 'claude-code',
+        text,
+        ref: `ask:${id}:${i}`,
+        ...(at ? { at } : {}),
+      },
+    ]
+  })
+}
+
+function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
+  const r = record as Rec | null
+
+  if (typeof r !== 'object' || r === null) {
+    return []
+  }
+
+  const at = trimmedString({ value: r.timestamp })
+  const note = ({
+    kind,
+    source,
+    text,
+    ref,
+  }: {
+    kind: Note['kind']
+    source: string
+    text: string | undefined
+    ref: string
+  }): SourceNote[] =>
+    text ? [
+      {
+        kind,
+        source,
+        text,
+        ref,
+        ...(at ? { at } : {}),
+      },
+    ] : []
+
+  switch (r.type) {
+    case 'user':
+      if (r.isCompactSummary === true) {
+        const text = trimmedString({
+          value: contentText({ content: r.message?.content }).replace(
+            COMPACT_PREAMBLE,
+            '',
+          ),
+        })
+
+        return note({
+          kind: 'summary',
+          source: 'claude-code',
+          text,
+          ref: `compact:${trimmedString({ value: r.uuid }) ?? text}`,
+        })
+      }
+
+      return answers({
+        r,
+        at,
+      })
+    case 'summary': {
+      const text = trimmedString({ value: r.summary })
+
+      return note({
+        kind: 'summary',
+        source: 'claude-code',
+        text,
+        ref: `summary:${trimmedString({ value: r.leafUuid }) ?? ''}:${text}`,
+      })
+    }
+    case 'custom-title':
+    case 'ai-title': {
+      const title = trimmedString({ value: r.customTitle }) ?? trimmedString({ value: r.aiTitle })
+
+      return note({
+        kind: 'context',
+        source: 'claude-code',
+        text: title && `${SESSION_TITLE}${title}`,
+        ref: `title:${title}`,
+      })
+    }
+    default:
+      return []
+  }
+}
+
+export const readClaudeTranscript: TranscriptReader = ({
+  record,
+  subagent = false,
+}) => {
+  if (typeof record !== 'object' || record === null || 'payload' in record) {
+    return undefined
+  }
+
+  const entry = object({ value: record })
+  const at = typeof entry.timestamp === 'string' ? entry.timestamp : undefined
+  const parsed: TranscriptRecord = {
+    role: String(entry.type),
+    at,
+    messages: [],
+    traces: [],
+    calls: [],
+    results: [],
+    notes: claudeTranscriptNotes({ record }),
+    settings: claudeSettings({
+      record: entry,
+      subagent,
+    }),
+  }
+
+  if (entry.isMeta === true) {
+    return parsed
+  }
+
+  const content = object({ value: entry.message }).content
+  const blocks = Array.isArray(content) ? content : []
+
+  if (entry.isCompactSummary !== true && (entry.type === 'user' || entry.type === 'assistant')) {
+    const texts = typeof content === 'string' ? [content] : blocks
+    parsed.messages = transcriptText({
+      at,
+      texts: texts.map(raw => ({ text: blockText({ value: raw }) })),
+    })
+  }
+
+  for (const [
+    index,
+    raw,
+  ] of blocks.entries()) {
+    const block = object({ value: raw })
+    const tool = block.type === 'tool_use' || block.type === 'tool_result'
+    const thinking = block.type === 'thinking'
+
+    if (tool || thinking) {
+      parsed.traces.push(transcriptTrace({
+        index,
+        kind: tool ? 'tool' : 'thinking',
+        name: block.name,
+        detail: block.thinking ?? block.content ?? block.input,
+        call: block.tool_use_id ?? block.id,
+      }))
+    }
+
+    // A subagent's own records stay out: its parent's call already names what it is doing.
+    if (entry.isSidechain === true) {
+      continue
+    }
+
+    if (block.type === 'tool_use' && typeof block.id === 'string') {
+      parsed.calls.push(transcriptCall({
+        id: block.id,
+        tool: block.name,
+        input: object({ value: block.input }),
+      }))
+    }
+
+    if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+      parsed.results.push(block.tool_use_id)
+    }
+  }
+
+  return parsed
 }

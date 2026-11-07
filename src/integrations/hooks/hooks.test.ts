@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import {
+  appendFileSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -1080,7 +1081,7 @@ test(
 )
 
 test(
-  'a transcript record older than a compactly logged hook cannot replace the hook\'s live effort',
+  'a transcript record older than a compactly logged hook cannot replace the hook\'s live effort; a newer one does',
   () => {
     const { home } = sandbox()
     process.env.PNYX_HOME = home
@@ -1127,6 +1128,37 @@ test(
     assert.equal(
       repeatCard().settings?.effort,
       'high',
+    )
+
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-10-29T12:00:35.000Z',
+        effort: 'low',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-5-5',
+          content: [
+            {
+              type: 'text',
+              text: 'Switched to low effort.',
+            },
+          ],
+        },
+      })}\n`,
+    )
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => harvestTranscripts({
+        writer,
+        cardIds: [repeatCard().id],
+        at: '2026-10-29T12:00:45.000Z',
+      }),
+    })
+    assert.equal(
+      repeatCard().settings?.effort,
+      'low',
     )
   },
 )

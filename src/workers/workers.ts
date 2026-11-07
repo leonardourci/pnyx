@@ -23,11 +23,13 @@ import { redact } from '#oracle/text.ts'
 import { splitEntry } from '#hydra/transcripts-read.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { commandText } from '#integrations/hooks/observe.ts'
-import { askWording, openAsks } from '#tasks/questions.ts'
+import { askWording, openAsks } from '#tasks/ask-state.ts'
 import { lifecycleMove } from '#tasks/lifecycle.ts'
 import { COMMON, guard, integer, parse, type Output, summarize } from '#app/cli-support.ts'
 import { commands } from '#app/cli.ts'
 import { requestEnv } from '#app/request-context.ts'
+import { isManagedTask } from '#tasks/select.ts'
+import { pendingPermissions } from './permission-rules.ts'
 
 const TRACKED: readonly EventType[] = [
   'task.queue',
@@ -126,7 +128,8 @@ export async function hydraCheck({
         drainSpool({ writer })
         harvestTranscripts({
           writer,
-          cardIds: Object.values(writer.state.cards).filter(c => c.id !== '$hydra' && !c.automaticTask && c.sessionIds?.length)
+          cardIds: Object.values(writer.state.cards)
+            .filter(c => !isManagedTask({ card: c }) && c.sessionIds?.length)
             .map(c => c.id),
           at: new Date().toISOString(),
         })
@@ -177,7 +180,7 @@ export async function hydraCheck({
         )
 
         const task = current.cards[e.cardId]
-        const worker = task?.tracking === 'declared' && !task.automaticTask && e.cardId !== '$hydra'
+        const worker = task?.tracking === 'declared' && !isManagedTask({ card: task })
         const question = worker && e.type === 'card.pushed' && e.data.attention?.some(a => a.blocking && !a.answered)
         const owner = e.type === 'card.replied' && e.cardId !== '$hydra' && e.data.state === 'queued' && Boolean(e.data.text?.trim()) && !e.data.control && e.actor !== HYDRA_ACTOR
         const key = ({ text }: { text: string }) => `${e.sessionId ?? e.cardId}\n${redact({ text })}`
@@ -301,8 +304,7 @@ export async function hydraCheck({
   })
 
   const state = loadHydra({ hydraId }).state
-  const requests = Object.values(state.cards).flatMap(card => (card.permissions ?? [])
-    .filter(p => p.status === 'pending')
+  const requests = Object.values(state.cards).flatMap(card => pendingPermissions({ card })
     .map(p => ({
       id: p.id,
       task: card.id,

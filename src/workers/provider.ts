@@ -1,3 +1,4 @@
+import type { SourceNote } from '#tasks/model.ts'
 import type { ChildProcess } from 'node:child_process'
 import type { HelperUsageTotal } from '#routine-helper/state.ts'
 import type { AgentRef, AgentSettings, PermissionRequest } from './model.ts'
@@ -304,13 +305,6 @@ export async function hydraFastReaches({
 }
 
 export interface Provider {
-  readUsage({
-    reader,
-    value,
-  }: {
-    reader: TranscriptUsageReader
-    value: unknown
-  }): void
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({
@@ -357,3 +351,50 @@ export interface Provider {
     spawned?({ child }: { child: ChildProcess }): void
   }): Promise<HostedSession>
 }
+
+export interface TranscriptMessage {
+  internal?: boolean
+  at?: string
+  text: string
+}
+
+export interface TranscriptTrace {
+  // Original block positions keep thread entry IDs stable.
+  index: number
+  kind: 'tool' | 'thinking'
+  role: string
+  text: string
+  call?: string
+}
+
+export interface TranscriptCall {
+  id: string
+  tool: string
+  command?: string
+  file?: string
+  query?: string
+  url?: string
+  skill?: string
+  description?: string
+}
+
+export type FoundSettings = Record<string, string | null>
+
+export interface TranscriptRecord {
+  at?: string
+  role: string
+  messages: TranscriptMessage[]
+  traces: TranscriptTrace[]
+  calls: TranscriptCall[]
+  results: string[]
+  notes: SourceNote[]
+  settings?: FoundSettings
+}
+
+export type TranscriptReader = ({
+  record,
+  subagent,
+}: {
+  record: unknown
+  subagent?: boolean
+}) => TranscriptRecord | undefined

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runProcess, type ProcessResult } from '#app/run-process.ts'
 import type { Key } from '#workers/controls.ts'
-import { HOOK } from './observe.ts'
+import { waitsOnHook } from './observe.ts'
 import { notificationState, type NotificationResult } from '#workers/inbox-notice.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ReplyState } from '#workers/model.ts'
@@ -832,8 +832,7 @@ export async function terminalNotice({
     }
   }
 
-  if (card.attention.some(request =>
-    request.blocking && !request.answered && request.key.startsWith(HOOK))) {
+  if (waitsOnHook({ attention: card.attention })) {
     return {
       result: 'deferred',
       detail: 'worker is waiting on a permission or question; answer it before notifying',

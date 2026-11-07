@@ -1,12 +1,24 @@
 import { createHash } from 'node:crypto'
-import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import type { FirstmateRecord } from './model.ts'
 import type { SourceNote } from '#tasks/model.ts'
 import { canonical } from '#store/paths.ts'
 import { TERMINAL_FIELDS } from '#workers/reply-route.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
+import { HYDRA_SKILLS, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
+import { copySkills, removeLegacyHydraSkills } from '#setup/skills.ts'
+import type { Meta } from '#app/command-meta.ts'
+import type { Output } from '#app/cli-support.ts'
+import { applyDecision } from '#app/decision.ts'
+import { withWriter } from '#app/writer.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import type { HydraConfig } from '#hydra/model.ts'
+import { drainSpool } from '#integrations/hooks/ingest.ts'
+import { fmNote } from './reply.ts'
 
 export const ADAPTER = 'firstmate'
 // objectId of the home's own card; task ids start with a letter or digit.
@@ -15,6 +27,11 @@ export const HOME_OBJECT = '@home'
 // it never names a decision fm-send could resolve.
 export const STATUS_KEY = '@status'
 export const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const HOME_SKILL = join(
+  '.agents',
+  'skills',
+  ORCHESTRATE_SKILL,
+)
 
 export interface TaskObservation {
   task: string
@@ -430,4 +447,188 @@ export function readHome({
     title: basename(home),
     tasks,
   }
+}
+
+export async function setupHydra({
+  hydraId,
+  home,
+  meta,
+}: {
+  hydraId: string
+  home: string
+  meta: Meta
+}): Promise<Output> {
+  const real = resolveHome({ path: home })
+  const dir = join(
+    real,
+    HOME_SKILL,
+  )
+
+  // ponytail: local `git check-ignore` and `rev-parse` stay synchronous; they take milliseconds and only the owner's setup runs them.
+  const owns = ({ path }: { path: string }) => {
+    const ignored = spawnSync(
+      'git',
+      [
+        '-C',
+        real,
+        'check-ignore',
+        '-v',
+        '-z',
+        '--stdin',
+      ],
+      {
+        input: `${relative(
+          real,
+          join(
+            path,
+            'SKILL.md',
+          ),
+        )}\0`,
+        encoding: 'utf8',
+      },
+    )
+    const [
+      source, ,
+      pattern,
+    ] = ignored.stdout?.split('\0') ?? []
+
+    // Pnyx records each copied skill in info/exclude; tracked and owner skills stay untouched.
+    return ignored.status === 0 && !!source?.endsWith('/info/exclude')
+        && pattern === `/${relative(
+          real,
+          path,
+        )}/`
+  }
+
+  removeLegacyHydraSkills({
+    folder: real,
+    owns,
+  })
+  const excluded = copySkills({
+    folder: real,
+    names: HYDRA_SKILLS,
+    owns,
+  })
+    .map(folder => exclude({
+      home: real,
+      path: `/${relative(
+        real,
+        folder,
+      )}/`,
+    }))
+    .every(Boolean)
+
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      drainSpool({ writer })
+      const config = hydraConfig({
+        state: writer.state,
+        id: hydraId,
+      })
+
+      if (config.hydra.kind === 'firstmate' && config.hydra.home === real) {
+        return
+      }
+
+      const data: HydraConfig = {
+        ...config,
+        hydra: {
+          id: `firstmate:${basename(real)}`,
+          kind: 'firstmate',
+          name: config.hydra.name,
+          home: real,
+        },
+      }
+      applyDecision({
+        writer,
+        decision: hydraEvent({
+          state: writer.state,
+          meta,
+          cardId: '$board',
+          change: {
+            type: 'board.configured',
+            data,
+          },
+        }),
+      })
+    },
+  })
+
+  const text = [
+    `Pnyx Hydra ${hydraId} uses this home as its Hydra.`,
+    `Load the ${ORCHESTRATE_SKILL} skill (${join(
+      HOME_SKILL,
+      'SKILL.md',
+    )}) and follow it for that Hydra.`,
+    `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`,
+  ].join('\n')
+  const sent = await fmNote({
+    home: real,
+    requestId: `pnyx:${hydraId}:hydra-skill`,
+    text,
+  })
+
+  return {
+    hydraId,
+    hydra: {
+      kind: 'firstmate',
+      home: real,
+    },
+    skill: join(
+      dir,
+      'SKILL.md',
+    ),
+    excluded: excluded ? 'yes' : 'no: not a git clone',
+    note: sent.state,
+    ...(sent.detail ? { detail: sent.detail } : {}),
+    help: ['A running `pnyx-axi serve` starts syncing Firstmate tasks from this home; run it if none is running'],
+  }
+}
+
+function exclude({
+  home,
+  path,
+}: {
+  home: string
+  path: string
+}): boolean {
+  const found = spawnSync(
+    'git',
+    [
+      '-C',
+      home,
+      'rev-parse',
+      '--git-path',
+      'info/exclude',
+    ],
+    { encoding: 'utf8' },
+  )
+
+  if (found.status !== 0 || !found.stdout.trim()) {
+    return false
+  }
+
+  const given = found.stdout.trim()
+  const file = isAbsolute(given) ? given : join(
+    home,
+    given,
+  )
+  mkdirSync(
+    dirname(file),
+    { recursive: true },
+  )
+  const current = existsSync(file) ? readFileSync(
+    file,
+    'utf8',
+  ) : ''
+
+  if (!current.split('\n').includes(path)) {
+    appendFileSync(
+      file,
+      `${current && !current.endsWith('\n') ? '\n' : ''}${path}\n`,
+    )
+  }
+
+  return true
 }

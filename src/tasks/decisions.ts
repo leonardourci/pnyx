@@ -1,4 +1,5 @@
-import { askWording, openAsks, waitingPrompt } from './questions.ts'
+import { waitingPrompt } from './questions.ts'
+import { askWording, openAsks } from './ask-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
@@ -6,6 +7,7 @@ import { failedChecks, pendingChecks, type Link } from '#tasks/delivery/model.ts
 import { liveTask } from './select.ts'
 import { mergeApproved, quote } from '#hydra/wake-reasons.ts'
 import { taskMention } from '#hydra/mentions.ts'
+import { pendingPermissions } from '#workers/permission-rules.ts'
 
 // The fixed words a decision line names its item with; the orchestrator skill lists them.
 type DecisionKind = 'owner question' | 'worker question' | 'permission' | 'blocking prompt' | 'approved merge'
@@ -67,7 +69,7 @@ function cardDecisions({
       detail: `${ask.id} to you ${quote({ text: ask.question })}`,
     }
   })
-  const permissions = (card.permissions ?? []).filter(p => p.status === 'pending').map((p): OpenDecision => {
+  const permissions = pendingPermissions({ card }).map((p): OpenDecision => {
     const questions = asked({ questions: p.questions })
 
     return {

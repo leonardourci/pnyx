@@ -1,6 +1,5 @@
 import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
-import type { Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { joinedKey } from '#tasks/push-rules.ts'
@@ -17,8 +16,10 @@ import { withWriter, type Writer } from '#app/writer.ts'
 import { spoolFiles } from '#store/storage.ts'
 import { canonical } from '#store/paths.ts'
 import { harvestTranscripts } from './harvest.ts'
-import { observedSettings, type FoundSettings } from './settings.ts'
+import type { FoundSettings } from '#workers/provider.ts'
+import { observedSettings } from './settings.ts'
 import { HARNESSES, TERMINAL_EVENTS, attend, isHookEnvelope, observe, type HookEnvelope } from './observe.ts'
+import { applyDecision } from '#app/decision.ts'
 
 const HARVEST_AFTER = [
   'Stop',
@@ -42,12 +43,6 @@ function ingest({
     })
   }
 
-  const apply = ({ decision }: { decision: Decision }) => {
-    if ('event' in decision) {
-      writer.append({ event: decision.event })
-    }
-  }
-
   if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {
       throw new HydraError({
@@ -63,7 +58,8 @@ function ingest({
       objectId: entry.key,
       observedAt: entry.at,
     }
-    apply({
+    applyDecision({
+      writer,
       decision: decidePush(
         {
           state: writer.state,
@@ -185,7 +181,8 @@ function ingest({
           cardIds: [(moving ? previous : target)!.id],
           at: m.at,
         })
-        apply({
+        applyDecision({
+          writer,
           decision: decideSession({
             state: writer.state,
             ref,
@@ -208,7 +205,10 @@ function ingest({
       }
     }
 
-    apply({ decision: pushed })
+    applyDecision({
+      writer,
+      decision: pushed,
+    })
     // Hooks own only the outcome they recorded on the session's own card: a joined
     // Firstmate task, or a Firstmate or manual outcome, keeps its own rule.
     const target = writer.state.cards[writer.state.keys[key] ?? '']
@@ -218,7 +218,8 @@ function ingest({
 
     if (o.outcome !== undefined && target && !stale && owned) {
       const outcome = o.outcome && { state: o.outcome }
-      apply({
+      applyDecision({
+        writer,
         decision: decideOutcome({
           state: writer.state,
           ref: key,
@@ -233,7 +234,8 @@ function ingest({
     }
 
     if (o.link) {
-      apply({
+      applyDecision({
+        writer,
         decision: decideLink({
           state: writer.state,
           ref: key,
@@ -260,7 +262,8 @@ function ingest({
       const recorded = writer.state.sessions?.[session]
 
       if (recorded && (!recorded.taskId || writer.state.cards[recorded.taskId]?.automaticTask)) {
-        apply({
+        applyDecision({
+          writer,
           decision: hydraEvent({
             state: writer.state,
             meta: {

@@ -148,9 +148,19 @@ export function applyHelper({
 
 export const handbackId = ({ id }: { id: string }) => `helper-handback:${id}`
 
-export function outcomeLines({ state }: { state: HydraState }): string[] {
+// Outcomes the helper left for the owner that main has not relayed yet.
+export function ownerOutcomes({ state }: { state: HydraState }): HelperOutcome[] {
   return (state.helper?.outcomes ?? [])
     .filter(outcome => outcome.audience === 'owner' && outcome.seq > (state.helper?.delivered ?? 0))
+}
+
+// Batches the helper handed back with an error; their tasks are main's until it has seen them.
+export function failedBatches({ state }: { state: HydraState }): HelperBatch[] {
+  return Object.values(state.helper?.runs ?? {}).filter(batch => batch.error)
+}
+
+export function outcomeLines({ state }: { state: HydraState }): string[] {
+  return ownerOutcomes({ state })
     .map(outcome => `- ${taskMention({
       id: outcome.task,
       title: state.cards[outcome.task]?.title ?? outcome.task,

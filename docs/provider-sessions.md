@@ -12,9 +12,15 @@ Each `turn-ended` fact carries its completion time, input IDs, status, final tex
 
 Foreground `finished` does not authorize idle cleanup. Cleanup requires no running turn or tool, unsettled input, pending control, queued native turn or background task. Claude's queue count and background-task replacement sets supply native knowledge; missing queue information keeps the session open. A Codex input refused by steering remains carried until its own turn settles. Codex child agents block cleanup until confirmed shutdown; background commands and unsupported native work also keep their owner open. Explicit close and server shutdown retain their existing authority.
 
+## Transcript records
+
+`src/workers/claude.ts` and `src/workers/codex.ts` decode their own transcript formats into `TranscriptRecord`, defined in `src/workers/provider.ts`. `src/workers/transcripts.ts` selects the reader and exposes typed text through `transcriptMessages`. Records carry the message role and time, visible text, hidden wake boundaries, tool and thinking traces, calls and results, harvested notes and observed settings. Calls carry normalized command, file, query, URL, skill and description fields. Trace positions retain their original block indexes so thread entry IDs and pagination stay stable.
+
+The Oracle, thread reader, latest-message feed, reply confirmation and hook harvesting consume that neutral shape. Redaction and display limits stay in their consumers. The browser imports the shared text and call presentation helpers; its bundle does not load the provider adapters.
+
 ## Usage
 
-Each provider implements `Provider.readUsage` for its own transcript format and emits neutral `HostedUsage` events for live readings. Consumers never interpret vendor fields. `src/workers/usage.ts` combines those readings, recorded task totals and quota plan windows into `AgentUsage`. The server pushes that derived shape over the existing WebSocket; both the composer and task card render `web/src/workers/usage.tsx`.
+Each provider's adapter reads usage from its own transcript format and emits neutral `HostedUsage` events for live readings; `src/workers/usage.ts` picks the transcript reader by harness. Consumers never interpret vendor fields. `src/workers/usage.ts` combines those readings, recorded task totals and quota plan windows into `AgentUsage`. The server pushes that derived shape over the existing WebSocket; both the composer and task card render `web/src/workers/usage.tsx`. The browser keeps spend and usage in a separate live map and merges them into the displayed cards; its saved Hydra state contains only confirmed event state.
 
 Current context is the latest request's reading, not the sum of earlier requests. Recorded task tokens retain their worker and attributed Hydra breakdown. Only reported counts are shown. Claude transcripts provide used tokens but no window or session cost; those details can come from live readings. Synthetic assistant records do not change usage, and a transcript compaction boundary clears current context. Transcript fragments and task totals never substitute for current context.
 

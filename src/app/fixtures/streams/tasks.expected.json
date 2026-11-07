@@ -1,0 +1,155 @@
+{
+  "v": 1,
+  "seq": 23,
+  "cards": {
+    "c1": {
+      "id": "c1",
+      "key": "ship",
+      "title": "Ship it",
+      "project": "/work/api",
+      "brief": "Find the leak",
+      "initialPrompt": "Find the leak",
+      "ask": [],
+      "titleSet": true,
+      "workspace": "unassigned",
+      "tags": [],
+      "attention": [],
+      "links": [],
+      "sourceRefs": [],
+      "sessionIds": [],
+      "tracking": "declared",
+      "statusLog": [],
+      "folder": "/work/app",
+      "column": "queued",
+      "revision": 12,
+      "createdSeq": 1,
+      "updatedSeq": 12,
+      "updatedAt": "2026-10-20T09:12:00Z",
+      "kind": "build",
+      "hold": {
+        "id": "evt_4",
+        "at": "2026-10-20T09:04:00Z",
+        "actor": "cli",
+        "reason": "Wait for QA"
+      },
+      "mirror": {
+        "home": "/work/firstmate",
+        "task": "task-9",
+        "meta": {
+          "owner": "leo"
+        },
+        "status": "working"
+      },
+      "asks": [
+        {
+          "id": "ask-1",
+          "audience": "owner",
+          "question": "Ship to production?",
+          "at": "2026-10-20T09:09:00Z",
+          "actor": "cli",
+          "answered": "reply-1",
+          "answeredAt": "2026-10-20T09:12:00Z",
+          "fromMessage": {
+            "id": "msg-3",
+            "text": "Yes",
+            "at": "2026-10-20T09:11:00Z"
+          }
+        },
+        {
+          "id": "ask-2",
+          "audience": "owner",
+          "question": "Tag the release?",
+          "at": "2026-10-20T09:10:00Z",
+          "actor": "cli"
+        }
+      ],
+      "replies": [
+        {
+          "id": "reply-1",
+          "state": "delivered",
+          "decision": {
+            "question": "Ship to production?",
+            "answer": "Yes",
+            "fromMessage": {
+              "id": "msg-3",
+              "text": "Yes",
+              "at": "2026-10-20T09:11:00Z"
+            }
+          },
+          "answers": "ask-1"
+        }
+      ]
+    },
+    "c2": {
+      "id": "c2",
+      "key": "claude:host-a:sess-2",
+      "title": "Fix the flaky test",
+      "workspace": "work",
+      "tags": [],
+      "attention": [],
+      "links": [],
+      "sourceRefs": [],
+      "column": "done",
+      "revision": 6,
+      "createdSeq": 13,
+      "createdAt": "2026-10-20T09:13:00Z",
+      "updatedSeq": 18,
+      "updatedAt": "2026-10-20T09:18:00Z",
+      "titleSet": true,
+      "doneAt": "2026-10-20T09:14:00Z",
+      "hidden": false,
+      "keepDone": true
+    },
+    "c3": {
+      "id": "c3",
+      "key": "claude:host-a:sess-3",
+      "title": "Old docs",
+      "workspace": "work",
+      "tags": [],
+      "attention": [],
+      "links": [],
+      "sourceRefs": [],
+      "column": "done",
+      "revision": 5,
+      "createdSeq": 19,
+      "createdAt": "2026-10-20T09:19:00Z",
+      "updatedSeq": 23,
+      "updatedAt": "2026-10-20T09:23:00Z",
+      "titleSet": true,
+      "doneAt": "2026-10-20T09:20:00Z",
+      "hidden": true,
+      "expired": true
+    }
+  },
+  "keys": {
+    "ship": "c1",
+    "claude:host-a:sess-2": "c2",
+    "claude:host-a:sess-3": "c3"
+  },
+  "eventIds": {
+    "evt_1": 1,
+    "evt_2": 2,
+    "evt_3": 3,
+    "evt_4": 4,
+    "evt_5": 5,
+    "evt_6": 6,
+    "evt_7": 7,
+    "evt_8": 8,
+    "evt_9": 9,
+    "evt_10": 10,
+    "evt_11": 11,
+    "evt_12": 12,
+    "evt_13": 13,
+    "evt_14": 14,
+    "evt_15": 15,
+    "evt_16": 16,
+    "evt_17": 17,
+    "evt_18": 18,
+    "evt_19": 19,
+    "evt_20": 20,
+    "evt_21": 21,
+    "evt_22": 22,
+    "evt_23": 23
+  },
+  "undone": {}
+}

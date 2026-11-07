@@ -25,7 +25,8 @@ export interface Catalog {
   suggestions: Suggestion[]
   unavailable?: string
   note?: string
-
+  // The harness the server read the catalog for, the one that receives the card's messages.
+  provider?: string
 }
 export interface CatalogLocations {
   home: string

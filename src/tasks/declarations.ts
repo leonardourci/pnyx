@@ -1,11 +1,11 @@
 import { TASK_STATES, type TaskDeclaration, type TaskStatus } from './model.ts'
 import type { HydraState, Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { requireReportReview } from '#investigations/inventory.ts'
 import { ownerGates } from './owner-gates.ts'
+import { isManagedTask } from './select.ts'
 
 // A declared state as shown to people and Hydra: a paused wait names its end, a hold says it has none.
 export function declaredState({ declaration }: { declaration: Pick<TaskDeclaration, 'state' | 'until' | 'hold'> }): string {
@@ -47,7 +47,7 @@ export function declareTask({
 }): Decision {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
-  if (!card || card.automaticTask || card.id === HYDRA_CARD) {
+  if (!card || isManagedTask({ card })) {
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',

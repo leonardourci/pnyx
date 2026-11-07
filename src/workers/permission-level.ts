@@ -3,7 +3,9 @@ import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from './controls.ts'
-import { providerIdOf } from './providers.ts'
+import { PROVIDERS, harnessOf, providerIdOf } from './providers.ts'
+import { hydraActor } from '#app/request-context.ts'
+import { HydraError } from '#store/errors.ts'
 
 const PERMISSION_LEVELS: Record<Harness, Record<string, number>> = {
   claude: {
@@ -48,6 +50,38 @@ export function workerMode({
   return undefined
 }
 
+// A start Hydra asks for may keep or lower the worker's permission level; only the owner raises it.
+export function requireOwnerToRaise({
+  state,
+  actor,
+  harness,
+  before,
+  after,
+}: {
+  state: HydraState
+  actor?: string
+  harness: Harness
+  before?: string
+  after?: string
+}): void {
+  const hydraRaises = after !== undefined && hydraActor({ actor }) && raisesPermission({
+    harness,
+    before: workerMode({
+      state,
+      harness,
+      mode: before,
+    }),
+    after,
+  })
+
+  if (hydraRaises) {
+    throw new HydraError({
+      message: 'Only the owner can raise a worker’s permission level',
+      code: 'OWNER_ONLY',
+    })
+  }
+}
+
 export function agentPermissionNeedsOwner({
   card,
   value,
@@ -55,7 +89,7 @@ export function agentPermissionNeedsOwner({
   card: Card
   value: string
 }): boolean {
-  const harness = card.agent?.provider === 'codex' ? 'codex' : 'claude'
+  const harness = harnessOf({ provider: card.agent?.provider })
 
   return raisesPermission({
     harness,
@@ -79,8 +113,8 @@ export function raisesPermission({
     return false
   }
 
-  const beforeDefault = beforeHarness === 'claude' ? 'default' : 'on-request'
-  const afterDefault = harness === 'claude' ? 'default' : 'on-request'
+  const beforeDefault = PROVIDERS[beforeHarness].defaultMode
+  const afterDefault = PROVIDERS[harness].defaultMode
   const previous = PERMISSION_LEVELS[beforeHarness][before ?? beforeDefault]
   const next = PERMISSION_LEVELS[harness][after ?? afterDefault]
 

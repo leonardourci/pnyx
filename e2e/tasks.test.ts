@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { taskReadiness } from '#tasks/dependencies.ts'
+import { columnCards } from '#tasks/select.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { boardReview } from '#hydra/review.ts'
 import type { HydraState } from '#app/model.ts'
@@ -42,12 +43,54 @@ function followsProject({ prompt }: { prompt: string }): void {
 }
 
 test(
-  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, and the card survives a restart',
+  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, the card survives a restart, and Hydra\'s own card refuses task-only commands',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'mobile' })
     const hydraAgent = await s.chat({ text: 'Fix the login crash on mobile.' })
     const hydra = s.as({ agent: hydraAgent })
+    assert.deepEqual(
+      [
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hold',
+            '$hydra',
+            '--reason',
+            'discuss first',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'remind',
+            '$hydra',
+            'in 1 hour',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide-after',
+            '$hydra',
+            '24',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide',
+            '$hydra',
+          ],
+        }),
+      ],
+      [
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+      ],
+    )
     const create = [
       'task',
       'create',
@@ -74,6 +117,30 @@ test(
     assert.equal(
       s.task({ key: 'crash' }).column,
       s.column({ role: 'queued' }),
+    )
+    assert.deepEqual(
+      [
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide-after',
+            'crash',
+            'soon',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide-after',
+            'crash',
+            '876001',
+          ],
+        }),
+      ],
+      [
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+      ],
     )
     assert.equal(
       await hydra.refused({
@@ -384,9 +451,18 @@ test(
         'Comparing options',
       ],
     })
-    assert.equal(
-      s.task({ key: 'research' }).column,
-      s.column({ role: 'parked' }),
+    const declared = s.events().find(event => event.type === 'task.declared' && event.cardId === s.task({ key: 'research' }).id)
+    assert.deepEqual(
+      [
+        s.task({ key: 'research' }).column,
+        s.task({ key: 'research' }).updatedAt,
+        s.task({ key: 'research' }).updatedSeq,
+      ],
+      [
+        s.column({ role: 'parked' }),
+        declared?.at,
+        declared?.seq,
+      ],
     )
     const question = await run({
       args: [
@@ -1050,5 +1126,305 @@ test(
       s.events().filter(event => event.type === 'task.copy' && event.cardId === task.id).length,
       1,
     )
+  },
+)
+
+test(
+  'a task started through the Hydra command runs it in the task folder and records the launch, and without a command the start is refused',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'by-command' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Run the Hydra command',
+        '--key',
+        'by-command',
+        '--folder',
+        folder,
+      ],
+    })
+    const start = [
+      'task',
+      'start',
+      'by-command',
+      '--via',
+      'command',
+    ]
+    assert.equal(
+      await s.ownerRefused({ args: start }),
+      'NO_COMMAND',
+    )
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--command',
+        'touch "$PNYX_FOLDER/ran"',
+      ],
+    })
+    await s.owner({ args: start })
+    await until({
+      what: 'the Hydra command to run in the task folder',
+      check: () => existsSync(join(
+        folder,
+        'ran',
+      )),
+    })
+    const card = s.task({ key: 'by-command' })
+    assert.deepEqual(
+      [
+        card.launch?.via,
+        card.launch?.command,
+        card.status?.state,
+      ],
+      [
+        'command',
+        'touch "$PNYX_FOLDER/ran"',
+        'working',
+      ],
+    )
+  },
+)
+
+test(
+  'Continue in Pnyx refuses a task with no outside session, one that may still run or one attached elsewhere, and resumes an ended session in its folder',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'outside' })
+    const create = ({ key }: { key: string }) => s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        `Work on ${key}`,
+        '--key',
+        key,
+        '--folder',
+        folder,
+      ],
+    })
+    const push = ({
+      key,
+      activity,
+    }: {
+      key: string
+      activity: string
+    }) => s.owner({
+      args: [
+        'push',
+        '--key',
+        key,
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'outside-session',
+          cwd: folder,
+        },
+        activity,
+      }),
+    })
+    const refusal = ({ key }: { key: string }) => s.ownerRefusal({
+      args: [
+        'task',
+        'continue',
+        key,
+      ],
+    })
+    await create({ key: 'outside' })
+    await create({ key: 'plain' })
+    await create({ key: 'elsewhere' })
+    await push({
+      key: 'outside',
+      activity: 'working',
+    })
+    await push({
+      key: 'elsewhere',
+      activity: 'working',
+    })
+    assert.deepEqual(
+      [
+        await refusal({ key: 'plain' }),
+        await refusal({ key: 'outside' }),
+        await refusal({ key: 'elsewhere' }),
+      ],
+      [
+        {
+          code: 'NO_ROUTE',
+          error: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
+        },
+        {
+          code: 'SESSION_RUNNING',
+          error: 'cannot confirm the outside session has ended: No process and terminal were recorded.',
+        },
+        {
+          code: 'SESSION_CONFLICT',
+          error: 'the session is no longer attached to this task',
+        },
+      ],
+    )
+
+    await push({
+      key: 'outside',
+      activity: 'ended',
+    })
+    await s.owner({
+      args: [
+        'task',
+        'continue',
+        'outside',
+      ],
+    })
+    assert.deepEqual(
+      [
+        s.task({ key: 'outside' }).agent?.host,
+        s.task({ key: 'outside' }).status?.note,
+      ],
+      [
+        'pnyx',
+        'Worker continued in Pnyx',
+      ],
+    )
+    await s.owner({
+      args: [
+        'reply',
+        'outside',
+        '--text',
+        'Carry on from where you stopped',
+      ],
+    })
+    const resumed = await s.agent({ cwd: folder })
+    assert.equal(
+      resumed.resumed,
+      true,
+    )
+    assert.match(
+      resumed.received[0]!,
+      /Carry on from where you stopped/,
+    )
+  },
+)
+
+test(
+  'a task created before another keeps that place through a restart, from the CLI and an apply document, and a target outside its column is refused',
+  async () => {
+    const s = await pnyx.scenario()
+    const create = ({
+      key,
+      flags = [],
+    }: {
+      key: string
+      flags?: string[]
+    }) => s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        key,
+        '--key',
+        key,
+        ...flags,
+      ],
+    })
+    const queued = () => columnCards({
+      state: s.state(),
+      column: s.column({ role: 'queued' })!,
+    }).map(card => card.key)
+
+    await create({ key: 'first' })
+    await create({ key: 'last' })
+    await create({
+      key: 'middle',
+      flags: [
+        '--before',
+        'last',
+      ],
+    })
+    await s.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.create',
+            as: 'lead',
+            key: 'lead',
+            title: 'lead',
+            before: 'first',
+          },
+          {
+            op: 'task.create',
+            key: 'top',
+            title: 'top',
+            before: '$lead',
+          },
+        ],
+      }),
+    })
+    assert.deepEqual(
+      queued(),
+      [
+        'top',
+        'lead',
+        'first',
+        'middle',
+        'last',
+      ],
+    )
+    assert.deepEqual(
+      await s.ownerRefusal({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Elsewhere',
+          '--column',
+          'in_progress',
+          '--before',
+          'first',
+        ],
+      }),
+      {
+        code: 'VALIDATION_ERROR',
+        error: `card first is not in column ${s.column({ role: 'in_progress' })}`,
+      },
+    )
+
+    await pnyx.restart()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      const restarted = await page.shows({
+        what: 'the restarted server\'s Hydra',
+        check: ({ state }) => state,
+      })
+      assert.deepEqual(
+        columnCards({
+          state: restarted,
+          column: s.column({ role: 'queued' })!,
+        }).map(card => card.key),
+        [
+          'top',
+          'lead',
+          'first',
+          'middle',
+          'last',
+        ],
+      )
+    } finally {
+      page.close()
+    }
   },
 )

@@ -1,10 +1,11 @@
+import { createBeforeRank } from './create-placement.ts'
 import { randomUUID } from 'node:crypto'
+import { createdColumn, taskColumn } from './column-rules.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { explained } from '#app/cli-support.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError, inField } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
 import { taskProject } from '#projects/read.ts'
@@ -16,6 +17,7 @@ import { declareTask } from './declarations.ts'
 import { decideDependencies } from './dependency-decisions.ts'
 import { decideHold } from './holds.ts'
 import { refuseEarlyDone } from '#tasks/delivery/done.ts'
+import { isManagedTask } from './select.ts'
 
 export type TaskOperation = { reason?: string } & (
   | {
@@ -31,6 +33,7 @@ export type TaskOperation = { reason?: string } & (
     hold?: boolean
     parent?: string
     column?: string
+    before?: string
     ask?: string
     message?: string
   }
@@ -152,7 +155,7 @@ export function planTaskChange({
       ref: operation.parent,
     }) : undefined
 
-    if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
+    if (parent?.parentId || (parent !== undefined && isManagedTask({ card: parent }))) {
       throw new HydraError({
         message: 'subtasks have one level under a task',
         field: 'parent',
@@ -164,8 +167,10 @@ export function planTaskChange({
       state,
       id: hydraId,
     }).columns
-    const selected = operation.column ? columns.find(column => column.id === operation.column
-      || column.title === operation.column || column.role === operation.column) : undefined
+    const selected = operation.column ? taskColumn({
+      columns,
+      ref: operation.column,
+    }) : undefined
 
     if (operation.column && !selected) {
       throw new HydraError({
@@ -179,6 +184,19 @@ export function planTaskChange({
       key,
       title,
     }
+
+    if (operation.before) {
+      created.rank = createBeforeRank({
+        state,
+        column: createdColumn({
+          columns,
+          column: selected?.id,
+          held: Boolean(operation.hold),
+        }),
+        before: operation.before,
+      })
+    }
+
     const folder = inField({
       field: 'folder',
       read: () => canonical({ path: operation.folder }),
@@ -319,7 +337,7 @@ export function planTaskChange({
     ref: operation.task,
   })
 
-  if (task.automaticTask || task.id === HYDRA_CARD) {
+  if (isManagedTask({ card: task })) {
     throw new HydraError({
       message: 'choose a task',
       code: 'VALIDATION_ERROR',

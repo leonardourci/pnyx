@@ -5,6 +5,7 @@ import type { Card } from '#tasks/model.ts'
 import type { PermissionRequest } from './model.ts'
 import { checkAnswer, type Prompt } from './answers.ts'
 import type { Meta } from '#app/command-meta.ts'
+import { touch } from '#tasks/touch.ts'
 
 export const PERMISSION_PREFIX = 'pnyx:permission:'
 
@@ -18,20 +19,18 @@ export function permissionDetails({ request }: {
   text: string
 }[] {
   const input = request.input
-  // Codex wraps a command in its shell (`zsh -lc '...'`) and also reports the command it parsed.
+  // Codex permissions logged before its adapter added `display` and `paths` carry only its own `commandActions` and `changes`.
   const actions = Array.isArray(input.commandActions) ? input.commandActions : []
-  const parsed = actions.length === 1
-    ? text({ value: (actions[0] as { command?: unknown })?.command })
-    : undefined
-  const command = parsed ?? (Array.isArray(input.command)
-    ? input.command.join(' ')
-    : text({ value: input.command }))
+  const logged = actions.length === 1 ? (actions[0] as { command?: unknown })?.command : undefined
   const changes = (Array.isArray(input.changes) ? input.changes : [])
-    .flatMap(c => text({ value: (c as { path?: unknown })?.path }) ?? [])
+    .map(change => (change as { path?: unknown })?.path)
+  const command = text({ value: input.display ?? logged }) ?? text({ value: input.command })
+  const paths = (Array.isArray(input.paths) ? input.paths : changes)
+    .flatMap(path => text({ value: path }) ?? [])
   const file = text({ value: input.file_path ?? input.notebook_path ?? input.path })
   const files = [
     file ?? [],
-    changes,
+    paths,
   ].flat()
   const rows = [
     {
@@ -146,6 +145,10 @@ export function permissionAnswer({
   }
 }
 
+export function pendingPermissions({ card }: { card: Card }): PermissionRequest[] {
+  return (card.permissions ?? []).filter(p => p.status === 'pending')
+}
+
 export function permissionAttention({ card }: { card: Card }): void {
   card.attention = [
     ...card.attention.filter(a => !a.key.startsWith(PERMISSION_PREFIX)),
@@ -210,9 +213,10 @@ export function applyPermission({
     if (prior && sameRequest && event.data.delivery) {
       prior.delivery = event.data.delivery
       permissionAttention({ card })
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     if ((!prior && event.data.status === 'pending') || (prior?.status === 'pending' && event.data.status !== 'pending' && prior.session === event.data.session)) {
@@ -251,9 +255,10 @@ export function applyPermission({
           },
         ]
       permissionAttention({ card })
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
   }
 

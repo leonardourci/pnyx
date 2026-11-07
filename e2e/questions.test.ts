@@ -3,9 +3,10 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { openDecisions } from '#tasks/decisions.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
-import { cardQuestion } from '#tasks/questions.ts'
+import { ownerQuestions } from '#tasks/questions.ts'
 
 test(
   'a worker’s permission request waits on its task in Needs you until Hydra or the owner decides it once, the worker gets that decision and its answers, a Codex worker’s turn permissions grant only what it asked, and a restart expires what was left waiting',
@@ -72,7 +73,7 @@ test(
       ],
     )
     assert.equal(
-      cardQuestion({ card: s.task({ key: 'clean' }) })?.permission?.id,
+      ownerQuestions({ card: s.task({ key: 'clean' }) })[0]?.permission?.id,
       request.id,
     )
     await until({
@@ -347,7 +348,7 @@ test(
     const taskId = s.task({ key: 'clean' }).id
     await page.shows({
       what: 'the question on the closed card',
-      check: ({ state }) => cardQuestion({ card: state.cards[taskId]! })?.text
+      check: ({ state }) => ownerQuestions({ card: state.cards[taskId]! })[0]?.text
         === 'Retain historical cache entries?',
     })
     page.close()
@@ -371,7 +372,7 @@ test(
         ?.find(ask => ask.id === retention.id)?.answered && state.cards[taskId],
     })
     assert.equal(
-      cardQuestion({ card: answeredCard! }),
+      ownerQuestions({ card: answeredCard! })[0],
       undefined,
     )
     assert.equal(
@@ -386,7 +387,7 @@ test(
     })
     await page.shows({
       what: 'the answered question to stay absent after restart',
-      check: ({ state }) => cardQuestion({ card: state.cards[taskId]! }) === undefined,
+      check: ({ state }) => ownerQuestions({ card: state.cards[taskId]! })[0] === undefined,
     })
     page.close()
   },
@@ -713,6 +714,78 @@ test(
     assert.equal(
       s.task({ key: 'cache' }).copy,
       undefined,
+    )
+  },
+)
+
+test(
+  'Hydra’s own permission request waits for the owner, who answers it once, and an unknown request is not found',
+  async () => {
+    const s = await pnyx.scenario()
+    const hydraAgent = await s.chat({ text: 'Tidy the repository.' })
+    const hydra = s.as({ agent: hydraAgent })
+    await until({
+      what: 'Hydra to finish its turn',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const bash = hydraAgent.useTool!({
+      tool: 'Bash',
+      input: {
+        command: 'ls',
+        description: 'List the files',
+      },
+    })
+    const request = await until({
+      what: 'Hydra’s pending permission request',
+      check: () => s.state().cards[HYDRA_CARD]?.permissions?.find(r => r.status === 'pending'),
+    })
+    assert.match(
+      await hydra.run({
+        args: [
+          'task',
+          'permission',
+          HYDRA_CARD,
+          request.id,
+          'allow',
+          '--reason',
+          'it only lists files',
+        ],
+      }),
+      /^confirmation: needed$/m,
+    )
+    assert.deepEqual(
+      [
+        s.state().cards[HYDRA_CARD]?.permissions?.find(r => r.id === request.id)?.status,
+        await s.ownerRefusal({
+          args: [
+            'task',
+            'permission',
+            HYDRA_CARD,
+            'no-such-request',
+            'allow',
+          ],
+        }),
+      ],
+      [
+        'pending',
+        {
+          code: 'NOT_FOUND',
+          error: 'permission request not found: no-such-request',
+        },
+      ],
+    )
+    await s.owner({
+      args: [
+        'task',
+        'permission',
+        HYDRA_CARD,
+        request.id,
+        'allow',
+      ],
+    })
+    assert.deepEqual(
+      await bash,
+      { behavior: 'allow' },
     )
   },
 )

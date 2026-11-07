@@ -3,7 +3,7 @@ import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
-import type { Hit, Kind } from '#oracle/index.ts'
+import type { Hit, Kind } from '#oracle/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { viewFor } from '#preferences/view.ts'
 import { currentState } from '#tasks/card-status.ts'
@@ -17,14 +17,14 @@ import type { Command } from '#web-app/connection.ts'
 import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
 import { changedIds, resetPatch } from '#web-settings/changed.ts'
-import type { SettingsMatch } from '#web-settings/catalog.ts'
+import { SETTING_ICONS, type SettingsMatch } from '#web-settings/catalog.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
-import { SETTING_ICONS, SETTING_PREVIEWS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
+import { SETTING_PREVIEWS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { markdownText } from '#web-hydra/markdown.tsx'
+import { markdownText } from '#web-hydra/markdown-text.ts'
 import { Highlight, SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
@@ -35,6 +35,7 @@ import type { AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
 import { ACTION_ICONS, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
 import type { OracleResult } from './results.ts'
+import { snippetText } from './snippet-text.ts'
 
 const SNIPPET_SOURCES: Record<Kind, string> = {
   event: 'Update',
@@ -52,11 +53,9 @@ const KIND_NAMES: Record<string, string> = {
 
 function Snippets({
   hit,
-  terms,
   now,
 }: {
   hit?: Hit
-  terms: string[]
   now: number
 }) {
   if (!hit?.snippets.length) {
@@ -76,7 +75,11 @@ function Snippets({
             now,
           })}
           </span>
-          <span><Highlight text={markdownText({ text: snippet.snippet })} terms={terms} /></span>
+          <span>{snippetText({ snippet }).map((
+            part,
+            index,
+          ) => part.matched ? <mark key={index}>{part.text}</mark> : part.text)}
+          </span>
         </p>
       ))}
     </section>
@@ -144,7 +147,7 @@ function TaskPreview({
         {said && <p className="oracle-card-said"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
         <CardLinks links={card.links} expanded={false} />
       </div>
-      <Snippets hit={hit} terms={terms} now={now} />
+      <Snippets hit={hit} now={now} />
     </>
   )
 }
@@ -424,7 +427,7 @@ export function ResultPreview({
       {result.kind === 'conversation' && !card && (
         <>
           <h3 className="oracle-preview-title"><Icon name="comments" size={16} />{result.title}</h3>
-          <Snippets hit={result.hit} terms={terms} now={now} />
+          <Snippets hit={result.hit} now={now} />
         </>
       )}
       {result.kind === 'project' && <ProjectPreview project={result.summary} state={state} />}

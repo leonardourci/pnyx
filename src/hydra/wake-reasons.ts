@@ -1,5 +1,5 @@
 import { taskReadiness } from '#tasks/dependencies.ts'
-import { mergeApproval } from '#tasks/questions.ts'
+import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { clip } from './digest.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
 import { unwatchedPullRequests } from '#tasks/delivery/following.ts'

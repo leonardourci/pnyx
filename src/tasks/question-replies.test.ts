@@ -9,7 +9,8 @@ import { readEvents } from '#app/event-log.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { reply, sendReply } from '#workers/reply.ts'
+import { sendReply } from '#workers/reply.ts'
+import { reply } from '#workers/reply-cli.ts'
 import { base } from '#app/command-meta.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { acquireLock, LOCK_TIMEOUT_MS } from '#store/storage.ts'
@@ -17,7 +18,9 @@ import { HydraError } from '#store/errors.ts'
 import { offerHost } from '#app/server-state.ts'
 import { decidePush } from './push.ts'
 import { findCard } from './push-rules.ts'
-import { answerDelivery, cardQuestion, mergeApproval, openAsks, ownerQuestions } from './questions.ts'
+import { ownerQuestions } from './questions.ts'
+import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
+import { answerDelivery, openAsks } from './ask-state.ts'
 import { ownerGates } from './owner-gates.ts'
 import { relevantUpdate } from './updates.ts'
 
@@ -577,7 +580,7 @@ test(
       message,
     })
     assert.equal(
-      cardQuestion({ card: l.card({ ref: plain }) }),
+      ownerQuestions({ card: l.card({ ref: plain }) })[0],
       undefined,
     )
     const merge = await l.create({ key: 'merge' })
@@ -855,7 +858,7 @@ test(
       /no reply route/,
     )
     assert.equal(
-      cardQuestion({ card: l.card({ ref }) }),
+      ownerQuestions({ card: l.card({ ref }) })[0],
       undefined,
     )
     assert.equal(

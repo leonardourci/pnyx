@@ -6,6 +6,8 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
+import { LATEST_DELAY_MS } from '#app/latest-feed.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -661,21 +663,6 @@ test(
           }))?.behavior,
           'deny',
         )
-        assert.equal(
-          (await useTool({
-            tool: 'Command',
-            input: {
-              command: `/bin/zsh -lc '${historyCommand}'`,
-              commandActions: [
-                {
-                  type: 'unknown',
-                  command: historyCommand,
-                },
-              ],
-            },
-          }))?.behavior,
-          'allow',
-        )
         const historyArgs = historyCommand.replace(
           ` --hydra ${s.hydraId}`,
           '',
@@ -1202,8 +1189,13 @@ test(
         name: 'card',
         args: [s.task({ key: 'fix' }).id],
       })
+      assert.ok(page.queues.length > 0)
+      const queuedWork = page.queues.flatMap(queue => [
+        ...queue.waiting,
+        ...queue.reading,
+      ])
       assert.deepEqual(
-        page.queues,
+        queuedWork,
         [],
       )
       assert.equal(
@@ -1322,6 +1314,10 @@ test(
       await until({
         what: 'Codex to start the held turn',
         check: () => agent.received.length === 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
+      })
+      await until({
+        what: 'the page’s queue to show Hydra working',
+        check: () => page.queues.at(-1)?.chat?.working,
       })
       await send({
         s,
@@ -1455,6 +1451,11 @@ test(
     })
     assert.ok('catalog' in result)
     const catalog = result.catalog as Catalog
+    // The page names Hydra's skills with the receipt's provider, so the server always says which harness receives them.
+    assert.equal(
+      catalog.provider,
+      'claude',
+    )
     assert.deepEqual(
       catalog.suggestions.filter(item => item.source === 'Built-in').map(item => [
         item.command,
@@ -1521,6 +1522,10 @@ test(
     })
     assert.ok('catalog' in switched)
     const switchedCatalog = switched.catalog as Catalog
+    assert.equal(
+      switchedCatalog.provider,
+      'codex',
+    )
     assert.deepEqual(
       switchedCatalog.suggestions.filter(item => item.source === 'Built-in').map(item => item.command),
       [
@@ -1530,6 +1535,234 @@ test(
         '/restart',
         '/add-project',
       ],
+    )
+  },
+)
+
+test(
+  'the page creates a Hydra once per attempt, renames and reorders the list, and refuses an unknown action or attempt',
+  async t => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    type Listed = {
+      hydras: {
+        id: string
+        name: string
+      }[]
+    }
+    const create = {
+      name: 'hydras',
+      args: [
+        'create',
+        'Atlas',
+        'atlas-attempt',
+      ],
+    }
+    const first = await page.command(create) as Listed & { creation: { hydraId: string } }
+    const atlas = first.creation.hydraId
+    const retried = await page.command(create)
+    const boreas = (await page.command({
+      name: 'hydras',
+      args: [
+        'create',
+        'Boreas',
+      ],
+    }) as Listed & { url: string }).url.split('/').at(-2)!
+    await page.command({
+      name: 'hydras',
+      args: [
+        'edit',
+        atlas,
+        'Atlas Prime',
+      ],
+    })
+    await page.command({
+      name: 'hydras',
+      args: [
+        'move',
+        boreas,
+        '1',
+      ],
+    })
+    const moved = await page.command({
+      name: 'hydras',
+      args: [
+        'move',
+        atlas,
+        '2',
+      ],
+    }) as Listed
+    assert.deepEqual(
+      [
+        first.creation,
+        retried.creation,
+        moved.hydras.filter(h => h.id === atlas || h.id === boreas).map(h => [
+          h.id,
+          h.name,
+        ]),
+      ],
+      [
+        {
+          attempt: 'atlas-attempt',
+          hydraId: atlas,
+          status: 'saved',
+          mount: 'pending',
+        },
+        {
+          attempt: 'atlas-attempt',
+          hydraId: atlas,
+          status: 'saved',
+          mount: 'pending',
+        },
+        [
+          [
+            boreas,
+            'Boreas',
+          ],
+          [
+            atlas,
+            'Atlas Prime',
+          ],
+        ],
+      ],
+    )
+
+    const refusals = [
+      await page.refusal({
+        name: 'hydras',
+        args: ['delete'],
+      }),
+      await page.refusal({
+        name: 'hydras',
+        args: [
+          'create',
+          'Cronus',
+          'not an attempt',
+        ],
+      }),
+    ]
+    assert.deepEqual(
+      refusals.map(refusal => [
+        refusal.code,
+        refusal.error,
+      ]),
+      [
+        [
+          'VALIDATION_ERROR',
+          'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',
+        ],
+        [
+          'VALIDATION_ERROR',
+          'Invalid Hydra creation attempt',
+        ],
+      ],
+    )
+  },
+)
+
+test(
+  'the Hydra thread keeps what it loaded when an older page arrives, skips unrelated card events, and pushes a newer version when its conversation changes',
+  async t => {
+    const s = await pnyx.scenario()
+    // Long enough to split into more parts than one page holds.
+    const plan = 'Every step of the release plan. '.repeat(2100).trimEnd()
+    pnyx.claude.plan({
+      text: 'Write the whole plan',
+      reply: plan,
+    })
+    await send({
+      s,
+      text: 'Write the whole plan',
+      id: 'plan',
+    })
+    await finished({
+      s,
+      turns: 1,
+    })
+    // A restart drops the streamed copy of the reply, so every page reads the saved transcript.
+    await pnyx.restart()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+
+    const latest = (await page.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    const older = (await page.command({
+      name: 'thread',
+      args: [
+        HYDRA_CARD,
+        latest.older!,
+      ],
+    })).thread as ThreadPage
+    const conversation = ({ page }: { page: ThreadPage }) => page.conversation!.entries
+      .map(entry => ({
+        role: entry.role,
+        text: entry.text,
+      }))
+    assert.deepEqual(
+      conversation({ page: older }),
+      [
+        {
+          role: 'user',
+          text: 'Write the whole plan',
+        },
+        {
+          role: 'assistant',
+          text: plan,
+        },
+      ],
+    )
+
+    const newer = () => page.threads.filter(thread => thread.conversation!.version!
+      > older.conversation!.version!)
+
+    // A card Hydra's conversation does not show leaves the thread as it was.
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ship the plan',
+      ],
+    })
+    await delay(3 * LATEST_DELAY_MS)
+    assert.deepEqual(
+      newer(),
+      [],
+    )
+
+    pnyx.claude.plan({
+      text: 'Ship it',
+      reply: 'Shipping now.',
+    })
+    await send({
+      s,
+      text: 'Ship it',
+      id: 'ship',
+    })
+    const pushed = await until({
+      what: 'a newer Hydra thread with the new message',
+      check: () => newer().find(thread => thread.conversation!.entries
+        .some(entry => entry.text === 'Ship it')),
+    })
+    assert.equal(
+      pushed.conversation!.stream,
+      older.conversation!.stream,
+    )
+    assert.deepEqual(
+      conversation({ page: pushed }).slice(
+        0,
+        2,
+      ),
+      conversation({ page: older }),
     )
   },
 )

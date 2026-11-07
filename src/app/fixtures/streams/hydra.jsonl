@@ -1,0 +1,10 @@
+{"v":1,"seq":1,"id":"evt_1","at":"2026-10-21T10:01:00Z","actor":"cli","cardId":"c1","type":"card.pushed","data":{"key":"claude:host-a:sess-1","title":"Review the docs","workspace":"work"}}
+{"v":1,"seq":2,"id":"evt_2","at":"2026-10-21T10:02:00Z","actor":"cli","cardId":"c2","type":"card.pushed","data":{"key":"claude:host-a:sess-2","title":"Old spike","workspace":"work"}}
+{"v":1,"seq":3,"id":"evt_3","at":"2026-10-21T10:03:00Z","actor":"cli","cardId":"c2","type":"card.moved","data":{"before":null,"after":"parked"}}
+{"v":1,"seq":4,"id":"evt_4","at":"2026-10-21T10:04:00Z","actor":"cli","cardId":"c3","type":"card.pushed","data":{"key":"claude:host-a:sess-3","title":"Paused idea","workspace":"work"}}
+{"v":1,"seq":5,"id":"evt_5","at":"2026-10-21T10:05:00Z","actor":"cli","cardId":"c3","type":"card.moved","data":{"before":null,"after":"needs_you"}}
+{"v":1,"seq":6,"id":"evt_6","at":"2026-10-21T10:06:00Z","actor":"cli","cardId":"hydra","type":"board.columns","data":{"columns":[{"id":"later","title":"Later"},{"id":"queued","title":"Queued","role":"queued"},{"id":"done","title":"Done","role":"done"}],"fallback":"queued","placements":{"c1":{"before":"queued","after":"later"}}}}
+{"v":1,"seq":7,"id":"evt_7","at":"2026-10-21T10:07:00Z","actor":"cli","cardId":"hydra","type":"board.view","data":{"before":{"focusMode":false},"after":{"focusMode":true},"placements":[{"cardId":"c2","before":"queued","after":"done","revision":3},{"cardId":"c9","before":"later","after":"done","revision":1}]}}
+{"v":1,"seq":8,"id":"evt_8","at":"2026-10-21T10:08:00Z","actor":"cli","cardId":"hydra","type":"hydra.memory","data":{"key":"style","before":null,"after":"Short replies"}}
+{"v":1,"seq":9,"id":"evt_9","at":"2026-10-21T10:09:00Z","actor":"cli","cardId":"hydra","type":"hydra.memory","data":{"key":"tone","before":null,"after":"Plain words"}}
+{"v":1,"seq":10,"id":"evt_10","at":"2026-10-21T10:10:00Z","actor":"cli","cardId":"hydra","type":"hydra.memory","data":{"key":"style","before":"Short replies","after":null}}

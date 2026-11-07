@@ -1,6 +1,11 @@
 import type { Card } from './model.ts'
 import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+
+export function isManagedTask({ card }: { card: Card }): boolean {
+  return Boolean(card.automaticTask) || card.id === HYDRA_CARD
+}
 
 export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true && !card.automaticTask
@@ -22,6 +27,24 @@ export function taskDone({
 
 export function rankOf({ card }: { card: Card }): number {
   return card.rank ?? card.createdSeq
+}
+
+// The rank that puts a card at position `at` among the other cards of its new column.
+export function rankWithin({
+  card,
+  others,
+  at,
+}: {
+  card: Card
+  others: Card[]
+  at: number
+}): number {
+  const next = others[at], previous = others[at - 1]
+
+  // ponytail: midpoint ranks run out of float precision after ~50 drops into one gap; renumber the column if that ever bites.
+  return next && previous ? (rankOf({ card: previous }) + rankOf({ card: next })) / 2
+    : next ? rankOf({ card: next }) - 1
+      : previous ? rankOf({ card: previous }) + 1 : rankOf({ card })
 }
 
 export function columnCards({

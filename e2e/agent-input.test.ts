@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
+import { realpathSync } from 'node:fs'
+import { basename } from 'node:path'
 import { test } from 'node:test'
 import { localToken } from '#app/server-state.ts'
 import { withWriter } from '#app/writer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { MAX_IMAGE_BYTES } from '#hydra/images.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
@@ -142,6 +145,156 @@ test(
           {
             type: 'localImage',
             path: image.path,
+          },
+        ],
+      ],
+    )
+  },
+)
+
+test(
+  'the attachment and folder routes refuse what they cannot take and serve a stored image with its own headers',
+  async () => {
+    const s = await pnyx.scenario()
+    const base = `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}`
+    const post = ({
+      token,
+      type,
+      body,
+    }: {
+      token: string
+      type: string
+      body: typeof IMAGE_BYTES
+    }) => fetch(
+      `${base}/attachments`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': type,
+        },
+        body,
+      },
+    )
+    const answer = async ({ response }: { response: Response }) => [
+      response.status,
+      await response.json(),
+    ]
+    const image = await upload({ hydraId: s.hydraId })
+    const stored = await fetch(`${base}/attachments/${basename(image.path)}?token=${localToken()}`)
+    assert.deepEqual(
+      [
+        stored.status,
+        stored.headers.get('content-type'),
+        stored.headers.get('x-content-type-options'),
+        Buffer.from(await stored.arrayBuffer()),
+      ],
+      [
+        200,
+        'image/png',
+        'nosniff',
+        IMAGE_BYTES,
+      ],
+    )
+
+    const folder = s.folder({ name: 'empty-folder' })
+    const listed = await fetch(`${base}/folders?path=${encodeURIComponent(folder)}`)
+    assert.deepEqual(
+      [
+        listed.status,
+        (await listed.json() as { selected: unknown }).selected,
+      ],
+      [
+        200,
+        {
+          name: 'empty-folder',
+          path: realpathSync(folder),
+          empty: true,
+        },
+      ],
+    )
+
+    assert.deepEqual(
+      [
+        await answer({
+          response: await post({
+            token: 'wrong',
+            type: 'image/png',
+            body: IMAGE_BYTES,
+          }),
+        }),
+        await answer({
+          response: await post({
+            token: localToken(),
+            type: 'text/plain',
+            body: IMAGE_BYTES,
+          }),
+        }),
+        await answer({
+          response: await post({
+            token: localToken(),
+            type: 'image/png',
+            body: Buffer.alloc(MAX_IMAGE_BYTES + 1),
+          }),
+        }),
+        await answer({
+          response: await fetch(
+            `${base}/health`,
+            { method: 'PUT' },
+          ),
+        }),
+        await answer({ response: await fetch(`${base}/attachments/${basename(image.path)}`) }),
+        await answer({ response: await fetch(`${base}/attachments/00000000-0000-0000-0000-000000000000.png?token=${localToken()}`) }),
+        await answer({ response: await fetch(`${base}/folders?path=relative/folder`) }),
+      ],
+      [
+        [
+          401,
+          {
+            error: 'missing or wrong token',
+            code: 'UNAUTHORIZED',
+          },
+        ],
+        [
+          415,
+          {
+            error: 'images only: image/png, image/jpeg, image/jpeg, image/gif, image/webp',
+            code: 'VALIDATION_ERROR',
+          },
+        ],
+        [
+          413,
+          {
+            error: 'images up to 3.75 MB',
+            code: 'VALIDATION_ERROR',
+          },
+        ],
+        [
+          405,
+          {
+            error: 'method not allowed',
+            code: 'METHOD_NOT_ALLOWED',
+          },
+        ],
+        [
+          401,
+          {
+            error: 'missing or wrong token',
+            code: 'UNAUTHORIZED',
+          },
+        ],
+        [
+          404,
+          {
+            error: 'image not found',
+            code: 'NOT_FOUND',
+          },
+        ],
+        [
+          400,
+          {
+            error: 'Enter an absolute laptop folder path, or start with ~/',
+            code: 'FOLDER_UNAVAILABLE',
           },
         ],
       ],

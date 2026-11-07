@@ -4,7 +4,7 @@ import { setupCheckOutput } from './check.ts'
 import { requireSetupHome } from './home.ts'
 import { setupSkills } from './skills.ts'
 import { setupService } from './service.ts'
-import { setupHydra } from '#workers/start.ts'
+import { setupHydra } from '#integrations/firstmate/home.ts'
 import { HARNESSES, type Harness } from '#integrations/hooks/observe.ts'
 import { detectedHarnesses, setupHooks } from './hooks.ts'
 

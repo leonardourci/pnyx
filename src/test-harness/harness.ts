@@ -16,6 +16,7 @@ import { localToken } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { scriptPullRequest, type FakePullRequest } from './github.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
@@ -172,6 +173,7 @@ export async function openPage({
   let state: HydraState | undefined
   const answers = new Map<string, ServerMessage>()
   const queues: HydraQueue[] = []
+  const threads: ThreadPage[] = []
   const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
   const upgrades: UpgradeStatus[] = []
   const settings: Settings[] = []
@@ -191,6 +193,8 @@ export async function openPage({
         settings.push(message.settings)
       } else if (message.type === 'hydraQueue') {
         queues.push(message.queue)
+      } else if (message.type === 'thread') {
+        threads.push(message.thread)
       } else if (message.type === 'snapshot') {
         state = message.state
       } else if (message.type === 'event') {
@@ -243,6 +247,8 @@ export async function openPage({
 
   return {
     queues,
+    // Every thread page the server pushed to the subscribed tab, in order.
+    threads,
     usages,
     upgrades,
     // Every shared settings push, in order: one on connect, then one per change.

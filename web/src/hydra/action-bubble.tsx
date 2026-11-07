@@ -1,9 +1,11 @@
-import type { CurrentAction } from '#hydra/calls.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
+import { ColumnChip } from '#web-tasks/column-chip.tsx'
+import { TaskReference } from '#web-tasks/task-reference.tsx'
+import { columnLook } from '#web-tasks/view.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
 import { LiveLabel } from '#web-shared/ui/live-label.tsx'
 import { currentLabel } from './action-label.ts'
-import { SentencePart } from './messages.tsx'
-import type { PnyxLookup, Segment } from './pnyx-action.ts'
+import type { PnyxLookup,Segment } from './pnyx-action.ts'
 
 interface Shown {
   icon?: string
@@ -78,6 +80,23 @@ export function ActionBubble({
         render={ShownLabel}
         dimmed={({ value: shown }) => shown.done}
       />
+    </span>
+  )
+}
+
+export function SentencePart({ part }: { part: Segment }) {
+  if (typeof part === 'string') {
+    return part
+  }
+
+  if ('column' in part) {
+    return <ColumnChip {...columnLook({ column: part.column })} label={part.label} />
+  }
+
+  return (
+    // A click on the chip opens the task without folding the row.
+    <span onClick={event => event.preventDefault()}>
+      <TaskReference id={part.task}>{part.label}</TaskReference>
     </span>
   )
 }

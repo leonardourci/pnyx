@@ -884,3 +884,196 @@ test(
     })
   },
 )
+
+test(
+  'the page’s reply reaches a Pnyx worker once with its receipt, an answer and a setting change go through the reply command, and a malformed or unroutable reply is refused',
+  async t => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'page-reply' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Tidy the docs',
+        '--key',
+        'tidy',
+        '--folder',
+        folder,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Not started',
+        '--key',
+        'idle',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'tidy',
+      ],
+    })
+    await s.agent({ cwd: folder })
+    await until({
+      what: 'the opening turn to finish',
+      check: () => s.task({ key: 'tidy' }).sessionActivity === 'finished',
+    })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    const card = s.task({ key: 'tidy' }).id
+    const idle = s.task({ key: 'idle' }).id
+
+    const sent = await page.command({
+      name: 'reply',
+      args: [
+        card,
+        'Add the release date',
+        'page-reply',
+      ],
+    })
+    await until({
+      what: 'the reply to reach the worker',
+      check: () => s.received({ cwd: folder }).length === 2,
+    })
+    const again = await page.command({
+      name: 'reply',
+      args: [
+        card,
+        'Add the release date',
+        'page-reply',
+      ],
+    })
+    assert.deepEqual(
+      [
+        sent.reply,
+        again.reply,
+      ],
+      [
+        {
+          card,
+          reply: 'page-reply',
+          sent: true,
+          state: 'delivered',
+        },
+        {
+          card,
+          reply: 'page-reply',
+          state: 'delivered',
+          sent: false,
+        },
+      ],
+    )
+    assert.equal(
+      s.received({ cwd: folder }).length,
+      2,
+    )
+    assert.match(
+      s.received({ cwd: folder })[1]!,
+      /Add the release date/,
+    )
+
+    const answer = await page.refusal({
+      name: 'answer',
+      args: [
+        card,
+        'question-1',
+        '{"pick":[1]}',
+        'page-answer',
+        'request-1',
+      ],
+    })
+    const setting = await page.command({
+      name: 'agent',
+      args: [
+        card,
+        'mode',
+        'plan',
+        'page-setting',
+      ],
+    })
+    assert.deepEqual(
+      [
+        answer.code,
+        answer.error,
+        setting.agent,
+      ],
+      [
+        'VALIDATION_ERROR',
+        `card ${card} has no open request with key question-1 that can be answered here`,
+        {
+          card,
+          setting: 'mode',
+          value: 'plan',
+          sent: 'delivered',
+          before: 'unknown',
+          now: 'plan',
+          confirmed: true,
+        },
+      ],
+    )
+
+    const refusals = [
+      await page.refusal({
+        name: 'reply',
+        args: [
+          card,
+          'No key',
+        ],
+      }),
+      await page.refusal({
+        name: 'answer',
+        args: [
+          card,
+          'question-1',
+          '{"pick":[1]}',
+          'page-answer',
+        ],
+      }),
+      await page.refusal({
+        name: 'reply',
+        args: [
+          idle,
+          'Nobody to hear this',
+          'page-unroutable',
+        ],
+      }),
+      await page.refusal({
+        name: 'reply',
+        args: [1] as unknown as string[],
+      }),
+    ]
+    assert.deepEqual(
+      refusals.map(refusal => [
+        refusal.code,
+        refusal.error,
+      ]),
+      [
+        [
+          'VALIDATION_ERROR',
+          'reply expects card, text and idempotency key',
+        ],
+        [
+          'VALIDATION_ERROR',
+          'answer expects card, request key, answer, idempotency key and request id',
+        ],
+        [
+          'NO_ROUTE',
+          'This card has no Firstmate task or agent session to reply to. Your draft stays here.',
+        ],
+        [
+          'VALIDATION_ERROR',
+          'args must be strings',
+        ],
+      ],
+    )
+  },
+)

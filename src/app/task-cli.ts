@@ -13,7 +13,6 @@ import { findCard } from '#tasks/push-rules.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideSession } from '#workers/sessions.ts'
 import { declaredState } from '#tasks/declarations.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderTime } from '#tasks/time.ts'
@@ -24,7 +23,7 @@ import { startTask } from '#workers/start.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
-import { liveTask } from '#tasks/select.ts'
+import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
 import { findProject } from '#projects/read.ts'
 import { decideQueue } from '#workers/queue-decisions.ts'
@@ -35,7 +34,7 @@ import { readEvents } from './event-log.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { askRows, askCommand } from '#tasks/asks.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
-import { MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
+import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 
 const TASK_DETAIL_LIMIT = 5
 
@@ -228,7 +227,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           ref,
         })
 
-        if (task.automaticTask || task.id === HYDRA_CARD) {
+        if (isManagedTask({ card: task })) {
           throw new HydraError({
             message: 'Choose a task for the reminder',
             code: 'VALIDATION_ERROR',
@@ -716,14 +715,14 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       value: positionals[1],
       what: 'task id',
     })
-    const raw = required({
-      value: positionals[2],
-      what: 'hours or default',
-    }).trim()
-    const after = raw === 'default' ? null : Number(raw)
+    const after = hideAfterHours({
+      value: required({
+        value: positionals[2],
+        what: 'hours or default',
+      }),
+    })
 
-    if (after !== null
-      && (!raw || !Number.isFinite(after) || after < 0 || after > MAX_DONE_HOURS)) {
+    if (after === undefined) {
       throw new HydraError({
         message: `use hours from 0 to ${MAX_DONE_HOURS}, or default (0 keeps the card visible)`,
         code: 'VALIDATION_ERROR',
@@ -743,7 +742,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           ref,
         })
 
-        if (task.automaticTask || task.id === HYDRA_CARD) {
+        if (isManagedTask({ card: task })) {
           throw new HydraError({
             message: 'choose a task',
             code: 'VALIDATION_ERROR',
@@ -795,7 +794,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           ref,
         })
 
-        if (task.automaticTask || task.id === HYDRA_CARD) {
+        if (isManagedTask({ card: task })) {
           throw new HydraError({
             message: 'choose a task',
             code: 'VALIDATION_ERROR',

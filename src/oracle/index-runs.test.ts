@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
-import { INDEX_DELAY_MS, indexRuns } from './index-runs.ts'
+import { BACKGROUND_CATCHUPS, backgroundCatchups, INDEX_DELAY_MS, indexRuns } from './index-runs.ts'
 
 // Catch-ups that finish only when the test says so, on mocked timers.
 function fixture({ t }: { t: TestContext }) {
@@ -64,5 +64,179 @@ test(
       undefined,
     )
     f.runs.stop()
+  },
+)
+
+test(
+  'background catch-ups across Hydras run a few at a time, a stopped Hydra’s waiting one never starts, and a query does not wait in line',
+  async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const started: string[] = []
+    const finishes = new Map<string, () => void>()
+    const hydra = ({ id }: { id: string }) => indexRuns({
+      start: () => new Promise<undefined>(resolve => {
+        started.push(id)
+        finishes.set(
+          id,
+          () => resolve(undefined),
+        )
+      }),
+    })
+    const settle = () => new Promise(resolve => setImmediate(resolve))
+    const ids = Array.from(
+      { length: BACKGROUND_CATCHUPS + 2 },
+      (
+        _,
+        index,
+      ) => `hydra-${index}`,
+    )
+    const runs = ids.map(id => hydra({ id }))
+    runs.forEach(run => run.changed())
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    assert.deepEqual(
+      started,
+      ids.slice(
+        0,
+        BACKGROUND_CATCHUPS,
+      ),
+    )
+
+    runs.at(-2)!.stop()
+    const query = hydra({ id: 'query' }).ready()
+    assert.equal(
+      started.at(-1),
+      'query',
+    )
+    finishes.get('query')!()
+    await query
+
+    finishes.get('hydra-0')!()
+    await settle()
+    assert.equal(
+      started.at(-1),
+      ids.at(-1),
+    )
+    assert.equal(
+      started.includes(ids.at(-2)!),
+      false,
+    )
+    ids.forEach(id => finishes.get(id)?.())
+    await settle()
+  },
+)
+
+// Hydras whose catch-ups each finish only when the test says so, on mocked timers.
+function hydras({ t }: { t: TestContext }) {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const started: string[] = []
+  const inFlight = new Set<string>()
+  const finishes = new Map<string, (() => void)[]>()
+  const hydra = ({ id }: { id: string }) => indexRuns({
+    start: () => new Promise<undefined>(resolve => {
+      started.push(id)
+      inFlight.add(id)
+      finishes.set(
+        id,
+        [
+          ...finishes.get(id) ?? [],
+          () => {
+            inFlight.delete(id)
+            resolve(undefined)
+          },
+        ],
+      )
+    }),
+  })
+  const finish = ({ id }: { id: string }) => finishes.get(id)?.shift()?.()
+  const settle = () => new Promise(resolve => setImmediate(resolve))
+
+  // Finishes every catch-up, follow-ups included, so the shared slots end free.
+  const drain = async () => {
+    while (inFlight.size > 0) {
+      [...inFlight].forEach(id => finish({ id }))
+      await settle()
+    }
+  }
+
+  return {
+    started,
+    inFlight,
+    hydra,
+    finish,
+    settle,
+    drain,
+  }
+}
+
+test(
+  'a search that catches a Hydra up while its background catch-up waits for a turn leaves that turn nothing to do',
+  async t => {
+    const h = hydras({ t })
+    const busy = Array.from(
+      { length: BACKGROUND_CATCHUPS },
+      (
+        _,
+        index,
+      ) => h.hydra({ id: `busy-${index}` }),
+    )
+    busy.forEach(run => run.changed())
+    const waiting = h.hydra({ id: 'waiting' })
+    waiting.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+
+    const query = waiting.ready()
+    h.finish({ id: 'waiting' })
+    await query
+    await h.drain()
+    assert.equal(
+      h.started.filter(id => id === 'waiting').length,
+      1,
+    )
+  },
+)
+
+test(
+  'background catch-ups stay within the limit when a change joins a running one',
+  async t => {
+    const h = hydras({ t })
+    const joined = h.hydra({ id: 'joined' })
+    joined.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    joined.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    Array.from(
+      { length: BACKGROUND_CATCHUPS },
+      (
+        _,
+        index,
+      ) => h.hydra({ id: `other-${index}` }),
+    ).forEach(run => run.changed())
+    t.mock.timers.tick(INDEX_DELAY_MS)
+
+    h.finish({ id: 'joined' })
+    await h.settle()
+    assert.ok(
+      h.inFlight.size <= BACKGROUND_CATCHUPS,
+      `${h.inFlight.size} catch-ups in flight, limit ${BACKGROUND_CATCHUPS}`,
+    )
+    await h.drain()
+  },
+)
+
+test(
+  'background catch-ups get half the CPUs and at least one',
+  () => {
+    assert.deepEqual(
+      [
+        1,
+        2,
+        8,
+      ].map(cpus => backgroundCatchups({ cpus })),
+      [
+        1,
+        1,
+        4,
+      ],
+    )
   },
 )

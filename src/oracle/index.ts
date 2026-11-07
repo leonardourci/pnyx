@@ -1,9 +1,9 @@
+import { transcriptMessages } from '#workers/transcripts.ts'
 import { createHash } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { HydraError } from '#store/errors.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { liveTask } from '#tasks/select.ts'
 import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
@@ -11,25 +11,17 @@ import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { privateDir } from '#store/storage.ts'
-import { synonymGroup } from './synonyms.ts'
-import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
+import type { IndexResult, Kind } from './model.ts'
+import { words } from './query.ts'
+import { CHUNKER_VERSION, chunk, eventText, redact } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
 export const SCHEMA_VERSION = 8
-export const KINDS = [
-  'event',
-  'note',
-  'transcript',
-] as const
-export type Kind = (typeof KINDS)[number]
 
-const EVENTS = 'events'
-const NOTE_WEIGHT = 2
+export const EVENTS = 'events'
 const BUSY_TIMEOUT = 'PRAGMA busy_timeout = 5000'
 // Readers keep answering during a catch-up, and a killed writer leaves no hot journal that blocks read-only opens.
 const WAL = 'PRAGMA journal_mode = WAL'
-// A chunk's BM25 rank, lower is better, with notes weighted up.
-const RANK = `bm25(docs_fts) * CASE d.kind WHEN 'note' THEN ${NOTE_WEIGHT} ELSE 1 END`
 
 // Chunks key by event seq or native line offset; session identity deduplicates copied messages.
 // card_fts holds one row per card, keyed by cards.n: its title and link titles, its
@@ -118,7 +110,7 @@ function metaValue({
   return row?.value
 }
 
-function isCurrent({ db }: { db: DatabaseSync }): boolean {
+export function isCurrent({ db }: { db: DatabaseSync }): boolean {
   try {
     return metaValue({
       db,
@@ -184,7 +176,7 @@ function openWriter(
   return db
 }
 
-function openReader({ path }: { path: string }): DatabaseSync {
+export function openReader({ path }: { path: string }): DatabaseSync {
   const { DatabaseSync } = sqlite()
   const db = new DatabaseSync(
     path,
@@ -195,7 +187,7 @@ function openReader({ path }: { path: string }): DatabaseSync {
   return db
 }
 
-interface Cursor {
+export interface Cursor {
   source: string
   card: string
   identity: string
@@ -222,12 +214,6 @@ function transaction<T>({
     db.exec('ROLLBACK')
     throw error
   }
-}
-
-export interface IndexResult {
-  events: number
-  transcripts: number
-  docs: number
 }
 
 // Folds what the log and the recorded transcripts gained since the cursors into
@@ -673,505 +659,6 @@ export function rebuildIndex({ hydraId }: { hydraId: string }): IndexResult {
       db,
       hydraId,
     })
-  } finally {
-    db.close()
-  }
-}
-
-export interface Query {
-  text: string
-  kind?: Kind
-  card?: string
-  workspace?: string
-  limit: number
-  live?: boolean
-  highlight?: boolean
-}
-
-export const SNIPPETS = 3
-
-export interface Snippet {
-  kind: Kind
-  at: string
-  snippet: string
-}
-
-// lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched
-// that way, so words with typos or cut short matched the indexed words nearest them.
-export type Match = 'lexical' | 'fuzzy'
-
-export interface Hit {
-  card: string
-  title: string
-  kind?: 'hydra'
-  match: Match
-  snippets: Snippet[]
-}
-
-const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
-  .replace(
-    /\p{M}/gu,
-    '',
-  )
-
-// The distinct words of a text, folded, as typo matching looks them up. Words under
-// three letters have no trigram; longer than 32 are mostly hashes and ids.
-function words({ text }: { text: string }): Set<string> {
-  return new Set((fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []).filter(w => w.length >= 3 && w.length <= 32))
-}
-
-const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(
-  /"/g,
-  '""',
-)}"`
-
-const bare = ({ token }: { token: string }) => token.replace(
-  /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,
-  '',
-)
-
-// One query word, or a synonym phrase, and what it may match: its synonym group,
-// or the word itself. A trailing * matches the word as a prefix, and the indexed
-// words starting with it, and skips synonyms and typos.
-interface Term {
-  alts: readonly string[]
-  prefix: boolean
-  typo: boolean
-}
-
-function queryTerms({ text }: { text: string }): Term[] {
-  const tokens = text.split(/\s+/).filter(token => /[\p{L}\p{N}]/u.test(token))
-  const terms: Term[] = []
-
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i]!
-
-    if (token.endsWith('*')) {
-      terms.push({
-        alts: [
-          token.slice(
-            0,
-            -1,
-          ),
-        ],
-        prefix: true,
-        typo: false,
-      })
-      continue
-    }
-
-    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare({ token })} ${bare({ token: tokens[i + 1]! })}`.toLowerCase()) : undefined
-
-    if (pair) {
-      i += 1
-    }
-
-    const group = pair ?? synonymGroup.get(bare({ token }).toLowerCase())
-    terms.push(
-      group
-        ? {
-          alts: group,
-          prefix: false,
-          typo: false,
-        }
-        : {
-          alts: [token],
-          prefix: false,
-          typo: true,
-        },
-    )
-  }
-
-  return terms
-}
-
-// A term as an FTS5 expression, each phrase quoted so punctuation is never read as
-// query syntax. A prefix term's first alternative is the prefix.
-function termExpr({ term }: { term: Term }): string {
-  const alts = term.alts.map((
-    alt,
-    i,
-  ) => `${quote({ phrase: alt })}${term.prefix && i === 0 ? '*' : ''}`)
-
-  return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
-}
-
-export const ftsQuery = ({ text }: {
-  text: string
-}): string => queryTerms({
-  text,
-}).map(term => termExpr({ term }))
-  .join(' AND ')
-
-const trigrams = ({ word }: { word: string }) =>
-  Array.from(
-    {
-      length: Math.max(
-        word.length - 2,
-        0,
-      ),
-    },
-    (
-      _,
-      i,
-    ) => word.slice(
-      i,
-      i + 3,
-    ),
-  )
-
-// Trigram similarity of two words, padded so their first and last letters weigh in.
-function similarity({
-  a,
-  b,
-}: {
-  a: string
-  b: string
-}): number {
-  const x = new Set(trigrams({ word: ` ${a} ` }))
-  const y = new Set(trigrams({ word: ` ${b} ` }))
-  const shared = [...x].filter(t => y.has(t)).length
-
-  return shared / (x.size + y.size - shared)
-}
-
-const SIMILAR = 0.4
-const NEAREST = 5
-
-function nearest({
-  db,
-  word,
-}: {
-  db: DatabaseSync
-  word: string
-}): string[] {
-  const w = fold({ text: bare({ token: word }) })
-
-  if (!/^[\p{L}\p{N}]{3,}$/u.test(w)) {
-    return []
-  }
-
-  const candidates = db
-    .prepare('SELECT term FROM terms_tri WHERE terms_tri MATCH ? ORDER BY rank LIMIT 200')
-    .all(trigrams({ word: w }).map(phrase => quote({ phrase }))
-      .join(' OR ')) as { term: string }[]
-
-  return candidates
-    .map(({ term }) => ({
-      term,
-      score: term.includes(w) && w.length >= 4 ? 1 : similarity({
-        a: w,
-        b: term,
-      }),
-    }))
-    .filter(c => c.term !== w && c.score >= SIMILAR)
-    .sort((
-      a,
-      b,
-    ) => b.score - a.score || a.term.localeCompare(b.term))
-    .slice(
-      0,
-      NEAREST,
-    )
-    .map(c => c.term)
-}
-
-const PREFIXED = 50
-
-// The indexed words starting with a prefix. FTS5 stems a prefix query ("retry"* looks
-// for retri*), so a prefix also matches these words, each stemmed as the index stems it.
-// ponytail: the first PREFIXED words in order; a short prefix may miss later ones.
-function prefixed({
-  db,
-  prefix,
-}: {
-  db: DatabaseSync
-  prefix: string
-}): string[] {
-  const p = fold({ text: bare({ token: prefix }) })
-
-  if (!p) {
-    return []
-  }
-
-  const rows = db.prepare('SELECT term FROM terms WHERE term >= ? AND term < ? ORDER BY term LIMIT ?').all(
-    p,
-    `${p}\u{10FFFF}`,
-    PREFIXED,
-  ) as { term: string }[]
-
-  return rows.map(r => r.term).filter(term => term !== p)
-}
-
-// One hit per card, best first by BM25. Without --card or --kind every word must
-// match somewhere on the card: its title, link titles, notes or any chunk, the
-// title and link titles weighing half and the notes double; the snippets are its
-// chunks matching the most words. With --card or --kind every word must match in one chunk of that card or kind.
-// Words match stemmed, case and accent folded, and with their synonyms; when that
-// finds nothing, words also match the indexed words nearest them.
-export function search({
-  hydraId,
-  query,
-}: {
-  hydraId: string
-  query: Query
-}): {
-  hits: Hit[]
-  total: number
-  match: Match
-} {
-  const typed = queryTerms({ text: query.text })
-
-  if (!typed.length) {
-    throw new HydraError({
-      message: 'query has no words to search for',
-      code: 'VALIDATION_ERROR',
-      help: ['Run `pnyx-axi oracle "<words>"`'],
-    })
-  }
-
-  const db = openReader({ path: searchPath({ hydraId }) })
-
-  try {
-    const terms = typed.map(t => (
-      t.prefix ? {
-        ...t,
-        alts: [
-          ...t.alts,
-          ...prefixed({
-            db,
-            prefix: t.alts[0]!,
-          }),
-        ],
-      } : t
-    ))
-    const lexical = run({
-      db,
-      query,
-      terms,
-      mode: 'lexical',
-    })
-
-    if (lexical.hits.length) {
-      return lexical
-    }
-
-    const fuzzy = terms.map(t => (
-      t.typo ? {
-        ...t,
-        alts: [
-          ...t.alts,
-          ...nearest({
-            db,
-            word: t.alts[0]!,
-          }),
-        ],
-      } : t
-    ))
-
-    return fuzzy.some((
-      t,
-      i,
-    ) => t.alts.length !== terms[i]!.alts.length) ? run({
-        db,
-        query,
-        terms: fuzzy,
-        mode: 'fuzzy',
-      }) : lexical
-  } finally {
-    db.close()
-  }
-}
-
-function run(
-  {
-    db,
-    query,
-    terms,
-    mode,
-  }: {
-    db: DatabaseSync
-    query: Query
-    terms: Term[]
-    mode: Match
-  },
-): {
-  hits: Hit[]
-  total: number
-  match: Match
-} {
-  const exprs = terms.map(term => termExpr({ term }))
-  const match = exprs.join(' AND ')
-  const filters = {
-    match,
-    workspace: query.workspace ?? null,
-    live: query.live ? 1 : 0,
-  }
-  const chunks = `SELECT d.id, d.card, ${RANK} AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
-    WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1)`
-  type Row = {
-    card: string
-    title: string
-    total: number
-  }
-  const cards = (
-    query.card
-      ? db
-        .prepare(`WITH h AS MATERIALIZED (${chunks} AND d.card = :card) SELECT h.card, c.title, count(*) AS total FROM h JOIN cards c ON c.id = h.card GROUP BY h.card`)
-        .all({
-          ...filters,
-          kind: query.kind ?? null,
-          card: query.card,
-        })
-      : query.kind
-        ? db
-          .prepare(
-            `WITH h AS MATERIALIZED (${chunks}) SELECT h.card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.id = h.card
-               GROUP BY h.card ORDER BY min(h.rank), min(h.id) LIMIT :limit`,
-          )
-          .all({
-            ...filters,
-            kind: query.kind,
-            limit: query.limit,
-          })
-        : db
-          .prepare(
-            `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, ${NOTE_WEIGHT}, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
-               SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
-               WHERE (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) ORDER BY h.rank, c.n LIMIT :limit`,
-          )
-          .all({
-            ...filters,
-            limit: query.limit,
-          })
-  ) as Row[]
-  const top = db.prepare(
-    `SELECT d.kind, d.at, snippet(docs_fts, 0, :startMark, :endMark, '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
-     WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY ${RANK}, d.id LIMIT :n`,
-  )
-  const snippetMatch = query.card || query.kind ? match : exprs.join(' OR ')
-  const hits = cards.map(r => ({
-    card: r.card,
-    title: r.title,
-    ...(r.card === '$board' ? { kind: 'hydra' as const } : {}),
-    match: mode,
-    snippets: (
-      top.all({
-        match: snippetMatch,
-        startMark: query.highlight === false ? '' : '[',
-        endMark: query.highlight === false ? '' : ']',
-        card: r.card,
-        kind: query.kind ?? null,
-        n: query.card ? query.limit : SNIPPETS,
-      }) as {
-        kind: Kind
-        at: string
-        s: string
-      }[]
-    ).map(t => ({
-      kind: t.kind,
-      at: t.at || 'unknown',
-      snippet: query.highlight === false ? t.s : t.s.replace(
-        /\s+/g,
-        ' ',
-      ),
-    })),
-  }))
-
-  return {
-    hits,
-    total: cards[0]?.total ?? 0,
-    match: mode,
-  }
-}
-
-export interface IndexStatus {
-  builtThrough: number
-  docs: Record<Kind, number>
-  transcripts: {
-    tracked: number
-    missing: number
-  }
-  bytes: number
-  current: boolean
-}
-
-// Reads the index without writing it. Null when it has not been built.
-export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | null {
-  const path = searchPath({ hydraId })
-
-  if (!existsSync(path)) {
-    return null
-  }
-
-  const db = openReader({ path })
-
-  try {
-    const bytes = statSync(path).size
-
-    if (!isCurrent({ db })) {
-      return {
-        builtThrough: 0,
-        docs: {
-          event: 0,
-          note: 0,
-          transcript: 0,
-        },
-        transcripts: {
-          tracked: 0,
-          missing: 0,
-        },
-        bytes,
-        current: false,
-      }
-    }
-
-    const count = ({ kind }: { kind: Kind }) => (db.prepare('SELECT count(*) AS n FROM docs WHERE kind = ?').get(kind) as { n: number }).n
-    const cursors = db.prepare('SELECT * FROM cursors').all() as unknown as Cursor[]
-    const transcripts = cursors.filter(c => c.source !== EVENTS)
-
-    return {
-      builtThrough: cursors.find(c => c.source === EVENTS)?.seq ?? 0,
-      docs: {
-        event: count({ kind: 'event' }),
-        note: count({ kind: 'note' }),
-        transcript: count({ kind: 'transcript' }),
-      },
-      transcripts: {
-        tracked: transcripts.length,
-        missing: transcripts.filter(c => !existsSync(c.source)).length,
-      },
-      bytes,
-      current: true,
-    }
-  } finally {
-    db.close()
-  }
-}
-
-// The last event seq indexed, without indexStatus's full counts; null when missing or from another version.
-export function indexedThrough({ hydraId }: { hydraId: string }): number | null {
-  const path = searchPath({ hydraId })
-
-  if (!existsSync(path)) {
-    return null
-  }
-
-  const db = openReader({ path })
-
-  try {
-    if (!isCurrent({ db })) {
-      return null
-    }
-
-    const events = db.prepare('SELECT seq FROM cursors WHERE source = ?').get(EVENTS) as { seq: number } | undefined
-
-    // A first build commits its tables before its events.
-    if (!events) {
-      return 0
-    }
-
-    return events.seq
   } finally {
     db.close()
   }

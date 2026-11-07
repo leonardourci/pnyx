@@ -592,6 +592,18 @@ test(
           health.status,
           200,
         )
+        const removed = await fetch(
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/reminders`,
+          { redirect: 'manual' },
+        )
+        assert.equal(
+          removed.status,
+          302,
+        )
+        assert.equal(
+          removed.headers.get('location'),
+          `/hydra/${s.hydraId}/`,
+        )
         const page = await openPage({
           port: pnyx.port(),
           hydraId: s.hydraId,

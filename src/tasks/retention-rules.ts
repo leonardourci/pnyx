@@ -1,12 +1,26 @@
-import { openAsks } from './questions.ts'
+import { openAsks } from './ask-state.ts'
 import { reportReviewGaps } from '#investigations/inventory.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
+import { isManagedTask } from './select.ts'
 
 export const DEFAULT_DONE_HOURS = 24
 export const MAX_DONE_HOURS = 876000
 export const HOUR_MS = 60 * 60 * 1000
+
+// `task hide-after` hours: 0 to MAX_DONE_HOURS, null for `default` (the shared setting), undefined for a value it refuses.
+export function hideAfterHours({ value }: { value: string }): number | null | undefined {
+  const raw = value.trim()
+
+  if (raw === 'default') {
+    return null
+  }
+
+  const hours = Number(raw)
+
+  return raw && Number.isFinite(hours) && hours >= 0 && hours <= MAX_DONE_HOURS ? hours : undefined
+}
 
 export function refreshDone({
   state,
@@ -19,7 +33,7 @@ export function refreshDone({
     const done = state.config?.columns.find(c => c.id === card.column)?.role === 'done'
       || (!state.config && card.column === 'done')
 
-    if (done && !card.automaticTask && card.id !== '$hydra') {
+    if (done && !isManagedTask({ card })) {
       card.doneAt ??= at
     } else {
       delete card.doneAt

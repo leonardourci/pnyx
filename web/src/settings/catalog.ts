@@ -1,3 +1,27 @@
+import { tokens } from '#oracle/query.ts'
+
+export const SETTING_ICONS: Record<string, string> = {
+  theme: 'theme',
+  fontSize: 'text-size',
+  chatFontSize: 'comment',
+  codeFontSize: 'tool',
+  defaultColumnWidths: 'columns',
+  defaultHydraWidth: 'chat-width',
+  resetWidths: 'reset',
+  lastMessageOnCards: 'cards',
+  focusMode: 'focus',
+  toolDetails: 'tool',
+  thinkingDetails: 'thinking',
+  headsDispatch: 'dispatch',
+  keyboard: 'keyboard',
+  version: 'about',
+  doneAfterHours: 'done',
+  reviewMinutes: 'reminder',
+  helper: 'helper',
+  hydraAgent: 'agent',
+  accounts: 'you',
+}
+
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
 export const SETTINGS_SECTIONS = [
   {
@@ -337,9 +361,6 @@ export interface SettingsMatch {
   terms: string[]
 }
 
-const words = ({ text }: { text: string }) => text.toLowerCase().split(/\s+/)
-  .filter(Boolean)
-
 const directText = ({ entry }: { entry: CatalogEntry }) => [
   entry.label,
   entry.description,
@@ -354,7 +375,7 @@ export function searchSettings({
   query: string
   entries?: CatalogEntry[]
 }): SettingsMatch[] {
-  const asked = words({ text: query })
+  const asked = tokens({ text: query })
   const direct = new Set(asked
     .filter(word => entries.some(entry => directText({ entry }).includes(word))))
 
