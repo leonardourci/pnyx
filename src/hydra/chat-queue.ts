@@ -107,10 +107,6 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
   return {
     ...view,
     held: [...view.held],
-    received: Object.fromEntries(messages.map(message => [
-      message.id,
-      state.eventIds[message.id] ?? 0,
-    ])),
     hosted,
     working,
     through: state.seq,

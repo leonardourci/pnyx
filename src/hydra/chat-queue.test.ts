@@ -126,9 +126,10 @@ test(
         'upgrade',
       ],
     )
+    // The queue goes to every tab after every event, so it carries nothing per recorded message.
     assert.equal(
-      wire.received.held,
-      4,
+      'received' in wire,
+      false,
     )
     card.compaction = {
       operations: [],
