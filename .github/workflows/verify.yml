@@ -1,12 +1,11 @@
 name: Verify
 
-# pull_request_target runs this workflow and its checker from the base branch, so a pull
-# request cannot change the check that judges it. It reads the PR through the API only and
-# never checks out or runs PR code.
+# It runs for every PR, including a stacked PR whose base is another PR's branch. The checker
+# always comes from the default branch, so a pull request cannot change the check that judges
+# it. It reads the PR through the API only and never checks out or runs PR code.
 on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
-    branches: [main]
 
 permissions:
   contents: read
@@ -24,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: |
             scripts/verification/check-marker.ts
             scripts/verification/marker.ts
