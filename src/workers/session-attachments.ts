@@ -1,5 +1,5 @@
 import { cloneValue } from '#app/preimage.ts'
-import type { AgentRef, AgentSession, TerminalFacts, SessionEvent } from './model.ts'
+import type { AgentRef, AgentSession, Attention, TerminalFacts, SessionEvent } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -8,6 +8,10 @@ import { touch } from '#tasks/touch.ts'
 // The open request marking a hosted agent's turn cut off by a server stop; it belongs
 // to that agent, so it goes when the agent leaves the task.
 export const INTERRUPTED = 'pnyx:interrupted'
+
+// New work for an agent clears the marker its cut turn left.
+export const withoutInterrupted = ({ attention }: { attention: Attention[] }) =>
+  attention.filter(a => a.key !== INTERRUPTED)
 
 export function sessionId({ agent }: { agent: AgentRef }): string {
   return `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`

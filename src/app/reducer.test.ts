@@ -9,6 +9,8 @@ for (const name of [
   'duplicates',
   'pinned-attention',
   'undo',
+  'tasks',
+  'hydra',
 ]) {
   test(
     `golden replay: ${name}`,

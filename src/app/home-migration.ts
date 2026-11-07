@@ -354,3 +354,9 @@ export function hydraDir({
     hydraId,
   )
 }
+
+// The hosted Hydra's own folder, whose contract and skills Pnyx rewrites before each Hydra turn.
+export const hydraAgentFolder = ({ hydraId }: { hydraId: string }) => join(
+  hydraDir({ hydraId }),
+  'agent',
+)
