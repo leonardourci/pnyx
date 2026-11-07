@@ -14,3 +14,27 @@ Use the [PR template](../../../.github/pull_request_template.md) and the checks 
 - [ ] Remove the template placeholders. Keep all four headings, each with substantive text; hidden comments and examples do not count. `pnpm verify` checks structure, not whether the claims are true.
 - [ ] After every push, compare the description with the final diff and current validation. Rewrite stale claims, changed scope and validation gaps. Preserve the hidden verification marker and the review boxes; rerun `pnpm verify` on the pushed head after editing the body.
 - [ ] Read the final title, body and changed code comments using [deslop](../deslop/SKILL.md). Use plain English, keep enough context to assess the change and remove session history.
+
+## File structure changes
+
+For a PR that adds, moves, splits, renames or deletes files, put one combined tree in a fenced code block inside **Fix**. Show folders, subfolders and their files together, replacing path lists and separate before/after trees. PRs that only edit existing files do not need a tree.
+
+- [ ] Give each file one line with a short note on what it holds. Siblings that share a note may share a line, joined with ` · `.
+- [ ] Mark new files with `+`, moved or renamed files with `⇐` and `(from old/path)` in the note, and removed files with `-`. For splits or merges, show the resulting files and their source in the notes; include the removed source if it no longer exists.
+- [ ] Add `~N` for a file's approximate line count after the change when useful. Collapse unchanged files to one line such as `(other files unchanged)`.
+
+Example:
+
+```text
+src/
+├── app/
+│   ├── host.ts ~600                 wiring only after the split
+│   ├── +live-sessions.ts            agent processes (from app/host.ts)
+│   ├── +server-clients.ts           client connections (from app/server.ts)
+│   ├── server.ts ~400               mount, event pump, shutdown
+│   ├── -legacy-clients.ts           removed obsolete client handling
+│   └── (other files unchanged)
+└── hydra/
+    ├── +send-cli.ts · +history-cli.ts  send and history commands
+    └── operations.ts ⇐              stop, outage, retry (from app/operations.ts)
+```
