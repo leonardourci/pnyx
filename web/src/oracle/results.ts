@@ -5,11 +5,12 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Hit } from '#oracle/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
+import { searchSettings,SETTING_ICONS,SETTINGS_CATALOG,SETTINGS_SECTIONS,type SettingsMatch } from '#web-settings/catalog.ts'
+import { relativeTime } from '#web-tasks/brief.ts'
+import { columnsFor,filterCards } from '#web-tasks/view.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
-import { filterCards } from '#web-tasks/view.ts'
-import { searchSettings, SETTINGS_CATALOG, type SettingsMatch } from '#web-settings/catalog.ts'
-import { nameMatches, passes, type Candidate, type Filter, type FilterToken } from './filters.ts'
-import { matchesCommand, oraclePanels, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
+import { nameMatches,passes,TYPE_LABELS,type Candidate,type Filter,type FilterToken } from './filters.ts'
+import { ACTION_ICONS,matchesCommand,oraclePanels,type OracleAction,type OraclePanel } from './oracle-catalog.ts'
 
 interface Shown extends Candidate {
   id: string
@@ -224,8 +225,6 @@ export function oracleResults({
   // filterCards also matches a card's key, tags, link numbers and status badge text, which the index doesn't hold.
   const cardMatches = text ? filterCards({
     state,
-    workspace: '',
-    tag: '',
     query: text,
     actions: cardActions,
   }).filter(card => card.id !== HYDRA_CARD && !found.has(card.id))
@@ -337,4 +336,95 @@ export function oracleResults({
       }),
     },
   ].filter(group => group.results.length > 0)
+}
+
+export const countLabel = ({
+  pending,
+  failed,
+  count,
+}: {
+  pending: boolean
+  failed: boolean
+  count: number
+}) => {
+  if (pending) {
+    return 'Searching…'
+  }
+
+  if (failed) {
+    return 'Search unavailable'
+  }
+
+  return `${count} ${count === 1 ? 'result' : 'results'}`
+}
+
+export const resultIcon = ({ result }: { result: OracleResult }) => {
+  switch (result.kind) {
+    case 'task':
+      return 'task'
+    case 'conversation':
+      return 'comments'
+    case 'project':
+      return 'project'
+    case 'setting':
+      return SETTING_ICONS[result.match.entry.id] ?? 'settings'
+    case 'panel':
+      return result.panel.panel === 'projects' ? 'project' : 'agent'
+    case 'action':
+      return ACTION_ICONS[result.action.run]
+  }
+}
+
+export function resultMeta({
+  result,
+  state,
+  keys,
+  now,
+}: {
+  result: OracleResult
+  state: HydraState
+  keys({ id }: { id: string }): string
+  now: number
+}): string {
+  switch (result.kind) {
+    case 'task':
+      return `${columnsFor({ state }).find(column => column.id === result.card.column)?.title ?? ''} · ${relativeTime({
+        at: result.at,
+        now,
+      })}`
+    case 'conversation':
+      return conversationMeta({
+        result,
+        now,
+      })
+    case 'project':
+      return result.summary.path
+    case 'setting':
+      return SETTINGS_SECTIONS.find(section => section.id === result.match.entry.section)?.label ?? ''
+    case 'panel':
+      return ''
+    case 'action':
+      return result.action.run === 'key' ? keys({ id: result.action.key }) : ''
+  }
+}
+
+const conversationMeta = ({
+  result,
+  now,
+}: {
+  result: Extract<OracleResult, { kind: 'conversation' }>
+  now: number
+}) => {
+  const when = result.at ? relativeTime({
+    at: result.at,
+    now,
+  }) : ''
+
+  return result.card ? `Task · ${when}` : when
+}
+
+export const menuHint = ({ filter }: { filter: Filter }) => {
+  const words = filter.label.toLowerCase().split(' ')
+
+  return `${TYPE_LABELS[filter.type]} · >${words.at(-1)}`
 }

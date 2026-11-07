@@ -11,19 +11,18 @@ export const REFRESH_DELAY = 2000
 export const findCards = async ({
   command,
   query,
-  workspace = '',
   live = false,
 }: {
   command: Command
   query: string
-  workspace?: string
   live?: boolean
 }) => {
   const result = await command({
     name: 'oracle',
     args: [
       query,
-      workspace,
+      // The workspace comes second; an empty one searches every workspace.
+      '',
       ...(live ? ['hydra'] : []),
     ],
   })
@@ -33,10 +32,9 @@ export const findCards = async ({
 
 export interface Search {
   text: string
-  workspace: string
 }
 
-const keyOf = ({ search }: { search: Search }) => `${search.text}\n${search.workspace}`
+const keyOf = ({ search }: { search: Search }) => search.text
 
 // Events only refresh the shown query, so they never postpone a search; stale answers are dropped.
 export function searchSchedule({
@@ -153,12 +151,10 @@ export function searchSchedule({
 export function useFoundCards({
   command,
   query,
-  workspace,
   revision,
 }: {
   command: Command
   query: string
-  workspace: string
   revision: number
 }): {
   hits: Hit[]
@@ -174,10 +170,7 @@ export function useFoundCards({
     failed: boolean
   } | null>(null)
   const text = query.trim()
-  const search = text ? {
-    text,
-    workspace,
-  } : null
+  const search = text ? { text } : null
   const key = search ? keyOf({ search }) : ''
   const latest = useRef(search); latest.current = search
   const schedule = useRef<ReturnType<typeof searchSchedule> | null>(null)
@@ -187,7 +180,6 @@ export function useFoundCards({
         find: ({ search }) => findCards({
           command,
           query: search.text,
-          workspace: search.workspace,
           live: true,
         }),
         show: setFound,

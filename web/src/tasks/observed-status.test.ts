@@ -436,8 +436,6 @@ test(
     assert.deepEqual(
       filterCards({
         state,
-        workspace: '',
-        tag: '',
         query: 'waiting CI',
       }).map(card => card.id),
       ['task-synthetic'],
@@ -445,8 +443,6 @@ test(
     assert.deepEqual(
       filterCards({
         state,
-        workspace: '',
-        tag: '',
         query: 'paused',
       }),
       [],

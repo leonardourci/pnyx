@@ -1,3 +1,25 @@
+export const SETTING_ICONS: Record<string, string> = {
+  theme: 'theme',
+  fontSize: 'text-size',
+  chatFontSize: 'comment',
+  codeFontSize: 'tool',
+  defaultColumnWidths: 'columns',
+  defaultHydraWidth: 'chat-width',
+  resetWidths: 'reset',
+  lastMessageOnCards: 'cards',
+  focusMode: 'focus',
+  toolDetails: 'tool',
+  thinkingDetails: 'thinking',
+  headsDispatch: 'dispatch',
+  keyboard: 'keyboard',
+  version: 'about',
+  doneAfterHours: 'done',
+  reviewMinutes: 'reminder',
+  helper: 'helper',
+  hydraAgent: 'agent',
+  accounts: 'you',
+}
+
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
 export const SETTINGS_SECTIONS = [
   {

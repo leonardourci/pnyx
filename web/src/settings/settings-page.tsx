@@ -16,7 +16,7 @@ import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
-import { useSharedSettings } from '#web-settings/shared-settings.ts'
+import { useSharedSettings } from './shared-settings.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
@@ -25,29 +25,8 @@ import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
 import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
-import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
+import { SETTING_ICONS, SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
 
-export const SETTING_ICONS: Record<string, string> = {
-  theme: 'theme',
-  fontSize: 'text-size',
-  chatFontSize: 'comment',
-  codeFontSize: 'tool',
-  defaultColumnWidths: 'columns',
-  defaultHydraWidth: 'chat-width',
-  resetWidths: 'reset',
-  lastMessageOnCards: 'cards',
-  focusMode: 'focus',
-  toolDetails: 'tool',
-  thinkingDetails: 'thinking',
-  headsDispatch: 'dispatch',
-  keyboard: 'keyboard',
-  version: 'about',
-  doneAfterHours: 'done',
-  reviewMinutes: 'reminder',
-  helper: 'helper',
-  hydraAgent: 'agent',
-  accounts: 'you',
-}
 const UNITS: Record<string, string> = {
   fontSize: 'px',
   chatFontSize: 'px',

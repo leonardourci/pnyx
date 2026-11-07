@@ -1,5 +1,5 @@
 import { Button } from '#web-shared/ui/controls.tsx'
-import { ComposerField } from '#web-shared/ui/composer-field.tsx'
+import { ComposerField } from './composer-field.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { markdownText } from './markdown.tsx'

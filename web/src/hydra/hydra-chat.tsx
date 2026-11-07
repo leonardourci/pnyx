@@ -1,48 +1,42 @@
-import { AgentChangeChoice } from './agent-change-choice.tsx'
-import { activeCompaction } from '#workers/compaction/state.ts'
-import { CompactionQueue, CompactionRow } from '#web-workers/compaction.tsx'
-import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { UpgradeRow } from '#web-upgrade/upgrade-row.tsx'
-import { Tooltip, TooltipPanel, TooltipSection } from '#web-shared/ui/tooltip.tsx'
+import type { HydraState } from '#app/model.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import type { HydraQueue } from '#hydra/wakes.ts'
+import type { ViewPreferences } from '#preferences/model.ts'
+import { traces,VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import type { Command } from '#web-app/connection.ts'
+import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
+import { Resize } from '#web-shared/ui/resize.tsx'
+import { InlineQuestions } from '#web-tasks/questions.tsx'
+import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { WaitingDecisions } from '#web-tasks/waiting-decisions.tsx'
-import { loadEarlierMessages, mergeThreadPages } from './conversation-history.ts'
-import { hydraConversation } from './conversation.ts'
-import { chatDecisions, ChatDecisionCard, type ChatDecision } from './chat-decisions.tsx'
+import { UpgradeRow } from '#web-upgrade/upgrade-row.tsx'
+import { CompactionQueue,CompactionRow } from '#web-workers/compaction.tsx'
 import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
-import { REDUCED_MOTION, WorkingDots } from './streaming.tsx'
-import { Button, InlineButton } from '#web-shared/ui/controls.tsx'
-import { ContextMenu, menuPoint, opensMenu } from '#web-shared/ui/menu.tsx'
-import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
-import { HYDRA_MARK } from '#hydra/hydra-names.ts'
-import { hydraTitle } from '#web-app/view.ts'
-import { HYDRA_ICONS, HydraNameEditor, type HydraIdentity } from './hydra-title.tsx'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { ownerActor } from '#app/actors.ts'
-import type { HydraState } from '#app/model.ts'
-import type { ViewPreferences } from '#preferences/model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { traces, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { Resize } from '#web-shared/ui/resize.tsx'
-import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
-import type { HydraQueue, QueuedUpdate } from '#hydra/wakes.ts'
-import type { Command } from '#web-app/connection.ts'
-import { InlineQuestions } from '#web-tasks/questions.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
-import { Messages, type ChatEntry } from './messages.tsx'
-import { pnyxLookup } from './pnyx-action.ts'
-import { ActionBubble } from './action-bubble.tsx'
-import { LiveLabel } from '#web-shared/ui/live-label.tsx'
-import type { CurrentAction } from '#hydra/calls.ts'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
-import { Composer } from './composer.tsx'
-import { useComposerSources } from '#web-shared/ui/composer-field.tsx'
-import { HydraAgent } from './hydra-agent.tsx'
+import { useCallback,useEffect,useLayoutEffect,useRef,useState } from 'react'
+import { ActionBubble } from './action-bubble.tsx'
+import { AgentChangeChoice } from './agent-change-choice.tsx'
+import { ChatDecisionCard,chatDecisions,type ChatDecision } from './chat-decisions.tsx'
+import { hydraPill,joinMessageParts,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
-import { clock, duration, hydraPill, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
+import { useComposerSources } from './composer-sources.tsx'
+import { Composer } from './composer.tsx'
+import { loadEarlierMessages,mergeThreadPages } from './conversation-history.ts'
+import { hydraConversation } from './conversation.ts'
+import { HydraAgent } from './hydra-agent.tsx'
+import { HydraHead } from './hydra-head.tsx'
+import { hydraQueueView } from './hydra-queue.ts'
+import { type HydraIdentity } from './hydra-title.tsx'
+import { Messages,type ChatEntry } from './messages.tsx'
+import { pnyxLookup } from './pnyx-action.ts'
+import { Running } from './running-indicator.tsx'
+import { REDUCED_MOTION } from './streaming.tsx'
 
 // How long after the owner's own input a scroll up still counts as theirs.
 const OWNER_SCROLL_MS = 1000
@@ -55,112 +49,6 @@ interface Sending {
   text: string
   at: string
   confirmed: boolean
-}
-
-function HydraHead({
-  name,
-  icon = HYDRA_MARK,
-  taken,
-  editHydra,
-  addProject,
-  connected,
-  children,
-}: {
-  name: string
-  icon?: string
-  taken: string[]
-  editHydra?({
-    name,
-    icon,
-  }: HydraIdentity): void
-  addProject?(): void
-  connected: boolean
-  children: ReactNode
-}) {
-  const [
-    editing,
-    setEditing,
-  ] = useState(false)
-  const [
-    menu,
-    setMenu,
-  ] = useState<{
-    x: number
-    y: number
-  } | null>(null)
-  const closeMenu = useCallback(
-    () => setMenu(null),
-    [],
-  )
-  const canEdit = !!editHydra && connected
-
-  const openMenu = ({ event }: { event: Parameters<typeof menuPoint>[0]['event'] & { preventDefault(): void } }) => {
-    event.preventDefault(); setMenu(menuPoint({ event }))
-  }
-
-  return (
-    <header
-      className="hydra-head"
-      onContextMenu={event => canEdit && openMenu({ event })}
-      onKeyDown={event => canEdit && opensMenu({ event }) && openMenu({
-        event: {
-          preventDefault: () => event.preventDefault(),
-          currentTarget: event.currentTarget,
-        },
-      })}
-    >
-      {editing && editHydra ? (
-        <HydraNameEditor
-          saved={{
-            name,
-            icon,
-          }}
-          taken={taken}
-          iconSize={24}
-          save={({
-            name,
-            icon,
-          }) => {
-            setEditing(false); editHydra({
-              name,
-              icon,
-            })
-          }}
-          cancel={() => setEditing(false)}
-        />
-      ) : (
-        <>
-          {canEdit ? (
-            <IconPicker
-              label="Change icon"
-              value={icon}
-              choices={HYDRA_ICONS}
-              size={24}
-              pick={({ icon }) => editHydra({
-                name,
-                icon,
-              })}
-            />
-          ) : <Icon name={icon} size={24} />}
-          <Button
-            className="hydra-title"
-            disabled={!canEdit}
-            title="Click to edit"
-            aria-label={`Edit ${hydraTitle({ name })}`}
-            onClick={() => setEditing(true)}
-          ><span className={name ? 'hydra-label' : 'hydra-label muted'}>{hydraTitle({ name })}</span>
-          </Button>
-        </>
-      )}
-      {children}
-      {menu && (
-        <ContextMenu label={`${hydraTitle({ name })} menu`} at={menu} close={closeMenu}>
-          <Button onClick={() => setEditing(true)}>Edit</Button>
-          {addProject && <Button onClick={addProject}>Add project</Button>}
-        </ContextMenu>
-      )}
-    </header>
-  )
 }
 
 export function HydraChat({
@@ -304,36 +192,26 @@ export function HydraChat({
     },
     [liveThread],
   )
-  const compacting = activeCompaction({ card })
-  const upgrades = state.upgrades ?? []
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
-  const stopped = state.hydraOperation
-  // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
-  // A message whose Hydra turn started has been taken.
-  const taken = ({ id }: { id: string }) => `${id}:hosted` in state.eventIds
-  const changingAgent = state.hydraAgentChange
-  const changeSeq = changingAgent ? (state.eventIds[changingAgent.id] ?? 1) - 1 : undefined
-  const stopSeq = stopped?.seq ?? changeSeq
-  const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
-    && (state.eventIds[id] ?? 0) > stopSeq
-  const waiting = messages.filter(m => sentSince(m) && !taken(m))
-  const held = new Set([
-    ...card?.compaction?.inputs.map(input => input.id) ?? [],
-    ...waiting.map(message => message.id),
-  ])
-  const compactOperations = card?.compaction?.operations ?? []
-  // Only the newest result shows; a new attempt replaces the last one.
-  const shownUpgrades = upgrades.filter(operation => operation.state !== 'queued')
-    .sort((
-      a,
-      b,
-    ) => a.queuedAt.localeCompare(b.queuedAt))
-    .slice(-1)
-  const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
-  const holding = Boolean(compacting) || upgrading || Boolean(stopped) || Boolean(changingAgent)
-  const runningChange = changingAgent?.state === 'running'
-  const compactionRunning = Boolean(compacting) || runningChange
-  const upgradeRunning = upgrades.some(operation => operation.state === 'running')
+  const pending = sending.filter(s => !messages.some(m => m.id === s.id))
+  const {
+    compacting,
+    upgrades,
+    held,
+    compactOperations,
+    shownUpgrades,
+    upgrading,
+    holding,
+    runningChange,
+    compactionRunning,
+    upgradeRunning,
+    compactInputs,
+  } = hydraQueueView({
+    state,
+    messages,
+    card,
+    pending,
+  })
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
   const stop = async () => {
@@ -347,30 +225,6 @@ export function HydraChat({
     }
   }
 
-  const pending = sending.filter(s => !messages.some(m => m.id === s.id))
-  // A queued /upgrade waits in the same box, with the same Send now.
-  const compactInputs = [
-    ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })) ?? []),
-    ...upgrades.filter(operation => operation.state === 'queued').map(operation => ({
-      id: operation.id,
-      text: UPGRADE_COMMAND,
-      actor: 'web',
-      route: 'hydra' as const,
-      at: operation.queuedAt,
-    })),
-    ...waiting.filter(message => ownerActor({ actor: message.actor })).map(message => ({
-      id: message.id,
-      text: message.text,
-      actor: message.actor,
-      at: message.at,
-      route: 'hydra' as const,
-    })),
-    ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
-      ...item,
-      actor: 'web',
-      route: 'hydra' as const,
-    })),
-  ]
   useEffect(
     () => {
       if (pending.length < sending.length) {
@@ -1013,154 +867,4 @@ export function HydraChat({
       />
     </aside>
   )
-}
-
-// The running dots and timer, and Hydra's queue built from Pnyx's own state: what it is reading and what waits for it.
-function Running({
-  since,
-  running,
-  label,
-  reading,
-  waiting,
-  state,
-  children,
-}: {
-  since: string | null
-  running: boolean
-  label: string
-  reading: QueuedUpdate[]
-  waiting: QueuedUpdate[]
-  state: HydraState
-  children?: ReactNode
-}) {
-  const [
-    now,
-    setNow,
-  ] = useState(() => Date.now())
-  useEffect(
-    () => {
-      const timer = setInterval(
-        () => setNow(Date.now()),
-        1000,
-      )
-
-      return () => clearInterval(timer)
-    },
-    [],
-  )
-
-  const words = queueWords({
-    reading: reading.length,
-    waiting: waiting.length,
-    tasks: new Set(reading.map(update => update.card).filter(card => card !== HYDRA_CARD)).size,
-  })
-
-  return (
-    <div
-      className="chat-running"
-      title={since ? `Started ${clock({
-        at: since,
-        seconds: true,
-      })}` : undefined}
-    >
-      <span
-        className="chat-running-status"
-        role="status"
-        aria-label={statusName({
-          running,
-          label,
-          words,
-        })}
-      >
-        {running && <WorkingDots />}
-        {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
-        {children}
-        {words && (
-          <Tooltip
-            content={(
-              <TooltipPanel>
-                {[
-                  {
-                    label: 'Reading',
-                    updates: reading,
-                  },
-                  {
-                    label: 'Waiting',
-                    updates: waiting,
-                  },
-                ].filter(group => group.updates.length).map(group => (
-                  <TooltipSection key={group.label}>
-                    <strong>{group.label} {group.updates.length} {group.updates.length === 1 ? 'update' : 'updates'}</strong>
-                    {group.updates.map(update => (
-                      <span key={update.seq}>
-                        {state.cards[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
-                      </span>
-                    ))}
-                  </TooltipSection>
-                ))}
-              </TooltipPanel>
-            )}
-          >
-            <span tabIndex={0}>
-              <LiveLabel
-                value={words}
-                keyOf={({ value }) => value}
-                render={({ value }) => value}
-              />
-            </span>
-          </Tooltip>
-        )}
-      </span>
-
-    </div>
-  )
-}
-
-// What the status says aloud: that Hydra is working, then what its queue holds.
-function statusName({
-  running,
-  label,
-  words,
-}: {
-  running: boolean
-  label: string
-  words: string | null
-}): string | undefined {
-  if (running && words) {
-    return `${label}. ${words}`
-  }
-
-  if (running) {
-    return label
-  }
-
-  return words ?? undefined
-}
-
-// What the running line says about Hydra's queue; null once it is empty.
-function queueWords({
-  reading,
-  waiting,
-  tasks,
-}: {
-  reading: number
-  waiting: number
-  tasks: number
-}): string | null {
-  const count = waiting > 0 ? `+${waiting} waiting` : null
-  const read = `Reading ${reading} ${reading === 1 ? 'update' : 'updates'}${tasks > 1 ? ` across ${tasks} tasks` : ''}`
-
-  if (reading > 0 && waiting > 0) {
-    return `${read} · ${count}`
-  }
-
-  if (reading > 0) {
-    return read
-  }
-
-  if (waiting > 0) {
-    return count
-  }
-
-  return null
 }
