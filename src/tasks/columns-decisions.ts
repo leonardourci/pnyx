@@ -5,7 +5,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { invalid } from '#app/command-validation.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { columnCards, rankOf } from './select.ts'
+import { columnCards, rankOf, rankWithin } from './select.ts'
 import { decided } from '#app/decision.ts'
 import type { ViewPreferences, ViewEvent } from '#preferences/model.ts'
 
@@ -62,11 +62,11 @@ export function decideMove(
     throw invalid({ message: `card ${before} is not in column ${column}` })
   }
 
-  const next = others[at], previous = others[at - 1]
-  // ponytail: midpoint ranks run out of float precision after ~50 drops into one gap; renumber the column if that ever bites.
-  const rank = next && previous ? (rankOf({ card: previous }) + rankOf({ card: next })) / 2
-    : next ? rankOf({ card: next }) - 1
-      : previous ? rankOf({ card: previous }) + 1 : rankOf({ card })
+  const rank = rankWithin({
+    card,
+    others,
+    at,
+  })
 
   return decided({
     state,

@@ -9,6 +9,19 @@ export const DEFAULT_DONE_HOURS = 24
 export const MAX_DONE_HOURS = 876000
 export const HOUR_MS = 60 * 60 * 1000
 
+// `task hide-after` hours: 0 to MAX_DONE_HOURS, null for `default` (the shared setting), undefined for a value it refuses.
+export function hideAfterHours({ value }: { value: string }): number | null | undefined {
+  const raw = value.trim()
+
+  if (raw === 'default') {
+    return null
+  }
+
+  const hours = Number(raw)
+
+  return raw && Number.isFinite(hours) && hours >= 0 && hours <= MAX_DONE_HOURS ? hours : undefined
+}
+
 export function refreshDone({
   state,
   at,

@@ -224,12 +224,13 @@ function raisesCandidatePermission({
 }): boolean {
   const callerHydraId = requestEnv().PNYX_HYDRA || hydraId
   const state = loadHydra({ hydraId: callerHydraId }).state
+  // The running harness is the fallback Hydra keeps; its own configured agent would hide what the rules change.
   const previousHydra = hydraCandidate({
-    state: {},
+    state: { cards: state.cards },
     dispatch: before,
   })
   const nextHydra = hydraCandidate({
-    state: {},
+    state: { cards: state.cards },
     dispatch: after,
   })
 

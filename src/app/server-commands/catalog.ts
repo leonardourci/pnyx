@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { hydraConfig } from '#hydra/config.ts'
+import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
@@ -99,12 +99,11 @@ export function createCatalog({
       state: state(),
       ref: args[0],
     })
-    const config = hydraConfig({ state: state() })
-    const effective = effectiveDispatch()
     const receiving = card.id === HYDRA_CARD
-      ? config.hydra.agent?.harness
-        ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
-        ?? effective.dispatch.default[0]?.harness
+      ? hydraCandidate({
+        state: state(),
+        dispatch: effectiveDispatch().dispatch,
+      }).harness
       : card.agent?.provider
     const currentCard = catalogCard({
       card,

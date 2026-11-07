@@ -85,32 +85,6 @@ export function storeModels({
   }
 }
 
-// A harness whose catalog cannot be read is left out, so its models are not checked.
-export async function catalogOffers({
-  host,
-  harnesses,
-  account,
-}: {
-  host: Host
-  harnesses: Harness[]
-  account?: string
-}) {
-  const offers: Partial<Record<Harness, string[]>> = {}
-
-  await Promise.all([...new Set(harnesses)].map(harness => host.models({
-    harness,
-    account,
-  })
-    .then(
-      models => {
-        offers[harness] = modelIds({ models })
-      },
-      () => {},
-    )))
-
-  return offers
-}
-
 type CommandSuggestion = {
   command: string
   description: string

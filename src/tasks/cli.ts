@@ -23,7 +23,7 @@ import { taskSessions } from '#workers/cli.ts'
 import { tagsTask } from './updates.ts'
 import { columnRule } from './column-defaults.ts'
 import { decideView } from '#preferences/decisions.ts'
-import { lockedColumn, LOCKED_DELETE, validateColumns } from './column-rules.ts'
+import { columnByRef, lockedColumn, LOCKED_DELETE, validateColumns } from './column-rules.ts'
 import { parseColumnRule } from './columns.ts'
 import { lifecycleMoves } from './lifecycle.ts'
 import { answerPrompt } from '#workers/answers.ts'
@@ -526,7 +526,10 @@ function columnCommand({ args }: { args: string[] }): Output {
       }).columns)
       let columns = structuredClone(before)
       const ref = positionals[1]
-      const selected = columns.find(c => c.id === ref || c.role === ref)
+      const selected = columnByRef({
+        columns,
+        ref,
+      })
 
       if (action !== 'create' && !selected) {
         throw new HydraError({
@@ -594,7 +597,10 @@ function columnCommand({ args }: { args: string[] }): Output {
       } else if (action === 'delete') {
         columns = columns.filter(c => c.id !== selected!.id)
         fallback = values.to
-          ? columns.find(c => c.id === values.to || c.role === values.to)?.id : columns[0]?.id
+          ? columnByRef({
+            columns,
+            ref: values.to as string,
+          })?.id : columns[0]?.id
 
         if (values.to && !fallback) {
           throw new HydraError({
@@ -604,11 +610,13 @@ function columnCommand({ args }: { args: string[] }): Output {
         }
       } else if (action === 'reorder') {
         columns = columns.filter(c => c.id !== selected!.id)
-        const index = values.before
-          ? columns.findIndex(c => c.id === values.before || c.role === values.before)
-          : columns.length
+        const above = values.before ? columnByRef({
+          columns,
+          ref: values.before as string,
+        }) : undefined
+        const index = above ? columns.indexOf(above) : columns.length
 
-        if (index < 0) {
+        if (values.before && !above) {
           throw new HydraError({
             message: '--before column not found',
             code: 'VALIDATION_ERROR',
@@ -875,8 +883,10 @@ export const move = guard({
       decide: ({ state }) => decideMove({
         state,
         ref,
-        column: hydraConfig({ state }).columns
-          .find(c => c.id === target || c.role === target)?.id ?? target,
+        column: columnByRef({
+          columns: hydraConfig({ state }).columns,
+          ref: target,
+        })?.id ?? target,
         before,
         meta: m,
       }),

@@ -2,7 +2,9 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { columnCards, rankOf } from '#tasks/select.ts'
+import { columnCards, rankOf, rankWithin } from '#tasks/select.ts'
+import { columnByRef, createdColumn, taskColumn } from '#tasks/column-rules.ts'
+import { hideAfterHours } from '#tasks/retention-rules.ts'
 import { patchView } from '#preferences/view.ts'
 
 export interface Edit {
@@ -60,19 +62,27 @@ export function optimisticState({
     const title = option({ flag: '--title' })?.trim()
     const key = option({ flag: '--key' }) ?? `task:${event}`
     const columnRef = option({ flag: '--column' })
-    const column = config.columns.find(column =>
-      column.id === columnRef || column.role === columnRef)
-      ?? config.columns.find(column => column.role === 'queued')
+    const named = columnRef === undefined ? undefined : taskColumn({
+      columns: config.columns,
+      ref: columnRef,
+    })
+    const column = createdColumn({
+      columns: config.columns,
+      column: named?.id,
+      held: args.includes('--hold'),
+    })
     const parentRef = option({ flag: '--parent' })
     const parentId = parentRef ? state.keys[parentRef] ?? parentRef : undefined
+    const unknownColumn = columnRef !== undefined && !named
+    const missingParent = parentId && !state.cards[parentId]
 
-    if (!event || !title || !column || state.keys[key] || (parentId && !state.cards[parentId])) {
+    if (!event || !title || unknownColumn || state.keys[key] || missingParent) {
       return state
     }
 
     const first = columnCards({
       state,
-      column: column.id,
+      column,
     })[0]
     const pending: Card = {
       id: key,
@@ -86,7 +96,7 @@ export function optimisticState({
       sourceRefs: [],
       tracking: 'declared',
       parentId,
-      column: column.id,
+      column,
       rank: first ? rankOf({ card: first }) - 1 : 0,
       revision: 0,
       createdSeq: 0,
@@ -135,7 +145,10 @@ export function optimisticState({
   if (name === 'move') {
     const moved = state.cards[action ?? ''] ?? state.cards[state.keys[action ?? ''] ?? '']
 
-    const column = config.columns.find(c => c.id === ref)
+    const column = columnByRef({
+      columns: config.columns,
+      ref: ref ?? '',
+    })
 
     if (!moved || !column) {
       return state
@@ -153,10 +166,11 @@ export function optimisticState({
       return state
     }
 
-    const next = others[at], previous = others[at - 1]
-    const rank = next && previous ? (rankOf({ card: previous }) + rankOf({ card: next })) / 2
-      : next ? rankOf({ card: next }) - 1
-        : previous ? rankOf({ card: previous }) + 1 : rankOf({ card: moved })
+    const rank = rankWithin({
+      card: moved,
+      others,
+      at,
+    })
 
     return {
       ...state,
@@ -206,7 +220,16 @@ export function optimisticState({
     }
 
     if (action === 'hide-after') {
-      return update({ patch: { doneAfterHours: args[2] === 'default' ? undefined : Number(args[2]) } })
+      const hours = hideAfterHours({ value: args[2] ?? '' })
+
+      if (hours === undefined) {
+        return state
+      }
+
+      // `default` clears the card's own hours, so it follows the shared setting again.
+      const doneAfterHours = hours === null ? undefined : hours
+
+      return update({ patch: { doneAfterHours } })
     }
   }
 
@@ -235,7 +258,10 @@ export function optimisticState({
     'delete',
   ].includes(action ?? '')) {
     let columns = config.columns.map(c => ({ ...c }))
-    const selected = columns.find(c => c.id === ref || c.role === ref)
+    const selected = columnByRef({
+      columns,
+      ref: ref ?? '',
+    })
 
     if (action === 'create') {
       const id = option({ flag: '--id' }), title = option({ flag: '--title' })
@@ -261,16 +287,37 @@ export function optimisticState({
       columns = columns.filter(c => c.id !== selected.id)
 
       if (action === 'reorder') {
-        const before = option({ flag: '--before' }), at = before ? columns.findIndex(c => c.id === before) : columns.length
+        const before = option({ flag: '--before' })
+        const above = before ? columnByRef({
+          columns,
+          ref: before,
+        }) : undefined
+
+        // The server refuses a --before column it cannot find.
+        if (before && !above) {
+          return state
+        }
+
         columns.splice(
-          at < 0 ? columns.length : at,
+          above ? columns.indexOf(above) : columns.length,
           0,
           selected,
         )
       }
     }
 
-    const fallback = columns.find(c => c.id === option({ flag: '--to' }))?.id ?? columns[0]?.id
+    const to = action === 'delete' ? option({ flag: '--to' }) : undefined
+    const target = to ? columnByRef({
+      columns,
+      ref: to,
+    }) : undefined
+
+    // The server refuses a --to column it cannot find.
+    if (to && !target) {
+      return state
+    }
+
+    const fallback = target?.id ?? columns[0]?.id
     const cards = action === 'delete' && selected && fallback ? Object.fromEntries(Object.entries(state.cards).map(([
       id,
       card,

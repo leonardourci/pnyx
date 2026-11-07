@@ -1,4 +1,4 @@
-import { HOOK } from '#integrations/hooks/observe.ts'
+import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { replyRoute } from './reply-route.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { terminalNotice, typeInto } from '#integrations/hooks/terminal.ts'
@@ -71,8 +71,7 @@ export async function notifySteering({
         return false
       }
 
-      const waiting = current.attention.some(request =>
-        request.blocking && !request.answered && request.key.startsWith(HOOK))
+      const waiting = waitsOnHook({ attention: current.attention })
       const active = !current.hidden && !steeringHeld({ card: current }) && !waiting
 
       return Boolean(active && pending && !pending.ack
@@ -130,8 +129,7 @@ export async function notifySteering({
         result: 'gone',
         detail: 'Firstmate owns this task’s inbox; use fm-send',
       }
-    } else if (route.kind === 'paseo-agent' && card.attention.some(request =>
-      request.blocking && !request.answered && request.key.startsWith(HOOK))) {
+    } else if (route.kind === 'paseo-agent' && waitsOnHook({ attention: card.attention })) {
       outcome = {
         result: 'deferred',
         detail: 'worker is waiting on a permission or question; answer it before notifying',

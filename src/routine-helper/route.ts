@@ -2,12 +2,14 @@ import { ownerGates } from '#tasks/owner-gates.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { openDecisions } from '#tasks/decisions.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import { hydraCandidate } from '#hydra/agent-choice.ts'
+import { effectiveDispatch, type HeadsDispatch } from '#workers/dispatch-config.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { eventReasons, type WakeKind } from '#hydra/wake-reasons.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import { readSettings } from '#settings/store.ts'
-import { HELPER_MODELS } from '#settings/model.ts'
+import { HELPER_MODELS, type HelperSetting } from '#settings/model.ts'
 import { isManagedTask } from '#tasks/select.ts'
 
 const NUDGES: WakeKind[] = [
@@ -51,13 +53,8 @@ export const HELPER_INPUT_CHARS = 24_000
 type HelperScope = 'routine' | 'owner'
 export type HelperAction = 'reply' | 'continue' | 'answer' | 'permission'
 
-export function helperAgent({
-  state,
-  main,
-}: {
-  state: HydraState
-  main?: AgentConfig
-}): AgentConfig | undefined {
+// The helper the settings ask for, before an automatic one gets its harness.
+export function helperChoice({ state }: { state: HydraState }): Exclude<HelperSetting, 'off'> | undefined {
   const config = hydraConfig({ state })
   const helper = readSettings().settings.helper
 
@@ -65,11 +62,27 @@ export function helperAgent({
     return undefined
   }
 
+  return helper
+}
+
+export function helperAgent({
+  state,
+  dispatch,
+}: {
+  state: HydraState
+  // The dispatch the caller already read; the saved one otherwise.
+  dispatch?: HeadsDispatch
+}): AgentConfig | undefined {
+  const helper = helperChoice({ state })
+
   if (helper !== 'auto') {
     return helper
   }
 
-  const harness = config.hydra.agent?.harness ?? main?.harness ?? 'claude'
+  const { harness } = hydraCandidate({
+    state,
+    dispatch: dispatch ?? effectiveDispatch().dispatch,
+  })
 
   return {
     harness,

@@ -4,6 +4,8 @@ import type { HydraState } from '#app/model.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from './controls.ts'
 import { PROVIDERS, harnessOf, providerIdOf } from './providers.ts'
+import { hydraActor } from '#app/request-context.ts'
+import { HydraError } from '#store/errors.ts'
 
 const PERMISSION_LEVELS: Record<Harness, Record<string, number>> = {
   claude: {
@@ -46,6 +48,38 @@ export function workerMode({
   }
 
   return undefined
+}
+
+// A start Hydra asks for may keep or lower the worker's permission level; only the owner raises it.
+export function requireOwnerToRaise({
+  state,
+  actor,
+  harness,
+  before,
+  after,
+}: {
+  state: HydraState
+  actor?: string
+  harness: Harness
+  before?: string
+  after?: string
+}): void {
+  const hydraRaises = after !== undefined && hydraActor({ actor }) && raisesPermission({
+    harness,
+    before: workerMode({
+      state,
+      harness,
+      mode: before,
+    }),
+    after,
+  })
+
+  if (hydraRaises) {
+    throw new HydraError({
+      message: 'Only the owner can raise a worker’s permission level',
+      code: 'OWNER_ONLY',
+    })
+  }
 }
 
 export function agentPermissionNeedsOwner({

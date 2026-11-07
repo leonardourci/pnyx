@@ -7,7 +7,6 @@ import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card,SavedLabelColor } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
-import { harnessOf } from '#workers/providers.ts'
 import { createContext,useCallback,useContext,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useSkillsCatalog } from './skills-catalog.ts'
 
@@ -87,17 +86,16 @@ export function HydraComposerSources({
     },
     [],
   )
-  const receiving = config.hydra.agent?.harness ?? card?.agent?.provider ?? 'claude'
   const catalog = useSkillsCatalog({
     identity: JSON.stringify([
       HYDRA_CARD,
       card?.agent?.provider,
       card?.agent?.cwd,
       card?.agent?.sessionId,
-      harnessOf({ provider: receiving }),
+      config.hydra.agent?.harness,
     ]),
     card: HYDRA_CARD,
-    provider: receiving,
+    provider: config.hydra.agent?.harness ?? card?.agent?.provider,
     command,
     connected,
     open,

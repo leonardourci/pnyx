@@ -22,7 +22,7 @@ import type { createHostedDelivery } from '#workers/hosted-delivery.ts'
 import type { AgentRef } from '#workers/model.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { decideReply } from '#workers/reply-rules.ts'
-import { steeringHeld } from '#workers/steering.ts'
+import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 
 // Startup recovery after the server stopped: what each owner left running is ended, resumed or woken, in this order.
 export function createHostRecovery({
@@ -266,9 +266,9 @@ export function createHostRecovery({
         continue
       }
 
-      const oldest = card.steering?.find(message => !message.ack)
+      const next = pendingSteering({ card })[0]
 
-      if (!oldest) {
+      if (!next) {
         continue
       }
 
@@ -277,7 +277,7 @@ export function createHostRecovery({
           card: card.id,
           text: '',
           actor: 'pnyx',
-          steering: oldest.id,
+          steering: next.id,
         })
       } catch (error) {
         console.error(`pnyx-axi serve: ${card.id} inbox could not resume: ${(error as Error).message}`)
