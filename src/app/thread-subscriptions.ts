@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto'
+import { hydraThreadView } from '#hydra/thread-view.ts'
+import { mergeThreadPages } from '#hydra/thread-history.ts'
+import { effectiveView } from '#settings/store.ts'
+import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readThread, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
@@ -7,17 +12,53 @@ import type { Card } from '#tasks/model.ts'
 import { background } from './background.ts'
 import type { createHost } from './host.ts'
 import { LATEST_DELAY_MS } from './latest-feed.ts'
-import type { HydraState } from './model.ts'
+import type { EventType, HydraEvent, HydraState } from './model.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { watchPath, type PathWatch } from './watch.ts'
 
 export type Subscription = {
   card: string
+  history?: ThreadPage
+  view?: {
+    id: string
+    version: number
+  }
   path?: string
   paseo?: string
   watcher?: { close(): unknown }
   native?: Promise<PaseoConversation>
+  // The Hydra thread last sent: its card titles, and the page apart from the seq it was read at.
+  titles?: Record<string, string>
+  sent?: string
 }
+
+// The events that can change what hydraThreadView shows: anything on Hydra's own card, its messages,
+// operations and settings, the columns and view, the compactions and upgrades that hold messages,
+// and a new title for a card it names.
+export function changesHydraThread({
+  event,
+  sub,
+  state,
+}: {
+  event: HydraEvent
+  sub: Subscription
+  state: HydraState
+}): boolean {
+  return event.cardId === HYDRA_CARD
+    || HYDRA_THREAD_PREFIXES.some(prefix => event.type.startsWith(prefix))
+    || HYDRA_THREAD_EVENTS.includes(event.type)
+    || state.cards[event.cardId]?.title !== sub.titles?.[event.cardId]
+}
+
+const HYDRA_THREAD_PREFIXES = [
+  'hydra.',
+  'board.',
+]
+const HYDRA_THREAD_EVENTS: readonly EventType[] = [
+  'chat.message',
+  'session.compaction',
+  'pnyx.upgrade',
+]
 
 // Each tab's open conversation page: the transcript or Paseo conversation it follows and the debounced refresh it gets.
 export function createThreadSubscriptions({
@@ -50,6 +91,73 @@ export function createThreadSubscriptions({
   const subscriptionMap = ({ card }: { card: string }) =>
     card === HYDRA_CARD ? hydraSubscriptions : subscriptions
   const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
+
+  const prepareThread = ({
+    sub,
+    page,
+    older = false,
+    push = false,
+  }: {
+    sub: Subscription
+    page: ThreadPage
+    older?: boolean
+    // A push the tab did not ask for is skipped when the page has not changed.
+    push?: boolean
+  }): ThreadPage | undefined => {
+    if (page.card !== HYDRA_CARD) {
+      return page
+    }
+
+    const current = state()
+    sub.history = mergeThreadPages({
+      before: sub.history ?? null,
+      latest: page,
+      olderPage: older,
+    })
+
+    const prepared = hydraThreadView({
+      state: current,
+      page: sub.history,
+      thinking: traces({
+        view: effectiveView({ state: current }),
+        card: HYDRA_CARD,
+      }).thinking,
+    })
+
+    const sent = JSON.stringify({
+      ...prepared,
+      conversation: {
+        ...prepared.conversation,
+        through: 0,
+      },
+    })
+
+    if (push && sent === sub.sent) {
+      return undefined
+    }
+
+    sub.sent = sent
+    sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
+      card.id,
+      card.title,
+    ]))
+
+    if (!sub.view) {
+      sub.view = {
+        id: randomUUID(),
+        version: 0,
+      }
+    }
+
+    return {
+      ...prepared,
+      conversation: {
+        ...prepared.conversation,
+        stream: sub.view.id,
+        version: ++sub.view.version,
+      },
+    }
+  }
 
   const refreshThread = ({ ws }: { ws: HydraClient }) => {
     if (closed() || threadTimers.has(ws)) {
@@ -100,8 +208,18 @@ export function createThreadSubscriptions({
                       before,
                     }),
                   }).then(
-                    thread => {
-                      if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
+                    page => {
+                      if (map.get(ws) !== sub || ws.readyState !== ws.OPEN) {
+                        return
+                      }
+
+                      const thread = prepareThread({
+                        sub,
+                        page,
+                        push: true,
+                      })
+
+                      if (thread) {
                         send({
                           ws,
                           message: {
@@ -119,21 +237,29 @@ export function createThreadSubscriptions({
               }
 
               try {
-                send({
-                  ws,
-                  message: {
-                    type: 'thread',
-                    thread: agents().thread({
+                const thread = prepareThread({
+                  sub,
+                  page: agents().thread({
+                    card,
+                    page: readThread({
+                      hydraId,
+                      state: state(),
                       card,
-                      page: readThread({
-                        hydraId,
-                        state: state(),
-                        card,
-                        homes: homes(),
-                      }),
+                      homes: homes(),
                     }),
-                  },
+                  }),
+                  push: true,
                 })
+
+                if (thread) {
+                  send({
+                    ws,
+                    message: {
+                      type: 'thread',
+                      thread,
+                    },
+                  })
+                }
               } catch {
                 unavailable()
               }
@@ -165,13 +291,19 @@ export function createThreadSubscriptions({
         before,
       })
 
-      return before ? page : agents().thread({
+      const latest = before ? page : agents().thread({
         card,
         page,
       })
+
+      return prepareThread({
+        sub,
+        page: latest,
+        older: before !== undefined,
+      })!
     }
 
-    return paseoHistory({
+    const page = await paseoHistory({
       card: card.id,
       conversation: { read: async ({ before }) => (await native).read({ before }) },
       readSaved: ({ before }) => readThread({
@@ -183,6 +315,12 @@ export function createThreadSubscriptions({
       }),
       before,
     })
+
+    return prepareThread({
+      sub,
+      page,
+      older: before !== undefined,
+    })!
   }
 
   const bindThread = ({

@@ -1,3 +1,4 @@
+import { tokens } from '#oracle/query.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import { KEY_ACTIONS, type KeyScope } from '#preferences/keyboard.ts'
@@ -117,7 +118,7 @@ export function matchesCommand({
   query: string
   text: string
 }): boolean {
-  const words = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
+  const words = tokens({ text: query })
   const haystack = text.toLowerCase()
 
   return words.every(word => haystack.includes(word)

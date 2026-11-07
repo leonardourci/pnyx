@@ -1,8 +1,11 @@
+import type { HydraState } from '#app/model.ts'
+import { loadHydra } from '#app/store.ts'
 import type { DatabaseSync } from 'node:sqlite'
 import { HydraError } from '#store/errors.ts'
 import { nearest, prefixed } from './fuzzy.ts'
 import { openReader, searchPath } from './index.ts'
-import type { Hit, Kind, Match, Query } from './model.ts'
+import type { Hit, Kind, Match, Query, Snippet } from './model.ts'
+import { MATCH_END, MATCH_START, markedParts } from './snippet.ts'
 import { queryTerms, termExpr, type Term } from './query.ts'
 
 const NOTE_WEIGHT = 2
@@ -20,9 +23,11 @@ export const SNIPPETS = 3
 export function search({
   hydraId,
   query,
+  state,
 }: {
   hydraId: string
   query: Query
+  state?: HydraState
 }): {
   hits: Hit[]
   total: number
@@ -37,6 +42,21 @@ export function search({
       help: ['Run `pnyx-axi oracle "<words>"`'],
     })
   }
+
+  const scopedQuery = Boolean(query.columns?.length || query.projects?.length || query.since)
+  const scope = scopedQuery ? state ?? loadHydra({ hydraId }).state : undefined
+  const hasCardFilters = Boolean(query.columns?.length || query.projects?.length)
+  const eligible = scope && hasCardFilters ? Object.values(scope.cards).filter(card => {
+    const inColumn = !query.columns?.length || query.columns.includes(card.column)
+    const inProject = !query.projects?.length || query.projects.includes(card.project ?? '')
+
+    return inColumn && inProject
+  })
+    .map(card => card.id) : null
+  const cutoff = query.since
+  const recent = scope && cutoff ? Object.values(scope.cards)
+    .filter(card => Date.parse(card.updatedAt) >= Date.parse(cutoff))
+    .map(card => card.id) : []
 
   const db = openReader({ path: searchPath({ hydraId }) })
 
@@ -56,6 +76,8 @@ export function search({
     const lexical = run({
       db,
       query,
+      eligible,
+      recent,
       terms,
       mode: 'lexical',
     })
@@ -83,6 +105,8 @@ export function search({
     ) => t.alts.length !== terms[i]!.alts.length) ? run({
         db,
         query,
+        eligible,
+        recent,
         terms: fuzzy,
         mode: 'fuzzy',
       }) : lexical
@@ -95,11 +119,15 @@ function run(
   {
     db,
     query,
+    eligible,
+    recent,
     terms,
     mode,
   }: {
     db: DatabaseSync
     query: Query
+    eligible: string[] | null
+    recent: string[]
     terms: Term[]
     mode: Match
   },
@@ -114,9 +142,13 @@ function run(
     match,
     workspace: query.workspace ?? null,
     live: query.live ? 1 : 0,
+    eligible: eligible === null ? null : JSON.stringify(eligible),
+    recent: JSON.stringify(recent),
+    since: query.since ?? null,
   }
+  const scoped = '(:eligible IS NULL OR c.id IN (SELECT value FROM json_each(:eligible))) AND (:since IS NULL OR c.id IN (SELECT value FROM json_each(:recent)) OR EXISTS (SELECT 1 FROM docs recent_doc WHERE recent_doc.card = c.id AND julianday(recent_doc.at) >= julianday(:since)))'
   const chunks = `SELECT d.id, d.card, ${RANK} AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
-    WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1)`
+    WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) AND ${scoped}`
   type Row = {
     card: string
     title: string
@@ -146,7 +178,7 @@ function run(
           .prepare(
             `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, ${NOTE_WEIGHT}, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
                SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
-               WHERE (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) ORDER BY h.rank, c.n LIMIT :limit`,
+               WHERE (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) AND ${scoped} ORDER BY h.rank, c.n LIMIT :limit`,
           )
           .all({
             ...filters,
@@ -166,8 +198,8 @@ function run(
     snippets: (
       top.all({
         match: snippetMatch,
-        startMark: query.highlight === false ? '' : '[',
-        endMark: query.highlight === false ? '' : ']',
+        startMark: query.highlight === false ? '' : MATCH_START,
+        endMark: query.highlight === false ? '' : MATCH_END,
         card: r.card,
         kind: query.kind ?? null,
         n: query.card ? query.limit : SNIPPETS,
@@ -176,14 +208,29 @@ function run(
         at: string
         s: string
       }[]
-    ).map(t => ({
-      kind: t.kind,
-      at: t.at || 'unknown',
-      snippet: query.highlight === false ? t.s : t.s.replace(
+    ).map(t => {
+      const text = query.highlight === false ? t.s : t.s.replace(
         /\s+/g,
         ' ',
-      ),
-    })),
+      )
+      const found: Snippet = {
+        kind: t.kind,
+        at: t.at || 'unknown',
+        snippet: text.replaceAll(
+          MATCH_START,
+          '[',
+        ).replaceAll(
+          MATCH_END,
+          ']',
+        ),
+      }
+
+      if (query.highlight === true) {
+        found.parts = markedParts({ text })
+      }
+
+      return found
+    }),
   }))
 
   return {

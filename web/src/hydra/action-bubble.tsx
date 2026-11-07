@@ -5,7 +5,7 @@ import { columnLook } from '#web-tasks/view.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { LiveLabel } from '#web-shared/ui/live-label.tsx'
 import { currentLabel } from './action-label.ts'
-import type { PnyxCall,PnyxLookup,Segment } from './pnyx-action.ts'
+import type { PnyxLookup,Segment } from './pnyx-action.ts'
 
 interface Shown {
   icon?: string
@@ -84,7 +84,7 @@ export function ActionBubble({
   )
 }
 
-export function SentencePart({ part }: { part: PnyxCall['sentence'][number] }) {
+export function SentencePart({ part }: { part: Segment }) {
   if (typeof part === 'string') {
     return part
   }

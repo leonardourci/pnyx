@@ -10,6 +10,7 @@ import { readEvents } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { MAX_RESUMES, resumesInARow } from '#workers/host.ts'
 import { sessionId } from '#workers/session-attachments.ts'
+import type { HydraChatQueue } from './chat-queue.ts'
 
 // One change Hydra has not read yet: its event and the card it is about.
 export interface QueuedUpdate {
@@ -19,6 +20,7 @@ export interface QueuedUpdate {
 }
 
 export interface HydraQueue {
+  chat?: HydraChatQueue
   waiting: QueuedUpdate[]
   reading: QueuedUpdate[]
 }

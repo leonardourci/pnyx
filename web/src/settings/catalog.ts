@@ -1,3 +1,5 @@
+import { tokens } from '#oracle/query.ts'
+
 export const SETTING_ICONS: Record<string, string> = {
   theme: 'theme',
   fontSize: 'text-size',
@@ -359,9 +361,6 @@ export interface SettingsMatch {
   terms: string[]
 }
 
-const words = ({ text }: { text: string }) => text.toLowerCase().split(/\s+/)
-  .filter(Boolean)
-
 const directText = ({ entry }: { entry: CatalogEntry }) => [
   entry.label,
   entry.description,
@@ -376,7 +375,7 @@ export function searchSettings({
   query: string
   entries?: CatalogEntry[]
 }): SettingsMatch[] {
-  const asked = words({ text: query })
+  const asked = tokens({ text: query })
   const direct = new Set(asked
     .filter(word => entries.some(entry => directText({ entry }).includes(word))))
 

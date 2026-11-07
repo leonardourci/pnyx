@@ -1,3 +1,5 @@
+import { hydraChatQueue } from '#hydra/chat-queue.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { threadPath, type LatestMessage } from '#hydra/transcripts-read.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -12,7 +14,7 @@ import type { createHost } from './host.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import { listHydras } from './server-hydras.ts'
 import { MAX_BUFFERED, type HydraClient, type ServerMessage } from './server-transport.ts'
-import type { Subscription } from './thread-subscriptions.ts'
+import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
 
 const shownTraces = ({
   view,
@@ -96,15 +98,39 @@ export function createServerClients({
     }
   }
 
-  const sendQueue = ({ ws }: { ws: HydraClient }) => send({
-    ws,
-    message: {
+  const queueMessage = (): ServerMessage => {
+    const queued = agents().queue()
+    const chat = hydraChatQueue({ state: state() })
+
+    // The batch Hydra reads shows only while its turn runs.
+    return {
       type: 'hydraQueue',
-      queue: agents().queue(),
-    },
+      queue: {
+        waiting: queued.waiting,
+        reading: chat.working ? queued.reading : [],
+        chat,
+      },
+    }
+  }
+
+  const sendQueue = ({
+    ws,
+    queue = queueMessage(),
+  }: {
+    ws: HydraClient
+    queue?: ServerMessage
+  }) => send({
+    ws,
+    message: queue,
   })
 
-  const sendSnapshot = ({ ws }: { ws: HydraClient }) => {
+  const sendSnapshot = ({
+    ws,
+    queue,
+  }: {
+    ws: HydraClient
+    queue?: ServerMessage
+  }) => {
     resyncing.delete(ws)
     send({
       ws,
@@ -127,12 +153,10 @@ export function createServerClients({
       },
     })
 
-    // A tab starts every snapshot with an empty queue.
-    const queue = agents().queue()
-
-    if (queue.waiting.length || queue.reading.length) {
-      sendQueue({ ws })
-    }
+    sendQueue({
+      ws,
+      queue,
+    })
 
     if (hydraSubscribers.has(ws)) {
       ws.send({
@@ -147,6 +171,8 @@ export function createServerClients({
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
   const broadcast = ({ event }: { event: HydraEvent }) => {
+    const queue = queueMessage()
+
     for (const ws of clients) {
       if (!resyncing.has(ws)) {
         send({
@@ -156,15 +182,26 @@ export function createServerClients({
             event,
           },
         })
+        sendQueue({
+          ws,
+          queue,
+        })
       } else if (ws.bufferedAmount <= MAX_BUFFERED) {
-        sendSnapshot({ ws })
+        sendSnapshot({
+          ws,
+          queue,
+        })
       }
 
       for (const map of threadSubscriptions) {
         const sub = map.get(ws)
 
         // A view change that switches this card's traces on or off changes its page.
-        if (sub && (sub.card === event.cardId
+        if (sub && ((sub.card === HYDRA_CARD && changesHydraThread({
+          event,
+          sub,
+          state: state(),
+        })) || sub.card === event.cardId
         || (event.type === 'task.session' && sub.card === event.data.before)
         || (event.type === 'board.view' &&
           shownTraces({
@@ -274,6 +311,7 @@ export function createServerClients({
       }
     }
 
+    sendQueue({ ws })
     send({
       ws,
       message: {
@@ -293,6 +331,7 @@ export function createServerClients({
     clients,
     hydraSubscribers,
     send,
+    queueMessage,
     sendQueue,
     sendSnapshot,
     broadcast,

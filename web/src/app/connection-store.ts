@@ -16,7 +16,7 @@ import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,withChanges } from './connection-protocol.ts'
 import { createConnectionRequests } from './connection-requests.ts'
-import { save,stored } from './connection-storage.ts'
+import { confirmedState,removeStored,save,stored } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
@@ -136,15 +136,13 @@ export function createHydraConnection() {
     const summary = hydras.snapshot().view.find(hydra => hydra.id === id)
     const identity = summary?.identity ?? (id === initialId
       ? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? id : id)
-    const legacy = stored({
-      key: `pnyx:${identity}:hydra-state`,
-      fallback: emptyHydra(),
-    })
+    removeStored({ key: `pnyx:${identity}:hydra-state` })
     const restored = stored({
       key: keyFor({ id }),
-      fallback: legacy,
+      fallback: emptyHydra(),
     })
-    const confirmed = restored?.v === 1 && restored.cards ? restored : emptyHydra()
+    const usable = restored?.v === 1 && restored.cards
+    const confirmed = usable ? confirmedState({ state: restored }) : emptyHydra()
     const scope: Scope = {
       id,
       identity,
@@ -162,6 +160,8 @@ export function createHydraConnection() {
       error: '',
       thread: null,
       queue: emptyQueue(),
+      spend: {},
+      usage: {},
       latest: {},
       actions: {},
       leases: 0,
@@ -249,12 +249,64 @@ export function createHydraConnection() {
 
   const selection = () => scopeFor({ id: selected })
 
+  let shown: {
+    view: HydraState
+    spend: Scope['spend']
+    usage: Scope['usage']
+    state: HydraState
+  } | undefined
+
+  // Live spend and usage join only their own cards, so every other card keeps its identity between publishes.
+  const liveView = ({
+    scope,
+    view,
+  }: {
+    scope: Scope
+    view: HydraState
+  }): HydraState => {
+    if (shown?.view === view && shown.spend === scope.spend && shown.usage === scope.usage) {
+      return shown.state
+    }
+
+    const cards = { ...view.cards }
+
+    for (const id of new Set([
+      ...Object.keys(scope.spend),
+      ...Object.keys(scope.usage),
+    ])) {
+      const card = view.cards[id]
+
+      if (card) {
+        cards[id] = {
+          ...card,
+          spend: scope.spend[id],
+          usage: scope.usage[id],
+        }
+      }
+    }
+
+    shown = {
+      view,
+      spend: scope.spend,
+      usage: scope.usage,
+      state: {
+        ...view,
+        cards,
+      },
+    }
+
+    return shown.state
+  }
+
   const visible = () => {
     const scope = selection()
     const resource = scope.resource.snapshot()
 
     return {
-      state: scope.hasSnapshot ? resource.view : shell({ scope }),
+      state: scope.hasSnapshot ? liveView({
+        scope,
+        view: resource.view,
+      }) : shell({ scope }),
       viewKey: scope.viewKey,
       connected: scope.ready && socket?.readyState === WebSocket.OPEN,
       loaded: scope.hasSnapshot || scope.failed,
@@ -332,10 +384,6 @@ export function createHydraConnection() {
 
     save({
       key: keyFor({ id: scope.id }),
-      value: scope.resource.snapshot().confirmed,
-    })
-    save({
-      key: `pnyx:${scope.identity}:hydra-state`,
       value: scope.resource.snapshot().confirmed,
     })
   }
@@ -545,11 +593,13 @@ export function createHydraConnection() {
       scope.ready = false
       scope.subscribed = false
     } else if (message.type === 'snapshot') {
-      scope.resource.confirm({ state: message.state })
+      scope.resource.confirm({ state: confirmedState({ state: message.state }) })
       scope.actions = {}
+      scope.spend = {}
+      scope.usage = {}
       scope.hasSnapshot = true
       confirmSaves({ scope })
-      scope.queue = emptyQueue()
+      // The shown queue stays until the one the server sends after every snapshot arrives.
 
       if (selected === scope.id) {
         staleUpdates()
@@ -591,41 +641,14 @@ export function createHydraConnection() {
 
       persistSoon({ scope })
     } else if (message.type === 'latest') {
-      if (message.spend || message.usage) {
-        const state = scope.resource.snapshot().confirmed
-        const cards = { ...state.cards }
-
-        for (const [
-          id,
-          spend,
-        ] of Object.entries(message.spend ?? {})) {
-          if (cards[id]) {
-            cards[id] = {
-              ...cards[id],
-              spend,
-            }
-          }
-        }
-
-        for (const [
-          id,
-          usage,
-        ] of Object.entries(message.usage ?? {})) {
-          if (cards[id]) {
-            cards[id] = {
-              ...cards[id],
-              usage,
-            }
-          }
-        }
-
-        scope.resource.confirm({
-          state: {
-            ...state,
-            cards,
-          },
-        })
-      }
+      scope.spend = withChanges({
+        current: scope.spend,
+        changes: message.spend ?? {},
+      })
+      scope.usage = withChanges({
+        current: scope.usage,
+        changes: message.usage ?? {},
+      })
 
       scope.latest = withChanges({
         current: scope.latest,

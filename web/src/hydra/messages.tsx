@@ -1,3 +1,4 @@
+import type { TurnActions } from '#hydra/conversation.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
@@ -14,7 +15,6 @@ import {
   type ComponentProps,
   type KeyboardEvent as KeyEvent,
 } from 'react'
-import { SentencePart } from './action-bubble.tsx'
 import {
   CARET_CSS,CARET_HOST,CARET_KEY,CARET_SUPPORTED,QUESTION_CONTROLS,
   caretBounds,
@@ -29,21 +29,21 @@ import {
   selectionFocus,
 } from './caret.ts'
 import { ChatTokensContext } from './chat-token-text.tsx'
-import { clock,copiedText,leadingTask,orderedComments,ownMessage,turnTimings,type ChatComment,type TurnTiming } from './chat.ts'
+import { clock,copiedText,orderedComments,type ChatComment } from './chat.ts'
+import { leadingTask, ownMessage, type TurnTiming } from '#hydra/chat-messages.ts'
 import { copyMessageChips } from './clipboard.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { useCommentDrafts } from './comment-drafts.ts'
 import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,paintComments } from './comment-highlight.ts'
 import { revealComment } from './comment-reveal.ts'
-import type { TurnActions } from './conversation.ts'
 import { MessageComment } from './message-comment.tsx'
 import {
   MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
   type CommentPassage,
 } from './message-selection.ts'
-import { pnyxCalls,type PnyxCall,type PnyxLookup } from './pnyx-action.ts'
+import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
-import { Trace, roleLabel } from './trace-row.tsx'
+import { Trace,roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
 const PILL_GAP = 6
@@ -86,8 +86,7 @@ function ChatMessageText({
 }
 
 export function Messages({
-  entries: all,
-  working,
+  entries,
   lookup,
   comments,
   setComments,
@@ -115,7 +114,7 @@ export function Messages({
   }): void
   catalog?: Catalog | null
   labelColors?: SavedLabelColor[]
-  timings?: Map<string, TurnTiming>
+  timings: Map<string, TurnTiming>
   folds?: Map<string, TurnActions>
   inline?: Map<string, React.ReactNode>
   notify({ text }: { text: string }): void
@@ -125,8 +124,6 @@ export function Messages({
   thinkingDetails?: boolean
   assistantLabel?: string
   entries: ChatEntry[]
-  // Whether the latest turn is still running, so it has no footer yet.
-  working: boolean
   lookup: PnyxLookup
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
@@ -149,21 +146,10 @@ export function Messages({
     comment.id,
     index + 1,
   ]))
-  const {
-    entries,
-    calls,
-  } = pnyxCalls({
-    entries: all,
-    lookup,
-  })
   const lookColumn = ({ id }: { id: string }) => columnLook({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
   const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
-  const turns = timings ?? turnTimings({
-    entries,
-    working,
-  })
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -830,9 +816,7 @@ export function Messages({
                   }}
                 />
               ) : (
-                calls.has(entry.id)
-                  ? <PnyxCallRow call={calls.get(entry.id)!} />
-                  : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
+                <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
               ))}
               {entry.delivery ? (
                 <span className="receipt" role="status">
@@ -856,7 +840,7 @@ export function Messages({
                 </Button>
               )}
             </article>
-            {ownMessage({ entry }) && !entry.role.endsWith('continued') && (
+            {ownMessage({ entry }) && !entry.continued && (
               <div className="message-meta" contentEditable={false}>
                 {entry.at && (
                   <time
@@ -879,8 +863,8 @@ export function Messages({
               </div>
             )}
             {folds?.has(entry.id) && <TurnActionsFold fold={folds.get(entry.id)!} />}
-            {turns.has(entry.id) && (
-              <TurnFooter turn={turns.get(entry.id)!} taskTitle={taskTitle} />
+            {timings.has(entry.id) && (
+              <TurnFooter turn={timings.get(entry.id)!} taskTitle={taskTitle} />
             )}
           </Fragment>
         ))}
@@ -915,25 +899,5 @@ export function Messages({
         )}
       </div>
     </TaskReferencesProvider>
-  )
-}
-
-// Pnyx's own commands read as what they did; the command itself is one click away.
-function PnyxCallRow({ call }: { call: PnyxCall }) {
-  return (
-    <details className="trace pnyx-call" data-expandable="true" data-failed={!!call.failed || undefined}>
-      <summary>
-        <Icon name="tool" size={14} />
-        <span className="pnyx-sentence">
-          {call.sentence.map((
-            part,
-            index,
-          ) => <SentencePart key={index} part={part} />)}
-          {call.failed && <span className="pnyx-failed"> · failed: {call.failed}</span>}
-        </span>
-        <CopyButton className="trace-copy" label="Copy command" text={() => call.command} />
-      </summary>
-      <pre className="trace-text">{call.output ? `${call.command}\n\n${call.output}` : call.command}</pre>
-    </details>
   )
 }

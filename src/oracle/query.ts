@@ -9,7 +9,7 @@ export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize
 // The distinct words of a text, folded, as typo matching looks them up. Words under
 // three letters have no trigram; longer than 32 are mostly hashes and ids.
 export function words({ text }: { text: string }): Set<string> {
-  return new Set((fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []).filter(w => w.length >= 3 && w.length <= 32))
+  return new Set(tokens({ text: fold({ text }) }).filter(w => w.length >= 3 && w.length <= 32))
 }
 
 export const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(
@@ -31,12 +31,48 @@ export interface Term {
   typo: boolean
 }
 
+export function tokens({
+  text,
+  prefixes = false,
+}: {
+  text: string
+  prefixes?: boolean
+}): string[] {
+  return (text.toLowerCase().match(/[\p{L}\p{N}]+\*?/gu) ?? []).map(token => prefixes ? token : token.replace(
+    /\*$/,
+    '',
+  ))
+}
+
+// Each space-separated token is split into words the way every search box splits them. A token of
+// several words, such as a path, a branch name or don't, stays one phrase with no synonyms or typos,
+// so it matches those words only side by side.
 export function queryTerms({ text }: { text: string }): Term[] {
-  const tokens = text.split(/\s+/).filter(token => /[\p{L}\p{N}]/u.test(token))
+  const typed = text.split(/\s+/).map(token => tokens({
+    text: token,
+    prefixes: true,
+  }))
+    .filter(runs => runs.length)
   const terms: Term[] = []
 
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i]!
+  for (let i = 0; i < typed.length; i += 1) {
+    const runs = typed[i]!
+
+    if (runs.length > 1) {
+      terms.push({
+        alts: [
+          runs.map(run => run.replace(
+            /\*$/,
+            '',
+          )).join(' '),
+        ],
+        prefix: runs.at(-1)!.endsWith('*'),
+        typo: false,
+      })
+      continue
+    }
+
+    const token = runs[0]!
 
     if (token.endsWith('*')) {
       terms.push({
@@ -52,13 +88,14 @@ export function queryTerms({ text }: { text: string }): Term[] {
       continue
     }
 
-    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare({ token })} ${bare({ token: tokens[i + 1]! })}`.toLowerCase()) : undefined
+    const next = typed[i + 1]
+    const pair = next?.length === 1 ? synonymGroup.get(`${token} ${bare({ token: next[0]! })}`) : undefined
 
     if (pair) {
       i += 1
     }
 
-    const group = pair ?? synonymGroup.get(bare({ token }).toLowerCase())
+    const group = pair ?? synonymGroup.get(token)
     terms.push(
       group
         ? {

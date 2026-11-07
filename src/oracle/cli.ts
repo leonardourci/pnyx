@@ -1,5 +1,9 @@
+import { readSearchFilters } from './filters.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
+import { findProject } from '#projects/read.ts'
+import type { HydraState } from '#app/model.ts'
+import { HydraError } from '#store/errors.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
@@ -16,6 +20,15 @@ const SEARCH: Options = {
   kind: { type: 'string' },
   card: { type: 'string' },
   workspace: { type: 'string' },
+  column: {
+    type: 'string',
+    multiple: true,
+  },
+  project: {
+    type: 'string',
+    multiple: true,
+  },
+  since: { type: 'string' },
   limit: { type: 'string' },
 }
 
@@ -50,6 +63,34 @@ function built({ result }: { result: IndexResult }): Output {
   return {
     rebuilt: result,
     help: ['Run `pnyx-axi oracle "<words>"`'],
+  }
+}
+
+// Pnyx tasks record a project by its path and Firstmate tasks by its name, so a filter
+// matches both the value given and the attached project it names.
+function projectRefs({
+  state,
+  ref,
+}: {
+  state: HydraState
+  ref: string
+}): string[] {
+  try {
+    const { path } = findProject({
+      state,
+      ref,
+    })
+
+    return path === ref ? [ref] : [
+      ref,
+      path,
+    ]
+  } catch (error) {
+    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+      return [ref]
+    }
+
+    throw error
   }
 }
 
@@ -103,19 +144,32 @@ const oracleCommand = guard({
       )
     }
 
+    const state = loadHydra({ hydraId }).state
     const card = values.card === undefined
       ? undefined
       : findCard({
-        state: loadHydra({ hydraId }).state,
+        state,
         ref: values.card as string,
       }).id
+    const projects = (values.project as string[] | undefined)?.flatMap(ref => projectRefs({
+      state,
+      ref,
+    }))
 
     updateIndex({ hydraId })
 
     return present({
       input: search({
         hydraId,
+        state,
         query: {
+          ...readSearchFilters({
+            value: JSON.stringify({
+              columns: values.column,
+              projects,
+              since: values.since,
+            }),
+          }),
           text,
           limit: Math.min(
             rawLimit ? Number(rawLimit) : LIMIT,
@@ -168,7 +222,7 @@ function present(
   const shown = card ? hits[0]!.snippets.length : hits.length
 
   if (total > shown) {
-    help.push(`${total - shown} more ${card ? 'matches' : 'matching cards'}; raise --limit (max ${MAX}) or narrow with --kind, --card or --workspace`)
+    help.push(`${total - shown} more ${card ? 'matches' : 'matching cards'}; raise --limit (max ${MAX}) or narrow with --kind, --card, --workspace, --column, --project or --since`)
   }
 
   return {
@@ -182,8 +236,9 @@ export const oracleCommands = {
   oracle: oracleCommand,
 }
 
-export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
+export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
        pnyx-axi oracle status | rebuild [--hydra <name>]
+Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
 Full-text search over card titles, links, event text, harvested notes and the session transcripts
 hooks recorded. Every word must match somewhere on one card: its title, link titles or any entry.
 With --card or --kind, every word must match in one entry of that card or kind. Words match by

@@ -1,9 +1,9 @@
 import type { HydraEvent } from '#app/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
-import type { HydraMessage } from '#hydra/model.ts'
-import type { ThreadEntry, ThreadPage } from '#hydra/transcripts-read.ts'
-import { QUIET_REPLY } from '#hydra/hydra.ts'
-import { hydraMessages, leadingTask, ownMessage, type TurnTiming } from './chat.ts'
+import type { HydraMessage } from './model.ts'
+import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
+import { QUIET_REPLY } from './hydra.ts'
+import { hydraMessages, leadingTask, ownMessage, type TurnTiming } from './chat-messages.ts'
 import { relevantUpdate, type TaskUpdate } from '#tasks/updates.ts'
 
 export interface TaskActions {

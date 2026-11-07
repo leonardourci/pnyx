@@ -1,3 +1,4 @@
+import { tokens } from '#oracle/query.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -208,8 +209,7 @@ export function oracleResults({
   badges: Filter[]
   now: number
 }): ResultGroup[] {
-  const words = text.toLowerCase().split(/\s+/)
-    .filter(Boolean)
+  const words = tokens({ text })
   const chatHits = hits.filter(hit => hit.kind === 'hydra')
   const cardHits = hits.flatMap(hit => {
     const card = hit.kind === 'hydra' ? undefined : state.cards[hit.card]

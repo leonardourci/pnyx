@@ -1,11 +1,12 @@
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
+import type { HydraChatQueue } from '#hydra/chat-queue.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
-import { traces,VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -23,15 +24,13 @@ import { useCallback,useEffect,useLayoutEffect,useRef,useState } from 'react'
 import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { ChatDecisionCard,chatDecisions,type ChatDecision } from './chat-decisions.tsx'
-import { hydraPill,joinMessageParts,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
+import { hydraPill,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { loadEarlierMessages,mergeThreadPages } from './conversation-history.ts'
-import { hydraConversation } from './conversation.ts'
+import { loadEarlierMessages,receivedThread } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { HydraHead } from './hydra-head.tsx'
-import { hydraQueueView } from './hydra-queue.ts'
 import { type HydraIdentity } from './hydra-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
@@ -42,6 +41,24 @@ import { REDUCED_MOTION } from './streaming.tsx'
 const OWNER_SCROLL_MS = 1000
 // The share of the distance to the bottom that following covers per frame.
 const GLIDE = 0.3
+
+// What the chat shows until the server's first queue arrives.
+const EMPTY_CHAT_QUEUE: HydraChatQueue = {
+  compacting: undefined,
+  upgrades: [],
+  held: [],
+  compactOperations: [],
+  shownUpgrades: [],
+  upgrading: false,
+  holding: false,
+  runningChange: false,
+  compactionRunning: false,
+  upgradeRunning: false,
+  compactInputs: [],
+  hosted: false,
+  working: false,
+  through: 0,
+}
 
 // Sends the server has not recorded yet; a confirmed one waits for its message to arrive.
 interface Sending {
@@ -140,12 +157,6 @@ export function HydraChat({
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
-  const {
-    thinking,
-  } = traces({
-    view,
-    card: HYDRA_CARD,
-  })
   useEffect(
     () => {
       if (!connected || !card) {
@@ -158,7 +169,7 @@ export function HydraChat({
         args: [HYDRA_CARD],
       }).then(result => {
         if (!cancelled) {
-          setPage(before => mergeThreadPages({
+          setPage(before => receivedThread({
             before,
             latest: result.thread as ThreadPage,
           }))
@@ -184,7 +195,7 @@ export function HydraChat({
   useEffect(
     () => {
       if (liveThread) {
-        setPage(before => mergeThreadPages({
+        setPage(before => receivedThread({
           before,
           latest: liveThread,
         }))
@@ -192,12 +203,18 @@ export function HydraChat({
     },
     [liveThread],
   )
-  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
-  const pending = sending.filter(s => !messages.some(m => m.id === s.id))
+  const chatQueue = queue.chat ?? EMPTY_CHAT_QUEUE
+  const held = new Set(chatQueue.held)
+  const pending = sending.filter(item => {
+    const deliveredAt = state.eventIds[item.id]
+    const recorded = deliveredAt !== undefined
+    const rendered = (deliveredAt ?? 0) <= (page?.conversation?.through ?? 0)
+
+    return !recorded || !rendered
+  })
   const {
     compacting,
     upgrades,
-    held,
     compactOperations,
     shownUpgrades,
     upgrading,
@@ -205,13 +222,17 @@ export function HydraChat({
     runningChange,
     compactionRunning,
     upgradeRunning,
-    compactInputs,
-  } = hydraQueueView({
-    state,
-    messages,
-    card,
-    pending,
-  })
+    working,
+    hosted,
+  } = chatQueue
+  const compactInputs = [
+    ...chatQueue.compactInputs,
+    ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
+      ...item,
+      actor: 'web',
+      route: 'hydra' as const,
+    })),
+  ]
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
   const stop = async () => {
@@ -240,26 +261,15 @@ export function HydraChat({
     loadingEarlier,
     setLoadingEarlier,
   ] = useState(false)
-  const transcript = joinMessageParts({ entries: page?.entries ?? [] })
-  const actions = page?.actions ?? []
+  const transcript = page?.entries ?? []
   const olderCursor = page?.older
   const firstAt = transcript[0]?.at
-  const working = hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working'
-  const chat = hydraConversation({
-    messages: messages.filter(message => !held.has(message.id)),
-    transcript,
-    oldest: olderCursor ? firstAt : undefined,
-    currentTurn: page?.currentTurn,
-    provider: card?.agent?.provider,
-    actions,
-    titles: Object.fromEntries(Object.values(state.cards).map(card => [
-      card.id,
-      card.title,
-    ])),
-    columns: config.columns,
-    working,
-    thinking,
-  })
+  const conversation = page?.conversation
+  const chat = {
+    entries: conversation?.entries ?? [],
+    folds: new Map(Object.entries(conversation?.folds ?? {})),
+    timings: new Map(Object.entries(conversation?.timings ?? {})),
+  }
   const decisions = chatDecisions({ cards: Object.values(state.cards) })
   const shownDecisions = decisions.filter(decision => {
     const loaded = firstAt !== undefined && decision.at >= firstAt
@@ -375,16 +385,10 @@ export function HydraChat({
 
     if (threadSession.current === session) {
       if (earlier) {
-        setPage(latest => {
-          if (!latest) {
-            return earlier
-          }
-
-          return mergeThreadPages({
-            before: earlier,
-            latest,
-          })
-        })
+        setPage(before => receivedThread({
+          before,
+          latest: earlier,
+        }))
       }
     }
   }
@@ -419,7 +423,6 @@ export function HydraChat({
     }
   }
 
-  const hosted = hydra.kind !== 'firstmate'
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
   // A send counts from the owner's message until the server says the turn began.
@@ -594,8 +597,6 @@ export function HydraChat({
     actions: taskActions,
     connected,
   })
-  // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
-  const queueReading = running ? queue.reading : []
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
   // Hydra's own state, apart from the browser's connection that the offline badge shows.
@@ -699,7 +700,6 @@ export function HydraChat({
               timings={chat.timings}
               inline={inline}
               entries={entries}
-              working={running}
               lookup={lookup}
               assistantLabel="Hydra"
               notify={notify}
@@ -755,7 +755,7 @@ export function HydraChat({
               since={running ? since : null}
               running={running}
               label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
-              reading={queueReading}
+              reading={queue.reading}
               waiting={queue.waiting}
               state={state}
             >

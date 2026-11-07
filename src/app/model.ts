@@ -118,6 +118,7 @@ export type HydraChange = EventBase & (
       intent?: string
       parentId?: string
       column?: Column
+      rank?: number
       folder?: string
       project?: string
       kind?: TaskKind

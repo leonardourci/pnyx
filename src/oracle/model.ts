@@ -18,6 +18,9 @@ export interface Query {
   workspace?: string
   limit: number
   live?: boolean
+  columns?: string[]
+  projects?: string[]
+  since?: string
   highlight?: boolean
 }
 
@@ -25,6 +28,12 @@ export interface Snippet {
   kind: Kind
   at: string
   snippet: string
+  parts?: SnippetPart[]
+}
+
+export interface SnippetPart {
+  text: string
+  matched: boolean
 }
 
 // lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched

@@ -153,6 +153,13 @@ export function planDocument({
           })
         }
 
+        if (operation.before) {
+          operation.before = resolve({
+            reference: operation.before,
+            path: 'before',
+          })
+        }
+
         if (operation.parent) {
           operation.parent = resolve({
             reference: operation.parent,

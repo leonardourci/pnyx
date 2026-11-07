@@ -1,0 +1,283 @@
+import { hydraThreadView } from './thread-view.ts'
+import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test, type TestContext } from 'node:test'
+import { emptyHydra, reduce } from '#app/reducer.ts'
+import { readThread, splitEntry, type ThreadPage } from './transcripts-read.ts'
+import { HYDRA_CARD } from './identity.ts'
+import { liveReplies } from '#workers/streaming.ts'
+
+// The saved and live Hydra pages of a recorded session, whose transcript holds tool calls.
+function recordedPages({
+  t,
+  provider,
+  transcript,
+}: {
+  t: TestContext
+  provider: string
+  transcript: string
+}) {
+  const home = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-thread-view-',
+  ))
+  const previous = process.env.PNYX_HOME
+  process.env.PNYX_HOME = home
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.PNYX_HOME
+    } else {
+      process.env.PNYX_HOME = previous
+    }
+
+    rmSync(
+      home,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+  })
+  const state = reduce({
+    state: emptyHydra(),
+    event: {
+      v: 1,
+      seq: 1,
+      id: 'create',
+      at: '2026-11-06T00:00:00Z',
+      actor: 'web',
+      cardId: HYDRA_CARD,
+      type: 'task.created',
+      data: {
+        key: 'hydra',
+        title: 'Hydra',
+      },
+    },
+  })
+  const card = state.cards[HYDRA_CARD]!
+  card.agent = {
+    provider,
+    sessionId: 'fixture',
+    transcriptPath: join(
+      import.meta.dirname,
+      'fixtures',
+      'transcripts',
+      transcript,
+    ),
+  }
+  const saved = readThread({
+    hydraId: 'default',
+    state,
+    card,
+    homes: [],
+  })
+  const live = liveReplies()
+  live.start({
+    offset: 0,
+    ownerStarted: true,
+  })
+  live.update({
+    id: 'reply',
+    text: 'A live answer',
+    append: false,
+  })
+
+  return {
+    saved: saved.entries.map(entry => entry.kind),
+    live: live.page({ page: saved }).entries.map(entry => entry.kind),
+  }
+}
+
+test(
+  'the Claude Code Hydra thread excludes tools in saved and live pages',
+  t => {
+    assert.deepEqual(
+      recordedPages({
+        t,
+        provider: 'claude-code',
+        transcript: 'claude-session.jsonl',
+      }),
+      {
+        saved: [
+          'message',
+          'message',
+          'message',
+          'message',
+          'message',
+          'message',
+        ],
+        live: [
+          'message',
+          'message',
+          'message',
+          'message',
+          'message',
+          'message',
+          'message',
+        ],
+      },
+    )
+  },
+)
+
+test(
+  'the Codex Hydra thread excludes tools in saved and live pages',
+  t => {
+    assert.deepEqual(
+      recordedPages({
+        t,
+        provider: 'codex',
+        transcript: 'codex-session.jsonl',
+      }),
+      {
+        saved: [
+          'message',
+          'message',
+        ],
+        live: [
+          'message',
+          'message',
+          'message',
+        ],
+      },
+    )
+  },
+)
+
+test(
+  'the server returns serializable reconciled turns with folds timings and hidden instructions',
+  () => {
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: 'hydra',
+          title: 'Hydra',
+        },
+      },
+    })
+    state.cards[HYDRA_CARD]!.agent = {
+      provider: 'codex',
+      sessionId: 'fixture',
+    }
+    state.hydraMessages = [
+      {
+        id: 'owner',
+        action: 'send',
+        hydra: 'hydra',
+        text: 'Please check',
+        actor: 'web',
+        at: '2026-11-06T00:00:01Z',
+      },
+    ]
+    const page: ThreadPage = {
+      card: HYDRA_CARD,
+      route: true,
+      watching: 'unknown',
+      entries: [
+        {
+          id: 'instructions',
+          kind: 'message',
+          role: 'user',
+          text: '# AGENTS.md instructions\n<INSTRUCTIONS>internal</INSTRUCTIONS>',
+          at: '2026-11-06T00:00:00Z',
+        },
+        {
+          id: 'native-owner',
+          kind: 'message',
+          role: 'user',
+          text: 'Please check',
+          at: '2026-11-06T00:00:01Z',
+        },
+        {
+          id: 'note',
+          kind: 'message',
+          role: 'assistant',
+          text: 'Checking now',
+          at: '2026-11-06T00:00:02Z',
+        },
+        {
+          id: 'reply',
+          kind: 'message',
+          role: 'assistant',
+          text: 'It works',
+          at: '2026-11-06T00:00:03Z',
+        },
+        {
+          id: 'quiet',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO_REPLY',
+          at: '2026-11-06T00:00:04Z',
+        },
+      ],
+    }
+    const wire = JSON.parse(JSON.stringify(hydraThreadView({
+      state,
+      page,
+      thinking: true,
+    }))) as ThreadPage
+    assert.equal(
+      wire.entries[0]!.hidden,
+      true,
+    )
+    assert.equal(
+      wire.entries[0]!.text,
+      '',
+    )
+    assert.deepEqual(
+      wire.conversation!.entries.map(entry => entry.id),
+      [
+        'native-owner',
+        'reply',
+      ],
+    )
+    assert.equal(
+      wire.conversation!.timings.reply!.reply,
+      'It works',
+    )
+    assert.equal(
+      wire.conversation!.folds.reply!.notes[0]!.text,
+      'Checking now',
+    )
+    const chunks = splitEntry({
+      entry: {
+        id: 'long',
+        role: 'user',
+        kind: 'message',
+        text: 'x'.repeat(1100),
+      },
+    })
+    assert.equal(
+      chunks[1]!.continued,
+      true,
+    )
+    assert.equal(
+      chunks[1]!.role,
+      'user',
+    )
+    const archived = splitEntry({
+      entry: {
+        id: 'tail',
+        messageId: 'long',
+        part: 1000,
+        role: 'user',
+        kind: 'message',
+        text: 'tail',
+      },
+    })
+    assert.equal(
+      archived[0]!.continued,
+      true,
+    )
+  },
+)

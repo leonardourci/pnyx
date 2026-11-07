@@ -160,6 +160,10 @@ export function applyTask({
       updatedAt: event.at,
     }
 
+    if (event.data.rank !== undefined) {
+      state.cards[event.cardId]!.rank = event.data.rank
+    }
+
     if (kind === 'investigation') {
       state.cards[event.cardId]!.kind = kind
     }

@@ -1,25 +1,20 @@
+import { hydraConfig } from './config.ts'
+import { HYDRA_CARD } from './identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { HydraMessage } from '#hydra/model.ts'
+import type { HydraMessage } from './model.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 
-export function hydraQueueView({
+function hydraQueueView({
   state,
   messages,
   card,
-  pending,
 }: {
   state: HydraState
   messages: HydraMessage[]
   card?: Card
-  pending: {
-    id: string
-    text: string
-    at: string
-    confirmed: boolean
-  }[]
 }) {
   const compacting = activeCompaction({ card })
   const upgrades = state.upgrades ?? []
@@ -68,12 +63,19 @@ export function hydraQueueView({
       at: message.at,
       route: 'hydra' as const,
     })),
-    ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
-      ...item,
-      actor: 'web',
-      route: 'hydra' as const,
-    })),
+
   ]
+
+  const seen = new Set<string>()
+  const inputs = compactInputs.filter(input => {
+    if (seen.has(input.id)) {
+      return false
+    }
+
+    seen.add(input.id)
+
+    return true
+  })
 
   return {
     compacting,
@@ -86,6 +88,29 @@ export function hydraQueueView({
     runningChange,
     compactionRunning,
     upgradeRunning,
-    compactInputs,
+    compactInputs: inputs,
   }
 }
+
+export function hydraChatQueue({ state }: { state: HydraState }) {
+  const config = hydraConfig({ state })
+  const card = state.cards[HYDRA_CARD]
+  const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id)
+  const hosted = config.hydra.kind !== 'firstmate'
+  const working = hosted && (card?.sessionActivity ?? card?.activity) === 'working'
+  const view = hydraQueueView({
+    state,
+    card,
+    messages,
+  })
+
+  return {
+    ...view,
+    held: [...view.held],
+    hosted,
+    working,
+    through: state.seq,
+  }
+}
+
+export type HydraChatQueue = ReturnType<typeof hydraChatQueue>

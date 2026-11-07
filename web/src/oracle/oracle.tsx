@@ -1,3 +1,6 @@
+import { useMemo } from 'react'
+import { tokens } from '#oracle/query.ts'
+import { searchFilters } from './filters.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -196,11 +199,23 @@ export function Oracle({
   // A request is not a search, so Ask mode reads no filters and sends no query.
   const token = ask ? null : filterToken({ query })
   const text = ask ? '' : queryText({ query })
-  const terms = text.split(/\s+/).filter(Boolean)
+  const terms = tokens({ text })
+  // A time badge's start holds still until the badges change or the Oracle reopens, so typing keeps one search key.
+  const filterNow = useMemo(
+    () => Date.now(),
+    [
+      open,
+      badgeIds,
+    ],
+  )
   const found = useFoundCards({
     command,
     query: open ? text : '',
     revision: state.seq,
+    filters: searchFilters({
+      badges,
+      now: filterNow,
+    }),
   })
   const menu = token ? filterMenu({
     token,

@@ -1,6 +1,8 @@
+import { hydraConfig } from '#hydra/config.ts'
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
-import { emptyHydra } from '#app/reducer.ts'
+import { test, type TestContext } from 'node:test'
+import { setImmediate } from 'node:timers/promises'
+import { emptyHydra, reduce } from '#app/reducer.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { createHydraConnection } from './connection-store.ts'
 
@@ -46,96 +48,122 @@ class BrowserSocket {
   }
 }
 
+function browserFixture({
+  t,
+  cached = {},
+  origin = `http://${crypto.randomUUID()}.test`,
+}: {
+  t: TestContext
+  cached?: Record<string, string>
+  origin?: string
+}) {
+  const events = new EventTarget()
+  const stored = new Map(Object.entries(cached))
+  const storage = {
+    // eslint-disable-next-line pnyx/object-params -- Storage owns the method signature.
+    getItem: (key: string) => stored.get(key) ?? null,
+    // eslint-disable-next-line pnyx/object-params -- Storage owns the method signature.
+    setItem: (
+      key: string,
+      value: string,
+    ) => stored.set(
+      key,
+      value,
+    ),
+    // eslint-disable-next-line pnyx/object-params -- Storage owns the method signature.
+    removeItem: (key: string) => stored.delete(key),
+    key: () => null,
+    length: 0,
+  }
+  const environment = {
+    window: events,
+    document: {
+      visibilityState: 'visible',
+      // eslint-disable-next-line pnyx/object-params -- Document owns the method signature.
+      querySelector: (selector: string) => ({
+        content: selector.includes('token') ? 'token' : 'test',
+        setAttribute() {},
+      }),
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events),
+    },
+    location: new URL(
+      '/hydra/default/',
+      origin,
+    ),
+    history: {
+      replaceState() {},
+      pushState() {},
+    },
+    localStorage: storage,
+    sessionStorage: storage,
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
+    WebSocket: BrowserSocket,
+  }
+  const cleanup: { stop?: () => void } = {}
+  const descriptors = Object.fromEntries(Object.keys(environment).map(key => [
+    key,
+    Object.getOwnPropertyDescriptor(
+      globalThis,
+      key,
+    ),
+  ]))
+  t.after(async () => {
+    cleanup.stop?.()
+    await setImmediate()
+
+    for (const key of Object.keys(environment)) {
+      const descriptor = descriptors[key]
+
+      if (descriptor) {
+        Object.defineProperty(
+          globalThis,
+          key,
+          descriptor,
+        )
+      } else {
+        Reflect.deleteProperty(
+          globalThis,
+          key,
+        )
+      }
+    }
+  })
+
+  for (const [
+    key,
+    value,
+  ] of Object.entries(environment)) {
+    Object.defineProperty(
+      globalThis,
+      key,
+      {
+        value,
+        configurable: true,
+        writable: true,
+      },
+    )
+  }
+
+  const connection = createHydraConnection()
+  cleanup.stop = connection.start()
+
+  return {
+    connection,
+    events,
+    stored,
+    storage,
+  }
+}
+
 test(
   'disconnect and replacement snapshots discard native activity evidence',
   t => {
-    const events = new EventTarget()
-    const stored = new Map<string, string>()
-    const storage = {
-      // eslint-disable-next-line pnyx/object-params -- Storage owns the method signature.
-      getItem: (key: string) => stored.get(key) ?? null,
-      // eslint-disable-next-line pnyx/object-params -- Storage owns the method signature.
-      setItem: (
-        key: string,
-        value: string,
-      ) => stored.set(
-        key,
-        value,
-      ),
-      // eslint-disable-next-line pnyx/object-params -- Storage owns the method signature.
-      removeItem: (key: string) => stored.delete(key),
-      key: () => null,
-      length: 0,
-    }
-    const environment = {
-      window: events,
-      document: {
-        visibilityState: 'visible',
-        // eslint-disable-next-line pnyx/object-params -- Document owns the method signature.
-        querySelector: (selector: string) => ({
-          content: selector.includes('token') ? 'token' : 'test',
-          setAttribute() {},
-        }),
-        addEventListener: events.addEventListener.bind(events),
-        removeEventListener: events.removeEventListener.bind(events),
-      },
-      location: new URL('http://example.test/hydra/default/'),
-      history: {
-        replaceState() {},
-        pushState() {},
-      },
-      localStorage: storage,
-      sessionStorage: storage,
-      addEventListener: events.addEventListener.bind(events),
-      removeEventListener: events.removeEventListener.bind(events),
-      WebSocket: BrowserSocket,
-    }
-    const cleanup: { stop?: () => void } = {}
-    const descriptors = Object.fromEntries(Object.keys(environment).map(key => [
-      key,
-      Object.getOwnPropertyDescriptor(
-        globalThis,
-        key,
-      ),
-    ]))
-    t.after(() => {
-      cleanup.stop?.()
-
-      for (const key of Object.keys(environment)) {
-        const descriptor = descriptors[key]
-
-        if (descriptor) {
-          Object.defineProperty(
-            globalThis,
-            key,
-            descriptor,
-          )
-        } else {
-          Reflect.deleteProperty(
-            globalThis,
-            key,
-          )
-        }
-      }
-    })
-
-    for (const [
-      key,
-      value,
-    ] of Object.entries(environment)) {
-      Object.defineProperty(
-        globalThis,
-        key,
-        {
-          value,
-          configurable: true,
-          writable: true,
-        },
-      )
-    }
-
-    const connection = createHydraConnection()
-    cleanup.stop = connection.start()
+    const {
+      connection,
+      events,
+    } = browserFixture({ t })
     const first = BrowserSocket.instances.at(-1)!
     first.receive({
       message: {
@@ -240,5 +268,286 @@ test(
         id: listing.id,
       },
     })
+  },
+)
+
+test(
+  'live spend and usage survive events and stay out of persisted Hydra state',
+  t => {
+    const {
+      connection,
+      stored,
+      events,
+    } = browserFixture({ t })
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    const event = {
+      v: 1 as const,
+      id: 'created',
+      seq: 1,
+      at: '2026-11-06T00:00:00Z',
+      actor: 'web',
+      cardId: 'task',
+      type: 'task.created' as const,
+      data: {
+        key: 'task',
+        title: 'Task',
+      },
+    }
+    const state = reduce({
+      state: emptyHydra(),
+      event,
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: 1,
+        state,
+      },
+    })
+    const spend = {
+      total: 3,
+      unavailable: 0,
+      sharedHydra: false,
+    }
+    const usage = {
+      who: {
+        provider: 'fixture',
+        icon: 'agent',
+      },
+      recorded: spend,
+      windows: [],
+    }
+    socket.receive({
+      message: {
+        type: 'latest',
+        messages: {},
+        actions: {},
+        spend: { task: spend },
+        usage: { task: usage },
+      },
+    })
+    assert.deepEqual(
+      connection.snapshot().state.cards.task!.spend,
+      spend,
+    )
+    socket.receive({
+      message: {
+        type: 'event',
+        event: {
+          ...event,
+          seq: 2,
+          id: 'other',
+          cardId: 'other',
+          data: {
+            key: 'other',
+            title: 'Other',
+          },
+        },
+      },
+    })
+    assert.deepEqual(
+      connection.snapshot().state.cards.task!.spend,
+      spend,
+    )
+    assert.deepEqual(
+      connection.snapshot().state.cards.task!.usage,
+      usage,
+    )
+    const other = connection.snapshot().state.cards.other
+    socket.receive({
+      message: {
+        type: 'latest',
+        messages: {},
+        actions: {},
+        spend: {
+          task: {
+            ...spend,
+            total: 4,
+          },
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend!.total,
+      4,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.other,
+      other,
+      'a card without live totals keeps its identity',
+    )
+    events.dispatchEvent(new Event('pagehide'))
+    const saved = [...stored.values()].map(value => JSON.parse(value)).filter(value => value?.cards)
+    assert.ok(saved.length > 0)
+
+    for (const snapshot of saved) {
+      assert.equal(
+        snapshot.cards.task.spend,
+        undefined,
+      )
+      assert.equal(
+        snapshot.cards.task.usage,
+        undefined,
+      )
+    }
+
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: state.seq,
+        state,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+  },
+)
+
+test(
+  'Hydra\'s queue stays shown while a snapshot replaces the state',
+  t => {
+    const { connection } = browserFixture({ t })
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    const queue = {
+      waiting: [
+        {
+          seq: 1,
+          card: 'task',
+        },
+      ],
+      reading: [],
+    }
+    socket.receive({
+      message: {
+        type: 'hydraQueue',
+        queue,
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: 0,
+        state: emptyHydra(),
+      },
+    })
+    assert.deepEqual(
+      connection.snapshot().hydraQueue,
+      queue,
+    )
+  },
+)
+
+test(
+  'the legacy Hydra cache is removed and never restored or written',
+  t => {
+    const legacy = 'pnyx:test:hydra-state'
+    const {
+      connection,
+      stored,
+      events,
+    } = browserFixture({
+      t,
+      cached: {
+        [legacy]: JSON.stringify({
+          ...emptyHydra(),
+          config: { name: 'Old Hydra' },
+        }),
+      },
+    })
+    assert.equal(
+      connection.snapshot().loaded,
+      false,
+    )
+    assert.equal(
+      stored.has(legacy),
+      false,
+    )
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: 0,
+        state: emptyHydra(),
+      },
+    })
+    events.dispatchEvent(new Event('pagehide'))
+    assert.equal(
+      stored.has(legacy),
+      false,
+    )
+  },
+)
+
+test(
+  'a cached snapshot from an older build cannot persist live totals again',
+  t => {
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: 'task',
+        type: 'task.created',
+        data: {
+          key: 'task',
+          title: 'Task',
+        },
+      },
+    })
+    state.config = hydraConfig({ state })
+    state.cards.task!.spend = {
+      total: 9,
+      unavailable: 0,
+      sharedHydra: false,
+    }
+    const origin = 'http://cache-migration.test'
+    const key = `pnyx:${origin}:test/hydra/default/:hydra-state`
+    const {
+      connection,
+      stored,
+      events,
+    } = browserFixture({
+      t,
+      cached: { [key]: JSON.stringify(state) },
+      origin,
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+    events.dispatchEvent(new Event('pagehide'))
+    assert.equal(
+      JSON.parse(stored.get(key)!).cards.task.spend,
+      undefined,
+    )
   },
 )

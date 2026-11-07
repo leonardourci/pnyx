@@ -1,3 +1,4 @@
+import { createBeforeRank } from '#tasks/create-placement.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -80,10 +81,17 @@ export function optimisticState({
       return state
     }
 
+    const before = option({ flag: '--before' })
     const first = columnCards({
       state,
       column,
     })[0]
+    const top = first ? rankOf({ card: first }) - 1 : 0
+    const rank = before ? createBeforeRank({
+      state,
+      column,
+      before,
+    }) : top
     const pending: Card = {
       id: key,
       key,
@@ -97,7 +105,7 @@ export function optimisticState({
       tracking: 'declared',
       parentId,
       column,
-      rank: first ? rankOf({ card: first }) - 1 : 0,
+      rank,
       revision: 0,
       createdSeq: 0,
       updatedSeq: 0,
