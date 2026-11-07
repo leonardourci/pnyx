@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { codexThreadTitle, transcriptNotes } from './notes.ts'
-import { transcriptMessages } from '#oracle/text.ts'
+import { codexThreadTitle } from '#workers/codex.ts'
+import { readTranscriptRecord, transcriptMessages } from '#workers/transcripts.ts'
 
 const FIXTURES = join(
   import.meta.dirname,
@@ -37,7 +37,8 @@ const records = ({ path }: { path: string }) => readFileSync(
 test(
   'a Claude Code transcript yields its titles, compaction summaries and answered questions; a Codex one its readable summaries',
   () => {
-    const notes = records({ path: CLAUDE }).flatMap(record => transcriptNotes({ record }))
+    const notes = records({ path: CLAUDE })
+      .flatMap(record => readTranscriptRecord({ record }).notes)
     assert.deepEqual(
       notes.map(({
         kind,
@@ -102,7 +103,7 @@ test(
     assert.ok(!records({ path: CLAUDE }).flatMap(record => transcriptMessages({ record }))
       .some(m => m.text.includes('zebrafish')))
     assert.deepEqual(
-      records({ path: CODEX }).flatMap(record => transcriptNotes({ record }))
+      records({ path: CODEX }).flatMap(record => readTranscriptRecord({ record }).notes)
         .map(({
           kind,
           source,

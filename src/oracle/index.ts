@@ -1,3 +1,4 @@
+import { transcriptMessages } from '#workers/transcripts.ts'
 import { createHash } from 'node:crypto'
 import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -12,7 +13,7 @@ import { readEventsFrom } from '#app/event-log.ts'
 import { privateDir } from '#store/storage.ts'
 import type { IndexResult, Kind } from './model.ts'
 import { words } from './query.ts'
-import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
+import { CHUNKER_VERSION, chunk, eventText, redact } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
 export const SCHEMA_VERSION = 8

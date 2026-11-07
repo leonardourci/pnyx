@@ -1,5 +1,6 @@
 import type { HydraState } from '#app/model.ts'
-import { commandOf,firstLine,obj } from '#hydra/calls.ts'
+import { firstLine, obj } from '#hydra/calls.ts'
+import { commandOf } from '#workers/tool-input.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import { PROVIDERS } from '#workers/providers.ts'

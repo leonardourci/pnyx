@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { transcriptMessages } from '#oracle/text.ts'
+import { transcriptMessages } from '#workers/transcripts.ts'
 import { hydraMessages, leadingTask } from './chat-messages.ts'
 import { hydraDelivery } from './hydra.ts'
 import { taskMention } from './mentions.ts'

@@ -1,3 +1,6 @@
+import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
+import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
+import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -1569,4 +1572,320 @@ export function readCodexUsage({
       tasks: [...reader.tasks],
     })
   }
+}
+
+// Codex's service tier: fast is requested as priority; any other tier is not fast.
+function codexFast({ tier }: { tier: unknown }): string | undefined {
+  const value = transcriptString({ value: tier })
+
+  return onOff({ fast: value === undefined ? undefined : value === 'fast' || value === 'priority' })
+}
+
+function approval({ value }: { value: unknown }): string | undefined {
+  return transcriptString({
+    value,
+  }) ?? (Object.keys(object({
+    value,
+  })).length ? Object.keys(object({
+      value,
+    }))[0] : undefined)
+}
+
+function codexSettings({ record }: {
+  record: Record<string, unknown>
+}): FoundSettings | undefined {
+  const payload = object({ value: record.payload })
+
+  if (record.type === 'session_meta') {
+    return foundSettings({
+      settings: {
+        client: transcriptString({
+          value: payload.originator,
+        }),
+        version: transcriptString({
+          value: payload.cli_version,
+        }),
+      },
+    })
+  }
+
+  if (record.type === 'turn_context') {
+    return foundSettings({
+      settings: {
+        model: transcriptString({ value: payload.model }),
+        effort: transcriptString({ value: payload.effort }),
+        fast: codexFast({ tier: payload.service_tier }),
+        approval: approval({ value: payload.approval_policy }),
+        sandbox: transcriptString({ value: object({ value: payload.sandbox_policy }).type }),
+        collaboration: transcriptString({
+          value: object({ value: payload.collaboration_mode }).mode,
+        }),
+        summary: transcriptString({ value: payload.summary }),
+      },
+    })
+  }
+
+  const applied = record.type === 'event_msg' && payload.type === 'thread_settings_applied'
+
+  if (applied) {
+    const settings = object({ value: payload.thread_settings })
+
+    return foundSettings({
+      settings: {
+        model: transcriptString({ value: settings.model }),
+        effort: transcriptString({ value: settings.reasoning_effort }),
+        fast: codexFast({ tier: settings.service_tier }),
+        approval: approval({ value: settings.approval_policy }),
+        collaboration: transcriptString({
+          value: object({ value: settings.collaboration_mode }).mode,
+        }),
+        summary: transcriptString({ value: settings.reasoning_summary }),
+      },
+    })
+  }
+
+  return undefined
+}
+
+// Later session_index.jsonl records replace the thread name.
+export function codexThreadTitle({
+  index,
+  sessionId,
+}: {
+  index: string
+  sessionId: string
+}): SourceNote[] {
+  let title: string | undefined
+  let at: string | undefined
+
+  for (const line of index.split('\n')) {
+    try {
+      const r = JSON.parse(line) as {
+        id?: unknown
+        thread_name?: unknown
+        updated_at?: unknown
+      }
+
+      if (r.id === sessionId && trimmedString({ value: r.thread_name })) {
+        title = trimmedString({ value: r.thread_name })
+        at = trimmedString({ value: r.updated_at })
+      }
+    } catch {
+      // A torn or foreign line names no thread.
+    }
+  }
+
+  return title
+    ? [
+      {
+        kind: 'context',
+        source: 'codex',
+        text: `${SESSION_TITLE}${title}`,
+        ref: `title:${at ?? ''}:${title}`,
+        ...(at ? { at } : {}),
+      },
+    ]
+    : []
+}
+
+// Codex's code mode runs every tool from one script passed to this tool.
+const CODE_MODE_TOOL = 'exec'
+// A script calls tools.exec_command({cmd:"git status"}) and friends; a patch names its files on "*** Update File:" lines.
+const SCRIPT_CALL = /tools\.(\w+)\(/g
+const SCRIPT_COMMAND = /["']?cmd["']?\s*:\s*("(?:[^"\\]|\\.)*")/
+const SCRIPT_PATH = /["']?path["']?\s*:\s*("(?:[^"\\]|\\.)*")/
+const PATCHED_FILE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/m
+
+const scriptString = ({
+  pattern,
+  text,
+}: {
+  pattern: RegExp
+  text: string
+}): string | undefined => {
+  const literal = pattern.exec(text)?.[1]
+
+  if (literal === undefined) {
+    return undefined
+  }
+
+  try {
+    return String(JSON.parse(literal))
+  } catch {
+    return undefined
+  }
+}
+
+function scriptCalls({
+  id,
+  script,
+}: {
+  id: string
+  script: string
+}): TranscriptCall[] {
+  const starts = [...script.matchAll(SCRIPT_CALL)]
+
+  return starts.map((
+    match,
+    index,
+  ) => {
+    const body = script.slice(
+      match.index + match[0].length,
+      starts[index + 1]?.index ?? script.length,
+    )
+    const path = scriptString({
+      pattern: SCRIPT_PATH,
+      text: body,
+    }) ?? PATCHED_FILE.exec(body)?.[1]
+
+    return transcriptCall({
+      id,
+      tool: match[1]!,
+      input: {
+        cmd: scriptString({
+          pattern: SCRIPT_COMMAND,
+          text: body,
+        }),
+        path,
+      },
+    })
+  })
+}
+
+function customCalls({
+  id,
+  tool,
+  input,
+}: {
+  id: string
+  tool: unknown
+  input: string
+}): TranscriptCall[] {
+  if (tool === CODE_MODE_TOOL) {
+    return scriptCalls({
+      id,
+      script: input,
+    })
+  }
+
+  return [
+    transcriptCall({
+      id,
+      tool,
+      input: { path: PATCHED_FILE.exec(input)?.[1] },
+    }),
+  ]
+}
+
+const parsedArguments = ({ text }: { text: unknown }): Record<string, unknown> => {
+  try {
+    return object({ value: typeof text === 'string' ? JSON.parse(text) : text })
+  } catch {
+    return {}
+  }
+}
+
+export const readCodexTranscript: TranscriptReader = ({ record }) => {
+  if (typeof record !== 'object' || record === null || !('payload' in record)) {
+    return undefined
+  }
+
+  const entry = object({ value: record })
+  const payload = object({ value: entry.payload })
+  const at = typeof entry.timestamp === 'string' ? entry.timestamp : undefined
+  const parsed: TranscriptRecord = {
+    role: typeof payload.role === 'string' ? payload.role : String(entry.type),
+    at,
+    messages: [],
+    traces: [],
+    calls: [],
+    results: [],
+    notes: [],
+    settings: codexSettings({ record: entry }),
+  }
+
+  // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
+  if (entry.type === 'compacted') {
+    const text = trimmedString({ value: payload.message })
+    const stamp = trimmedString({ value: entry.timestamp })
+
+    if (text) {
+      parsed.notes.push({
+        kind: 'summary',
+        source: 'codex',
+        text,
+        ref: `compacted:${stamp ?? ''}:${text}`,
+        ...(stamp ? { at: stamp } : {}),
+      })
+    }
+  }
+
+  if (entry.type !== 'response_item') {
+    return parsed
+  }
+
+  if (payload.type === 'message' && (payload.role === 'user' || payload.role === 'assistant')) {
+    const content = payload.content
+    const blocks = typeof content === 'string' ? [content] : Array.isArray(content) ? content : []
+    parsed.messages = transcriptText({
+      at,
+      texts: blocks.map((
+        raw,
+        index,
+      ) => {
+        const text = blockText({ value: raw })
+        const before = object({ value: blocks[index - 1] })
+        const after = object({ value: blocks[index + 1] })
+        // The text blocks Codex wraps around each attached image are not anyone's words.
+        const opensImage = after.type === 'input_image' && /^<image\b[^>]*>$/.test(text.trim())
+        const closesImage = before.type === 'input_image' && text.trim() === '</image>'
+
+        return {
+          text,
+          hidden: opensImage || closesImage,
+        }
+      }),
+    })
+  }
+
+  const tool = [
+    'function_call',
+    'function_call_output',
+    'custom_tool_call',
+    'custom_tool_call_output',
+  ].includes(String(payload.type))
+  const thinking = payload.type === 'reasoning'
+
+  if (tool || thinking) {
+    parsed.traces.push(transcriptTrace({
+      index: 0,
+      kind: tool ? 'tool' : 'thinking',
+      name: payload.name,
+      detail: payload.summary ?? payload.content ?? payload.output
+        ?? payload.arguments ?? payload.input,
+      call: payload.call_id ?? payload.id,
+    }))
+  }
+
+  if (payload.type === 'function_call' && typeof payload.call_id === 'string') {
+    parsed.calls.push(transcriptCall({
+      id: payload.call_id,
+      tool: payload.name,
+      input: parsedArguments({ text: payload.arguments }),
+    }))
+  }
+
+  if (payload.type === 'custom_tool_call' && typeof payload.call_id === 'string' && typeof payload.input === 'string') {
+    parsed.calls.push(...customCalls({
+      id: payload.call_id,
+      tool: payload.name,
+      input: payload.input,
+    }))
+  }
+
+  if ((payload.type === 'function_call_output' || payload.type === 'custom_tool_call_output') && typeof payload.call_id === 'string') {
+    parsed.results.push(payload.call_id)
+  }
+
+  return parsed
 }

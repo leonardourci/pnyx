@@ -92,3 +92,39 @@ test(
     )
   },
 )
+
+test(
+  'a session card reports its main transcript\'s settings, never a subagent\'s or a synthetic turn\'s model',
+  () => {
+    hydraId()
+    spoolWrite({
+      hydraId: 'default',
+      entry: {
+        v: 1,
+        id: 'h1',
+        at: '2026-10-14T08:59:50Z',
+        harness: 'claude',
+        event: 'Stop',
+        payload: {
+          session_id: 's1',
+          transcript_path: transcript({ name: 'claude-settings' }),
+          cwd: '/work',
+          permission_mode: 'plan',
+        },
+      },
+    })
+    ingestSpool({ hydraId: 'default' })
+    assert.deepEqual(
+      settingsOf({ key: 'claude:s1' }),
+      {
+        mode: 'default',
+        model: 'claude-opus-5-5',
+        effort: 'high',
+        fast: 'off',
+        context: '1M',
+        client: 'cli',
+        version: '2.1.299',
+      },
+    )
+  },
+)
