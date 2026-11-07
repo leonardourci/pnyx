@@ -83,7 +83,9 @@ export function indexRuns<Outcome>({ start }: { start(): Promise<Outcome> }) {
               return
             }
 
-            void run().finally(release)
+            // A turn that joins a running catch-up keeps its slot through the follow-up it asked for.
+            void run().then(() => running)
+              .finally(release)
           },
         }),
         INDEX_DELAY_MS,

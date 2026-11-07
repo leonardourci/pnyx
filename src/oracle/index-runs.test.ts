@@ -194,3 +194,31 @@ test(
     )
   },
 )
+
+test(
+  'background catch-ups stay within the limit when a change joins a running one',
+  async t => {
+    const h = hydras({ t })
+    const joined = h.hydra({ id: 'joined' })
+    joined.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    joined.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    Array.from(
+      { length: BACKGROUND_CATCHUPS },
+      (
+        _,
+        index,
+      ) => h.hydra({ id: `other-${index}` }),
+    ).forEach(run => run.changed())
+    t.mock.timers.tick(INDEX_DELAY_MS)
+
+    h.finish({ id: 'joined' })
+    await h.settle()
+    assert.ok(
+      h.inFlight.size <= BACKGROUND_CATCHUPS,
+      `${h.inFlight.size} catch-ups in flight, limit ${BACKGROUND_CATCHUPS}`,
+    )
+    await h.drain()
+  },
+)
