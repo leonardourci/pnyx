@@ -4,7 +4,7 @@
 
 ## Fix
 
-<!-- What the change does now, and what it leaves alone. -->
+<!-- What the change does now, and what it leaves alone. For file structure changes, include one combined folder tree with change markers and short file notes; follow write-pull-request. -->
 
 ## Validation
 
