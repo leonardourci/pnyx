@@ -14,7 +14,7 @@ import type { createHost } from './host.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import { listHydras } from './server-hydras.ts'
 import { MAX_BUFFERED, type HydraClient, type ServerMessage } from './server-transport.ts'
-import type { Subscription } from './thread-subscriptions.ts'
+import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
 
 const shownTraces = ({
   view,
@@ -197,7 +197,11 @@ export function createServerClients({
         const sub = map.get(ws)
 
         // A view change that switches this card's traces on or off changes its page.
-        if (sub && (sub.card === HYDRA_CARD || sub.card === event.cardId
+        if (sub && ((sub.card === HYDRA_CARD && changesHydraThread({
+          event,
+          sub,
+          state: state(),
+        })) || sub.card === event.cardId
         || (event.type === 'task.session' && sub.card === event.data.before)
         || (event.type === 'board.view' &&
           shownTraces({
