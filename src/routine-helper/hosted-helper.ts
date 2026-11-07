@@ -5,9 +5,10 @@ import { accountFor } from '#workers/account-choice.ts'
 import type { trackChildren } from '#workers/children.ts'
 import { accountEnv, accountEnvironment } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch } from '#workers/dispatch-config.ts'
+import type { AgentConfig } from '#workers/model.ts'
 import { hydraFastReaches, type Provider } from '#workers/provider.ts'
 import { providerIdOf, type ProviderId } from '#workers/providers.ts'
-import { helperAgent } from './route.ts'
+import { helperAgent, helperChoice } from './route.ts'
 import { createRoutineHelper } from './runner.ts'
 import { outcomeLines, type HelperAgent } from './state.ts'
 
@@ -42,31 +43,51 @@ export function createHostedHelper({
     return outcomeLines({ state }).length > 0 || helperFailed({ state })
   }
 
+  // A helper on an account runs only while that account is still registered for its harness.
+  const accountKept = ({
+    candidate,
+    effective,
+  }: {
+    candidate: AgentConfig
+    effective?: EffectiveDispatch
+  }) => {
+    if (candidate.account === undefined) {
+      return true
+    }
+
+    const known = effective ?? effectiveDispatch()
+
+    return known.accounts[candidate.account]?.provider === candidate.harness
+  }
+
   // No helper agent when it is off or its account is no longer registered, so main takes the updates and no other login is used.
   const usableHelper = ({
     state,
     effective,
   }: {
     state: HydraState
-    effective?: EffectiveDispatch
+    effective: EffectiveDispatch
   }) => {
     const candidate = helperAgent({
       state,
-      dispatch: effective?.dispatch,
+      dispatch: effective.dispatch,
     })
 
-    if (candidate?.account === undefined) {
-      return candidate
-    }
-
-    const known = effective ?? effectiveDispatch()
-
-    return known.accounts[candidate.account]?.provider === candidate.harness ? candidate : undefined
+    return candidate && accountKept({
+      candidate,
+      effective,
+    }) ? candidate : undefined
   }
 
   // A failed batch sends routine work to main until main has seen the failure.
-  const helperOpen = ({ state }: { state: HydraState }) => !!usableHelper({ state })
-    && !helperFailed({ state })
+  // An automatic helper has no account, so its openness never reads the dispatch file.
+  const helperOpen = ({ state }: { state: HydraState }) => {
+    const choice = helperChoice({ state })
+
+    return choice !== undefined
+      && (choice === 'auto' || accountKept({ candidate: choice }))
+      && !helperFailed({ state })
+  }
 
   const helper = createRoutineHelper({
     hydraId,

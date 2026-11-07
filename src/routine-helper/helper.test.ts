@@ -15,6 +15,10 @@ import { taskLease } from './leases.ts'
 import { helperAgent, helperBatch, helperEvent, helperGrant, helperReason } from './route.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
 import { writeDocument } from '#workers/dispatch-config.ts'
+import type { DispatchDocument } from '#workers/dispatch-check.ts'
+import { trackChildren } from '#workers/children.ts'
+import type { ProviderId } from '#workers/providers.ts'
+import { createHostedHelper } from './hosted-helper.ts'
 import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from './runner.ts'
 import { until } from '#test-harness/harness.ts'
 import type { Provider } from '#workers/provider.ts'
@@ -1238,6 +1242,39 @@ test(
         harness: 'codex',
         model: HELPER_MODELS.codex,
       },
+    )
+  },
+)
+
+test(
+  'whether the automatic helper is open never reads the dispatch file',
+  () => {
+    writeDocument({
+      document: {
+        accounts: {},
+        default: [{ harness: 'nope' }],
+        workers: {},
+        projects: {},
+        rules: {},
+      } as unknown as DispatchDocument,
+    })
+    assert.throws(
+      () => helperAgent({ state: state() }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    const { helperOpen } = createHostedHelper({
+      hydraId: 'lab',
+      providers: {} as Record<ProviderId, Provider>,
+      children: trackChildren({ hydraId: 'lab' }),
+      changed: () => {},
+      environment: () => ({}),
+      digest: async () => '',
+      armWake: () => {},
+      host: () => assert.fail('no host call'),
+    })
+    assert.equal(
+      helperOpen({ state: state() }),
+      true,
     )
   },
 )
