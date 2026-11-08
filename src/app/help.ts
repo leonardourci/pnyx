@@ -224,7 +224,7 @@ pnyx-axi task permission <task> <request> allow|deny [--answer <json>] [--reason
 A question request is allowed with its answers, --answer '{"answers":[{"pick":[1]},{"text":"..."}]}' (one per question, picks
 numbered from 1), and a form with --answer '{"values":{"<field>":"<value>"}}'; deny skips it.
 pnyx-axi task project <task> --project <name|path>
-pnyx-axi task remind <task> <when|clear>
+pnyx-axi task remind <task> <when|clear> [--every "4 hours" --until worker-started|question-answered|task-done] [--question <id>]
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
 pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
@@ -247,7 +247,7 @@ attach moves an interactive session to the task; an occupied destination is reje
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
 task create accepts --project <name|path>; task project assigns an existing task to an attached project.
-task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. The server fires overdue reminders on startup, moves the task to Needs you, and posts one automatic Pnyx bullet in chat, limited to 30 words with a link to the full task.
+task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start or working declaration stops worker-started; task completion stops task-done. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, moves tasks to Needs you, and groups everything due in one Pnyx chat message, with at most 30 words per bullet and a link to each full task. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
 
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
