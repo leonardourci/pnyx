@@ -121,6 +121,11 @@ test(
       false,
     )
     waiting.asks = []
+    waiting.reminder = {
+      id: 'review',
+      at: ended.at,
+      dueAt: ended.at,
+    }
     assert.equal(
       wakesHydra({
         state,

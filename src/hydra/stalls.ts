@@ -10,7 +10,8 @@ import { background } from '#app/background.ts'
 import { helperBatch, helperReason } from '#routine-helper/route.ts'
 import { liveTask } from '#tasks/select.ts'
 import { loadHydra } from '#app/store.ts'
-import { asksOwner, pausedDeclaration } from '#tasks/lifecycle.ts'
+import { pausedDeclaration } from '#tasks/lifecycle.ts'
+import { ownerGates } from '#tasks/owner-gates.ts'
 import { reasonLine } from './wake-reasons.ts'
 import { seenAt } from '#workers/presence.ts'
 import { wakeHandled } from '#routine-helper/state.ts'
@@ -158,7 +159,7 @@ export function createStallChecks({
       })
     }
 
-    if (pausedDeclaration({ card }) && asksOwner({ card })) {
+    if (pausedDeclaration({ card }) && ownerGates({ card }).length > 0) {
       return []
     }
 
@@ -227,7 +228,8 @@ export function createStallChecks({
   }): StallItem[] => {
     const turnEnded = (card.sessionActivity ?? card.activity) === 'finished'
     const declaresWorking = card.tracking === 'declared' && card.status?.state === 'working'
-    const asking = card.attention.some(a => a.blocking && !a.answered) || asksOwner({ card })
+    const asking = card.attention.some(a => a.blocking && !a.answered)
+      || ownerGates({ card }).length > 0
 
     if (!turnEnded || !declaresWorking || asking || !liveTask({ card })) {
       return []
@@ -266,7 +268,8 @@ export function createStallChecks({
     const declaredWaitEnd = waitEnd({ card })
     const declaration = pausedDeclaration({ card })
 
-    const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd || asksOwner({ card })
+    const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd
+      || ownerGates({ card }).length > 0
 
     if (card.id === HYDRA_CARD || !liveTask({ card }) || waiting || !declaration) {
       return []

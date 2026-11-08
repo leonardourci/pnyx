@@ -1721,6 +1721,51 @@ test(
         'idle',
       ],
     })
+    inOneWrite({
+      s,
+      steps: [
+        'waiting',
+        'routine',
+        'idle',
+      ].flatMap((key): Step[] => [
+        ({ state }) => ({
+          event: {
+            v: 1,
+            seq: state.seq + 1,
+            id: `${key}-reminder`,
+            at: new Date().toISOString(),
+            actor: 'pnyx',
+            cardId: state.keys[key]!,
+            type: 'task.reminder',
+            data: {
+              before: null,
+              after: new Date().toISOString(),
+            },
+          },
+        }),
+        ({ state }) => ({
+          event: {
+            v: 1,
+            seq: state.seq + 1,
+            id: `${key}-reminder-due`,
+            at: new Date().toISOString(),
+            actor: 'pnyx',
+            cardId: state.keys[key]!,
+            type: 'task.reminder-due',
+            data: {
+              reminder: `${key}-reminder`,
+              column: 'needs_you',
+              message: {
+                action: 'send',
+                hydra: 'hydra',
+                task: state.keys[key]!,
+                text: 'Review the accepted export.',
+              },
+            },
+          },
+        }),
+      ]),
+    })
     await s.chat({ text: 'Supervise only the accepted work.' })
     const hydra = await s.agent({ hydra: true })
     await until({
@@ -1912,5 +1957,42 @@ test(
       grants({ s })[1]?.tasks,
       [waitingTask.id],
     )
+    assert.ok(s.task({ key: 'waiting' }).reminder?.dueAt)
+    const idleTask = s.task({ key: 'idle' })
+    const idleQuestion = idleTask.asks?.[0]
+    assert.ok(idleQuestion)
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: idleTask.id,
+            status: 'still_waiting',
+            summary: 'The owner settled the idle worker format.',
+          },
+        ],
+      }),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'idle',
+        idleQuestion.id,
+        '--text',
+        'Keep the accepted format.',
+        '--reason',
+        'The owner settled the idle worker format.',
+      ],
+    })
+    await until({
+      what: 'the idle worker with a due reminder to reach periodic supervision',
+      check: () => finishes({ s }).length === 3,
+    })
+    assert.deepEqual(
+      grants({ s })[2]?.tasks,
+      [idleTask.id],
+    )
+    assert.ok(s.task({ key: 'idle' }).reminder?.dueAt)
   },
 )
