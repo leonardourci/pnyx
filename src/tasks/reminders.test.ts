@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
+import { emptyHydra, replay } from '#app/reducer.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { taskMentions } from '#hydra/mentions.ts'
 import { fireReminders } from './fire-reminders.ts'
@@ -235,6 +237,265 @@ test(
         at: later,
       }),
       0,
+    )
+  },
+)
+
+test(
+  'recurring reminders skip missed intervals, survive replay and stop on recorded lifecycle facts',
+  async t => {
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2099-10-16T11:00:00Z'),
+    })
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+        '--every',
+        '1 hour',
+        '--until',
+        'worker-started',
+      ],
+    })
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: later,
+      }),
+      1,
+    )
+    assert.equal(
+      task().reminder?.at,
+      '2099-10-16T13:00:00.000Z',
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: later,
+      }),
+      0,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T15:30:00.000Z',
+      }),
+      1,
+    )
+    assert.equal(
+      task().reminder?.at,
+      '2099-10-16T16:00:00.000Z',
+    )
+    const replayed = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    })
+    assert.deepEqual(
+      replayed.cards[replayed.keys.work!]?.reminder,
+      task().reminder,
+    )
+    assert.equal(
+      state().hydraMessages?.length,
+      2,
+    )
+    t.mock.timers.tick(5 * 60 * 60 * 1000)
+    await run({
+      args: [
+        'status',
+        'work',
+        'working',
+        '--note',
+        'Worker started the review',
+      ],
+    })
+    assert.equal(
+      task().reminder,
+      undefined,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-17T12:00:00Z',
+      }),
+      0,
+    )
+    await run({
+      args: [
+        'remind',
+        'work',
+        '2099-10-17T12:00:00Z',
+        '--every',
+        '2 hours',
+        '--until',
+        'task-done',
+      ],
+    })
+    await run({
+      args: [
+        'status',
+        'work',
+        'done',
+        '--note',
+        'Review finished',
+      ],
+    })
+    assert.equal(
+      task().reminder,
+      undefined,
+    )
+    assert.equal(
+      state().config?.columns.find(column => column.id === task().column)?.role,
+      'done',
+    )
+    await run({
+      args: [
+        'create',
+        '--key',
+        'choice',
+        '--title',
+        'Choose a response format',
+      ],
+    })
+    await run({
+      args: [
+        'ask',
+        'choice',
+        '--to',
+        'owner',
+        '--question',
+        'Which response format?',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner chooses the response',
+        '--choice',
+        'Compact',
+        '--choice',
+        'Expanded',
+      ],
+    })
+    const question = state().cards[state().keys.choice!]?.asks?.[0]
+    assert.ok(question)
+    await run({
+      args: [
+        'remind',
+        'choice',
+        '2099-10-17T12:00:00Z',
+        '--every',
+        '4 hours',
+        '--until',
+        'question-answered',
+        '--question',
+        question.id,
+      ],
+    })
+    await run({
+      args: [
+        'answer',
+        'choice',
+        question.id,
+        '--choice',
+        'Compact',
+      ],
+    })
+    assert.equal(
+      state().cards[state().keys.choice!]?.reminder,
+      undefined,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-18T12:00:00Z',
+      }),
+      0,
+    )
+  },
+)
+
+test(
+  'invalid recurrence options leave the saved reminder unchanged',
+  async () => {
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+      ],
+    })
+    const before = task().reminder
+    await assert.rejects(
+      run({
+        args: [
+          'remind',
+          'work',
+          later,
+          '--every',
+          '0 hours',
+          '--until',
+          'task-done',
+        ],
+      }),
+      /positive interval/,
+    )
+    await assert.rejects(
+      run({
+        args: [
+          'remind',
+          'work',
+          later,
+          '--every',
+          '1 hour',
+        ],
+      }),
+      /--until/,
+    )
+    await assert.rejects(
+      run({
+        args: [
+          'remind',
+          'work',
+          later,
+          '--until',
+          'task-done',
+        ],
+      }),
+      /--every/,
+    )
+    await assert.rejects(
+      run({
+        args: [
+          'remind',
+          'work',
+          later,
+          '--every',
+          '1 hour',
+          '--until',
+          'question-answered',
+          '--question',
+          'missing',
+        ],
+      }),
+      /open owner question/,
+    )
+    await assert.rejects(
+      run({
+        args: [
+          'remind',
+          'work',
+          'clear',
+          '--every',
+          '1 hour',
+          '--until',
+          'task-done',
+        ],
+      }),
+      /clear/,
+    )
+    assert.deepEqual(
+      task().reminder,
+      before,
     )
   },
 )
