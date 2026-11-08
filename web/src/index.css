@@ -1419,6 +1419,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .agent-settings-menu { min-width: 0; }
 .composer-bar .agent-settings-menu > .button { max-width: 100%; color: var(--color-ink); font-size: var(--text-meta); white-space: nowrap; }
 .agent-settings-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.agent-settings-effort { color: var(--color-muted); }
 .agent-setting-text { display: flex; align-items: baseline; gap: 6px; }
 .agent-setting-text > small { color: var(--color-muted); font-size: var(--text-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-setting-row[aria-pressed=true] > svg:first-child { color: var(--color-gold); }

@@ -339,6 +339,7 @@ export function AgentSettingsMenu({
   iconSize: number
 }) {
   const provider = PROVIDERS.find(item => item.harness === selection.agent.harness)!
+  const effort = choices.find(choice => choice.field === 'effort')
   const fastText = fast && `Fast ${fast.on ? 'on' : 'off'}`
   const summary = [
     provider.label,
@@ -356,6 +357,16 @@ export function AgentSettingsMenu({
         <>
           <Icon name={provider.icon} size={iconSize} />
           <span className="agent-settings-model">{modelLabel}</span>
+          {effort && (
+            <Icon
+              name={optionIcon({
+                field: 'effort',
+                value: effort.value,
+              })}
+              size={iconSize}
+            />
+          )}
+          {effort && <span className="agent-settings-effort">{valueLabel({ choice: effort })}</span>}
           <Icon name="chevron_down" size={14} />
         </>
       )}
