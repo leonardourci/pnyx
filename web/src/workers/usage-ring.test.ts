@@ -45,6 +45,7 @@ test(
         dash: undefined,
         label: 'Context unavailable',
         fill: false,
+        empty: true,
         tone: 'normal',
       },
       {
@@ -53,6 +54,7 @@ test(
         dash: undefined,
         label: 'Context 42,000 tokens used; capacity unavailable',
         fill: false,
+        empty: true,
         tone: 'normal',
       },
       {
@@ -64,6 +66,7 @@ test(
         dash: '0 100',
         label: 'Context window 0% used',
         fill: true,
+        empty: false,
         tone: 'normal',
       },
       {
@@ -75,6 +78,7 @@ test(
         dash: '42 100',
         label: 'Context window 42% used',
         fill: true,
+        empty: false,
         tone: 'normal',
       },
       {
@@ -86,6 +90,7 @@ test(
         dash: '75 100',
         label: 'Context window 75% used',
         fill: true,
+        empty: false,
         tone: 'warning',
       },
       {
@@ -97,6 +102,7 @@ test(
         dash: '95 100',
         label: 'Context window 95% used',
         fill: true,
+        empty: false,
         tone: 'critical',
       },
       {
@@ -108,6 +114,7 @@ test(
         dash: '100 100',
         label: 'Context window 100% used',
         fill: true,
+        empty: false,
         tone: 'critical',
       },
     ]
@@ -144,8 +151,19 @@ test(
       assert.ok(html.includes(`data-tone="${expected.tone}"`))
       assert.equal(
         html.includes('data-empty="true"'),
-        !expected.fill,
+        expected.empty,
       )
     }
+
+    const beforeSession = renderToStaticMarkup(createElement(
+      UsageRing,
+      {
+        card: undefined,
+        connected: false,
+        command: async () => ({}),
+      },
+    ))
+    assert.ok(beforeSession.includes('data-empty="true"'))
+    assert.ok(beforeSession.includes('aria-label="Context unavailable"'))
   },
 )
