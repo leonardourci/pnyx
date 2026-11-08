@@ -8,6 +8,7 @@ import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { AgentSession, SessionEvent } from '#workers/model.ts'
 import { cardSessionId, taskForMessage } from '#workers/session-attachments.ts'
 import { transcriptEntries } from '#hydra/transcripts-read.ts'
+import { chatRecordId, recordedChatIds } from '#hydra/chat-records.ts'
 import type { Writer } from '#app/writer.ts'
 import { readTranscript } from '#oracle/index.ts'
 import { redact } from '#oracle/text.ts'
@@ -177,6 +178,7 @@ export function harvestTranscripts({
   const cursors = readCursors({ dir: writer.dir })
   let appended = 0
   let moved = false
+  const recorded = new Set(recordedChatIds({ dir: writer.dir }))
 
   for (const id of cardIds) {
     const path = detached?.session.agent.transcriptPath
@@ -251,12 +253,16 @@ export function harvestTranscripts({
           parsed,
           offset: line.pos,
         }).filter(e => e.kind === 'message')) {
-          const messageId = noteId({
-            cardKey: session,
-            ref: `chat:${path}:${tail.identity}:${entry.id}:${entry.text}`,
+          const messageId = chatRecordId({
+            session,
+            nativeId: entry.id,
+            messageId: entry.messageId,
+            part: entry.part,
           })
 
-          if (!(messageId in writer.state.eventIds)) {
+          const known = recorded.has(messageId) || messageId in writer.state.eventIds
+
+          if (!known) {
             writer.append({
               event: {
                 v: EVENT_VERSION,
@@ -283,6 +289,7 @@ export function harvestTranscripts({
                 },
               },
             })
+            recorded.add(messageId)
           }
         }
       }
