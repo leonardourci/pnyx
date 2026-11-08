@@ -1,3 +1,4 @@
+import { countTokens, ESTIMATED_TOKEN_BYTES } from '#workers/token-count.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { declaredState } from '#tasks/declarations.ts'
@@ -17,6 +18,7 @@ export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules
 
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
+const OWNER_CONTEXT_TOKENS = 3_000
 
 export const clip = ({
   text,
@@ -101,6 +103,78 @@ function taskLine({
   return lines.join('\n')
 }
 
+function ownerDigest({
+  owner,
+  conditions,
+  now,
+}: {
+  owner: Memory
+  conditions: LearningConditions
+  now: string
+}): string {
+  const others = Object.entries(owner).filter(([key]) => !Object.hasOwn(
+    OWNER_DOCUMENTS,
+    key,
+  ))
+  const text = [
+    ...Object.entries(OWNER_DOCUMENTS).flatMap(([
+      key,
+      title,
+    ]) => [
+      `${title} (owner memory key ${key}):`,
+      key === 'learnings' && owner[key]?.lines?.length ? learningDigest({
+        lines: owner[key]!.lines!,
+        conditions,
+        now,
+      }) : owner[key]?.text ?? 'none yet',
+      '',
+    ]),
+    ...(others.length ? [
+      'Other owner memory:',
+      ...others.map(([
+        key,
+        entry,
+      ]) => `- ${key}: ${entry.text}`),
+      '',
+    ] : []),
+    usage({
+      layer: 'Owner',
+      memory: owner,
+      budget: OWNER_MEMORY_BUDGET,
+    }),
+
+  ].join('\n')
+
+  if (countTokens({ text }) <= OWNER_CONTEXT_TOKENS) {
+    return text
+  }
+
+  const notice = [
+    '\nOwner memory omitted beyond the context budget.',
+    'Read `pnyx-axi owner memory list` before a decision needs an omitted preference or learning.',
+  ].join(' ')
+  const encoder = new TextEncoder()
+  const budgetBytes = OWNER_CONTEXT_TOKENS * ESTIMATED_TOKEN_BYTES
+  const bytes = budgetBytes - encoder.encode(notice).length - ESTIMATED_TOKEN_BYTES
+  const prefix = new TextDecoder().decode(
+    encoder.encode(text).subarray(
+      0,
+      bytes,
+    ),
+    { stream: true },
+  )
+
+  const complete = prefix.slice(
+    0,
+    Math.max(
+      0,
+      prefix.lastIndexOf('\n'),
+    ),
+  )
+
+  return complete + notice
+}
+
 export function hydraDigest({
   hydraId,
   state,
@@ -144,10 +218,6 @@ export function hydraDigest({
     ) => place({ card: a }) - place({ card: b })
       || rankOf({ card: a }) - rankOf({ card: b }))
   const memory = state.hydraMemory ?? {}
-  const others = Object.entries(owner).filter(([key]) => !Object.hasOwn(
-    OWNER_DOCUMENTS,
-    key,
-  ))
   const hydra = state.cards[HYDRA_CARD]
 
   return [
@@ -180,31 +250,7 @@ export function hydraDigest({
     ...(open.length > TASK_LIMIT ? [`${open.length - TASK_LIMIT} more open tasks: run \`pnyx-axi task list --hydra ${hydraId}\``] : []),
     ...(tasks.length > open.length ? [`${tasks.length - open.length} done tasks not listed`] : []),
     '',
-    ...Object.entries(OWNER_DOCUMENTS).flatMap(([
-      key,
-      title,
-    ]) => [
-      `${title} (owner memory key ${key}):`,
-      key === 'learnings' && owner[key]?.lines?.length ? learningDigest({
-        lines: owner[key]!.lines!,
-        conditions,
-        now,
-      }) : owner[key]?.text ?? 'none yet',
-      '',
-    ]),
-    ...(others.length ? [
-      'Other owner memory:',
-      ...others.map(([
-        key,
-        entry,
-      ]) => `- ${key}: ${entry.text}`),
-      '',
-    ] : []),
-    usage({
-      layer: 'Owner',
-      memory: owner,
-      budget: OWNER_MEMORY_BUDGET,
-    }),
+    ownerDigest({ owner, conditions, now }),
     '',
     'Hydra memory (this Hydra only):',
     ...(Object.keys(memory).length ? Object.entries(memory).map(([
