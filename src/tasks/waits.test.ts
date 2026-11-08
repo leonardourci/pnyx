@@ -10,9 +10,12 @@ import { emptyHydra, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
+import { offerHost } from '#app/server-state.ts'
+import { acquireLock, nonblockingLocks } from '#store/storage.ts'
 import { cardStatus } from './card-status.ts'
-import { resumeWaits } from './resume-waits.ts'
+import { resumeWaits, notifyWaitResumes, waitResumesPending } from './resume-waits.ts'
 import { taskReadiness } from './dependencies.ts'
+import { decidePush } from './push.ts'
 
 const hydraId = 'wait-lab'
 let root = ''
@@ -119,6 +122,192 @@ afterEach(() => {
     },
   )
 })
+
+test(
+  'failed resume receipts back off while newly ready workers are notified promptly',
+  async t => {
+    const attach = ({ key }: { key: string }) => withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        const decided = decidePush({
+          state: writer.state,
+          key,
+          input: {
+            agent: {
+              provider: 'codex',
+              sessionId: `synthetic-${key}`,
+              host: 'pnyx',
+            },
+          },
+          meta: {
+            actor: 'pnyx',
+            at: new Date().toISOString(),
+          },
+        })
+        assert.ok('event' in decided)
+        writer.append({ event: decided.event })
+      },
+    })
+    attach({ key: 'client' })
+    await pause()
+    append({
+      change: {
+        type: 'task.declared',
+        data: {
+          state: 'done',
+          note: 'Completed',
+        },
+      },
+    })
+    assert.equal(
+      resume(),
+      1,
+    )
+    const first = card().id
+    const received: unknown[] = []
+    let releaseLock: (() => void) | undefined
+    let failReceipt = true
+    t.after(() => releaseLock?.())
+    t.after(offerHost({
+      hydraId,
+      ask: async ({ body }) => {
+        received.push(body.card)
+
+        if (failReceipt) {
+          releaseLock = acquireLock({
+            dir: join(
+              root,
+              'hydras',
+              hydraId,
+            ),
+          })
+        }
+
+        return {}
+      },
+    }))
+    const retryAfter = new Map<string, number>()
+    const now = Date.now()
+    const notify = ({ at }: { at: number }) => nonblockingLocks.run(
+      true,
+      () => notifyWaitResumes({
+        hydraId,
+        retryAfter,
+        retryDelay: 30_000,
+        now: at,
+      }),
+    )
+    await assert.rejects(
+      notify({ at: now }),
+      /locked/,
+    )
+    assert.equal(
+      card().steering?.[0]?.attempts.length,
+      0,
+    )
+    assert.equal(
+      waitResumesPending({
+        state: state(),
+        retryAfter,
+        now: now + 1,
+      }),
+      false,
+    )
+    await notify({ at: now + 1 })
+    assert.deepEqual(
+      received,
+      [first],
+    )
+    releaseLock?.()
+    releaseLock = undefined
+    failReceipt = false
+    await commands.task([
+      'create',
+      '--key',
+      'second',
+      '--title',
+      'Another client',
+      '--hydra',
+      hydraId,
+    ])
+    attach({ key: 'second' })
+    await commands.task([
+      'status',
+      'second',
+      'paused',
+      '--wait-for',
+      'base',
+      '--hydra',
+      hydraId,
+    ])
+    assert.equal(
+      resume(),
+      1,
+    )
+    const second = card({ key: 'second' }).id
+    assert.equal(
+      waitResumesPending({
+        state: state(),
+        retryAfter,
+        now: now + 1,
+      }),
+      true,
+    )
+    await notify({ at: now + 1 })
+    assert.deepEqual(
+      received,
+      [
+        first,
+        second,
+      ],
+    )
+    assert.equal(
+      card({ key: 'second' }).steering?.[0]?.attempts.length,
+      1,
+    )
+    await notify({ at: now + 29_999 })
+    assert.deepEqual(
+      received,
+      [
+        first,
+        second,
+      ],
+    )
+    assert.equal(
+      waitResumesPending({
+        state: state(),
+        retryAfter,
+        now: now + 30_000,
+      }),
+      true,
+    )
+    await notify({ at: now + 30_000 })
+    assert.deepEqual(
+      received,
+      [
+        first,
+        second,
+        first,
+      ],
+    )
+    assert.equal(
+      card().steering?.[0]?.attempts.length,
+      1,
+    )
+    assert.equal(
+      waitResumesPending({
+        state: state(),
+        retryAfter,
+        now: now + 30_001,
+      }),
+      false,
+    )
+    assert.equal(
+      retryAfter.size,
+      0,
+    )
+  },
+)
 
 test(
   'a task completion wait resumes once, persists across reload and replays atomically',

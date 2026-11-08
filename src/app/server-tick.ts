@@ -69,6 +69,7 @@ export function createServerTick({
   let followCheckedAt = 0
   let replyRun: Promise<void> | undefined
   let replyCheckedAt = 0
+  const waitResumeRetryAfter = new Map<string, number>()
   let scheduled = false
   let lastSuccessAt: string | undefined
   let lastSuccessSeq: number | undefined
@@ -156,13 +157,20 @@ export function createServerTick({
         const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
         repliesPending = repliesToFollow({ state: state() }) || steeringToFollow({ state: state() })
 
-        const waitResumes = waitResumesPending({ state: state() })
+        const waitResumes = waitResumesPending({
+          state: state(),
+          retryAfter: waitResumeRetryAfter,
+        })
 
         if (!replyRun && repliesPending && (replyCheckDue || waitResumes)) {
           replyCheckedAt = Date.now()
           replyRun = (async () => {
             try {
-              await notifyWaitResumes({ hydraId })
+              await notifyWaitResumes({
+                hydraId,
+                retryAfter: waitResumeRetryAfter,
+                retryDelay: REPLY_POLL_MS,
+              })
 
               if (steeringToFollow({ state: state() })) {
                 await runWorker({

@@ -14,8 +14,18 @@ import { taskReadiness } from './dependencies.ts'
 import { waitReadiness } from './waits.ts'
 import type { Card } from './model.ts'
 
-function unnotifiedResumes({ state }: { state: HydraState }) {
-  return Object.values(state.cards).flatMap(card => {
+const RESUME_TITLE_CHARS = 100
+
+function unnotifiedResumes({
+  state,
+  retryAfter,
+  now,
+}: {
+  state: HydraState
+  retryAfter: Map<string, number>
+  now: number
+}) {
+  const pending = Object.values(state.cards).flatMap(card => {
     if (!liveTask({ card }) || !steeringClaim({ card }) || steeringHeld({ card })
       || activeCompaction({ card }) || ownerGates({ card }).length) {
       return []
@@ -27,21 +37,61 @@ function unnotifiedResumes({ state }: { state: HydraState }) {
       message: message.id,
     }))
   })
+  const ids = new Set(pending.map(item => item.message))
+
+  for (const id of retryAfter.keys()) {
+    if (!ids.has(id)) {
+      retryAfter.delete(id)
+    }
+  }
+
+  return pending.filter(item => now >= (retryAfter.get(item.message) ?? 0))
 }
 
-export function waitResumesPending({ state }: { state: HydraState }): boolean {
-  return unnotifiedResumes({ state }).length > 0
+export function waitResumesPending({
+  state,
+  retryAfter,
+  now = Date.now(),
+}: {
+  state: HydraState
+  retryAfter: Map<string, number>
+  now?: number
+}): boolean {
+  return unnotifiedResumes({
+    state,
+    retryAfter,
+    now,
+  }).length > 0
 }
 
-export async function notifyWaitResumes({ hydraId }: { hydraId: string }): Promise<void> {
-  const pending = unnotifiedResumes({ state: loadHydra({ hydraId }).state })
+export async function notifyWaitResumes({
+  hydraId,
+  retryAfter,
+  retryDelay,
+  now = Date.now(),
+}: {
+  hydraId: string
+  retryAfter: Map<string, number>
+  retryDelay: number
+  now?: number
+}): Promise<void> {
+  const pending = unnotifiedResumes({
+    state: loadHydra({ hydraId }).state,
+    retryAfter,
+    now,
+  })
 
   for (const item of pending) {
+    retryAfter.set(
+      item.message,
+      now + retryDelay,
+    )
     await notifySteering({
       hydraId,
       ...item,
       attempt: `initial:${item.message}`,
     })
+    retryAfter.delete(item.message)
   }
 }
 
@@ -104,7 +154,7 @@ export function resumeWaits({
         })
         const title = clip({
           text: ready.title,
-          size: 100,
+          size: RESUME_TITLE_CHARS,
         })
         const text = `Dependency ready: ${title} (${wait.task}), ${wait.condition}${ready.url ? `: ${ready.url}` : ''}. Continue your task.`
         const id = `wait-resume:${wait.id}`
