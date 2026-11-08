@@ -25,6 +25,8 @@ Owner actions in the app run in the server, which holds each Hydra in memory and
 
 The browser caches confirmed Hydra state under the installation and Hydra URL. The former identity-only `pnyx:<identity>:hydra-state` cache is removed on access; an older tab without a current cache loads a fresh snapshot from the server.
 
+The offline badge appears after the page detects a connection failure or a missed heartbeat and clears when its WebSocket opens again. Initial loading, switching Hydras and resynchronizing state do not imply that the page is offline. Actions still wait for the selected Hydra's subscription to be ready.
+
 Hydra thread subscriptions keep their loaded history on the server. Each thread page carries reconciled conversation entries, turn timings and action folds. Continuation chunks carry a boolean, and injected instruction blocks are hidden before transport. The browser renders that projection and keeps only its unsent previews locally. The server also sends Hydra's held inputs, pending operations and queue state; the browser uses those facts to place its unsent previews.
 
 ## Run a development server
