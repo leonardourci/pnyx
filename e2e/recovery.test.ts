@@ -204,7 +204,31 @@ test(
     )
     const declared = s.events().find(event => event.type === 'task.declared' && event.data.note === 'Blocked behind a busy writer.')!
     assert.ok(grants[0]!.data.seqs.includes(declared.seq))
-    assert.ok(errors.mock.calls.some(call => call.arguments.join(' ').includes('snapshot replace failed')))
+    const snapshotFailure = errors.mock.calls.map(call => String(call.arguments[0]))
+      .filter(line => line.startsWith('{'))
+      .map(line => JSON.parse(line))
+      .find(record => record.operation === 'snapshot' && record.hydraId === s.hydraId)
+    assert.ok(
+      snapshotFailure,
+      'the snapshot failure must identify its Hydra in a JSON record',
+    )
+    assert.equal(
+      snapshotFailure.error.code,
+      'EIO',
+    )
+    assert.equal(
+      snapshotFailure.error.message,
+      'snapshot replace failed',
+    )
+    assert.equal(
+      Number.isNaN(Date.parse(snapshotFailure.at)),
+      false,
+    )
+    assert.equal(
+      typeof snapshotFailure.operationId,
+      'string',
+    )
+    assert.ok(snapshotFailure.eventSeq >= grants[0]!.seq)
     assert.equal(
       (await fetch(`http://127.0.0.1:${pnyx.port()}/health`)).status,
       200,

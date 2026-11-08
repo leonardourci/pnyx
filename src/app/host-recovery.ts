@@ -1,5 +1,6 @@
 import { applyDecision } from './decision.ts'
 import { background } from './background.ts'
+import { logFailure } from './diagnostics.ts'
 import { readEvents } from './event-log.ts'
 import type { Host, Live } from './host-types.ts'
 import { loadHydra } from './store.ts'
@@ -224,6 +225,11 @@ export function createHostRecovery({
       const resume = cutHydraTurn
       background({
         name: 'Hydra resume',
+        context: {
+          hydraId,
+          taskId: HYDRA_CARD,
+          correlationId: resume.resumeAttemptId,
+        },
         run: () => host().hydra({
           id: resume.resumeAttemptId,
           text: resume.resumeMessage,
@@ -244,7 +250,15 @@ export function createHostRecovery({
         })
       } catch (error) {
         const message = (error as Error).message
-        console.error(`pnyx-axi serve: ${cut.task} could not resume: ${message}`)
+        logFailure({
+          operation: 'worker resume',
+          error,
+          context: {
+            hydraId,
+            taskId: cut.task,
+            correlationId: cut.resumeAttemptId,
+          },
+        })
         note({
           fn: ({ writer }) => {
             const agent = writer.state.cards[cut.task]?.agent
@@ -280,7 +294,15 @@ export function createHostRecovery({
           steering: next.id,
         })
       } catch (error) {
-        console.error(`pnyx-axi serve: ${card.id} inbox could not resume: ${(error as Error).message}`)
+        logFailure({
+          operation: 'inbox resume',
+          error,
+          context: {
+            hydraId,
+            taskId: card.id,
+            correlationId: next.id,
+          },
+        })
       }
     }
 

@@ -22,6 +22,7 @@ import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { writeSnapshot } from './snapshot.ts'
+import { logFailure } from './diagnostics.ts'
 
 const MESSAGE_EVENTS = new Set<string>([
   'card.replied',
@@ -353,7 +354,14 @@ function heldWrite<T>({
             try {
               saveSnapshot({ live })
             } catch (error) {
-              console.error(`pnyx-axi snapshot of Hydra ${hydraId}: ${(error as Error).message}`)
+              logFailure({
+                operation: 'snapshot',
+                error,
+                context: {
+                  hydraId,
+                  eventSeq: live.state.seq,
+                },
+              })
             }
           },
           SNAPSHOT_DELAY_MS,
