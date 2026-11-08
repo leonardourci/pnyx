@@ -4,7 +4,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
-import { reminderDeadline } from './reminders.ts'
+import { reminderDeadline, reminderMessage } from './reminders.ts'
 
 export function fireReminders({
   hydraId,
@@ -38,7 +38,7 @@ export function fireReminders({
           writer,
           at,
         })
-        const text = `Reminder: ${card.title} (scheduled for ${reminder.at})`
+        const text = reminderMessage({ card })
         const decision = hydraEvent({
           state: writer.state,
           meta: {

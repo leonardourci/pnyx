@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
+import { hydraConversation } from '#hydra/conversation.ts'
+import { taskMentions } from '#hydra/mentions.ts'
 import { fireReminders } from './fire-reminders.ts'
 import { reminderDeadline, waitingReminders } from './reminders.ts'
 import { reminderTime } from './time.ts'
@@ -157,7 +159,7 @@ test(
         '--key',
         'near',
         '--title',
-        'Near reminder',
+        'Review the pagination cursor before publishing the new endpoint and confirm the response fields with the API owner',
       ],
     })
     await run({
@@ -192,6 +194,40 @@ test(
     assert.equal(
       task().reminder?.dueAt,
       undefined,
+    )
+    const reminder = state().hydraMessages?.at(-1)
+    assert.ok(reminder)
+    assert.equal(
+      reminder.actor,
+      'pnyx',
+    )
+    assert.ok(reminder.text.startsWith('- Reminder: '))
+    assert.ok(reminder.text.split(/\s+/).length <= 30)
+    assert.equal(
+      taskMentions({ text: reminder.text })[0]?.id,
+      state().keys.near,
+    )
+    const messages = await commands.hydra([
+      'messages',
+      '--hydra',
+      hydraId,
+    ])
+    assert.ok(Array.isArray(messages.messages))
+    assert.equal(
+      messages.messages.at(-1)?.actor,
+      'pnyx',
+    )
+    const conversation = hydraConversation({
+      messages: state().hydraMessages ?? [],
+      transcript: [],
+      actions: [],
+      columns: [],
+      working: false,
+      thinking: false,
+    })
+    assert.equal(
+      conversation.entries.at(-1)?.role,
+      'Pnyx',
     )
     assert.equal(
       fireReminders({

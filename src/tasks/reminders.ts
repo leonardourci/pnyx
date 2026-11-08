@@ -1,6 +1,54 @@
-import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
+import { taskMention } from '#hydra/mentions.ts'
+import type { Card } from './model.ts'
 import { touch } from './touch.ts'
+
+const REMINDER_WORD_LIMIT = 30
+const TITLE_WORD_LIMIT = 10
+const REMINDER_PREFIX_WORDS = 2
+
+function reminderExcerpt({
+  words,
+  limit,
+}: {
+  words: string[]
+  limit: number
+}): string {
+  const text = words.slice(
+    0,
+    limit,
+  ).join(' ')
+
+  return words.length > limit ? `${text}…` : text
+}
+
+export function reminderMessage({
+  card,
+  detail = 'is due.',
+}: {
+  card: Pick<Card, 'id' | 'title'>
+  detail?: string
+}): string {
+  const titleWords = card.title.trim().split(/\s+/)
+  const title = reminderExcerpt({
+    words: titleWords,
+    limit: TITLE_WORD_LIMIT,
+  })
+  const mention = taskMention({
+    id: card.id,
+    title,
+  })
+  const remaining = REMINDER_WORD_LIMIT - REMINDER_PREFIX_WORDS - Math.min(
+    titleWords.length,
+    TITLE_WORD_LIMIT,
+  )
+  const summary = reminderExcerpt({
+    words: detail.trim().split(/\s+/),
+    limit: remaining,
+  })
+
+  return `- Reminder: ${mention} ${summary}`
+}
 
 export function waitingReminders({ state }: { state: HydraState }) {
   return Object.values(state.cards)
@@ -76,7 +124,7 @@ export function applyReminder({
         ...event.data.message,
         id: event.id,
         at: event.at,
-        actor: HYDRA_ACTOR,
+        actor: event.actor,
       },
     ]
   }
