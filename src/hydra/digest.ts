@@ -10,7 +10,6 @@ import { OWNER_DOCUMENTS, usage, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, type 
 import { hydraConfig } from './config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
-import { describeColumnRule } from '#tasks/columns.ts'
 import { helperLeases } from '#routine-helper/state.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 
@@ -163,8 +162,9 @@ export function hydraDigest({
       ...setup,
     ] : []),
     '',
-    'Columns (id · title · tasks · when):',
-    ...config.columns.map(c => `- ${c.id} · ${c.title} · ${tasks.filter(t => t.column === c.id).length} · ${describeColumnRule({ column: c })} · ${clip({ text: c.description ?? 'no description' })}`),
+    'Columns (id · title · tasks · description):',
+    ...config.columns.map(c => `- ${c.id} · ${c.title} · ${tasks.filter(t => t.column === c.id).length} · ${clip({ text: c.description ?? 'no description' })}`),
+    `Placement rules: \`pnyx-axi column list --hydra ${hydraId}\` when needed.`,
     '',
     ...helperLeases({ state }),
     '',
