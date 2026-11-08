@@ -34,7 +34,7 @@ interface Choice {
   icon?: string
 }
 
-interface Selection {
+export interface Selection {
   agent: AgentConfig
   lastUsed?: AgentConfig
   account?: string
@@ -46,7 +46,8 @@ interface Selection {
   saveDefault?({ next }: { next: AgentConfig }): void
 }
 
-function SelectionMenu({
+// The provider, account and model steps; the composer's folded settings menu opens it as its Model step.
+export function SelectionMenu({
   agent,
   account,
   effective,
@@ -57,7 +58,15 @@ function SelectionMenu({
   saveDefault,
   lastUsed,
   close,
-}: Selection & { close(): void }) {
+  done = close,
+  back,
+}: Selection & {
+  close(): void
+  // After a model is picked; closes the popover unless a containing menu returns to its own list.
+  done?(): void
+  // Leaves the providers step for a containing menu.
+  back?(): void
+}) {
   const [
     step,
     setStep,
@@ -147,6 +156,7 @@ function SelectionMenu({
   const onDefaultAccount = onModels && harness === defaultAgent?.harness
     && selectedAccount === defaultAgent.account
   const backTo = step === 'model' ? 'account' : 'provider'
+  const leave = step === 'provider' ? back : () => navigate({ next: backTo })
   const addLabel = step === 'provider' ? 'Add provider in Settings' : 'Add account in Settings'
 
   useEffect(
@@ -229,7 +239,7 @@ function SelectionMenu({
       saveDefault?.({ next })
     }
 
-    close()
+    done()
   }
 
   const keyboard = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
@@ -283,8 +293,8 @@ function SelectionMenu({
   return (
     <div className="account-model-menu" onKeyDown={event => keyboard({ event })}>
       <div className="account-model-head">
-        {step !== 'provider' && (
-          <Button aria-label="Back" onClick={() => navigate({ next: backTo })}>
+        {leave && (
+          <Button aria-label="Back" onClick={leave}>
             <Icon name="arrow_left" size={16} />
           </Button>
         )}
