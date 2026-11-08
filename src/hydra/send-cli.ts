@@ -200,7 +200,7 @@ export function hydraMessages({
   }
 
   const events = readEvents({ hydraId }).filter(e => e.seq > after
-    && (e.type === 'hydra.message' || e.type === 'task.reminder-due'))
+    && (e.type === 'hydra.message' || (e.type === 'task.reminder-due' && !e.data.grouped)))
   const page = events.slice(
     0,
     limit,

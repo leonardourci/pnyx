@@ -11,9 +11,11 @@ import { liveTask, taskDone } from '#tasks/select.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
 import { mergeApproved, readyBacklog } from './wake-reasons.ts'
 import { taskMention, taskMentions } from './mentions.ts'
+import { questionReminder } from '#tasks/question-reminders.ts'
 
 export const MINUTE_MS = 60_000
-export const QUESTION_REMINDER_MS = 4 * 60 * MINUTE_MS
+export { QUESTION_REMINDER_MS } from '#tasks/question-reminders.ts'
+
 const LEFT_OFF_STALE_DAYS = 7
 const LEFT_OFF_STALE_MS = LEFT_OFF_STALE_DAYS * 24 * 60 * MINUTE_MS
 
@@ -208,23 +210,19 @@ export function boardReview({
         at,
         now,
       })})`)
-      const reminder = `${card.id}:${ask.id}`
-      const last = state.hydraReview?.reminders[reminder]
-      const reminded = last && now - Date.parse(last) < QUESTION_REMINDER_MS
-      const dueAt = card.reminder?.dueAt
-      const scheduled = dueAt && now - Date.parse(dueAt) < QUESTION_REMINDER_MS
+      const reminder = questionReminder({
+        state,
+        card,
+        ask,
+        now,
+      })
 
-      const oldQuestion = now - Date.parse(at) > QUESTION_REMINDER_MS
-
-      if (ask.audience === 'owner' && oldQuestion && !reminded && !scheduled) {
+      if (reminder) {
         flags.push({
           kind: 'question reminder',
           task: card.id,
-          detail: [
-            `${ask.id}: ${wording}`,
-            ask.url,
-          ].filter(Boolean).join(' '),
-          reminder,
+          detail: reminder.detail,
+          reminder: reminder.key,
         })
       }
     }
