@@ -2,7 +2,7 @@ import { hydraConfig } from './config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { HydraMessage } from './model.ts'
+import { isRoutineMessage, type HydraMessage } from './model.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
@@ -27,7 +27,8 @@ function hydraQueueView({
   const stopSeq = stopped?.seq ?? changeSeq
   const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
     && (state.eventIds[id] ?? 0) > stopSeq
-  const waiting = messages.filter(m => m.kind !== 'routine' && sentSince(m) && !taken(m))
+  const waiting = messages.filter(m => !isRoutineMessage({ message: m })
+    && sentSince(m) && !taken(m))
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
     ...waiting.map(message => message.id),

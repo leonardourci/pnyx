@@ -54,6 +54,8 @@ export interface HydraMessage {
   hydra: string
 }
 
+export const isRoutineMessage = ({ message }: { message: HydraMessage }) => message.kind === 'routine'
+
 // Whether Pnyx can start the Hydra it runs: down from a failed start until a start works again.
 export interface HydraStatus {
   state: 'down' | 'up'

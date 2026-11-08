@@ -3,7 +3,7 @@ import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { hydraEvent, pnyxRunsHydra } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
-import type { HydraOperation } from './model.ts'
+import { isRoutineMessage, type HydraOperation } from './model.ts'
 import { outageMinutes, recapText } from './wakes.ts'
 import { operationLabel } from './operation-label.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
@@ -60,7 +60,7 @@ export function operationEvent({
   })
 }
 
-// Whether anything addressed to Hydra was recorded since the stop began.
+// Input whose turn already started does not need another turn when a clean stop ends.
 export const arrivedSince = ({
   state,
   after,
@@ -68,7 +68,9 @@ export const arrivedSince = ({
   state: HydraState
   after: number
 }) => (state.hydraMessages ?? []).some(message => (state.eventIds[message.id] ?? 0) > after
-  && message.actor !== HYDRA_ACTOR && message.kind !== 'progress' && message.kind !== 'divider')
+  && !(`${message.id}:hosted` in state.eventIds)
+  && message.actor !== HYDRA_ACTOR && message.kind !== 'progress' && message.kind !== 'divider'
+  && !isRoutineMessage({ message }))
 
 // Hydra's first turn after an operation stopped it: what it was, how it ended and what the owner wrote meanwhile.
 export function operationRecap({

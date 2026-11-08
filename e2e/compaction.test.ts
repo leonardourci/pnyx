@@ -135,6 +135,48 @@ async function compact({
 }
 
 test(
+  'a clean manual compaction with no queued owner question needs no recap turn',
+  async t => {
+    const s = await pnyx.scenario()
+    await s.chat({ text: 'Ready to compact' })
+    const agent = await s.agent({ hydra: true })
+    await until({
+      what: 'the initial owner turn to finish',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const turn = pnyx.claude.plan({
+      text: '/compact',
+      hold: true,
+      before: [compacting()],
+      after: [compacted()],
+    })
+    t.after(() => turn.release())
+    await s.chat({ text: '/compact' })
+    await until({
+      what: 'the manual compaction to start',
+      check: () => s.state().hydraOperation?.kind === 'compaction',
+    })
+    turn.release()
+    await until({
+      what: 'the manual compaction to finish',
+      check: () => !s.state().hydraOperation && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    await s.chat({ text: 'Anything new?' })
+    await until({
+      what: 'the next owner turn to finish',
+      check: () => s.received({ cwd: agent.cwd }).at(-1)
+        ?.includes('Anything new?')
+        && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    assert.deepEqual(
+      s.received({ cwd: agent.cwd }).filter(text => text.includes('<pnyx-wake>'))
+        .map(text => text.slice(text.indexOf('<pnyx-wake>'))),
+      [],
+    )
+  },
+)
+
+test(
   'a long manual /compact stays one operation through Claude Code’s repeated statuses, and its result releases held input',
   async t => {
     const s = await pnyx.scenario()

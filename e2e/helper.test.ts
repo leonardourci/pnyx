@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -242,7 +243,11 @@ async function noWake({ s }: { s: Scenario }) {
     what: 'main to answer the owner',
     check: () => hydra.received.length === turns + 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
   })
-  assert.ok(hydra.received.every(text => !text.includes('<pnyx-wake>')))
+  assert.deepEqual(
+    hydra.received.filter(text => text.includes('<pnyx-wake>'))
+      .map(text => text.slice(text.indexOf('<pnyx-wake>'))),
+    [],
+  )
 }
 
 test(
@@ -1618,26 +1623,34 @@ test(
       what: 'the helper to take the routine report',
       check: () => grants({ s }).length === 1,
     })
-    inOneWrite({
-      s,
-      steps: [
-        ({ state }) => hydraEvent({
-          state,
-          cardId: HYDRA_CARD,
-          meta: {
-            at: new Date().toISOString(),
-            actor: 'pnyx',
-          },
-          change: {
-            type: 'hydra.operation',
-            data: {
-              id: 'synthetic-stop',
-              kind: 'compaction',
-              state: 'started',
-            },
-          },
-        }),
+    const compaction = pnyx.claude.plan({
+      text: '/compact',
+      hold: true,
+      before: [
+        {
+          type: 'system',
+          subtype: 'status',
+          status: 'compacting',
+          uuid: randomUUID(),
+          session_id: '',
+        },
       ],
+      after: [
+        {
+          type: 'system',
+          subtype: 'status',
+          status: null,
+          compact_result: 'success',
+          uuid: randomUUID(),
+          session_id: '',
+        },
+      ],
+    })
+    t.after(() => compaction.release())
+    await s.chat({ text: '/compact' })
+    await until({
+      what: 'main compaction to stop the Hydra',
+      check: () => s.state().hydraOperation?.kind === 'compaction',
     })
     routineTurn.release()
     await until({
@@ -1659,29 +1672,13 @@ test(
       1,
     )
     assert.equal(
-      s.state().hydraOperation?.id,
-      'synthetic-stop',
+      s.state().hydraOperation?.kind,
+      'compaction',
     )
-    inOneWrite({
-      s,
-      steps: [
-        ({ state }) => hydraEvent({
-          state,
-          cardId: HYDRA_CARD,
-          meta: {
-            at: new Date().toISOString(),
-            actor: 'pnyx',
-          },
-          change: {
-            type: 'hydra.operation',
-            data: {
-              id: 'synthetic-stop',
-              kind: 'compaction',
-              state: 'finished',
-            },
-          },
-        }),
-      ],
+    compaction.release()
+    await until({
+      what: 'main compaction to finish',
+      check: () => !s.state().hydraOperation && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     pnyx.claude.plan({
       text: HELPER_PROMPT,
