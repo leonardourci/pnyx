@@ -36,6 +36,7 @@
   --text-chat: 16px;
   --text-code: 13px;
   --control-h: 30px;
+  --composer-control-h: 30px;
   /* The theme tiles show both palettes whichever one is active. */
   --color-tile-light: #f5f4f0;
   --color-tile-dark: #0e0f11;
@@ -482,9 +483,15 @@ h3 { font-weight: 600; }
 
 .send-error > .icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; color: inherit; }
 
-.usage-ring { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 26px; height: 30px; color: var(--color-muted); font-size: 11px; }
+.usage-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--composer-control-h); height: var(--composer-control-h); color: var(--color-muted); font: 400 8px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 
-.usage-ring circle { fill: none; stroke: var(--color-line); stroke-width: 2.5; }
+.usage-ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.usage-percent { position: relative; display: inline-flex; align-items: baseline; }
+
+.usage-percent > small { font: inherit; font-size: 6.5px; }
+
+.usage-ring circle { fill: none; stroke: var(--color-line); stroke-width: 3; }
 
 .usage-ring .usage-fill { stroke: var(--color-gold); stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; }
 

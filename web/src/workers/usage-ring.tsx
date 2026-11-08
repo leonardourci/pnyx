@@ -124,7 +124,6 @@ export function UsageRing({
     label = `Context ${used} tokens used; capacity unavailable`
   }
 
-  const value = percent === undefined ? '—' : `${percent}%`
   const panel = <TooltipPanel><Usage usage={usage} {...reading} /></TooltipPanel>
 
   return (
@@ -137,29 +136,29 @@ export function UsageRing({
         data-tone={tone}
       >
         <svg
-          viewBox="0 0 20 20"
-          width="15"
-          height="15"
+          viewBox="0 0 30 30"
+          width="30"
+          height="30"
           aria-hidden="true"
         >
           <circle
-            cx="10"
-            cy="10"
-            r="7.5"
+            cx="15"
+            cy="15"
+            r="13.5"
             pathLength="100"
           />
           {percent !== undefined && (
             <circle
               className="usage-fill"
-              cx="10"
-              cy="10"
-              r="7.5"
+              cx="15"
+              cy="15"
+              r="13.5"
               pathLength="100"
               strokeDasharray={`${percent} 100`}
             />
           )}
         </svg>
-        <span>{value}</span>
+        {percent !== undefined && <span className="usage-percent" aria-hidden="true">{percent}<small>%</small></span>}
       </span>
     </Tooltip>
   )
