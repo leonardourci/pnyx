@@ -1,4 +1,5 @@
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
+import { HYDRA_CONTEXT_TOKENS, OWNER_CONTEXT_TOKENS } from '#hydra/context-limits.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '#memory/budgets.ts'
 import { POOL_IDLE } from '#projects/copy-pool.ts'
 import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
@@ -103,8 +104,8 @@ Hydra memory holds only what this Hydra needs (its scope, where it left off unde
 pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
 Columns include task counts and descriptions; read column list for placement rules when needed.
-Hosted resumes receive changed sections. Owner context is bounded to 3000 estimated tokens, with full memory available through owner memory list.
-An idle completed Hydra turn at 200000 reported context tokens queues native compaction; recorded history and inscribe milestones remain available.
+Hosted resumes receive changed sections. Owner context is bounded to ${OWNER_CONTEXT_TOKENS} estimated tokens, with full memory available through owner memory list.
+An idle completed Hydra turn at ${HYDRA_CONTEXT_TOKENS} reported context tokens queues native compaction; recorded history and inscribe milestones remain available.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
 pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
