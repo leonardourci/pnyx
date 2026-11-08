@@ -10,6 +10,7 @@ class TestSocket {
   onmessage?: (event: { data: string }) => void
   onclose?: () => void
   onerror?: () => void
+  onopen?: () => void
   sent: Record<string, unknown>[] = []
 
   constructor() {
@@ -122,6 +123,155 @@ function open({ socket }: { socket: TestSocket }) {
     },
   })
 }
+
+test(
+  'offline reports a detected connection loss, independently of Hydra loading or refusal',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection()
+    assert.equal(
+      connection.snapshot().offline,
+      false,
+    )
+    assert.equal(
+      connection.snapshot().connected,
+      false,
+    )
+    const stop = connection.start()
+    const socket = TestSocket.current
+    open({ socket })
+    const listing = socket.sent.find(message => message.name === 'hydras')!
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: listing.id,
+      },
+    })
+
+    socket.receive({
+      message: {
+        type: 'event',
+        subscription: 'fixture',
+        event: {
+          v: 1,
+          id: 'after-gap',
+          seq: 2,
+          at: '2026-10-22T10:00:00Z',
+          actor: 'web',
+          cardId: 'synthetic-task',
+          type: 'task.created',
+          data: {
+            key: 'synthetic-task',
+            title: 'Synthetic task',
+          },
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().connected,
+      false,
+    )
+    assert.equal(
+      connection.snapshot().offline,
+      false,
+    )
+    assert.ok(socket.sent.some(message => message.type === 'resync'))
+
+    await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
+    assert.equal(
+      connection.snapshot().connected,
+      false,
+    )
+    assert.equal(
+      connection.snapshot().offline,
+      false,
+    )
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
+    const subscription = socket.sent.find(message => message.type === 'subscribe'
+      && message.scope === 'second')!.subscription
+    socket.receive({
+      message: {
+        scope: 'second',
+        subscription,
+        type: 'scope-error',
+        code: 'NOT_FOUND',
+        error: 'Hydra not found',
+      },
+    })
+    assert.equal(
+      connection.snapshot().offline,
+      false,
+    )
+    assert.equal(
+      connection.snapshot().error,
+      'Hydra not found',
+    )
+    await connection.navigate({ url: 'http://pnyx.test/hydra/default/' })
+    assert.equal(
+      connection.snapshot().offline,
+      false,
+    )
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
+
+    socket.onerror?.()
+    assert.equal(
+      connection.snapshot().offline,
+      true,
+    )
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
+    window.dispatchEvent(new Event('online'))
+    const replacement = TestSocket.current
+    assert.notEqual(
+      replacement,
+      socket,
+    )
+    assert.equal(
+      connection.snapshot().offline,
+      true,
+    )
+    replacement.onopen?.()
+    assert.equal(
+      connection.snapshot().offline,
+      false,
+    )
+    assert.equal(
+      connection.snapshot().connected,
+      false,
+    )
+    socket.onclose?.()
+    assert.equal(
+      connection.snapshot().offline,
+      false,
+    )
+    open({ socket: replacement })
+    assert.equal(
+      connection.snapshot().connected,
+      true,
+    )
+    replacement.onclose?.()
+    assert.equal(
+      connection.snapshot().offline,
+      true,
+    )
+  },
+)
 
 test(
   'resetting every Hydra layout keeps the navigation catalog intact',
