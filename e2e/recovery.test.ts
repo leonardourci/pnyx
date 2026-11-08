@@ -34,6 +34,7 @@ test(
       ],
     })
     const finished = () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished'
+    const unanswered = `Inspect the synthetic export. ${'Keep the current worker paused. '.repeat(12)}\nOnly report the findings; do not resume it.`
     await say({ text: 'Hello' })
     await until({
       what: 'Hydra to answer its first message',
@@ -48,7 +49,7 @@ test(
     pnyx.codex.control.refuse = 'thread/resume'
 
     try {
-      await say({ text: 'lost to the outage' })
+      await say({ text: unanswered })
       await until({
         what: 'Hydra down',
         check: () => s.state().hydraStatus?.state === 'down',
@@ -70,14 +71,10 @@ test(
       check: () => hydra.received.find(text => text.includes('back after outage')),
     })
     assert.ok(hydra.received[0]!.includes('back yet?'))
-    assert.deepEqual(
-      recap.slice(recap.indexOf('<pnyx-wake>')).split('\n')
-        .filter(line => line.startsWith('- '))
-        .map(line => line.replace(
-          /^- \S+: /,
-          '',
-        )),
-      ['lost to the outage'],
+    assert.ok(recap.includes(unanswered))
+    assert.equal(
+      recap.includes('back yet?'),
+      false,
     )
     await until({
       what: 'Hydra to finish the recap',

@@ -126,7 +126,6 @@ test(
   async () => {
     const s = await pnyx.scenario()
     const restarts = pnyx.restarts()
-    // Longer than the outage recap's clip, with an image line, so it must reach Hydra whole.
     const during = `Sent during the restart. ${'Keep every word of this message. '.repeat(12)}\n[image: /tmp/during-restart.png]`
     await send({
       s,
