@@ -72,6 +72,7 @@ export function claudeNative() {
 
   return {
     query,
+    options: () => options,
     incoming,
     delivered: () => delivered,
     closed: () => closed,
