@@ -131,12 +131,14 @@ const says = ({
   text,
   kind,
   ask,
+  unscoped = false,
 }: {
   s: Scenario
   key: string
   text: string
   kind?: 'progress'
   ask?: string
+  unscoped?: boolean
 }): Step => ({ state }) => {
   const task = s.task({ key }).id
 
@@ -152,7 +154,7 @@ const says = ({
       data: {
         action: 'send',
         hydra: 'hydra',
-        task,
+        task: unscoped ? undefined : task,
         text,
         ...(kind ? { kind } : {}),
         ...(ask ? { ask } : {}),
@@ -184,11 +186,13 @@ function workerSays({
   key,
   text,
   kind,
+  unscoped,
 }: {
   s: Scenario
   key: string
   text: string
   kind?: 'progress'
+  unscoped?: boolean
 }) {
   inOneWrite({
     s,
@@ -198,6 +202,7 @@ function workerSays({
         key,
         text,
         kind,
+        unscoped,
       }),
     ],
   })
@@ -559,6 +564,7 @@ test(
             s,
             key: 'work',
             text: 'The parser is done.',
+            unscoped: true,
           }),
           ...extra.map(key => declared({ key })),
         ],
@@ -648,6 +654,7 @@ test(
             s,
             key: 'work',
             text: 'The parser is done.',
+            unscoped: true,
           }),
         ],
       })
@@ -730,6 +737,7 @@ test(
         s,
         key: 'report',
         text: 'The parser is done.',
+        unscoped: true,
       })
       await until({
         what: 'main to finish the unrelated report',
@@ -819,6 +827,7 @@ test(
             s,
             key: 'report',
             text: 'The parser is done.',
+            unscoped: true,
           }),
         ],
       })
@@ -1580,9 +1589,10 @@ test(
       text: HELPER_PROMPT,
       reply: result,
     })
-    declare({
+    workerSays({
       s,
-      keys: ['work'],
+      key: 'work',
+      text: 'The accepted export is ready.',
     })
     await until({
       what: 'the result to be saved',
