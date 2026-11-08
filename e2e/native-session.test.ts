@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { claudeProvider } from '#workers/claude.ts'
+import { claudeProvider, type QueryFn } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
 import { permissionCommand, permissionDetails } from '#workers/permission-rules.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
@@ -82,6 +82,125 @@ function observe({
     done,
   }
 }
+
+test(
+  'Claude logs a shadowed permission warning once while preserving other warnings and callbacks',
+  async t => {
+    const warnings: unknown[][] = []
+    const original = process.emitWarning
+    const capture = t.mock.method(
+      process,
+      'emitWarning',
+      // eslint-disable-next-line pnyx/object-params -- Node owns emitWarning's overloaded signature.
+      (...args: unknown[]) => {
+        warnings.push(args)
+      },
+    )
+
+    const open = async () => {
+      const native = claudeNative()
+
+      const query: QueryFn = ({ ...request }) => {
+        process.emitWarning(
+          'Permission callback shadowed',
+          { code: 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED' },
+        )
+        process.emitWarning(
+          'Other SDK warning',
+          { code: 'OTHER_SDK_WARNING' },
+        )
+
+        return native.query(request)
+      }
+
+      const session = await claudeProvider({ query }).open({
+        cwd: tmpdir(),
+        settings: { mode: 'bypassPermissions' },
+        env: {},
+        signal: new AbortController().signal,
+      })
+      const input = inbox()
+      const observed = observe({
+        session,
+        input,
+      })
+      t.after(async () => {
+        input.end(); session.close(); await observed.done
+      })
+      input.push({
+        id: randomUUID(),
+        text: 'Start',
+      })
+      await until({
+        what: 'the native input',
+        check: () => native.incoming.length === 1,
+      })
+      assert.equal(
+        typeof native.options()?.canUseTool,
+        'function',
+      )
+      await session.set({
+        setting: 'mode',
+        value: 'default',
+      })
+    }
+
+    await open()
+    await open()
+    const rejected = await claudeProvider({
+      query: () => {
+        throw new Error('query creation rejected')
+      },
+    }).open({
+      cwd: tmpdir(),
+      settings: {},
+      env: {},
+      signal: new AbortController().signal,
+    })
+    const rejectedInput = inbox()
+    const rejectedOutput = observe({
+      session: rejected,
+      input: rejectedInput,
+    })
+
+    try {
+      await assert.rejects(
+        rejectedOutput.done,
+        /query creation rejected/,
+      )
+    } finally {
+      rejectedInput.end()
+      rejected.close()
+    }
+
+    assert.deepEqual(
+      warnings,
+      [
+        [
+          'Permission callback shadowed',
+          { code: 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED' },
+        ],
+        [
+          'Other SDK warning',
+          { code: 'OTHER_SDK_WARNING' },
+        ],
+        [
+          'Other SDK warning',
+          { code: 'OTHER_SDK_WARNING' },
+        ],
+      ],
+    )
+    assert.equal(
+      process.emitWarning,
+      capture,
+    )
+    capture.mock.restore()
+    assert.equal(
+      process.emitWarning,
+      original,
+    )
+  },
+)
 
 test(
   'a Claude foreground result leaves native queued and background work alive, and unknown queue state blocks idle close',

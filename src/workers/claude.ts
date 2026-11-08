@@ -19,6 +19,45 @@ import { compactCommand } from './compact-command.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
+const SHADOWED_PERMISSION_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
+let permissionWarningLogged = false
+
+function startQuery({
+  run,
+  request,
+}: {
+  run: QueryFn
+  request: Parameters<QueryFn>[0]
+}): ReturnType<QueryFn> {
+  const emitWarning = process.emitWarning
+
+  // The SDK warns synchronously at query creation; keep its callback for later permission-mode changes.
+  // eslint-disable-next-line pnyx/object-params -- Node owns emitWarning's overloaded signature.
+  process.emitWarning = (...args: unknown[]) => {
+    const options = object({ value: args[1] })
+
+    if (options.code === SHADOWED_PERMISSION_WARNING) {
+      if (permissionWarningLogged) {
+        return
+      }
+
+      permissionWarningLogged = true
+    }
+
+    Reflect.apply(
+      emitWarning,
+      process,
+      args,
+    )
+  }
+
+  try {
+    return run(request)
+  } finally {
+    process.emitWarning = emitWarning
+  }
+}
+
 type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
 type Content = Exclude<UserMessage['message']['content'], string>
 
@@ -300,7 +339,10 @@ export function claudeProvider({
           permission,
           emit,
         }) {
-          const run = query ?? sdk.query
+          const run: QueryFn = ({ ...request }) => startQuery({
+            run: query ?? sdk.query,
+            request,
+          })
 
           if (closed) {
             return
