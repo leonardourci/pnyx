@@ -334,7 +334,7 @@ test(
     )
     assert.doesNotMatch(
       digest,
-      /no longer open/,
+      /task:40 is no longer listed/,
     )
     assert.match(
       digest,
