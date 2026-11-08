@@ -1,3 +1,4 @@
+import { HydraError } from '#store/errors.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 
 export function mergeThreadPages({
@@ -56,4 +57,56 @@ export function mergeThreadPages({
     actions: [...actions.values()],
     older,
   }
+}
+
+export interface ThreadBoundary {
+  session?: string
+  oldest: string
+}
+
+const RESTORE_PAGE_LIMIT = 1000
+
+export async function retainThreadPages({
+  page,
+  retain,
+  read,
+}: {
+  page: ThreadPage
+  retain: ThreadBoundary
+  read({ before }: { before: string }): Promise<ThreadPage>
+}): Promise<ThreadPage> {
+  const seen = new Set<string>()
+  let history = page
+  const retained = () => history.entries.some(entry => entry.id === retain.oldest)
+  let pages = 0
+
+  while (history.session === retain.session && history.older && !retained()
+    && pages < RESTORE_PAGE_LIMIT) {
+    const cursor = history.older
+
+    if (seen.has(cursor)) {
+      throw new HydraError({
+        code: 'THREAD_HISTORY_STALLED',
+        message: 'Earlier conversation pages did not advance.',
+      })
+    }
+
+    seen.add(cursor)
+    const older = await read({ before: cursor })
+    history = mergeThreadPages({
+      before: history,
+      latest: older,
+      olderPage: true,
+    })
+    pages++
+  }
+
+  if (pages === RESTORE_PAGE_LIMIT && history.older && !retained()) {
+    throw new HydraError({
+      code: 'THREAD_HISTORY_LIMIT',
+      message: 'The loaded conversation could not be fully restored.',
+    })
+  }
+
+  return history
 }
