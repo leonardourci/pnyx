@@ -805,6 +805,10 @@ export function createHydraTurns({
       const session = card.agent && live.get(sessionId({ agent: card.agent }))?.session
       const outcome = session?.snapshot().outcome
 
+      if (outcome && outcome.status !== 'completed') {
+        contextPresented = 0
+      }
+
       if (contextPresented && outcome?.status === 'completed') {
         applyDecision({
           writer,
@@ -856,6 +860,8 @@ export function createHydraTurns({
   }
 
   const sessionEnded = ({ entry }: { entry: Live }) => {
+    contextPresented = 0
+
     // A check turn cut before it finished hands its updates back; they reach Hydra once the owner continues it.
     if (entry.activity === 'working') {
       handBack()

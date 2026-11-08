@@ -103,16 +103,60 @@ try {
   const failed = native
 
   await host.hydra({
+    id: 'compact',
+    text: '/compact',
+    actor: 'cli',
+  })
+  await settle({
+    what: 'compaction session input',
+    check: () => native !== failed && native.incoming.length === 1,
+  })
+  assert.doesNotMatch(
+    JSON.stringify(native.incoming[0]),
+    /Since your last turn|Initial synthetic outcome/,
+  )
+  native.send({
+    message: {
+      type: 'system',
+      subtype: 'status',
+      status: 'compacting',
+      uuid: randomUUID(),
+      session_id: '',
+    },
+  })
+  native.send({
+    message: {
+      type: 'system',
+      subtype: 'status',
+      status: null,
+      compact_result: 'success',
+      uuid: randomUUID(),
+      session_id: '',
+    },
+  })
+  native.send({
+    message: {
+      ...result,
+      uuid: randomUUID(),
+      user_message_uuid: native.incoming[0]!.uuid,
+      queued_turn_count: 0,
+    },
+  })
+  await finished({ messages: 3 })
+  assert.equal(
+    state().contextNotes?.length,
+    1,
+    'compaction must preserve notes retained after failure',
+  )
+
+  await host.hydra({
     id: 'retry',
     text: 'Retry the turn',
     actor: 'cli',
   })
-  await settle({
-    what: 'retried native session input',
-    check: () => native !== failed && native.incoming.length === 1,
-  })
+  await input({ count: 2 })
   assert.match(
-    JSON.stringify(native.incoming[0]),
+    JSON.stringify(native.incoming[1]),
     /Initial synthetic outcome/,
   )
   addNote({ text: 'Outcome during active turn' })
@@ -121,20 +165,20 @@ try {
     text: 'An owner message joins',
     actor: 'cli',
   })
-  await input({ count: 2 })
+  await input({ count: 3 })
   assert.doesNotMatch(
-    JSON.stringify(native.incoming[1]),
+    JSON.stringify(native.incoming[2]),
     /Since your last turn|Outcome during active turn/,
   )
   native.send({
     message: {
       ...result,
       uuid: randomUUID(),
-      user_message_uuid: native.incoming[1]!.uuid,
+      user_message_uuid: native.incoming[2]!.uuid,
       queued_turn_count: 0,
     },
   })
-  await finished({ messages: 1 })
+  await finished({ messages: 4 })
   assert.deepEqual(
     state().contextNotes?.map(note => note.text),
     ['Routine helper, work: Outcome during active turn'],
@@ -145,24 +189,24 @@ try {
     text: 'Start the next turn',
     actor: 'cli',
   })
-  await input({ count: 3 })
+  await input({ count: 4 })
   assert.match(
-    JSON.stringify(native.incoming[2]),
+    JSON.stringify(native.incoming[3]),
     /Outcome during active turn/,
   )
   assert.doesNotMatch(
-    JSON.stringify(native.incoming[2]),
+    JSON.stringify(native.incoming[3]),
     /Initial synthetic outcome/,
   )
   native.send({
     message: {
       ...result,
       uuid: randomUUID(),
-      user_message_uuid: native.incoming[2]!.uuid,
+      user_message_uuid: native.incoming[3]!.uuid,
       queued_turn_count: 0,
     },
   })
-  await finished({ messages: 2 })
+  await finished({ messages: 5 })
   assert.deepEqual(
     state().contextNotes,
     [],
