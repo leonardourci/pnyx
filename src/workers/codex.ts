@@ -1825,8 +1825,12 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
   }
 
   if (payload.type === 'message' && (payload.role === 'user' || payload.role === 'assistant')) {
-    if (payload.role === 'assistant' && typeof payload.phase === 'string') {
-      parsed.final = payload.phase === 'final'
+    if (payload.role === 'assistant') {
+      if (payload.phase === 'final_answer') {
+        parsed.final = true
+      } else if (payload.phase === 'commentary') {
+        parsed.final = false
+      }
     }
 
     const content = payload.content
