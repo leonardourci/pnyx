@@ -15,11 +15,24 @@ export interface HelperBatch {
   agent?: HelperAgent
 }
 
-export interface HelperOutcome {
+export const HELPER_SUMMARY_CHARS = 280
+export const HELPER_SUMMARY_WORDS = 40
+
+export type HelperOutcomeStatus = 'handled' | 'still_waiting' | 'needs_main'
+
+export type HelperOutcome = {
   task: string
-  audience: 'routine' | 'owner'
   summary: string
-}
+} & ({
+  status: HelperOutcomeStatus
+  audience?: never
+} | {
+  audience: 'routine' | 'owner'
+  status?: never
+})
+
+export const needsMain = ({ outcome }: { outcome: HelperOutcome }) =>
+  outcome.status === 'needs_main' || outcome.audience === 'owner'
 
 export interface HelperUsage {
   used?: number
@@ -148,10 +161,10 @@ export function applyHelper({
 
 export const handbackId = ({ id }: { id: string }) => `helper-handback:${id}`
 
-// Outcomes the helper left for the owner that main has not relayed yet.
+// Escalations main has not handled, including owner outcomes from older logs.
 export function ownerOutcomes({ state }: { state: HydraState }): HelperOutcome[] {
   return (state.helper?.outcomes ?? [])
-    .filter(outcome => outcome.audience === 'owner' && outcome.seq > (state.helper?.delivered ?? 0))
+    .filter(outcome => needsMain({ outcome }) && outcome.seq > (state.helper?.delivered ?? 0))
 }
 
 // Batches the helper handed back with an error; their tasks are main's until it has seen them.

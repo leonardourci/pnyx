@@ -11,6 +11,7 @@ import { declareTask } from '#tasks/declarations.ts'
 import { HELPER_INSTRUCTIONS } from '#routine-helper/runner.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import type { HelperChange } from '#routine-helper/state.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { permissionEvent } from '#workers/permission-rules.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import type { Decision, HydraEvent, HydraState } from '#app/model.ts'
@@ -320,7 +321,7 @@ test(
           3,
         ).map(task => ({
           task,
-          audience: 'owner',
+          status: 'needs_main',
           summary: 'A parser choice waits on the owner.',
         })),
       }),
@@ -1552,6 +1553,82 @@ test(
     assert.equal(
       grants({ s })[0]?.agent?.fast,
       true,
+    )
+  },
+)
+
+test(
+  'routine results appear as automated chat once without starting main and survive restart',
+  async t => {
+    const s = await helperHydra({ keys: ['work'] })
+    const task = s.task({ key: 'work' }).id
+    await s.chat({ text: 'Watch the accepted export task.' })
+    await until({
+      what: 'main to finish',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const result = JSON.stringify({
+      outcomes: [
+        {
+          task,
+          status: 'handled',
+          summary: 'The export is ready for review.',
+        },
+      ],
+    })
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: result,
+    })
+    declare({
+      s,
+      keys: ['work'],
+    })
+    await until({
+      what: 'the result to be saved',
+      check: () => finishes({ s }).length === 1,
+    })
+    await serverRead({ s })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    const thread = (await page.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    assert.equal(
+      thread.conversation?.entries.filter(entry => entry.role === 'Pnyx' && entry.text.includes('The export is ready for review.')).length,
+      1,
+    )
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: result,
+    })
+    declare({
+      s,
+      keys: ['work'],
+      status: 'needs_you',
+    })
+    await until({
+      what: 'the duplicate result to finish',
+      check: () => finishes({ s }).length === 2,
+    })
+    await noWake({ s })
+    await pnyx.restart()
+    const reconnected = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => reconnected.close())
+    const reopened = (await reconnected.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    assert.equal(
+      reopened.conversation?.entries.filter(entry => entry.role === 'Pnyx' && entry.text.includes('The export is ready for review.')).length,
+      1,
     )
   },
 )

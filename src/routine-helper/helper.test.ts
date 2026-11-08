@@ -534,6 +534,92 @@ function helperLab({
 }
 
 test(
+  'structured helper results post once, unchanged waits stay quiet and uncertainty reaches main',
+  async t => {
+    const lab = helperLab()
+    t.after(() => lab.helper.close())
+    const task = state().keys.work!
+    const handled = JSON.stringify({
+      outcomes: [
+        {
+          task,
+          status: 'handled',
+          summary: 'The export is ready.',
+        },
+      ],
+    })
+    const first = await lab.run({ text: handled })
+    await first.finished
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).findLast(event => event.type === 'hydra.helper-finished')?.data.error,
+      undefined,
+    )
+    assert.equal(
+      state().hydraMessages?.filter(message => message.actor === 'pnyx' && message.text.includes('The export is ready.')).length,
+      1,
+    )
+    assert.equal(
+      lab.ownerWakes(),
+      0,
+    )
+
+    const saved = readEvents({ hydraId: 'lab' })
+    const completion = saved.findLast(event => event.type === 'hydra.helper-finished')
+    const notification = saved.find(event => event.type === 'hydra.message' && event.data.text.includes('The export is ready.'))
+    assert.ok(notification)
+    assert.ok(completion?.transaction)
+    assert.equal(
+      notification.transaction,
+      completion.transaction,
+    )
+
+    const repeat = await lab.run({ text: handled })
+    await repeat.finished
+    const waiting = await lab.run({
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task,
+            status: 'still_waiting',
+            summary: 'The owner decision is unchanged.',
+          },
+        ],
+      }),
+    })
+    await waiting.finished
+    assert.equal(
+      state().hydraMessages?.filter(message => message.text.includes('The export is ready.')).length,
+      1,
+    )
+    assert.equal(
+      lab.ownerWakes(),
+      0,
+    )
+
+    const uncertain = await lab.run({
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task,
+            status: 'needs_main',
+            summary: 'The requested scope is unclear.',
+          },
+        ],
+      }),
+    })
+    await uncertain.finished
+    assert.equal(
+      lab.ownerWakes(),
+      1,
+    )
+    assert.equal(
+      state().hydraMessages?.some(message => message.text.includes('The requested scope is unclear.')),
+      false,
+    )
+  },
+)
+
+test(
   'a helper batch keeps its selected account and home if configuration changes before launch',
   async t => {
     let selected: HelperAgent = {
@@ -866,10 +952,30 @@ test(
       JSON.parse(fixtures[1]!.text).outcomes[1].summary.length,
       667,
     )
-    assert.match(
-      HELPER_INSTRUCTIONS,
-      /at most 600 characters/,
-    )
+    assert.throws(() => parseOutcomes({
+      tasks: ['work'],
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task: 'work',
+            status: 'handled',
+            summary: 'x'.repeat(281),
+          },
+        ],
+      }),
+    }))
+    assert.throws(() => parseOutcomes({
+      tasks: ['work'],
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task: 'work',
+            status: 'handled',
+            summary: `${'a '.repeat(40)}a`,
+          },
+        ],
+      }),
+    }))
     assert.match(
       HELPER_INSTRUCTIONS,
       /never pass --actor/,
@@ -879,7 +985,7 @@ test(
       /Copy supplied links exactly; omit links that were not supplied/,
     )
     const schema = outcomeSchema({ tasks: ['work'] })
-    assert.ok(JSON.stringify(schema).includes('at most 600 characters'))
+    assert.ok(JSON.stringify(schema).includes('still_waiting'))
     assert.ok(!JSON.stringify(schema).includes('maxLength'))
     assert.ok(!JSON.stringify(schema).includes('maxItems'))
     assert.deepEqual(

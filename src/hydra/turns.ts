@@ -608,7 +608,7 @@ export function createHydraTurns({
             outcomesPresented,
             ...helperState.helper!.outcomes.map(outcome => outcome.seq),
           )
-          helperText += `\n<pnyx-wake>Helper outcomes to relay, one line each:\n${sealed({ text: helperLines.join('\n') })}\n${REPLY_RULES}</pnyx-wake>`
+          helperText += `\n<pnyx-wake>Helper outcomes to relay or resolve, one line each:\n${sealed({ text: helperLines.join('\n') })}\nResolve new decisions, changed scope and uncertainty. Do not repeat an existing automated result or owner wait.\n${REPLY_RULES}</pnyx-wake>`
         }
 
         const pendingBatches = failedBatches({ state: helperState })
