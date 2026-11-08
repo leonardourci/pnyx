@@ -333,7 +333,11 @@ test(
         'failed',
       ],
     )
-    assert.ok(Date.parse(attempts[2]!.at) - Date.parse(attempts[1]!.at) >= RECOVERY_TEST_PAUSE_MS)
+    const retryPause = Date.parse(attempts[2]!.at) - Date.parse(attempts[1]!.at)
+    assert.ok(
+      retryPause >= RECOVERY_TEST_PAUSE_MS,
+      `Retry pause was ${retryPause}ms; expected at least ${RECOVERY_TEST_PAUSE_MS}ms`,
+    )
     const notices = () => s.events().filter(event => event.type === 'hydra.message' && event.messageId === 'exhaust-message')
     assert.equal(
       notices().length,
