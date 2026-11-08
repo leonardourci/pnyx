@@ -1,6 +1,4 @@
-import { nativeIdle } from '#workers/native-session.ts'
 import { createDigestContext } from './digest-context.ts'
-import { HYDRA_CONTEXT_TOKENS } from './context-limits.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
@@ -132,7 +130,6 @@ export function createHydraTurns({
   armWake: ReturnType<typeof createWakeQueue>['armWake']
 }) {
   let hydraTurn = Promise.resolve()
-  const automaticCompactions = new Set<string>()
   let outcomesPresented = 0
   const helperBatchesPresented = new Set<string>()
   const hydraInstructions = () =>
@@ -764,53 +761,6 @@ export function createHydraTurns({
         text: `<pnyx-wake>The owner wrote to you; reply to them in one standalone message.\n${REPLY_RULES}</pnyx-wake>`,
       })
     }
-
-    const snapshot = entry.session?.snapshot()
-    const outcome = snapshot?.outcome
-    const used = outcome?.usage?.used
-    const session = entry.session?.id
-
-    if (!session || used === undefined) {
-      return
-    }
-
-    if (used < HYDRA_CONTEXT_TOKENS) {
-      automaticCompactions.delete(session)
-
-      return
-    }
-
-    const idle = snapshot && nativeIdle({ work: snapshot.work })
-    const pendingWork = queuedHydra.size > 0 || entry.input.pending() > 0
-    const available = idle && !entry.stopping
-    const alreadyRequested = automaticCompactions.has(session)
-
-    if (outcome?.status !== 'completed' || !available || pendingWork || alreadyRequested) {
-      return
-    }
-
-    automaticCompactions.add(session)
-    // Drain the provider's trailing completion events before starting another control.
-    setImmediate(() => {
-      const current = entry.session?.snapshot()
-      const currentUsed = current?.outcome?.usage?.used
-      const contextStillLarge = currentUsed !== undefined && currentUsed >= HYDRA_CONTEXT_TOKENS
-      const idle = current && nativeIdle({ work: current.work })
-      const eligible = current?.outcome?.status === 'completed' && contextStillLarge && idle
-      const pendingWork = queuedHydra.size > 0 || entry.input.pending() > 0
-      const stopped = closing() || entry.stopping
-
-      if (stopped || pendingWork || !eligible) {
-        automaticCompactions.delete(session)
-
-        return
-      }
-
-      entry.input.push({
-        id: `context-compact:${outcome.turn}`,
-        text: '/compact',
-      })
-    })
   }
 
   const activityEventId = ({

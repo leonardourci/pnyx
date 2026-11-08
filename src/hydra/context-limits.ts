@@ -1,2 +1,1 @@
 export const OWNER_CONTEXT_TOKENS = 3_000
-export const HYDRA_CONTEXT_TOKENS = 200_000

@@ -291,7 +291,7 @@ export function createLiveSessions({
                   operation: {
                     id: `manual:${item.id ?? randomUUID()}`,
                     session: key,
-                    trigger: item.id?.startsWith('context-compact:') ? 'auto' : 'manual',
+                    trigger: 'manual',
                     state: 'running',
                     startedAt: at(),
                   },
