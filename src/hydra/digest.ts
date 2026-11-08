@@ -489,6 +489,10 @@ export function hydraDigest({
 
   if (before) {
     for (const card of Object.values(state.cards)) {
+      if (onlyTasks && !onlyTasks.includes(card.id)) {
+        continue
+      }
+
       const key = `task:${digestHash({ text: card.id })}`
 
       if (before.parts[key] && !hashes[key]) {

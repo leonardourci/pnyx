@@ -162,6 +162,38 @@ test(
       scoped,
       /Existing task|Hydra memory \(this Hydra only\)/,
     )
+    const previousGrant = hydraDigest({
+      hydraId: 'lab',
+      state: previous,
+      owner: {},
+      checkpointed: true,
+      onlyTasks: ['task:first'],
+    })
+    const nextGrant = hydraDigest({
+      hydraId: 'lab',
+      state: current,
+      owner: {},
+      previousDigest: previousGrant,
+      onlyTasks: ['task:second'],
+    })
+    assert.match(
+      nextGrant,
+      /New task/,
+    )
+    assert.doesNotMatch(
+      nextGrant,
+      /task:first/,
+    )
+    assert.doesNotMatch(
+      hydraDigest({
+        hydraId: 'lab',
+        state: current,
+        owner: {},
+        previousDigest: previousGrant,
+        onlyTasks: [],
+      }),
+      /task:first/,
+    )
     const previousDigest = hydraDigest({
       hydraId: 'lab',
       state: previous,
@@ -238,6 +270,16 @@ test(
         state: hidden,
         previousDigest,
         owner: {},
+      }),
+      /task:first.*no longer listed/,
+    )
+    assert.match(
+      hydraDigest({
+        hydraId: 'lab',
+        state: hidden,
+        owner: {},
+        previousDigest: previousGrant,
+        onlyTasks: ['task:first'],
       }),
       /task:first.*no longer listed/,
     )
