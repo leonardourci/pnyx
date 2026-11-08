@@ -7,6 +7,7 @@ import { after, test } from 'node:test'
 import { withWriter } from '#app/writer.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { readReport } from '#investigations/report.ts'
 import { decidePush } from '#tasks/push.ts'
 import { searchPath, sqlite, updateIndex } from './index.ts'
 import { search } from './search.ts'
@@ -42,7 +43,7 @@ const CODEX = join(
 )
 
 test(
-  'Oracle recovers task instructions and helper results from the log after edits and an index rebuild',
+  'Oracle recovers task instructions, reports and helper results after edits and an index rebuild',
   () => {
     process.env.PNYX_HOME = mkdtempSync(join(
       scratch,
@@ -60,6 +61,8 @@ test(
             effects: false,
           })
         }
+
+        return writer.state
       },
     })
     const base = {
@@ -78,6 +81,7 @@ test(
           data: {
             key: 'records',
             title: 'Recorded instructions',
+            kind: 'investigation',
             intent: 'Retain saffron instructions.',
             brief: 'Confirm semaphore behavior.',
             ask: {
@@ -113,8 +117,43 @@ test(
       ['task-records'],
     )
 
-    write({
+    const reportText = '# Findings\n\nMossstone validation found a ledger mismatch. sk-abcdefghijklmnop1234'
+    const stored = write({
       events: [
+        {
+          ...base,
+          id: 'stored-report',
+          type: 'task.report',
+          data: { text: reportText },
+        },
+      ],
+    })
+    assert.equal(
+      readReport({
+        hydraId: 'default',
+        card: stored.cards[base.cardId],
+      }),
+      reportText,
+    )
+    updateIndex({ hydraId: 'default' })
+    assert.deepEqual(
+      find({ text: 'mossstone' }).map(hit => hit.card),
+      ['task-records'],
+    )
+    assert.match(
+      find({ text: 'mossstone' })[0]?.snippets[0]?.snippet ?? '',
+      /\[redacted\]/,
+    )
+
+    const revisedReport = '# Findings\n\nTourmaline validation confirms the cause.'
+    const revised = write({
+      events: [
+        {
+          ...base,
+          id: 'revised-report',
+          type: 'task.report',
+          data: { text: revisedReport },
+        },
         {
           ...base,
           id: 'revised-records',
@@ -229,7 +268,18 @@ test(
         },
       ],
     })
+    assert.equal(
+      readReport({
+        hydraId: 'default',
+        card: revised.cards[base.cardId],
+      }),
+      revisedReport,
+    )
     updateIndex({ hydraId: 'default' })
+    assert.deepEqual(
+      find({ text: 'mossstone tourmaline' }).map(hit => hit.card),
+      ['task-records'],
+    )
     assert.deepEqual(
       find({ text: 'cobalt indigo tangerine vermilion' }).map(hit => hit.card),
       ['task-records'],
@@ -265,9 +315,9 @@ test(
 
     const { DatabaseSync } = sqlite()
     const oldIndex = new DatabaseSync(searchPath({ hydraId: 'default' }))
-    // Version 6 omitted these records while still advancing its event cursor.
+    // Version 7 omitted report bodies while still advancing its event cursor.
     oldIndex.exec(`
-      UPDATE meta SET value = '6' WHERE key = 'chunker_version';
+      UPDATE meta SET value = '7' WHERE key = 'chunker_version';
       DELETE FROM docs;
       DELETE FROM card_fts;
     `)
@@ -281,6 +331,14 @@ test(
     assert.deepEqual(
       find({ text: 'obsidian' }),
       [],
+    )
+    assert.deepEqual(
+      find({ text: 'mossstone tourmaline' }).map(hit => hit.card),
+      ['task-records'],
+    )
+    assert.match(
+      find({ text: 'mossstone' })[0]?.snippets[0]?.snippet ?? '',
+      /\[redacted\]/,
     )
   },
 )
