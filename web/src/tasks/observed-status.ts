@@ -1,7 +1,7 @@
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import { cardStatus, type CardStatus } from '#tasks/card-status.ts'
+import { cardStatus, waitStatus, type CardStatus } from '#tasks/card-status.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
 import { failedChecks, pendingChecks } from '#tasks/delivery/model.ts'
@@ -11,7 +11,6 @@ export interface ObservedStatus extends CardStatus {
   details: string
 }
 
-// Declarations remain the worker's words; only observed facts choose the badge.
 export function observedStatus({
   card,
   state,
@@ -71,6 +70,15 @@ export function observedStatus({
       ...base,
       text,
     })
+  }
+
+  const wait = waitStatus({
+    card,
+    state,
+  })
+
+  if (wait) {
+    reasons.push(wait)
   }
 
   if (work?.runningTools.length || (connected && !work && base.kind === 'working' && action && !action.done && action.calls.length)) {
