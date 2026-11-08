@@ -7,7 +7,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { boardReview, MINUTE_MS } from './review.ts'
 import { seenAt } from '#workers/presence.ts'
-import { taskMention } from './mentions.ts'
+import { reminderMessage } from '#tasks/reminders.ts'
 import { hydraConfig } from './config.ts'
 import { readSettings } from '#settings/store.ts'
 import { DEFAULT_REVIEW_MINUTES } from '#settings/settings.ts'
@@ -188,10 +188,10 @@ export function startReviewTimer({
                   action: 'send',
                   hydra: hydraConfig({ state: current }).hydra.id,
                   task: card.id,
-                  text: `Reminder: ${taskMention({
-                    id: card.id,
-                    title: card.title,
-                  })} still needs your answer. ${flag.detail}`,
+                  text: reminderMessage({
+                    card,
+                    detail: `still needs your answer. ${flag.detail}`,
+                  }),
                 },
               },
             })

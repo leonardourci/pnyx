@@ -225,7 +225,7 @@ export function hydraMessages({
           seq: e.seq,
           id: e.id,
           at: e.at,
-          actor: e.type === 'task.reminder-due' ? HYDRA_ACTOR : e.actor,
+          actor: e.actor,
           task: data.task ?? 'none',
           action: data.action,
           text: data.text,

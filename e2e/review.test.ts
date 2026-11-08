@@ -322,7 +322,7 @@ test(
         'task',
         'create',
         '--title',
-        'Choose a merge',
+        'Choose a merge strategy for the pagination endpoint and the new response schema before the rollout starts',
         '--key',
         'choice',
       ],
@@ -339,7 +339,7 @@ test(
         '--reason',
         'The owner chooses',
         '--question',
-        'May I merge this change?',
+        'May I merge this change?\n\nPlease review the endpoint, the response schema, the cursor validation, the rollout notes and the compatibility checks before choosing Merge or Hold.',
         '--choice',
         'Merge',
         '--choice',
@@ -387,6 +387,18 @@ test(
         reminder.text,
         /May I merge this change\?/,
       )
+      assert.equal(
+        reminder.actor,
+        'pnyx',
+      )
+      assert.ok(reminder.text.startsWith('- Reminder: '))
+      assert.ok(reminder.text.split(/\s+/).length <= 30)
+      assert.equal(
+        reminder.text.includes('\n'),
+        false,
+      )
+      assert.ok(reminder.text.endsWith('…'))
+      assert.ok(s.task({ key: 'choice' }).asks?.[0]?.question.includes('compatibility checks'))
       assert.ok(s.state().hydraReview?.reminders[`${task.id}:${ask.id}`])
       assert.equal(
         s.state().cards[HYDRA_CARD]?.agent,
