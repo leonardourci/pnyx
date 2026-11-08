@@ -5,6 +5,7 @@
     { "op": "task.create", "as": "build", "key": "build", "title": "Build export" },
     { "op": "task.depend", "task": "$build", "on": ["$research"] },
     { "op": "task.brief", "task": "$build", "brief": "Use the research findings" },
+    { "op": "task.status", "task": "$build", "status": "paused", "waitFor": "$research", "readyWhen": "pr-opened" },
     { "op": "task.status", "task": "$research", "status": "working", "note": "Comparing formats" },
     { "op": "link", "task": "$research", "url": "https://example.com/formats" }
   ]

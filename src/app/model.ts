@@ -27,6 +27,17 @@ export interface SourceRef {
 }
 
 export type HydraChange = EventBase & (
+  | {
+    type: 'task.wait-resumed'
+    data: {
+      wait: string
+      message: import('#workers/model.ts').SteeringMessage
+    }
+  }
+  | {
+    type: 'hydra.context-delivered'
+    data: { through: number }
+  }
   | RecoveryEvent
   | {
     type: 'project.refreshed'
@@ -330,6 +341,8 @@ export type HydraEvent =
 export type EventType = HydraEvent['type']
 
 export const EVENT_TYPES: readonly EventType[] = [
+  'task.wait-resumed',
+  'hydra.context-delivered',
   'diagnostic.retry',
   'apply.recorded',
   'session.compaction',
@@ -401,6 +414,7 @@ export const EVENT_TYPES: readonly EventType[] = [
 ]
 
 export interface HydraState {
+  contextNotes?: import('#hydra/context-notes.ts').ContextNote[]
   diagnosticRetries?: Record<string, RecoveryAttempt[]>
   dispatchProposals?: DispatchProposal[]
   labelColors?: SavedLabelColor[]

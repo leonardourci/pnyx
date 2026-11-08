@@ -183,6 +183,13 @@ export function planDocument({
         }))
       }
 
+      if (operation.op === 'task.status' && operation.waitFor) {
+        operation.waitFor = resolve({
+          reference: operation.waitFor,
+          path: 'waitFor',
+        })
+      }
+
       const operationId = `${id}:op:${index}`
       const operationMeta: Meta = {
         ...meta,

@@ -3,6 +3,8 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { openDecisions } from '#tasks/decisions.ts'
+import { emptyHydra, replay } from '#app/reducer.ts'
+import { eventReasons } from '#hydra/wake-reasons.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
@@ -182,6 +184,23 @@ test(
           answers: { [question.question]: 'SQLite' },
         },
       },
+    )
+
+    const answerEvents = s.events()
+    const ownerAnswer = answerEvents.find(event => event.type === 'task.permission'
+      && event.data.id === ask.id && event.data.status === 'allow' && event.actor === 'cli')
+    assert.ok(ownerAnswer)
+    const answeredState = replay({
+      state: emptyHydra(),
+      events: answerEvents.filter(event => event.seq <= ownerAnswer.seq),
+    })
+    assert.ok(answeredState.contextNotes?.some(note => note.text === 'Owner answered Clean the build, "Which database should the cache use?": SQLite'))
+    assert.deepEqual(
+      eventReasons({
+        state: answeredState,
+        event: ownerAnswer,
+      }),
+      [],
     )
 
     const write = agent.useTool!({

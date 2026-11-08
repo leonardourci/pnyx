@@ -83,6 +83,10 @@ export function createStallChecks({
   const waitEnd = ({ card }: { card: Card }): number | undefined => {
     const declaration = pausedDeclaration({ card })
 
+    if (card.wait) {
+      return Infinity
+    }
+
     if (!declaration) {
       return undefined
     }

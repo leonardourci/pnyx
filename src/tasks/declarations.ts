@@ -1,4 +1,5 @@
-import { TASK_STATES, type TaskDeclaration, type TaskStatus } from './model.ts'
+import { TASK_STATES, WAIT_CONDITIONS, type TaskDeclaration, type TaskStatus } from './model.ts'
+import { validateWait } from './waits.ts'
 import type { HydraState, Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -8,7 +9,11 @@ import { ownerGates } from './owner-gates.ts'
 import { isManagedTask } from './select.ts'
 
 // A declared state as shown to people and Hydra: a paused wait names its end, a hold says it has none.
-export function declaredState({ declaration }: { declaration: Pick<TaskDeclaration, 'state' | 'until' | 'hold'> }): string {
+export function declaredState({ declaration }: { declaration: Pick<TaskDeclaration, 'state' | 'until' | 'hold' | 'wait'> }): string {
+  if (declaration.wait) {
+    return `${declaration.state} waiting for ${declaration.wait.task} (${declaration.wait.condition})`
+  }
+
   if (declaration.until) {
     return `${declaration.state} until ${declaration.until}`
   }
@@ -32,6 +37,8 @@ export function declareTask({
   waitingFor,
   restores,
   hold,
+  waitFor,
+  readyWhen,
 }: {
   state: HydraState
   ref: string
@@ -44,6 +51,8 @@ export function declareTask({
   waitingFor?: string[]
   restores?: string
   hold?: boolean
+  waitFor?: string
+  readyWhen?: string
 }): Decision {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
@@ -97,6 +106,31 @@ export function declareTask({
   const data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> = {
     state: normalized as TaskStatus,
     note,
+  }
+
+  if (waitFor !== undefined || readyWhen !== undefined) {
+    if (normalized !== 'paused' || !waitFor || hold || until !== undefined) {
+      throw new HydraError({
+        message: '--wait-for requires paused and cannot combine with --hold or --until',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    const condition = readyWhen ?? 'task-done'
+
+    if (!(WAIT_CONDITIONS as readonly string[]).includes(condition)) {
+      throw new HydraError({
+        message: `--ready-when must be ${WAIT_CONDITIONS.join(', ')}`,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    data.wait = validateWait({
+      state,
+      card,
+      ref: waitFor,
+      condition: condition as NonNullable<TaskDeclaration['wait']>['condition'],
+    })
   }
 
   if (normalized === 'needs_you' || normalized === 'blocked') {

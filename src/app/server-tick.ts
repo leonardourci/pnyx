@@ -7,6 +7,7 @@ import type { createSourceRunner } from '#task-sources/runner.ts'
 import { sourceDeadline } from '#task-sources/state.ts'
 import { followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
+import { resumeWaits, waitResumesPending, notifyWaitResumes } from '#tasks/resume-waits.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { reminderDeadline } from '#tasks/reminders.ts'
 import { hideDone } from '#tasks/retention.ts'
@@ -68,6 +69,7 @@ export function createServerTick({
   let followCheckedAt = 0
   let replyRun: Promise<void> | undefined
   let replyCheckedAt = 0
+  const waitResumeRetryAfter = new Map<string, number>()
   let scheduled = false
   let lastSuccessAt: string | undefined
   let lastSuccessSeq: number | undefined
@@ -93,6 +95,11 @@ export function createServerTick({
           ingestSpool({ hydraId })
         }
 
+        pump()
+        resumeWaits({
+          hydraId,
+          state: state(),
+        })
         pump()
 
         if (!queueRun && Date.now() - queueCheckedAt >= QUEUE_POLL_MS) {
@@ -150,10 +157,21 @@ export function createServerTick({
         const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
         repliesPending = repliesToFollow({ state: state() }) || steeringToFollow({ state: state() })
 
-        if (!replyRun && repliesPending && replyCheckDue) {
+        const waitResumes = waitResumesPending({
+          state: state(),
+          retryAfter: waitResumeRetryAfter,
+        })
+
+        if (!replyRun && repliesPending && (replyCheckDue || waitResumes)) {
           replyCheckedAt = Date.now()
           replyRun = (async () => {
             try {
+              await notifyWaitResumes({
+                hydraId,
+                retryAfter: waitResumeRetryAfter,
+                retryDelay: REPLY_POLL_MS,
+              })
+
               if (steeringToFollow({ state: state() })) {
                 await runWorker({
                   args: [

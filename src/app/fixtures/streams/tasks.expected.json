@@ -151,5 +151,12 @@
     "evt_22": 22,
     "evt_23": 23
   },
-  "undone": {}
+  "undone": {},
+  "contextNotes": [
+    {
+      "id": "evt_11",
+      "seq": 11,
+      "text": "Owner answered Ship it, \"Ship to production?\": Yes"
+    }
+  ]
 }

@@ -149,6 +149,10 @@ export interface TaskHold {
 }
 
 export interface Card {
+  wait?: TaskWait & {
+    id: string
+    at: string
+  }
   compaction?: import('#workers/compaction/model.ts').CompactionState
   projectRefresh?: Record<string, ProjectRefresh>
   prerequisites?: string[]
@@ -259,7 +263,19 @@ export const TASK_STATES = [
 
 export type TaskStatus = (typeof TASK_STATES)[number]
 
+export const WAIT_CONDITIONS = [
+  'task-done',
+  'pr-opened',
+  'pr-merged',
+] as const
+
+export interface TaskWait {
+  task: string
+  condition: (typeof WAIT_CONDITIONS)[number]
+}
+
 export interface TaskDeclaration {
+  wait?: TaskWait
   id: string
   at: string
   actor: string

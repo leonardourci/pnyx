@@ -163,6 +163,14 @@ test(
       [aliases.research],
     )
     assert.equal(
+      before.cards[aliases.build]?.wait?.task,
+      aliases.research,
+    )
+    assert.equal(
+      before.cards[aliases.build]?.wait?.condition,
+      'pr-opened',
+    )
+    assert.equal(
       before.cards[aliases.build]?.brief,
       'Use the research findings',
     )

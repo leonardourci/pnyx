@@ -4,6 +4,7 @@ import { openAsks } from './ask-state.ts'
 import { reportActor } from '#hydra/hydra.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 
 const ACTIVITY_TEXT: Record<string, string> = {
   working: 'working',
@@ -95,6 +96,15 @@ export function cardStatus({
     }
   }
 
+  const explicitWait = card.wait && waitStatus({
+    card,
+    cards,
+  })
+
+  if (explicitWait) {
+    return explicitWait
+  }
+
   const activity = agentActivity({
     card,
     cards,
@@ -111,7 +121,10 @@ export function cardStatus({
   const declared = waitingDeclaration({ card })
 
   if (declared) {
-    return declared
+    return waitStatus({
+      card,
+      cards,
+    }) ?? declared
   }
 
   if (activity !== 'working' && openAsks({
@@ -137,13 +150,16 @@ export function cardStatus({
   }
 }
 
-// A worker's needs-you, blocked or paused note shows until a later turn starts, it asks Hydra again or the owner answers.
+// A later worker turn, a new question for Hydra or an owner answer makes an earlier wait note stale.
 function waitingDeclaration({ card }: { card: Card }) {
   const declared = card.status
   const wait = declared && WAITS[declared.state]
+  const requestedPause = declared?.state === 'paused'
+    && (declared.actor === HYDRA_ACTOR || ownerActor({ actor: declared.actor }))
 
   // Pnyx's own declarations (a column's default, a fired reminder, a detached worker) say nothing about the work.
-  if (!declared || !wait || !declared.note.trim() || !reportActor({ actor: declared.actor })) {
+  if (!declared || !wait || !declared.note.trim()
+    || (!reportActor({ actor: declared.actor }) && !requestedPause)) {
     return undefined
   }
 
@@ -154,6 +170,33 @@ function waitingDeclaration({ card }: { card: Card }) {
   return resumed || askedLater || answered ? undefined : {
     ...wait,
     at: declared.at,
+  }
+}
+
+export function waitStatus({
+  card,
+  cards,
+}: {
+  card: Card
+  cards?: Record<string, Card>
+}): CardStatus | undefined {
+  if (card.wait) {
+    const dependency = cards?.[card.wait.task]
+
+    return {
+      kind: 'waiting',
+      text: `waiting: ${dependency?.title ?? card.wait.task}`,
+      at: card.wait.at,
+    }
+  }
+
+  const declaration = waitingDeclaration({ card })
+
+  if (card.status?.state === 'paused' && declaration) {
+    return {
+      ...declaration,
+      text: `waiting: ${card.status.note}`,
+    }
   }
 }
 

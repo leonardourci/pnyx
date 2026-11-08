@@ -121,6 +121,7 @@ pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
 Columns include task counts and descriptions; read column list for placement rules when needed.
 Hosted resumes receive changed sections. Owner context is bounded to ${OWNER_CONTEXT_TOKENS} estimated tokens, with full memory available through owner memory list.
+The next Hydra turn receives up to 20 one-line context notes for dependency resumes, owner task answers and routine helper results. Notes never wake Hydra and clear after a successful turn.
 Compaction runs when requested or through the harness itself; reported context usage never triggers it in Pnyx.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
@@ -194,13 +195,14 @@ Long fields are cut to 1,000 characters with their total length. The newest five
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
-pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
+pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold | --wait-for <task> [--ready-when task-done|pr-opened|pr-merged]]
 Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.
 Default columns put completed held tasks in Done; the hold still applies if the task reopens.
 Before pausing with a ready result, run hydra send --task <id> --text "<result with links>" without --kind progress.
 Questions use task ask; blocked/needs_you wake Hydra but do not confirm owner delivery.
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
+--wait-for records a dependency wait (default task-done); pr-opened accepts an open or merged linked PR, and pr-merged requires one or more non-closed linked PRs, all merged. Pnyx resumes the waiting worker once with the dependency and PR link, preserving holds and open decisions. These waits never expire on a timer.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
 Ready owner-merge questions include the PR title, link, latest worker report or status note, and check counts.

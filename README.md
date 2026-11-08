@@ -108,7 +108,7 @@ The **Waiting on you** strip keeps open questions and permissions within reach.
 
 ### Tasks and columns
 
-A task holds your ask, its brief, updates, conversation and links. Its badge shows observed questions, running tools, background work, pull request checks and queues. Worker declarations stay as notes; columns still follow the recorded lifecycle.
+A task holds your ask, its brief, updates, conversation and links. Its badge shows observed questions, running tools, background work, pull request checks, queues and paused waits. A wait shows the dependency's title or the paused note. Columns follow the recorded lifecycle.
 
 You can create tasks and columns inline and move cards yourself. A finished agent turn leaves the task open until its completion requirements are met.
 

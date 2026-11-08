@@ -58,7 +58,7 @@ const link = {
 }
 
 test(
-  'worker declarations never choose a badge; only known settled native work shows Idle',
+  'settled native work shows Idle except while a worker declares a paused wait',
   () => {
     assert.equal(
       cardState({
@@ -116,7 +116,7 @@ test(
           now,
           action,
         }).text,
-        'idle',
+        state === 'paused' ? 'waiting: Waiting for CI' : 'idle',
       )
       assert.equal(
         declared.status.state,
@@ -446,6 +446,126 @@ test(
         query: 'paused',
       }),
       [],
+    )
+  },
+)
+
+test(
+  'paused waits show their dependency title or note instead of idle',
+  () => {
+    const dependency = {
+      ...card,
+      id: 'base',
+      title: 'Shared component',
+    }
+    const waiting = {
+      ...card,
+      wait: {
+        id: 'pause',
+        at,
+        task: dependency.id,
+        condition: 'pr-merged' as const,
+      },
+      status: {
+        id: 'pause',
+        at,
+        actor: `worker:${card.id}`,
+        state: 'paused' as const,
+        note: 'Waiting for review',
+      },
+    }
+    const state = {
+      ...emptyHydra(),
+      cards: {
+        [dependency.id]: dependency,
+        [card.id]: waiting,
+      },
+    }
+    assert.equal(
+      cardState({
+        card: waiting,
+        state,
+        now,
+        action,
+      }).text,
+      'waiting: Shared component',
+    )
+    assert.equal(
+      cardState({
+        card: {
+          ...waiting,
+          wait: undefined,
+        },
+        state,
+        now,
+        action,
+      }).text,
+      'waiting: Waiting for review',
+    )
+    assert.equal(
+      cardState({
+        card: {
+          ...waiting,
+          wait: undefined,
+          status: {
+            ...waiting.status,
+            actor: 'hydra',
+          },
+        },
+        state,
+        now,
+        action,
+      }).text,
+      'waiting: Waiting for review',
+    )
+    assert.equal(
+      cardState({
+        card: {
+          ...waiting,
+          wait: undefined,
+          status: {
+            ...waiting.status,
+            actor: 'cli',
+          },
+        },
+        state,
+        now,
+        action,
+      }).text,
+      'waiting: Waiting for review',
+    )
+    const running = {
+      ...action,
+      done: false,
+      work: {
+        ...idle,
+        runningTurns: ['resumed'],
+      },
+    }
+    const resumed = {
+      ...waiting,
+      turnStartedAt: '2026-10-29T12:01:00Z',
+    }
+    assert.equal(
+      cardState({
+        card: {
+          ...resumed,
+          wait: undefined,
+        },
+        state,
+        now,
+        action: running,
+      }).text,
+      'working',
+    )
+    assert.equal(
+      cardState({
+        card: resumed,
+        state,
+        now,
+        action: running,
+      }).text,
+      'waiting: Shared component',
     )
   },
 )
