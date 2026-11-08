@@ -74,7 +74,7 @@ export function observedStatus({
 
   const wait = waitStatus({
     card,
-    state,
+    cards: state?.cards,
   })
 
   if (wait) {

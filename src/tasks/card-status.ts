@@ -4,7 +4,6 @@ import { openAsks } from './ask-state.ts'
 import { reportActor } from '#hydra/hydra.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
-import type { HydraState } from '#app/model.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 
 const ACTIVITY_TEXT: Record<string, string> = {
@@ -97,7 +96,10 @@ export function cardStatus({
     }
   }
 
-  const explicitWait = card.wait && waitStatus({ card })
+  const explicitWait = card.wait && waitStatus({
+    card,
+    cards,
+  })
 
   if (explicitWait) {
     return explicitWait
@@ -119,7 +121,10 @@ export function cardStatus({
   const declared = waitingDeclaration({ card })
 
   if (declared) {
-    return waitStatus({ card }) ?? declared
+    return waitStatus({
+      card,
+      cards,
+    }) ?? declared
   }
 
   if (activity !== 'working' && openAsks({
@@ -170,13 +175,13 @@ function waitingDeclaration({ card }: { card: Card }) {
 
 export function waitStatus({
   card,
-  state,
+  cards,
 }: {
   card: Card
-  state?: HydraState
+  cards?: Record<string, Card>
 }): CardStatus | undefined {
   if (card.wait) {
-    const dependency = state?.cards[card.wait.task]
+    const dependency = cards?.[card.wait.task]
 
     return {
       kind: 'waiting',

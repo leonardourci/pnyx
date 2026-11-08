@@ -140,8 +140,11 @@ test(
       0,
     )
     assert.equal(
-      cardStatus({ card: card() }).text,
-      `waiting: ${card({ key: 'base' }).id}`,
+      cardStatus({
+        card: card(),
+        cards: state().cards,
+      }).text,
+      'waiting: Shared component',
     )
     append({
       change: {
