@@ -28,6 +28,7 @@ export function messageRecords({
   const parts = new Set<string>()
 
   for (const event of events) {
+    const actorRole = ownerActor({ actor: event.actor }) ? 'owner' : event.actor
     let entry: ThreadEntry
 
     if (event.type === 'chat.message' && event.cardId === card) {
@@ -43,7 +44,7 @@ export function messageRecords({
       entry = {
         id: event.id,
         kind: 'message',
-        role: ownerActor({ actor: event.actor }) ? 'owner' : event.actor,
+        role: actorRole,
         text: [
           event.data.enteredText ?? event.data.text,
           event.data.details,
@@ -54,7 +55,7 @@ export function messageRecords({
       entry = {
         id: `reply:${event.data.reply}`,
         kind: 'message',
-        role: 'owner',
+        role: actorRole,
         text: event.data.text,
         at: event.at,
       }

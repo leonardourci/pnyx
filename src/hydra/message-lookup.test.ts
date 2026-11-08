@@ -517,3 +517,71 @@ test(
     )
   },
 )
+
+test(
+  'task replies retain the authority of their recorded actor',
+  () => {
+    const events: HydraEvent[] = [
+      {
+        ...lookupEvents[0],
+        type: 'card.replied',
+        cardId: 'task-fixture',
+        actor: 'web',
+        data: {
+          reply: 'owner',
+          state: 'delivered',
+          route: 'pnyx',
+          text: 'Owner instruction.',
+        },
+      },
+      {
+        ...lookupEvents[1],
+        type: 'card.replied',
+        cardId: 'task-fixture',
+        actor: 'hydra',
+        data: {
+          reply: 'hydra',
+          state: 'delivered',
+          route: 'pnyx',
+          text: 'Hydra instruction.',
+        },
+      },
+      {
+        ...lookupEvents[2],
+        type: 'card.replied',
+        cardId: 'task-fixture',
+        actor: 'worker:sample',
+        data: {
+          reply: 'worker',
+          state: 'delivered',
+          route: 'pnyx',
+          text: 'Worker instruction.',
+        },
+      },
+    ]
+    const page = read({
+      card: 'task-fixture',
+      events,
+    })
+    assert.deepEqual(
+      page.messages.map(message => ({
+        id: message.id,
+        role: message.role,
+      })),
+      [
+        {
+          id: 'reply:owner',
+          role: 'owner',
+        },
+        {
+          id: 'reply:hydra',
+          role: 'hydra',
+        },
+        {
+          id: 'reply:worker',
+          role: 'worker:sample',
+        },
+      ],
+    )
+  },
+)
