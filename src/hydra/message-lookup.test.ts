@@ -63,6 +63,19 @@ test(
       read({ events: [] }).messages,
       [],
     )
+    const leapDay = read({
+      events: [
+        {
+          ...lookupEvents[0],
+          at: '2024-02-29T23:30:00Z',
+        },
+      ],
+      selection: { at: '2024-03-01T00:30:00+01:00' },
+    })
+    assert.equal(
+      leapDay.messages[0].at,
+      '2024-02-29T23:30:00Z',
+    )
   },
 )
 
@@ -448,6 +461,12 @@ test(
 
     for (const selection of [
       { at: '01/01/2026' },
+      { at: '2026-02-30T00:00:00Z' },
+      { at: '2026-02-29T00:00:00Z' },
+      { from: '2026-02-30T00:00:00Z' },
+      { to: '2026-02-30T00:00:00Z' },
+      { at: '2026-01-01T24:00:00Z' },
+      { from: '2026-01-01T24:00:00Z' },
       { seq: -1 },
       {
         seq: 1,

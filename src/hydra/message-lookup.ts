@@ -9,6 +9,8 @@ const MAX_CURSOR_LENGTH = 4096
 const PAGE_BYTES = 20000
 const PAGE_LIMIT = 60
 const DEFAULT_LIMIT = 20
+const TIMESTAMP_ERROR = 'Use an ISO timestamp with a timezone, as shown in the comment or the "at" field of the message'
+const ISO_TIMESTAMP = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/
 
 export interface MessageSelection {
   id?: string
@@ -45,11 +47,22 @@ function invalid({ message }: { message: string }): never {
 
 function timestamp({ value }: { value: string }): number {
   // An offset makes the same command independent of the receiving agent's timezone.
-  if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
-    invalid({ message: 'Use an ISO timestamp with a timezone, as shown in the comment or the "at" field of the message' })
+  const match = ISO_TIMESTAMP.exec(value)
+
+  if (!match) {
+    invalid({ message: TIMESTAMP_ERROR })
   }
 
-  return Date.parse(value)
+  const calendar = new Date(`${match[1]}T00:00:00Z`)
+  const validCalendar = Number.isFinite(calendar.getTime())
+    && calendar.toISOString().startsWith(match[1])
+  const time = Date.parse(value)
+
+  if (!validCalendar || !Number.isFinite(time)) {
+    invalid({ message: TIMESTAMP_ERROR })
+  }
+
+  return time
 }
 
 const outputMessage = ({ message }: { message: MessageRecord }) => ({
