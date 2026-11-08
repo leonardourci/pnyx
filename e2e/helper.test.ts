@@ -10,7 +10,6 @@ import { hydraDir } from '#app/home-migration.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
-import { HELPER_INSTRUCTIONS } from '#routine-helper/runner.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import type { HelperChange } from '#routine-helper/state.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -20,8 +19,7 @@ import type { Decision, HydraEvent, HydraState } from '#app/model.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
-// Every helper prompt ends with its instructions, and every main wake with a closing wake block.
-const HELPER_PROMPT = HELPER_INSTRUCTIONS.slice(-40)
+const helperPrompt = ({ text }: { text: string }) => text.includes('Granted tasks:')
 const MAIN_WAKE = '</pnyx-wake>'
 
 const routine = ({ tasks }: { tasks: string[] }) => JSON.stringify({
@@ -253,7 +251,12 @@ async function noWake({ s }: { s: Scenario }) {
 test(
   'worker progress wakes nobody, while a routine change on the same task goes to the helper as main works',
   async () => {
-    const s = await helperHydra({ keys: ['work'] })
+    const s = await helperHydra({
+      keys: [
+        'work',
+        'unrelated-context-probe',
+      ],
+    })
     const task = s.task({ key: 'work' }).id
     const held = await busyMain({
       s,
@@ -268,7 +271,7 @@ test(
         kind: 'progress',
       })
       pnyx.claude.plan({
-        text: HELPER_PROMPT,
+        match: helperPrompt,
         reply: routine({ tasks: [task] }),
       })
       declare({
@@ -279,6 +282,21 @@ test(
         what: 'the helper to finish while main still works',
         check: () => finishes({ s }).length === 1,
       })
+      const helper = pnyx.claude.sessions.find(agent => agent.received.some(text =>
+        helperPrompt({ text }) && text.includes(task)))
+      assert.ok(helper)
+      assert.match(
+        helper.received[0]!,
+        /Granted task context only/,
+      )
+      assert.match(
+        helper.received[0]!,
+        /work ·/,
+      )
+      assert.doesNotMatch(
+        helper.received[0]!,
+        /unrelated-context-probe/,
+      )
       assert.equal(
         s.state().cards[HYDRA_CARD]?.sessionActivity,
         'working',
@@ -325,7 +343,7 @@ test(
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: tasks.slice(
           0,
@@ -338,7 +356,7 @@ test(
       }),
     })
     const second = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({
         tasks: tasks.slice(
           3,
@@ -352,11 +370,11 @@ test(
       hold: true,
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({ tasks: [tasks[6]!] }),
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({ tasks: [tasks[0]!] }),
     })
 
@@ -436,7 +454,7 @@ test(
 
     try {
       pnyx.claude.plan({
-        text: HELPER_PROMPT,
+        match: helperPrompt,
         reply: 'not an outcome record',
       })
       declare({
@@ -474,7 +492,7 @@ test(
       check: () => !Object.keys(s.state().helper?.runs ?? {}).length,
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({ tasks: [tasks[0]!] }),
     })
     declare({
@@ -532,7 +550,7 @@ test(
       hold: true,
     })
     const first = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({
         tasks: [
           a!,
@@ -543,7 +561,7 @@ test(
       hold: true,
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({
         tasks: [
           d!,
@@ -552,7 +570,7 @@ test(
       }),
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({ tasks: [work!] }),
     })
 
@@ -637,7 +655,7 @@ test(
       text: 'Hold on.',
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({ tasks: [other] }),
     })
 
@@ -697,12 +715,12 @@ test(
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     const seedTurn = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({ tasks: [seed] }),
       hold: true,
     })
     const workTurn = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -811,7 +829,7 @@ test(
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     const first = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: routine({
         tasks: tasks.slice(
           0,
@@ -891,7 +909,7 @@ test(
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     const first = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -1311,7 +1329,7 @@ test(
 
     try {
       pnyx.claude.plan({
-        text: HELPER_PROMPT,
+        match: helperPrompt,
         reply: routine({ tasks: [s.task({ key: 'work' }).id] }),
       })
       declare({
@@ -1404,7 +1422,7 @@ test(
 
       try {
         pnyx.claude.plan({
-          text: HELPER_PROMPT,
+          match: helperPrompt,
           reply: routine({ tasks: [s.task({ key }).id] }),
         })
         declare({
@@ -1558,7 +1576,7 @@ test(
 
     try {
       pnyx.claude.plan({
-        text: HELPER_PROMPT,
+        match: helperPrompt,
         reply: routine({ tasks: [s.task({ key: 'work' }).id] }),
       })
       declare({
@@ -1609,7 +1627,7 @@ test(
       ],
     })
     const routineTurn = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: result,
       hold: true,
     })
@@ -1681,7 +1699,7 @@ test(
       check: () => !s.state().hydraOperation && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: result,
     })
     declare({
@@ -1878,7 +1896,7 @@ test(
     })
     const routineTask = s.task({ key: 'routine' }).id
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -1926,7 +1944,7 @@ test(
     const question = waitingTask.asks?.[0]
     assert.ok(question)
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -1962,7 +1980,7 @@ test(
     const idleQuestion = idleTask.asks?.[0]
     assert.ok(idleQuestion)
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {

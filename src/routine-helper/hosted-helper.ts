@@ -30,7 +30,17 @@ export function createHostedHelper({
   helperBound?: number
   changed(): void
   environment({ hydra }: { hydra?: boolean }): NodeJS.ProcessEnv
-  digest({ remember }: { remember?: boolean }): Promise<string>
+  digest({
+    remember,
+    onlyTasks,
+    previousDigest,
+    checkpointed,
+  }: {
+    remember?: boolean
+    onlyTasks?: string[]
+    previousDigest?: string
+    checkpointed?: boolean
+  }): Promise<string>
   armWake(): void
   host(): Host
 }) {
@@ -125,7 +135,15 @@ export function createHostedHelper({
         env,
       })
     },
-    context: () => digest({ remember: false }),
+    context: ({
+      tasks,
+      previousDigest,
+    }) => digest({
+      remember: false,
+      onlyTasks: tasks,
+      previousDigest,
+      checkpointed: true,
+    }),
     changed: () => {
       changed()
       armWake()

@@ -14,7 +14,7 @@ Keep saved context brief and up to date, and edit or remove entries when things 
 - Project memory, shared by every Hydra on that project (10000 characters): facts, conventions and owner preferences that hold only for that project.
 - Hydra memory, this Hydra only (1500 characters): its scope, where it left off, its check cursor. Successful inscribe milestones track what has been read.
 
-Owner and Hydra memory are printed in full when a session opens and after compaction. Later wakes carry only a short memory-changed note. Project memory loads only on demand and for workers assigned to that project, so every line must earn its place.
+A fresh session and a session after compaction receive owner memory within a 3000 estimated-token budget and Hydra memory in full. Read `pnyx-axi owner memory list` when a decision needs omitted owner memory. A resumed session receives only changed digest sections, and later wakes carry a short memory-changed note. Project memory loads only on demand and for workers assigned to that project, so every line must earn its place.
 
 When invoked with a project (`/inscribe <project>`), resolve it with `pnyx-axi project list --hydra <hydra>` and read `pnyx-axi project memory list --project <name|path> --hydra <hydra>`. Route facts, conventions and owner preferences specific to that project into its shared memory. All its documents share a 10000-character budget across Hydras; a nearly-full digest asks you to curate it. General owner preferences and learnings go to owner memory.
 

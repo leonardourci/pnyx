@@ -1,4 +1,5 @@
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
+import { HYDRA_CONTEXT_TOKENS, OWNER_CONTEXT_TOKENS } from '#hydra/context-limits.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '#memory/budgets.ts'
 import { POOL_IDLE } from '#projects/copy-pool.ts'
 import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
@@ -102,6 +103,9 @@ pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
+Columns include task counts and descriptions; read column list for placement rules when needed.
+Hosted resumes receive changed sections. Owner context is bounded to ${OWNER_CONTEXT_TOKENS} estimated tokens, with full memory available through owner memory list.
+An idle completed Hydra turn at ${HYDRA_CONTEXT_TOKENS} reported context tokens queues native compaction; recorded history and inscribe milestones remain available.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
 pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
@@ -122,7 +126,7 @@ and returns a compact conversations digest of owner instructions and agent repli
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
   owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
-Owner memory is Pnyx-wide: every Hydra's digest prints it. Keep the owner's preferences under the key preferences and general learnings under learnings,
+Owner memory is Pnyx-wide. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
 one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.

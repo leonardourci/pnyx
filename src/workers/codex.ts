@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
+import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -866,6 +866,80 @@ export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsag
   }
 }
 
+async function routineConfig({
+  rpc,
+  cwd,
+}: {
+  rpc: ReturnType<typeof connection>
+  cwd: string
+}): Promise<Record<string, unknown>> {
+  const settings = await rpc.request({
+    method: 'config/read',
+    params: {
+      cwd,
+      includeLayers: false,
+    },
+  })
+
+  if (!settings.config || typeof settings.config !== 'object') {
+    throw new Error('Routine helper configuration could not be read')
+  }
+
+  const config = object({ value: settings.config })
+  const skills = await rpc.request({
+    method: 'skills/list',
+    params: { cwds: [cwd] },
+  })
+
+  if (!Array.isArray(skills.data)) {
+    throw new Error('Routine helper skill catalog could not be read')
+  }
+
+  const disabledSkills: {
+    path: string
+    enabled: false
+  }[] = []
+
+  for (const value of skills.data) {
+    const row = object({ value })
+
+    if (!Array.isArray(row.skills)) {
+      throw new Error('Routine helper skill catalog is invalid')
+    }
+
+    for (const value of row.skills) {
+      const skill = object({ value })
+
+      if (typeof skill.path !== 'string') {
+        throw new Error('Routine helper skill path is invalid')
+      }
+
+      disabledSkills.push({
+        path: skill.path,
+        enabled: false,
+      })
+    }
+  }
+
+  const overrides: Record<string, unknown> = {
+    'skills.config': disabledSkills,
+    'skills.bundled.enabled': false,
+    'skills.include_instructions': false,
+    'features.apps': false,
+    'features.plugins': false,
+    'features.sleep_tool': false,
+    'features.default_mode_request_user_input': false,
+    'tools.update_plan.enabled': false,
+    web_search: 'disabled',
+  }
+
+  for (const name of Object.keys(object({ value: config.mcp_servers }))) {
+    overrides[`mcp_servers.${JSON.stringify(name)}.enabled`] = false
+  }
+
+  return overrides
+}
+
 export function codexProvider({
   spawnCodex = ({
     cwd,
@@ -981,6 +1055,7 @@ export function codexProvider({
       signal,
       instructions,
       outputSchema,
+      toolScope,
       context,
       spawned,
     }) {
@@ -1022,6 +1097,21 @@ export function codexProvider({
         const options = { ...settings }
         // Bypass permissions is Codex's never: no approvals, full access.
         const policy = () => (options.mode === BYPASS ? NEVER : options.mode ?? '')
+        const config: Record<string, unknown> = {
+          ...pnyxShellEnvironment({ env }),
+          'features.default_mode_request_user_input': true,
+        }
+
+        if (toolScope === 'routine') {
+          Object.assign(
+            config,
+            await routineConfig({
+              rpc,
+              cwd,
+            }),
+          )
+        }
+
         const result = await rpc.request({
           method: agent ? 'thread/resume' : 'thread/start',
           timeout: OPEN_TIMEOUT_MS,
@@ -1029,10 +1119,7 @@ export function codexProvider({
             ...(agent ? { threadId: agent.sessionId } : {}),
             cwd,
             // Lets a worker ask the owner with request_user_input outside plan mode.
-            config: {
-              ...pnyxShellEnvironment({ env }),
-              'features.default_mode_request_user_input': true,
-            },
+            config,
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...serviceTier({ fast: options.fast }),
@@ -1160,7 +1247,13 @@ export function codexProvider({
                 },
               })
               const manualCompact = compactCommand({ text: said })
-              const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${await context()}\n\n${said}` : said
+              let compacted = false
+
+              if (context && !manualCompact) {
+                compacted = rpc.compacted()
+              }
+
+              const text = context && !manualCompact && (compacted || fresh) ? `${await context({ compacted })}\n\n${said}` : said
 
               if (!manualCompact) {
                 fresh = false
@@ -1806,6 +1899,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
 
   // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
   if (entry.type === 'compacted') {
+    parsed.contextReset = true
     const text = trimmedString({ value: payload.message })
     const stamp = trimmedString({ value: entry.timestamp })
 
@@ -1834,6 +1928,11 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
     }
 
     const content = payload.content
+
+    if (payload.role === 'user') {
+      parsed.digest = injectedDigest({ text: textContent({ value: content }) })
+    }
+
     const blocks = typeof content === 'string' ? [content] : Array.isArray(content) ? content : []
     parsed.messages = transcriptText({
       at,

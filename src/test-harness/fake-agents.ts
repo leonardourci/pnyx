@@ -60,6 +60,7 @@ export interface AgentSession {
   fast?: boolean
   // Codex only: the method of each request Pnyx sent.
   requests?: string[]
+  config?: Record<string, unknown>
   // Claude only: the agent calls a tool that needs permission, as Claude Code does mid-turn, and gets Pnyx's decision.
   useTool?({
     tool,
@@ -552,7 +553,42 @@ export function replayCodex({ hydra }: { hydra(): string }) {
         }
 
         // A model or config read is not a session; one that opens a thread is.
+        if (message.method === 'config/read') {
+          send({
+            message: {
+              id: message.id,
+              result: { config: { mcp_servers: { 'unrelated.server': { command: 'synthetic-mcp' } } } },
+            },
+          })
+
+          return
+        }
+
+        if (message.method === 'skills/list') {
+          send({
+            message: {
+              id: message.id,
+              result: {
+                data: [
+                  {
+                    skills: [
+                      {
+                        path: '/synthetic/skills/unrelated/SKILL.md',
+                        enabled: true,
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          })
+
+          return
+        }
+
         if (message.method === 'thread/start' || message.method === 'thread/resume') {
+          session.config = (message.params as { config?: Record<string, unknown> }).config
+
           session.resumed = message.method === 'thread/resume'
           const { threadId } = message.params as { threadId?: string }
           session.id = session.resumed ? threadId! : randomUUID()

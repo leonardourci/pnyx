@@ -339,8 +339,9 @@ export interface Provider {
     cwd: string
     instructions?: string
     outputSchema?: Record<string, unknown>
+    toolScope?: 'routine'
     // Live state the session gets when it starts or resumes and again after each compaction.
-    context?(): Promise<string>
+    context?({ compacted }: { compacted?: boolean }): Promise<string>
     // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.
     allow?: string[]
     agent?: AgentRef
@@ -382,6 +383,8 @@ export type FoundSettings = Record<string, string | null>
 
 export interface TranscriptRecord {
   final?: boolean
+  digest?: string
+  contextReset?: true
   at?: string
   role: string
   messages: TranscriptMessage[]

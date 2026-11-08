@@ -8,7 +8,7 @@ metadata:
 
 # Hydra columns
 
-Each column has a rule that code applies without a model. The digest and `pnyx-axi column list --hydra <hydra>` print the rules and descriptions. When the owner asks for a column change, write or update its rule so future events and commands place cards there automatically.
+Each column has a rule that code applies without a model. The digest lists column names, task counts and descriptions. Read `pnyx-axi column list --hydra <hydra>` for placement rules before changing columns. When the owner asks for a column change, write or update its rule so future events and commands place cards there automatically.
 
 ## Move a card
 
