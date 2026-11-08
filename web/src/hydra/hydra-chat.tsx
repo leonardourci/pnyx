@@ -157,6 +157,8 @@ export function HydraChat({
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
+  const retainedPage = useRef(page)
+  retainedPage.current = page
   useEffect(
     () => {
       if (!connected || !card) {
@@ -164,9 +166,22 @@ export function HydraChat({
       }
 
       let cancelled = false
+      const args = [HYDRA_CARD]
+      const retained = retainedPage.current
+
+      if (retained?.entries.length) {
+        args.push(
+          '--retain',
+          JSON.stringify({
+            session: retained.session,
+            oldest: retained.entries[0]!.id,
+          }),
+        )
+      }
+
       void command({
         name: 'thread',
-        args: [HYDRA_CARD],
+        args,
       }).then(result => {
         if (!cancelled) {
           setPage(before => receivedThread({
