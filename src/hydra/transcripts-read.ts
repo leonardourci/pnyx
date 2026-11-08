@@ -24,6 +24,7 @@ import type { TurnTiming } from './chat-messages.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
+  final?: boolean
   id: string
   hidden?: boolean
   continued?: boolean
@@ -173,6 +174,7 @@ export function transcriptEntries({
     text: message.text,
     at: message.at,
     hidden: message.internal,
+    final: parsed.final,
   }))
 
   for (const trace of parsed.traces) {

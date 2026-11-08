@@ -272,6 +272,7 @@ export function loggedEntry({ event }: { event: ChatEvent }): ThreadEntry {
     part,
     kind: 'message',
     role: event.data.role,
+    final: event.data.final,
     text: event.data.text,
     at: event.at,
     session: event.data.session,
