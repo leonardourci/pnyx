@@ -11,6 +11,10 @@ const TEXT_BLOCKS = [
 const UNRECORDED_DETAIL = 'Recorded details unavailable'
 const UNNAMED_TOOL = 'tool'
 
+export function injectedDigest({ text }: { text: string }): string | undefined {
+  return /^\s*(<pnyx-digest\b[^>]*>[\s\S]*?<\/pnyx-digest>)/.exec(text)?.[1]
+}
+
 export const transcriptString = ({ value }: { value: unknown }): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined
 

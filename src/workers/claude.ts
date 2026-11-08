@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
+import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
@@ -315,7 +315,7 @@ export function claudeProvider({
               const { text } = item
               const compact = compactCommand({ text })
               manualCompact ||= compact
-              const message = fresh && context && !compact ? `${await context()}\n\n${text}` : text
+              const message = fresh && context && !compact ? `${await context({})}\n\n${text}` : text
 
               if (!compact) {
                 fresh = false
@@ -389,7 +389,7 @@ export function claudeProvider({
                         async () => ({
                           hookSpecificOutput: {
                             hookEventName: 'SessionStart' as const,
-                            additionalContext: await context(),
+                            additionalContext: await context({ compacted: true }),
                           },
                         }),
                       ],
@@ -1082,6 +1082,23 @@ export const readClaudeTranscript: TranscriptReader = ({
     return parsed
   }
 
+  if (entry.type === 'attachment') {
+    const attachment = object({ value: entry.attachment })
+
+    if (attachment.type === 'hook_additional_context') {
+      const contents = Array.isArray(attachment.content) ? attachment.content : [attachment.content]
+
+      for (const content of contents) {
+        const text = typeof content === 'string' ? content : textContent({ value: content })
+        const digest = injectedDigest({ text })
+
+        if (digest) {
+          parsed.digest = digest
+        }
+      }
+    }
+  }
+
   const message = object({ value: entry.message })
 
   if (entry.type === 'assistant' && typeof message.stop_reason === 'string') {
@@ -1092,6 +1109,14 @@ export const readClaudeTranscript: TranscriptReader = ({
 
   const content = message.content
   const blocks = Array.isArray(content) ? content : []
+
+  if (entry.type === 'system' && entry.subtype === 'compact_boundary') {
+    parsed.contextReset = true
+  }
+
+  if (entry.type === 'user' && entry.isCompactSummary !== true && entry.isSidechain !== true) {
+    parsed.digest = injectedDigest({ text: textContent({ value: content }) })
+  }
 
   if (entry.isCompactSummary !== true && (entry.type === 'user' || entry.type === 'assistant')) {
     const texts = typeof content === 'string' ? [content] : blocks

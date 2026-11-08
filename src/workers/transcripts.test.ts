@@ -239,3 +239,74 @@ test(
     )
   },
 )
+
+test(
+  'native user records retain digest checkpoints separately from visible chat and clear them at compaction',
+  () => {
+    const text = '<pnyx-digest hydra="lab" through="12">Saved context</pnyx-digest>\nHello'
+    const claude = readTranscriptRecord({
+      record: {
+        type: 'user',
+        message: { content: text },
+      },
+    })
+    const codex = readTranscriptRecord({
+      record: {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text,
+            },
+          ],
+        },
+      },
+    })
+    assert.equal(
+      claude.digest,
+      '<pnyx-digest hydra="lab" through="12">Saved context</pnyx-digest>',
+    )
+    assert.equal(
+      codex.digest,
+      claude.digest,
+    )
+    assert.equal(
+      claude.messages[0]?.text,
+      'Hello',
+    )
+    assert.equal(
+      codex.messages[0]?.text,
+      'Hello',
+    )
+    assert.equal(
+      readTranscriptRecord({
+        record: {
+          type: 'system',
+          subtype: 'compact_boundary',
+        },
+      }).contextReset,
+      true,
+    )
+    assert.equal(
+      readTranscriptRecord({
+        record: {
+          type: 'compacted',
+          payload: {},
+        },
+      }).contextReset,
+      true,
+    )
+    assert.equal(
+      readTranscriptRecord({
+        record: {
+          type: 'assistant',
+          message: { content: text },
+        },
+      }).digest,
+      undefined,
+    )
+  },
+)

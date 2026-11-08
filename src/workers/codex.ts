@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
+import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -1160,7 +1160,13 @@ export function codexProvider({
                 },
               })
               const manualCompact = compactCommand({ text: said })
-              const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${await context()}\n\n${said}` : said
+              let compacted = false
+
+              if (context && !manualCompact) {
+                compacted = rpc.compacted()
+              }
+
+              const text = context && !manualCompact && (compacted || fresh) ? `${await context({ compacted })}\n\n${said}` : said
 
               if (!manualCompact) {
                 fresh = false
@@ -1806,6 +1812,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
 
   // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
   if (entry.type === 'compacted') {
+    parsed.contextReset = true
     const text = trimmedString({ value: payload.message })
     const stamp = trimmedString({ value: entry.timestamp })
 
@@ -1834,6 +1841,11 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
     }
 
     const content = payload.content
+
+    if (payload.role === 'user') {
+      parsed.digest = injectedDigest({ text: textContent({ value: content }) })
+    }
+
     const blocks = typeof content === 'string' ? [content] : Array.isArray(content) ? content : []
     parsed.messages = transcriptText({
       at,
