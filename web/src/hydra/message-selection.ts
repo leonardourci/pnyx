@@ -26,6 +26,7 @@ export const blockPassage = ({ block }: { block: HTMLElement }): CommentPassage 
   quote: block.dataset.quote!,
   paragraph: block.dataset.quote!,
   at: block.dataset.messageAt,
+  reference: block.dataset.messageReference,
 })
 
 const textBefore = ({

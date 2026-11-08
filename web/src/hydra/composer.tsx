@@ -21,6 +21,7 @@ import { draftView, hasPendingImage } from './draft.ts'
 const MENU_ICON = 16
 
 export function Composer({
+  hydraId,
   card,
   title,
   draft,
@@ -38,6 +39,7 @@ export function Composer({
   projectRequest = false,
   projectRequested,
 }: {
+  hydraId: string
   card: string
   title: string
   draft: string
@@ -91,14 +93,16 @@ export function Composer({
     current.current.draft = text
   }
 
-  const hydraId = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
+  const cacheIdentity = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
   const attempt = useRef(readAttempt({
     key: card,
-    hydraId,
+    hydraId: cacheIdentity,
   }))
   const outgoing = commentReply({
     draft,
     comments,
+    hydraId,
+    card,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
   const imagesLoading = hasPendingImage({ text: outgoing })
@@ -168,7 +172,7 @@ export function Composer({
     attempt.current.pending = true
     saveAttempt({
       key: card,
-      hydraId,
+      hydraId: cacheIdentity,
       attempt: attempt.current,
     })
     const taken = restore ? null : {
@@ -223,7 +227,7 @@ export function Composer({
 
       saveAttempt({
         key: card,
-        hydraId,
+        hydraId: cacheIdentity,
         attempt: attempt.current,
       })
       setSending(false)
@@ -445,6 +449,8 @@ export function Composer({
                   const text = commentReply({
                     draft: next,
                     comments: current.current.comments,
+                    hydraId,
+                    card,
                   })
                   const id = crypto.randomUUID()
                   const name = 'hydra'

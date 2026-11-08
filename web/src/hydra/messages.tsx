@@ -769,6 +769,7 @@ export function Messages({
                         data-message-block={key}
                         data-message-id={messageId}
                         data-message-at={entry.at}
+                        data-message-reference={entry.reference}
                         data-block-index={index}
                         data-block-offset={offset}
                         data-quote={quote}
