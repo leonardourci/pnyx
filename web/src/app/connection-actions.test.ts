@@ -14,6 +14,7 @@ class BrowserSocket {
   sent: {
     id: string
     name: string
+    args?: string[]
   }[] = []
 
   onmessage?: ({ data }: { data: string }) => void
@@ -551,3 +552,125 @@ test(
     )
   },
 )
+
+for (const when of [
+  '2099-10-16T12:00:00Z',
+  'in 2 hours',
+]) {
+  test(
+    `a pending reminder keeps its normalized time after reprojection: ${when}`,
+    async t => {
+      t.mock.timers.enable({
+        apis: ['Date'],
+        now: new Date('2099-10-16T11:00:00Z'),
+      })
+      const { connection } = browserFixture({ t })
+      const socket = BrowserSocket.instances.at(-1)!
+      socket.receive({
+        message: {
+          type: 'hello',
+          build: 'test',
+          hydraId: 'default',
+          installation: 'test',
+        },
+      })
+      const created = {
+        v: 1 as const,
+        seq: 1,
+        id: 'created',
+        at: '2099-10-16T11:00:00Z',
+        actor: 'web',
+        cardId: 'task',
+        type: 'task.created' as const,
+        data: {
+          key: 'task',
+          title: 'Review cursor examples',
+        },
+      }
+      const state = reduce({
+        state: emptyHydra(),
+        event: created,
+      })
+      socket.receive({
+        message: {
+          type: 'snapshot',
+          seq: state.seq,
+          state,
+        },
+      })
+      socket.receive({
+        message: {
+          type: 'latest',
+          messages: {},
+          actions: {},
+        },
+      })
+      const command = connection.commandFor({ id: 'default' })
+      await assert.rejects(
+        command({
+          name: 'task',
+          args: [
+            'remind',
+            'task',
+            '2099-10-16T10:00:00Z',
+          ],
+        }),
+        /future reminder/,
+      )
+      const result = command({
+        name: 'task',
+        args: [
+          'remind',
+          'task',
+          when,
+        ],
+      }).catch(error => error)
+      const request = socket.sent.find(message => message.name === 'task')!
+      assert.ok(request)
+      const expected = when === 'in 2 hours' ? '2099-10-16T13:00:00.000Z' : '2099-10-16T12:00:00.000Z'
+      assert.equal(
+        connection.snapshot().state.cards.task?.reminder?.at,
+        expected,
+      )
+      assert.equal(
+        request.args?.[2],
+        expected,
+      )
+      t.mock.timers.tick(3 * 60 * 60_000)
+      socket.receive({
+        message: {
+          type: 'event',
+          event: {
+            ...created,
+            id: 'other',
+            seq: 2,
+            cardId: 'other',
+            data: {
+              key: 'other',
+              title: 'Other work',
+            },
+          },
+        },
+      })
+      assert.equal(
+        connection.snapshot().state.cards.task?.reminder?.at,
+        expected,
+      )
+      assert.notEqual(
+        connection.snapshot().edits.find(edit => edit.id === request.id)?.stage,
+        'refused',
+      )
+      socket.receive({
+        message: {
+          type: 'receipt',
+          id: request.id,
+        },
+      })
+      const outcome = await result
+
+      if (outcome instanceof Error) {
+        throw outcome
+      }
+    },
+  )
+}

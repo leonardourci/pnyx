@@ -3,7 +3,6 @@ import type { HydraState } from '#app/model.ts'
 import type { Card, TaskReminder } from '#tasks/model.ts'
 import { clearReminder, reminderRepeat } from '#tasks/reminders.ts'
 import { lifecycleMoves } from '#tasks/lifecycle.ts'
-import { reminderTime } from '#tasks/time.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { columnCards, rankOf, rankWithin } from '#tasks/select.ts'
@@ -228,10 +227,8 @@ export function optimisticState({
         const when = args[2] ?? ''
         reminder = {
           id: option({ flag: '--event-id' }) ?? 'pending',
-          at: reminderTime({
-            when,
-            now: new Date().toISOString(),
-          }),
+          // The request boundary normalizes time once; pending edits may outlive it.
+          at: when,
         }
         const repeat = reminderRepeat({
           state,
