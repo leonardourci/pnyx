@@ -147,6 +147,18 @@ test(
             text: 'Migration',
             matched: true,
           },
+          {
+            text: ' ',
+            matched: false,
+          },
+          {
+            text: 'Migration',
+            matched: true,
+          },
+          {
+            text: ' notes',
+            matched: false,
+          },
         ],
       ],
     )

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { compactionContext, historyBoundary, joinMessageParts } from './history.ts'
+import { compactionContext, historyBoundary, joinMessageParts, readHistory } from './history.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { recordEntries } from './transcripts-read.ts'
 
@@ -12,6 +12,173 @@ const base = {
   cardId: HYDRA_CARD,
   at: '2026-11-05T00:00:00.000Z',
 }
+
+test(
+  'pinned history recovers task intents and meaningful helper outcomes once, without repeated waits',
+  () => {
+    const events: HydraEvent[] = [
+      {
+        ...base,
+        id: 'created',
+        seq: 1,
+        cardId: 'task-a',
+        type: 'task.created',
+        data: {
+          key: 'a',
+          title: 'Example',
+          intent: 'Keep export records.',
+        },
+      },
+      {
+        ...base,
+        id: 'revised',
+        seq: 2,
+        cardId: 'task-a',
+        type: 'task.brief',
+        data: {
+          before: '',
+          after: '',
+          intent: 'Keep archived export records.',
+        },
+      },
+      {
+        ...base,
+        id: 'helper-results',
+        seq: 3,
+        type: 'hydra.helper-finished',
+        data: {
+          batch: 'results',
+          outcomes: [
+            {
+              task: 'task-a',
+              status: 'handled',
+              summary: 'Export is ready: https://example.test/result',
+            },
+            {
+              task: 'task-b',
+              status: 'needs_main',
+              summary: 'Choose an archive format. sk-abcdefghijklmnop1234',
+            },
+            {
+              task: 'task-c',
+              status: 'still_waiting',
+              summary: 'Same wait as before.',
+            },
+          ],
+        },
+      },
+      {
+        ...base,
+        id: 'automated-result',
+        seq: 4,
+        type: 'hydra.message',
+        data: {
+          hydra: 'hydra',
+          action: 'send',
+          kind: 'routine',
+          text: 'Export is ready: https://example.test/result',
+        },
+      },
+      {
+        ...base,
+        id: 'legacy-results',
+        seq: 5,
+        type: 'hydra.helper-finished',
+        data: {
+          batch: 'legacy',
+          outcomes: [
+            {
+              task: 'task-a',
+              audience: 'routine',
+              summary: 'Earlier archive was validated.',
+            },
+            {
+              task: 'task-b',
+              audience: 'owner',
+              summary: 'Earlier format decision is needed.',
+            },
+          ],
+        },
+      },
+    ]
+    const state = replay({
+      state: emptyHydra(),
+      events,
+    })
+    const first = readHistory({
+      state,
+      events,
+      since: 'origin',
+      through: 3,
+      budget: 1,
+    })
+    assert.equal(
+      first.text,
+      '[task:task-a task created] Keep export records.',
+    )
+    const second = readHistory({
+      state,
+      events,
+      since: 'origin',
+      after: first.after,
+      budget: 1,
+    })
+    assert.equal(
+      second.text,
+      '[task:task-a brief] Keep archived export records.',
+    )
+    const third = readHistory({
+      state,
+      events,
+      since: 'origin',
+      after: second.after,
+      budget: 1,
+    })
+    assert.equal(
+      third.text,
+      '[helper:task-a handled] Export is ready: https://example.test/result',
+    )
+    assert.equal(
+      third.more,
+      true,
+    )
+    const last = readHistory({
+      state,
+      events,
+      since: 'origin',
+      after: third.after,
+      budget: 1,
+    })
+    assert.equal(
+      last.text,
+      '[helper:task-b needs_main] Choose an archive format. [redacted]',
+    )
+    assert.equal(
+      last.more,
+      false,
+    )
+    assert.equal(
+      last.snapshot,
+      3,
+    )
+    const all = readHistory({
+      state,
+      events,
+      since: 'origin',
+    })
+    assert.equal(
+      all.text,
+      [
+        '[task:task-a task created] Keep export records.',
+        '[task:task-a brief] Keep archived export records.',
+        '[helper:task-a handled] Export is ready: https://example.test/result',
+        '[helper:task-b needs_main] Choose an archive format. [redacted]',
+        '[helper:task-a routine] Earlier archive was validated.',
+        '[helper:task-b owner] Earlier format decision is needed.',
+      ].join('\n\n'),
+    )
+  },
+)
 
 test(
   'legacy switch summaries bind to the matching operation when a native milestone finishes first',

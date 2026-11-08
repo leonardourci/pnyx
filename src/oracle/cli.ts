@@ -238,6 +238,8 @@ export const oracleCommands = {
 
 export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
        pnyx-axi oracle status | rebuild [--hydra <name>]
+Search includes saved task briefs, intents, owner asks and helper results, including their earlier versions.
+Helper results match their tasks; unchanged helper waits are omitted.
 Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
 Full-text search over card titles, links, event text, harvested notes and the session transcripts
 hooks recorded. Every word must match somewhere on one card: its title, link titles or any entry.

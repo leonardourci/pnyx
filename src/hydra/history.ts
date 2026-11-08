@@ -145,6 +145,7 @@ export function taskWords({ event }: { event: HydraEvent }): {
   if (event.type === 'task.created') {
     const text = [
       event.data.ask?.text,
+      event.data.intent,
       event.data.brief,
     ].filter(Boolean).join('\n\n')
 
@@ -157,7 +158,10 @@ export function taskWords({ event }: { event: HydraEvent }): {
   if (event.type === 'task.brief') {
     return {
       action: 'brief',
-      text: event.data.after,
+      text: [
+        event.data.intent,
+        event.data.after,
+      ].filter(Boolean).join('\n\n'),
     }
   }
 
@@ -287,6 +291,29 @@ function historyMessages({ events }: { events: HydraEvent[] }): {
   const sequences = new Map<string, number>()
 
   for (const event of events) {
+    if (event.type === 'hydra.helper-finished') {
+      for (const outcome of event.data.outcomes) {
+        if (outcome.status === 'still_waiting') {
+          continue
+        }
+
+        const id = `${event.id}:${outcome.task}`
+        entries.push({
+          id,
+          kind: 'message',
+          role: `helper:${outcome.task} ${outcome.status ?? outcome.audience}`,
+          at: event.at,
+          text: outcome.summary,
+        })
+        sequences.set(
+          id,
+          event.seq,
+        )
+      }
+
+      continue
+    }
+
     let entry: ThreadEntry
 
     if (event.type === 'chat.message' && event.cardId === HYDRA_CARD && event.data.role.startsWith('assistant')) {

@@ -367,7 +367,26 @@ function catchUp({
       }
 
       for (const event of read.events) {
-        if (event.type === 'chat.message') {
+        if (event.type === 'hydra.helper-finished') {
+          let part = 0
+
+          for (const outcome of event.data.outcomes) {
+            // Handled results already have a routine chat message; unchanged waits carry no new result.
+            if (outcome.status === 'handled' || outcome.status === 'still_waiting') {
+              continue
+            }
+
+            part = add({
+              card: outcome.task,
+              kind: 'event',
+              source: EVENTS,
+              pos: event.seq,
+              at: event.at,
+              text: outcome.summary,
+              firstPart: part,
+            })
+          }
+        } else if (event.type === 'chat.message') {
           add({
             card: event.cardId,
             kind: 'transcript',

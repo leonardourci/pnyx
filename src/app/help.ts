@@ -123,7 +123,7 @@ Compaction runs when requested or through the harness itself; reported context u
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
 pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
-Read whole messages since a successful milestone, including task briefs. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
+Read whole messages since a successful milestone, including task briefs, intents and helper results. Unchanged helper waits are omitted. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
 pnyx-axi hydra inscribe start|finish|fail [--key <milestone-id>] [--through <seq>] [--error <why>]
 start returns the pass ID, snapshot and history command; finish requires that snapshot after every page and memory save succeeds. Failed and started passes never advance the inscribe boundary.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
