@@ -381,6 +381,7 @@ export interface TranscriptCall {
 export type FoundSettings = Record<string, string | null>
 
 export interface TranscriptRecord {
+  final?: boolean
   at?: string
   role: string
   messages: TranscriptMessage[]
