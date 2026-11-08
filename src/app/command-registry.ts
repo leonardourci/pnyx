@@ -60,6 +60,7 @@ export const COMMAND_REGISTRY = {
       'history',
       'status',
       'chat',
+      'messages',
       'inbox read',
       'inbox ack',
     ],
@@ -69,6 +70,7 @@ export const COMMAND_REGISTRY = {
         'show',
         'history',
         'chat',
+        'messages',
         'sessions',
       ],
       writes: [
@@ -89,11 +91,13 @@ export const COMMAND_REGISTRY = {
     worker: [
       'send',
       'history',
+      'message',
     ],
     helper: {
       reads: [
         'check',
         'messages',
+        'message',
         'show',
       ],
     },

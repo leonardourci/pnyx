@@ -1,3 +1,4 @@
+import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { AxiError } from 'axi-sdk-js'
@@ -40,6 +41,7 @@ const TASK_DETAIL_LIMIT = 5
 
 export const TASK_OPTIONS: Options = {
   ...WRITE,
+  ...MESSAGE_LOOKUP_OPTIONS,
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
@@ -633,6 +635,17 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     }
 
     return shown
+  }
+
+  if (action === 'messages') {
+    return messageLookup({
+      values,
+      hydraId,
+      task: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+    })
   }
 
   if (action === 'chat') {
