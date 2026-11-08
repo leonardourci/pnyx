@@ -7,7 +7,7 @@ import { pnyxHome } from '#store/paths.ts'
 
 export const DEBUG_LIMIT = 50
 export const DEBUG_MAX = 200
-const LOG_BYTES = 512 * 1024
+export const LOG_BYTES = 512 * 1024
 const CURSOR_BYTES = 2048
 
 export interface TimelineRow {
@@ -297,14 +297,27 @@ export function timeline({
       return
     }
 
-    rows.push(row)
-    rows.sort((
-      left,
-      right,
-    ) => compare({
-      left,
-      right,
-    }))
+    let start = 0
+    let end = rows.length
+
+    while (start < end) {
+      const middle = Math.floor((start + end) / 2)
+
+      if (compare({
+        left: row,
+        right: rows[middle]!,
+      }) < 0) {
+        end = middle
+      } else {
+        start = middle + 1
+      }
+    }
+
+    rows.splice(
+      start,
+      0,
+      row,
+    )
 
     if (rows.length > filter.limit + 1) {
       rows.pop()

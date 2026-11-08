@@ -67,9 +67,9 @@ export function createDiagnosticRecovery({
     }),
   })[0]
 
-  const candidates = () => {
+  const inputs = () => {
     const current = state()
-    const failed = recoverySubjects({ state: current }).map(({
+    const subjects = recoverySubjects({ state: current }).map(({
       card,
       reply,
     }) => ({
@@ -77,19 +77,29 @@ export function createDiagnosticRecovery({
       message: reply.id,
     }))
 
-    if (!failed.length) {
+    const originals = subjects.map(originalFor)
+      .filter((event): event is HydraEvent => event !== undefined)
+
+    return {
+      state: current,
+      subjects,
+      originals,
+    }
+  }
+
+  const candidates = () => {
+    const current = inputs()
+
+    if (!current.subjects.length) {
       return []
     }
 
-    const originals = failed.map(originalFor)
-      .filter((event): event is HydraEvent => event !== undefined)
-
     return recoveryCandidates({
-      state: current,
+      state: current.state,
       sessions: sessions(),
       enabled: enabled(),
       now: Date.now(),
-      events: originals,
+      events: current.originals,
     })
   }
 
@@ -376,6 +386,7 @@ export function createDiagnosticRecovery({
   }
 
   return {
+    originals: () => inputs().originals,
     blocked: () => [...blocked.values()].map(incident => ({ ...incident })),
     reconcile() {
       if (closed) {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { recoveryCandidates } from './recovery-state.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { timeline, serviceRows, type TimelineRow } from './timeline.ts'
+import { timeline, serviceRows, LOG_BYTES, type TimelineRow } from './timeline.ts'
 import { RECOVERY_PAUSE_MS } from './recovery-state.ts'
 import { healthFacts, nativeHealth } from './health.ts'
 import type { NativeWork } from '#workers/provider.ts'
@@ -226,6 +226,79 @@ test(
 )
 
 test(
+  'a broad timeline query bounds timestamp comparisons while retaining the newest mixed-time rows',
+  t => {
+    const count = 600
+    const limit = 50
+    const wide: HydraEvent[] = Array.from(
+      { length: count },
+      (
+        _,
+        index,
+      ) => ({
+        v: 1,
+        seq: index + 1,
+        id: `event-${index}`,
+        at: new Date(Date.parse('2026-01-01T00:00:00Z') + (index % 3) * 1000).toISOString(),
+        actor: 'cli',
+        cardId: 'task',
+        type: 'card.replied',
+        data: {
+          reply: `message-${index}`,
+          route: 'pnyx',
+          state: 'failed',
+        },
+      }),
+    )
+    const parse = Date.parse
+    let parses = 0
+
+    t.mock.method(
+      Date,
+      'parse',
+      // eslint-disable-next-line pnyx/object-params -- JavaScript owns Date.parse's signature.
+      (value: string) => {
+        parses++
+
+        return parse(value)
+      },
+    )
+    const page = timeline({
+      events: wide,
+      filter: { limit },
+    })
+    const expected = Array.from(
+      { length: count },
+      (
+        _,
+        index,
+      ) => index,
+    )
+      .sort((
+        left,
+        right,
+      ) => (right % 3) - (left % 3) || right - left)
+      .slice(
+        0,
+        limit,
+      )
+      .map(index => `event-${index}`)
+    assert.deepEqual(
+      page.entries.map(row => row.id),
+      expected,
+    )
+    assert.equal(
+      page.more,
+      true,
+    )
+    assert.ok(
+      parses < count * 25,
+      `Broad queries repeated timestamp parsing ${parses} times`,
+    )
+  },
+)
+
+test(
   'service history bounds its read, ignores legacy and torn records and returns identities without error bodies',
   t => {
     const home = mkdtempSync(join(
@@ -264,7 +337,7 @@ test(
         home,
         'service.log',
       ),
-      `${'x'.repeat(512 * 1024)}\nlegacy error\n${JSON.stringify({
+      `${'x'.repeat(LOG_BYTES)}\nlegacy error\n${JSON.stringify({
         ...own,
         hydraId: 'other',
       })}\n${JSON.stringify(own)}\n{"v":1`,
