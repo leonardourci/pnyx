@@ -105,7 +105,7 @@ const granted = ({
 })
 
 test(
-  'fixed routing keeps results, PR actions, progress, unknown tasks and owner answers off the helper',
+  'routine routing keeps owner decisions, merge actions, progress and unknown tasks off the helper',
   async () => {
     const s = state()
     const task = s.keys.work!
@@ -154,7 +154,7 @@ test(
           },
         } as HydraEvent,
       }),
-      undefined,
+      task,
     )
     assert.equal(
       helperEvent({
@@ -171,12 +171,9 @@ test(
     )
 
     for (const kind of [
-      'checks',
-      'comments',
       'merged',
       'approved merge is green',
       'timed review',
-      'permission',
       'slot free',
     ] as const) {
       assert.equal(
@@ -190,6 +187,10 @@ test(
     }
 
     for (const kind of [
+      'report',
+      'checks',
+      'comments',
+      'permission',
       'quiet',
       'wait ended',
       'not confirmed',
