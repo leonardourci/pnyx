@@ -175,7 +175,8 @@ export type HydraChange = EventBase & (
     type: 'task.reminder-due'
     data: {
       reminder: string
-      nextAt?: string
+      nextAt?: string | null
+      grouped?: boolean
       column: Column
       message: Omit<HydraMessage, 'id' | 'at' | 'actor'>
     }
@@ -414,6 +415,7 @@ export interface HydraState {
     flags?: string[]
   }
   hydraMessages?: HydraMessage[]
+  questionReminders?: Record<string, string>
   hydraAgent?: import('#workers/model.ts').AgentConfig
   hydraAgentChange?: import('#hydra/model.ts').HydraAgentChange
   historyMilestones?: import('#hydra/history.ts').HistoryMilestone[]

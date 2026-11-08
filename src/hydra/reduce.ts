@@ -198,6 +198,16 @@ export function applyHydra({
   }
 
   if (event.type === 'hydra.message') {
+    if (event.data.reminderQuestions) {
+      const reminders = { ...state.questionReminders }
+
+      for (const key of event.data.reminderQuestions) {
+        reminders[key] = event.at
+      }
+
+      state.questionReminders = reminders
+    }
+
     const message = {
       ...event.data,
       id: event.id,
