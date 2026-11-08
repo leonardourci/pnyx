@@ -1,3 +1,4 @@
+import { runFixture } from '#test-harness/child-fixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { pnyx } from '#test-harness/pnyx.ts'
@@ -76,6 +77,20 @@ test(
     assert.doesNotMatch(
       resumed.received[0]!,
       /SYNTHETIC_OWNER_POLICY|Unchanged synthetic task/,
+    )
+  },
+)
+
+test(
+  'a hosted Hydra compacts at the context limit without repeating stale usage',
+  async t => {
+    const stdout = await runFixture({
+      t,
+      name: 'context-compaction',
+    })
+    assert.match(
+      stdout,
+      /Context compacts at the limit and does not loop/,
     )
   },
 )

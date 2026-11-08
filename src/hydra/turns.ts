@@ -1,3 +1,4 @@
+import { nativeIdle } from '#workers/native-session.ts'
 import { createDigestContext } from './digest-context.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate } from './agent-choice.ts'
@@ -40,6 +41,8 @@ import type { HostedSession, Provider } from '#workers/provider.ts'
 import { harnessOf, providerIdOf } from '#workers/providers.ts'
 import { sessionId, withoutInterrupted } from '#workers/session-attachments.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
+
+const HYDRA_CONTEXT_TOKENS = 200_000
 
 // Hydra's turns: admitting and starting one, the context its session opens with, and what Hydra's live session does as a turn starts, finishes or ends.
 export function createHydraTurns({
@@ -130,6 +133,7 @@ export function createHydraTurns({
   armWake: ReturnType<typeof createWakeQueue>['armWake']
 }) {
   let hydraTurn = Promise.resolve()
+  const automaticCompactions = new Set<string>()
   let outcomesPresented = 0
   const helperBatchesPresented = new Set<string>()
   const hydraInstructions = () =>
@@ -747,6 +751,44 @@ export function createHydraTurns({
         text: `<pnyx-wake>The owner wrote to you; reply to them in one standalone message.\n${REPLY_RULES}</pnyx-wake>`,
       })
     }
+
+    const snapshot = entry.session?.snapshot()
+    const outcome = snapshot?.outcome
+    const used = outcome?.usage?.used
+    const session = entry.session?.id
+
+    if (!session || used === undefined) {
+      return
+    }
+
+    if (used < HYDRA_CONTEXT_TOKENS) {
+      automaticCompactions.delete(session)
+
+      return
+    }
+
+    const idle = snapshot && nativeIdle({ work: snapshot.work })
+
+    if (outcome?.status !== 'completed' || !idle || entry.stopping || queuedHydra.size > 0 || entry.input.pending() > 0 || automaticCompactions.has(session)) {
+      return
+    }
+
+    automaticCompactions.add(session)
+    // Drain the provider's trailing completion events before starting another control.
+    setImmediate(() => {
+      const current = entry.session?.snapshot()
+
+      if (closing() || entry.stopping || queuedHydra.size > 0 || !current || current.outcome?.status !== 'completed' || (current.outcome.usage?.used ?? 0) < HYDRA_CONTEXT_TOKENS || !nativeIdle({ work: current.work }) || entry.input.pending() > 0) {
+        automaticCompactions.delete(session)
+
+        return
+      }
+
+      entry.input.push({
+        id: `context-compact:${outcome.turn}`,
+        text: '/compact',
+      })
+    })
   }
 
   const activityEventId = ({
