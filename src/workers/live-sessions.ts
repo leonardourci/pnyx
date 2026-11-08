@@ -171,11 +171,13 @@ export function createLiveSessions({
     }
 
     try {
+      const contract = card.id === HYDRA_CARD
+        ? turns().hydraSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
       entry.session ??= await providerOf({ provider: card.agent.provider }).open({
         cwd: folderOf({ card }),
         agent: card.agent,
         settings: card.settings ?? {},
-        ...(card.id === HYDRA_CARD ? turns().hydraSession() : { allow: WORKER_COMMANDS }),
+        ...contract,
         env: card.agent.loginFolder ? accountEnvironment({
           account: {
             provider: harnessOf({ provider: card.agent.provider }),

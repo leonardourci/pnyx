@@ -1,4 +1,4 @@
-import { countTokens, ESTIMATED_TOKEN_BYTES } from '#workers/token-count.ts'
+import { createHash } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { declaredState } from '#tasks/declarations.ts'
@@ -13,12 +13,15 @@ import { HYDRA_CARD } from './identity.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
 import { helperLeases } from '#routine-helper/state.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
+import { countTokens, ESTIMATED_TOKEN_BYTES } from '#workers/token-count.ts'
 
 export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init` saves them in the Pnyx home to edit'
 
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
 const OWNER_CONTEXT_TOKENS = 3_000
+const DIGEST_HASH_CHARS = 12
+const DIGEST_CHECKPOINT_VERSION = 1
 
 export const clip = ({
   text,
@@ -175,12 +178,202 @@ function ownerDigest({
   return complete + notice
 }
 
+function digestParts({
+  hydraId,
+  state,
+  owner,
+  projects,
+  setup,
+}: {
+  hydraId: string
+  state: HydraState
+  owner: string
+  projects: string[]
+  setup: string[]
+}): Map<string, string> {
+  const config = hydraConfig({
+    state,
+    id: hydraId,
+  })
+  const titles = new Map(config.columns.map(column => [
+    column.id as string,
+    column.title,
+  ]))
+  const done = new Set(config.columns.filter(column => column.role === 'done').map(column => column.id as string))
+  const order = new Map(config.columns.map((
+    column,
+    index,
+  ) => [
+    column.id as string,
+    index,
+  ]))
+  const tasks = Object.values(state.cards)
+    .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
+  const place = ({ card }: { card: Card }) => order.get(card.column) ?? order.size
+  const open = tasks.filter(card => !done.has(card.column)).sort((
+    a,
+    b,
+  ) => place({ card: a }) - place({ card: b }) || rankOf({ card: a }) - rankOf({ card: b }))
+  const memory = state.hydraMemory ?? {}
+  const hydra = state.cards[HYDRA_CARD]
+  const parts = new Map<string, string>()
+  const attention = hydra?.attention.filter(item => item.blocking && !item.answered) ?? []
+  parts.set(
+    'attention',
+    attention.length ? `Your own chat waits on: ${attention.map(item => clip({ text: item.text ?? item.kind })).join('; ')}` : 'Your own chat has no pending permission requests.',
+  )
+  parts.set(
+    'setup',
+    setup.join('\n') || 'Setup needed: none',
+  )
+  parts.set(
+    'columns',
+    [
+      'Columns (id · title · tasks · description):',
+      ...config.columns.map(column => `- ${column.id} · ${column.title} · ${tasks.filter(task => task.column === column.id).length} · ${clip({ text: column.description ?? 'no description' })}`),
+      `Placement rules: \`pnyx-axi column list --hydra ${hydraId}\` when needed.`,
+    ].join('\n'),
+  )
+  parts.set(
+    'helper',
+    helperLeases({ state }).join('\n'),
+  )
+  parts.set(
+    'tasks',
+    'Open tasks (id · title · column · declared status · worker):',
+  )
+
+  for (const card of open.slice(
+    0,
+    TASK_LIMIT,
+  )) {
+    parts.set(
+      `task:${card.id}`,
+      taskLine({
+        state,
+        card,
+        column: titles.get(card.column) ?? card.column,
+      }),
+    )
+  }
+
+  if (!open.length) {
+    parts.set(
+      'empty',
+      'none: no open tasks',
+    )
+  }
+
+  parts.set(
+    'more',
+    open.length > TASK_LIMIT ? `${open.length - TASK_LIMIT} more open tasks: run \`pnyx-axi task list --hydra ${hydraId}\`` : 'All open tasks are listed.',
+  )
+  parts.set(
+    'done',
+    `${tasks.length - open.length} done tasks not listed`,
+  )
+  parts.set(
+    'owner',
+    owner,
+  )
+  parts.set(
+    'memory',
+    [
+      'Hydra memory (this Hydra only):',
+      ...Object.entries(memory).map(([
+        key,
+        entry,
+      ]) => `- ${key}: ${entry.text}`),
+      usage({
+        layer: 'Hydra',
+        memory,
+        budget: HYDRA_MEMORY_BUDGET,
+      }),
+    ].join('\n'),
+  )
+  parts.set(
+    'projects',
+    projects.join('\n') || 'Attached projects: none',
+  )
+
+  return parts
+}
+
+function digestHash({ text }: { text: string }): string {
+  return createHash('sha256').update(text)
+    .digest('base64url')
+    .slice(
+      0,
+      DIGEST_HASH_CHARS,
+    )
+}
+
+function previousCheckpoint({
+  text,
+  hydraId,
+  through,
+}: {
+  text?: string
+  hydraId: string
+  through: number
+}): {
+  through: number
+  parts: Record<string, string>
+} | undefined {
+  const encoded = text?.match(/^<pnyx-digest\b[^>]* checkpoint="([A-Za-z0-9_-]+)"/)?.[1]
+
+  if (!encoded) {
+    return
+  }
+
+  let value: unknown
+
+  try {
+    value = JSON.parse(Buffer.from(
+      encoded,
+      'base64url',
+    ).toString('utf8'))
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return
+    }
+
+    throw error
+  }
+
+  if (!value || typeof value !== 'object' || !('v' in value) || value.v !== DIGEST_CHECKPOINT_VERSION || !('hydra' in value) || value.hydra !== hydraId
+    || !('through' in value) || typeof value.through !== 'number' || !Number.isSafeInteger(value.through) || value.through < 0 || value.through > through
+    || !('parts' in value) || !value.parts || typeof value.parts !== 'object' || Array.isArray(value.parts)) {
+    return
+  }
+
+  const parts: Record<string, string> = {}
+
+  for (const [
+    key,
+    hash,
+  ] of Object.entries(value.parts)) {
+    if (typeof hash !== 'string' || !new RegExp(`^[A-Za-z0-9_-]{${DIGEST_HASH_CHARS}}$`).test(hash)) {
+      return
+    }
+
+    parts[key] = hash
+  }
+
+  return {
+    through: value.through,
+    parts,
+  }
+}
+
 export function hydraDigest({
   hydraId,
   state,
   owner,
   projects = [],
   setup = [],
+  previousDigest,
+  checkpointed = false,
   now = new Date().toISOString(),
   conditions = learningConditions({ states: { [hydraId]: state } }),
 }: {
@@ -189,83 +382,94 @@ export function hydraDigest({
   owner: Memory
   projects?: string[]
   setup?: string[]
+  previousDigest?: string
+  checkpointed?: boolean
   now?: string
   conditions?: LearningConditions
 }): string {
+  const parts = digestParts({
+    hydraId,
+    state,
+    owner: ownerDigest({
+      owner,
+      conditions,
+      now,
+    }),
+    projects,
+    setup,
+  })
+  const before = previousCheckpoint({
+    text: previousDigest,
+    hydraId,
+    through: state.seq,
+  })
+  const hashes: Record<string, string> = {}
+  const changed: string[] = []
+
+  for (const [
+    key,
+    text,
+  ] of parts) {
+    let identity = key
+
+    if (key.startsWith('task:')) {
+      identity = `task:${digestHash({ text: key.slice('task:'.length) })}`
+    }
+
+    let fingerprint = text
+
+    if (key === 'owner') {
+      fingerprint += JSON.stringify(owner)
+    }
+
+    const hash = digestHash({ text: fingerprint })
+    hashes[identity] = hash
+
+    if (text && hash !== before?.parts[identity]) {
+      changed.push(text)
+    }
+  }
+
+  if (before) {
+    for (const card of Object.values(state.cards)) {
+      const key = `task:${digestHash({ text: card.id })}`
+
+      if (before.parts[key] && !hashes[key]) {
+        changed.push(`- ${card.id} is no longer listed in this digest; read task show for its current state.`)
+      }
+    }
+  }
+
+  let checkpoint = ''
+
+  if (checkpointed) {
+    const encoded = Buffer.from(JSON.stringify({
+      v: DIGEST_CHECKPOINT_VERSION,
+      hydra: hydraId,
+      through: state.seq,
+      parts: hashes,
+    })).toString('base64url')
+    checkpoint = ` checkpoint="${encoded}"`
+  }
+
   const config = hydraConfig({
     state,
     id: hydraId,
   })
-  const titles = new Map(config.columns.map(c => [
-    c.id as string,
-    c.title,
-  ]))
-  const done = new Set(config.columns.filter(c => c.role === 'done').map(c => c.id as string))
-  const order = new Map(config.columns.map((
-    c,
-    i,
-  ) => [
-    c.id as string,
-    i,
-  ]))
-  const tasks = Object.values(state.cards)
-    .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
-  const place = ({ card }: { card: Card }) => order.get(card.column) ?? order.size
-  const open = tasks.filter(card => !done.has(card.column))
-    .sort((
-      a,
-      b,
-    ) => place({ card: a }) - place({ card: b })
-      || rankOf({ card: a }) - rankOf({ card: b }))
-  const memory = state.hydraMemory ?? {}
-  const hydra = state.cards[HYDRA_CARD]
+  const checkAfter = before?.through ?? state.seq
+  const lines = [
+    `<pnyx-digest hydra="${hydraId}" through="${state.seq}"${checkpoint}>`,
+    `Hydra ${hydraId} ("${config.name}") as of event ${state.seq}. \`pnyx-axi hydra check --after ${checkAfter} --hydra ${hydraId}\` lists what changed since.`,
+  ]
 
-  return [
-    `<pnyx-digest hydra="${hydraId}" through="${state.seq}">`,
-    `Hydra ${hydraId} ("${config.name}") as of event ${state.seq}. \`pnyx-axi hydra check --after ${state.seq} --hydra ${hydraId}\` lists what changed since.`,
-    ...(hydra?.attention.some(a => a.blocking && !a.answered) ? [
-      `Your own chat waits on: ${hydra.attention.filter(a => a.blocking && !a.answered).map(a => clip({ text: a.text ?? a.kind }))
-        .join('; ')}`,
-    ] : []),
-    ...(setup.length ? [
-      '',
-      ...setup,
-    ] : []),
-    '',
-    'Columns (id · title · tasks · description):',
-    ...config.columns.map(c => `- ${c.id} · ${c.title} · ${tasks.filter(t => t.column === c.id).length} · ${clip({ text: c.description ?? 'no description' })}`),
-    `Placement rules: \`pnyx-axi column list --hydra ${hydraId}\` when needed.`,
-    '',
-    ...helperLeases({ state }),
-    '',
-    'Open tasks (id · title · column · declared status · worker):',
-    ...(open.length ? open.slice(
-      0,
-      TASK_LIMIT,
-    ).map(card => taskLine({
-      state,
-      card,
-      column: titles.get(card.column) ?? card.column,
-    })) : ['none: no open tasks']),
-    ...(open.length > TASK_LIMIT ? [`${open.length - TASK_LIMIT} more open tasks: run \`pnyx-axi task list --hydra ${hydraId}\``] : []),
-    ...(tasks.length > open.length ? [`${tasks.length - open.length} done tasks not listed`] : []),
-    '',
-    ownerDigest({ owner, conditions, now }),
-    '',
-    'Hydra memory (this Hydra only):',
-    ...(Object.keys(memory).length ? Object.entries(memory).map(([
-      key,
-      entry,
-    ]) => `- ${key}: ${entry.text}`) : ['none yet']),
-    usage({
-      layer: 'Hydra',
-      memory,
-      budget: HYDRA_MEMORY_BUDGET,
-    }),
-    ...(projects.length ? [
-      '',
-      ...projects,
-    ] : []),
+  if (before) {
+    lines.push(`Changes since event ${before.through}; unlisted context still applies.`)
+  }
+
+  lines.push(
+    ...changed,
     '</pnyx-digest>',
-  ].join('\n')
+  )
+
+  return lines.join('\n\n')
 }

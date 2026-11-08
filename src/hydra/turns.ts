@@ -1,3 +1,4 @@
+import { createDigestContext } from './digest-context.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
@@ -136,9 +137,18 @@ export function createHydraTurns({
 
   let memoryStamp: string | undefined
 
-  const digest = async ({ remember = true }: { remember?: boolean } = {}) => {
+  const digest = async ({
+    remember = true,
+    previousDigest,
+    checkpointed = false,
+  }: {
+    remember?: boolean
+    previousDigest?: string
+    checkpointed?: boolean
+  } = {}) => {
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
+
     const [
       projects,
       items,
@@ -159,6 +169,8 @@ export function createHydraTurns({
     }
 
     return hydraDigest({
+      previousDigest,
+      checkpointed,
       conditions: memoryConditions(),
       hydraId,
       state,
@@ -183,27 +195,42 @@ export function createHydraTurns({
   }
 
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
-  const hydraSession = ({ history = false }: { history?: boolean } = {}) => {
+  const hydraSession = ({
+    history = false,
+    agent,
+  }: {
+    history?: boolean
+    agent?: AgentRef
+  } = {}) => {
     let contextSent = false
 
     return {
       instructions: hydraInstructions(),
       allow: HYDRA_COMMANDS,
-      context: async () => {
-        const state = loadHydra({ hydraId }).state
-        const conversation = history && !contextSent ? conversationContext({
-          hydraId,
-          state,
-        }) : ''
-        contextSent = true
+      context: createDigestContext({
+        agent,
+        render: async ({
+          previousDigest,
+          compacted,
+        }) => {
+          const state = loadHydra({ hydraId }).state
+          const conversation = compacted || history && !contextSent ? conversationContext({
+            hydraId,
+            state,
+          }) : ''
+          contextSent = true
 
-        const memory = await digest()
+          const memory = await digest({
+            previousDigest,
+            checkpointed: true,
+          })
 
-        return conversation ? memory.replace(
-          '</pnyx-digest>',
-          `\nConversation context:\n${sealed({ text: conversation })}\n</pnyx-digest>`,
-        ) : memory
-      },
+          return conversation ? memory.replace(
+            '</pnyx-digest>',
+            `\nConversation context:\n${sealed({ text: conversation })}\n</pnyx-digest>`,
+          ) : memory
+        },
+      }),
     }
   }
 
@@ -440,7 +467,10 @@ export function createHydraTurns({
             cwd,
             agent,
             settings,
-            ...hydraSession({ history: history && !agent }),
+            ...hydraSession({
+              history: history && !agent,
+              agent,
+            }),
             env: agent?.loginFolder ? accountEnvironment({
               account: {
                 provider: candidate.harness,

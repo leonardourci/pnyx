@@ -112,3 +112,177 @@ test(
     )
   },
 )
+
+test(
+  'a resumed digest sends changed tasks and removed tasks without repeating unchanged owner memory',
+  () => {
+    const previous = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'first',
+        actor: 'web',
+        at: '2026-01-01T00:00:00Z',
+        cardId: 'task:first',
+        type: 'task.created',
+        data: {
+          key: 'first',
+          title: 'Existing task',
+        },
+      },
+    })
+    const current = reduce({
+      state: previous,
+      event: {
+        v: 1,
+        seq: 2,
+        id: 'second',
+        actor: 'web',
+        at: '2026-01-01T00:01:00Z',
+        cardId: 'task:second',
+        type: 'task.created',
+        data: {
+          key: 'second',
+          title: 'New task',
+        },
+      },
+    })
+    const previousDigest = hydraDigest({
+      hydraId: 'lab',
+      state: previous,
+      checkpointed: true,
+      owner: {
+        preferences: {
+          text: 'Preserve all release approvals.',
+          at: '2026-01-01T00:00:00Z',
+        },
+      },
+    })
+    const digest = hydraDigest({
+      hydraId: 'lab',
+      state: current,
+      checkpointed: true,
+      previousDigest,
+      owner: {
+        preferences: {
+          text: 'Preserve all release approvals.',
+          at: '2026-01-01T00:00:00Z',
+        },
+      },
+    })
+    assert.match(
+      digest,
+      /New task/,
+    )
+    assert.doesNotMatch(
+      digest,
+      /Existing task|Preserve all release approvals/,
+    )
+    assert.match(
+      digest,
+      /hydra check --after 1 --hydra lab/,
+    )
+    const changedOwner = hydraDigest({
+      hydraId: 'lab',
+      state: current,
+      previousDigest: digest,
+      owner: {
+        preferences: {
+          text: 'Updated synthetic approval policy.',
+          at: '2026-01-01T00:02:00Z',
+        },
+      },
+    })
+    assert.match(
+      changedOwner,
+      /Updated synthetic approval policy/,
+    )
+    assert.doesNotMatch(
+      changedOwner,
+      /Existing task|New task/,
+    )
+    const hidden = reduce({
+      state: previous,
+      event: {
+        v: 1,
+        seq: 2,
+        id: 'hide',
+        actor: 'web',
+        at: '2026-01-01T00:01:00Z',
+        cardId: 'task:first',
+        type: 'task.visibility',
+        data: {
+          before: false,
+          after: true,
+        },
+      },
+    })
+    assert.match(
+      hydraDigest({
+        hydraId: 'lab',
+        state: hidden,
+        previousDigest,
+        owner: {},
+      }),
+      /task:first.*no longer listed/,
+    )
+  },
+)
+
+test(
+  'moving an open task beyond the digest cap does not announce that it closed',
+  () => {
+    const state = emptyHydra()
+
+    for (let index = 0; index < 41; index++) {
+      const next = reduce({
+        state,
+        event: {
+          v: 1,
+          seq: index + 1,
+          id: `created:${index}`,
+          actor: 'web',
+          at: '2026-01-01T00:00:00Z',
+          cardId: `task:${index}`,
+          type: 'task.created',
+          data: {
+            key: String(index),
+            title: `Synthetic task ${index}`,
+          },
+        },
+      })
+      Object.assign(
+        state,
+        next,
+      )
+    }
+
+    const previousDigest = hydraDigest({
+      hydraId: 'lab',
+      state,
+      owner: {},
+      checkpointed: true,
+    })
+    const current = structuredClone(state)
+    current.cards['task:40']!.rank = -1
+    const digest = hydraDigest({
+      hydraId: 'lab',
+      state: current,
+      owner: {},
+      previousDigest,
+    })
+    assert.match(
+      digest,
+      /Synthetic task 40/,
+    )
+    assert.doesNotMatch(
+      digest,
+      /no longer open/,
+    )
+    assert.match(
+      digest,
+      /task:39.*no longer listed/,
+    )
+  },
+)
