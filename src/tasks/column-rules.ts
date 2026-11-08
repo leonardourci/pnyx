@@ -1,7 +1,9 @@
 import { LEGACY_IN_PROGRESS, LEGACY_COLUMNS, type HydraColumn, type Column } from './columns-model.ts'
 import type { TaskStatus, Card } from './model.ts'
 import type { HydraState, Decision } from '#app/model.ts'
-import { DEFAULT_COLUMNS, type Role, columnRule } from './column-defaults.ts'
+import { DEFAULT_COLUMNS, type Role, migrateDefaultRule } from './column-defaults.ts'
+import { cardFacts, placeCard } from './columns.ts'
+import { isManagedTask } from './select.ts'
 import { ownerGates } from './owner-gates.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -154,7 +156,7 @@ function withDefaultColumns({
   ]
 }
 
-// Cards whose column goes away are placed by status, so this runs once per older layout.
+// Upgrade untouched defaults while preserving owner rules and manual placements.
 export function migrateColumns({
   state,
   meta,
@@ -167,15 +169,49 @@ export function migrateColumns({
     columns: before,
     locked: state.config?.hydra.kind === 'firstmate',
   })
-  const missingRules = layout.some(column => column.rule === undefined)
-  const columns = missingRules ? layout.map(column => ({
-    ...column,
-    rule: structuredClone(columnRule({ column })),
-  })) : layout
+  const updated = layout.map(column => migrateDefaultRule({ column }))
+  const rulesChanged = updated.some((
+    column,
+    index,
+  ) => column !== layout[index])
+  const columns = rulesChanged ? updated : layout
   const fallback = fallbackColumn({ columns })
   const placements = Object.fromEntries(Object.values(state.cards)
-    .filter(card => !columns.some(c => c.id === card.column))
-    .map(card => {
+    .flatMap(card => {
+      if (columns.some(c => c.id === card.column)) {
+        if (!rulesChanged || card.hidden || isManagedTask({ card })
+          || state.config?.hydra.kind === 'firstmate') {
+          return []
+        }
+
+        const facts = cardFacts({
+          card,
+          state,
+        })
+        const previous = placeCard({
+          card: facts,
+          columns: before,
+        })
+        const after = placeCard({
+          card: facts,
+          columns,
+        })
+
+        if (!after || previous !== card.column || after === card.column) {
+          return []
+        }
+
+        return [
+          [
+            card.id,
+            {
+              before: card.column,
+              after,
+            },
+          ],
+        ]
+      }
+
       const role = statusRole({ card })
 
       const after = (role && roleColumn({
@@ -184,11 +220,13 @@ export function migrateColumns({
       })) ?? fallback
 
       return [
-        card.id,
-        {
-          before: card.column,
-          after,
-        },
+        [
+          card.id,
+          {
+            before: card.column,
+            after,
+          },
+        ],
       ]
     }))
 
@@ -200,7 +238,7 @@ export function migrateColumns({
     state,
     meta: {
       ...meta,
-      reason: 'Moved onto the default Hydra columns',
+      reason: 'Updated the default Hydra columns and rules',
     },
     cardId: '$board',
     change: {

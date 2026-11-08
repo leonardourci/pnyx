@@ -19,7 +19,7 @@ const ACTIVE: ColumnCondition[] = [
 const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
   queued: [
     [
-      ...NO_OWNER,
+      ...UNFINISHED,
       'held',
     ],
     [
@@ -66,6 +66,29 @@ const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
   done: [
     [
       ...NO_OWNER,
+      'done',
+    ],
+  ],
+}
+
+const PREVIOUS_HOLD_RULES: Record<string, ColumnRule> = {
+  queued: [
+    [
+      ...NO_OWNER,
+      'held',
+    ],
+    [
+      ...UNFINISHED,
+      'queued',
+    ],
+    [
+      ...ACTIVE,
+      'worker:none',
+    ],
+  ],
+  done: [
+    [
+      ...NO_OWNER,
       '!held',
       'done',
     ],
@@ -74,6 +97,20 @@ const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
 
 export function columnRule({ column }: { column: HydraColumn }): ColumnRule {
   return column.rule ?? DEFAULT_COLUMN_RULES[column.role ?? ''] ?? []
+}
+
+export function migrateDefaultRule({ column }: { column: HydraColumn }): HydraColumn {
+  const previous = PREVIOUS_HOLD_RULES[column.role ?? '']
+  const unchangedDefault = previous && JSON.stringify(column.rule) === JSON.stringify(previous)
+
+  if (column.rule !== undefined && !unchangedDefault) {
+    return column
+  }
+
+  return {
+    ...column,
+    rule: structuredClone(DEFAULT_COLUMN_RULES[column.role ?? ''] ?? []),
+  }
 }
 
 export type Role = (typeof COLUMNS)[number]

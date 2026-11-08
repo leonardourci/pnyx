@@ -174,7 +174,7 @@ pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
 Release records Go for the open go question bound to the hold, if any; the source must also postdate that question.
-Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
+Held unfinished cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
 pnyx-axi task owner-ask <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [--details <text>]
 --intent rewrites the card's Intent when the goal itself changes; the log keeps the earlier ones.
@@ -188,6 +188,7 @@ pnyx-axi task rename <id> [--title <title>] [--project <name>]
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
 Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.
+Default columns put completed held tasks in Done; the hold still applies if the task reopens.
 Before pausing with a ready result, run hydra send --task <id> --text "<result with links>" without --kind progress.
 Questions use task ask; blocked/needs_you wake Hydra but do not confirm owner delivery.
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
