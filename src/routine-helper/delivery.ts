@@ -35,6 +35,7 @@ export function routineMessages({
         at: event.at,
         actor: 'pnyx',
         action: 'send',
+        kind: 'routine',
         hydra: hydraConfig({ state }).hydra.id,
         task: outcome.task,
         text: `- ${taskMention({

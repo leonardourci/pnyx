@@ -239,7 +239,6 @@ test(
       }),
       undefined,
     )
-    // Waiting on the owner leaves the helper only the worker's nudges and plain permission prompts.
     assert.equal(
       helperReason({
         state: state(),

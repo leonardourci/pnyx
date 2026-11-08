@@ -38,7 +38,7 @@ export interface HydraMessage {
   action: 'send' | 'worker'
   // A worker's progress report: it stays on the card and reaches Hydra with its next wake, never waking it alone.
   // divider: Pnyx's milestone line in the conversation.
-  kind?: 'progress' | 'divider'
+  kind?: 'progress' | 'divider' | 'routine'
   text: string
   enteredText?: string
   details?: string

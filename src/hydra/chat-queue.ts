@@ -27,7 +27,7 @@ function hydraQueueView({
   const stopSeq = stopped?.seq ?? changeSeq
   const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
     && (state.eventIds[id] ?? 0) > stopSeq
-  const waiting = messages.filter(m => sentSince(m) && !taken(m))
+  const waiting = messages.filter(m => m.kind !== 'routine' && sentSince(m) && !taken(m))
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
     ...waiting.map(message => message.id),

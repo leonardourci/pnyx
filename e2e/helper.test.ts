@@ -1585,15 +1585,43 @@ test(
         },
       ],
     })
-    pnyx.claude.plan({
+    const routineTurn = pnyx.claude.plan({
       text: HELPER_PROMPT,
       reply: result,
+      hold: true,
     })
+    t.after(() => routineTurn.release())
     workerSays({
       s,
       key: 'work',
       text: 'The accepted export is ready.',
     })
+    await until({
+      what: 'the helper to take the routine report',
+      check: () => grants({ s }).length === 1,
+    })
+    inOneWrite({
+      s,
+      steps: [
+        ({ state }) => hydraEvent({
+          state,
+          cardId: HYDRA_CARD,
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'pnyx',
+          },
+          change: {
+            type: 'hydra.operation',
+            data: {
+              id: 'synthetic-stop',
+              kind: 'compaction',
+              state: 'started',
+            },
+          },
+        }),
+      ],
+    })
+    routineTurn.release()
     await until({
       what: 'the result to be saved',
       check: () => finishes({ s }).length === 1,
@@ -1612,6 +1640,31 @@ test(
       thread.conversation?.entries.filter(entry => entry.role === 'Pnyx' && entry.text.includes('The export is ready for review.')).length,
       1,
     )
+    assert.equal(
+      s.state().hydraOperation?.id,
+      'synthetic-stop',
+    )
+    inOneWrite({
+      s,
+      steps: [
+        ({ state }) => hydraEvent({
+          state,
+          cardId: HYDRA_CARD,
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'pnyx',
+          },
+          change: {
+            type: 'hydra.operation',
+            data: {
+              id: 'synthetic-stop',
+              kind: 'compaction',
+              state: 'finished',
+            },
+          },
+        }),
+      ],
+    })
     pnyx.claude.plan({
       text: HELPER_PROMPT,
       reply: result,
