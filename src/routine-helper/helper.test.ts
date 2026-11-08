@@ -810,6 +810,159 @@ test(
 )
 
 test(
+  'lease inspection ignores proven dead holders without changing files and retains unknown ownership',
+  t => {
+    const task = state().keys.work!
+    const path = join(
+      root,
+      'hydras',
+      'lab',
+      `helper-lease-${encodeURIComponent(task)}.json`,
+    )
+    const dead = 2_000_000_001
+    const unknown = 2_000_000_002
+
+    t.mock.method(
+      process,
+      'kill',
+      // eslint-disable-next-line pnyx/object-params -- Node owns process.kill's signature.
+      (pid: number) => {
+        if (pid === dead) {
+          throw Object.assign(
+            new Error('Gone'),
+            { code: 'ESRCH' },
+          )
+        }
+
+        if (pid === unknown) {
+          throw Object.assign(
+            new Error('Unknown'),
+            { code: 'EPERM' },
+          )
+        }
+
+        return true
+      },
+    )
+    assert.equal(
+      taskLeasePresent({
+        hydraId: 'lab',
+        task,
+      }),
+      false,
+    )
+
+    for (const sample of [
+      {
+        holders: [dead],
+        occupied: false,
+      },
+      {
+        holders: [
+          dead,
+          process.pid,
+        ],
+        occupied: true,
+      },
+      {
+        holders: [unknown],
+        occupied: true,
+      },
+    ]) {
+      const content = JSON.stringify({
+        actor: 'cli',
+        holders: sample.holders.map(pid => ({
+          id: String(pid),
+          pid,
+        })),
+      })
+      fs.writeFileSync(
+        path,
+        content,
+      )
+      assert.equal(
+        taskLeasePresent({
+          hydraId: 'lab',
+          task,
+        }),
+        sample.occupied,
+      )
+      assert.equal(
+        readFileSync(
+          path,
+          'utf8',
+        ),
+        content,
+      )
+    }
+
+    fs.writeFileSync(
+      path,
+      'not JSON',
+    )
+    assert.equal(
+      taskLeasePresent({
+        hydraId: 'lab',
+        task,
+      }),
+      true,
+    )
+    assert.equal(
+      readFileSync(
+        path,
+        'utf8',
+      ),
+      'not JSON',
+    )
+    const unreadable = JSON.stringify({
+      actor: 'cli',
+      holders: [
+        {
+          id: 'dead',
+          pid: dead,
+        },
+      ],
+    })
+    fs.writeFileSync(
+      path,
+      unreadable,
+    )
+    t.mock.method(
+      fs,
+      'readFileSync',
+      () => {
+        throw Object.assign(
+          new Error('Unreadable lease'),
+          { code: 'EACCES' },
+        )
+      },
+    )
+    syncBuiltinESMExports()
+
+    try {
+      assert.equal(
+        taskLeasePresent({
+          hydraId: 'lab',
+          task,
+        }),
+        true,
+      )
+    } finally {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    }
+
+    assert.equal(
+      readFileSync(
+        path,
+        'utf8',
+      ),
+      unreadable,
+    )
+  },
+)
+
+test(
   'reading lease presence preserves a broken lease link as occupied',
   () => {
     const task = state().keys.work!

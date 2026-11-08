@@ -36,13 +36,33 @@ export function taskLeasePresent({
   hydraId: string
   task: string
 }): boolean {
-  return lstatSync(
-    leasePath({
-      dir: hydraDir({ hydraId }),
-      task,
-    }),
-    { throwIfNoEntry: false },
-  ) !== undefined
+  const path = leasePath({
+    dir: hydraDir({ hydraId }),
+    task,
+  })
+
+  try {
+    const entry = lstatSync(
+      path,
+      { throwIfNoEntry: false },
+    )
+
+    if (!entry) {
+      return false
+    }
+
+    if (!entry.isFile()) {
+      return true
+    }
+
+    return readLease({
+      path,
+      cleanup: false,
+    }) !== undefined
+  } catch {
+    // Unknown ownership must never authorize an automatic resend.
+    return true
+  }
 }
 
 function readLease({
