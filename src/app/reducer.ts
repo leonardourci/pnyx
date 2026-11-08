@@ -20,6 +20,7 @@ import { applyView } from '#preferences/reduce.ts'
 import { applyTask } from '#tasks/reduce.ts'
 import { applyDispatchProposal, applyLaunch, applySessionMove } from '#workers/reduce.ts'
 import { applyCardEvent } from '#tasks/card-events.ts'
+import { applyRecovery } from '#diagnostics/recovery-state.ts'
 
 export function emptyHydra(): HydraState {
   return {
@@ -60,7 +61,10 @@ function apply({
     event,
   })
 
-  if (applyCompaction({
+  if (applyRecovery({
+    state,
+    event,
+  }) || applyCompaction({
     state,
     event,
   }) || applyUpgrade({
