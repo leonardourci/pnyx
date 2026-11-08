@@ -192,7 +192,14 @@ export function createServerTick({
         }
 
         sources().reconcile()
-        recover()
+        background({
+          name: 'diagnostic reconcile',
+          run: recover,
+          context: {
+            hydraId,
+            eventSeq: state().seq,
+          },
+        })
         background({
           name: 'review',
           run: review().check,
