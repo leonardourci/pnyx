@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { readSettings } from '#settings/store.ts'
 import { commands } from '#app/cli.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -1031,6 +1032,19 @@ test(
         ],
       },
     })
+    pending({
+      id: 'form',
+      request: {
+        tool: 'Configuration',
+        form: [
+          {
+            name: 'format',
+            type: 'string',
+            required: true,
+          },
+        ],
+      },
+    })
     helperChange({
       change: {
         type: 'hydra.helper-started',
@@ -1077,6 +1091,10 @@ test(
     })
 
     try {
+      assert.equal(
+        (await answer({ request: 'form' })).code,
+        'MAIN_ONLY',
+      )
       assert.equal(
         (await answer({ request: 'question' })).code,
         'MAIN_ONLY',
@@ -1698,11 +1716,12 @@ test(
 
 test(
   'an unchanged owner wait stays quiet while an expired routine pause reaches the helper',
-  async () => {
+  async t => {
     const s = await helperHydra({
       keys: [
         'waiting',
         'routine',
+        'idle',
       ],
     })
     await s.chat({ text: 'Supervise only the accepted work.' })
@@ -1710,6 +1729,70 @@ test(
     await until({
       what: 'main to finish',
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const busyTurn = pnyx.claude.plan({
+      text: '',
+      hold: true,
+    })
+    t.after(() => busyTurn.release())
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'waiting',
+        '--folder',
+        s.folder({ name: 'busy-worker' }),
+      ],
+    })
+    await until({
+      what: 'the busy worker to be running',
+      check: () => s.task({ key: 'waiting' }).sessionActivity === 'working',
+    })
+    const idleTurn = pnyx.claude.plan({
+      text: '',
+      hold: true,
+    })
+    t.after(() => idleTurn.release())
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'idle',
+        '--folder',
+        s.folder({ name: 'idle-worker' }),
+      ],
+    })
+    await until({
+      what: 'the second worker to start',
+      check: () => s.task({ key: 'idle' }).sessionActivity === 'working',
+    })
+    await s.as({ agent: hydra }).run({
+      args: [
+        'task',
+        'ask',
+        'idle',
+        '--to',
+        'owner',
+        '--question',
+        'Approve the idle worker format?',
+        '--reason',
+        'The worker needs an owner decision.',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'status',
+        'idle',
+        'working',
+        '--note',
+        'The worker is waiting on the owner question.',
+      ],
+    })
+    idleTurn.release()
+    await until({
+      what: 'the idle worker turn to finish',
+      check: () => s.task({ key: 'idle' }).sessionActivity === 'finished',
     })
     await s.as({ agent: hydra }).run({
       args: [
@@ -1723,6 +1806,33 @@ test(
         '--reason',
         'The format needs an owner decision.',
       ],
+    })
+    const previousReviewMinutes = readSettings().settings.reviewMinutes
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--review-minutes',
+        '0',
+      ],
+    })
+    const realNow = Date.now.bind(Date)
+    const afterPauseExpiry = 5 * 60 * 60_000
+    const clock = t.mock.method(
+      Date,
+      'now',
+      () => realNow() + afterPauseExpiry,
+    )
+    t.after(async () => {
+      clock.mock.restore()
+      await s.owner({
+        args: [
+          'hydra',
+          'set',
+          '--review-minutes',
+          String(previousReviewMinutes),
+        ],
+      })
     })
     const routineTask = s.task({ key: 'routine' }).id
     pnyx.claude.plan({

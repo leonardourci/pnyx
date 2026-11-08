@@ -9,6 +9,8 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { askAnswer } from '#tasks/ask-decide.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { Link } from '#tasks/delivery/model.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import { taskLease } from './leases.ts'
@@ -207,6 +209,125 @@ test(
         true,
       )
     }
+
+    const routed = structuredClone(s)
+    const mainCard = routed.cards[HYDRA_CARD]
+    const workerCard = routed.cards[task]
+    assert.ok(mainCard && workerCard)
+    mainCard.agent = {
+      host: 'pnyx',
+      provider: 'claude-code',
+      sessionId: 'synthetic-main',
+    }
+    const link: Link = {
+      kind: 'github_pr',
+      url: 'https://github.com/example/project/pull/7',
+      state: 'open',
+      draft: false,
+      checks: '1 passed, 1 total',
+      comments: 0,
+    }
+    workerCard.links = [link]
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          type: 'card.linked',
+          data: {
+            url: link.url,
+            before: {
+              ...link,
+              checks: '1 pending, 1 total',
+            },
+            after: link,
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
+    workerCard.links = [
+      {
+        ...link,
+        comments: 1,
+      },
+    ]
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          type: 'card.linked',
+          data: {
+            url: link.url,
+            before: link,
+            after: workerCard.links[0],
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
+    workerCard.tracking = 'declared'
+    workerCard.turnEndedSeq = 123
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          seq: 123,
+          type: 'card.pushed',
+          actor: 'pnyx',
+          data: {
+            key: task,
+            activity: 'finished',
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
+    workerCard.hold = {
+      id: 'held',
+      at: '2026-01-01T00:00:00Z',
+      actor: 'web',
+      reason: 'Discuss the result.',
+    }
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          data: {
+            ...report.data,
+            ask: undefined,
+          },
+        } as HydraEvent,
+      }),
+      undefined,
+    )
+    delete workerCard.hold
+    workerCard.links = []
+    workerCard.status = {
+      id: 'done',
+      at: '2026-01-01T00:00:00Z',
+      actor: `worker:${task}`,
+      state: 'done',
+      note: 'The accepted export finished.',
+    }
+    delete routed.cards[other]
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          type: 'task.declared',
+          data: {
+            state: 'done',
+            note: 'The accepted export finished.',
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
 
     assert.equal(
       helperGrant({
@@ -587,6 +708,10 @@ test(
       }),
     })
     await waiting.finished
+    assert.equal(
+      state().hydraMessages?.some(message => message.text.includes('The owner decision is unchanged.')),
+      false,
+    )
     assert.equal(
       state().hydraMessages?.filter(message => message.text.includes('The export is ready.')).length,
       1,
