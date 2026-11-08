@@ -34,7 +34,6 @@ type Completion = {
 const TURN_MS = 120_000
 const WRITE_ATTEMPTS = 5
 const WRITE_RETRY_MS = 250
-const LEGACY_SUMMARY_CHARS = 600
 const DIALOG_MESSAGES = 20
 const DIALOG_CHARS = 12_000
 // A fresh helper conversation after this many turns or context tokens; outcome receipts carry what came before.
@@ -110,11 +109,14 @@ export function parseOutcomes({
 
     const summary = row.summary.trim()
 
+    if (summary.length > HELPER_SUMMARY_CHARS || summary.split(/\s+/).length > HELPER_SUMMARY_WORDS) {
+      throw new Error('Helper returned an oversized summary')
+    }
+
     if ('status' in row) {
       if ((row.status !== 'handled' && row.status !== 'still_waiting' && row.status !== 'needs_main')
-        || 'audience' in row || summary.length > HELPER_SUMMARY_CHARS
-        || summary.split(/\s+/).length > HELPER_SUMMARY_WORDS) {
-        throw new Error('Helper returned an invalid status or an oversized summary')
+        || 'audience' in row) {
+        throw new Error('Helper returned an invalid status')
       }
 
       outcomes.push({
@@ -123,8 +125,7 @@ export function parseOutcomes({
         summary,
       })
     } else {
-      if (!('audience' in row) || (row.audience !== 'routine' && row.audience !== 'owner')
-        || summary.length > LEGACY_SUMMARY_CHARS) {
+      if (!('audience' in row) || (row.audience !== 'routine' && row.audience !== 'owner')) {
         throw new Error('Helper returned an invalid or out-of-scope outcome')
       }
 

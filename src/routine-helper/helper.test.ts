@@ -25,8 +25,9 @@ import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes 
 import { until } from '#test-harness/harness.ts'
 import type { Provider } from '#workers/provider.ts'
 import { loadHydra } from '#app/store.ts'
+import { reduce } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
-import type { HelperAgent } from './state.ts'
+import { ownerOutcomes, type HelperAgent } from './state.ts'
 
 let root = ''
 let restore: NodeJS.ProcessEnv
@@ -1113,20 +1114,72 @@ test(
     assert.ok(JSON.stringify(schema).includes('still_waiting'))
     assert.ok(!JSON.stringify(schema).includes('maxLength'))
     assert.ok(!JSON.stringify(schema).includes('maxItems'))
-    assert.deepEqual(
+    assert.equal(
       parseOutcomes({
         text: JSON.stringify({
           outcomes: [
             {
               task: 'work',
               audience: 'owner',
-              summary: 'a'.repeat(600),
+              summary: 'a'.repeat(280),
             },
           ],
         }),
         tasks: ['work'],
       })[0]!.summary.length,
-      600,
+      280,
+    )
+
+    for (const summary of [
+      'a'.repeat(281),
+      `${'a '.repeat(40)}a`,
+    ]) {
+      assert.throws(() => parseOutcomes({
+        text: JSON.stringify({
+          outcomes: [
+            {
+              task: 'work',
+              audience: 'owner',
+              summary,
+            },
+          ],
+        }),
+        tasks: ['work'],
+      }))
+    }
+  },
+)
+
+test(
+  'saved legacy outcomes replay without applying fresh-output summary limits',
+  () => {
+    const before = state()
+    const summary = 'a'.repeat(600)
+    const replayed = reduce({
+      state: before,
+      event: {
+        v: 1,
+        seq: before.seq + 1,
+        id: 'legacy-result',
+        at: '2026-11-01T00:00:00Z',
+        actor: 'pnyx',
+        cardId: HYDRA_CARD,
+        type: 'hydra.helper-finished',
+        data: {
+          batch: 'legacy',
+          outcomes: [
+            {
+              task: before.keys.work!,
+              audience: 'owner',
+              summary,
+            },
+          ],
+        },
+      },
+    })
+    assert.equal(
+      ownerOutcomes({ state: replayed })[0]?.summary,
+      summary,
     )
   },
 )
