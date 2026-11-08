@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import { accountLabel } from '#workers/account-choice.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { harnessControls } from '#workers/controls.ts'
 import type { Command } from '#web-app/connection.ts'
-import { Button } from '#web-shared/ui/controls.tsx'
+import { Button, type Option } from '#web-shared/ui/controls.tsx'
 import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { PickerField, useModels, type CellMark } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
-import { AccountModelPicker } from './account-model-picker.tsx'
+import { AccountModelPicker, type Selection } from './account-model-picker.tsx'
+import { AgentSettingsMenu, useFolded, type FastSetting, type SettingChoice } from './agent-settings-menu.tsx'
 import { hydraDefault, resolvedAccount, useHeadsDispatch } from './heads-dispatch.ts'
 
 // The composer's control icons, one size so they read alike.
@@ -38,6 +40,7 @@ export function AgentPickers({
   selectionLabel = 'Model',
   fastNote,
   lastUsed,
+  foldable = false,
 }: {
   agent: AgentConfig
   lastUsed?: AgentConfig
@@ -63,6 +66,8 @@ export function AgentPickers({
   selectionLabel?: string
   // What Fast reaches beyond this agent, added to its tooltip.
   fastNote?: string
+  // Folds into one settings button when the row is too narrow for every picker, as in the composer.
+  foldable?: boolean
 }) {
   const controls = harnessControls({
     provider: providerIdOf({ harness: agent.harness }),
@@ -174,71 +179,106 @@ export function AgentPickers({
   }
 
   const modelLabel = picker.options.find(option => option.value === picker.value)?.label ?? agent.model ?? 'Model'
+  const locked = !connected || disabled
+  const selection: Selection | undefined = effective && {
+    lastUsed,
+    agent: {
+      ...agent,
+      model: picker.value,
+    },
+    account,
+    effective,
+    command,
+    connected,
+    change,
+    defaultAgent,
+    saveDefault: defaultAction === 'none' ? undefined : saveDefault,
+  }
+  const accountName = account && effective ? accountLabel({
+    name: account,
+    account: effective.accounts[account],
+  }) : 'No account'
+  const choices: SettingChoice[] = ([
+    'effort',
+    'mode',
+  ] as const).filter(field => fields.includes(field)).map(field => {
+    const value = named[field]
+    const listed = controls?.controls.find(c => c.setting === field)?.options ?? []
+    const options: Option[] = listed.map(o => ({
+      value: o.value,
+      label: o.label,
+      ...(hasIcon({ name: `${field}-${o.value}` }) ? { icon: `${field}-${o.value}` } : {}),
+    }))
 
-  return (
-    <div className="hydra-agent-pickers" aria-label={label}>
-      {effective ? (
+    if (value && !options.some(o => o.value === value)) {
+      options.push({
+        value,
+        label: value,
+      })
+    }
+
+    return {
+      field,
+      title: field === 'mode' ? 'Mode' : 'Effort',
+      value: value ?? '',
+      options,
+      // The picker keeps its place, disabled, until the catalog names the harness default.
+      disabled: locked || !catalog.models,
+      choose: ({ value }: { value: string }) => change({
+        next: {
+          ...agent,
+          [field]: value,
+        },
+      }),
+    }
+  })
+  const toggleFast = () => change({
+    next: {
+      ...agent,
+      fast: !agent.fast,
+    },
+  })
+  const fast: FastSetting | undefined = fastShown ? {
+    on: agent.fast === true,
+    disabled: locked,
+    toggle: toggleFast,
+  } : undefined
+  const room = useRef<HTMLDivElement>(null)
+  const row = useRef<HTMLDivElement>(null)
+  const folded = useFolded({
+    room,
+    row,
+  }) && foldable && !!selection
+  const status = !effective && <small role="status">{dispatchError ?? 'Loading accounts…'}</small>
+  const alert = saveError && <small role="alert">{saveError}</small>
+
+  const pickers = (
+    <>
+      {selection ? (
         <div className="picker-field" data-changed={marks?.model?.changed || undefined} data-invalid={marks?.model?.invalid || undefined}>
           <AccountModelPicker
-            lastUsed={lastUsed}
+            {...selection}
             label={selectionLabel}
             modelLabel={modelLabel}
-            agent={{
-              ...agent,
-              model: picker.value,
-            }}
-            account={account}
-            effective={effective}
-            command={command}
-            connected={connected}
-            disabled={!connected || disabled}
+            disabled={locked}
             invalid={marks?.model?.invalid}
             describedBy={describedBy}
-            change={change}
-            defaultAgent={defaultAgent}
-            saveDefault={defaultAction === 'none' ? undefined : saveDefault}
           />
         </div>
-      ) : <small role="status">{dispatchError ?? 'Loading accounts…'}</small>}
-      {saveError && <small role="alert">{saveError}</small>}
-      {([
-        'effort',
-        'mode',
-      ] as const).filter(field => fields.includes(field)).map(field => {
-        const value = named[field]
-        const choices = controls?.controls.find(c => c.setting === field)?.options ?? []
-        const options = choices.map(o => ({
-          value: o.value,
-          label: o.label,
-          ...(hasIcon({ name: `${field}-${o.value}` }) ? { icon: `${field}-${o.value}` } : {}),
-        }))
-
-        if (value && !options.some(o => o.value === value)) {
-          options.push({
-            value,
-            label: value,
-          })
-        }
-
-        // The picker keeps its place, disabled, until the catalog names the harness default.
-        return (
-          <PickerField
-            key={field}
-            iconSize={COMPOSER_ICON}
-            label={field === 'mode' ? 'Permissions' : 'Effort'}
-            value={value ?? ''}
-            options={options}
-            disabled={!connected || disabled || !catalog.models}
-            mark={marks?.[field]}
-            onChange={({ value }) => change({
-              next: {
-                ...agent,
-                [field]: value,
-              },
-            })}
-          />
-        )
-      })}
+      ) : status}
+      {!foldable && alert}
+      {choices.map(choice => (
+        <PickerField
+          key={choice.field}
+          iconSize={COMPOSER_ICON}
+          label={choice.field === 'mode' ? 'Permissions' : 'Effort'}
+          value={choice.value}
+          options={choice.options}
+          disabled={choice.disabled}
+          mark={marks?.[choice.field]}
+          onChange={choice.choose}
+        />
+      ))}
       {fastDash && (
         <Tooltip content="Fast isn't available for this model">
           <span className="fast-unavailable" tabIndex={0} aria-label="Fast isn't available for this model">–</span>
@@ -256,18 +296,42 @@ export function AgentPickers({
             data-changed={marks?.fast?.changed || undefined}
             aria-label="Fast mode"
             aria-pressed={agent.fast === true}
-            disabled={!connected || disabled}
-            onClick={() => change({
-              next: {
-                ...agent,
-                fast: !agent.fast,
-              },
-            })}
+            disabled={locked}
+            onClick={toggleFast}
           >
             <Icon name={agent.fast ? 'fast-on' : 'fast'} size={COMPOSER_ICON} />
           </Button>
         </Tooltip>
       )}
+    </>
+  )
+
+  if (!foldable) {
+    return <div className="hydra-agent-pickers" aria-label={label}>{pickers}</div>
+  }
+
+  // The full row stays laid out but hidden while folded, so its width says when it fits again.
+  return (
+    <div
+      className="hydra-agent-pickers"
+      aria-label={label}
+      ref={room}
+      data-folded={folded || undefined}
+    >
+      <div className="agent-pickers-row" ref={row} inert={folded}>{pickers}</div>
+      {folded && selection && (
+        <AgentSettingsMenu
+          label={label}
+          selection={selection}
+          modelLabel={modelLabel}
+          accountName={accountName}
+          choices={choices}
+          fast={fast}
+          disabled={locked}
+          iconSize={COMPOSER_ICON}
+        />
+      )}
+      {alert}
     </div>
   )
 }
