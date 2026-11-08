@@ -282,6 +282,7 @@ export function harvestTranscripts({
                 data: {
                   session,
                   nativeId: entry.id,
+                  final: entry.final,
                   messageId: entry.messageId,
                   part: entry.part,
                   role: entry.role,

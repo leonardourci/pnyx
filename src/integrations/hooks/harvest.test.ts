@@ -51,7 +51,10 @@ test(
     }) => `${JSON.stringify({
       type: role,
       timestamp: `2026-10-22T10:00:0${second}Z`,
-      message: { content: text },
+      message: {
+        content: text,
+        stop_reason: role === 'assistant' ? 'end_turn' : undefined,
+      },
     })}\n`
     writeFileSync(
       transcript,
@@ -205,6 +208,10 @@ test(
     assert.equal(
       chats().length,
       8,
+    )
+    assert.equal(
+      chats().find(event => event.data.text === 'Ready')?.data.final,
+      true,
     )
     const log = join(
       home,
