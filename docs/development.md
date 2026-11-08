@@ -27,6 +27,8 @@ The browser caches confirmed Hydra state under the installation and Hydra URL. T
 
 The offline badge appears after the page detects a connection failure or a missed heartbeat and clears when its WebSocket opens again. Initial loading, switching Hydras and resynchronizing state do not imply that the page is offline. Actions still wait for the selected Hydra's subscription to be ready.
 
+Harvested chat records are identified by session, native message and part. Replacing a transcript file or losing its harvest cursor does not duplicate its messages. Conversation readers also hide older duplicate harvests without changing the append-only log; separate sends with identical words stay separate.
+
 Hydra thread subscriptions keep their loaded history on the server. Each thread page carries reconciled conversation entries, turn timings and action folds. Continuation chunks carry a boolean, and injected instruction blocks are hidden before transport. The browser renders that projection and keeps only its unsent previews locally. The server also sends Hydra's held inputs, pending operations and queue state; the browser uses those facts to place its unsent previews.
 
 ## Run a development server
