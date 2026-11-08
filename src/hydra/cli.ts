@@ -1,3 +1,4 @@
+import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { basename } from 'node:path'
@@ -400,6 +401,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     args,
     options: {
       ...WRITE,
+      ...MESSAGE_LOOKUP_OPTIONS,
       task: { type: 'string' },
       force: { type: 'boolean' },
       action: { type: 'string' },
@@ -426,6 +428,14 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     },
     positionals: 2,
   })
+
+  if (positionals[0] === 'message') {
+    return messageLookup({
+      values,
+      hydraId,
+      task: values.task as string | undefined,
+    })
+  }
 
   const readingHistory = positionals[0] === 'history' || (positionals[0] === 'messages' && values.inscribe)
 
@@ -504,7 +514,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (positionals[0] !== 'send') {
     throw new HydraError({
-      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra send --task <id> --kind progress --text <message>, hydra stop, hydra usage or hydra messages',
+      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra send --task <id> --kind progress --text <message>, hydra stop, hydra usage, hydra messages or hydra message',
       code: 'VALIDATION_ERROR',
     })
   }

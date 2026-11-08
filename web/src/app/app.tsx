@@ -667,6 +667,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               <>
                 <div className="hydra-page">
                   <HydraChat
+                    hydraId={navigation.hydraId}
                     identity={shownHydra && {
                       name: shownHydra.name,
                       icon: shownHydra.icon,

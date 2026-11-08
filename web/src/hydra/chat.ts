@@ -1,3 +1,4 @@
+import { messageLookupCommand } from '#hydra/message-reference.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import type { HydraStatus } from '#hydra/model.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
@@ -5,6 +6,7 @@ import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 export interface ChatComment {
   id: string
   messageId: string
+  reference?: string
   block: number
   offset: number
   start?: number
@@ -247,7 +249,7 @@ export function groupComments({ comments }: { comments: ChatComment[] }) {
   const replies = new Map<string, ChatComment[]>()
 
   for (const comment of orderedComments({ comments })) {
-    const reply = comment.at ?? comment.messageId
+    const reply = comment.messageId
     const group = replies.get(reply) ?? []
     group.push(comment); replies.set(
       reply,
@@ -261,9 +263,13 @@ export function groupComments({ comments }: { comments: ChatComment[] }) {
 export function commentReply({
   draft,
   comments,
+  hydraId,
+  card,
 }: {
   draft: string
   comments: ChatComment[]
+  hydraId?: string
+  card?: string
 }): string {
   const replies = groupComments({
     comments: comments.filter(comment => sendableComment({ comment })),
@@ -273,16 +279,25 @@ export function commentReply({
     return draft
   }
 
-  const sections = [...replies].map(([
-    time,
-    items,
-  ]) => `## Comments on your reply from ${time}\n\n${items.map((
-    comment,
-    index,
-  ) => quotedComment({
-    comment,
-    number: index + 1,
-  })).join('\n\n')}`)
+  const sections = [...replies.values()].map(items => {
+    const first = items[0]
+    const command = messageLookupCommand({
+      reference: first.reference,
+      at: first.at,
+      hydraId,
+      card,
+    })
+    const reference = first.reference ? `Message reference: ${first.reference}\n` : ''
+    const lookup = command ? `\n\n${reference}Read surrounding messages: \`${command}\`` : ''
+
+    return `## Comments on your reply from ${first.at ?? first.messageId}${lookup}\n\n${items.map((
+      comment,
+      index,
+    ) => quotedComment({
+      comment,
+      number: index + 1,
+    })).join('\n\n')}`
+  })
 
   if (draft.trim()) {
     sections.push(`## Message\n${draft}`)

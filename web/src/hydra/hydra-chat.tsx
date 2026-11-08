@@ -69,6 +69,7 @@ interface Sending {
 }
 
 export function HydraChat({
+  hydraId,
   state,
   command,
   connected,
@@ -90,6 +91,7 @@ export function HydraChat({
   action,
   taskActions,
 }: {
+  hydraId: string
   // The Hydra's name and icon for the header, and the names of the owner's other Hydras.
   identity?: {
     name: string
@@ -847,6 +849,7 @@ export function HydraChat({
         }}
       />
       <Composer
+        hydraId={hydraId}
         compacting={compactionRunning}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {

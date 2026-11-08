@@ -1,3 +1,4 @@
+import { messageReference } from './message-reference.ts'
 import { loggedEntry } from './history.ts'
 import { chatRecordId } from './chat-records.ts'
 import { HYDRA_CARD } from './identity.ts'
@@ -25,6 +26,7 @@ import type { TurnTiming } from './chat-messages.ts'
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
   final?: boolean
+  reference?: string
   id: string
   hidden?: boolean
   continued?: boolean
@@ -582,6 +584,11 @@ export function readThread(
                   native: `${offset}:${index}`,
                   item: {
                     ...item,
+                    reference: session ? messageReference({
+                      session,
+                      id: item.id,
+                      messageId: item.messageId,
+                    }) : undefined,
                     ...(session ? { session } : {}),
                   },
                 })
@@ -687,6 +694,7 @@ export function readThread(
     splitEntry({
       entry: {
         id: replyEntryId({ reply: e.data.reply }),
+        reference: replyEntryId({ reply: e.data.reply }),
         replyId: e.data.reply,
         role: 'You',
         kind: 'message',

@@ -10,7 +10,7 @@ metadata:
 
 Work only on your assigned task and copy. Hydra supervises it. Pass `--hydra <hydra>` on every command; retain your assigned actor and session identity. Suggestions never grant authority. Before changing code, read the project's AGENTS.md, CLAUDE.md, CONTRIBUTING.md and applicable skills. Follow the worker header's authority and landing rules.
 
-At startup read `task show <task>` and `task history <task>`. Successful assignment already records working. Run `pnyx-axi <command> <subcommand> --help` for syntax and follow contextual hints; load [detailed reporting](references/reporting.md) for investigations, questions, report-review, replies and landing details.
+At startup read `task show <task>` and `task history <task>`. Use `task messages <task> --id <message-id> --before 3 --after 3` for a referenced reply and its context; `--seq`, `--at`, inclusive `--from`/`--to` ranges and returned `--cursor` values navigate recorded messages across agent switches. Successful assignment already records working. Run `pnyx-axi <command> <subcommand> --help` for syntax and follow contextual hints; load [detailed reporting](references/reporting.md) for investigations, questions, report-review, replies and landing details.
 
 Lifecycle declarations describe state: `task status <task> working|needs_you|paused|blocked|done --note "..."`. Silence changes nothing. Questions and unsettled owner/product/architecture choices use `task ask`; wait for the answer before dependent work and continue independent authorized work. Never fabricate approval or implement an unsettled default.
 

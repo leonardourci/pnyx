@@ -1,3 +1,5 @@
+import { MESSAGE_PAGE_BYTES, MESSAGE_PAGE_LIMIT } from '#hydra/message-lookup.ts'
+import { HISTORY_BUDGET } from '#hydra/history.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
 import { OWNER_CONTEXT_TOKENS } from '#hydra/context-limits.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '#memory/budgets.ts'
@@ -122,6 +124,12 @@ Hosted resumes receive changed sections. Owner context is bounded to ${OWNER_CON
 Compaction runs when requested or through the harness itself; reported context usage never triggers it in Pnyx.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
+pnyx-axi hydra message [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>]
+pnyx-axi hydra message [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
+Lookup reads recorded chat across agent switches and compactions. --direction excludes the selected message; ranges include both endpoints.
+No selector lists the oldest page. --id/--seq/--at alone returns one message; --budget alone with a selector grows surroundings to fit.
+Whole messages, at most ${MESSAGE_PAGE_LIMIT} and ${HISTORY_BUDGET} estimated tokens and ${MESSAGE_PAGE_BYTES} JSON bytes per page; a message over the budget fails explicitly.
+Use returned older/newer cursors with --cursor; they pin the Hydra, thread, range and log snapshot. --at needs a timezone; duplicate times require an id or seq.
 pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
 Read whole messages since a successful milestone, including task briefs, intents and helper results. Unchanged helper waits are omitted. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
 pnyx-axi hydra inscribe start|finish|fail [--key <milestone-id>] [--through <seq>] [--error <why>]
@@ -234,6 +242,8 @@ pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
 Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
+pnyx-axi task messages <id> [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>] [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
+Uses the same bounded lookup as hydra message, across every recorded session on the task.
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
 pnyx-axi task permission <task> <request> allow|deny [--answer <json>] [--reason <text>]
 A question request is allowed with its answers, --answer '{"answers":[{"pick":[1]},{"text":"..."}]}' (one per question, picks

@@ -1,3 +1,4 @@
+import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { AxiError } from 'axi-sdk-js'
@@ -40,6 +41,7 @@ const TASK_DETAIL_LIMIT = 5
 
 export const TASK_OPTIONS: Options = {
   ...WRITE,
+  ...MESSAGE_LOOKUP_OPTIONS,
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
@@ -635,6 +637,17 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     return shown
   }
 
+  if (action === 'messages') {
+    return messageLookup({
+      values,
+      hydraId,
+      task: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+    })
+  }
+
   if (action === 'chat') {
     const state = loadHydra({ hydraId }).state
     const task = findCard({
@@ -882,7 +895,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, rename, start, copy, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, messages, rename, start, copy, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }

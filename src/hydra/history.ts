@@ -7,6 +7,7 @@ import type { ChatEvent, HydraOperation } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
+import { messageReference } from './message-reference.ts'
 
 export const HISTORY_BUDGET = 6000
 const HISTORY_PAGE_BYTES = 24000
@@ -272,6 +273,11 @@ export function loggedEntry({ event }: { event: ChatEvent }): ThreadEntry {
 
   return {
     id: event.id,
+    reference: messageReference({
+      session: event.data.session,
+      id: event.data.nativeId,
+      messageId: nativeId,
+    }),
     messageId,
     part,
     kind: 'message',

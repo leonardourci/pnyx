@@ -118,9 +118,10 @@ export function hydraMessages({
             hidden: true,
           })
         }
-      } else if (message.task || normalized(entry!) !== normalized({ text: shown })) {
+      } else {
         const copy: ThreadEntry = {
           ...entry!,
+          reference: message.id,
           text: shown,
         }
 
@@ -136,6 +137,7 @@ export function hydraMessages({
     } else if (!report) {
       recorded.push({
         id: message.id,
+        reference: message.id,
         kind: message.kind === 'divider' ? 'divider' : 'message',
         role,
         final: message.actor === HYDRA_ACTOR ? true : undefined,
