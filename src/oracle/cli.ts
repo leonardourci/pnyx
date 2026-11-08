@@ -238,7 +238,8 @@ export const oracleCommands = {
 
 export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
        pnyx-axi oracle status | rebuild [--hydra <name>]
-Search includes saved task briefs, intents, owner asks and helper results, including their earlier versions.
+Search includes saved task briefs, intents, owner asks, investigation reports and helper results.
+Earlier versions remain searchable. \`task report <task>\` reads the latest stored report.
 Helper results match their tasks; unchanged helper waits are omitted.
 Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
 Full-text search over card titles, links, event text, harvested notes and the session transcripts
