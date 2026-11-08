@@ -29,6 +29,8 @@ The offline badge appears after the page detects a connection failure or a misse
 
 Harvested chat records are identified by session, native message and part. Replacing a transcript file or losing its harvest cursor does not duplicate its messages. Conversation readers also hide older duplicate harvests without changing the append-only log; separate sends with identical words stay separate.
 
+Completed native replies and explicit chat updates remain visible when a later turn ends quietly. Native commentary does not become a background notification. Older archived records without completion metadata retain their previous conservative rendering.
+
 Hydra thread subscriptions keep their loaded history on the server. Each thread page carries reconciled conversation entries, turn timings and action folds. Continuation chunks carry a boolean, and injected instruction blocks are hidden before transport. The browser renders that projection and keeps only its unsent previews locally. The server also sends Hydra's held inputs, pending operations and queue state; the browser uses those facts to place its unsent previews.
 
 ## Run a development server
