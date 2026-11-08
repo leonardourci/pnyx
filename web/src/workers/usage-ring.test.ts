@@ -142,6 +142,10 @@ test(
         expected.fill,
       )
       assert.ok(html.includes(`data-tone="${expected.tone}"`))
+      assert.equal(
+        html.includes('data-empty="true"'),
+        !expected.fill,
+      )
     }
   },
 )

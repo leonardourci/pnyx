@@ -134,6 +134,7 @@ export function UsageRing({
         tabIndex={0}
         aria-label={label}
         data-tone={tone}
+        data-empty={percent === undefined || undefined}
       >
         <svg
           viewBox="0 0 30 30"
