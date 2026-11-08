@@ -27,6 +27,47 @@ export const PROVIDERS = [
 
 export const ACCOUNT_SETTINGS = 'pnyx-account-settings'
 const HOLD_MS = 500
+// Icon sizes shared by every menu built on these rows.
+export const MENU_ROW_ICON = 18
+export const MENU_MARK_ICON = 16
+export const TRIGGER_CHEVRON = 14
+
+export type Provider = (typeof PROVIDERS)[number]
+
+// Every harness Pnyx runs has an entry in PROVIDERS.
+export const providerFor = ({ harness }: { harness: Harness }): Provider =>
+  PROVIDERS.find(item => item.harness === harness)!
+
+export const accountName = ({
+  account,
+  effective,
+}: {
+  account?: string
+  effective: EffectiveDispatch
+}) => account ? accountLabel({
+  name: account,
+  account: effective.accounts[account],
+}) : 'No account'
+
+// A menu's title row, with a back arrow when it has somewhere to return to.
+export function MenuHead({
+  title,
+  back,
+}: {
+  title: string
+  back?(): void
+}) {
+  return (
+    <div className="account-model-head">
+      {back && (
+        <Button aria-label="Back" onClick={back}>
+          <Icon name="arrow_left" size={MENU_MARK_ICON} />
+        </Button>
+      )}
+      <strong>{title}</strong>
+    </div>
+  )
+}
 
 interface Choice {
   value: string
@@ -46,7 +87,7 @@ export interface Selection {
   saveDefault?({ next }: { next: AgentConfig }): void
 }
 
-// The provider, account and model steps; the composer's folded settings menu opens it as its Model step.
+// The provider, account and model steps, exported so a containing menu can open them.
 export function SelectionMenu({
   agent,
   account,
@@ -100,7 +141,7 @@ export function SelectionMenu({
     command,
     connected: connected && step === 'model',
   })
-  const provider = PROVIDERS.find(item => item.harness === harness)!
+  const provider = providerFor({ harness })
   let choices: Choice[]
 
   if (step === 'provider') {
@@ -292,14 +333,7 @@ export function SelectionMenu({
 
   return (
     <div className="account-model-menu" onKeyDown={event => keyboard({ event })}>
-      <div className="account-model-head">
-        {leave && (
-          <Button aria-label="Back" onClick={leave}>
-            <Icon name="arrow_left" size={16} />
-          </Button>
-        )}
-        <strong>{title}</strong>
-      </div>
+      <MenuHead title={title} back={leave} />
       <SearchBar
         label={`Search ${stepName}`}
         query={query}
@@ -342,8 +376,8 @@ export function SelectionMenu({
             ? 'Default for new sessions'
             : 'Set as default for new sessions'
           const mark = onModels
-            ? current && <Icon name="check" size={16} />
-            : <Icon name="chevron_right" size={16} />
+            ? current && <Icon name="check" size={MENU_MARK_ICON} />
+            : <Icon name="chevron_right" size={MENU_MARK_ICON} />
 
           return (
             <MenuOption
@@ -388,7 +422,7 @@ export function SelectionMenu({
                   }
                 }}
               >
-                {choice.icon && <Icon name={choice.icon} size={18} />}
+                {choice.icon && <Icon name={choice.icon} size={MENU_ROW_ICON} />}
                 <span>{choice.label}</span>
                 {wasUsed && <small className="muted">Last used</small>}
                 {mark}
@@ -438,11 +472,11 @@ export function AccountModelPicker({
   invalid?: boolean
   describedBy?: string
 }) {
-  const provider = PROVIDERS.find(item => item.harness === selection.agent.harness)!
-  const name = selection.account ? accountLabel({
-    name: selection.account,
-    account: selection.effective.accounts[selection.account],
-  }) : 'No account'
+  const provider = providerFor({ harness: selection.agent.harness })
+  const name = accountName({
+    account: selection.account,
+    effective: selection.effective,
+  })
   const accessible = trigger ? label : `${label}: ${provider.label} · ${name} · ${modelLabel}`
 
   return (
@@ -459,7 +493,7 @@ export function AccountModelPicker({
             <span>{modelLabel}</span>
             <small>{name}</small>
           </span>
-          <Icon name="chevron_down" size={14} />
+          <Icon name="chevron_down" size={TRIGGER_CHEVRON} />
         </>
       )}
     >
