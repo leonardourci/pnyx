@@ -1,6 +1,9 @@
 import { createBeforeRank } from '#tasks/create-placement.ts'
 import type { HydraState } from '#app/model.ts'
-import type { Card } from '#tasks/model.ts'
+import type { Card, TaskReminder } from '#tasks/model.ts'
+import { clearReminder, reminderRepeat } from '#tasks/reminders.ts'
+import { lifecycleMoves } from '#tasks/lifecycle.ts'
+import { reminderTime } from '#tasks/time.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { columnCards, rankOf, rankWithin } from '#tasks/select.ts'
@@ -217,12 +220,56 @@ export function optimisticState({
     }
 
     if (action === 'remind') {
-      return update({
+      const restored = { ...card }
+      clearReminder({ card: restored })
+      let reminder: TaskReminder | undefined
+
+      if (args[2] !== 'clear') {
+        const when = args[2] ?? ''
+        reminder = {
+          id: option({ flag: '--event-id' }) ?? 'pending',
+          at: reminderTime({
+            when,
+            now: new Date().toISOString(),
+          }),
+        }
+        const repeat = reminderRepeat({
+          card,
+          when,
+          every: option({ flag: '--every' }),
+          until: option({ flag: '--until' }),
+          question: option({ flag: '--question' }),
+        })
+
+        if (repeat) {
+          reminder.repeat = repeat
+        }
+      }
+
+      const changed = update({
         patch: {
-          reminder: args[2] === 'clear' ? undefined : {
-            id: option({ flag: '--event-id' }) ?? 'pending',
-            at: args[2] ?? '',
-          },
+          reminder,
+          status: restored.status,
+        },
+      })
+      const placement = lifecycleMoves({
+        before: state,
+        state: changed,
+      })
+        .find(move => move.cardId === card.id)
+
+      if (!placement) {
+        return changed
+      }
+
+      return optimisticState({
+        state: changed,
+        edit: {
+          name: 'move',
+          args: [
+            card.id,
+            placement.column,
+          ],
         },
       })
     }

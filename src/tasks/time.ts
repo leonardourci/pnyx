@@ -6,6 +6,21 @@ const INTERVAL_UNITS: Record<string, number> = {
   day: 86_400_000,
 }
 
+export function reminderIntervalText({ milliseconds }: { milliseconds: number }): string {
+  for (const [
+    unit,
+    size,
+  ] of Object.entries(INTERVAL_UNITS).reverse()) {
+    if (milliseconds % size === 0) {
+      const count = milliseconds / size
+
+      return `${count} ${unit}${count === 1 ? '' : 's'}`
+    }
+  }
+
+  return `${milliseconds / INTERVAL_UNITS.minute!} minutes`
+}
+
 export function reminderInterval({ text }: { text: string }): number {
   const match = /^([1-9]\d*) (minute|hour|day)s?$/i.exec(text.trim())
   const milliseconds = match ? Number(match[1]) * INTERVAL_UNITS[match[2]!.toLowerCase()]! : NaN
