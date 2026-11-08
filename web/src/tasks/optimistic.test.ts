@@ -413,3 +413,104 @@ test(
     )
   },
 )
+
+test(
+  'editing a recurring reminder keeps its policy in the immediate preview',
+  () => {
+    const original = fixture()
+    original.cards.one!.reminder = {
+      id: 'scheduled',
+      at: '2099-10-16T12:00:00Z',
+      repeat: {
+        everyMs: 14400000,
+        until: 'worker-started',
+      },
+    }
+    const preview = optimisticState({
+      state: original,
+      edit: {
+        name: 'task',
+        args: [
+          'remind',
+          'one',
+          '2099-10-17T12:00:00.000Z',
+          '--every',
+          '4 hours',
+          '--until',
+          'worker-started',
+        ],
+      },
+    })
+    assert.deepEqual(
+      preview.cards.one?.reminder?.repeat,
+      {
+        everyMs: 14400000,
+        until: 'worker-started',
+      },
+    )
+    assert.equal(
+      preview.cards.one?.reminder?.at,
+      '2099-10-17T12:00:00.000Z',
+    )
+  },
+)
+
+for (const when of [
+  'clear',
+  '2099-10-17T12:00:00.000Z',
+]) {
+  test(
+    `a due reminder restores its prior declaration in the preview: ${when}`,
+    () => {
+      const original = fixture()
+      original.cards.one!.column = 'needs_you'
+      original.cards.one!.status = {
+        id: 'due',
+        actor: 'pnyx',
+        at: '2099-10-16T10:00:00Z',
+        state: 'needs_you',
+        note: 'Reminder due',
+      }
+      original.cards.one!.reminder = {
+        id: 'scheduled',
+        at: '2099-10-17T12:00:00.000Z',
+        dueAt: '2099-10-16T10:00:00Z',
+        dueEvent: 'due',
+        repeat: {
+          everyMs: 14400000,
+          until: 'worker-started',
+        },
+        resume: {
+          id: 'paused',
+          actor: 'cli',
+          at: '2099-10-16T09:00:00Z',
+          state: 'paused',
+          note: 'Waiting for review',
+        },
+      }
+      const changed = optimisticState({
+        state: original,
+        edit: {
+          name: 'task',
+          args: [
+            'remind',
+            'one',
+            when,
+          ],
+        },
+      })
+      assert.equal(
+        changed.cards.one?.status?.state,
+        'paused',
+      )
+      assert.equal(
+        changed.cards.one?.column,
+        'parked',
+      )
+      assert.equal(
+        original.cards.one?.status?.state,
+        'needs_you',
+      )
+    },
+  )
+}

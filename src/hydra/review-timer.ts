@@ -7,8 +7,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { boardReview, MINUTE_MS } from './review.ts'
 import { seenAt } from '#workers/presence.ts'
-import { taskMention } from './mentions.ts'
-import { hydraConfig } from './config.ts'
+import { fireReminders } from '#tasks/fire-reminders.ts'
 import { readSettings } from '#settings/store.ts'
 import { DEFAULT_REVIEW_MINUTES } from '#settings/settings.ts'
 import { background } from '#app/background.ts'
@@ -115,6 +114,17 @@ export function startReviewTimer({
 
     try {
       const state = shared()
+
+      try {
+        fireReminders({
+          hydraId,
+          at: new Date(now()).toISOString(),
+          state,
+        })
+      } catch (error) {
+        console.error(`pnyx-axi reminders: ${(error as Error).message}`)
+      }
+
       const minutes = readSettings().settings.reviewMinutes
       const last = state.hydraReview?.at
       const due = Math.max(
@@ -173,34 +183,6 @@ export function startReviewTimer({
             return false
           }
 
-          for (const flag of review.flags.filter(flag => flag.kind === 'question reminder')) {
-            const card = current.cards[flag.task]
-            const reminder = hydraEvent({
-              state: writer.state,
-              meta: {
-                at: new Date(time).toISOString(),
-                actor: 'pnyx',
-              },
-              cardId: card.id,
-              change: {
-                type: 'hydra.message',
-                data: {
-                  action: 'send',
-                  hydra: hydraConfig({ state: current }).hydra.id,
-                  task: card.id,
-                  text: `Reminder: ${taskMention({
-                    id: card.id,
-                    title: card.title,
-                  })} still needs your answer. ${flag.detail}`,
-                },
-              },
-            })
-
-            if ('event' in reminder) {
-              writer.append({ event: reminder.event })
-            }
-          }
-
           const decision = hydraEvent({
             state: writer.state,
             meta: {
@@ -212,7 +194,7 @@ export function startReviewTimer({
               type: 'hydra.review',
               data: {
                 block: review.block,
-                reminders: review.reminders,
+                reminders: [],
                 flags,
                 wake: shouldWake,
               },

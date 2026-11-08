@@ -1,10 +1,14 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
+import { hydraEvent, pnyxRunsHydra } from '#hydra/hydra.ts'
+import type { HydraMessage } from '#hydra/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
-import { reminderDeadline } from './reminders.ts'
+import { base } from '#app/command-meta.ts'
+import { readSettings } from '#settings/store.ts'
+import { dueQuestionReminders } from './question-reminders.ts'
+import { reminderDeadline, reminderMessage } from './reminders.ts'
 
 export function fireReminders({
   hydraId,
@@ -13,24 +17,73 @@ export function fireReminders({
 }: {
   hydraId: string
   at?: string
-  // The server passes the Hydra it already holds; the writer below reads it again under the lock.
   state?: HydraState
 }): number {
-  const deadline = reminderDeadline({ state })
+  const time = Date.parse(at)
+  const questionsEnabled = readSettings().settings.reviewMinutes > 0
 
-  if (deadline === undefined || deadline > Date.parse(at)) {
+  const questions = ({ state }: { state: HydraState }) => {
+    if (!questionsEnabled || !pnyxRunsHydra({ state })) {
+      return []
+    }
+
+    return dueQuestionReminders({
+      state,
+      now: time,
+    })
+  }
+
+  const deadline = reminderDeadline({ state })
+  const scheduled = deadline !== undefined && deadline <= time
+
+  if (!scheduled && !questions({ state }).length) {
     return 0
   }
 
-  return withWriter({
+  const id = `reminders:${randomUUID()}`
+  const digest = createHash('sha256').update(id)
+    .digest('hex')
+  const receipt = withWriter({
     hydraId,
+    transaction: {
+      id,
+      digest,
+    },
     fn: ({ writer }) => {
-      let fired = 0
+      const recordReceipt = ({ fired }: { fired: number }) => {
+        writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              meta: {
+                at,
+                actor: 'pnyx',
+                id,
+              },
+              cardId: '$board',
+            }),
+            type: 'apply.recorded',
+            data: { digest },
+          },
+          effects: false,
+        })
 
-      for (const card of Object.values(writer.state.cards)) {
+        return { fired }
+      }
+
+      const dueCards = Object.values(writer.state.cards).filter(card => {
         const reminder = card.reminder
 
-        if (!reminder || reminder.dueAt || Date.parse(reminder.at) > Date.parse(at)) {
+        return reminder && (!reminder.dueAt || reminder.repeat) && Date.parse(reminder.at) <= time
+      })
+      const pendingQuestions = questions({ state: writer.state })
+      const lines: string[] = []
+      const taskIds = new Set<string>()
+
+      for (const card of dueCards) {
+        const reminder = card.reminder
+
+        if (!reminder) {
           continue
         }
 
@@ -38,7 +91,17 @@ export function fireReminders({
           writer,
           at,
         })
-        const text = `Reminder: ${card.title} (scheduled for ${reminder.at})`
+        const text = reminderMessage({ card })
+        let nextAt: string | null | undefined
+
+        if (reminder.repeat) {
+          const dueAt = Date.parse(reminder.at)
+          const interval = reminder.repeat.everyMs
+          const next = dueAt + (Math.floor((time - dueAt) / interval) + 1) * interval
+          const nextDate = new Date(next)
+          nextAt = Number.isFinite(nextDate.getTime()) ? nextDate.toISOString() : null
+        }
+
         const decision = hydraEvent({
           state: writer.state,
           meta: {
@@ -51,15 +114,14 @@ export function fireReminders({
             type: 'task.reminder-due',
             data: {
               reminder: reminder.id,
+              nextAt,
+              grouped: true,
               column,
               message: {
                 task: card.id,
                 action: 'send',
                 text,
-                hydra: hydraConfig({
-                  state: writer.state,
-                  id: hydraId,
-                }).hydra.id,
+                hydra: hydraConfig({ state: writer.state }).hydra.id,
               },
             },
           },
@@ -67,13 +129,67 @@ export function fireReminders({
 
         if ('event' in decision) {
           writer.append({ event: decision.event })
-          fired++
+          taskIds.add(card.id)
+
+          if (!pendingQuestions.some(question => question.task === card.id)) {
+            lines.push(text)
+          }
         }
       }
 
-      return fired
+      for (const question of pendingQuestions) {
+        const card = writer.state.cards[question.task]
+        lines.push(reminderMessage({
+          card,
+          detail: `still needs your answer. ${question.detail}`,
+        }))
+        taskIds.add(card.id)
+      }
+
+      if (!lines.length) {
+        return recordReceipt({ fired: 0 })
+      }
+
+      const message: Omit<HydraMessage, 'id' | 'at' | 'actor'> = {
+        action: 'send',
+        text: lines.join('\n'),
+        hydra: hydraConfig({ state: writer.state }).hydra.id,
+      }
+
+      if (taskIds.size === 1) {
+        message.task = [...taskIds][0]
+      }
+
+      if (pendingQuestions.length) {
+        message.reminderQuestions = pendingQuestions.map(question => question.key)
+      }
+
+      const posted = hydraEvent({
+        state: writer.state,
+        meta: {
+          at,
+          actor: 'pnyx',
+        },
+        cardId: '$hydra',
+        change: {
+          type: 'hydra.message',
+          data: message,
+        },
+      })
+
+      if ('event' in posted) {
+        writer.append({ event: posted.event })
+      }
+
+      return recordReceipt({ fired: dueCards.length + pendingQuestions.length })
     },
   })
+
+  if (typeof receipt.fired !== 'number') {
+    throw new Error('Reminder batch has no delivery receipt')
+  }
+
+  return receipt.fired
 }
 
 function needsYouColumn({

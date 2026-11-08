@@ -40,6 +40,7 @@ export interface HydraMessage {
   // divider: Pnyx's milestone line in the conversation.
   kind?: 'progress' | 'divider' | 'routine'
   text: string
+  reminderQuestions?: string[]
   enteredText?: string
   details?: string
   context?: string

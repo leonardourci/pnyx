@@ -8,7 +8,7 @@ import { applyExternalSource } from '#task-sources/state.ts'
 import { applySteering } from '#workers/steering.ts'
 import { applyDependencies } from '#tasks/dependencies.ts'
 import { applyQueue } from '#workers/queue.ts'
-import { applyReminder } from '#tasks/reminders.ts'
+import { applyReminder, stopReminders } from '#tasks/reminders.ts'
 import { applyPermission } from '#workers/permission-rules.ts'
 import { applyAsk } from '#tasks/ask-reducer.ts'
 import { applyHelper } from '#routine-helper/state.ts'
@@ -161,6 +161,10 @@ export function replayOwned({
       state,
       event,
     })) {
+      stopReminders({
+        state,
+        event,
+      })
       refreshDone({
         state,
         at: event.at,

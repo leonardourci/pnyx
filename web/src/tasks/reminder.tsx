@@ -4,9 +4,16 @@ import type { Card } from '#tasks/model.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
+import { reminderIntervalText } from '#tasks/time.ts'
+
+const STOP_LABELS = {
+  'worker-started': 'work starts',
+  'question-answered': 'answered',
+  'task-done': 'done',
+}
 
 export function ReminderLabel({ card }: { card: Card }) {
-  if (!card.reminder || card.reminder.dueAt) {
+  if (!card.reminder || (card.reminder.dueAt && !card.reminder.repeat)) {
     return null
   }
 
@@ -19,7 +26,10 @@ export function ReminderLabel({ card }: { card: Card }) {
     },
   ).format(date)
 
-  return <span className="reminder-label" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}</span>
+  const repeat = card.reminder.repeat
+  const cadence = repeat ? ` · every ${reminderIntervalText({ milliseconds: repeat.everyMs })}, until ${STOP_LABELS[repeat.until]}` : ''
+
+  return <span className="reminder-label" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}{cadence}</span>
 }
 
 export interface ReminderDraft {
@@ -46,10 +56,13 @@ export function ReminderEditor({
   draft?: ReminderDraft
 }) {
   const id = useId()
+  const reminder = card.reminder
+  const pending = reminder && (!reminder.dueAt || reminder.repeat)
+  const initialWhen = pending ? reminder.at : ''
   const [
     when,
     setWhen,
-  ] = useState(draft?.value ?? (card.reminder?.dueAt ? '' : card.reminder?.at ?? ''))
+  ] = useState(draft?.value ?? initialWhen)
   const attempt = useRef(draft?.attempt ?? crypto.randomUUID())
   const sending = useRef(false)
 
@@ -59,17 +72,36 @@ export function ReminderEditor({
     }
 
     sending.current = true
+    const args = [
+      'remind',
+      card.id,
+      value,
+      '--if-revision',
+      String(card.revision),
+      '--event-id',
+      attempt.current,
+    ]
+    const repeat = card.reminder?.repeat
+
+    if (value !== 'clear' && repeat) {
+      args.push(
+        '--every',
+        reminderIntervalText({ milliseconds: repeat.everyMs }),
+        '--until',
+        repeat.until,
+      )
+
+      if (repeat.question) {
+        args.push(
+          '--question',
+          repeat.question,
+        )
+      }
+    }
+
     const saving = command({
       name: 'task',
-      args: [
-        'remind',
-        card.id,
-        value,
-        '--if-revision',
-        String(card.revision),
-        '--event-id',
-        attempt.current,
-      ],
+      args,
     })
     submitted()
     void saving.catch((error: Error) => {

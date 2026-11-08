@@ -7,7 +7,7 @@ import { inboxCommand } from '#workers/inbox-cli.ts'
 import { reportReviewCommand, reportCommand, buildCommand } from '#investigations/cli.ts'
 import { taskLandingCommand } from '#tasks/delivery/task-delivery.ts'
 import { mergeCommand } from '#tasks/delivery/merge.ts'
-import { waitingReminders } from '#tasks/reminders.ts'
+import { reminderRepeat, waitingReminders } from '#tasks/reminders.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -105,6 +105,7 @@ export const TASK_OPTIONS: Options = {
   merge: { type: 'string' },
   clear: { type: 'boolean' },
   until: { type: 'string' },
+  every: { type: 'string' },
   hold: { type: 'boolean' },
 }
 
@@ -238,8 +239,17 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           when,
           now: m.at,
         })
+        const repeat = reminderRepeat({
+          state,
+          card: task,
+          when,
+          every: values.every as string | undefined,
+          until: values.until as string | undefined,
+          question: values.question as string | undefined,
+        })
 
-        return after === (task.reminder?.at ?? null) && !task.reminder?.dueAt ? { skipped: 'unchanged' }
+        return after === (task.reminder?.at ?? null) && !task.reminder?.dueAt
+          && JSON.stringify(repeat) === JSON.stringify(task.reminder?.repeat) ? { skipped: 'unchanged' }
           : hydraEvent({
             state,
             meta: m,
@@ -249,6 +259,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
               data: {
                 before: task.reminder?.at ?? null,
                 after,
+                repeat,
               },
             },
           })

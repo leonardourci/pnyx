@@ -4,7 +4,7 @@ import type { HydraProject, TaskCopy } from '#projects/model.ts'
 import type { FirstmateRecord } from '#integrations/firstmate/model.ts'
 import type { ReportCall } from '#investigations/model.ts'
 import type { Column, HydraColumn } from '#tasks/columns-model.ts'
-import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card } from '#tasks/model.ts'
+import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
 import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
 import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
 import type { HydraConfig, HydraMessage, HydraOperation, HydraStatus, ChatEvent } from '#hydra/model.ts'
@@ -168,12 +168,15 @@ export type HydraChange = EventBase & (
     data: {
       before: string | null
       after: string | null
+      repeat?: ReminderRepeat
     }
   }
   | {
     type: 'task.reminder-due'
     data: {
       reminder: string
+      nextAt?: string | null
+      grouped?: boolean
       column: Column
       message: Omit<HydraMessage, 'id' | 'at' | 'actor'>
     }
@@ -412,6 +415,7 @@ export interface HydraState {
     flags?: string[]
   }
   hydraMessages?: HydraMessage[]
+  questionReminders?: Record<string, string>
   hydraAgent?: import('#workers/model.ts').AgentConfig
   hydraAgentChange?: import('#hydra/model.ts').HydraAgentChange
   historyMilestones?: import('#hydra/history.ts').HistoryMilestone[]

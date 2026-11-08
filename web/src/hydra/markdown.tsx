@@ -171,6 +171,7 @@ const inline = ({
               <TaskReference
                 id={task}
                 openTask={openTask}
+                savedLabel={label}
               >{children}
               </TaskReference>
             </Sourced>

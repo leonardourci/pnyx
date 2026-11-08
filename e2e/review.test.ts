@@ -4,7 +4,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { startReviewTimer, REVIEW_MS } from '#hydra/review-timer.ts'
 import { MINUTE_MS, QUESTION_REMINDER_MS } from '#hydra/review.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
-import { until } from '#test-harness/harness.ts'
+import { openPage, until } from '#test-harness/harness.ts'
 
 // How many times one review is offered while Hydra keeps starting turns.
 const REVIEW_ATTEMPTS = 5
@@ -58,6 +58,10 @@ function reviewClock({
         reasons: reasons.map(reason => reason.kind),
         block: event.data.block,
       }
+    },
+    advanceDuringTurn: async ({ ms }: { ms: number }) => {
+      time += ms
+      await timer.check()
     },
     restart: () => {
       timer.close()
@@ -322,7 +326,7 @@ test(
         'task',
         'create',
         '--title',
-        'Choose a merge',
+        'Choose a merge strategy for the pagination endpoint and the new response schema before the rollout starts',
         '--key',
         'choice',
       ],
@@ -339,7 +343,7 @@ test(
         '--reason',
         'The owner chooses',
         '--question',
-        'May I merge this change?',
+        'May I merge this change?\n\nPlease review the endpoint, the response schema, the cursor validation, the rollout notes and the compatibility checks before choosing Merge or Hold.',
         '--choice',
         'Merge',
         '--choice',
@@ -349,6 +353,39 @@ test(
     const task = s.task({ key: 'choice' })
     const ask = task.asks?.[0]
     assert.ok(ask)
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'scheduled',
+        '--title',
+        'Review cursor examples',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'remind',
+        'scheduled',
+        new Date(Date.parse(ask.at) + QUESTION_REMINDER_MS + 1).toISOString(),
+      ],
+    })
+    const hosted = await s.chat({ text: 'Prepare reminder supervision' })
+    await until({
+      what: 'Hydra to finish its initial turn',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    let baseline = s.state().hydraMessages?.length ?? 0
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    const held = pnyx.claude.plan({
+      text: 'Hold this reminder check',
+      reply: 'The reminder check is ready.',
+      hold: true,
+    })
     const clock = reviewClock({
       s,
       at: Date.parse(ask.at),
@@ -361,9 +398,55 @@ test(
       )
       assert.equal(
         s.state().hydraMessages?.length ?? 0,
-        0,
+        baseline,
       )
-      const due = await clock.advance({ ms: REVIEW_MS + 1 })
+      await s.chat({ text: 'Hold this reminder check' })
+      await until({
+        what: 'Hydra to hold its turn',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
+      })
+      baseline = s.state().hydraMessages?.length ?? 0
+      const received = s.received({ cwd: hosted.cwd }).length
+      await clock.advanceDuringTurn({ ms: REVIEW_MS + 1 })
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.sessionActivity,
+        'working',
+      )
+      assert.equal(
+        s.state().hydraMessages?.length,
+        baseline + 1,
+      )
+      assert.equal(
+        s.received({ cwd: hosted.cwd }).length,
+        received,
+      )
+      const receipt = s.events().find(event => event.id === s.task({ key: 'scheduled' }).reminder?.dueEvent)
+      assert.ok(receipt)
+      assert.deepEqual(
+        eventReasons({
+          state: s.state(),
+          event: receipt,
+        }),
+        [],
+      )
+      await page.shows({
+        what: 'the grouped message during the held turn',
+        check: ({ state }) => state.hydraMessages?.some(entry => entry.reminderQuestions?.length),
+      })
+      assert.deepEqual(
+        page.queues.at(-1)?.waiting,
+        [],
+      )
+      held.release()
+      await until({
+        what: 'Hydra to finish its held turn',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
+      assert.equal(
+        s.received({ cwd: hosted.cwd }).length,
+        received,
+      )
+      const due = await clock.advance({ ms: 0 })
       assert.equal(
         due.wakes,
         0,
@@ -372,7 +455,7 @@ test(
         due.reasons,
         [],
       )
-      const reminder = s.state().hydraMessages?.find(message => message.task === task.id)
+      const reminder = s.state().hydraMessages?.find(message => message.text.includes(`pnyx-task:${task.id}`))
       assert.ok(reminder)
       const reminderEvent = s.events().find(event => event.id === reminder.id)
       assert.ok(reminderEvent)
@@ -387,21 +470,38 @@ test(
         reminder.text,
         /May I merge this change\?/,
       )
-      assert.ok(s.state().hydraReview?.reminders[`${task.id}:${ask.id}`])
       assert.equal(
-        s.state().cards[HYDRA_CARD]?.agent,
-        undefined,
+        reminder.actor,
+        'pnyx',
+      )
+      assert.ok(reminder.text.startsWith('- Reminder: '))
+      assert.ok(reminder.text.split('\n').every(line => line.split(/\s+/).length <= 30))
+      assert.ok(reminder.text.includes(`pnyx-task:${s.task({ key: 'scheduled' }).id}`))
+      assert.equal(
+        s.state().hydraMessages?.length,
+        baseline + 1,
+      )
+      assert.equal(
+        reminder.text.split('\n').length,
+        2,
+      )
+      assert.ok(reminder.text.endsWith('…'))
+      assert.ok(s.task({ key: 'choice' }).asks?.[0]?.question.includes('compatibility checks'))
+      assert.ok(s.state().questionReminders?.[`${task.id}:${ask.id}`])
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.agent?.host,
+        'pnyx',
       )
       clock.restart()
       await clock.advance()
       assert.equal(
         s.state().hydraMessages?.length,
-        1,
+        baseline + 1,
       )
       await clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.equal(
         s.state().hydraMessages?.length,
-        2,
+        baseline + 2,
       )
       assert.equal(
         (await clock.advance()).wakes,
@@ -429,6 +529,8 @@ test(
         messages,
       )
     } finally {
+      held.release()
+      page.close()
       clock.close()
     }
   },
@@ -609,5 +711,53 @@ test(
         ],
       })
     }
+  },
+)
+
+test(
+  'starting a worker clears its recurring reminder without another reminder poll',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'reminder-work' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'reminder-work',
+        '--title',
+        'Review synthetic schema',
+        '--folder',
+        folder,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'remind',
+        'reminder-work',
+        'in 1 hour',
+        '--every',
+        '4 hours',
+        '--until',
+        'worker-started',
+      ],
+    })
+    assert.ok(s.task({ key: 'reminder-work' }).reminder)
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'reminder-work',
+        '--harness',
+        'claude',
+        '--prompt',
+        'Review the synthetic schema',
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'reminder-work' }).reminder,
+      undefined,
+    )
   },
 )

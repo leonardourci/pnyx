@@ -397,7 +397,7 @@ function ordinaryReasons({
         },
       ] : []
     case 'task.reminder-due':
-      return [
+      return event.data.grouped ? [] : [
         {
           kind: 'reminder due',
           card: card.id,

@@ -1,5 +1,44 @@
 import { HydraError } from '#store/errors.ts'
 
+// RegExp captures are strings, though both parsers only accept these unit keys.
+type IntervalUnit = 'minute' | 'hour' | 'day'
+
+const INTERVAL_UNITS: Record<IntervalUnit, number> = {
+  minute: 60_000,
+  hour: 3_600_000,
+  day: 86_400_000,
+}
+
+export function reminderIntervalText({ milliseconds }: { milliseconds: number }): string {
+  for (const [
+    unit,
+    size,
+  ] of Object.entries(INTERVAL_UNITS).reverse()) {
+    if (milliseconds % size === 0) {
+      const count = milliseconds / size
+
+      return `${count} ${unit}${count === 1 ? '' : 's'}`
+    }
+  }
+
+  return `${milliseconds / INTERVAL_UNITS.minute} minutes`
+}
+
+export function reminderInterval({ text }: { text: string }): number {
+  const match = /^([1-9]\d*) (minute|hour|day)s?$/i.exec(text.trim())
+  const unit = match?.[2]?.toLowerCase() as IntervalUnit | undefined
+  const milliseconds = match && unit ? Number(match[1]) * INTERVAL_UNITS[unit] : NaN
+
+  if (!Number.isSafeInteger(milliseconds) || milliseconds <= 0) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'Choose a positive interval such as "30 minutes", "4 hours" or "1 day"',
+    })
+  }
+
+  return milliseconds
+}
+
 export function reminderTime({
   when,
   now,
@@ -13,8 +52,8 @@ export function reminderTime({
   const tomorrow = /^tomorrow(?: (?:at )?([01]?\d|2[0-3]):([0-5]\d))?$/i.exec(text)
 
   if (relative) {
-    const unit = relative[2]!.toLowerCase()
-    time = Date.parse(now) + Number(relative[1]) * (unit === 'minute' ? 60_000 : unit === 'hour' ? 3_600_000 : 86_400_000)
+    const unit = relative[2]!.toLowerCase() as IntervalUnit
+    time = Date.parse(now) + Number(relative[1]) * INTERVAL_UNITS[unit]
   } else if (tomorrow) {
     const date = new Date(now)
     date.setDate(date.getDate() + 1)
