@@ -184,12 +184,14 @@ function digestParts({
   owner,
   projects,
   setup,
+  onlyTasks,
 }: {
   hydraId: string
   state: HydraState
   owner: string
   projects: string[]
   setup: string[]
+  onlyTasks?: string[]
 }): Map<string, string> {
   const config = hydraConfig({
     state,
@@ -209,6 +211,7 @@ function digestParts({
   ]))
   const tasks = Object.values(state.cards)
     .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
+    .filter(card => !onlyTasks || onlyTasks.includes(card.id))
   const place = ({ card }: { card: Card }) => order.get(card.column) ?? order.size
   const open = tasks.filter(card => !done.has(card.column)).sort((
     a,
@@ -296,6 +299,25 @@ function digestParts({
     projects.join('\n') || 'Attached projects: none',
   )
 
+  if (onlyTasks) {
+    for (const key of [
+      'attention',
+      'setup',
+      'columns',
+      'more',
+      'done',
+      'memory',
+      'projects',
+    ]) {
+      parts.delete(key)
+    }
+
+    parts.set(
+      'scope',
+      `Granted task context only: ${onlyTasks.join(', ')}. Other tasks are omitted.`,
+    )
+  }
+
   return parts
 }
 
@@ -374,6 +396,7 @@ export function hydraDigest({
   setup = [],
   previousDigest,
   checkpointed = false,
+  onlyTasks,
   now = new Date().toISOString(),
   conditions = learningConditions({ states: { [hydraId]: state } }),
 }: {
@@ -384,10 +407,12 @@ export function hydraDigest({
   setup?: string[]
   previousDigest?: string
   checkpointed?: boolean
+  onlyTasks?: string[]
   now?: string
   conditions?: LearningConditions
 }): string {
   const parts = digestParts({
+    onlyTasks,
     hydraId,
     state,
     owner: ownerDigest({

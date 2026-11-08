@@ -148,6 +148,20 @@ test(
         },
       },
     })
+    const scoped = hydraDigest({
+      hydraId: 'lab',
+      state: current,
+      owner: {},
+      onlyTasks: ['task:second'],
+    })
+    assert.match(
+      scoped,
+      /New task/,
+    )
+    assert.doesNotMatch(
+      scoped,
+      /Existing task|Hydra memory \(this Hydra only\)/,
+    )
     const previousDigest = hydraDigest({
       hydraId: 'lab',
       state: previous,

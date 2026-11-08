@@ -145,13 +145,27 @@ export function createHydraTurns({
     remember = true,
     previousDigest,
     checkpointed = false,
+    onlyTasks,
   }: {
     remember?: boolean
     previousDigest?: string
     checkpointed?: boolean
+    onlyTasks?: string[]
   } = {}) => {
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
+
+    if (onlyTasks) {
+      return hydraDigest({
+        hydraId,
+        state,
+        owner,
+        onlyTasks,
+        previousDigest,
+        checkpointed,
+        conditions: memoryConditions(),
+      })
+    }
 
     const [
       projects,
