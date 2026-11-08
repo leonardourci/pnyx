@@ -842,6 +842,7 @@ export async function terminalNotice({
   if ((card.sessionActivity ?? card.activity) === 'working') {
     return {
       result: 'deferred',
+      busy: true,
       detail: 'terminal worker is busy; notification waits for an idle composer',
     }
   }
