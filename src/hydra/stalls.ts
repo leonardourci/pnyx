@@ -11,6 +11,7 @@ import { helperBatch, helperReason } from '#routine-helper/route.ts'
 import { liveTask } from '#tasks/select.ts'
 import { loadHydra } from '#app/store.ts'
 import { pausedDeclaration } from '#tasks/lifecycle.ts'
+import { ownerGates } from '#tasks/owner-gates.ts'
 import { reasonLine } from './wake-reasons.ts'
 import { seenAt } from '#workers/presence.ts'
 import { wakeHandled } from '#routine-helper/state.ts'
@@ -158,6 +159,10 @@ export function createStallChecks({
       })
     }
 
+    if (pausedDeclaration({ card }) && ownerGates({ card }).length > 0) {
+      return []
+    }
+
     const key = sessionId({ agent: card.agent })
     const entry = live.get(key)
 
@@ -224,6 +229,7 @@ export function createStallChecks({
     const turnEnded = (card.sessionActivity ?? card.activity) === 'finished'
     const declaresWorking = card.tracking === 'declared' && card.status?.state === 'working'
     const asking = card.attention.some(a => a.blocking && !a.answered)
+      || ownerGates({ card }).length > 0
 
     if (!turnEnded || !declaresWorking || asking || !liveTask({ card })) {
       return []
@@ -263,6 +269,7 @@ export function createStallChecks({
     const declaration = pausedDeclaration({ card })
 
     const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd
+      || ownerGates({ card }).length > 0
 
     if (card.id === HYDRA_CARD || !liveTask({ card }) || waiting || !declaration) {
       return []

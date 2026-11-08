@@ -5,6 +5,7 @@ import { roleColumn } from '#tasks/column-rules.ts'
 import { unwatchedPullRequests } from '#tasks/delivery/following.ts'
 import { agentActor, hostedHydra, pnyxRunsHydra, reportActor } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { ownerGates } from '#tasks/owner-gates.ts'
 import { hydraConfig } from './config.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -242,6 +243,7 @@ function pushReasons({
     detail: `${a.key}: ${quote({ text: a.text ?? a.questions?.map(q => q.question).join(' ') ?? a.kind })}`,
   }))
   const asking = card.attention.some(a => a.blocking && !a.answered)
+    || ownerGates({ card }).length > 0
   const silent = !card.status || card.status.state === 'working'
 
   if (activity === 'finished' && card.turnEndedSeq === event.seq && silent && !asking) {

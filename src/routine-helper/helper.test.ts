@@ -9,6 +9,8 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { askAnswer } from '#tasks/ask-decide.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { Link } from '#tasks/delivery/model.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import { taskLease } from './leases.ts'
@@ -23,8 +25,9 @@ import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes 
 import { until } from '#test-harness/harness.ts'
 import type { Provider } from '#workers/provider.ts'
 import { loadHydra } from '#app/store.ts'
+import { reduce } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
-import type { HelperAgent } from './state.ts'
+import { ownerOutcomes, type HelperAgent } from './state.ts'
 
 let root = ''
 let restore: NodeJS.ProcessEnv
@@ -105,7 +108,7 @@ const granted = ({
 })
 
 test(
-  'fixed routing keeps results, PR actions, progress, unknown tasks and owner answers off the helper',
+  'routine routing keeps owner decisions, merge actions, progress and unknown tasks off the helper',
   async () => {
     const s = state()
     const task = s.keys.work!
@@ -154,7 +157,7 @@ test(
           },
         } as HydraEvent,
       }),
-      undefined,
+      task,
     )
     assert.equal(
       helperEvent({
@@ -171,12 +174,9 @@ test(
     )
 
     for (const kind of [
-      'checks',
-      'comments',
       'merged',
       'approved merge is green',
       'timed review',
-      'permission',
       'slot free',
     ] as const) {
       assert.equal(
@@ -190,6 +190,10 @@ test(
     }
 
     for (const kind of [
+      'report',
+      'checks',
+      'comments',
+      'permission',
       'quiet',
       'wait ended',
       'not confirmed',
@@ -206,6 +210,125 @@ test(
         true,
       )
     }
+
+    const routed = structuredClone(s)
+    const mainCard = routed.cards[HYDRA_CARD]
+    const workerCard = routed.cards[task]
+    assert.ok(mainCard && workerCard)
+    mainCard.agent = {
+      host: 'pnyx',
+      provider: 'claude-code',
+      sessionId: 'synthetic-main',
+    }
+    const link: Link = {
+      kind: 'github_pr',
+      url: 'https://github.com/example/project/pull/7',
+      state: 'open',
+      draft: false,
+      checks: '1 passed, 1 total',
+      comments: 0,
+    }
+    workerCard.links = [link]
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          type: 'card.linked',
+          data: {
+            url: link.url,
+            before: {
+              ...link,
+              checks: '1 pending, 1 total',
+            },
+            after: link,
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
+    workerCard.links = [
+      {
+        ...link,
+        comments: 1,
+      },
+    ]
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          type: 'card.linked',
+          data: {
+            url: link.url,
+            before: link,
+            after: workerCard.links[0],
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
+    workerCard.tracking = 'declared'
+    workerCard.turnEndedSeq = 123
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          seq: 123,
+          type: 'card.pushed',
+          actor: 'pnyx',
+          data: {
+            key: task,
+            activity: 'finished',
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
+    workerCard.hold = {
+      id: 'held',
+      at: '2026-01-01T00:00:00Z',
+      actor: 'web',
+      reason: 'Discuss the result.',
+    }
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          data: {
+            ...report.data,
+            ask: undefined,
+          },
+        } as HydraEvent,
+      }),
+      undefined,
+    )
+    delete workerCard.hold
+    workerCard.links = []
+    workerCard.status = {
+      id: 'done',
+      at: '2026-01-01T00:00:00Z',
+      actor: `worker:${task}`,
+      state: 'done',
+      note: 'The accepted export finished.',
+    }
+    delete routed.cards[other]
+    assert.equal(
+      helperEvent({
+        state: routed,
+        event: {
+          ...report,
+          type: 'task.declared',
+          data: {
+            state: 'done',
+            note: 'The accepted export finished.',
+          },
+        } as HydraEvent,
+      }),
+      task,
+    )
 
     assert.equal(
       helperGrant({
@@ -238,7 +361,6 @@ test(
       }),
       undefined,
     )
-    // Waiting on the owner leaves the helper only the worker's nudges and plain permission prompts.
     assert.equal(
       helperReason({
         state: state(),
@@ -532,6 +654,96 @@ function helperLab({
     },
   }
 }
+
+test(
+  'structured helper results post once, unchanged waits stay quiet and uncertainty reaches main',
+  async t => {
+    const lab = helperLab()
+    t.after(() => lab.helper.close())
+    const task = state().keys.work!
+    const handled = JSON.stringify({
+      outcomes: [
+        {
+          task,
+          status: 'handled',
+          summary: 'The export is ready.',
+        },
+      ],
+    })
+    const first = await lab.run({ text: handled })
+    await first.finished
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).findLast(event => event.type === 'hydra.helper-finished')?.data.error,
+      undefined,
+    )
+    assert.equal(
+      state().hydraMessages?.filter(message => message.actor === 'pnyx' && message.text.includes('The export is ready.')).length,
+      1,
+    )
+    assert.equal(
+      lab.ownerWakes(),
+      0,
+    )
+
+    const saved = readEvents({ hydraId: 'lab' })
+    const completion = saved.findLast(event => event.type === 'hydra.helper-finished')
+    const notification = saved.find(event => event.type === 'hydra.message' && event.data.text.includes('The export is ready.'))
+    assert.ok(notification)
+    assert.ok(completion?.transaction)
+    assert.equal(
+      notification.transaction,
+      completion.transaction,
+    )
+
+    const repeat = await lab.run({ text: handled })
+    await repeat.finished
+    const waiting = await lab.run({
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task,
+            status: 'still_waiting',
+            summary: 'The owner decision is unchanged.',
+          },
+        ],
+      }),
+    })
+    await waiting.finished
+    assert.equal(
+      state().hydraMessages?.some(message => message.text.includes('The owner decision is unchanged.')),
+      false,
+    )
+    assert.equal(
+      state().hydraMessages?.filter(message => message.text.includes('The export is ready.')).length,
+      1,
+    )
+    assert.equal(
+      lab.ownerWakes(),
+      0,
+    )
+
+    const uncertain = await lab.run({
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task,
+            status: 'needs_main',
+            summary: 'The requested scope is unclear.',
+          },
+        ],
+      }),
+    })
+    await uncertain.finished
+    assert.equal(
+      lab.ownerWakes(),
+      1,
+    )
+    assert.equal(
+      state().hydraMessages?.some(message => message.text.includes('The requested scope is unclear.')),
+      false,
+    )
+  },
+)
 
 test(
   'a helper batch keeps its selected account and home if configuration changes before launch',
@@ -866,10 +1078,30 @@ test(
       JSON.parse(fixtures[1]!.text).outcomes[1].summary.length,
       667,
     )
-    assert.match(
-      HELPER_INSTRUCTIONS,
-      /at most 600 characters/,
-    )
+    assert.throws(() => parseOutcomes({
+      tasks: ['work'],
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task: 'work',
+            status: 'handled',
+            summary: 'x'.repeat(281),
+          },
+        ],
+      }),
+    }))
+    assert.throws(() => parseOutcomes({
+      tasks: ['work'],
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task: 'work',
+            status: 'handled',
+            summary: `${'a '.repeat(40)}a`,
+          },
+        ],
+      }),
+    }))
     assert.match(
       HELPER_INSTRUCTIONS,
       /never pass --actor/,
@@ -879,23 +1111,75 @@ test(
       /Copy supplied links exactly; omit links that were not supplied/,
     )
     const schema = outcomeSchema({ tasks: ['work'] })
-    assert.ok(JSON.stringify(schema).includes('at most 600 characters'))
+    assert.ok(JSON.stringify(schema).includes('still_waiting'))
     assert.ok(!JSON.stringify(schema).includes('maxLength'))
     assert.ok(!JSON.stringify(schema).includes('maxItems'))
-    assert.deepEqual(
+    assert.equal(
       parseOutcomes({
         text: JSON.stringify({
           outcomes: [
             {
               task: 'work',
               audience: 'owner',
-              summary: 'a'.repeat(600),
+              summary: 'a'.repeat(280),
             },
           ],
         }),
         tasks: ['work'],
       })[0]!.summary.length,
-      600,
+      280,
+    )
+
+    for (const summary of [
+      'a'.repeat(281),
+      `${'a '.repeat(40)}a`,
+    ]) {
+      assert.throws(() => parseOutcomes({
+        text: JSON.stringify({
+          outcomes: [
+            {
+              task: 'work',
+              audience: 'owner',
+              summary,
+            },
+          ],
+        }),
+        tasks: ['work'],
+      }))
+    }
+  },
+)
+
+test(
+  'saved legacy outcomes replay without applying fresh-output summary limits',
+  () => {
+    const before = state()
+    const summary = 'a'.repeat(600)
+    const replayed = reduce({
+      state: before,
+      event: {
+        v: 1,
+        seq: before.seq + 1,
+        id: 'legacy-result',
+        at: '2026-11-01T00:00:00Z',
+        actor: 'pnyx',
+        cardId: HYDRA_CARD,
+        type: 'hydra.helper-finished',
+        data: {
+          batch: 'legacy',
+          outcomes: [
+            {
+              task: before.keys.work!,
+              audience: 'owner',
+              summary,
+            },
+          ],
+        },
+      },
+    })
+    assert.equal(
+      ownerOutcomes({ state: replayed })[0]?.summary,
+      summary,
     )
   },
 )

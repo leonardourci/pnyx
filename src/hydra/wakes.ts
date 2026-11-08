@@ -4,7 +4,6 @@ import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
 import type { HydraMessage } from './model.ts'
 import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
-import { clip } from './digest.ts'
 import type { AgentRef } from '#workers/model.ts'
 import { readEvents } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
@@ -158,7 +157,6 @@ export function recapText({
   after,
   now,
   why,
-  whole = false,
 }: {
   state: HydraState
   since: string
@@ -166,8 +164,6 @@ export function recapText({
   now: number
   // Why Hydra was stopped; an outage when not given.
   why?: string
-  // The owner's messages in full, as after a stop that held them; an outage recap shortens them.
-  whole?: boolean
 }): string {
   const minutes = outageMinutes({
     since,
@@ -185,14 +181,7 @@ export function recapText({
         title: card.title,
       })}` : ''
 
-      if (whole) {
-        return `- ${message.at}${task}:\n${sealed({ text: message.text })}`
-      }
-
-      return `- ${message.at}${task}: ${clip({
-        text: message.text,
-        size: 300,
-      })}`
+      return `- ${message.at}${task}:\n${sealed({ text: message.text })}`
     })
   const reports = sent.filter(message => reportActor({ actor: message.actor }) && message.kind !== 'progress').length
 

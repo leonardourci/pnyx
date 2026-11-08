@@ -62,8 +62,18 @@ test(
       'taken:hosted': 3,
       held: 4,
       report: 5,
+      result: 6,
     }
     state.hydraMessages = [
+      {
+        id: 'result',
+        action: 'send',
+        actor: 'pnyx',
+        kind: 'routine',
+        hydra: 'hydra',
+        text: 'The export is ready.',
+        at,
+      },
       {
         id: 'taken',
         action: 'send',

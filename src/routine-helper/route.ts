@@ -19,16 +19,24 @@ const NUDGES: WakeKind[] = [
   'not confirmed',
 ]
 
-// A task waiting on the owner keeps only its worker nudges and permission prompts for the helper.
+const UPDATES: WakeKind[] = [
+  'report',
+  'declared',
+  'checks',
+  'comments',
+  'permission',
+]
+
+// Owner waits keep a narrower action grant even when the helper classifies routine updates.
 const SCOPE_KINDS: Record<HelperScope, WakeKind[]> = {
   routine: [
     ...NUDGES,
+    ...UPDATES,
     'asked',
-    'declared',
   ],
   owner: [
     ...NUDGES,
-    'permission',
+    ...UPDATES,
   ],
 }
 
@@ -147,12 +155,8 @@ export function helperEvent({
     return undefined
   }
 
-  if (event.type === 'task.declared' && event.data.state !== 'blocked' && event.data.state !== 'needs_you') {
-    return undefined
-  }
-
-  if (event.type === 'card.pushed'
-    && state.cards[task]?.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
+  if (event.type === 'task.declared' && event.data.state !== 'blocked'
+    && event.data.state !== 'needs_you' && event.data.state !== 'done') {
     return undefined
   }
 

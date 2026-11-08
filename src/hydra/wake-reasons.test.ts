@@ -87,6 +87,55 @@ const ref = ({ id }: { id: string }) => taskMention({
   title: `Task ${id}`,
 })
 
+test(
+  'a worker turn ending on an existing owner question stays quiet',
+  () => {
+    const ended = event({
+      type: 'card.pushed',
+      actor: 'pnyx',
+      data: {
+        key: 'fix',
+        activity: 'finished',
+      },
+    })
+    const waiting = card({
+      id: 'fix',
+      tracking: 'declared',
+      turnEndedSeq: ended.seq,
+      asks: [
+        {
+          id: 'format',
+          at: ended.at,
+          actor: 'hydra',
+          audience: 'owner',
+          question: 'Approve the format?',
+        },
+      ],
+    })
+    const state = hydraState({ cards: [waiting] })
+    assert.equal(
+      wakesHydra({
+        state,
+        event: ended,
+      }),
+      false,
+    )
+    waiting.asks = []
+    waiting.reminder = {
+      id: 'review',
+      at: ended.at,
+      dueAt: ended.at,
+    }
+    assert.equal(
+      wakesHydra({
+        state,
+        event: ended,
+      }),
+      true,
+    )
+  },
+)
+
 const linked = ({
   before,
   after,

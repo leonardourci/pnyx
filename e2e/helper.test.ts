@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { readSettings } from '#settings/store.ts'
 import { commands } from '#app/cli.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -11,6 +13,7 @@ import { declareTask } from '#tasks/declarations.ts'
 import { HELPER_INSTRUCTIONS } from '#routine-helper/runner.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import type { HelperChange } from '#routine-helper/state.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { permissionEvent } from '#workers/permission-rules.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import type { Decision, HydraEvent, HydraState } from '#app/model.ts'
@@ -130,12 +133,14 @@ const says = ({
   text,
   kind,
   ask,
+  unscoped = false,
 }: {
   s: Scenario
   key: string
   text: string
   kind?: 'progress'
   ask?: string
+  unscoped?: boolean
 }): Step => ({ state }) => {
   const task = s.task({ key }).id
 
@@ -151,7 +156,7 @@ const says = ({
       data: {
         action: 'send',
         hydra: 'hydra',
-        task,
+        task: unscoped ? undefined : task,
         text,
         ...(kind ? { kind } : {}),
         ...(ask ? { ask } : {}),
@@ -183,11 +188,13 @@ function workerSays({
   key,
   text,
   kind,
+  unscoped,
 }: {
   s: Scenario
   key: string
   text: string
   kind?: 'progress'
+  unscoped?: boolean
 }) {
   inOneWrite({
     s,
@@ -197,6 +204,7 @@ function workerSays({
         key,
         text,
         kind,
+        unscoped,
       }),
     ],
   })
@@ -235,7 +243,11 @@ async function noWake({ s }: { s: Scenario }) {
     what: 'main to answer the owner',
     check: () => hydra.received.length === turns + 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
   })
-  assert.ok(hydra.received.every(text => !text.includes('<pnyx-wake>')))
+  assert.deepEqual(
+    hydra.received.filter(text => text.includes('<pnyx-wake>'))
+      .map(text => text.slice(text.indexOf('<pnyx-wake>'))),
+    [],
+  )
 }
 
 test(
@@ -320,7 +332,7 @@ test(
           3,
         ).map(task => ({
           task,
-          audience: 'owner',
+          status: 'needs_main',
           summary: 'A parser choice waits on the owner.',
         })),
       }),
@@ -558,6 +570,7 @@ test(
             s,
             key: 'work',
             text: 'The parser is done.',
+            unscoped: true,
           }),
           ...extra.map(key => declared({ key })),
         ],
@@ -647,6 +660,7 @@ test(
             s,
             key: 'work',
             text: 'The parser is done.',
+            unscoped: true,
           }),
         ],
       })
@@ -729,6 +743,7 @@ test(
         s,
         key: 'report',
         text: 'The parser is done.',
+        unscoped: true,
       })
       await until({
         what: 'main to finish the unrelated report',
@@ -818,6 +833,7 @@ test(
             s,
             key: 'report',
             text: 'The parser is done.',
+            unscoped: true,
           }),
         ],
       })
@@ -1021,6 +1037,19 @@ test(
         ],
       },
     })
+    pending({
+      id: 'form',
+      request: {
+        tool: 'Configuration',
+        form: [
+          {
+            name: 'format',
+            type: 'string',
+            required: true,
+          },
+        ],
+      },
+    })
     helperChange({
       change: {
         type: 'hydra.helper-started',
@@ -1067,6 +1096,10 @@ test(
     })
 
     try {
+      assert.equal(
+        (await answer({ request: 'form' })).code,
+        'MAIN_ONLY',
+      )
       assert.equal(
         (await answer({ request: 'question' })).code,
         'MAIN_ONLY',
@@ -1553,5 +1586,413 @@ test(
       grants({ s })[0]?.agent?.fast,
       true,
     )
+  },
+)
+
+test(
+  'routine results appear as automated chat once without starting main and survive restart',
+  async t => {
+    const s = await helperHydra({ keys: ['work'] })
+    const task = s.task({ key: 'work' }).id
+    await s.chat({ text: 'Watch the accepted export task.' })
+    await until({
+      what: 'main to finish',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const result = JSON.stringify({
+      outcomes: [
+        {
+          task,
+          status: 'handled',
+          summary: 'The export is ready for review.',
+        },
+      ],
+    })
+    const routineTurn = pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: result,
+      hold: true,
+    })
+    t.after(() => routineTurn.release())
+    workerSays({
+      s,
+      key: 'work',
+      text: 'The accepted export is ready.',
+    })
+    await until({
+      what: 'the helper to take the routine report',
+      check: () => grants({ s }).length === 1,
+    })
+    const compaction = pnyx.claude.plan({
+      text: '/compact',
+      hold: true,
+      before: [
+        {
+          type: 'system',
+          subtype: 'status',
+          status: 'compacting',
+          uuid: randomUUID(),
+          session_id: '',
+        },
+      ],
+      after: [
+        {
+          type: 'system',
+          subtype: 'status',
+          status: null,
+          compact_result: 'success',
+          uuid: randomUUID(),
+          session_id: '',
+        },
+      ],
+    })
+    t.after(() => compaction.release())
+    await s.chat({ text: '/compact' })
+    await until({
+      what: 'main compaction to stop the Hydra',
+      check: () => s.state().hydraOperation?.kind === 'compaction',
+    })
+    routineTurn.release()
+    await until({
+      what: 'the result to be saved',
+      check: () => finishes({ s }).length === 1,
+    })
+    await serverRead({ s })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    const thread = (await page.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    assert.equal(
+      thread.conversation?.entries.filter(entry => entry.role === 'Pnyx' && entry.text.includes('The export is ready for review.')).length,
+      1,
+    )
+    assert.equal(
+      s.state().hydraOperation?.kind,
+      'compaction',
+    )
+    compaction.release()
+    await until({
+      what: 'main compaction to finish',
+      check: () => !s.state().hydraOperation && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: result,
+    })
+    declare({
+      s,
+      keys: ['work'],
+      status: 'needs_you',
+    })
+    await until({
+      what: 'the duplicate result to finish',
+      check: () => finishes({ s }).length === 2,
+    })
+    await noWake({ s })
+    await pnyx.restart()
+    const reconnected = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => reconnected.close())
+    const reopened = (await reconnected.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    assert.equal(
+      reopened.conversation?.entries.filter(entry => entry.role === 'Pnyx' && entry.text.includes('The export is ready for review.')).length,
+      1,
+    )
+  },
+)
+
+test(
+  'an unchanged owner wait stays quiet while an expired routine pause reaches the helper',
+  async t => {
+    const s = await helperHydra({
+      keys: [
+        'waiting',
+        'routine',
+        'idle',
+      ],
+    })
+    inOneWrite({
+      s,
+      steps: [
+        'waiting',
+        'routine',
+        'idle',
+      ].flatMap((key): Step[] => [
+        ({ state }) => ({
+          event: {
+            v: 1,
+            seq: state.seq + 1,
+            id: `${key}-reminder`,
+            at: new Date().toISOString(),
+            actor: 'pnyx',
+            cardId: state.keys[key]!,
+            type: 'task.reminder',
+            data: {
+              before: null,
+              after: new Date().toISOString(),
+            },
+          },
+        }),
+        ({ state }) => ({
+          event: {
+            v: 1,
+            seq: state.seq + 1,
+            id: `${key}-reminder-due`,
+            at: new Date().toISOString(),
+            actor: 'pnyx',
+            cardId: state.keys[key]!,
+            type: 'task.reminder-due',
+            data: {
+              reminder: `${key}-reminder`,
+              column: 'needs_you',
+              message: {
+                action: 'send',
+                hydra: 'hydra',
+                task: state.keys[key]!,
+                text: 'Review the accepted export.',
+              },
+            },
+          },
+        }),
+      ]),
+    })
+    await s.chat({ text: 'Supervise only the accepted work.' })
+    const hydra = await s.agent({ hydra: true })
+    await until({
+      what: 'main to finish',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const busyTurn = pnyx.claude.plan({
+      text: '',
+      hold: true,
+    })
+    t.after(() => busyTurn.release())
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'waiting',
+        '--folder',
+        s.folder({ name: 'busy-worker' }),
+      ],
+    })
+    await until({
+      what: 'the busy worker to be running',
+      check: () => s.task({ key: 'waiting' }).sessionActivity === 'working',
+    })
+    const idleTurn = pnyx.claude.plan({
+      text: '',
+      hold: true,
+    })
+    t.after(() => idleTurn.release())
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'idle',
+        '--folder',
+        s.folder({ name: 'idle-worker' }),
+      ],
+    })
+    await until({
+      what: 'the second worker to start',
+      check: () => s.task({ key: 'idle' }).sessionActivity === 'working',
+    })
+    await s.as({ agent: hydra }).run({
+      args: [
+        'task',
+        'ask',
+        'idle',
+        '--to',
+        'owner',
+        '--question',
+        'Approve the idle worker format?',
+        '--reason',
+        'The worker needs an owner decision.',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'status',
+        'idle',
+        'working',
+        '--note',
+        'The worker is waiting on the owner question.',
+      ],
+    })
+    idleTurn.release()
+    await until({
+      what: 'the idle worker turn to finish',
+      check: () => s.task({ key: 'idle' }).sessionActivity === 'finished',
+    })
+    await s.as({ agent: hydra }).run({
+      args: [
+        'task',
+        'ask',
+        'waiting',
+        '--to',
+        'owner',
+        '--question',
+        'Approve the export format?',
+        '--reason',
+        'The format needs an owner decision.',
+      ],
+    })
+    const previousReviewMinutes = readSettings().settings.reviewMinutes
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--review-minutes',
+        '0',
+      ],
+    })
+    const realNow = Date.now.bind(Date)
+    const afterPauseExpiry = 5 * 60 * 60_000
+    const clock = t.mock.method(
+      Date,
+      'now',
+      () => realNow() + afterPauseExpiry,
+    )
+    t.after(async () => {
+      clock.mock.restore()
+      await s.owner({
+        args: [
+          'hydra',
+          'set',
+          '--review-minutes',
+          String(previousReviewMinutes),
+        ],
+      })
+    })
+    const routineTask = s.task({ key: 'routine' }).id
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: routineTask,
+            status: 'still_waiting',
+            summary: 'The supplied receipt confirms the worker pause.',
+          },
+        ],
+      }),
+    })
+    const past = new Date(Date.now() - 60_000).toISOString()
+    inOneWrite({
+      s,
+      steps: [
+        declared({
+          key: 'waiting',
+          status: 'paused',
+          until: past,
+        }),
+        declared({
+          key: 'routine',
+          status: 'paused',
+          until: past,
+        }),
+      ],
+    })
+    await until({
+      what: 'the expired routine pause to finish its helper check',
+      check: () => finishes({ s }).length === 1,
+    })
+    assert.deepEqual(
+      grants({ s }).map(grant => grant.tasks),
+      [[routineTask]],
+    )
+    assert.equal(
+      finishes({ s })[0]?.error,
+      undefined,
+    )
+    assert.equal(
+      s.task({ key: 'waiting' }).asks?.[0]?.answered,
+      undefined,
+    )
+    await noWake({ s })
+    const waitingTask = s.task({ key: 'waiting' })
+    const question = waitingTask.asks?.[0]
+    assert.ok(question)
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: waitingTask.id,
+            status: 'still_waiting',
+            summary: 'The owner answer is recorded.',
+          },
+        ],
+      }),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'waiting',
+        question.id,
+        '--text',
+        'Keep the accepted format.',
+        '--reason',
+        'The owner settled the format.',
+      ],
+    })
+    await until({
+      what: 'the answered task to become eligible for supervision again',
+      check: () => finishes({ s }).length === 2,
+    })
+    assert.deepEqual(
+      grants({ s })[1]?.tasks,
+      [waitingTask.id],
+    )
+    assert.ok(s.task({ key: 'waiting' }).reminder?.dueAt)
+    const idleTask = s.task({ key: 'idle' })
+    const idleQuestion = idleTask.asks?.[0]
+    assert.ok(idleQuestion)
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: idleTask.id,
+            status: 'still_waiting',
+            summary: 'The owner settled the idle worker format.',
+          },
+        ],
+      }),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'idle',
+        idleQuestion.id,
+        '--text',
+        'Keep the accepted format.',
+        '--reason',
+        'The owner settled the idle worker format.',
+      ],
+    })
+    await until({
+      what: 'the idle worker with a due reminder to reach periodic supervision',
+      check: () => finishes({ s }).length === 3,
+    })
+    assert.deepEqual(
+      grants({ s })[2]?.tasks,
+      [idleTask.id],
+    )
+    assert.ok(s.task({ key: 'idle' }).reminder?.dueAt)
   },
 )

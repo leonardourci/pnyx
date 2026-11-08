@@ -291,7 +291,6 @@ export function createAgentSwitch({
                 since: at(),
                 after: (loadHydra({ hydraId }).state.eventIds[id] ?? 1) - 1,
                 now: Date.now(),
-                whole: true,
                 why: change.kind === 'effort'
                   ? 'Effort changed without compaction. Handle the queued messages in order.'
                   : 'Agent settings changed without compaction. Read the recorded conversation with the history command in your context and handle the queued messages in order.',
