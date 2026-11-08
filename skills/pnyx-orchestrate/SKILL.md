@@ -25,6 +25,8 @@ Raising your own, a worker's or a candidate's permission level still needs the o
 - When Pnyx runs you, never wait inside your turn: no `hydra check --wait` (Pnyx refuses it), no sleeps, no polling. End the turn; Pnyx wakes you with the next change, and worker updates wait for you in its queue.
 - Load the skill a step names before taking that step (see Load before).
 
+Read “Since your last turn” notes for context only. Pnyx already routed the owner answer, routine helper outcome or dependency resume; do not repeat it or start work from that note alone. For a worker waiting on another task, record `task status <task> paused --wait-for <dependency> [--ready-when task-done|pr-opened|pr-merged]` (default `task-done`). The server checks readiness and resumes the worker; no Hydra turn is needed.
+
 ## Discovery and recovery
 
 Run `pnyx-axi` for bounded live state, `pnyx-axi --help` for command groups, and `<command> <subcommand> --help` for syntax and next steps. The digest and wake describe current work; read only records a decision needs. Suggestions never grant authority. Reconcile an uncertain side effect from its saved receipt before retrying it.
