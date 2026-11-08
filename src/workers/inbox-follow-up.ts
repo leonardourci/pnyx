@@ -3,7 +3,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraState } from '#app/model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import type { Card } from '#tasks/model.ts'
-import type { SteeringMessage, SteeringRecovery } from './model.ts'
+import type { AgentSession, SteeringClaim, SteeringMessage, SteeringRecovery } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { loadHydra } from '#app/store.ts'
@@ -11,6 +11,8 @@ import { withWriter, type Writer } from '#app/writer.ts'
 import type { NotificationResult } from './inbox-notice.ts'
 import { pendingSteering, sameClaim, steeringClaim } from './steering.ts'
 import { notifySteering } from './inbox-delivery.ts'
+import { agentActivity } from './activity.ts'
+import { terminalPresence, type Presence } from './presence.ts'
 
 export const STEERING_GRACE_MS = 90_000
 export const STEERING_RING_LIMIT = 3
@@ -66,14 +68,35 @@ export async function followUpSteering({
   hydraId,
   now = Date.now(),
   notify = notifySteering,
+  probe = terminalPresence,
 }: {
   hydraId: string
   now?: number
   notify?: typeof notifySteering
+  probe?({ session }: { session: AgentSession }): Presence
 }): Promise<void> {
-  const cards = Object.keys(loadHydra({ hydraId }).state.cards)
+  const observed = loadHydra({ hydraId }).state
 
-  for (const cardId of cards) {
+  for (const previous of Object.values(observed.cards)) {
+    const cardId = previous.id
+    const claim = steeringClaim({ card: previous })
+    const session = claim && observed.sessions?.[claim.session]
+    const terminal = session && !session.agent.host && !session.agent.paseoAgentId
+      && session.terminal?.pid
+    const working = agentActivity({
+      card: previous,
+      cards: observed.cards,
+    }) === 'working'
+    let gone: SteeringClaim | undefined
+
+    if (terminal && working && oldestUnread({ card: previous })) {
+      const presence = probe({ session })
+
+      if (presence.state === 'gone') {
+        gone = claim
+      }
+    }
+
     const reserved = withWriter({
       hydraId,
       fn: ({ writer }) => {
@@ -82,6 +105,18 @@ export async function followUpSteering({
         const message = card && oldestUnread({ card })
 
         if (!message) {
+          return
+        }
+
+        const workerGone = gone && sameClaim({
+          current: steeringClaim({ card }),
+          claim: gone,
+        })
+
+        if (!workerGone && agentActivity({
+          card,
+          cards: writer.state.cards,
+        }) === 'working') {
           return
         }
 
@@ -100,9 +135,9 @@ export async function followUpSteering({
           return
         }
 
-        const deferrals = recovery.filter(attempt => attempt.result === 'deferred').length
-        const rings = recovery.length - deferrals
-        const exhausted = deferrals >= STEERING_DEFERRAL_LIMIT || rings >= STEERING_RING_LIMIT
+        const deferrals = recovery.filter(attempt => attempt.result === 'deferred' && !attempt.busy).length
+        const rings = recovery.filter(attempt => attempt.result !== 'deferred').length
+        const exhausted = rings >= STEERING_RING_LIMIT || deferrals >= STEERING_DEFERRAL_LIMIT
         const id = `recovery:${cardId}:${message.order}:${recovery.length + 1}`
         const at = new Date(now).toISOString()
         const claim = steeringClaim({ card })
@@ -190,17 +225,23 @@ export async function followUpSteering({
           }
         }
 
+        const recovery: SteeringRecovery = {
+          id: reserved.id,
+          claim: reserved.claim,
+          at: reserved.at,
+          result: outcome.result === 'gone' ? 'exhausted' : outcome.result,
+          detail: outcome.detail,
+        }
+
+        if (outcome.busy) {
+          recovery.busy = true
+        }
+
         recordRecovery({
           writer,
           card: cardId,
           message: message.id,
-          recovery: {
-            id: reserved.id,
-            claim: reserved.claim,
-            at: reserved.at,
-            result: outcome.result === 'gone' ? 'exhausted' : outcome.result,
-            detail: outcome.detail,
-          },
+          recovery,
         })
       },
     })

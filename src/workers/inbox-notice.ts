@@ -2,6 +2,7 @@ import type { ReplyState } from './model.ts'
 
 export interface NotificationResult {
   result: 'delivered' | 'unknown' | 'failed' | 'deferred' | 'gone'
+  busy?: true
   detail?: string
 }
 

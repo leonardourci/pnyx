@@ -47,7 +47,13 @@ export const waitingQuestions = ({ card }: { card: Card }) =>
   ownerQuestions({ card }).filter(question => !inFlight({ question }))
 
 // The status word's rule, newest information first; the page adds elapsed times to done and stopped.
-export function cardStatus({ card }: { card: Card }): CardStatus {
+export function cardStatus({
+  card,
+  cards,
+}: {
+  card: Card
+  cards?: Record<string, Card>
+}): CardStatus {
   if (card.doneAt) {
     return {
       kind: 'done',
@@ -89,7 +95,10 @@ export function cardStatus({ card }: { card: Card }): CardStatus {
     }
   }
 
-  const activity = agentActivity({ card })
+  const activity = agentActivity({
+    card,
+    cards,
+  })
 
   if (activity === 'stopped') {
     return {

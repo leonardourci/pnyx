@@ -12,10 +12,12 @@ import { followUpReplies } from './reply-retry.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideReply } from './reply-rules.ts'
 import { decideSession } from './sessions.ts'
-import type { ReplyState } from './model.ts'
+import type { AgentSession, ReplyState } from './model.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
+import { terminalPresence } from './presence.ts'
+import { wakesHydra } from '#hydra/wake-reasons.ts'
 
 let root = ''
 let transcript = ''
@@ -727,6 +729,310 @@ function queuedSteer({ id = 'durable' }: { id?: string } = {}) {
     }),
   })
 }
+
+test(
+  'a busy worker retains its steering budget until it reads the instruction',
+  async () => {
+    queuedSteer()
+    const original = task()
+    const agent = original.agent
+    assert.ok(agent)
+    const probe = ({ session }: { session: AgentSession }) => terminalPresence({
+      session,
+      bootedAt: 0,
+      run: () => 'ttys123',
+    })
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const working = decidePush({
+          state: writer.state,
+          key: original.key,
+          input: {
+            activity: 'working',
+            terminal: {
+              pid: '123',
+              tty: '/dev/ttys123',
+            },
+            source: {
+              adapter: 'hooks',
+              instanceId: 'claude',
+              objectId: 'terminal-session',
+              observedAt: new Date(SENT).toISOString(),
+            },
+          },
+          meta: {
+            actor: 'test',
+            at: new Date(SENT).toISOString(),
+          },
+        })
+        assert.ok('event' in working)
+        writer.append({ event: working.event })
+      },
+    })
+    const notify = async (): Promise<NotificationResult> => assert.fail('a busy worker must not ring')
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + STEERING_GRACE_MS,
+      notify,
+      probe,
+    })
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const finished = decidePush({
+          state: writer.state,
+          key: original.key,
+          input: {
+            activity: 'finished',
+            source: {
+              adapter: 'hooks',
+              instanceId: 'claude',
+              objectId: 'terminal-session',
+              observedAt: new Date(SENT + STEERING_GRACE_MS).toISOString(),
+            },
+          },
+          meta: {
+            actor: 'test',
+            at: new Date(SENT + STEERING_GRACE_MS).toISOString(),
+          },
+        })
+        assert.ok('event' in finished)
+        writer.append({ event: finished.event })
+        const child = decidePush({
+          state: writer.state,
+          newCardId: 'child',
+          key: 'child',
+          input: {
+            agent: {
+              ...agent,
+              agentId: 'helper',
+            },
+            activity: 'working',
+            parent: original.id,
+          },
+          meta: {
+            actor: 'test',
+            at: new Date(SENT + STEERING_GRACE_MS).toISOString(),
+          },
+        })
+        assert.ok('event' in child)
+        writer.append({ event: child.event })
+      },
+    })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 2 * STEERING_GRACE_MS,
+      notify,
+      probe,
+    })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 10 * STEERING_GRACE_MS,
+      notify,
+      probe,
+    })
+    assert.equal(
+      task().steering![0]!.recovery,
+      undefined,
+    )
+    await commands.task([
+      'inbox',
+      'read',
+      original.id,
+      '--hydra',
+      'lab',
+      '--actor',
+      `worker:${original.id}`,
+    ])
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 11 * STEERING_GRACE_MS,
+      notify,
+      probe,
+    })
+    assert.equal(
+      task().steering![0]!.ack?.outcome,
+      'read',
+    )
+    assert.equal(
+      task().steering![0]!.recovery,
+      undefined,
+    )
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).some(event => event.type === 'task.steering.recovery'),
+      false,
+    )
+    queuedSteer({ id: 'orphaned' })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 12 * STEERING_GRACE_MS,
+      probe: ({ session }) => terminalPresence({
+        session,
+        bootedAt: 0,
+        run: () => {
+          throw new Error('process inspection unavailable')
+        },
+      }),
+      notify,
+    })
+    assert.equal(
+      task().steering![1]!.recovery,
+      undefined,
+    )
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 12 * STEERING_GRACE_MS,
+      probe: ({ session }) => terminalPresence({
+        session,
+        bootedAt: 0,
+        run: () => {
+          throw Object.assign(
+            new Error('process exited'),
+            { status: 1 },
+          )
+        },
+      }),
+      notify: async () => ({
+        result: 'gone',
+        detail: 'worker process exited',
+      }),
+    })
+    const recovery = task().steering![1]!.recovery
+    assert.ok(recovery)
+    assert.equal(
+      recovery.at(-1)?.result,
+      'exhausted',
+    )
+    const exhausted = readEvents({ hydraId: 'lab' }).find(event =>
+      event.type === 'task.steering.recovery' && event.data.recovery.result === 'exhausted')
+    assert.ok(exhausted)
+    assert.equal(
+      wakesHydra({
+        state: loadHydra({ hydraId: 'lab' }).state,
+        event: exhausted,
+      }),
+      true,
+    )
+  },
+)
+
+test(
+  'busy deferrals keep the pause between attempts without exhausting the failure budget',
+  async () => {
+    queuedSteer()
+    let notifications = 0
+
+    const notify = async (): Promise<NotificationResult> => {
+      notifications++
+
+      return {
+        result: 'deferred',
+        busy: true,
+      }
+    }
+
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + STEERING_GRACE_MS,
+      notify,
+    })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 2 * STEERING_GRACE_MS - 1,
+      notify,
+    })
+    assert.equal(
+      notifications,
+      1,
+    )
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 2 * STEERING_GRACE_MS,
+      notify,
+    })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 3 * STEERING_GRACE_MS,
+      notify,
+    })
+    rmSync(join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'lab',
+      'snapshot.json',
+    ))
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 4 * STEERING_GRACE_MS,
+      notify,
+    })
+    assert.equal(
+      notifications,
+      4,
+    )
+    assert.deepEqual(
+      task().steering![0]!.recovery!.map(attempt => attempt.result),
+      [
+        'deferred',
+        'deferred',
+        'deferred',
+        'deferred',
+      ],
+    )
+    assert.deepEqual(
+      task().steering![0]!.recovery!.map(attempt => attempt.busy),
+      [
+        true,
+        true,
+        true,
+        true,
+      ],
+    )
+  },
+)
+
+test(
+  'non-busy deferrals retain their bounded recovery',
+  async () => {
+    queuedSteer()
+    let notifications = 0
+
+    const notify = async (): Promise<NotificationResult> => {
+      notifications++
+
+      return { result: 'deferred' }
+    }
+
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + STEERING_GRACE_MS,
+      notify,
+    })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 2 * STEERING_GRACE_MS,
+      notify,
+    })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 3 * STEERING_GRACE_MS,
+      notify,
+    })
+    assert.equal(
+      notifications,
+      2,
+    )
+    assert.deepEqual(
+      task().steering![0]!.recovery!.map(attempt => attempt.result),
+      [
+        'deferred',
+        'deferred',
+        'exhausted',
+      ],
+    )
+  },
+)
 
 test(
   'reading steering stops reminders while its work is still in progress, across replay',

@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { typeInto } from './terminal.ts'
+import { terminalNotice, typeInto } from './terminal.ts'
 import type { Card } from '#tasks/model.ts'
 import { replyRoute, terminalFacts } from '#workers/reply-route.ts'
 
@@ -39,6 +39,54 @@ const reason = ({ c }: { c: Card }) => {
 
   return 'reason' in r ? r.reason : r.route.kind
 }
+
+test(
+  'a busy terminal notice verifies process exit before deferring without typing',
+  async () => {
+    const busy = card({ fields: { sessionActivity: 'working' } })
+    const route = {
+      kind: 'terminal-app' as const,
+      tty: TTY,
+      pid: 9,
+    }
+    const send = async () => assert.fail('a busy or dead worker must receive no typed input')
+    assert.deepEqual(
+      await terminalNotice({
+        card: busy,
+        route,
+        text: 'Read the inbox',
+        send,
+        execute: async () => ({
+          status: 0,
+          stdout: 'ttys042',
+          stderr: '',
+        }),
+      }),
+      {
+        result: 'deferred',
+        busy: true,
+        detail: 'terminal worker is busy; notification waits for an idle composer',
+      },
+    )
+    assert.deepEqual(
+      await terminalNotice({
+        card: busy,
+        route,
+        text: 'Read the inbox',
+        send,
+        execute: async () => ({
+          status: 1,
+          stdout: '',
+          stderr: '',
+        }),
+      }),
+      {
+        result: 'gone',
+        detail: 'worker process exited; attach a live worker to read the inbox',
+      },
+    )
+  },
+)
 
 test(
   'the innermost recorded host is the route',

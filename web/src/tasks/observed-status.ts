@@ -24,6 +24,7 @@ export function observedStatus({
   connected?: boolean
 }): ObservedStatus {
   const base = cardStatus({
+    cards: state?.cards,
     card: {
       ...card,
       status: undefined,

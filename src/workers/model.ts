@@ -133,6 +133,7 @@ export interface SteeringRecovery {
   at: string
   claim?: SteeringClaim
   result: 'reserved' | 'delivered' | 'unknown' | 'failed' | 'deferred' | 'exhausted'
+  busy?: true
   detail?: string
 }
 
