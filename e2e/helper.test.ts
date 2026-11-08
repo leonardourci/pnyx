@@ -1627,7 +1627,7 @@ test(
       ],
     })
     const routineTurn = pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: result,
       hold: true,
     })
@@ -1699,7 +1699,7 @@ test(
       check: () => !s.state().hydraOperation && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: result,
     })
     declare({
@@ -1896,7 +1896,7 @@ test(
     })
     const routineTask = s.task({ key: 'routine' }).id
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -1944,7 +1944,7 @@ test(
     const question = waitingTask.asks?.[0]
     assert.ok(question)
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -1980,7 +1980,7 @@ test(
     const idleQuestion = idleTask.asks?.[0]
     assert.ok(idleQuestion)
     pnyx.claude.plan({
-      text: HELPER_PROMPT,
+      match: helperPrompt,
       reply: JSON.stringify({
         outcomes: [
           {
