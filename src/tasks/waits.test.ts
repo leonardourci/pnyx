@@ -197,6 +197,14 @@ test(
       }),
       [],
     )
+    assert.equal(
+      replayed.contextNotes?.length,
+      1,
+    )
+    assert.match(
+      replayed.contextNotes![0]!.text,
+      /worker resume queued/,
+    )
     await pause()
     await commands.task([
       'status',

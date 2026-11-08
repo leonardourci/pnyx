@@ -21,6 +21,7 @@ import { applyTask } from '#tasks/reduce.ts'
 import { applyDispatchProposal, applyLaunch, applySessionMove } from '#workers/reduce.ts'
 import { applyCardEvent } from '#tasks/card-events.ts'
 import { applyRecovery } from '#diagnostics/recovery-state.ts'
+import { applyContextNotes } from '#hydra/context-notes.ts'
 
 export function emptyHydra(): HydraState {
   return {
@@ -61,7 +62,12 @@ function apply({
     event,
   })
 
-  if (applyRecovery({
+  applyContextNotes({
+    state,
+    event,
+  })
+
+  if (event.type === 'hydra.context-delivered' || applyRecovery({
     state,
     event,
   }) || applyCompaction({
