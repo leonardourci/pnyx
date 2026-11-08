@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mock } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
-import { HYDRA_CONTEXT_TOKENS } from '#hydra/context-limits.ts'
-import { HYDRA_TURN_POLL_MS } from '#workers/host.ts'
 import { commands } from '#app/cli.ts'
 import { createHost } from '#app/host.ts'
 import { loadHydra } from '#app/store.ts'
@@ -85,7 +82,7 @@ try {
   })
   complete({
     input: 0,
-    used: HYDRA_CONTEXT_TOKENS - 1,
+    used: 199_999,
   })
   await settle({
     what: 'below-limit turn to settle',
@@ -106,20 +103,72 @@ try {
   })
   complete({
     input: 1,
-    used: HYDRA_CONTEXT_TOKENS,
+    used: 200_000,
   })
   await settle({
-    what: 'automatic compact input at the context limit',
-    check: () => native.incoming.length >= 3,
+    what: 'at-limit turn to finish',
+    check: () => native.delivered() === 4 && loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
+  })
+  await setImmediate()
+  await setImmediate()
+  assert.equal(
+    native.incoming.length,
+    2,
+    'Pnyx must not request compaction at 200,000 reported tokens',
+  )
+  assert.equal(
+    loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.compaction,
+    undefined,
+  )
+  await host.hydra({
+    id: 'above-limit',
+    text: 'Continue above the old limit',
+    actor: 'cli',
+  })
+  await settle({
+    what: 'third input',
+    check: () => native.incoming.length === 3,
+  })
+  assert.match(
+    String(native.incoming[2]!.message.content),
+    /Continue above the old limit/,
+  )
+  complete({
+    input: 2,
+    used: 250_000,
+  })
+  await settle({
+    what: 'above-limit turn to finish',
+    check: () => native.delivered() === 6 && loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
+  })
+  await setImmediate()
+  await setImmediate()
+  assert.equal(
+    native.incoming.length,
+    3,
+    'Pnyx must not request compaction above 200,000 reported tokens',
+  )
+  assert.equal(
+    loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.compaction,
+    undefined,
+  )
+  await host.hydra({
+    id: 'owner-compact',
+    text: '/compact',
+    actor: 'cli',
+  })
+  await settle({
+    what: 'owner compact input',
+    check: () => native.incoming.length === 4,
   })
   assert.equal(
-    native.incoming[2]!.message.content,
+    native.incoming[3]!.message.content,
     '/compact',
   )
-  await settle({
-    what: 'automatic compaction status',
-    check: () => loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.compaction?.operations.at(-1)?.trigger === 'auto',
-  })
+  assert.equal(
+    loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.compaction?.operations.at(-1)?.trigger,
+    'manual',
+  )
   native.send({
     message: {
       type: 'system',
@@ -143,19 +192,23 @@ try {
     message: {
       ...result,
       uuid: randomUUID(),
-      user_message_uuid: native.incoming[2]!.uuid,
+      user_message_uuid: native.incoming[3]!.uuid,
       queued_turn_count: 0,
     },
   })
   await settle({
-    what: 'compaction to finish without repeating stale high usage',
-    check: () => native.delivered() === 7 && loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    what: 'owner compaction to finish',
+    check: () => native.delivered() === 9 && loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
   })
   await setImmediate()
   await setImmediate()
   assert.equal(
     native.incoming.length,
-    3,
+    4,
+  )
+  assert.equal(
+    loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.compaction?.operations.at(-1)?.state,
+    'done',
   )
   const hook = native.options()?.hooks?.SessionStart?.find(item => item.matcher === 'compact')?.hooks[0]
   assert.ok(
@@ -183,94 +236,7 @@ try {
     restored.hookSpecificOutput.additionalContext ?? '',
     /pnyx-axi hydra history/,
   )
-  mock.timers.enable({ apis: ['setTimeout'] })
-  await host.hydra({
-    id: 'reset-reading',
-    text: 'Reset the usage reading',
-    actor: 'cli',
-  })
-  await settle({
-    what: 'reset input',
-    check: () => native.incoming.length === 4,
-  })
-  complete({
-    input: 3,
-    used: HYDRA_CONTEXT_TOKENS - 1,
-  })
-  await settle({
-    what: 'reset completion',
-    check: () => native.delivered() === 9,
-  })
-  await host.hydra({
-    id: 'busy-limit',
-    text: 'Reach the limit with a pending wake',
-    actor: 'cli',
-  })
-  await settle({
-    what: 'busy input',
-    check: () => native.incoming.length === 5,
-  })
-  await host.hydra({
-    id: 'admitted-wake',
-    text: 'Admitted wake must run first',
-    actor: 'pnyx',
-  })
-  await setImmediate()
-  complete({
-    input: 4,
-    used: HYDRA_CONTEXT_TOKENS,
-  })
-  await settle({
-    what: 'busy completion',
-    check: () => native.delivered() === 11,
-  })
-  await setImmediate()
-  await setImmediate()
-  assert.equal(
-    native.incoming.length,
-    5,
-    'automatic compaction must wait behind an admitted wake',
-  )
-  mock.timers.tick(HYDRA_TURN_POLL_MS)
-  await settle({
-    what: 'admitted wake delivery',
-    check: () => native.incoming.length === 6,
-  })
-  assert.match(
-    String(native.incoming[5]!.message.content),
-    /Admitted wake must run first/,
-  )
-  complete({
-    input: 5,
-    used: HYDRA_CONTEXT_TOKENS - 1,
-  })
-  await settle({
-    what: 'wake completion',
-    check: () => native.delivered() === 13,
-  })
-  await host.hydra({
-    id: 'next-high-context',
-    text: 'Reach the limit again after a fresh low reading',
-    actor: 'cli',
-  })
-  await settle({
-    what: 'next high input',
-    check: () => native.incoming.length === 7,
-  })
-  complete({
-    input: 6,
-    used: HYDRA_CONTEXT_TOKENS,
-  })
-  await settle({
-    what: 'compaction to re-arm after a lower usage reading',
-    check: () => native.incoming.length === 8,
-  })
-  assert.equal(
-    native.incoming[7]!.message.content,
-    '/compact',
-  )
-  console.log('Context compacts at the limit and does not loop on a stale reading')
+  console.log('High context stays intact until the owner requests compaction')
 } finally {
   host.close()
-  mock.timers.reset()
 }

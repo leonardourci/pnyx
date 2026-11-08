@@ -82,7 +82,7 @@ test(
 )
 
 test(
-  'a hosted Hydra compacts at the context limit without repeating stale usage',
+  'a hosted Hydra keeps high context until the owner requests compaction',
   async t => {
     const stdout = await runFixture({
       t,
@@ -90,7 +90,7 @@ test(
     })
     assert.match(
       stdout,
-      /Context compacts at the limit and does not loop/,
+      /High context stays intact until the owner requests compaction/,
     )
   },
 )
