@@ -531,6 +531,77 @@ test(
       }),
       'TASK_HELD',
     )
+    await run({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'obsolete',
+        '--title',
+        'Superseded work',
+        '--hold',
+        '--reason',
+        'Discuss before starting',
+      ],
+    })
+    await run({
+      args: [
+        'task',
+        'status',
+        'obsolete',
+        'done',
+        '--note',
+        'Superseded',
+      ],
+    })
+    const completed = s.task({ key: 'obsolete' })
+    assert.equal(
+      completed.column,
+      s.column({ role: 'done' }),
+    )
+    assert.ok(completed.doneAt)
+    assert.ok(completed.hold)
+    await run({
+      args: [
+        'task',
+        'status',
+        'obsolete',
+        'paused',
+        '--note',
+        'Reopened',
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'obsolete' }).column,
+      s.column({ role: 'queued' }),
+    )
+    assert.equal(
+      await s.ownerRefused({
+        args: [
+          'task',
+          'start',
+          'obsolete',
+        ],
+      }),
+      'TASK_HELD',
+    )
+    await run({
+      args: [
+        'task',
+        'status',
+        'obsolete',
+        'done',
+        '--note',
+        'Superseded',
+      ],
+    })
+    await pnyx.restart()
+    assert.equal(
+      s.task({ key: 'obsolete' }).column,
+      s.column({ role: 'done' }),
+    )
+    assert.ok(s.task({ key: 'obsolete' }).doneAt)
+    assert.ok(s.task({ key: 'obsolete' }).hold)
     const listed = await run({
       args: [
         'column',
