@@ -7,7 +7,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { sendReply } from '#workers/reply.ts'
 import type { NativeHealth } from './health.ts'
-import { recoveryCandidates, recoverySubjects, recoveryKey, RECOVERY_ATTEMPTS, RECOVERY_PAUSE_MS, type RecoveryAttempt } from './recovery-state.ts'
+import { recoveryCandidates, recoverySubjects, recoveryKey, recoveryNeedsNotice, RECOVERY_PAUSE_MS, type RecoveryAttempt } from './recovery-state.ts'
 
 const replyKeys = ({ event }: { event: HydraEvent }) => event.type === 'card.replied'
   ? [
@@ -229,7 +229,7 @@ export function createDiagnosticRecovery({
     const candidate = candidates().find(item => item.taskId === task && item.messageId === message)
 
     if (!candidate?.eligible || !candidate.sessionId) {
-      if (candidate?.attempts.length) {
+      if (recoveryNeedsNotice({ attempt: candidate?.attempts.at(-1) })) {
         notify({
           task,
           message,
@@ -334,7 +334,12 @@ export function createDiagnosticRecovery({
       return
     }
 
-    if (status === 'unknown' || (status === 'failed' && reservation.number >= RECOVERY_ATTEMPTS)) {
+    if (recoveryNeedsNotice({
+      attempt: {
+        ...reservation,
+        status,
+      },
+    })) {
       notify({
         task,
         message,
@@ -437,16 +442,14 @@ export function createDiagnosticRecovery({
           continue
         }
 
+        if (recoveryNeedsNotice({ attempt: candidate.attempts.at(-1) })) {
+          notify({
+            task,
+            message,
+          })
+        }
+
         if (!candidate.eligible) {
-          const last = candidate.attempts.at(-1)
-
-          if (last && last.status !== 'delivered') {
-            notify({
-              task,
-              message,
-            })
-          }
-
           continue
         }
 

@@ -25,6 +25,11 @@ export type RecoveryEvent = EventBase & {
   data: RecoveryAttempt
 }
 
+export function recoveryNeedsNotice({ attempt }: { attempt?: RecoveryAttempt }): boolean {
+  return attempt !== undefined && (attempt.status === 'reserved' || attempt.status === 'unknown'
+    || (attempt.status === 'failed' && attempt.number >= RECOVERY_ATTEMPTS))
+}
+
 export const recoveryKey = ({
   task,
   message,
