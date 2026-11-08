@@ -8,7 +8,7 @@ import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-re
 import { Button } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
+import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
 import {
   Fragment,useEffect,useLayoutEffect,useRef,useState,
@@ -68,10 +68,12 @@ function MessageTask({ entry }: { entry: ChatEntry }) {
 function ChatMessageText({
   catalog,
   colors,
+  savedTaskLabels = false,
   ...props
 }: ComponentProps<typeof MessageText> & {
   catalog?: Catalog | null
   colors?: SavedLabelColor[]
+  savedTaskLabels?: boolean
 }) {
   return (
     <ChatTokensContext.Provider
@@ -80,7 +82,9 @@ function ChatMessageText({
         colors,
       }}
     >
-      <MessageText {...props} />
+      <SavedTaskLabels.Provider value={savedTaskLabels}>
+        <MessageText {...props} />
+      </SavedTaskLabels.Provider>
     </ChatTokensContext.Provider>
   )
 }
@@ -738,6 +742,7 @@ export function Messages({
                 <ChatMessageText
                   catalog={ownMessage({ entry }) ? catalog : undefined}
                   colors={labelColors}
+                  savedTaskLabels={entry.role === 'Pnyx'}
                   text={entry.text}
                   streaming={entry.streaming}
                   decorations={MESSAGE_DECORATIONS}

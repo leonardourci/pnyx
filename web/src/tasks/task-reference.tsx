@@ -27,6 +27,7 @@ const TaskReferences = createContext<{
   references: Record<string, TaskReferenceData>
   openTask?: OpenTask
 } | undefined>(undefined)
+export const SavedTaskLabels = createContext(false)
 
 export function TaskReferencesProvider({
   references,
@@ -51,21 +52,25 @@ export function TaskReferencesProvider({
 export function TaskReference({
   id,
   children,
+  savedLabel,
   openTask,
   className = '',
 }: {
   id: string
   children?: ReactNode
+  savedLabel?: string
   openTask?: OpenTask
   className?: string
 }) {
   const context = useContext(TaskReferences)
+  const savedLabels = useContext(SavedTaskLabels)
   const reference = context && Object.hasOwn(
     context.references,
     id,
   ) ? context.references[id] : undefined
   const open = context ? reference ? context.openTask : undefined : openTask
-  const label = reference?.title ?? children ?? 'Unavailable task'
+  const savedTitle = savedLabels ? savedLabel : undefined
+  const label = savedTitle ?? reference?.title ?? children ?? 'Unavailable task'
   const state = reference?.state ?? 'Unavailable'
 
   if (!context && !open) {
