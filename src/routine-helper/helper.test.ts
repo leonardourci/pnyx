@@ -835,6 +835,24 @@ test(
       lab.handbacks.length,
       0,
     )
+    assert.equal(
+      lab.opens[0]?.toolScope,
+      'routine',
+    )
+    assert.doesNotMatch(
+      lab.inputs[0]!,
+      /You are Hydra's routine helper/,
+    )
+    assert.doesNotMatch(
+      fs.readFileSync(
+        join(
+          root,
+          'hydras/lab/helper/AGENTS.md',
+        ),
+        'utf8',
+      ),
+      /# Hydra\n|Load before/,
+    )
   },
 )
 
