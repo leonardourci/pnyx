@@ -220,6 +220,17 @@ function digestParts({
   const memory = state.hydraMemory ?? {}
   const hydra = state.cards[HYDRA_CARD]
   const parts = new Map<string, string>()
+  let setupText = setup.join('\n')
+  let projectText = projects.join('\n')
+
+  if (!setupText.length) {
+    setupText = 'Setup needed: none'
+  }
+
+  if (!projectText.length) {
+    projectText = 'Attached projects: none'
+  }
+
   const attention = hydra?.attention.filter(item => item.blocking && !item.answered) ?? []
   parts.set(
     'attention',
@@ -227,7 +238,7 @@ function digestParts({
   )
   parts.set(
     'setup',
-    setup.join('\n') || 'Setup needed: none',
+    setupText,
   )
   parts.set(
     'columns',
@@ -296,7 +307,7 @@ function digestParts({
   )
   parts.set(
     'projects',
-    projects.join('\n') || 'Attached projects: none',
+    projectText,
   )
 
   if (onlyTasks) {
@@ -363,9 +374,30 @@ function previousCheckpoint({
     throw error
   }
 
-  if (!value || typeof value !== 'object' || !('v' in value) || value.v !== DIGEST_CHECKPOINT_VERSION || !('hydra' in value) || value.hydra !== hydraId
-    || !('through' in value) || typeof value.through !== 'number' || !Number.isSafeInteger(value.through) || value.through < 0 || value.through > through
-    || !('parts' in value) || !value.parts || typeof value.parts !== 'object' || Array.isArray(value.parts)) {
+  if (!value || typeof value !== 'object') {
+    return
+  }
+
+  if (!('v' in value) || value.v !== DIGEST_CHECKPOINT_VERSION) {
+    return
+  }
+
+  if (!('hydra' in value) || value.hydra !== hydraId) {
+    return
+  }
+
+  if (!('through' in value) || typeof value.through !== 'number') {
+    return
+  }
+
+  const validCursor = Number.isSafeInteger(value.through)
+    && value.through >= 0 && value.through <= through
+
+  if (!validCursor) {
+    return
+  }
+
+  if (!('parts' in value) || !value.parts || typeof value.parts !== 'object' || Array.isArray(value.parts)) {
     return
   }
 

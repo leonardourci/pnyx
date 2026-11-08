@@ -782,8 +782,11 @@ export function createHydraTurns({
     }
 
     const idle = snapshot && nativeIdle({ work: snapshot.work })
+    const pendingWork = queuedHydra.size > 0 || entry.input.pending() > 0
+    const available = idle && !entry.stopping
+    const alreadyRequested = automaticCompactions.has(session)
 
-    if (outcome?.status !== 'completed' || !idle || entry.stopping || queuedHydra.size > 0 || entry.input.pending() > 0 || automaticCompactions.has(session)) {
+    if (outcome?.status !== 'completed' || !available || pendingWork || alreadyRequested) {
       return
     }
 
@@ -791,8 +794,14 @@ export function createHydraTurns({
     // Drain the provider's trailing completion events before starting another control.
     setImmediate(() => {
       const current = entry.session?.snapshot()
+      const currentUsed = current?.outcome?.usage?.used
+      const contextStillLarge = currentUsed !== undefined && currentUsed >= HYDRA_CONTEXT_TOKENS
+      const idle = current && nativeIdle({ work: current.work })
+      const eligible = current?.outcome?.status === 'completed' && contextStillLarge && idle
+      const pendingWork = queuedHydra.size > 0 || entry.input.pending() > 0
+      const stopped = closing() || entry.stopping
 
-      if (closing() || entry.stopping || queuedHydra.size > 0 || !current || current.outcome?.status !== 'completed' || (current.outcome.usage?.used ?? 0) < HYDRA_CONTEXT_TOKENS || !nativeIdle({ work: current.work }) || entry.input.pending() > 0) {
+      if (stopped || pendingWork || !eligible) {
         automaticCompactions.delete(session)
 
         return
