@@ -1,4 +1,5 @@
 import { loggedEntry } from './history.ts'
+import { chatRecordId } from './chat-records.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -626,6 +627,7 @@ export function readThread(
   let archived = false
 
   const seenReplies = new Set<string>()
+  const seenChats = new Set<string>()
 
   for (const e of repliedEvents({ hydraId })) {
     if (e.seq === replySeq) {
@@ -633,6 +635,12 @@ export function readThread(
     }
 
     if (e.type === 'chat.message') {
+      const identity = chatRecordId(e.data)
+
+      if (seenChats.has(identity)) {
+        continue
+      }
+
       const session = cardSessionId({ card })
 
       const sameSession = session && e.data.session === session
@@ -641,6 +649,8 @@ export function readThread(
       if ((!result.unavailable && sameSession) || !participant || e.seq > replySeq!) {
         continue
       }
+
+      seenChats.add(identity)
 
       splitEntry({
         entry: loggedEntry({ event: e }),
