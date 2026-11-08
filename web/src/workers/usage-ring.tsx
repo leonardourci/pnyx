@@ -90,9 +90,10 @@ export function useUsageRefresh({
   )
 
   return {
-    refresh: () => {
+    // Before a session there are no plan limits to refresh.
+    refresh: session ? () => {
       load({ refresh: true }).catch(console.error)
-    },
+    } : undefined,
     refreshing,
     error,
   }
