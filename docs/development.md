@@ -33,6 +33,14 @@ Completed native replies and explicit chat updates remain visible when a later t
 
 Hydra thread subscriptions keep their loaded history on the server. Re-reading a thread keeps its existing subscription. After a reconnect, the page sends its session and oldest loaded entry so the server restores that range before replacing the conversation. A changed session starts fresh; repeated history cursors fail explicitly. Each thread page carries reconciled conversation entries, turn timings and action folds. Continuation chunks carry a boolean, and injected instruction blocks are hidden before transport. The browser renders that projection and keeps only its unsent previews locally. The server also sends Hydra's held inputs, pending operations and queue state; the browser uses those facts to place its unsent previews.
 
+## Diagnostic logs
+
+The installed service writes stdout and stderr to `service.log` under `PNYX_HOME`. Background, scheduler, delayed snapshot and startup-resume failures each write one JSON record there. Other service output keeps its existing format. Diagnostics are separate from `events.jsonl` and never change Hydra state.
+
+Each record has `v`, `at` (UTC), `level`, `pid`, `operation`, `operationId` and `error` (message, name, stack and code when available). Background work and a failed retry share an operation ID. Callers add `hydraId`, `taskId`, `sessionId`, `correlationId` and `eventSeq` when known. Resume failures use the resume attempt or inbox message ID as their correlation ID. A scheduler's `eventSeq` records the state sequence it saw when reporting the failure; it does not show that the event caused the failure. Calls without context omit these optional fields.
+
+For example, `jq -R 'fromjson? | select(.hydraId == "lab")' "$PNYX_HOME/service.log"` selects a Hydra's structured records while ignoring older text lines. Filter on `correlationId` to join resume failures to their recorded messages, or `operationId` to group a background failure and its retry. A missing record cannot establish success because these diagnostics cover failures only. Error messages and stacks can contain private paths, so sanitize logs before sharing them. Callers should pass identifiers, never prompts, credentials or request bodies.
+
 ## Run a development server
 
 ```sh

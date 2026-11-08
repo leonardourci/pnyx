@@ -11,6 +11,7 @@ import type { HydraConfig, HydraMessage, HydraOperation, HydraStatus, ChatEvent 
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import type { HelperChange, HelperState } from '#routine-helper/state.ts'
 import type { ExternalSourceEvent } from '#task-sources/model.ts'
+import type { RecoveryEvent, RecoveryAttempt } from '#diagnostics/recovery-state.ts'
 
 export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
 
@@ -26,6 +27,7 @@ export interface SourceRef {
 }
 
 export type HydraChange = EventBase & (
+  | RecoveryEvent
   | {
     type: 'project.refreshed'
     data: ProjectRefresh
@@ -328,6 +330,7 @@ export type HydraEvent =
 export type EventType = HydraEvent['type']
 
 export const EVENT_TYPES: readonly EventType[] = [
+  'diagnostic.retry',
   'apply.recorded',
   'session.compaction',
   'pnyx.upgrade',
@@ -398,6 +401,7 @@ export const EVENT_TYPES: readonly EventType[] = [
 ]
 
 export interface HydraState {
+  diagnosticRetries?: Record<string, RecoveryAttempt[]>
   dispatchProposals?: DispatchProposal[]
   labelColors?: SavedLabelColor[]
   projects?: HydraProject[]

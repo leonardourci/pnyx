@@ -24,6 +24,7 @@ import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
 import { saveSnapshot } from './writer.ts'
 import { readEventsFrom } from './event-log.ts'
+import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -35,6 +36,9 @@ import { createServerWorkers } from './server-workers.ts'
 import { RESUME_LIMIT, type HydraClient, type HydraSubscription, type MountedHydra } from './server-transport.ts'
 import { buildId } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
+import { healthFacts } from '#diagnostics/health.ts'
+import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
+import { HydraError } from '#store/errors.ts'
 
 export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
@@ -54,6 +58,7 @@ export async function mountOwnedHydra({
   pauseDelay,
   retryDelays,
   followDelay = FOLLOW_POLL_MS,
+  recoveryPause,
   reviewClock,
   reminderScheduler = systemReminderScheduler,
   open,
@@ -75,6 +80,7 @@ export async function mountOwnedHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  recoveryPause?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
@@ -312,6 +318,7 @@ export async function mountOwnedHydra({
     agents: () => agents,
     sources: () => sources,
     review: () => review,
+    recover: () => recovery.reconcile(),
   })
   const { kick } = tick
 
@@ -341,16 +348,50 @@ export async function mountOwnedHydra({
     streamed,
   })
 
+  const recovery = createDiagnosticRecovery({
+    hydraId,
+    sessions: () => agents.diagnostics().sessions,
+    enabled: () => agents.diagnostics().helper.enabled === true,
+    changed: kick,
+    pause: recoveryPause,
+  })
+
   const withdrawHost = offerHost({
     hydraId,
-    ask: ({ body }) => hostRequest({
-      host: agents,
-      body,
-      usage: {
-        spend: tabs.spendNow.spend,
-        readings: tabs.readingsNow,
-      },
-    }),
+    ask: async ({ body }) => {
+      if (body.action === 'debug-health') {
+        const limit = typeof body.limit === 'number' ? body.limit : DEBUG_LIMIT
+
+        if (!Number.isInteger(limit) || limit < 1 || limit > DEBUG_MAX) {
+          throw new HydraError({
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid health limit',
+          })
+        }
+
+        return healthFacts({
+          blocked: recovery.blocked(),
+          state,
+          events: recovery.originals(),
+          dir,
+          now: Date.now(),
+          limit,
+          runtime: {
+            ...agents.diagnostics(),
+            scheduler: tick.health(),
+          },
+        })
+      }
+
+      return hostRequest({
+        host: agents,
+        body,
+        usage: {
+          spend: tabs.spendNow.spend,
+          readings: tabs.readingsNow,
+        },
+      })
+    },
   })
 
   const sources = createSourceRunner({
@@ -511,6 +552,7 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    await recovery.close()
     withdrawHost()
     historyIndex.stop()
 

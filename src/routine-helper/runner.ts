@@ -226,6 +226,8 @@ export function createRoutineHelper({
   let selection = ''
   let sessionCost = 0
   let sessionTurns = 0
+  let batchId: string | undefined
+  let deadlineAt: number | undefined
 
   const configuredAgent = async ({ state }: { state: HydraState }) =>
     agentFor ? agentFor() : helperAgent({ state })
@@ -636,6 +638,8 @@ export function createRoutineHelper({
         _resolve,
         reject,
       ) => {
+        deadlineAt = Date.now() + bound
+
         const expire = () => {
           background({
             name: 'helper deadline',
@@ -751,6 +755,8 @@ export function createRoutineHelper({
         active = undefined
         abort = undefined
         busy = false
+        batchId = undefined
+        deadlineAt = undefined
 
         if (cleaned && `helper-finished:${batch.id}` in loadHydra({ hydraId }).state.eventIds) {
           rmSync(
@@ -768,6 +774,13 @@ export function createRoutineHelper({
   }
 
   return {
+    inspect: () => ({
+      busy,
+      batchId,
+      sessionId: active && agent ? `${agent.provider}:${active.id}` : undefined,
+      work: active?.snapshot().work,
+      deadlineAt,
+    }),
     busy: () => busy,
     async offer({
       tasks,
@@ -827,7 +840,11 @@ export function createRoutineHelper({
 
       background({
         name: 'helper turn',
-        run: () => run({ batch }),
+        run: () => {
+          batchId = batch.id
+
+          return run({ batch })
+        },
       })
 
       return true

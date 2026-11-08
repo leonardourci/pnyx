@@ -61,6 +61,7 @@ export async function startServer({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  recoveryPause?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   // The Pnyx folder the daily check and /upgrade read, and how /upgrade restarts the server.
@@ -801,6 +802,7 @@ async function mountHydra({
   pauseDelay,
   retryDelays,
   followDelay,
+  recoveryPause,
   reviewClock,
   reminderScheduler,
   open,
@@ -823,6 +825,7 @@ async function mountHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  recoveryPause?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
@@ -845,6 +848,7 @@ async function mountHydra({
     pauseDelay,
     retryDelays,
     followDelay,
+    recoveryPause,
     reviewClock,
     reminderScheduler,
     open,

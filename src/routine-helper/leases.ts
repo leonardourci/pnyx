@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
@@ -28,6 +28,42 @@ const leasePath = ({
   dir,
   `helper-lease-${encodeURIComponent(task)}.json`,
 )
+
+export function taskLeasePresent({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): boolean {
+  const path = leasePath({
+    dir: hydraDir({ hydraId }),
+    task,
+  })
+
+  try {
+    const entry = lstatSync(
+      path,
+      { throwIfNoEntry: false },
+    )
+
+    if (!entry) {
+      return false
+    }
+
+    if (!entry.isFile()) {
+      return true
+    }
+
+    return readLease({
+      path,
+      cleanup: false,
+    }) !== undefined
+  } catch {
+    // Unknown ownership must never authorize an automatic resend.
+    return true
+  }
+}
 
 function readLease({
   path,

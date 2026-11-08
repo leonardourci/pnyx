@@ -39,6 +39,7 @@ const POLL_MS = 20
 export const QUIET_MS = 2500
 // How often the server reads a followed pull request; the real minute would outlast the waits.
 const FOLLOW_MS = 100
+export const RECOVERY_TEST_PAUSE_MS = 100
 
 // git as a person at the terminal runs it, with a fixed identity.
 export function git({
@@ -410,6 +411,7 @@ export function scenarioGroup({
       wakeDelay: 50,
       retryDelays,
       followDelay: FOLLOW_MS,
+      recoveryPause: RECOVERY_TEST_PAUSE_MS,
       upgradeRoot: upgradeRoot ?? upgrade.install,
       restart: () => {
         restarts++

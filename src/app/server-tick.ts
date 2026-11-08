@@ -16,6 +16,7 @@ import { steeringToFollow } from '#workers/inbox-follow-up.ts'
 import { QUEUE_POLL_MS } from '#workers/queue.ts'
 import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { background } from './background.ts'
+import { logFailure } from './diagnostics.ts'
 import type { createHost } from './host.ts'
 import type { HydraState } from './model.ts'
 import type { createServerWorkers } from './server-workers.ts'
@@ -40,6 +41,7 @@ export function createServerTick({
   agents,
   sources,
   review,
+  recover,
 }: {
   hydraId: string
   dir: string
@@ -54,6 +56,7 @@ export function createServerTick({
   agents(): Pick<ReturnType<typeof createHost>, 'unconfirmed'>
   sources(): ReturnType<typeof createSourceRunner>
   review(): ReturnType<typeof startReviewTimer>
+  recover(): void
 }) {
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let cancelReminder = () => {}
@@ -66,6 +69,9 @@ export function createServerTick({
   let replyRun: Promise<void> | undefined
   let replyCheckedAt = 0
   let scheduled = false
+  let lastSuccessAt: string | undefined
+  let lastSuccessSeq: number | undefined
+  let lastFailureAt: string | undefined
 
   const kick = () => {
     if (closed() || scheduled) {
@@ -100,7 +106,14 @@ export function createServerTick({
               })
             } catch (error) {
               queueNeedsRetry = true
-              console.error(`pnyx-axi queue: ${(error as Error).message}`)
+              logFailure({
+                operation: 'queue',
+                error,
+                context: {
+                  hydraId,
+                  eventSeq: state().seq,
+                },
+              })
             } finally {
               queueRun = undefined
               kick()
@@ -119,7 +132,14 @@ export function createServerTick({
                 active: () => !closed(),
               })
             } catch (error) {
-              console.error(`pnyx-axi follow: ${(error as Error).message}`)
+              logFailure({
+                operation: 'follow',
+                error,
+                context: {
+                  hydraId,
+                  eventSeq: state().seq,
+                },
+              })
             } finally {
               followRun = undefined
               kick()
@@ -155,7 +175,14 @@ export function createServerTick({
               })
             } catch (error) {
               if (!closed()) {
-                console.error(`pnyx-axi replies: ${(error as Error).message}`)
+                logFailure({
+                  operation: 'replies',
+                  error,
+                  context: {
+                    hydraId,
+                    eventSeq: state().seq,
+                  },
+                })
               }
             } finally {
               replyRun = undefined
@@ -166,8 +193,20 @@ export function createServerTick({
 
         sources().reconcile()
         background({
+          name: 'diagnostic reconcile',
+          run: recover,
+          context: {
+            hydraId,
+            eventSeq: state().seq,
+          },
+        })
+        background({
           name: 'review',
           run: review().check,
+          context: {
+            hydraId,
+            eventSeq: state().seq,
+          },
         })
         fireReminders({
           hydraId,
@@ -191,7 +230,14 @@ export function createServerTick({
             try {
               await settleDone({ hydraId })
             } catch (error) {
-              console.error(`pnyx-axi serve: settling copies: ${(error as Error).message}`)
+              logFailure({
+                operation: 'settling copies',
+                error,
+                context: {
+                  hydraId,
+                  eventSeq: state().seq,
+                },
+              })
 
               return
             } finally {
@@ -203,9 +249,17 @@ export function createServerTick({
 
           settling = settle()
         }
+
+        lastSuccessAt = new Date().toISOString()
+        lastSuccessSeq = state().seq
       } catch (error) {
+        lastFailureAt = new Date().toISOString()
         // A held lock or a damaged log; the next change retries.
-        console.error(`pnyx-axi serve: ${(error as Error).message}`)
+        logFailure({
+          operation: 'scheduler tick',
+          error,
+          context: { hydraId },
+        })
       } finally {
         clearTimeout(expiryTimer)
         cancelReminder()
@@ -259,6 +313,11 @@ export function createServerTick({
   }
 
   return {
+    health: () => ({
+      lastSuccessAt,
+      lastSuccessSeq,
+      lastFailureAt,
+    }),
     kick,
     get queueRun() {
       return queueRun

@@ -18,6 +18,7 @@ import { columnCommandHandler, push, card, move, context } from '#tasks/cli.ts'
 import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { repair } from './repair-cli.ts'
+import { debug } from '#diagnostics/cli.ts'
 
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })
 
@@ -195,6 +196,7 @@ export const undo = guard({
 
 export const commands = supervisedCommands({
   commands: {
+    debug,
     apply,
     layout,
     column: columnCommandHandler,
