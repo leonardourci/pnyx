@@ -30,7 +30,9 @@ export function fireReminders({
       for (const card of Object.values(writer.state.cards)) {
         const reminder = card.reminder
 
-        if (!reminder || reminder.dueAt || Date.parse(reminder.at) > Date.parse(at)) {
+        const waiting = reminder && (!reminder.dueAt || reminder.repeat)
+
+        if (!waiting || Date.parse(reminder.at) > Date.parse(at)) {
           continue
         }
 
@@ -39,6 +41,15 @@ export function fireReminders({
           at,
         })
         const text = reminderMessage({ card })
+        let nextAt: string | undefined
+
+        if (reminder.repeat) {
+          const due = Date.parse(reminder.at)
+          const interval = reminder.repeat.everyMs
+          const next = due + (Math.floor((Date.parse(at) - due) / interval) + 1) * interval
+          nextAt = new Date(next).toISOString()
+        }
+
         const decision = hydraEvent({
           state: writer.state,
           meta: {
@@ -51,6 +62,7 @@ export function fireReminders({
             type: 'task.reminder-due',
             data: {
               reminder: reminder.id,
+              nextAt,
               column,
               message: {
                 task: card.id,

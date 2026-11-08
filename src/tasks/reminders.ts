@@ -1,7 +1,10 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import type { Card } from './model.ts'
+import type { Card, ReminderRepeat } from './model.ts'
 import { touch } from './touch.ts'
+import { taskDone } from './select.ts'
+import { HydraError } from '#store/errors.ts'
+import { reminderInterval } from './time.ts'
 
 const REMINDER_WORD_LIMIT = 30
 const TITLE_WORD_LIMIT = 10
@@ -52,17 +55,130 @@ export function reminderMessage({
 
 export function waitingReminders({ state }: { state: HydraState }) {
   return Object.values(state.cards)
-    .filter(card => card.reminder && !card.reminder.dueAt)
+    .filter(card => card.reminder && (!card.reminder.dueAt || card.reminder.repeat))
     .map(card => ({
       task: card.id,
       title: card.title,
       at: card.reminder!.at,
+      repeat: card.reminder!.repeat,
       ...(card.project ? { project: card.project } : {}),
     }))
     .sort((
       a,
       b,
     ) => Date.parse(a.at) - Date.parse(b.at) || a.task.localeCompare(b.task))
+}
+
+export function reminderRepeat({
+  card,
+  when,
+  every,
+  until,
+  question,
+}: {
+  card: Card
+  when: string
+  every?: string
+  until?: string
+  question?: string
+}): ReminderRepeat | undefined {
+  if (every === undefined && until === undefined && question === undefined) {
+    return undefined
+  }
+
+  if (when === 'clear') {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'Use clear without recurrence options',
+    })
+  }
+
+  if (every === undefined) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'Recurring reminders need --every',
+    })
+  }
+
+  const everyMs = reminderInterval({ text: every })
+
+  if (until !== 'worker-started' && until !== 'question-answered' && until !== 'task-done') {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'Choose --until worker-started|question-answered|task-done',
+    })
+  }
+
+  const repeat: ReminderRepeat = {
+    everyMs,
+    until,
+  }
+
+  if (until === 'question-answered') {
+    const ask = card.asks?.find(ask => ask.id === question && ask.audience === 'owner' && !ask.answered && !ask.closed)
+
+    if (!ask) {
+      throw new HydraError({
+        code: 'VALIDATION_ERROR',
+        message: 'Choose an open owner question with --question <id>',
+      })
+    }
+
+    repeat.question = ask.id
+  } else if (question !== undefined) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: '--question goes with --until question-answered',
+    })
+  }
+
+  return repeat
+}
+
+function clearReminder({ card }: { card: Card }) {
+  if (card.status?.id === card.reminder?.dueEvent) {
+    if (card.reminder?.resume) {
+      card.status = card.reminder.resume
+    } else {
+      delete card.status
+    }
+  }
+
+  delete card.reminder
+}
+
+export function stopReminders({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}) {
+  for (const card of Object.values(state.cards)) {
+    const repeat = card.reminder?.repeat
+
+    if (!repeat) {
+      continue
+    }
+
+    const workerStarted = (event.type === 'task.launched' && event.cardId === card.id)
+      || (event.type === 'task.session' && event.data.after === card.id && (event.data.working || event.data.handoff))
+      || (event.type === 'task.declared' && event.cardId === card.id && event.data.state === 'working')
+    const question = card.asks?.find(ask => ask.id === repeat.question)
+    const answered = repeat.until === 'question-answered' && (!question || question.answered || question.closed)
+    const stopped = taskDone({
+      state,
+      card,
+    }) || answered || (repeat.until === 'worker-started' && workerStarted)
+
+    if (stopped) {
+      clearReminder({ card })
+      touch({
+        card,
+        event,
+      })
+    }
+  }
 }
 
 export function reminderDeadline({ state }: { state: HydraState }): number | undefined {
@@ -90,19 +206,36 @@ export function applyReminder({
 
   if (event.type === 'task.reminder') {
     if (event.data.after === null) {
-      delete card.reminder
+      clearReminder({ card })
     } else {
+      clearReminder({ card })
       card.reminder = {
         id: event.id,
         at: event.data.after,
       }
+
+      if (event.data.repeat) {
+        card.reminder.repeat = structuredClone(event.data.repeat)
+      }
     }
   } else {
-    if (card.reminder?.id !== event.data.reminder || card.reminder.dueAt) {
+    const finished = card.reminder?.dueAt && !card.reminder.repeat
+
+    if (card.reminder?.id !== event.data.reminder || finished) {
       return true
     }
 
+    if (!card.reminder.dueAt && card.status) {
+      card.reminder.resume = structuredClone(card.status)
+    }
+
     card.reminder.dueAt = event.at
+    card.reminder.dueEvent = event.id
+
+    if (event.data.nextAt) {
+      card.reminder.at = event.data.nextAt
+    }
+
     card.column = event.data.column
     card.hidden = false
     delete card.expired

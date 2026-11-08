@@ -1,5 +1,25 @@
 import { HydraError } from '#store/errors.ts'
 
+const INTERVAL_UNITS: Record<string, number> = {
+  minute: 60_000,
+  hour: 3_600_000,
+  day: 86_400_000,
+}
+
+export function reminderInterval({ text }: { text: string }): number {
+  const match = /^([1-9]\d*) (minute|hour|day)s?$/i.exec(text.trim())
+  const milliseconds = match ? Number(match[1]) * INTERVAL_UNITS[match[2]!.toLowerCase()]! : NaN
+
+  if (!Number.isSafeInteger(milliseconds) || milliseconds <= 0) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'Choose a positive interval such as "30 minutes", "4 hours" or "1 day"',
+    })
+  }
+
+  return milliseconds
+}
+
 export function reminderTime({
   when,
   now,
