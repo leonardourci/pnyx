@@ -9,6 +9,32 @@ import { sendReply } from '#workers/reply.ts'
 import type { NativeHealth } from './health.ts'
 import { recoveryCandidates, recoverySubjects, recoveryKey, recoveryNeedsNotice, RECOVERY_PAUSE_MS, type RecoveryAttempt } from './recovery-state.ts'
 
+interface RecoveryClock {
+  now(): number
+  schedule({
+    delay,
+    fire,
+  }: {
+    delay: number
+    fire(): void
+  }): () => void
+}
+
+const systemClock: RecoveryClock = {
+  now: () => Date.now(),
+  schedule: ({
+    delay,
+    fire,
+  }) => {
+    const timer = setTimeout(
+      fire,
+      delay,
+    ).unref()
+
+    return () => clearTimeout(timer)
+  },
+}
+
 const replyKeys = ({ event }: { event: HydraEvent }) => event.type === 'card.replied'
   ? [
     recoveryKey({
@@ -36,15 +62,17 @@ export function createDiagnosticRecovery({
   enabled,
   changed,
   pause = RECOVERY_PAUSE_MS,
+  clock = systemClock,
 }: {
   hydraId: string
   sessions(): NativeHealth[]
   enabled(): boolean
   changed(): void
   pause?: number
+  clock?: RecoveryClock
 }) {
   let closed = false
-  const timers = new Map<string, ReturnType<typeof setTimeout>>()
+  const timers = new Map<string, () => void>()
   const running = new Map<string, Promise<void>>()
   const blocked = new Map<string, {
     taskId: string
@@ -52,6 +80,14 @@ export function createDiagnosticRecovery({
     reason: string
   }>()
   const state = (): HydraState => loadHydra({ hydraId }).state
+  const remainingPause = ({
+    attempt,
+    at = clock.now(),
+  }: {
+    attempt?: RecoveryAttempt
+    at?: number
+  }) =>
+    attempt ? Date.parse(attempt.at) + pause - at : 0
   const originalFor = ({
     task,
     message,
@@ -98,7 +134,7 @@ export function createDiagnosticRecovery({
       state: current.state,
       sessions: sessions(),
       enabled: enabled(),
-      now: Date.now(),
+      now: clock.now(),
       events: current.originals,
     })
   }
@@ -186,7 +222,7 @@ export function createDiagnosticRecovery({
               seq: writer.state.seq + 1,
               id,
               messageId: message,
-              at: new Date().toISOString(),
+              at: new Date(clock.now()).toISOString(),
               actor: 'pnyx',
               cardId: task,
               type: 'hydra.message',
@@ -248,13 +284,22 @@ export function createDiagnosticRecovery({
       return
     }
 
+    const admittedAt = clock.now()
+
+    if (remainingPause({
+      attempt: candidate.attempts.at(-1),
+      at: admittedAt,
+    }) > 0) {
+      return
+    }
+
     const reservation: RecoveryAttempt = {
       message,
       number: candidate.attempts.length + 1,
       status: 'reserved',
       sessionId: candidate.sessionId,
       generation: candidate.generation,
-      at: new Date().toISOString(),
+      at: new Date(admittedAt).toISOString(),
     }
 
     try {
@@ -317,7 +362,7 @@ export function createDiagnosticRecovery({
         attempt: {
           ...reservation,
           status,
-          at: new Date().toISOString(),
+          at: new Date(clock.now()).toISOString(),
         },
       })
     } catch (error) {
@@ -423,7 +468,7 @@ export function createDiagnosticRecovery({
               attempt: {
                 ...unresolved,
                 status: 'delivered',
-                at: new Date().toISOString(),
+                at: new Date(clock.now()).toISOString(),
               },
             })
             changed()
@@ -454,13 +499,13 @@ export function createDiagnosticRecovery({
         }
 
         const last = candidate.attempts.at(-1)
-        const remaining = last ? Date.parse(last.at) + pause - Date.now() : 0
+        const remaining = remainingPause({ attempt: last })
 
         if (remaining > 0) {
           timers.set(
             key,
-            setTimeout(
-              () => {
+            clock.schedule({
+              fire: () => {
                 timers.delete(key)
                 launch({
                   task,
@@ -468,8 +513,8 @@ export function createDiagnosticRecovery({
                   key,
                 })
               },
-              remaining,
-            ).unref(),
+              delay: remaining,
+            }),
           )
         } else {
           launch({
@@ -483,8 +528,8 @@ export function createDiagnosticRecovery({
     async close() {
       closed = true
 
-      for (const timer of timers.values()) {
-        clearTimeout(timer)
+      for (const cancel of timers.values()) {
+        cancel()
       }
 
       timers.clear()
