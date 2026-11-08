@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
+import { OWNER_CONTEXT_TOKENS } from './context-limits.ts'
 import { hydraDigest } from './digest.ts'
 import { countTokens } from '#workers/token-count.ts'
 
@@ -97,7 +98,7 @@ test(
       digest.indexOf('Hydra memory ('),
     )
 
-    assert.ok(countTokens({ text: memory }) <= 3_000)
+    assert.ok(countTokens({ text: memory }) <= OWNER_CONTEXT_TOKENS)
     assert.match(
       memory,
       /Preserve the release policy/,

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { OWNER_CONTEXT_TOKENS } from './context-limits.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { declaredState } from '#tasks/declarations.ts'
@@ -19,7 +20,6 @@ export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules
 
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
-const OWNER_CONTEXT_TOKENS = 3_000
 const DIGEST_HASH_CHARS = 12
 const DIGEST_CHECKPOINT_VERSION = 1
 

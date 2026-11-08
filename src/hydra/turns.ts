@@ -1,5 +1,6 @@
 import { nativeIdle } from '#workers/native-session.ts'
 import { createDigestContext } from './digest-context.ts'
+import { HYDRA_CONTEXT_TOKENS } from './context-limits.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
@@ -41,8 +42,6 @@ import type { HostedSession, Provider } from '#workers/provider.ts'
 import { harnessOf, providerIdOf } from '#workers/providers.ts'
 import { sessionId, withoutInterrupted } from '#workers/session-attachments.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
-
-const HYDRA_CONTEXT_TOKENS = 200_000
 
 // Hydra's turns: admitting and starting one, the context its session opens with, and what Hydra's live session does as a turn starts, finishes or ends.
 export function createHydraTurns({

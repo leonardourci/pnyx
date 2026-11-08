@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { mock } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
+import { HYDRA_CONTEXT_TOKENS } from '#hydra/context-limits.ts'
 import { HYDRA_TURN_POLL_MS } from '#workers/host.ts'
 import { commands } from '#app/cli.ts'
 import { createHost } from '#app/host.ts'
@@ -84,7 +85,7 @@ try {
   })
   complete({
     input: 0,
-    used: 199_999,
+    used: HYDRA_CONTEXT_TOKENS - 1,
   })
   await settle({
     what: 'below-limit turn to settle',
@@ -105,7 +106,7 @@ try {
   })
   complete({
     input: 1,
-    used: 200_000,
+    used: HYDRA_CONTEXT_TOKENS,
   })
   await settle({
     what: 'automatic compact input at the context limit',
@@ -194,7 +195,7 @@ try {
   })
   complete({
     input: 3,
-    used: 199_999,
+    used: HYDRA_CONTEXT_TOKENS - 1,
   })
   await settle({
     what: 'reset completion',
@@ -217,7 +218,7 @@ try {
   await setImmediate()
   complete({
     input: 4,
-    used: 200_000,
+    used: HYDRA_CONTEXT_TOKENS,
   })
   await settle({
     what: 'busy completion',
@@ -241,7 +242,7 @@ try {
   )
   complete({
     input: 5,
-    used: 199_999,
+    used: HYDRA_CONTEXT_TOKENS - 1,
   })
   await settle({
     what: 'wake completion',
@@ -258,7 +259,7 @@ try {
   })
   complete({
     input: 6,
-    used: 200_000,
+    used: HYDRA_CONTEXT_TOKENS,
   })
   await settle({
     what: 'compaction to re-arm after a lower usage reading',
