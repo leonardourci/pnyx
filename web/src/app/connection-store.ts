@@ -43,6 +43,7 @@ export function createHydraConnection() {
   let physicalHydra: string | null = null
   let listed = false
   let active = false
+  let offline = false
   let generation = 0
   let attempt = 0
   let received = Date.now()
@@ -309,6 +310,7 @@ export function createHydraConnection() {
       }) : shell({ scope }),
       viewKey: scope.viewKey,
       connected: scope.ready && socket?.readyState === WebSocket.OPEN,
+      offline,
       loaded: scope.hasSnapshot || scope.failed,
       loading: scope.ready || scope.failed ? '' : scope.id,
       checking: [...requests.values()].some(request => request.scope === scope && request.checking),
@@ -763,6 +765,7 @@ export function createHydraConnection() {
       }
 
       socket = null
+      offline = true
       ws.close()
       disconnected()
       clearTimeout(reconnect)
@@ -774,6 +777,15 @@ export function createHydraConnection() {
 
     ws.onclose = recover
     ws.onerror = recover
+
+    ws.onopen = () => {
+      if (!active || version !== generation || socket !== ws) {
+        return
+      }
+
+      offline = false
+      publish()
+    }
 
     ws.onmessage = event => {
       if (!active || version !== generation || socket !== ws) {

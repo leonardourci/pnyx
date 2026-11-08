@@ -1082,7 +1082,15 @@ export const readClaudeTranscript: TranscriptReader = ({
     return parsed
   }
 
-  const content = object({ value: entry.message }).content
+  const message = object({ value: entry.message })
+
+  if (entry.type === 'assistant' && typeof message.stop_reason === 'string') {
+    parsed.final = entry.isSidechain !== true
+      && message.stop_reason !== 'tool_use'
+      && message.stop_reason !== 'pause_turn'
+  }
+
+  const content = message.content
   const blocks = Array.isArray(content) ? content : []
 
   if (entry.isCompactSummary !== true && (entry.type === 'user' || entry.type === 'assistant')) {

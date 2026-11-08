@@ -3,10 +3,27 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setImmediate } from 'node:timers/promises'
+import { LATEST_DELAY_MS } from './latest-feed.ts'
+import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { createThreadSubscriptions, type Subscription } from './thread-subscriptions.ts'
+
+function deferred<T>() {
+  // eslint-disable-next-line pnyx/object-params -- Promise resolver contract.
+  let complete: ((value: T | PromiseLike<T>) => void) | undefined
+  const promise = new Promise<T>(resolve => {
+    complete = resolve
+  })
+  assert.ok(complete)
+
+  return {
+    promise,
+    resolve: complete,
+  }
+}
 
 test(
   'a Hydra subscription assembles a turn across pages and retains it on refresh',
@@ -84,12 +101,15 @@ test(
         close() {},
       }),
     }
+    const pushed: ServerMessage[] = []
     const threads = createThreadSubscriptions({
       hydraId: 'default',
       state: () => state,
       homes: () => [],
       closed: () => false,
-      send() {},
+      send({ message }) {
+        pushed.push(message)
+      },
       agents: () => ({ thread: ({ page }) => page }),
     })
     const card = state.cards[HYDRA_CARD]!
@@ -129,5 +149,100 @@ test(
       first.conversation!.stream,
     )
     assert.ok(refreshed.conversation!.version! > older.conversation!.version!)
+    const restored = await threads.threadPage({
+      sub: {
+        card: HYDRA_CARD,
+        native: sub.native,
+      },
+      card,
+      retain: {
+        session: latest.session,
+        oldest: past.entries[0]!.id,
+      },
+    })
+    assert.deepEqual(
+      restored.conversation!.entries.map(entry => entry.id),
+      [
+        'owner',
+        'answer',
+      ],
+    )
+    assert.notEqual(
+      restored.conversation!.stream,
+      first.conversation!.stream,
+    )
+    assert.equal(
+      restored.older,
+      undefined,
+    )
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const requested = deferred<void>()
+    const release = deferred<ThreadPage>()
+    let newest = latest
+    const client: HydraClient = {
+      OPEN: 1,
+      readyState: 1,
+      bufferedAmount: 0,
+      send() {},
+      terminate() {},
+    }
+    const restoringSub: Subscription = {
+      card: HYDRA_CARD,
+      client,
+      native: Promise.resolve({
+        read: async ({ before }) => {
+          if (before) {
+            requested.resolve()
+
+            return release.promise
+          }
+
+          return newest
+        },
+        close() {},
+      }),
+    }
+    threads.subscriptionMap({ card: HYDRA_CARD }).set(
+      client,
+      restoringSub,
+    )
+    const restoring = threads.threadPage({
+      sub: restoringSub,
+      card,
+      retain: {
+        session: latest.session,
+        oldest: past.entries[0]!.id,
+      },
+    })
+    await requested.promise
+    newest = {
+      ...latest,
+      entries: [
+        {
+          ...latest.entries[0]!,
+          text: 'Updated answer',
+        },
+      ],
+    }
+    threads.refreshThread({ ws: client })
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
+    assert.equal(
+      pushed.length,
+      0,
+    )
+    release.resolve(past)
+    await restoring
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
+    assert.deepEqual(
+      pushed
+        .filter(message => message.type === 'thread')
+        .flatMap(message => message.thread.conversation!.entries.map(entry => entry.text)),
+      [
+        'Check it',
+        'Updated answer',
+      ],
+    )
   },
 )

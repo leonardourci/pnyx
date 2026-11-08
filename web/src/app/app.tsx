@@ -54,6 +54,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     state,
     command,
     connected,
+    offline,
     hydraThread,
     hydraQueue,
     upgrade,
@@ -585,6 +586,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           <Panel
             shown={panel}
             connected={connected}
+            offline={offline}
             upgrade={upgrade}
             startUpgrade={startUpgrade}
             page={page}

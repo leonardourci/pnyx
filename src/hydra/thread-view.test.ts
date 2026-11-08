@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
-import { readThread, splitEntry, type ThreadPage } from './transcripts-read.ts'
+import { readThread, recordEntries, splitEntry, type ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveReplies } from '#workers/streaming.ts'
 
@@ -278,6 +278,318 @@ test(
     assert.equal(
       archived[0]!.continued,
       true,
+    )
+  },
+)
+
+test(
+  'completed background replies survive quiet endings while narration stays hidden',
+  () => {
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-10-22T10:00:00Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: 'hydra',
+          title: 'Hydra',
+        },
+      },
+    })
+    const card = state.cards[HYDRA_CARD]!
+    card.agent = {
+      provider: 'claude-code',
+      sessionId: 'fixture',
+      host: 'pnyx',
+    }
+    card.activity = 'working'
+    const records = [
+      {
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:03Z',
+        isSidechain: true,
+        message: {
+          stop_reason: 'end_turn',
+          content: 'A subagent internal result',
+        },
+      },
+      {
+        type: 'user',
+        timestamp: '2026-10-22T10:00:00Z',
+        message: { content: 'Please review' },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:01Z',
+        message: {
+          stop_reason: 'end_turn',
+          content: 'Review started',
+        },
+      },
+      {
+        type: 'user',
+        timestamp: '2026-10-22T10:00:02Z',
+        message: { content: '<pnyx-wake>Check pending work</pnyx-wake>' },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:03Z',
+        message: {
+          stop_reason: 'tool_use',
+          content: 'Checking the synthetic task',
+        },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:04Z',
+        message: {
+          stop_reason: 'end_turn',
+          content: 'The first result is ready',
+        },
+      },
+      {
+        type: 'response_item',
+        timestamp: '2026-10-22T10:00:05Z',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          phase: 'commentary',
+          content: 'Reading the next task',
+        },
+      },
+      {
+        type: 'response_item',
+        timestamp: '2026-10-22T10:00:06Z',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          phase: 'final_answer',
+          content: 'The second result is ready',
+        },
+      },
+      {
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:07Z',
+        message: {
+          stop_reason: 'end_turn',
+          content: 'NO_REPLY',
+        },
+      },
+    ]
+    state.hydraMessages = [
+      {
+        id: 'explicit-update',
+        hydra: 'hydra',
+        actor: 'hydra',
+        action: 'send',
+        text: 'An explicit update',
+        at: '2026-10-22T10:00:07Z',
+      },
+    ]
+    const page: ThreadPage = {
+      card: HYDRA_CARD,
+      route: true,
+      watching: 'unknown',
+      entries: records.flatMap((
+        record,
+        index,
+      ) => recordEntries({
+        record,
+        offset: index * 100,
+        boundaries: true,
+        tools: false,
+        thinking: false,
+      })),
+    }
+    assert.deepEqual(
+      hydraThreadView({
+        state,
+        page,
+        thinking: false,
+      }).conversation.entries.map(entry => entry.text),
+      [
+        'Please review',
+        'Review started',
+        'The first result is ready',
+        'The second result is ready',
+        'An explicit update',
+      ],
+    )
+    const archived = {
+      ...page,
+      entries: page.entries.filter(entry => !entry.hidden),
+    }
+    assert.deepEqual(
+      hydraThreadView({
+        state,
+        page: archived,
+        thinking: false,
+      }).conversation.entries.map(entry => entry.text),
+      [
+        'Please review',
+        'Review started',
+        'The first result is ready',
+        'The second result is ready',
+        'An explicit update',
+      ],
+    )
+    card.activity = 'finished'
+    assert.deepEqual(
+      hydraThreadView({
+        state,
+        page,
+        thinking: false,
+      }).conversation.entries.map(entry => entry.text),
+      [
+        'Please review',
+        'Review started',
+        'The first result is ready',
+        'The second result is ready',
+        'An explicit update',
+      ],
+    )
+  },
+)
+
+test(
+  'terminal and unknown provider replies stay visible while continuation text stays hidden',
+  () => {
+    const reply = ({ record }: { record: unknown }) => hydraThreadView({
+      state: emptyHydra(),
+      thinking: false,
+      page: {
+        card: HYDRA_CARD,
+        route: true,
+        watching: 'unknown',
+        entries: [
+          ...recordEntries({
+            record: {
+              type: 'user',
+              timestamp: '2026-10-22T10:00:00Z',
+              message: { content: 'Please check' },
+            },
+            offset: 0,
+          }),
+          ...recordEntries({
+            record,
+            offset: 100,
+          }),
+        ],
+      },
+    }).conversation.entries.map(entry => entry.text)
+    const claude = ({ stop }: { stop?: string }) => reply({
+      record: {
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:01Z',
+        message: {
+          stop_reason: stop,
+          content: 'A response',
+        },
+      },
+    })
+    const codex = ({ phase }: { phase?: string }) => reply({
+      record: {
+        type: 'response_item',
+        timestamp: '2026-10-22T10:00:01Z',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          phase,
+          content: [
+            {
+              type: 'output_text',
+              text: 'A response',
+            },
+          ],
+        },
+      },
+    })
+    assert.deepEqual(
+      claude({ stop: 'max_tokens' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'refusal' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'stop_sequence' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'model_context_window_exceeded' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'future_terminal_reason' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({}),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'tool_use' }),
+      ['Please check'],
+    )
+    assert.deepEqual(
+      claude({ stop: 'pause_turn' }),
+      ['Please check'],
+    )
+    assert.deepEqual(
+      codex({ phase: 'final_answer' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({ phase: 'partial_answer' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({ phase: 'future_phase' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({}),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({ phase: 'commentary' }),
+      ['Please check'],
     )
   },
 )

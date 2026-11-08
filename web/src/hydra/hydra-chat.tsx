@@ -157,6 +157,13 @@ export function HydraChat({
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
+  const retainedPage = useRef(page)
+  useLayoutEffect(
+    () => {
+      retainedPage.current = page
+    },
+    [page],
+  )
   useEffect(
     () => {
       if (!connected || !card) {
@@ -164,9 +171,22 @@ export function HydraChat({
       }
 
       let cancelled = false
+      const args = [HYDRA_CARD]
+      const retained = retainedPage.current
+
+      if (retained?.entries.length) {
+        args.push(
+          '--retain',
+          JSON.stringify({
+            session: retained.session,
+            oldest: retained.entries[0]!.id,
+          }),
+        )
+      }
+
       void command({
         name: 'thread',
-        args: [HYDRA_CARD],
+        args,
       }).then(result => {
         if (!cancelled) {
           setPage(before => receivedThread({
@@ -362,7 +382,12 @@ export function HydraChat({
   previousEntries.current = entries
 
   const threadSession = useRef(card?.agent?.sessionId)
-  threadSession.current = card?.agent?.sessionId
+  useLayoutEffect(
+    () => {
+      threadSession.current = card?.agent?.sessionId
+    },
+    [card?.agent?.sessionId],
+  )
 
   const loadEarlier = async ({ until }: { until?: string }) => {
     const session = threadSession.current

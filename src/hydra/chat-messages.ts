@@ -138,6 +138,7 @@ export function hydraMessages({
         id: message.id,
         kind: message.kind === 'divider' ? 'divider' : 'message',
         role,
+        final: message.actor === HYDRA_ACTOR ? true : undefined,
         text: shown,
         at: message.at,
         hidden: boundaries && message.kind !== 'divider' && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),

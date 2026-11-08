@@ -85,6 +85,7 @@ export type ChatEvent = EventBase & {
   data: {
     session: string
     nativeId: string
+    final?: boolean
     messageId?: string
     part?: number
     role: string

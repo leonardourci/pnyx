@@ -8,6 +8,7 @@ import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 export function Panel({
   shown,
   connected,
+  offline,
   upgrade,
   startUpgrade,
   page,
@@ -17,6 +18,7 @@ export function Panel({
 }: {
   shown: boolean
   connected: boolean
+  offline: boolean
   upgrade?: UpgradeStatus
   startUpgrade(): void
   page: string
@@ -30,7 +32,7 @@ export function Panel({
 
   return (
     <aside className="left-panel" aria-label="Pnyx navigation" hidden={!shown}>
-      <div className="brand"><Icon name="pnyx" size={24} /><span>pnyx</span>{!connected && <span className="offline" role="status">offline</span>}{connected && <UpgradeHint status={upgrade} upgrade={startUpgrade} />}</div>
+      <div className="brand"><Icon name="pnyx" size={24} /><span>pnyx</span>{offline && <span className="offline" role="status">offline</span>}{connected && <UpgradeHint status={upgrade} upgrade={startUpgrade} />}</div>
       {oracle}
       <nav aria-label="Main pages">
         <Button aria-label="Settings" aria-pressed={settings} onClick={() => navigate({ page: settings ? 'hydra' : 'settings' })}><Icon name="settings" /><span>Settings</span>{settingsKey && <kbd>{settingsKey}</kbd>}</Button>

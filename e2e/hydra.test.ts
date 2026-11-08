@@ -1721,6 +1721,19 @@ test(
       ],
     )
 
+    const renewed = (await page.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    assert.deepEqual(
+      conversation({ page: renewed }),
+      conversation({ page: older }),
+    )
+    assert.equal(
+      renewed.conversation!.stream,
+      older.conversation!.stream,
+    )
+
     const newer = () => page.threads.filter(thread => thread.conversation!.version!
       > older.conversation!.version!)
 
@@ -1763,6 +1776,52 @@ test(
         2,
       ),
       conversation({ page: older }),
+    )
+    await finished({
+      s,
+      turns: 2,
+    })
+    page.close()
+    await pnyx.restart()
+    const reconnected = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => reconnected.close())
+    const restored = (await reconnected.command({
+      name: 'thread',
+      args: [
+        HYDRA_CARD,
+        '--retain',
+        JSON.stringify({
+          session: older.session,
+          oldest: older.entries[0]!.id,
+        }),
+      ],
+    })).thread as ThreadPage
+    assert.deepEqual(
+      conversation({ page: restored }).slice(
+        0,
+        2,
+      ),
+      conversation({ page: older }),
+    )
+    assert.ok(restored.conversation!.entries.some(entry => entry.text === 'Ship it'))
+    assert.notEqual(
+      restored.conversation!.stream,
+      older.conversation!.stream,
+    )
+    const refusal = await reconnected.refusal({
+      name: 'thread',
+      args: [
+        HYDRA_CARD,
+        '--retain',
+        '{}',
+      ],
+    })
+    assert.equal(
+      refusal.code,
+      'VALIDATION_ERROR',
     )
   },
 )

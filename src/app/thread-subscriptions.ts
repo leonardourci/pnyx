@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { hydraThreadView } from '#hydra/thread-view.ts'
-import { mergeThreadPages } from '#hydra/thread-history.ts'
+import { mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#hydra/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
@@ -19,6 +19,9 @@ import { watchPath, type PathWatch } from './watch.ts'
 export type Subscription = {
   card: string
   history?: ThreadPage
+  client?: HydraClient
+  restoring?: number
+  refreshPending?: boolean
   view?: {
     id: string
     version: number
@@ -183,6 +186,11 @@ export function createThreadSubscriptions({
                 continue
               }
 
+              if (sub.restoring) {
+                sub.refreshPending = true
+                continue
+              }
+
               const unavailable = () => send({
                 ws,
                 message: {
@@ -275,14 +283,31 @@ export function createThreadSubscriptions({
     sub,
     card,
     before,
+    retain,
   }: {
     sub: Subscription
     card: Card
     before?: string
+    retain?: ThreadBoundary
   }): Promise<ThreadPage> => {
     const native = sub.native
 
-    if (!native) {
+    const readPage = async ({ before }: { before?: string }): Promise<ThreadPage> => {
+      if (native) {
+        return paseoHistory({
+          card: card.id,
+          conversation: { read: async ({ before }) => (await native).read({ before }) },
+          readSaved: ({ before }) => readThread({
+            hydraId,
+            state: state(),
+            card,
+            homes: homes(),
+            before,
+          }),
+          before,
+        })
+      }
+
       const page = readThread({
         hydraId,
         state: state(),
@@ -291,36 +316,45 @@ export function createThreadSubscriptions({
         before,
       })
 
-      const latest = before ? page : agents().thread({
+      return before ? page : agents().thread({
         card,
         page,
       })
+    }
+
+    if (retain) {
+      sub.restoring = (sub.restoring ?? 0) + 1
+    }
+
+    try {
+      let page = await readPage({ before })
+
+      if (retain && !before) {
+        page = await retainThreadPages({
+          page: mergeThreadPages({
+            before: sub.history ?? null,
+            latest: page,
+          }),
+          retain,
+          read: readPage,
+        })
+      }
 
       return prepareThread({
         sub,
-        page: latest,
+        page,
         older: before !== undefined,
       })!
+    } finally {
+      if (retain) {
+        sub.restoring = (sub.restoring ?? 1) - 1
+
+        if (!sub.restoring && sub.refreshPending && sub.client) {
+          sub.refreshPending = false
+          refreshThread({ ws: sub.client })
+        }
+      }
     }
-
-    const page = await paseoHistory({
-      card: card.id,
-      conversation: { read: async ({ before }) => (await native).read({ before }) },
-      readSaved: ({ before }) => readThread({
-        hydraId,
-        state: state(),
-        card,
-        homes: homes(),
-        before,
-      }),
-      before,
-    })
-
-    return prepareThread({
-      sub,
-      page,
-      older: before !== undefined,
-    })!
   }
 
   const bindThread = ({
@@ -335,6 +369,7 @@ export function createThreadSubscriptions({
     const path = threadPath({ card })
     const sub: Subscription = {
       card: card.id,
+      client: ws,
       path,
     }
     const paseo = card.agent?.paseoAgentId
