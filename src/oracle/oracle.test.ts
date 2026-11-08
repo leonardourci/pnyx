@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { withWriter } from '#app/writer.ts'
+import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { decidePush } from '#tasks/push.ts'
 import { searchPath, sqlite, updateIndex } from './index.ts'
@@ -38,6 +39,250 @@ const CODEX = join(
   'fixtures',
   'transcripts',
   'codex-session.jsonl',
+)
+
+test(
+  'Oracle recovers task instructions and helper results from the log after edits and an index rebuild',
+  () => {
+    process.env.PNYX_HOME = mkdtempSync(join(
+      scratch,
+      'pnyx-oracle-records-',
+    ))
+    const write = ({ events }: { events: HydraEvent[] }) => withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        for (const event of events) {
+          writer.append({
+            event: {
+              ...event,
+              seq: writer.state.seq + 1,
+            },
+            effects: false,
+          })
+        }
+      },
+    })
+    const base = {
+      v: 1 as const,
+      seq: 0,
+      actor: 'fixture',
+      cardId: 'task-records',
+      at: '2026-10-15T10:00:00Z',
+    }
+    write({
+      events: [
+        {
+          ...base,
+          id: 'created-records',
+          type: 'task.created',
+          data: {
+            key: 'records',
+            title: 'Recorded instructions',
+            intent: 'Retain saffron instructions.',
+            brief: 'Confirm semaphore behavior.',
+            ask: {
+              text: 'Record marzipan preferences.',
+              at: base.at,
+              actor: 'cli',
+            },
+          },
+        },
+        {
+          ...base,
+          cardId: 'task-other',
+          id: 'created-other',
+          type: 'task.created',
+          data: {
+            key: 'other',
+            title: 'Another task',
+          },
+        },
+      ],
+    })
+    updateIndex({ hydraId: 'default' })
+    const find = ({ text }: { text: string }) => search({
+      hydraId: 'default',
+      query: {
+        text,
+        limit: 20,
+        highlight: false,
+      },
+    }).hits
+    assert.deepEqual(
+      find({ text: 'saffron semaphore marzipan' }).map(hit => hit.card),
+      ['task-records'],
+    )
+
+    write({
+      events: [
+        {
+          ...base,
+          id: 'revised-records',
+          type: 'task.brief',
+          data: {
+            before: 'Confirm semaphore behavior.',
+            after: 'Validate cobalt pipeline. sk-abcdefghijklmnop1234',
+            intent: 'Publish indigo output.',
+          },
+        },
+        {
+          ...base,
+          id: 'later-records',
+          type: 'task.owner-ask',
+          data: {
+            text: 'Keep tangerine summaries.',
+            at: base.at,
+            actor: 'cli',
+          },
+        },
+        {
+          ...base,
+          id: 'legacy-records',
+          type: 'task.intent',
+          data: {
+            text: 'Review vermilion logs.',
+            at: base.at,
+            actor: 'cli',
+          },
+        },
+        {
+          ...base,
+          cardId: HYDRA_CARD,
+          id: 'helper-finished:records',
+          type: 'hydra.helper-finished',
+          data: {
+            batch: 'records',
+            outcomes: [
+              {
+                task: base.cardId,
+                audience: 'routine',
+                summary: 'Topaz export succeeded.',
+              },
+              {
+                task: 'task-other',
+                audience: 'owner',
+                summary: 'Amber format needs approval. sk-abcdefghijklmnop1234',
+              },
+            ],
+          },
+        },
+        {
+          ...base,
+          cardId: HYDRA_CARD,
+          id: 'helper-finished:decision',
+          type: 'hydra.helper-finished',
+          data: {
+            batch: 'decision',
+            outcomes: [
+              {
+                task: base.cardId,
+                status: 'needs_main',
+                summary: 'Quartz approval needs a decision.',
+              },
+            ],
+          },
+        },
+        {
+          ...base,
+          cardId: HYDRA_CARD,
+          id: 'helper-finished:wait',
+          type: 'hydra.helper-finished',
+          data: {
+            batch: 'wait',
+            outcomes: [
+              {
+                task: base.cardId,
+                status: 'still_waiting',
+                summary: 'Obsidian wait is unchanged.',
+              },
+            ],
+          },
+        },
+        {
+          ...base,
+          cardId: HYDRA_CARD,
+          id: 'helper-finished:checks',
+          type: 'hydra.helper-finished',
+          data: {
+            batch: 'checks',
+            outcomes: [
+              {
+                task: base.cardId,
+                status: 'handled',
+                summary: 'Jasper checks passed.',
+              },
+            ],
+          },
+        },
+        {
+          ...base,
+          id: 'helper-result:records:task-records',
+          actor: 'pnyx',
+          type: 'hydra.message',
+          data: {
+            hydra: 'hydra',
+            action: 'send',
+            kind: 'routine',
+            task: base.cardId,
+            text: 'Jasper checks passed.',
+          },
+        },
+      ],
+    })
+    updateIndex({ hydraId: 'default' })
+    assert.deepEqual(
+      find({ text: 'cobalt indigo tangerine vermilion' }).map(hit => hit.card),
+      ['task-records'],
+    )
+    assert.deepEqual(
+      find({ text: 'semaphore' }).map(hit => hit.card),
+      ['task-records'],
+    )
+    assert.deepEqual(
+      find({ text: 'topaz quartz' }).map(hit => hit.card),
+      ['task-records'],
+    )
+    assert.deepEqual(
+      find({ text: 'amber' }).map(hit => hit.card),
+      ['task-other'],
+    )
+    assert.match(
+      find({ text: 'amber' })[0]?.snippets[0]?.snippet ?? '',
+      /\[redacted\]/,
+    )
+    assert.deepEqual(
+      find({ text: 'obsidian' }),
+      [],
+    )
+    assert.equal(
+      find({ text: 'jasper' })[0]?.snippets.length,
+      1,
+    )
+    assert.match(
+      find({ text: 'cobalt' })[0]?.snippets[0]?.snippet ?? '',
+      /\[redacted\]/,
+    )
+
+    const { DatabaseSync } = sqlite()
+    const oldIndex = new DatabaseSync(searchPath({ hydraId: 'default' }))
+    // Version 6 omitted these records while still advancing its event cursor.
+    oldIndex.exec(`
+      UPDATE meta SET value = '6' WHERE key = 'chunker_version';
+      DELETE FROM docs;
+      DELETE FROM card_fts;
+    `)
+    oldIndex.close()
+    updateIndex({ hydraId: 'default' })
+    assert.deepEqual(
+      find({ text: 'saffron semaphore marzipan cobalt indigo tangerine vermilion topaz quartz jasper' })
+        .map(hit => hit.card),
+      ['task-records'],
+    )
+    assert.deepEqual(
+      find({ text: 'obsidian' }),
+      [],
+    )
+  },
 )
 
 test(
