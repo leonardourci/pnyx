@@ -368,7 +368,7 @@ test(
         payload: {
           type: 'message',
           role: 'assistant',
-          phase: 'final',
+          phase: 'final_answer',
           content: 'The second result is ready',
         },
       },
@@ -452,6 +452,144 @@ test(
         'The second result is ready',
         'An explicit update',
       ],
+    )
+  },
+)
+
+test(
+  'terminal and unknown provider replies stay visible while continuation text stays hidden',
+  () => {
+    const reply = ({ record }: { record: unknown }) => hydraThreadView({
+      state: emptyHydra(),
+      thinking: false,
+      page: {
+        card: HYDRA_CARD,
+        route: true,
+        watching: 'unknown',
+        entries: [
+          ...recordEntries({
+            record: {
+              type: 'user',
+              timestamp: '2026-10-22T10:00:00Z',
+              message: { content: 'Please check' },
+            },
+            offset: 0,
+          }),
+          ...recordEntries({
+            record,
+            offset: 100,
+          }),
+        ],
+      },
+    }).conversation.entries.map(entry => entry.text)
+    const claude = ({ stop }: { stop?: string }) => reply({
+      record: {
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:01Z',
+        message: {
+          stop_reason: stop,
+          content: 'A response',
+        },
+      },
+    })
+    const codex = ({ phase }: { phase?: string }) => reply({
+      record: {
+        type: 'response_item',
+        timestamp: '2026-10-22T10:00:01Z',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          phase,
+          content: [
+            {
+              type: 'output_text',
+              text: 'A response',
+            },
+          ],
+        },
+      },
+    })
+    assert.deepEqual(
+      claude({ stop: 'max_tokens' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'refusal' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'stop_sequence' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'model_context_window_exceeded' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'future_terminal_reason' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({}),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      claude({ stop: 'tool_use' }),
+      ['Please check'],
+    )
+    assert.deepEqual(
+      claude({ stop: 'pause_turn' }),
+      ['Please check'],
+    )
+    assert.deepEqual(
+      codex({ phase: 'final_answer' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({ phase: 'partial_answer' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({ phase: 'future_phase' }),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({}),
+      [
+        'Please check',
+        'A response',
+      ],
+    )
+    assert.deepEqual(
+      codex({ phase: 'commentary' }),
+      ['Please check'],
     )
   },
 )
