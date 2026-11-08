@@ -26,6 +26,7 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
+  debug timeline|health                     Read correlated history and runtime health facts
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
@@ -50,6 +51,18 @@ flags:
 `
 
 const COMMAND_HELP: Record<string, string> = {
+  debug: `usage: pnyx-axi debug timeline [--task <id|key>] [--message <id>] [--batch <id>] [--session <id>] [--since <ISO>] [--until <ISO>] [--cursor <token>] [--limit <1..200>] [--hydra <id>]
+Read event IDs and correlated structured service records, newest timestamp first; original sequence,
+transaction and source IDs are preserved. No transcript or message bodies are returned.
+Filters intersect. Times include their timezone and endpoints are inclusive. Default limit: 50.
+Pass the returned cursor with the same filters for older matches. Service reads cover the last
+512 KiB only; serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
+pnyx-axi debug health [--limit <1..200>] [--hydra <id>]
+Read unfinished helper batches and their observed native ownership/deadline, unsettled inputs,
+sessions retained during settings retirement, pending helper completions, eligible spool age,
+and the last successful synchronous scheduler pass. Unknown observations remain unknown.
+Facts are per running server, reset at restart, and cause no retry, release or recovery action.
+`,
   apply: `usage: pnyx-axi apply --file <path|-> [--check [--full]] [--event-id <id>] [--hydra <hydra>]
 Read one version: 1 JSON document with changes and optional expected.tasks revisions.
 Operations: task.create, task.brief, task.owner-ask, task.depend, task.undepend, task.status,

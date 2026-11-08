@@ -28,6 +28,18 @@ const flag = ({
 }: Args & { name: string }) => args.some(arg => arg === name || arg.startsWith(`${name}=`))
 
 export const COMMAND_REGISTRY = {
+  debug: {
+    helper: {
+      reads: [
+        'timeline',
+        'health',
+      ],
+    },
+    worker: [
+      'timeline',
+      'health',
+    ],
+  },
   approval: {
     page: true,
     ownerOnly: () => true,

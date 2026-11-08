@@ -1,3 +1,4 @@
+import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
 import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
@@ -738,6 +739,35 @@ export function createHost({
   })
 
   const host: Host = {
+    diagnostics: () => ({
+      helper: {
+        ...helper.inspect(),
+        enabled: helperOpen({ state: loadHydra({ hydraId }).state }),
+      },
+      sessions: [...live].map(([
+        sessionId,
+        entry,
+      ]) => ({
+        sessionId,
+        taskId: entry.task,
+        attached: entry.session !== undefined,
+        stale: entry.stale,
+        generation: entry.generation,
+        leased: taskLeasePresent({
+          hydraId,
+          task: entry.task,
+        }),
+        work: entry.session?.snapshot().work,
+        inputs: [...entry.pendingDirect].map(([
+          id,
+          input,
+        ]) => ({
+          id,
+          taskId: input.card,
+          taken: input.taken,
+        })),
+      })),
+    }),
     catalogCommands: catalogs.commands,
     models: catalogs.models,
     hydraId,

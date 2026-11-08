@@ -8,6 +8,7 @@ import type { HydraQueue } from '#hydra/wakes.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
+import type { RuntimeHealth } from '#diagnostics/health.ts'
 
 export type UsageInputs = {
   spend?: Record<string, import('#workers/task-spend.ts').TaskSpend>
@@ -15,6 +16,7 @@ export type UsageInputs = {
 }
 
 export interface Host {
+  diagnostics(): Pick<RuntimeHealth, 'sessions' | 'helper'>
   hydraId: string
   catalogCommands({
     card,

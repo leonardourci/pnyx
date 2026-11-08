@@ -41,6 +41,7 @@ export function createServerTick({
   agents,
   sources,
   review,
+  recover,
 }: {
   hydraId: string
   dir: string
@@ -55,6 +56,7 @@ export function createServerTick({
   agents(): Pick<ReturnType<typeof createHost>, 'unconfirmed'>
   sources(): ReturnType<typeof createSourceRunner>
   review(): ReturnType<typeof startReviewTimer>
+  recover(): void
 }) {
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let cancelReminder = () => {}
@@ -67,6 +69,9 @@ export function createServerTick({
   let replyRun: Promise<void> | undefined
   let replyCheckedAt = 0
   let scheduled = false
+  let lastSuccessAt: string | undefined
+  let lastSuccessSeq: number | undefined
+  let lastFailureAt: string | undefined
 
   const kick = () => {
     if (closed() || scheduled) {
@@ -187,6 +192,7 @@ export function createServerTick({
         }
 
         sources().reconcile()
+        recover()
         background({
           name: 'review',
           run: review().check,
@@ -236,7 +242,11 @@ export function createServerTick({
 
           settling = settle()
         }
+
+        lastSuccessAt = new Date().toISOString()
+        lastSuccessSeq = state().seq
       } catch (error) {
+        lastFailureAt = new Date().toISOString()
         // A held lock or a damaged log; the next change retries.
         logFailure({
           operation: 'scheduler tick',
@@ -296,6 +306,11 @@ export function createServerTick({
   }
 
   return {
+    health: () => ({
+      lastSuccessAt,
+      lastSuccessSeq,
+      lastFailureAt,
+    }),
     kick,
     get queueRun() {
       return queueRun
