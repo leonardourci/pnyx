@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents } from '#app/event-log.ts'
+import { readEvents, readLog } from '#app/event-log.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
+import { withWriter } from '#app/writer.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { readSnapshot } from '#app/snapshot.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { taskMentions } from '#hydra/mentions.ts'
 import { fireReminders } from './fire-reminders.ts'
@@ -238,6 +241,41 @@ test(
       }),
       0,
     )
+    await run({
+      args: [
+        'create',
+        '--key',
+        'limit',
+        '--title',
+        'Review the last supported date',
+      ],
+    })
+    await run({
+      args: [
+        'remind',
+        'limit',
+        '+275760-09-13T00:00:00.000Z',
+        '--every',
+        '1 hour',
+        '--until',
+        'task-done',
+      ],
+    })
+    assert.doesNotThrow(() => fireReminders({
+      hydraId,
+      at: '+275760-09-13T00:00:00.000Z',
+    }))
+    assert.equal(
+      state().cards[state().keys.limit!]?.reminder?.repeat,
+      undefined,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '+275760-09-13T00:00:00.000Z',
+      }),
+      0,
+    )
   },
 )
 
@@ -247,6 +285,15 @@ test(
     t.mock.timers.enable({
       apis: ['Date'],
       now: new Date('2099-10-16T11:00:00Z'),
+    })
+    await run({
+      args: [
+        'status',
+        'work',
+        'paused',
+        '--note',
+        'Waiting for a review slot',
+      ],
     })
     await run({
       args: [
@@ -411,6 +458,71 @@ test(
       }),
       0,
     )
+    await run({
+      args: [
+        'ask',
+        'choice',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+        '--reason',
+        'A replacement decision',
+        '--question',
+        'Keep the optional field?',
+        '--choice',
+        'Yes',
+        '--choice',
+        'No',
+      ],
+    })
+    const closed = state().cards[state().keys.choice!]?.asks?.at(-1)
+    assert.ok(closed)
+    await run({
+      args: [
+        'remind',
+        'choice',
+        '2099-10-17T12:00:00Z',
+        '--every',
+        '4 hours',
+        '--until',
+        'question-answered',
+        '--question',
+        closed.id,
+      ],
+    })
+    await run({
+      args: [
+        'close-question',
+        'choice',
+        closed.id,
+        '--actor',
+        'hydra',
+        '--reason',
+        'The choice is superseded',
+        '--evidence',
+        'The synthetic specification removed the field',
+      ],
+    })
+    assert.equal(
+      state().cards[state().keys.choice!]?.reminder,
+      undefined,
+    )
+    const afterClose = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    })
+    assert.equal(
+      afterClose.cards[afterClose.keys.choice!]?.reminder,
+      undefined,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-18T12:00:00Z',
+      }),
+      0,
+    )
   },
 )
 
@@ -496,6 +608,504 @@ test(
     assert.deepEqual(
       task().reminder,
       before,
+    )
+  },
+)
+
+test(
+  'reminders due together persist one grouped chat message with separate task receipts',
+  async t => {
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2099-10-16T08:00:00Z'),
+    })
+    await run({
+      args: [
+        'create',
+        '--key',
+        'other',
+        '--title',
+        'Review schema examples',
+      ],
+    })
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+      ],
+    })
+    await run({
+      args: [
+        'remind',
+        'other',
+        later,
+      ],
+    })
+    await run({
+      args: [
+        'ask',
+        'work',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner chooses',
+        '--question',
+        'Publish the cursor schema?',
+        '--choice',
+        'Yes',
+        '--choice',
+        'No',
+      ],
+    })
+    const ask = task().asks?.[0]
+    assert.ok(ask)
+    const questionKey = `${task().id}:${ask.id}`
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: later,
+      }),
+      3,
+    )
+    assert.equal(
+      state().hydraMessages?.length,
+      1,
+    )
+    const message = state().hydraMessages?.[0]
+    assert.ok(message)
+    assert.equal(
+      message.text.split('\n').length,
+      2,
+    )
+    assert.equal(
+      taskMentions({ text: message.text }).length,
+      2,
+    )
+    assert.equal(
+      readEvents({ hydraId }).filter(event => event.type === 'task.reminder-due').length,
+      2,
+    )
+    const dir = join(
+      home,
+      'hydras',
+      hydraId,
+    )
+    const batch = readLog({ dir })?.transactions.at(-1)
+    assert.ok(batch)
+    assert.equal(
+      batch.events.filter(event => event.type === 'task.reminder-due').length,
+      2,
+    )
+    const posted = batch.events.find(event => event.type === 'hydra.message')
+    assert.ok(posted?.type === 'hydra.message')
+    assert.deepEqual(
+      posted.data.reminderQuestions,
+      [questionKey],
+    )
+    assert.equal(
+      state().questionReminders?.[questionKey],
+      later,
+    )
+    const complete = readFileSync(join(
+      dir,
+      'events.jsonl',
+    ))
+    const tornDir = mkdtempSync(join(
+      home,
+      'torn-reminders-',
+    ))
+    writeFileSync(
+      join(
+        tornDir,
+        'events.jsonl',
+      ),
+      complete.subarray(
+        0,
+        complete.length - 2,
+      ),
+    )
+    const torn = readLog({ dir: tornDir })
+    assert.ok(torn)
+    const pending = replay({
+      state: emptyHydra(),
+      events: torn.events,
+    })
+    assert.equal(
+      pending.hydraMessages?.length ?? 0,
+      0,
+    )
+    assert.equal(
+      pending.questionReminders,
+      undefined,
+    )
+    assert.equal(
+      pending.cards[pending.keys.work!]?.reminder?.dueAt,
+      undefined,
+    )
+    assert.equal(
+      pending.cards[pending.keys.other!]?.reminder?.dueAt,
+      undefined,
+    )
+    const messages = await commands.hydra([
+      'messages',
+      '--hydra',
+      hydraId,
+    ])
+    assert.ok(Array.isArray(messages.messages))
+    assert.equal(
+      messages.messages.length,
+      1,
+    )
+    const replayed = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    })
+    assert.deepEqual(
+      replayed.hydraMessages,
+      state().hydraMessages,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: later,
+      }),
+      0,
+    )
+    assert.equal(
+      state().hydraMessages?.length,
+      1,
+    )
+  },
+)
+
+test(
+  'owner questions keep their four-hour clock across replay and stop after an answer',
+  async t => {
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2099-10-16T11:00:00Z'),
+    })
+    await run({
+      args: [
+        'ask',
+        'work',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner chooses',
+        '--question',
+        'Build the proposal?',
+        '--choice',
+        'Yes',
+        '--choice',
+        'No',
+      ],
+    })
+    const ask = task().asks?.[0]
+    assert.ok(ask)
+    await run({
+      args: [
+        'remind',
+        'work',
+        '2099-10-16T15:00:00.000Z',
+        '--every',
+        '4 hours',
+        '--until',
+        'question-answered',
+        '--question',
+        ask.id,
+      ],
+    })
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T14:59:59.999Z',
+      }),
+      0,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T15:00:00.000Z',
+      }),
+      2,
+    )
+    assert.equal(
+      state().hydraMessages?.[0]?.text.split('\n').length,
+      1,
+    )
+    const replayed = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    })
+    assert.deepEqual(
+      replayed.questionReminders,
+      state().questionReminders,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T15:00:00.000Z',
+      }),
+      0,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T18:59:59.999Z',
+      }),
+      0,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T19:00:00.000Z',
+      }),
+      2,
+    )
+    t.mock.timers.tick(8 * 60 * 60 * 1000)
+    await run({
+      args: [
+        'answer',
+        'work',
+        ask.id,
+        '--choice',
+        'No',
+      ],
+    })
+    const ended = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    })
+    assert.equal(
+      ended.cards[ended.keys.work!]?.reminder,
+      undefined,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-17T12:00:00.000Z',
+      }),
+      0,
+    )
+  },
+)
+
+test(
+  'repeated reminders preserve newer declarations and stop on recorded merged completion',
+  async t => {
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2099-10-16T11:00:00Z'),
+    })
+    await run({
+      args: [
+        'status',
+        'work',
+        'paused',
+        '--note',
+        'Original wait',
+      ],
+    })
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+        '--every',
+        '1 hour',
+        '--until',
+        'task-done',
+      ],
+    })
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: later,
+      }),
+      1,
+    )
+    t.mock.timers.tick(60 * 60 * 1000)
+    await run({
+      args: [
+        'status',
+        'work',
+        'blocked',
+        '--note',
+        'New validation failure',
+      ],
+    })
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T13:00:00.000Z',
+      }),
+      1,
+    )
+    await run({
+      args: [
+        'remind',
+        'work',
+        'clear',
+      ],
+    })
+    assert.equal(
+      task().status?.state,
+      'blocked',
+    )
+    assert.equal(
+      task().status?.note,
+      'New validation failure',
+    )
+    await run({
+      args: [
+        'remind',
+        'work',
+        '2099-10-16T14:00:00.000Z',
+        '--every',
+        '1 hour',
+        '--until',
+        'task-done',
+      ],
+    })
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T14:00:00.000Z',
+      }),
+      1,
+    )
+    await commands.link([
+      'work',
+      '--hydra',
+      hydraId,
+      '--url',
+      'https://github.com/example/schema/pull/1',
+      '--kind',
+      'github_pr',
+      '--state',
+      'merged',
+    ])
+    assert.equal(
+      task().reminder,
+      undefined,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-10-16T15:00:00.000Z',
+      }),
+      0,
+    )
+  },
+)
+
+test(
+  'a legacy reminder snapshot is rebuilt before restoring the prior task status',
+  async () => {
+    await run({
+      args: [
+        'status',
+        'work',
+        'paused',
+        '--note',
+        'Waiting before the reminder',
+      ],
+    })
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+      ],
+    })
+    const dueId = withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        const card = writer.state.cards[writer.state.keys.work!]!
+        const column = writer.state.config?.columns.find(column => column.role === 'needs_you')
+        assert.ok(column)
+        assert.ok(card.reminder)
+        const decision = hydraEvent({
+          state: writer.state,
+          meta: {
+            at: later,
+            actor: 'pnyx',
+          },
+          cardId: card.id,
+          change: {
+            type: 'task.reminder-due',
+            data: {
+              reminder: card.reminder.id,
+              column: column.id,
+              message: {
+                task: card.id,
+                hydra: 'hydra',
+                action: 'send',
+                text: 'Reminder: Review synthetic pagination',
+              },
+            },
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+
+        return decision.event.id
+      },
+    })
+    const snapshot = join(
+      home,
+      'hydras',
+      hydraId,
+      'snapshot.json',
+    )
+    const legacy = readSnapshot({
+      dir: join(
+        home,
+        'hydras',
+        hydraId,
+      ),
+    })
+    assert.ok(legacy)
+    const message = legacy.state.hydraMessages?.[0]
+    const card = legacy.state.cards[legacy.state.keys.work!]
+    assert.ok(message)
+    assert.ok(card?.reminder)
+    legacy.rules = 20
+    message.actor = 'hydra'
+    delete card.reminder.dueEvent
+    delete card.reminder.resume
+    writeFileSync(
+      snapshot,
+      JSON.stringify(legacy),
+    )
+    assert.equal(
+      state().hydraMessages?.[0]?.actor,
+      'pnyx',
+    )
+    assert.equal(
+      task().reminder?.dueEvent,
+      dueId,
+    )
+    await run({
+      args: [
+        'remind',
+        'work',
+        'clear',
+      ],
+    })
+    assert.equal(
+      task().status?.state,
+      'paused',
+    )
+    assert.equal(
+      task().status?.note,
+      'Waiting before the reminder',
     )
   },
 )

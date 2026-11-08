@@ -5,6 +5,8 @@ import { touch } from './touch.ts'
 import { taskDone } from './select.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderInterval } from './time.ts'
+import { cloneValue } from '#app/preimage.ts'
+import { cardFacts } from './columns.ts'
 
 const REMINDER_WORD_LIMIT = 30
 const TITLE_WORD_LIMIT = 10
@@ -135,7 +137,7 @@ export function reminderRepeat({
   return repeat
 }
 
-function clearReminder({ card }: { card: Card }) {
+export function clearReminder({ card }: { card: Card }) {
   if (card.status?.id === card.reminder?.dueEvent) {
     if (card.reminder?.resume) {
       card.status = card.reminder.resume
@@ -166,10 +168,15 @@ export function stopReminders({
       || (event.type === 'task.declared' && event.cardId === card.id && event.data.state === 'working')
     const question = card.asks?.find(ask => ask.id === repeat.question)
     const answered = repeat.until === 'question-answered' && (!question || question.answered || question.closed)
-    const stopped = taskDone({
+    const completed = taskDone({
       state,
       card,
-    }) || answered || (repeat.until === 'worker-started' && workerStarted)
+    }) || cardFacts({
+      state,
+      card,
+    }).includes('done')
+    const done = repeat.until === 'task-done' && completed
+    const stopped = done || answered || (repeat.until === 'worker-started' && workerStarted)
 
     if (stopped) {
       clearReminder({ card })
@@ -215,7 +222,7 @@ export function applyReminder({
       }
 
       if (event.data.repeat) {
-        card.reminder.repeat = structuredClone(event.data.repeat)
+        card.reminder.repeat = cloneValue({ value: event.data.repeat })
       }
     }
   } else {
@@ -225,8 +232,8 @@ export function applyReminder({
       return true
     }
 
-    if (!card.reminder.dueAt && card.status) {
-      card.reminder.resume = structuredClone(card.status)
+    if (card.status && card.status.id !== card.reminder.dueEvent) {
+      card.reminder.resume = cloneValue({ value: card.status })
     }
 
     card.reminder.dueAt = event.at
@@ -234,6 +241,8 @@ export function applyReminder({
 
     if (event.data.nextAt) {
       card.reminder.at = event.data.nextAt
+    } else if (event.data.nextAt === null) {
+      delete card.reminder.repeat
     }
 
     card.column = event.data.column
@@ -251,15 +260,18 @@ export function applyReminder({
       ...(card.statusLog ?? []),
       declaration,
     ]
-    state.hydraMessages = [
-      ...(state.hydraMessages ?? []),
-      {
-        ...event.data.message,
-        id: event.id,
-        at: event.at,
-        actor: event.actor,
-      },
-    ]
+
+    if (!event.data.grouped) {
+      state.hydraMessages = [
+        ...(state.hydraMessages ?? []),
+        {
+          ...event.data.message,
+          id: event.id,
+          at: event.at,
+          actor: event.actor,
+        },
+      ]
+    }
   }
 
   touch({
