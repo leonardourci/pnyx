@@ -1,4 +1,6 @@
-import { THREAD_CURSOR } from '#hydra/transcripts-read.ts'
+import { asRecord, invalid } from '#app/command-validation.ts'
+import type { ThreadBoundary } from '#hydra/thread-history.ts'
+import { THREAD_CURSOR, threadPath } from '#hydra/transcripts-read.ts'
 import { PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -8,7 +10,35 @@ import type { CommandRequest } from './dispatch.ts'
 
 type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 
-// `thread [<card> [<cursor>]]`: follows a card's conversation in the tab and sends its first or an older page.
+const MAX_BOUNDARY_LENGTH = 2048
+
+function retainedBoundary({ value }: { value?: string }): ThreadBoundary {
+  if (!value || value.length > MAX_BOUNDARY_LENGTH) {
+    throw invalid({ message: 'invalid retained conversation boundary' })
+  }
+
+  let parsed: unknown
+
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    throw invalid({ message: 'invalid retained conversation boundary' })
+  }
+
+  const boundary = asRecord({ value: parsed })
+
+  if (!boundary || typeof boundary.oldest !== 'string' || !boundary.oldest
+    || (boundary.session !== undefined && typeof boundary.session !== 'string')) {
+    throw invalid({ message: 'invalid retained conversation boundary' })
+  }
+
+  return {
+    oldest: boundary.oldest,
+    session: boundary.session,
+  }
+}
+
+// thread follows a card; --retain restores the range identified by its session and oldest entry.
 export function threadCommand({
   ws,
   id,
@@ -51,18 +81,23 @@ export function threadCommand({
     ref: args[0],
   })
 
+  const restoring = args[1] === '--retain'
+  const retain = restoring ? retainedBoundary({ value: args[2] }) : undefined
+  const before = restoring ? undefined : args[1]
   const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
   const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
 
-  if (args[1] !== undefined && (args[1].length > cursorLimit || !cursor.test(args[1]))) {
+  if (before !== undefined && (before.length > cursorLimit || !cursor.test(before))) {
     throw new HydraError({
       message: 'invalid thread cursor',
       code: 'VALIDATION_ERROR',
     })
   }
 
-  // Loading earlier history keeps the subscription, and with it the history already loaded.
-  if (!args[1] || old?.card !== card.id) {
+  const sameThread = old !== undefined && old.card === card.id
+    && old.path === threadPath({ card }) && old.paseo === card.agent?.paseoAgentId
+
+  if (!sameThread) {
     unbind()
     bindThread({
       ws,
@@ -74,7 +109,8 @@ export function threadCommand({
   void threadPage({
     sub,
     card,
-    before: args[1],
+    before,
+    retain,
   }).then(
     thread => {
       if (ws.readyState === ws.OPEN) {
