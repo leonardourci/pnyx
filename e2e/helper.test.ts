@@ -1642,3 +1642,115 @@ test(
     )
   },
 )
+
+test(
+  'an unchanged owner wait stays quiet while an expired routine pause reaches the helper',
+  async () => {
+    const s = await helperHydra({
+      keys: [
+        'waiting',
+        'routine',
+      ],
+    })
+    await s.chat({ text: 'Supervise only the accepted work.' })
+    const hydra = await s.agent({ hydra: true })
+    await until({
+      what: 'main to finish',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    await s.as({ agent: hydra }).run({
+      args: [
+        'task',
+        'ask',
+        'waiting',
+        '--to',
+        'owner',
+        '--question',
+        'Approve the export format?',
+        '--reason',
+        'The format needs an owner decision.',
+      ],
+    })
+    const routineTask = s.task({ key: 'routine' }).id
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: routineTask,
+            status: 'still_waiting',
+            summary: 'The supplied receipt confirms the worker pause.',
+          },
+        ],
+      }),
+    })
+    const past = new Date(Date.now() - 60_000).toISOString()
+    inOneWrite({
+      s,
+      steps: [
+        declared({
+          key: 'waiting',
+          status: 'paused',
+          until: past,
+        }),
+        declared({
+          key: 'routine',
+          status: 'paused',
+          until: past,
+        }),
+      ],
+    })
+    await until({
+      what: 'the expired routine pause to finish its helper check',
+      check: () => finishes({ s }).length === 1,
+    })
+    assert.deepEqual(
+      grants({ s }).map(grant => grant.tasks),
+      [[routineTask]],
+    )
+    assert.equal(
+      finishes({ s })[0]?.error,
+      undefined,
+    )
+    assert.equal(
+      s.task({ key: 'waiting' }).asks?.[0]?.answered,
+      undefined,
+    )
+    await noWake({ s })
+    const waitingTask = s.task({ key: 'waiting' })
+    const question = waitingTask.asks?.[0]
+    assert.ok(question)
+    pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: waitingTask.id,
+            status: 'still_waiting',
+            summary: 'The owner answer is recorded.',
+          },
+        ],
+      }),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'waiting',
+        question.id,
+        '--text',
+        'Keep the accepted format.',
+        '--reason',
+        'The owner settled the format.',
+      ],
+    })
+    await until({
+      what: 'the answered task to become eligible for supervision again',
+      check: () => finishes({ s }).length === 2,
+    })
+    assert.deepEqual(
+      grants({ s })[1]?.tasks,
+      [waitingTask.id],
+    )
+  },
+)
