@@ -8,7 +8,9 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { boardReview } from './review.ts'
-import { startReviewTimer } from './review-timer.ts'
+import { startReviewTimer, REVIEW_MS } from './review-timer.ts'
+import { loadHydra } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
 
 const NOW = Date.parse('2026-10-24T12:00:00Z')
 const OLD = '2026-10-24T06:00:00Z'
@@ -224,3 +226,61 @@ afterEach(() => {
     },
   )
 })
+
+test(
+  'a reminder dispatch failure stays visible without suppressing a timed review',
+  async t => {
+    await commands.task([
+      'create',
+      '--key',
+      'work',
+      '--title',
+      'Review the cursor schema',
+      '--hydra',
+      'lab',
+    ])
+    await commands.task([
+      'status',
+      'work',
+      'working',
+      '--note',
+      'Synthetic work has no assigned worker',
+      '--hydra',
+      'lab',
+    ])
+    const state = loadHydra({ hydraId: 'lab' }).state
+    let time = Date.now()
+    let wakes = 0
+    timer = startReviewTimer({
+      hydraId: 'lab',
+      now: () => time,
+      state: () => state,
+      interval: () => () => {},
+      wake: () => wakes++,
+    })
+    const errors = t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    t.mock.method(
+      Date.prototype,
+      'toISOString',
+      () => {
+        throw new Error('Synthetic reminder timestamp failure')
+      },
+      { times: 1 },
+    )
+    time += REVIEW_MS
+    await timer.check()
+    assert.equal(
+      wakes,
+      1,
+    )
+    assert.ok(readEvents({ hydraId: 'lab' }).some(event => event.type === 'hydra.review'))
+    assert.match(
+      String(errors.mock.calls[0]?.arguments[0]),
+      /reminders: Synthetic reminder timestamp failure/,
+    )
+  },
+)

@@ -114,11 +114,17 @@ export function startReviewTimer({
 
     try {
       const state = shared()
-      fireReminders({
-        hydraId,
-        at: new Date(now()).toISOString(),
-        state,
-      })
+
+      try {
+        fireReminders({
+          hydraId,
+          at: new Date(now()).toISOString(),
+          state,
+        })
+      } catch (error) {
+        console.error(`pnyx-axi reminders: ${(error as Error).message}`)
+      }
+
       const minutes = readSettings().settings.reviewMinutes
       const last = state.hydraReview?.at
       const due = Math.max(
