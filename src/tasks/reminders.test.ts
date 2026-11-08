@@ -613,6 +613,71 @@ test(
 )
 
 test(
+  'a task-done recurrence on completed work is refused without changing the reminder',
+  async () => {
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+      ],
+    })
+    await run({
+      args: [
+        'status',
+        'work',
+        'done',
+        '--note',
+        'Synthetic work is complete',
+      ],
+    })
+    const before = structuredClone(state())
+    await assert.rejects(
+      run({
+        args: [
+          'remind',
+          'work',
+          later,
+          '--every',
+          '1 hour',
+          '--until',
+          'task-done',
+        ],
+      }),
+      /already done/,
+    )
+    assert.deepEqual(
+      state(),
+      before,
+    )
+    fireReminders({
+      hydraId,
+      at: later,
+    })
+    assert.ok(task().reminder?.dueAt)
+    const due = structuredClone(state())
+    await assert.rejects(
+      run({
+        args: [
+          'remind',
+          'work',
+          '2099-10-17T12:00:00Z',
+          '--every',
+          '1 hour',
+          '--until',
+          'task-done',
+        ],
+      }),
+      /already done/,
+    )
+    assert.deepEqual(
+      state(),
+      due,
+    )
+  },
+)
+
+test(
   'reminders due together persist one grouped chat message with separate task receipts',
   async t => {
     t.mock.timers.enable({

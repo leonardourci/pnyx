@@ -72,12 +72,14 @@ export function waitingReminders({ state }: { state: HydraState }) {
 }
 
 export function reminderRepeat({
+  state,
   card,
   when,
   every,
   until,
   question,
 }: {
+  state: HydraState
   card: Card
   when: string
   every?: string
@@ -108,6 +110,16 @@ export function reminderRepeat({
     throw new HydraError({
       code: 'VALIDATION_ERROR',
       message: 'Choose --until worker-started|question-answered|task-done',
+    })
+  }
+
+  if (until === 'task-done' && reminderDone({
+    state,
+    card,
+  })) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'This task is already done; --until task-done would stop at once',
     })
   }
 
@@ -149,6 +161,25 @@ export function clearReminder({ card }: { card: Card }) {
   delete card.reminder
 }
 
+function reminderDone({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}): boolean {
+  const restored = { ...card }
+  clearReminder({ card: restored })
+
+  return taskDone({
+    state,
+    card: restored,
+  }) || cardFacts({
+    state,
+    card: restored,
+  }).includes('done')
+}
+
 export function stopReminders({
   state,
   event,
@@ -168,14 +199,10 @@ export function stopReminders({
       || (event.type === 'task.declared' && event.cardId === card.id && event.data.state === 'working')
     const question = card.asks?.find(ask => ask.id === repeat.question)
     const answered = repeat.until === 'question-answered' && (!question || question.answered || question.closed)
-    const completed = taskDone({
+    const done = repeat.until === 'task-done' && reminderDone({
       state,
       card,
-    }) || cardFacts({
-      state,
-      card,
-    }).includes('done')
-    const done = repeat.until === 'task-done' && completed
+    })
     const stopped = done || answered || (repeat.until === 'worker-started' && workerStarted)
 
     if (stopped) {

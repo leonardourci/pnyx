@@ -234,6 +234,7 @@ export function optimisticState({
           }),
         }
         const repeat = reminderRepeat({
+          state,
           card,
           when,
           every: option({ flag: '--every' }),

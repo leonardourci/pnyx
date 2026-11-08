@@ -240,6 +240,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           now: m.at,
         })
         const repeat = reminderRepeat({
+          state,
           card: task,
           when,
           every: values.every as string | undefined,
