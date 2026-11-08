@@ -1,12 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { Button, type Option } from '#web-shared/ui/controls.tsx'
-import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import { MenuOption } from '#web-shared/ui/menu-option.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
-import { PROVIDERS, SelectionMenu, type Selection } from './account-model-picker.tsx'
-
-const ROW_ICON = 18
-const CHEVRON = 16
+import {
+  MENU_MARK_ICON,
+  MENU_ROW_ICON,
+  MenuHead,
+  providerFor,
+  SelectionMenu,
+  TRIGGER_CHEVRON,
+  type Provider,
+  type Selection,
+} from './account-model-picker.tsx'
 
 export interface SettingChoice {
   field: 'effort' | 'mode'
@@ -25,26 +31,17 @@ export interface FastSetting {
 
 type Step = 'settings' | 'model' | SettingChoice['field']
 
-const optionIcon = ({
-  field,
-  value,
-}: {
-  field: SettingChoice['field']
-  value: string
-}) => {
-  if (field === 'mode') {
-    return 'mode'
-  }
-
-  const name = `effort-${value}`
-
-  return hasIcon({ name }) ? name : 'effort'
-}
+const currentOption = ({ choice }: { choice: SettingChoice }) =>
+  choice.options.find(option => option.value === choice.value)
 
 const valueLabel = ({ choice }: { choice: SettingChoice }) =>
-  choice.options.find(option => option.value === choice.value)?.label ?? choice.value
+  currentOption({ choice })?.label ?? choice.value
 
-// Folds the composer's settings into one button once their row is wider than the room the composer leaves them.
+// The Mode row keeps its shield whatever the mode; Effort shows the level's own icon.
+const choiceIcon = ({ choice }: { choice: SettingChoice }) =>
+  choice.field === 'mode' ? 'mode' : currentOption({ choice })?.icon ?? 'effort'
+
+// True once the row is wider than the room it gets.
 export function useFolded({
   room,
   row,
@@ -66,13 +63,37 @@ export function useFolded({
         return
       }
 
-      const measure = () => setFolded(rowElement.offsetWidth > roomElement.clientWidth)
+      const fit = () => setFolded(rowElement.offsetWidth > roomElement.clientWidth)
+
+      // Folding or unfolding under the owner's focus would unmount or hide the control they are using.
+      const measure = () => {
+        if (!roomElement.contains(document.activeElement)) {
+          fit()
+        }
+      }
+
+      const leave = (event: FocusEvent) => {
+        if (!roomElement.contains(event.relatedTarget as Node | null)) {
+          fit()
+        }
+      }
+
       measure()
       const observer = new ResizeObserver(measure)
       observer.observe(roomElement)
       observer.observe(rowElement)
+      roomElement.addEventListener(
+        'focusout',
+        leave,
+      )
 
-      return () => observer.disconnect()
+      return () => {
+        observer.disconnect()
+        roomElement.removeEventListener(
+          'focusout',
+          leave,
+        )
+      }
     },
     [
       room,
@@ -83,7 +104,7 @@ export function useFolded({
   return folded
 }
 
-// Arrow keys move between a list's rows and Backspace goes up a level, as in the provider switcher.
+// Arrow keys move focus between a list's rows; Backspace returns to the Settings list.
 const listKeys = ({
   event,
   back,
@@ -117,7 +138,7 @@ const listKeys = ({
       rows.length - 1,
       at + step,
     ),
-  )]?.focus()
+  )].focus()
 }
 
 function MenuList({
@@ -133,12 +154,12 @@ function MenuList({
 
   useEffect(
     () => {
-      const current = list.current?.querySelector<HTMLButtonElement>('[aria-selected=true] > .account-model-choose:not(:disabled)')
+      const current = list.current?.querySelector<HTMLButtonElement>('[data-current] > .account-model-choose:not(:disabled)')
       const first = list.current?.querySelector<HTMLButtonElement>('.account-model-choose:not(:disabled)')
-      const focused = current ?? first
-      focused?.focus()
+      const target = current ?? first
+      target?.focus()
     },
-    [title],
+    [],
   )
 
   return (
@@ -149,14 +170,7 @@ function MenuList({
         back,
       })}
     >
-      <div className="account-model-head">
-        {back && (
-          <Button aria-label="Back" onClick={back}>
-            <Icon name="arrow_left" size={16} />
-          </Button>
-        )}
-        <strong>{title}</strong>
-      </div>
+      <MenuHead title={title} back={back} />
       <div
         className="account-model-results"
         role="listbox"
@@ -169,34 +183,42 @@ function MenuList({
   )
 }
 
-function SettingRow({
+function SettingsMenuRow({
   icon,
   name,
   value,
   drills,
   pressed,
+  current,
   disabled,
   onClick,
 }: {
   icon: string
   name: string
   value: string
-  drills: boolean
+  drills?: boolean
   pressed?: boolean
+  // The row the owner last left, focused again when the list returns.
+  current?: boolean
   disabled: boolean
   onClick(): void
 }) {
   return (
-    <MenuOption className="account-model-option" aria-label={`${name}: ${value}`} disabled={disabled}>
+    <MenuOption
+      className="account-model-option"
+      aria-label={`${name}: ${value}`}
+      data-current={current || undefined}
+      disabled={disabled}
+    >
       <Button
         className="account-model-choose agent-setting-row"
         aria-pressed={pressed}
         disabled={disabled}
         onClick={onClick}
       >
-        <Icon name={icon} size={ROW_ICON} />
+        <Icon name={icon} size={MENU_ROW_ICON} />
         <span className="agent-setting-text"><span>{name}</span><small>{value}</small></span>
-        {drills && <Icon name="chevron_right" size={CHEVRON} />}
+        {drills && <Icon name="chevron_right" size={MENU_MARK_ICON} />}
       </Button>
     </MenuOption>
   )
@@ -219,6 +241,7 @@ function ChoiceList({
             className="account-model-option"
             aria-label={option.label}
             selected={current}
+            data-current={current || undefined}
             disabled={choice.disabled}
             key={option.value}
           >
@@ -230,9 +253,9 @@ function ChoiceList({
                 back()
               }}
             >
-              {option.icon && <Icon name={option.icon} size={ROW_ICON} />}
+              {option.icon && <Icon name={option.icon} size={MENU_ROW_ICON} />}
               <span>{option.label}</span>
-              {current && <Icon name="check" size={CHEVRON} />}
+              {current && <Icon name="check" size={MENU_MARK_ICON} />}
             </Button>
           </MenuOption>
         )
@@ -242,6 +265,7 @@ function ChoiceList({
 }
 
 function SettingsMenu({
+  provider,
   selection,
   modelLabel,
   accountName,
@@ -249,6 +273,7 @@ function SettingsMenu({
   fast,
   close,
 }: {
+  provider: Provider
   selection: Selection
   modelLabel: string
   accountName: string
@@ -260,9 +285,18 @@ function SettingsMenu({
     step,
     setStep,
   ] = useState<Step>('settings')
+  const [
+    left,
+    setLeft,
+  ] = useState<Step>('model')
   const toSettings = () => setStep('settings')
-  const provider = PROVIDERS.find(item => item.harness === selection.agent.harness)!
-  const open = choices.find(choice => choice.field === step)
+
+  const open = ({ next }: { next: Step }) => {
+    setLeft(next)
+    setStep(next)
+  }
+
+  const opened = choices.find(choice => choice.field === step)
 
   if (step === 'model') {
     return (
@@ -275,40 +309,38 @@ function SettingsMenu({
     )
   }
 
-  if (open) {
-    return <ChoiceList choice={open} back={toSettings} />
+  if (opened) {
+    return <ChoiceList choice={opened} back={toSettings} />
   }
 
   return (
     <MenuList title="Settings">
-      <SettingRow
+      <SettingsMenuRow
         icon={provider.icon}
         name="Model"
         value={`${modelLabel} · ${accountName}`}
         drills
+        current={left === 'model'}
         disabled={!selection.connected}
-        onClick={() => setStep('model')}
+        onClick={() => open({ next: 'model' })}
       />
       {choices.map(choice => (
-        <SettingRow
+        <SettingsMenuRow
           key={choice.field}
-          icon={optionIcon({
-            field: choice.field,
-            value: choice.value,
-          })}
+          icon={choiceIcon({ choice })}
           name={choice.title}
           value={valueLabel({ choice })}
           drills
+          current={left === choice.field}
           disabled={choice.disabled}
-          onClick={() => setStep(choice.field)}
+          onClick={() => open({ next: choice.field })}
         />
       ))}
       {fast && (
-        <SettingRow
+        <SettingsMenuRow
           icon={fast.on ? 'fast-on' : 'fast'}
           name="Fast"
           value={fast.on ? 'On' : 'Off'}
-          drills={false}
           pressed={fast.on}
           disabled={fast.disabled}
           onClick={fast.toggle}
@@ -318,7 +350,7 @@ function SettingsMenu({
   )
 }
 
-// The composer's settings folded into one button: the model, and a popover listing every setting with its value.
+// The composer's settings folded into one button showing the model and effort, with a popover listing every setting and its value.
 export function AgentSettingsMenu({
   label,
   selection,
@@ -338,7 +370,7 @@ export function AgentSettingsMenu({
   disabled: boolean
   iconSize: number
 }) {
-  const provider = PROVIDERS.find(item => item.harness === selection.agent.harness)!
+  const provider = providerFor({ harness: selection.agent.harness })
   const effort = choices.find(choice => choice.field === 'effort')
   const fastText = fast && `Fast ${fast.on ? 'on' : 'off'}`
   const summary = [
@@ -359,20 +391,18 @@ export function AgentSettingsMenu({
           <span className="agent-settings-model">{modelLabel}</span>
           {effort && (
             <Icon
-              name={optionIcon({
-                field: 'effort',
-                value: effort.value,
-              })}
+              name={choiceIcon({ choice: effort })}
               size={iconSize}
             />
           )}
           {effort && <span className="agent-settings-effort">{valueLabel({ choice: effort })}</span>}
-          <Icon name="chevron_down" size={14} />
+          <Icon name="chevron_down" size={TRIGGER_CHEVRON} />
         </>
       )}
     >
       {({ close }) => (
         <SettingsMenu
+          provider={provider}
           selection={selection}
           modelLabel={modelLabel}
           accountName={accountName}

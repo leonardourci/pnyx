@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { accountLabel } from '#workers/account-choice.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { harnessControls } from '#workers/controls.ts'
@@ -9,7 +8,7 @@ import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { PickerField, useModels, type CellMark } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
-import { AccountModelPicker, type Selection } from './account-model-picker.tsx'
+import { AccountModelPicker, accountName, type Selection } from './account-model-picker.tsx'
 import { AgentSettingsMenu, useFolded, type FastSetting, type SettingChoice } from './agent-settings-menu.tsx'
 import { hydraDefault, resolvedAccount, useHeadsDispatch } from './heads-dispatch.ts'
 
@@ -194,9 +193,9 @@ export function AgentPickers({
     defaultAgent,
     saveDefault: defaultAction === 'none' ? undefined : saveDefault,
   }
-  const accountName = account && effective ? accountLabel({
-    name: account,
-    account: effective.accounts[account],
+  const shownAccount = effective ? accountName({
+    account,
+    effective,
   }) : 'No account'
   const choices: SettingChoice[] = ([
     'effort',
@@ -204,11 +203,19 @@ export function AgentPickers({
   ] as const).filter(field => fields.includes(field)).map(field => {
     const value = named[field]
     const listed = controls?.controls.find(c => c.setting === field)?.options ?? []
-    const options: Option[] = listed.map(o => ({
-      value: o.value,
-      label: o.label,
-      ...(hasIcon({ name: `${field}-${o.value}` }) ? { icon: `${field}-${o.value}` } : {}),
-    }))
+    const options = listed.map(o => {
+      const option: Option = {
+        value: o.value,
+        label: o.label,
+      }
+      const icon = `${field}-${o.value}`
+
+      if (hasIcon({ name: icon })) {
+        option.icon = icon
+      }
+
+      return option
+    })
 
     if (value && !options.some(o => o.value === value)) {
       options.push({
@@ -249,7 +256,6 @@ export function AgentPickers({
     room,
     row,
   }) && foldable && !!selection
-  const status = !effective && <small role="status">{dispatchError ?? 'Loading accounts…'}</small>
   const alert = saveError && <small role="alert">{saveError}</small>
 
   const pickers = (
@@ -265,7 +271,7 @@ export function AgentPickers({
             describedBy={describedBy}
           />
         </div>
-      ) : status}
+      ) : <small role="status">{dispatchError ?? 'Loading accounts…'}</small>}
       {!foldable && alert}
       {choices.map(choice => (
         <PickerField
@@ -324,7 +330,7 @@ export function AgentPickers({
           label={label}
           selection={selection}
           modelLabel={modelLabel}
-          accountName={accountName}
+          accountName={shownAccount}
           choices={choices}
           fast={fast}
           disabled={locked}
