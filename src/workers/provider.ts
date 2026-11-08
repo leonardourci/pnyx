@@ -339,6 +339,7 @@ export interface Provider {
     cwd: string
     instructions?: string
     outputSchema?: Record<string, unknown>
+    toolScope?: 'routine'
     // Live state the session gets when it starts or resumes and again after each compaction.
     context?({ compacted }: { compacted?: boolean }): Promise<string>
     // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.

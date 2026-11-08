@@ -244,6 +244,7 @@ export function claudeProvider({
       env,
       instructions,
       outputSchema,
+      toolScope,
       allow,
       context,
       spawned,
@@ -350,6 +351,20 @@ export function claudeProvider({
             }
           }
 
+          let tools: Options['tools'] = {
+            type: 'preset',
+            preset: 'claude_code',
+          }
+          const capabilities: Pick<Options, 'skills' | 'strictMcpConfig' | 'mcpServers' | 'agents'> = {}
+
+          if (toolScope === 'routine') {
+            tools = ['Bash']
+            capabilities.skills = []
+            capabilities.strictMcpConfig = true
+            capabilities.mcpServers = {}
+            capabilities.agents = {}
+          }
+
           running = run({
             prompt: prompt(),
             options: {
@@ -374,10 +389,8 @@ export function claudeProvider({
                 preset: 'claude_code',
                 ...(instructions ? { append: instructions } : {}),
               },
-              tools: {
-                type: 'preset',
-                preset: 'claude_code',
-              },
+              tools,
+              ...capabilities,
               ...(allow?.length ? { allowedTools: allow.map(command => `Bash(${command}:*)`) } : {}),
               // After a compaction, even mid-turn, the context comes back.
               ...(context ? {

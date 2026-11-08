@@ -866,6 +866,80 @@ export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsag
   }
 }
 
+async function routineConfig({
+  rpc,
+  cwd,
+}: {
+  rpc: ReturnType<typeof connection>
+  cwd: string
+}): Promise<Record<string, unknown>> {
+  const settings = await rpc.request({
+    method: 'config/read',
+    params: {
+      cwd,
+      includeLayers: false,
+    },
+  })
+
+  if (!settings.config || typeof settings.config !== 'object') {
+    throw new Error('Routine helper configuration could not be read')
+  }
+
+  const config = object({ value: settings.config })
+  const skills = await rpc.request({
+    method: 'skills/list',
+    params: { cwds: [cwd] },
+  })
+
+  if (!Array.isArray(skills.data)) {
+    throw new Error('Routine helper skill catalog could not be read')
+  }
+
+  const disabledSkills: {
+    path: string
+    enabled: false
+  }[] = []
+
+  for (const value of skills.data) {
+    const row = object({ value })
+
+    if (!Array.isArray(row.skills)) {
+      throw new Error('Routine helper skill catalog is invalid')
+    }
+
+    for (const value of row.skills) {
+      const skill = object({ value })
+
+      if (typeof skill.path !== 'string') {
+        throw new Error('Routine helper skill path is invalid')
+      }
+
+      disabledSkills.push({
+        path: skill.path,
+        enabled: false,
+      })
+    }
+  }
+
+  const overrides: Record<string, unknown> = {
+    'skills.config': disabledSkills,
+    'skills.bundled.enabled': false,
+    'skills.include_instructions': false,
+    'features.apps': false,
+    'features.plugins': false,
+    'features.sleep_tool': false,
+    'features.default_mode_request_user_input': false,
+    'tools.update_plan.enabled': false,
+    web_search: 'disabled',
+  }
+
+  for (const name of Object.keys(object({ value: config.mcp_servers }))) {
+    overrides[`mcp_servers.${JSON.stringify(name)}.enabled`] = false
+  }
+
+  return overrides
+}
+
 export function codexProvider({
   spawnCodex = ({
     cwd,
@@ -981,6 +1055,7 @@ export function codexProvider({
       signal,
       instructions,
       outputSchema,
+      toolScope,
       context,
       spawned,
     }) {
@@ -1022,6 +1097,21 @@ export function codexProvider({
         const options = { ...settings }
         // Bypass permissions is Codex's never: no approvals, full access.
         const policy = () => (options.mode === BYPASS ? NEVER : options.mode ?? '')
+        const config: Record<string, unknown> = {
+          ...pnyxShellEnvironment({ env }),
+          'features.default_mode_request_user_input': true,
+        }
+
+        if (toolScope === 'routine') {
+          Object.assign(
+            config,
+            await routineConfig({
+              rpc,
+              cwd,
+            }),
+          )
+        }
+
         const result = await rpc.request({
           method: agent ? 'thread/resume' : 'thread/start',
           timeout: OPEN_TIMEOUT_MS,
@@ -1029,10 +1119,7 @@ export function codexProvider({
             ...(agent ? { threadId: agent.sessionId } : {}),
             cwd,
             // Lets a worker ask the owner with request_user_input outside plan mode.
-            config: {
-              ...pnyxShellEnvironment({ env }),
-              'features.default_mode_request_user_input': true,
-            },
+            config,
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...serviceTier({ fast: options.fast }),
