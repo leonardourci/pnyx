@@ -23,7 +23,7 @@ import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
 import { saveSnapshot } from './writer.ts'
-import { readEvents, readEventsFrom } from './event-log.ts'
+import { readEventsFrom } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir } from '#store/storage.ts'
@@ -372,7 +372,7 @@ export async function mountOwnedHydra({
         return healthFacts({
           blocked: recovery.blocked(),
           state,
-          events: readEvents({ hydraId }),
+          events: recovery.originals(),
           dir,
           now: Date.now(),
           limit,

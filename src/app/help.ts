@@ -4,6 +4,7 @@ import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '#memory/budgets.ts'
 import { POOL_IDLE } from '#projects/copy-pool.ts'
 import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
 import { HISTORY_LIMIT, HISTORY_MAX } from './cli-support.ts'
+import { DEBUG_LIMIT, DEBUG_MAX, LOG_BYTES } from '#diagnostics/timeline.ts'
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
@@ -51,13 +52,13 @@ flags:
 `
 
 const COMMAND_HELP: Record<string, string> = {
-  debug: `usage: pnyx-axi debug timeline [--task <id|key>] [--message <id>] [--batch <id>] [--session <id>] [--since <ISO>] [--until <ISO>] [--cursor <token>] [--limit <1..200>] [--hydra <id>]
+  debug: `usage: pnyx-axi debug timeline [--task <id|key>] [--message <id>] [--batch <id>] [--session <id>] [--since <ISO>] [--until <ISO>] [--cursor <token>] [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read event IDs and correlated structured service records, newest timestamp first; original sequence,
 transaction and source IDs are preserved. No transcript or message bodies are returned.
-Filters intersect. Times include their timezone and endpoints are inclusive. Default limit: 50.
+Filters intersect. Times include their timezone and endpoints are inclusive. Default limit: ${DEBUG_LIMIT}.
 Pass the returned cursor with the same filters for older matches. Service reads cover the last
-512 KiB only; serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
-pnyx-axi debug health [--limit <1..200>] [--hydra <id>]
+${LOG_BYTES / 1024} KiB only; serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
+pnyx-axi debug health [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read unfinished helper batches and their observed native ownership/deadline, unsettled inputs,
 sessions retained during settings retirement, pending helper completions, eligible spool age,
 and the last successful synchronous scheduler pass. Unknown observations remain unknown.
