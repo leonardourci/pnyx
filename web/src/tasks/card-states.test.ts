@@ -40,6 +40,84 @@ const agent = {
 }
 
 test(
+  'a worker stays working while its own child agents run',
+  () => {
+    const state = emptyHydra()
+    const parent = {
+      ...task,
+      agent,
+      sessionActivity: 'finished',
+    }
+    const child: Card = {
+      ...task,
+      id: 'child',
+      key: 'child',
+      parentId: parent.id,
+      agent: {
+        ...agent,
+        agentId: 'child-agent',
+      },
+      sessionActivity: 'working',
+    }
+    const unrelated: Card = {
+      ...child,
+      id: 'unrelated',
+      key: 'unrelated',
+      agent: {
+        ...agent,
+        agentId: 'unrelated-agent',
+        sessionId: 'another-session',
+      },
+    }
+    state.cards = {
+      [parent.id]: parent,
+      [child.id]: child,
+      [unrelated.id]: unrelated,
+    }
+    assert.equal(
+      cardState({
+        card: parent,
+        state,
+        now,
+      }).kind,
+      'working',
+    )
+    child.sessionActivity = 'finished'
+    assert.equal(
+      cardState({
+        card: parent,
+        state,
+        now,
+      }).kind,
+      'unknown',
+    )
+    child.sessionActivity = 'working'
+    child.outcome = {
+      state: 'ended',
+      source: 'hooks',
+    }
+    assert.equal(
+      cardState({
+        card: parent,
+        state,
+        now,
+      }).kind,
+      'unknown',
+    )
+    child.outcome = undefined
+    parent.sessionActivity = 'ended'
+    assert.equal(
+      cardState({
+        card: parent,
+        state,
+        now,
+      }).kind,
+      'stopped',
+    )
+  },
+)
+
+test(
   'worker facts follow the recorded session rather than stale card activity',
   () => {
     const card = {
