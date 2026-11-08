@@ -11,10 +11,10 @@ import { withWriter, type Writer } from '#app/writer.ts'
 import type { NotificationResult } from './inbox-notice.ts'
 import { pendingSteering, sameClaim, steeringClaim } from './steering.ts'
 import { notifySteering } from './inbox-delivery.ts'
+import { agentActivity } from './activity.ts'
 
 export const STEERING_GRACE_MS = 90_000
 export const STEERING_RING_LIMIT = 3
-export const STEERING_DEFERRAL_LIMIT = 2
 
 function oldestUnread({ card }: { card: Card }): SteeringMessage | undefined {
   const firstmate = card.mirror || card.sourceRefs.some(source => source.adapter === 'firstmate')
@@ -81,7 +81,10 @@ export async function followUpSteering({
         const card = writer.state.cards[cardId]
         const message = card && oldestUnread({ card })
 
-        if (!message) {
+        if (!message || agentActivity({
+          card,
+          cards: writer.state.cards,
+        }) === 'working') {
           return
         }
 
@@ -102,7 +105,7 @@ export async function followUpSteering({
 
         const deferrals = recovery.filter(attempt => attempt.result === 'deferred').length
         const rings = recovery.length - deferrals
-        const exhausted = deferrals >= STEERING_DEFERRAL_LIMIT || rings >= STEERING_RING_LIMIT
+        const exhausted = rings >= STEERING_RING_LIMIT
         const id = `recovery:${cardId}:${message.order}:${recovery.length + 1}`
         const at = new Date(now).toISOString()
         const claim = steeringClaim({ card })
