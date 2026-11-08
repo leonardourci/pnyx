@@ -6,8 +6,8 @@ import { HISTORY_BUDGET } from './history.ts'
 import { messageRecords, type MessageRecord } from './message-records.ts'
 
 const MAX_CURSOR_LENGTH = 4096
-const PAGE_BYTES = 20000
-const PAGE_LIMIT = 60
+export const MESSAGE_PAGE_BYTES = 20000
+export const MESSAGE_PAGE_LIMIT = 60
 const DEFAULT_LIMIT = 20
 const TIMESTAMP_ERROR = 'Use an ISO timestamp with a timezone, as shown in the comment or the "at" field of the message'
 const ISO_TIMESTAMP = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/
@@ -83,7 +83,7 @@ function fits({
   const output = messages.map(message => outputMessage({ message }))
 
   return countTokens({ text: output.map(message => message.text).join('\n\n') }) <= budget
-    && Buffer.byteLength(JSON.stringify(output)) <= PAGE_BYTES
+    && Buffer.byteLength(JSON.stringify(output)) <= MESSAGE_PAGE_BYTES
 }
 
 function encodeCursor({ cursor }: { cursor: Cursor }): string {
@@ -142,7 +142,7 @@ export function lookupMessages({
   )
   const limit = Math.min(
     selection.limit ?? DEFAULT_LIMIT,
-    PAGE_LIMIT,
+    MESSAGE_PAGE_LIMIT,
   )
   const counts = [
     selection.budget ?? HISTORY_BUDGET,
@@ -291,7 +291,7 @@ export function lookupMessages({
         code: 'CONFLICT',
         message: `Timestamp matches multiple messages; use --id or --seq: ${matches.slice(
           0,
-          PAGE_LIMIT,
+          MESSAGE_PAGE_LIMIT,
         ).map(({ message }) => `${message.id} (seq ${message.seq})`)
           .join(', ')}`,
       })
@@ -328,7 +328,7 @@ export function lookupMessages({
       if (!page.length) {
         throw new HydraError({
           code: 'MESSAGE_TOO_LARGE',
-          message: `Message ${candidate.id} (seq ${candidate.seq}) exceeds this page's budget or ${PAGE_BYTES} byte limit; raise --budget up to ${HISTORY_BUDGET} or select a different message`,
+          message: `Message ${candidate.id} (seq ${candidate.seq}) exceeds this page's budget or ${MESSAGE_PAGE_BYTES} byte limit; raise --budget up to ${HISTORY_BUDGET} or select a different message`,
         })
       }
 
@@ -351,8 +351,8 @@ export function lookupMessages({
     add({ index: anchor })
     first = anchor
     last = anchor + 1
-    const before = selection.before ?? (selection.budget === undefined ? 0 : PAGE_LIMIT)
-    const after = selection.after ?? (selection.budget === undefined ? 0 : PAGE_LIMIT)
+    const before = selection.before ?? (selection.budget === undefined ? 0 : MESSAGE_PAGE_LIMIT)
+    const after = selection.after ?? (selection.budget === undefined ? 0 : MESSAGE_PAGE_LIMIT)
     let olderOpen = true
     let newerOpen = true
 
@@ -361,7 +361,7 @@ export function lookupMessages({
         before,
         after,
       ),
-      PAGE_LIMIT,
+      MESSAGE_PAGE_LIMIT,
     ); distance++) {
       const older = anchor - distance
       const newer = anchor + distance

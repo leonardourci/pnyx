@@ -1,3 +1,5 @@
+import { MESSAGE_PAGE_BYTES, MESSAGE_PAGE_LIMIT } from '#hydra/message-lookup.ts'
+import { HISTORY_BUDGET } from '#hydra/history.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
 import { OWNER_CONTEXT_TOKENS } from '#hydra/context-limits.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '#memory/budgets.ts'
@@ -126,7 +128,7 @@ pnyx-axi hydra message [--id <message-id> | --seq <seq> | --at <ISO-time>] [--be
 pnyx-axi hydra message [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
 Lookup reads recorded chat across agent switches and compactions. --direction excludes the selected message; ranges include both endpoints.
 No selector lists the oldest page. --id/--seq/--at alone returns one message; --budget alone with a selector grows surroundings to fit.
-Whole messages, at most 60 and 6,000 estimated tokens and 20,000 JSON bytes per page; a message over the budget fails explicitly.
+Whole messages, at most ${MESSAGE_PAGE_LIMIT} and ${HISTORY_BUDGET} estimated tokens and ${MESSAGE_PAGE_BYTES} JSON bytes per page; a message over the budget fails explicitly.
 Use returned older/newer cursors with --cursor; they pin the Hydra, thread, range and log snapshot. --at needs a timezone; duplicate times require an id or seq.
 pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
 Read whole messages since a successful milestone, including task briefs, intents and helper results. Unchanged helper waits are omitted. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
