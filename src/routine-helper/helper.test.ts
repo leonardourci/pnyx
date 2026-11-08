@@ -1,6 +1,6 @@
 import { nativeSession } from '#workers/native-session.ts'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -13,7 +13,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Link } from '#tasks/delivery/model.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { PermissionRequest } from '#workers/model.ts'
-import { taskLease } from './leases.ts'
+import { taskLease, taskLeasePresent } from './leases.ts'
 import { helperAgent, helperBatch, helperEvent, helperGrant, helperReason } from './route.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
 import { writeDocument } from '#workers/dispatch-config.ts'
@@ -741,6 +741,101 @@ test(
     assert.equal(
       state().hydraMessages?.some(message => message.text.includes('The requested scope is unclear.')),
       false,
+    )
+  },
+)
+
+test(
+  'helper inspection exposes its actual session and armed deadline without consuming the turn',
+  async t => {
+    const lab = helperLab()
+    const hold = deferred()
+    const task = state().keys.work!
+    const turn = await lab.run({
+      wait: hold.promise,
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task,
+            audience: 'routine',
+            summary: 'Checked.',
+          },
+        ],
+      }),
+    })
+    t.after(async () => {
+      hold.resolve()
+      await turn.finished
+      lab.helper.close()
+    })
+    await until({
+      what: 'helper deadline observation',
+      check: () => lab.helper.inspect().deadlineAt !== undefined,
+    })
+    const before = state().seq
+    const inspected = lab.helper.inspect()
+    const started = readEvents({ hydraId: 'lab' }).find(event => event.type === 'hydra.helper-started')
+    assert.ok(started?.type === 'hydra.helper-started')
+    assert.equal(
+      inspected.batchId,
+      started.data.id,
+    )
+    assert.equal(
+      inspected.sessionId,
+      'claude-code:helper-session',
+    )
+    assert.equal(
+      typeof inspected.deadlineAt,
+      'number',
+    )
+    assert.equal(
+      inspected.busy,
+      true,
+    )
+    assert.equal(
+      state().seq,
+      before,
+    )
+    hold.resolve()
+    await turn.finished
+    assert.equal(
+      lab.helper.inspect().busy,
+      false,
+    )
+    assert.equal(
+      lab.helper.inspect().deadlineAt,
+      undefined,
+    )
+  },
+)
+
+test(
+  'reading lease presence preserves a broken lease link as occupied',
+  () => {
+    const task = state().keys.work!
+    const path = join(
+      root,
+      'hydras',
+      'lab',
+      `helper-lease-${encodeURIComponent(task)}.json`,
+    )
+    symlinkSync(
+      join(
+        root,
+        'missing',
+      ),
+      path,
+    )
+    assert.equal(
+      taskLeasePresent({
+        hydraId: 'lab',
+        task,
+      }),
+      true,
+    )
+    assert.equal(
+      fs.lstatSync(path).isSymbolicLink(),
+      true,
     )
   },
 )
