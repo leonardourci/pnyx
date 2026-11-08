@@ -3,6 +3,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { refreshTasks } from './columns.ts'
 import { createdColumn, heldPlacement, ROLE_STATUS } from './column-rules.ts'
 import { touch } from './touch.ts'
+import { applySteering } from '#workers/steering.ts'
 
 export function applyTask({
   state,
@@ -11,6 +12,35 @@ export function applyTask({
   state: HydraState
   event: HydraEvent
 }): boolean {
+  if (event.type === 'task.wait-resumed') {
+    const card = state.cards[event.cardId]
+
+    if (card?.wait?.id !== event.data.wait) {
+      return true
+    }
+
+    applySteering({
+      state,
+      event: {
+        ...event,
+        type: 'task.steering.queued',
+        data: { message: event.data.message },
+      },
+    })
+
+    return applyTask({
+      state,
+      event: {
+        ...event,
+        type: 'task.declared',
+        data: {
+          state: 'working',
+          note: event.data.message.text,
+        },
+      },
+    })
+  }
+
   if (event.type === 'task.held' || event.type === 'task.released') {
     const card = state.cards[event.cardId]
 
@@ -233,17 +263,34 @@ export function applyTask({
       card.tracking = 'declared'
 
       if (event.type === 'task.declared') {
+        const restored = card.statusLog?.find(entry => entry.id === event.data.restores)
+        const wait = event.data.wait ?? restored?.wait
         const declaration = {
           ...event.data,
           id: event.id,
           at: event.at,
           actor: event.actor,
         }
+
+        if (wait) {
+          declaration.wait = { ...wait }
+        }
+
         card.statusLog = [
           ...(card.statusLog ?? []),
           declaration,
         ]
         card.status = declaration
+
+        if (wait) {
+          card.wait = {
+            ...wait,
+            id: event.id,
+            at: event.at,
+          }
+        } else if (!event.data.waitingFor?.length) {
+          delete card.wait
+        }
       } else {
         card.mirror = structuredClone(event.data)
       }

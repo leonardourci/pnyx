@@ -262,7 +262,7 @@ test(
       [
         'Waiting on a decision',
         'Blocked',
-        'Paused',
+        'Waiting: paused note',
       ],
     )
     assert.equal(

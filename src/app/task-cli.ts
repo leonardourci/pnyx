@@ -107,6 +107,8 @@ export const TASK_OPTIONS: Options = {
   merge: { type: 'string' },
   clear: { type: 'boolean' },
   until: { type: 'string' },
+  'wait-for': { type: 'string' },
+  'ready-when': { type: 'string' },
   every: { type: 'string' },
   hold: { type: 'boolean' },
 }

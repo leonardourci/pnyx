@@ -108,6 +108,8 @@ export const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
       note: 'string',
       until: 'text',
       hold: 'boolean',
+      waitFor: 'text',
+      readyWhen: 'text',
     },
     required: [
       'task',

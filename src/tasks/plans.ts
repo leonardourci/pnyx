@@ -66,6 +66,8 @@ export type TaskOperation = { reason?: string } & (
     note?: string
     until?: string
     hold?: boolean
+    waitFor?: string
+    readyWhen?: string
   }
   | {
     op: 'task.hold'
@@ -329,6 +331,8 @@ export function planTaskChange({
         }),
       }),
       hold: operation.hold,
+      waitFor: operation.waitFor,
+      readyWhen: operation.readyWhen,
     })
   }
 

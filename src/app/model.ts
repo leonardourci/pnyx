@@ -27,6 +27,13 @@ export interface SourceRef {
 }
 
 export type HydraChange = EventBase & (
+  | {
+    type: 'task.wait-resumed'
+    data: {
+      wait: string
+      message: import('#workers/model.ts').SteeringMessage
+    }
+  }
   | RecoveryEvent
   | {
     type: 'project.refreshed'
@@ -330,6 +337,7 @@ export type HydraEvent =
 export type EventType = HydraEvent['type']
 
 export const EVENT_TYPES: readonly EventType[] = [
+  'task.wait-resumed',
   'diagnostic.retry',
   'apply.recorded',
   'session.compaction',

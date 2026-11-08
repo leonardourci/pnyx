@@ -7,6 +7,7 @@ import type { createSourceRunner } from '#task-sources/runner.ts'
 import { sourceDeadline } from '#task-sources/state.ts'
 import { followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
+import { resumeWaits, waitResumesPending, notifyWaitResumes } from '#tasks/resume-waits.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { reminderDeadline } from '#tasks/reminders.ts'
 import { hideDone } from '#tasks/retention.ts'
@@ -94,6 +95,11 @@ export function createServerTick({
         }
 
         pump()
+        resumeWaits({
+          hydraId,
+          state: state(),
+        })
+        pump()
 
         if (!queueRun && Date.now() - queueCheckedAt >= QUEUE_POLL_MS) {
           queueCheckedAt = Date.now()
@@ -150,10 +156,14 @@ export function createServerTick({
         const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
         repliesPending = repliesToFollow({ state: state() }) || steeringToFollow({ state: state() })
 
-        if (!replyRun && repliesPending && replyCheckDue) {
+        const waitResumes = waitResumesPending({ state: state() })
+
+        if (!replyRun && repliesPending && (replyCheckDue || waitResumes)) {
           replyCheckedAt = Date.now()
           replyRun = (async () => {
             try {
+              await notifyWaitResumes({ hydraId })
+
               if (steeringToFollow({ state: state() })) {
                 await runWorker({
                   args: [

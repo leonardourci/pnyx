@@ -6,6 +6,46 @@ import { HydraError } from '#store/errors.ts'
 import type { Card } from './model.ts'
 import { cardLanding } from '#tasks/delivery/model.ts'
 import { touch } from './touch.ts'
+import { waitReadiness } from './waits.ts'
+
+export function requireNoDependencyCycle({
+  state,
+  task,
+  targets,
+}: {
+  state: HydraState
+  task: string
+  targets: string[]
+}): void {
+  const visited = new Set<string>()
+
+  const reaches = ({ id }: { id: string }): boolean => {
+    if (id === task) {
+      return true
+    }
+
+    if (visited.has(id)) {
+      return false
+    }
+
+    visited.add(id)
+    const card = state.cards[id]
+    const edges = [...card?.prerequisites ?? []]
+
+    if (card?.wait) {
+      edges.push(card.wait.task)
+    }
+
+    return edges.some(id => reaches({ id }))
+  }
+
+  if (targets.some(id => reaches({ id }))) {
+    throw new HydraError({
+      message: 'a task cannot depend on itself or create a dependency cycle',
+      code: 'DEPENDENCY_CYCLE',
+    })
+  }
+}
 
 export function applyDependencies({
   state,
@@ -31,7 +71,7 @@ export function applyDependencies({
   return true
 }
 
-function completionGaps({
+export function completionGaps({
   state,
   card,
   visiting,
@@ -159,6 +199,17 @@ export function taskReadiness({
     card,
   })
   const reasons = unmet.map(item => `waiting for ${item.title} (${item.id}): ${item.reason}`)
+
+  if (card.wait) {
+    const wait = waitReadiness({
+      state,
+      wait: card.wait,
+    })
+
+    if (!wait.ready) {
+      reasons.push(`waiting for ${wait.title}: ${card.wait.condition}`)
+    }
+  }
 
   if (card.hold) {
     reasons.push(`held for discussion: ${card.hold.reason}`)

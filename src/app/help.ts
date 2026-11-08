@@ -194,13 +194,14 @@ Long fields are cut to 1,000 characters with their total length. The newest five
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
-pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
+pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold | --wait-for <task> [--ready-when task-done|pr-opened|pr-merged]]
 Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.
 Default columns put completed held tasks in Done; the hold still applies if the task reopens.
 Before pausing with a ready result, run hydra send --task <id> --text "<result with links>" without --kind progress.
 Questions use task ask; blocked/needs_you wake Hydra but do not confirm owner delivery.
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
+--wait-for records a dependency wait (default task-done); pr-opened accepts an open or merged linked PR, and pr-merged requires one or more non-closed linked PRs, all merged. Pnyx resumes the waiting worker once with the dependency and PR link, preserving holds and open decisions. These waits never expire on a timer.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
 Ready owner-merge questions include the PR title, link, latest worker report or status note, and check counts.

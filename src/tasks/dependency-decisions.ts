@@ -5,6 +5,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { isManagedTask } from './select.ts'
+import { requireNoDependencyCycle } from './dependencies.ts'
 
 export function decideDependencies({
   state,
@@ -53,28 +54,11 @@ export function decideDependencies({
       ...ids,
     ]),
   ]
-  const visited = new Set<string>()
-
-  const reachesTask = ({ id }: { id: string }): boolean => {
-    if (id === card.id) {
-      return true
-    }
-
-    if (visited.has(id)) {
-      return false
-    }
-
-    visited.add(id)
-
-    return (state.cards[id]?.prerequisites ?? []).some(id => reachesTask({ id }))
-  }
-
-  if (after.some(id => reachesTask({ id }))) {
-    throw new HydraError({
-      message: 'a task cannot depend on itself or create a dependency cycle',
-      code: 'DEPENDENCY_CYCLE',
-    })
-  }
+  requireNoDependencyCycle({
+    state,
+    task: card.id,
+    targets: after,
+  })
 
   if (before.length === after.length && before.every((
     id,

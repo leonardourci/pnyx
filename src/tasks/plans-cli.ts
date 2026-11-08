@@ -34,6 +34,8 @@ const ACTION_FLAGS: Record<string, string[]> = {
   depend: ['on'],
   undepend: ['on'],
   status: [
+    'wait-for',
+    'ready-when',
     'note',
     'until',
     'hold',
@@ -128,7 +130,12 @@ export async function localTaskCommand({
 
   for (const field of ACTION_FLAGS[action]!) {
     if (values[field] !== undefined) {
-      input[field === 'from-message' ? 'message' : field] = values[field]
+      const names: Record<string, string> = {
+        'from-message': 'message',
+        'wait-for': 'waitFor',
+        'ready-when': 'readyWhen',
+      }
+      input[names[field] ?? field] = values[field]
     }
   }
 
