@@ -117,6 +117,15 @@ export interface TaskReminder {
   id: string
   at: string
   dueAt?: string
+  repeat?: ReminderRepeat
+  dueEvent?: string
+  resume?: TaskDeclaration
+}
+
+export interface ReminderRepeat {
+  everyMs: number
+  until: 'worker-started' | 'question-answered' | 'task-done'
+  question?: string
 }
 
 export interface OwnerAsk {
