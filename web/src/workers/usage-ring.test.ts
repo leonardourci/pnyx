@@ -1,47 +1,21 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import * as nodeModule from 'node:module'
 import { test } from 'node:test'
-import { fileURLToPath } from 'node:url'
-import ts from 'typescript'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { Card } from '#tasks/model.ts'
 import { usageFor } from '#workers/usage.ts'
+import { load } from '#web-workers/fixtures/usage-ring-loader.ts'
 
-const hooks = typeof nodeModule.registerHooks === 'function'
-nodeModule.registerHooks?.({
-  // eslint-disable-next-line pnyx/object-params -- Node owns the load hook's signature.
-  load(
-    url,
-    context,
-    next,
-  ) {
-    if (!url.endsWith('.tsx')) {
-      return next(
-        url,
-        context,
-      )
-    }
-
-    return {
-      format: 'module',
-      shortCircuit: true,
-      source: ts.transpileModule(
-        readFileSync(
-          fileURLToPath(url),
-          'utf8',
-        ),
-        {
-          compilerOptions: {
-            jsx: ts.JsxEmit.ReactJSX,
-            module: ts.ModuleKind.ESNext,
-          },
-        },
-      ).outputText,
-    }
-  },
-})
+if (nodeModule.registerHooks) {
+  nodeModule.registerHooks({ load })
+} else {
+  // Node 22.13 and 22.14 only support the asynchronous loader registration API.
+  nodeModule.register(
+    '#web-workers/fixtures/usage-ring-loader.ts',
+    import.meta.url,
+  )
+}
 
 const card: Card = {
   id: 'usage',
@@ -61,7 +35,6 @@ const card: Card = {
 
 test(
   'the ring leaves unknown usage empty and shows known percentages with accessible descriptions',
-  { skip: !hooks },
   async () => {
     // Node needs the transpilation hook installed before it can import TSX.
     const { UsageRing } = await import('./usage-ring.tsx')
