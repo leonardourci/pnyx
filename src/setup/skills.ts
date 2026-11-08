@@ -164,6 +164,49 @@ export function copySkills({
   return installed
 }
 
+export function prepareHelperFolder({
+  folder,
+  instructions,
+}: {
+  folder: string
+  instructions: string
+}) {
+  mkdirSync(
+    folder,
+    { recursive: true },
+  )
+
+  for (const name of HYDRA_SKILLS) {
+    rmSync(
+      join(
+        folder,
+        '.agents',
+        'skills',
+        name,
+      ),
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+  }
+
+  writeFileSync(
+    join(
+      folder,
+      'AGENTS.md',
+    ),
+    instructions + '\n',
+  )
+  writeFileSync(
+    join(
+      folder,
+      'CLAUDE.md',
+    ),
+    '@AGENTS.md\n',
+  )
+}
+
 // The hosted Hydra's folder: its contract, which both harnesses load every turn, and the skills it loads on demand.
 export function prepareHydraFolder({
   folder,
