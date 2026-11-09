@@ -35,16 +35,32 @@ export function canonicalMergeQuestion({
   const cards = state ? Object.values(state.cards) : [card]
   const questions = cards.flatMap(card => (card.asks ?? [])
     .filter(ask => ask.kind === 'merge' && ask.url === url)
-    .map(ask => ({
-      card,
-      ask,
-      activeAt: Math.max(
+    .map(ask => {
+      const decisionAt = Math.max(
         Date.parse(ask.at),
         Date.parse(ask.answeredAt ?? ask.at),
         Date.parse(ask.reaskedAt ?? ask.at),
-        Date.parse(ask.closed?.at ?? ask.at),
-      ),
-    })))
+      )
+
+      return {
+        card,
+        ask,
+        decisionAt,
+        activeAt: Math.max(
+          decisionAt,
+          Date.parse(ask.closed?.at ?? ask.at),
+        ),
+      }
+    }))
+  const latest = questions.toSorted((
+    a,
+    b,
+  ) => b.decisionAt - a.decisionAt || a.ask.id.localeCompare(b.ask.id))[0]
+
+  // Retiring an older alias must not hide a newer pending decision.
+  if (latest && !latest.ask.answered && !latest.ask.closed) {
+    return latest
+  }
 
   return questions.sort((
     a,

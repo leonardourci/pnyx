@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { Ask, Card } from './model.ts'
-import { reconcileAsks, mergeApproval } from '#tasks/delivery/merge-questions.ts'
+import { reconcileAsks, mergeApproval, canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
 import { activeAsks } from './ask-state.ts'
 
 const at = '2026-11-01T12:00:00.000Z'
@@ -414,6 +414,56 @@ test(
         url,
       })?.answered,
       'owner-answer',
+    )
+  },
+)
+
+test(
+  'closing an older review alias leaves the newer pending approval canonical',
+  () => {
+    const {
+      state,
+      card,
+      ask,
+    } = lab()
+    ask.kind = 'merge'
+    ask.url = url
+    const current = structuredClone(card)
+    current.id = 'task-current-review'
+    const pending = current.asks![0]!
+    pending.id = 'ask-current-review'
+    pending.at = '2026-11-01T12:20:00.000Z'
+    state.cards[current.id] = current
+    ask.closed = {
+      id: 'retired-alias',
+      at: '2026-11-01T12:30:00.000Z',
+      reason: 'Task ended',
+      evidence: 'finished-alias',
+    }
+    const canonical = canonicalMergeQuestion({
+      state,
+      card,
+      url,
+    })
+    assert.equal(
+      canonical?.card.id,
+      current.id,
+    )
+    assert.equal(
+      canonical?.ask.id,
+      pending.id,
+    )
+    assert.equal(
+      canonical?.ask.closed,
+      undefined,
+    )
+    assert.equal(
+      mergeApproval({
+        state,
+        card,
+        url,
+      }),
+      undefined,
     )
   },
 )
