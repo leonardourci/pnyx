@@ -106,7 +106,11 @@ function moveIn({
   delete card.rank
   card.createdSeq = event.seq
   card.steeringGeneration = event.seq
-  card.revision++
+  // An arrival that replaces a cut move's copy keeps the revision rising, so --if-revision stays meaningful.
+  card.revision = Math.max(
+    card.revision,
+    state.cards[card.id]?.revision ?? 0,
+  ) + 1
   card.updatedSeq = event.seq
   card.updatedAt = event.at
   state.cards[card.id] = card

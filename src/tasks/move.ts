@@ -11,7 +11,7 @@ import { carryCursors, harvestTranscripts } from '#integrations/hooks/harvest.ts
 import { hydraConfig } from '#hydra/config.ts'
 import { HydraError } from '#store/errors.ts'
 import { projectsFor } from '#projects/read.ts'
-import { matchesProject } from '#projects/identity.ts'
+import { matchesProject, sameProjectPath } from '#projects/identity.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { taskSessions } from '#workers/cli.ts'
 import { workerQueue } from '#workers/queue.ts'
@@ -90,6 +90,45 @@ function targetColumn({
   return byId?.id ?? byTitle?.id ?? byRule ?? fallbackColumn({ columns })
 }
 
+// The project a card's label names on the source, so a same-named project on the target does not pass for it.
+// A label no source project carries is matched by name, as before.
+function projectOnTarget({
+  source,
+  target,
+  label,
+}: {
+  source: HydraState
+  target: HydraState
+  label: string
+}): {
+  path: string
+  attached: boolean
+} {
+  const own = projectsFor({ state: source }).find(p => matchesProject({
+    project: p,
+    ref: label,
+  }))
+  const attached = projectsFor({ state: target }).filter(p => !p.detached)
+
+  if (!own) {
+    return {
+      path: label,
+      attached: attached.some(p => matchesProject({
+        project: p,
+        ref: label,
+      })),
+    }
+  }
+
+  return {
+    path: own.path,
+    attached: attached.some(p => sameProjectPath({
+      left: p.path,
+      right: own.path,
+    })),
+  }
+}
+
 // Every reason a move would leave something broken, each with the command that clears it.
 function refusal({
   hydraId,
@@ -97,12 +136,15 @@ function refusal({
   source,
   target,
   card,
+  resuming,
 }: {
   hydraId: string
   to: string
   source: HydraState
   target: HydraState
   card: Card
+  // A cut move's untouched arrival, which the new arrival replaces.
+  resuming: boolean
 }): HydraError | undefined {
   const rerun = rerunCommand({
     card,
@@ -134,18 +176,21 @@ function refusal({
     })
   }
 
-  if (card.project && !projectsFor({ state: target }).some(p => !p.detached && matchesProject({
-    project: p,
-    ref: card.project,
-  }))) {
+  const project = card.project && projectOnTarget({
+    source,
+    target,
+    label: card.project,
+  })
+
+  if (project && !project.attached) {
     return refuse({
-      message: `Hydra ${to} has no project ${card.project} attached`,
-      help: `Run \`pnyx-axi project add ${card.project} --hydra ${to}\`, then \`${rerun}\``,
+      message: `Hydra ${to} has no project ${project.path} attached`,
+      help: `Run \`pnyx-axi project add ${project.path} --hydra ${to}\`, then \`${rerun}\``,
       code: 'NOT_FOUND',
     })
   }
 
-  if (target.cards[card.id] || target.keys[card.key]) {
+  if (!resuming && (target.cards[card.id] || target.keys[card.key])) {
     return refuse({
       message: `Hydra ${to} already has a task with id or key ${card.id}`,
       help: `Run \`pnyx-axi task show ${card.id} --hydra ${to}\``,
@@ -324,8 +369,9 @@ async function releaseWorker({
   }
 }
 
-// The target's arrival line for this card when the source's departure line was never written.
-function unfinishedMove({
+// A move cut between its two lines leaves the card on both Hydras. Running it again replaces the target's
+// untouched copy with the source's current card; a copy edited on both sides since is left for the owner.
+function cutMove({
   hydraId,
   to,
   source,
@@ -335,16 +381,30 @@ function unfinishedMove({
   to: string
   source: HydraState
   card: Card
-}): string | undefined {
-  if (!loadHydra({ hydraId: to }).state.cards[card.id]) {
-    return undefined
+}): boolean {
+  const arrived = loadHydra({ hydraId: to }).state.cards[card.id]
+
+  if (!arrived) {
+    return false
   }
 
   const arrival = readEvents({ hydraId: to })
     .findLast(event => event.type === 'task.moved-in' && event.cardId === card.id)
-  const cut = arrival?.type === 'task.moved-in' && arrival.data.from === hydraId && !(arrival.id in source.eventIds)
 
-  return cut ? arrival.id : undefined
+  if (arrival?.type !== 'task.moved-in' || arrival.data.from !== hydraId || arrival.id in source.eventIds) {
+    return false
+  }
+
+  const untouched = arrived.revision === arrival.data.card.revision + 1
+
+  if (!untouched) {
+    throw refuse({
+      message: `the move of ${card.id} to Hydra ${to} was cut short, and its copy on Hydra ${to} has changed since`,
+      help: `Compare \`pnyx-axi task history ${card.id} --hydra ${hydraId}\` with \`--hydra ${to}\`, then hide the copy you do not keep with \`pnyx-axi task hide ${card.id} --hydra <that Hydra>\``,
+    })
+  }
+
+  return true
 }
 
 // Every session the card has had, and when its owner questions were last reminded, as the source holds them.
@@ -442,7 +502,7 @@ function receipt({
 }
 
 // Writes the target side first, inside the source's write, so a refusal on either side leaves both logs unchanged.
-// A crash between the two lines leaves the card on both; running the move again writes the missing source line.
+// A crash between the two lines leaves the card on both; running the move again finishes it (see cutMove).
 export async function moveTask({
   hydraId,
   ref,
@@ -489,50 +549,15 @@ export async function moveTask({
     })
   }
 
-  const unfinished = unfinishedMove({
+  const resuming = cutMove({
     hydraId,
     to,
     source: state,
     card,
   })
-
-  if (unfinished) {
-    await releaseWorker({
-      hydraId,
-      card,
-      actor: meta.actor,
-      rerun: rerunCommand({
-        card,
-        to,
-        hydraId,
-      }),
-    })
-
-    return withWriter({
-      hydraId,
-      fn: ({ writer: source }) => {
-        depart({
-          hydraId,
-          source,
-          card,
-          to,
-          move: unfinished,
-          meta,
-        })
-
-        return receipt({
-          card,
-          hydraId,
-          to,
-          column: loadHydra({ hydraId: to }).state.cards[card.id]!.column,
-          move: unfinished,
-        })
-      },
-    })
-  }
-
   const target = loadHydra({ hydraId: to }).state
-  const move = meta.id ?? `move:${randomUUID()}`
+  // The cut move's id is taken on the target, so the move that finishes it gets its own.
+  const move = !resuming && meta.id ? meta.id : `move:${randomUUID()}`
 
   if (move in state.eventIds || move in target.eventIds) {
     throw refuse({
@@ -548,6 +573,7 @@ export async function moveTask({
     source: state,
     target,
     card,
+    resuming,
   })
 
   if (early) {
@@ -593,6 +619,7 @@ export async function moveTask({
             source: source.state,
             target: target.state,
             card: current,
+            resuming,
           })
 
           if (late) {
