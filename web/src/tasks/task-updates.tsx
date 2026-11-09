@@ -5,7 +5,7 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 import { loadOlderUpdates, loadUpdates, retryUpdates, subscribeUpdates, updatesOf } from './updates-cache.ts'
-import { hasTaskQuestion } from './task-question.tsx'
+import { hasTaskQuestion } from './task-question.ts'
 import { UpdateRow } from './update-rows.tsx'
 
 export function TaskUpdates({

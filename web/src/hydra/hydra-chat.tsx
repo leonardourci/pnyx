@@ -12,6 +12,7 @@ import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { InlineQuestions } from '#web-tasks/questions.tsx'
+import { AnsweredQuestions } from '#web-tasks/answered-questions.tsx'
 import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { WaitingDecisions } from '#web-tasks/waiting-decisions.tsx'
@@ -758,6 +759,7 @@ export function HydraChat({
               </p>
             )}
             {errors.map(a => <p key={a.key} className="chat-error" role="alert"><Icon name="error" size={16} />{a.text}</p>)}
+            {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
             {card && (
               <InlinePermissions
                 card={{

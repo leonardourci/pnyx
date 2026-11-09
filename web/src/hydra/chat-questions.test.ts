@@ -5,6 +5,7 @@ import type { Ask, Card } from '#tasks/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { chatDecisions } from './chat-questions.ts'
+import { leadingTask } from '#hydra/chat-messages.ts'
 
 const at = '2026-11-01T12:00:00.000Z'
 const question: Ask = {
@@ -36,9 +37,17 @@ test(
   () => {
     const state = emptyHydra()
     state.cards[task.id] = structuredClone(task)
+    state.keys[task.key] = task.id
     assert.deepEqual(
       chatDecisions({ state }),
       [],
+    )
+    assert.equal(
+      chatDecisions({
+        state,
+        selectedTask: task.key,
+      })[0]?.ask.id,
+      'ask-1',
     )
     assert.equal(
       chatDecisions({
@@ -145,7 +154,22 @@ test(
       chatDecisions({ state })[0]?.ask.id,
       'ask-1',
     )
+    state.cards[HYDRA_CARD]!.asks![0]!.deferredUntil = '2099-11-10T12:00:00.000Z'
+    assert.equal(
+      chatDecisions({ state })[0]?.ask.deferredUntil,
+      '2099-11-10T12:00:00.000Z',
+      'a deferred Hydra-wide question keeps its date controls reachable',
+    )
     state.cards[HYDRA_CARD]!.asks![0]!.answered = 'owner-answer'
+    assert.equal(
+      leadingTask({
+        entry: {
+          task: HYDRA_CARD,
+          text: 'Use the compact format.',
+        },
+      }),
+      undefined,
+    )
     assert.deepEqual(
       chatDecisions({ state }),
       [],

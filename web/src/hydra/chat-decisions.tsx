@@ -1,10 +1,7 @@
-import type { Ask, Card } from '#tasks/model.ts'
-import { askWording } from '#tasks/ask-state.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
-import { Disclosure, CollapsibleText } from '#web-shared/ui/disclosure.tsx'
-import { Button } from '#web-shared/ui/controls.tsx'
 import { AskPanel } from '#web-tasks/ask.tsx'
-import { clock } from './chat.ts'
+import { ReviewReadiness } from '#web-tasks/review-readiness.tsx'
 import type { Command } from '#web-app/connection.ts'
 
 import type { ChatDecision } from './chat-questions.ts'
@@ -22,80 +19,35 @@ export function ChatDecisionCard({
     card,
     ask,
   } = decision
+  const link = card.links.find(link => link.url === ask.url)
+  let content = (
+    <AskPanel
+      card={card}
+      ask={ask}
+      command={command}
+      notify={notify}
+    />
+  )
+
+  if (ask.kind === 'merge' && link) {
+    content = (
+      <ReviewReadiness
+        request={{
+          card,
+          ask,
+          link,
+        }}
+        command={command}
+        notify={notify}
+      />
+    )
+  }
 
   return (
     <div className="chat-decision" contentEditable={ask.answered ? false : undefined}>
       {decision.blocker && <strong className="eyebrow">Blocker</strong>}
-      {card.id === '$hydra' ? <span className="eyebrow">Hydra question</span> : <TaskReference id={card.id} />}
-      {ask.answered ? (
-        <Decided
-          card={card}
-          ask={ask}
-          command={command}
-          notify={notify}
-        />
-      ) : (
-        <AskPanel
-          card={card}
-          ask={ask}
-          command={command}
-          notify={notify}
-        />
-      )}
-    </div>
-  )
-}
-
-function Decided({
-  card,
-  ask,
-  command,
-  notify,
-}: {
-  card: Card
-  ask: Ask
-  command: Command
-  notify({ text }: { text: string }): void
-}) {
-  const decidedAt = ask.answeredAt ?? ask.fromMessage?.at
-  const title = (
-    <>Decided {decidedAt && clock({ at: decidedAt })}
-      {ask.fromMessage && ' from your message'} · {askWording({ ask }).question}
-    </>
-  )
-
-  if (!ask.fromMessage) {
-    return <p className="decided">{title}</p>
-  }
-
-  const recorded = ask.mergeHold && ask.choice === 'Merge'
-    ? 'Hydra lifted Hold using your answer' : 'Recorded as your answer'
-
-  return (
-    <div className="decided">
-      <Disclosure title={<>{recorded} to ‘{askWording({ ask }).question}’</>}>
-        <blockquote><CollapsibleText text={ask.fromMessage.text} /></blockquote>
-      </Disclosure>
-      <Button
-        onClick={async () => {
-          try {
-            await command({
-              name: 'task',
-              args: [
-                'reopen-question',
-                card.id,
-                ask.id,
-                '--answer',
-                ask.answered ?? '',
-              ],
-            })
-            notify({ text: ask.mergeHold ? 'Hold restored.' : 'Question reopened.' })
-          } catch (error) {
-            notify({ text: String(error) })
-          }
-        }}
-      >Undo answer
-      </Button>
+      {card.id === HYDRA_CARD ? <span className="eyebrow">Hydra question</span> : <TaskReference id={decision.relatedTask?.id ?? card.id} />}
+      {content}
     </div>
   )
 }

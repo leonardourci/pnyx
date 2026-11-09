@@ -1,7 +1,7 @@
 import type { HydraState } from '#app/model.ts'
 import type { Ask, Card } from '#tasks/model.ts'
-import { activeAsks } from '#tasks/ask-state.ts'
-import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
+import { activeAsks, openAsks } from '#tasks/ask-state.ts'
+import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
 import { taskMentions } from '#hydra/mentions.ts'
@@ -12,6 +12,7 @@ export interface ChatDecision {
   card: Card
   ask: Ask
   blocker: boolean
+  relatedTask?: Card
 }
 
 export function chatDecisions({
@@ -29,38 +30,50 @@ export function chatDecisions({
     latest?.task,
     ...taskMentions({ text: latest?.text ?? '' }).map(mention => mention.id),
     ...taskMentions({ text: draft }).map(mention => mention.id),
-  ])
+  ].map(ref => ref ? state.keys[ref] ?? ref : undefined))
 
-  return Object.values(state.cards).flatMap(card => {
-    const blocker = card.status?.state === 'blocked'
-    const visible = card.id === HYDRA_CARD || blocker || context.has(card.id)
+  const cards = Object.values(state.cards)
 
-    if (!visible) {
-      return []
-    }
+  return cards.flatMap(card => {
+    const asks = card.id === HYDRA_CARD ? openAsks : activeAsks
 
-    return activeAsks({
+    return asks({
       card,
       audience: 'owner',
-    }).filter(ask => {
-      if (ask.kind !== 'merge' || !ask.url) {
-        return true
-      }
-
-      const canonical = canonicalMergeQuestion({
+    }).flatMap(ask => {
+      if (!isCanonicalQuestion({
         state,
         card,
-        url: ask.url,
-      })
-
-      return canonical?.card.id === card.id && canonical.ask.id === ask.id
-    })
-      .map(ask => ({
-        id: `ask:${card.id}:${ask.id}`,
-        at: ask.reaskedAt ?? ask.escalated?.at ?? ask.at,
-        card,
         ask,
-        blocker,
-      }))
+      })) {
+        return []
+      }
+
+      let relatedTask: Card | undefined
+
+      if (ask.kind === 'merge' && ask.url) {
+        const linked = cards.filter(task => task.links.some(link => link.url === ask.url))
+        relatedTask = linked.find(task => task.status?.state === 'blocked')
+          ?? linked.find(task => context.has(task.id))
+      }
+
+      const blocker = card.status?.state === 'blocked' || relatedTask?.status?.state === 'blocked'
+      const visible = card.id === HYDRA_CARD || blocker || context.has(card.id) || !!relatedTask
+
+      if (!visible) {
+        return []
+      }
+
+      return [
+        {
+          id: `ask:${card.id}:${ask.id}`,
+          at: ask.reaskedAt ?? ask.escalated?.at ?? ask.at,
+          card,
+          ask,
+          blocker,
+          relatedTask,
+        },
+      ]
+    })
   })
 }
