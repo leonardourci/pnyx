@@ -57,9 +57,10 @@ export function createIndexSync({
   }): void
 }) {
   let stopped = false
+  let backfilling: Promise<void> | undefined
 
   // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
-  const harvestForIndex = async () => {
+  const harvestForIndex = () => {
     try {
       withWriter({
         hydraId,
@@ -69,6 +70,16 @@ export function createIndexSync({
           at: new Date().toISOString(),
         }),
       })
+    } catch (error) {
+      console.error(`pnyx oracle index: transcripts not harvested: ${(error as Error).message}`)
+    }
+  }
+
+  const backfillForIndex = async (): Promise<void> => {
+    let progressed = false
+
+    try {
+      await setImmediate()
 
       while (!stopped && !upgradeUnderway()) {
         const batch = withWriter({
@@ -83,16 +94,23 @@ export function createIndexSync({
           break
         }
 
+        progressed = true
         await setImmediate()
       }
     } catch (error) {
-      console.error(`pnyx oracle index: transcripts not harvested: ${(error as Error).message}`)
+      console.error(`pnyx oracle index: conversation recovery failed: ${(error as Error).message}`)
+    } finally {
+      backfilling = undefined
+
+      if (progressed && !stopped && !upgradeUnderway()) {
+        historyIndex.changed()
+      }
     }
   }
 
   const historyIndex = indexRuns({
-    start: async () => {
-      await harvestForIndex()
+    start: () => {
+      harvestForIndex()
 
       return new Promise<ReturnType<typeof workerError>>(resolve => {
         // The next change, or the restarted server, catches the index up.
@@ -110,16 +128,21 @@ export function createIndexSync({
             error,
             stdout,
           }) => {
-            if (!error) {
-              return resolve(undefined)
+            let failure: ReturnType<typeof workerError>
+
+            if (error) {
+              failure = workerError({ stdout }) ?? {
+                message: error.message,
+                code: 'UNKNOWN',
+              }
+              console.error(`pnyx oracle index: ${failure.message}`)
             }
 
-            const failure = workerError({ stdout }) ?? {
-              message: error.message,
-              code: 'UNKNOWN',
-            }
-            console.error(`pnyx oracle index: ${failure.message}`)
             resolve(failure)
+
+            if (!backfilling && !stopped && !upgradeUnderway()) {
+              backfilling = backfillForIndex()
+            }
           },
         })
       })
