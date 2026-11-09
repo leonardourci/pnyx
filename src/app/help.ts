@@ -121,7 +121,7 @@ pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
 Columns include task counts and descriptions; read column list for placement rules when needed.
 Hosted resumes receive changed sections. Owner context is bounded to ${OWNER_CONTEXT_TOKENS} estimated tokens, with full memory available through owner memory list.
-The next Hydra turn receives up to 20 one-line context notes for dependency resumes, owner task answers and routine helper results. Notes never wake Hydra and clear after a successful turn.
+A Hydra turn receives at most eight context lines for dependency resumes, owner task answers and routine helper results. When more than eight notes are pending, it receives seven notes and a history hint. Notes never wake Hydra. A successful turn clears only the notes shown; the rest remain queued.
 Compaction runs when requested or through the harness itself; reported context usage never triggers it in Pnyx.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
