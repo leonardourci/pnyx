@@ -15,6 +15,7 @@ import { taskMentions } from '#hydra/mentions.ts'
 import { fireReminders } from './fire-reminders.ts'
 import { reminderDeadline, waitingReminders } from './reminders.ts'
 import { reminderTime } from './time.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const hydraId = 'reminders'
 const now = '2026-10-15T12:00:00.000Z'
@@ -767,6 +768,31 @@ test(
         'No',
       ],
     })
+    const otherQuestion = await run({
+      args: [
+        'ask',
+        'other',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner chooses',
+        '--question',
+        'Which schema version?',
+      ],
+    })
+    const globalQuestion = await commands.hydra([
+      'ask',
+      '--question',
+      'Which Hydra preference?',
+      '--actor',
+      'hydra',
+      '--reason',
+      'The owner chooses',
+      '--hydra',
+      hydraId,
+    ])
     const ask = task().asks?.[0]
     assert.ok(ask)
     const questionKey = `${task().id}:${ask.id}`
@@ -775,7 +801,7 @@ test(
         hydraId,
         at: later,
       }),
-      3,
+      5,
     )
     assert.equal(
       state().hydraMessages?.length,
@@ -785,8 +811,14 @@ test(
     assert.ok(message)
     assert.equal(
       message.text.split('\n').length,
-      2,
+      1,
     )
+    assert.match(
+      message.text,
+      /^3 questions waiting on you: /,
+    )
+    assert.ok(message.text.includes('Hydra'))
+    assert.ok(!message.text.includes('Publish the cursor schema?'))
     assert.equal(
       taskMentions({ text: message.text }).length,
       2,
@@ -809,8 +841,12 @@ test(
     const posted = batch.events.find(event => event.type === 'hydra.message')
     assert.ok(posted?.type === 'hydra.message')
     assert.deepEqual(
-      posted.data.reminderQuestions,
-      [questionKey],
+      new Set(posted.data.reminderQuestions),
+      new Set([
+        questionKey,
+        `${state().keys.other}:${otherQuestion.ask}`,
+        `${HYDRA_CARD}:${globalQuestion.ask}`,
+      ]),
     )
     assert.equal(
       state().questionReminders?.[questionKey],

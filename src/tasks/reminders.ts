@@ -28,6 +28,16 @@ function reminderExcerpt({
   return words.length > limit ? `${text}…` : text
 }
 
+export function reminderTaskMention({ card }: { card: Pick<Card, 'id' | 'title'> }): string {
+  return taskMention({
+    id: card.id,
+    title: reminderExcerpt({
+      words: card.title.trim().split(/\s+/),
+      limit: TITLE_WORD_LIMIT,
+    }),
+  })
+}
+
 export function reminderMessage({
   card,
   detail = 'is due.',
@@ -36,14 +46,7 @@ export function reminderMessage({
   detail?: string
 }): string {
   const titleWords = card.title.trim().split(/\s+/)
-  const title = reminderExcerpt({
-    words: titleWords,
-    limit: TITLE_WORD_LIMIT,
-  })
-  const mention = taskMention({
-    id: card.id,
-    title,
-  })
+  const mention = reminderTaskMention({ card })
   const remaining = REMINDER_WORD_LIMIT - REMINDER_PREFIX_WORDS - Math.min(
     titleWords.length,
     TITLE_WORD_LIMIT,
