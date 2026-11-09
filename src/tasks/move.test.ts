@@ -505,6 +505,30 @@ test(
       key: 'ship',
     })!
 
+    process.env.PNYX_ACTOR = `worker:${before.id}`
+
+    try {
+      for (const actor of [
+        [],
+        [
+          '--actor',
+          'cli',
+        ],
+      ]) {
+        assert.equal(
+          (await refusal({
+            args: [
+              ...move({ id: before.id }),
+              ...actor,
+            ],
+          })).code,
+          'OWNER_ONLY',
+        )
+      }
+    } finally {
+      delete process.env.PNYX_ACTOR
+    }
+
     const moved = await task({
       args: [
         ...move({ id: before.id }),
@@ -575,6 +599,13 @@ test(
       ])),
       /Use the shared lock/,
     )
+
+    const again = await refusal({ args: move({ id: before.id }) })
+    assert.match(
+      again.message,
+      /moved to Hydra dst/,
+    )
+    assert.ok(again.fix.includes(`pnyx-axi task move ${before.id} --to-hydra dst --hydra dst`))
 
     for (const ref of [
       before.id,
@@ -681,6 +712,16 @@ test(
       loadHydra({ hydraId: 'src' }).state.movedOut?.[before.id],
       undefined,
     )
+    await assert.rejects(
+      async () => {
+        await commands.undo([
+          String(moved.event),
+          '--hydra',
+          'dst',
+        ])
+      },
+      /already back on Hydra src/,
+    )
     const back = await task({
       args: [
         'history',
@@ -724,19 +765,26 @@ test(
       `${older.events[0]?.hydra} ${older.events[0]?.type}`,
       'src task.moved-out',
     )
-    assert.equal(
-      (await refusal({
-        args: [
-          'history',
-          before.id,
-          '--before',
-          'dst:soon',
-          '--hydra',
-          'src',
-        ],
-      })).code,
-      'VALIDATION_ERROR',
-    )
+
+    for (const cursor of [
+      'dst:soon',
+      'dst:',
+      '1e3',
+    ]) {
+      assert.equal(
+        (await refusal({
+          args: [
+            'history',
+            before.id,
+            '--before',
+            cursor,
+            '--hydra',
+            'src',
+          ],
+        })).code,
+        'VALIDATION_ERROR',
+      )
+    }
 
     assert.equal(
       (await refusal({
