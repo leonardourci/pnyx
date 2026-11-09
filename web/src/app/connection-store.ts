@@ -24,6 +24,9 @@ import { shouldReload } from './view.ts'
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
 const TOKEN_REFRESH_TIMEOUT_MS = 5_000
+const NO_TOKEN_MESSAGE = 'This page has no connection token. Reload to connect.'
+const OTHER_INSTALLATION_MESSAGE =
+  'This address now serves another Pnyx installation. Reload to continue.'
 const PERMANENT_SCOPE_ERRORS = new Set([
   'NOT_FOUND',
   'VALIDATION_ERROR',
@@ -613,7 +616,7 @@ export function createHydraConnection() {
         active = false
         scope.ready = false
         scope.failed = true
-        reloadError = 'This address now serves another Pnyx installation. Reload to continue.'
+        reloadError = OTHER_INSTALLATION_MESSAGE
         clearInterval(watchdog)
         socket?.close()
         publish()
@@ -818,7 +821,7 @@ export function createHydraConnection() {
     const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
     if (!token) {
-      reloadError = 'This page has no connection token. Reload to connect.'
+      reloadError = NO_TOKEN_MESSAGE
       publish()
 
       return
@@ -894,10 +897,10 @@ export function createHydraConnection() {
                   )
                 } else {
                   active = false
-                  reloadError = 'This page has no connection token. Reload to connect.'
+                  reloadError = NO_TOKEN_MESSAGE
 
                   if (identity && identity !== installation) {
-                    reloadError = 'This address now serves another Pnyx installation. Reload to continue.'
+                    reloadError = OTHER_INSTALLATION_MESSAGE
                   }
 
                   publish()
