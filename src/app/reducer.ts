@@ -22,6 +22,7 @@ import { applyDispatchProposal, applyLaunch, applySessionMove } from '#workers/r
 import { applyCardEvent } from '#tasks/card-events.ts'
 import { applyRecovery } from '#diagnostics/recovery-state.ts'
 import { applyContextNotes } from '#hydra/context-notes.ts'
+import { applyHydraMove } from '#tasks/move-state.ts'
 
 export function emptyHydra(): HydraState {
   return {
@@ -80,6 +81,9 @@ function apply({
     state,
     event,
   }) || applySteering({
+    state,
+    event,
+  }) || applyHydraMove({
     state,
     event,
   }) || applyDependencies({

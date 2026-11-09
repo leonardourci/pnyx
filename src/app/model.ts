@@ -115,6 +115,7 @@ export type HydraChange = EventBase & (
       after: string | null
     }
   }
+  | import('#tasks/move-state.ts').HydraMoveEvent
   | {
     type: 'task.copy'
     data: {
@@ -406,6 +407,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.reminder',
   'task.reminder-due',
   'task.copy',
+  'task.moved-out',
+  'task.moved-in',
   'task.queue',
   'task.dependencies',
   'task.held',
@@ -463,6 +466,8 @@ export interface HydraState {
   v: typeof EVENT_VERSION
   seq: number
   cards: Record<string, Card>
+  // Cards this Hydra handed to another one; the source log keeps their earlier events.
+  movedOut?: Record<string, import('#tasks/move-state.ts').MovedOut>
   sessions?: Record<string, AgentSession>
   keys: Record<string, string>
   // event id -> seq, so a retried or respooled event is applied once.
