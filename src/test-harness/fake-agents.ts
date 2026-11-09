@@ -53,6 +53,8 @@ export interface AgentSession {
   env: NodeJS.ProcessEnv
   received: string[]
   images?: unknown[][]
+  // Claude only: Pnyx closed the session, as it does when it lets an idle one go.
+  closed?: boolean
   // Received messages whose turn ended: for Claude once Pnyx has read the turn's last message, for Codex once turn/completed is written.
   answered: number
   model?: string
@@ -343,7 +345,9 @@ export function replayClaude({ hydra }: { hydra(): string }) {
     return Object.assign(
       run(),
       {
-        close: () => {},
+        close: () => {
+          session.closed = true
+        },
         interrupt: async () => {},
         setModel: async () => {},
         setPermissionMode: async () => {},
