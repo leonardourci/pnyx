@@ -218,6 +218,7 @@ export function stopReminders({
 
 export function reminderDeadline({ state }: { state: HydraState }): number | undefined {
   const deadlines = deferredQuestions({ state }).map(question => question.at)
+    .filter(Number.isFinite)
 
   for (const card of Object.values(state.cards)) {
     const reminder = card.reminder
@@ -225,10 +226,14 @@ export function reminderDeadline({ state }: { state: HydraState }): number | und
     if (reminder && (!reminder.dueAt || reminder.repeat)) {
       const question = card.asks?.find(ask => ask.id === reminder.repeat?.question)
       const activeAt = question?.deferredUntil ?? reminder.at
-      deadlines.push(Math.max(
+      const deadline = Math.max(
         Date.parse(reminder.at),
         Date.parse(activeAt),
-      ))
+      )
+
+      if (Number.isFinite(deadline)) {
+        deadlines.push(deadline)
+      }
     }
   }
 
