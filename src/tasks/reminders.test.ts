@@ -768,6 +768,20 @@ test(
         'No',
       ],
     })
+    const sameTaskQuestion = await run({
+      args: [
+        'ask',
+        'work',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner chooses',
+        '--question',
+        'Which cursor naming convention?',
+      ],
+    })
     const otherQuestion = await run({
       args: [
         'ask',
@@ -796,12 +810,13 @@ test(
     const ask = task().asks?.[0]
     assert.ok(ask)
     const questionKey = `${task().id}:${ask.id}`
+    const sameTaskKey = `${task().id}:${sameTaskQuestion.ask}`
     assert.equal(
       fireReminders({
         hydraId,
         at: later,
       }),
-      5,
+      6,
     )
     assert.equal(
       state().hydraMessages?.length,
@@ -815,7 +830,7 @@ test(
     )
     assert.match(
       message.text,
-      /^3 questions waiting on you: /,
+      /^4 questions waiting on you: /,
     )
     assert.ok(message.text.includes('Hydra'))
     assert.ok(!message.text.includes('Publish the cursor schema?'))
@@ -844,13 +859,19 @@ test(
       new Set(posted.data.reminderQuestions),
       new Set([
         questionKey,
+        sameTaskKey,
         `${state().keys.other}:${otherQuestion.ask}`,
         `${HYDRA_CARD}:${globalQuestion.ask}`,
       ]),
     )
-    assert.equal(
-      state().questionReminders?.[questionKey],
-      later,
+    assert.deepEqual(
+      state().questionReminders,
+      {
+        [questionKey]: later,
+        [sameTaskKey]: later,
+        [`${state().keys.other}:${otherQuestion.ask}`]: later,
+        [`${HYDRA_CARD}:${globalQuestion.ask}`]: later,
+      },
     )
     const complete = readFileSync(join(
       dir,
@@ -909,6 +930,10 @@ test(
     assert.deepEqual(
       replayed.hydraMessages,
       state().hydraMessages,
+    )
+    assert.deepEqual(
+      replayed.questionReminders,
+      state().questionReminders,
     )
     assert.equal(
       fireReminders({
