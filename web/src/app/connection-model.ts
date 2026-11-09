@@ -30,6 +30,9 @@ export interface Scope {
   failed: boolean
   restoredSaves: boolean
   error: string
+  loadError: string
+  subscriptionTimer?: ReturnType<typeof setTimeout>
+  subscriptionAttempt: number
   thread: ThreadPage | null
   queue: HydraQueue
   spend: Record<string, TaskSpend>

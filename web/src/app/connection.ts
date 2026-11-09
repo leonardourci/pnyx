@@ -33,5 +33,6 @@ export function useHydra() {
     navigate: connection.navigate,
     createHydra: connection.create,
     retryHydra: connection.retry,
+    dismissError: connection.dismissError,
   }
 }
