@@ -1,18 +1,99 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import type { Card } from '#tasks/model.ts'
-import { cardLanding, type Link } from './model.ts'
+import type { Ask, Card } from '#tasks/model.ts'
+import { cardLanding, readyForReview, type Link } from './model.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 
-export const mergeApproval = ({
+export function mergeApproval({
+  state,
   card,
   url,
 }: {
+  state?: HydraState
   card: Card
   url: string
-}) =>
-  card.asks?.find(ask => ask.kind === 'merge' && ask.url === url && ask.answered && !ask.closed && ask.choice === 'Merge')
+}) {
+  const question = canonicalMergeQuestion({
+    state,
+    card,
+    url,
+  })?.ask
+
+  return question?.answered && !question.closed && question.choice === 'Merge' ? question : undefined
+}
+
+export function canonicalMergeQuestion({
+  state,
+  cards: linkedCards,
+  card,
+  url,
+}: {
+  state?: HydraState
+  cards?: Record<string, Card>
+  card: Card
+  url: string
+}) {
+  const cards = Object.values(state?.cards ?? linkedCards ?? { [card.id]: card })
+  const questions = cards.flatMap(card => (card.asks ?? [])
+    .filter(ask => ask.kind === 'merge' && ask.url === url)
+    .map(ask => {
+      const decisionAt = Math.max(
+        Date.parse(ask.at),
+        Date.parse(ask.answeredAt ?? ask.at),
+        Date.parse(ask.reaskedAt ?? ask.at),
+      )
+
+      return {
+        card,
+        ask,
+        decisionAt,
+        activeAt: Math.max(
+          decisionAt,
+          Date.parse(ask.closed?.at ?? ask.at),
+        ),
+      }
+    }))
+  const latest = questions.toSorted((
+    a,
+    b,
+  ) => b.decisionAt - a.decisionAt || a.ask.id.localeCompare(b.ask.id))[0]
+
+  // Retiring an older alias must not hide a newer pending decision.
+  if (latest && !latest.ask.answered && !latest.ask.closed) {
+    return latest
+  }
+
+  return questions.sort((
+    a,
+    b,
+  ) => b.activeAt - a.activeAt || a.ask.id.localeCompare(b.ask.id))[0]
+}
+
+export function isCanonicalQuestion({
+  state,
+  cards,
+  card,
+  ask,
+}: {
+  state?: HydraState
+  cards?: Record<string, Card>
+  card: Card
+  ask: Ask
+}): boolean {
+  if (ask.kind !== 'merge' || !ask.url) {
+    return true
+  }
+
+  const canonical = canonicalMergeQuestion({
+    state,
+    cards,
+    card,
+    url: ask.url,
+  })
+
+  return canonical?.card.id === card.id && canonical.ask.id === ask.id
+}
 
 export function reconcileAsks({
   state,
@@ -23,15 +104,19 @@ export function reconcileAsks({
 }): HydraEvent[] {
   const card = state.cards[event.cardId]
 
-  if (!card || isManagedTask({ card }) || state.config?.hydra.kind === 'firstmate') {
+  if (!card || isManagedTask({ card }) || state.config?.hydra.kind === 'firstmate'
+    || event.type === 'task.ask.closed') {
     return []
   }
 
   const changes: HydraEvent[] = []
-  const ended = card.status?.state === 'done' || !!card.outcome?.closed
-  const requests = card.links.filter(link => link.kind === 'github_pr')
-  const allSettled = requests.length > 0
-    && requests.every(link => link.state === 'merged' || link.state === 'closed')
+  const declaredDone = event.type === 'task.declared' && event.data.state === 'done'
+    && card.kind !== 'investigation' && card.status?.actor !== 'pnyx'
+  const cancelled = event.type === 'card.outcome' && event.data.after?.closed === true
+  const movedDone = event.type === 'card.moved' && event.actor !== 'pnyx'
+    && card.kind !== 'investigation' && event.data.before !== event.data.after && state.config?.columns
+    .some(column => column.id === card.column && column.role === 'done')
+  const ended = declaredDone || cancelled || movedDone
 
   for (const ask of openAsks({
     card,
@@ -43,7 +128,7 @@ export function reconcileAsks({
 
     const link = card.links.find(link => link.url === ask.url)
     const settled = link?.state === 'merged' || link?.state === 'closed'
-    const moot = ask.url ? settled : allSettled
+    const moot = ask.kind === 'merge' && settled
 
     const released = ask.kind === 'go' && ask.hold?.id !== card.hold?.id
 
@@ -72,11 +157,11 @@ export function reconcileAsks({
     })
 
     if ('event' in closed) {
-      return [closed.event]
+      changes.push(closed.event)
     }
   }
 
-  if (event.type !== 'card.linked' || ended) {
+  if (event.type !== 'card.linked' || card.status?.state === 'done' || card.outcome?.closed) {
     return changes
   }
 
@@ -85,8 +170,13 @@ export function reconcileAsks({
     card,
     projects: state.projects ?? [],
   })?.merge === 'owner'
-  const ready = link?.kind === 'github_pr' && link.state === 'open' && link.draft === false
-  const alreadyAsked = card.asks?.some(ask => ask.kind === 'merge' && ask.url === link?.url)
+  const ready = link && readyForReview({ link })
+  const existing = link && canonicalMergeQuestion({
+    state,
+    card,
+    url: link.url,
+  })
+  const alreadyAsked = existing && !existing.ask.closed
 
   if (!ready || !ownerMerges || alreadyAsked) {
     return changes
@@ -162,7 +252,7 @@ function mergeQuestion({
     audience: 'owner',
     kind: 'merge',
     url: link.url,
-    question: `Review and merge PR #${number}?`,
+    question: `Ready for review: PR #${number}`,
     context: context.join('\n'),
     options: [
       { label: 'Merge' },

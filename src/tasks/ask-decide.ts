@@ -8,6 +8,8 @@ import { findCard } from './push-rules.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { isManagedTask } from './select.ts'
 import { askWording, openAsks, pendingAnswer } from './ask-state.ts'
+import { clarificationMessage } from './question-actions.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500
@@ -55,7 +57,7 @@ const askableTask = ({
     ref,
   })
 
-  if (isManagedTask({ card })) {
+  if (isManagedTask({ card }) && card.id !== HYDRA_CARD) {
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
@@ -149,6 +151,10 @@ export function decideAsk({
   })
 
   let origin: Ask['origin']
+
+  if (card.id === HYDRA_CARD && audience !== 'owner') {
+    throw invalid({ message: 'A Hydra-wide question goes to the owner; workers ask on their own task' })
+  }
 
   if (fromReport !== undefined) {
     if (audience !== 'owner') {
@@ -455,6 +461,10 @@ export function askAnswer({
       text: message.text,
       at: message.at,
     }
+
+    if (clarificationMessage({ message })) {
+      throw invalid({ message: 'A clarification is not an answer; keep the question open and explain it' })
+    }
   }
 
   if (ask.audience === 'owner' && actor === HYDRA_ACTOR && !source) {
@@ -490,12 +500,14 @@ export function askAnswer({
   }
 
   const heldMerge = answeredMergeHold({ ask })
-  const liftsHold = heldMerge && actor === HYDRA_ACTOR && !!source && label === 'Merge'
+  const ownerChoice = ownerActor({ actor }) && !undelivered
+  const relayedChoice = actor === HYDRA_ACTOR && !!source
+  const liftsHold = heldMerge && label === 'Merge' && (ownerChoice || relayedChoice)
 
   const newerThanHold = source && ask.answeredAt
     && Date.parse(source.at) > Date.parse(ask.answeredAt)
 
-  if (liftsHold && !newerThanHold) {
+  if (liftsHold && source && !newerThanHold) {
     throw invalid({ message: 'the owner’s message must be newer than the Hold answer' })
   }
 
@@ -628,6 +640,15 @@ export function decideAskClosure({
     card,
     ask,
   })
+
+  if (ask.audience === 'owner' && !ask.origin && !ask.kind) {
+    throw invalid({ message: 'This owner question remains open until answered or its task explicitly finishes' })
+  }
+
+  if (ask.kind === 'merge' && !card.links.some(link =>
+    link.url === ask.url && (link.state === 'merged' || link.state === 'closed'))) {
+    throw invalid({ message: 'A merge question remains open until its own pull request merges or closes, or the owner answers it' })
+  }
 
   return hydraEvent({
     state,

@@ -231,6 +231,8 @@ function catchUp({
   const archived = db.prepare('SELECT 1 FROM docs WHERE session = ? AND line = ? AND source = ? LIMIT 1')
   const nativeCopies = db.prepare('SELECT id, card FROM docs WHERE session = ? AND line = ? AND source <> ?')
   const dropDoc = db.prepare('DELETE FROM docs WHERE id = ?')
+  const dropEvent = db.prepare('DELETE FROM docs WHERE source = ? AND pos = ?')
+  const state = loadHydra({ hydraId }).state
   // Cards whose card_fts row no longer matches their chunks, title or link titles.
   const dirty = new Set<string>()
   // ponytail: words of dropped chunks stay in terms; a typo may expand to a word that no longer matches.
@@ -387,6 +389,16 @@ function catchUp({
             })
           }
         } else if (event.type === 'chat.message') {
+          const replaced = event.data.replaces ? state.eventIds[event.data.replaces] : undefined
+
+          if (replaced !== undefined) {
+            dropEvent.run(
+              EVENTS,
+              replaced,
+            )
+            dirty.add(event.cardId === HYDRA_CARD ? '$board' : event.cardId)
+          }
+
           add({
             card: event.cardId,
             kind: 'transcript',
@@ -435,7 +447,6 @@ function catchUp({
         seq: read.events.at(-1)?.seq ?? cursor.seq,
       })
 
-      const state = loadHydra({ hydraId }).state
       const hydra = state.cards[HYDRA_CARD]
       const hydraSession = hydra ? cardSessionId({ card: hydra }) : undefined
       let transcripts = 0
@@ -593,7 +604,15 @@ export interface TranscriptRead {
 // inode) or one shorter than the cursor is read again from the start. Null when
 // the file is missing or unreadable, so the cursor waits for it.
 // ponytail: reads the unread tail in one buffer; stream it if transcripts grow past memory.
-export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'identity' | 'pos'> }): TranscriptRead | null {
+export function readTranscript({
+  cursor,
+  through,
+  maxBytes,
+}: {
+  cursor: Pick<Cursor, 'source' | 'identity' | 'pos'>
+  through?: number
+  maxBytes?: number
+}): TranscriptRead | null {
   let fd: number
 
   try {
@@ -610,7 +629,18 @@ export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'id
     const identity = `${stat.dev}:${stat.ino}`
     const reset = (cursor.identity !== '' && cursor.identity !== identity) || stat.size < cursor.pos
     const from = reset ? 0 : cursor.pos
-    const buf = Buffer.alloc(stat.size - from)
+    const admittedEnd = through ?? stat.size
+    const available = Math.max(
+      0,
+      Math.min(
+        stat.size,
+        admittedEnd,
+      ) - from,
+    )
+    let buf = Buffer.alloc(Math.min(
+      available,
+      maxBytes ?? available,
+    ))
     readSync(
       fd,
       buf,
@@ -618,6 +648,25 @@ export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'id
       buf.length,
       from,
     )
+
+    // A batch can exceed its byte budget only to finish its first native record.
+    while (!buf.includes(10) && buf.length < available) {
+      buf = Buffer.alloc(Math.min(
+        available,
+        Math.max(
+          1,
+          buf.length * 2,
+        ),
+      ))
+      readSync(
+        fd,
+        buf,
+        0,
+        buf.length,
+        from,
+      )
+    }
+
     const complete = buf.lastIndexOf(10) + 1
     const lines: TranscriptRead['lines'] = []
 

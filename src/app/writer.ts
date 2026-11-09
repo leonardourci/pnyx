@@ -534,7 +534,13 @@ export function eventWriter({
           state,
           event,
         })) {
-          writer.append({ event: question })
+          // Earlier questions can append lifecycle events before the next closure.
+          writer.append({
+            event: {
+              ...question,
+              seq: state.seq + 1,
+            },
+          })
         }
 
         for (const declaration of operationDeclarations({

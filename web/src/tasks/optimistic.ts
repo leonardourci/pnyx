@@ -196,6 +196,31 @@ export function optimisticState({
   }
 
   if (name === 'task' && card) {
+    if (action === 'defer-question') {
+      const question = card.asks?.find(ask => ask.id === args[2])
+      const until = option({ flag: '--until' })
+
+      if (!question || question.audience !== 'owner' || question.answered || question.closed || !until) {
+        return state
+      }
+
+      const deferred = { ...question }
+      delete deferred.deferredUntil
+      delete deferred.deferredFromMessage
+
+      if (until !== 'clear') {
+        if (!Number.isFinite(Date.parse(until))) {
+          return state
+        }
+
+        deferred.deferredUntil = until
+      }
+
+      const asks = card.asks?.map(ask => ask.id === question.id ? deferred : ask)
+
+      return update({ patch: { asks } })
+    }
+
     if (action === 'rename') {
       const title = option({ flag: '--title' }), project = option({ flag: '--project' })
 

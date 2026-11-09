@@ -15,6 +15,7 @@ import { taskMentions } from '#hydra/mentions.ts'
 import { fireReminders } from './fire-reminders.ts'
 import { reminderDeadline, waitingReminders } from './reminders.ts'
 import { reminderTime } from './time.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const hydraId = 'reminders'
 const now = '2026-10-15T12:00:00.000Z'
@@ -66,6 +67,52 @@ afterEach(() => {
     },
   )
 })
+
+test(
+  'malformed saved dates cannot block another reminder or poison an empty deadline',
+  async () => {
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+      ],
+    })
+    const saved = state()
+    const broken = structuredClone(task())
+    broken.id = 'malformed-task'
+    broken.key = 'malformed'
+    broken.reminder = {
+      id: 'malformed-reminder',
+      at: 'not a date',
+    }
+    saved.cards[broken.id] = broken
+    assert.equal(
+      reminderDeadline({ state: saved }),
+      Date.parse(later),
+    )
+    delete broken.reminder
+    broken.asks = [
+      {
+        id: 'malformed-deferral',
+        at: now,
+        actor: 'hydra',
+        audience: 'owner',
+        question: 'Choose a format?',
+        deferredUntil: 'not a date',
+      },
+    ]
+    assert.equal(
+      reminderDeadline({ state: saved }),
+      Date.parse(later),
+    )
+    delete saved.cards[saved.keys.work!]!.reminder
+    assert.equal(
+      reminderDeadline({ state: saved }),
+      undefined,
+    )
+  },
+)
 
 test(
   'reminder times are explicit, future, timezone-aware, and tomorrow means local 9:00',
@@ -493,15 +540,11 @@ test(
     })
     await run({
       args: [
-        'close-question',
+        'status',
         'choice',
-        closed.id,
-        '--actor',
-        'hydra',
-        '--reason',
-        'The choice is superseded',
-        '--evidence',
-        'The synthetic specification removed the field',
+        'done',
+        '--note',
+        'The choice work is finished',
       ],
     })
     assert.equal(
@@ -725,15 +768,55 @@ test(
         'No',
       ],
     })
+    const sameTaskQuestion = await run({
+      args: [
+        'ask',
+        'work',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner chooses',
+        '--question',
+        'Which cursor naming convention?',
+      ],
+    })
+    const otherQuestion = await run({
+      args: [
+        'ask',
+        'other',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner chooses',
+        '--question',
+        'Which schema version?',
+      ],
+    })
+    const globalQuestion = await commands.hydra([
+      'ask',
+      '--question',
+      'Which Hydra preference?',
+      '--actor',
+      'hydra',
+      '--reason',
+      'The owner chooses',
+      '--hydra',
+      hydraId,
+    ])
     const ask = task().asks?.[0]
     assert.ok(ask)
     const questionKey = `${task().id}:${ask.id}`
+    const sameTaskKey = `${task().id}:${sameTaskQuestion.ask}`
     assert.equal(
       fireReminders({
         hydraId,
         at: later,
       }),
-      3,
+      6,
     )
     assert.equal(
       state().hydraMessages?.length,
@@ -743,8 +826,14 @@ test(
     assert.ok(message)
     assert.equal(
       message.text.split('\n').length,
-      2,
+      1,
     )
+    assert.match(
+      message.text,
+      /^4 questions waiting on you: /,
+    )
+    assert.ok(message.text.includes('Hydra'))
+    assert.ok(!message.text.includes('Publish the cursor schema?'))
     assert.equal(
       taskMentions({ text: message.text }).length,
       2,
@@ -767,12 +856,22 @@ test(
     const posted = batch.events.find(event => event.type === 'hydra.message')
     assert.ok(posted?.type === 'hydra.message')
     assert.deepEqual(
-      posted.data.reminderQuestions,
-      [questionKey],
+      new Set(posted.data.reminderQuestions),
+      new Set([
+        questionKey,
+        sameTaskKey,
+        `${state().keys.other}:${otherQuestion.ask}`,
+        `${HYDRA_CARD}:${globalQuestion.ask}`,
+      ]),
     )
-    assert.equal(
-      state().questionReminders?.[questionKey],
-      later,
+    assert.deepEqual(
+      state().questionReminders,
+      {
+        [questionKey]: later,
+        [sameTaskKey]: later,
+        [`${state().keys.other}:${otherQuestion.ask}`]: later,
+        [`${HYDRA_CARD}:${globalQuestion.ask}`]: later,
+      },
     )
     const complete = readFileSync(join(
       dir,
@@ -831,6 +930,10 @@ test(
     assert.deepEqual(
       replayed.hydraMessages,
       state().hydraMessages,
+    )
+    assert.deepEqual(
+      replayed.questionReminders,
+      state().questionReminders,
     )
     assert.equal(
       fireReminders({

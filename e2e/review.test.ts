@@ -4,6 +4,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { startReviewTimer, REVIEW_MS } from '#hydra/review-timer.ts'
 import { MINUTE_MS, QUESTION_REMINDER_MS } from '#hydra/review.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
+import { taskMentions } from '#hydra/mentions.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 
 // How many times one review is offered while Hydra keeps starting turns.
@@ -274,10 +275,23 @@ test(
         overdue.wakes,
         1,
       )
+      const card = s.task({ key: 'watch' })
       const reminder = s.state().hydraMessages?.find(message => message.actor === 'pnyx'
-        && message.text.includes(merge.id))
+        && message.text.startsWith('1 question waiting on you:')
+        && taskMentions({ text: message.text }).some(mention => mention.id === card.id))
       assert.ok(reminder)
-      assert.ok(reminder.text.includes(url))
+      assert.deepEqual(
+        taskMentions({ text: reminder.text }).map(mention => mention.id),
+        [card.id],
+      )
+      assert.equal(
+        reminder.text.includes(merge.id),
+        false,
+      )
+      assert.equal(
+        reminder.text.includes(url),
+        false,
+      )
       const reminderEvent = s.events().find(event => event.id === reminder.id)
       assert.ok(reminderEvent)
       assert.deepEqual(
@@ -468,8 +482,9 @@ test(
       )
       assert.match(
         reminder.text,
-        /May I merge this change\?/,
+        /1 question waiting on you:/,
       )
+      assert.ok(!reminder.text.includes('May I merge this change?'))
       assert.equal(
         reminder.actor,
         'pnyx',
@@ -485,7 +500,7 @@ test(
         reminder.text.split('\n').length,
         2,
       )
-      assert.ok(reminder.text.endsWith('…'))
+      assert.ok(reminder.text.includes('…'))
       assert.ok(s.task({ key: 'choice' }).asks?.[0]?.question.includes('compatibility checks'))
       assert.ok(s.state().questionReminders?.[`${task.id}:${ask.id}`])
       assert.equal(

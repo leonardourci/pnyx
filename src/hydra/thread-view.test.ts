@@ -8,6 +8,42 @@ import { emptyHydra, reduce } from '#app/reducer.ts'
 import { readThread, recordEntries, splitEntry, type ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveReplies } from '#workers/streaming.ts'
+import { joinMessageParts } from './history.ts'
+
+test(
+  'transport chunks preserve redacted offsets when a word crosses their boundary',
+  () => {
+    const text = `${'a'.repeat(999)}Xsk-${'b'.repeat(40)}${' z'.repeat(1000)}`
+    const parts = splitEntry({
+      entry: {
+        id: 'tool',
+        kind: 'tool',
+        role: 'Read',
+        text,
+      },
+    })
+    const archived = parts.flatMap(entry => splitEntry({ entry }))
+    assert.equal(
+      joinMessageParts({ entries: archived }).length,
+      1,
+    )
+    assert.equal(
+      joinMessageParts({ entries: archived })[0]?.text,
+      text,
+    )
+    assert.equal(
+      splitEntry({
+        entry: {
+          id: 'secret',
+          kind: 'message',
+          role: 'assistant',
+          text: `sk-${'a'.repeat(40)}`,
+        },
+      })[0]?.text,
+      '[redacted]',
+    )
+  },
+)
 
 // The saved and live Hydra pages of a recorded session, whose transcript holds tool calls.
 function recordedPages({
@@ -91,7 +127,7 @@ function recordedPages({
 }
 
 test(
-  'the Claude Code Hydra thread excludes tools in saved and live pages',
+  'the Claude Code Hydra thread keeps tools in saved and live pages',
   t => {
     assert.deepEqual(
       recordedPages({
@@ -103,6 +139,8 @@ test(
         saved: [
           'message',
           'message',
+          'tool',
+          'tool',
           'message',
           'message',
           'message',
@@ -111,6 +149,8 @@ test(
         live: [
           'message',
           'message',
+          'tool',
+          'tool',
           'message',
           'message',
           'message',
@@ -123,7 +163,7 @@ test(
 )
 
 test(
-  'the Codex Hydra thread excludes tools in saved and live pages',
+  'the Codex Hydra thread keeps tools in saved and live pages',
   t => {
     assert.deepEqual(
       recordedPages({
@@ -134,10 +174,14 @@ test(
       {
         saved: [
           'message',
+          'tool',
+          'tool',
           'message',
         ],
         live: [
           'message',
+          'tool',
+          'tool',
           'message',
           'message',
         ],
@@ -457,7 +501,7 @@ test(
 )
 
 test(
-  'terminal and unknown provider replies stay visible while continuation text stays hidden',
+  'terminal, continuation and unknown provider text all remain available',
   () => {
     const reply = ({ record }: { record: unknown }) => hydraThreadView({
       state: emptyHydra(),
@@ -553,11 +597,17 @@ test(
     )
     assert.deepEqual(
       claude({ stop: 'tool_use' }),
-      ['Please check'],
+      [
+        'Please check',
+        'A response',
+      ],
     )
     assert.deepEqual(
       claude({ stop: 'pause_turn' }),
-      ['Please check'],
+      [
+        'Please check',
+        'A response',
+      ],
     )
     assert.deepEqual(
       codex({ phase: 'final_answer' }),
@@ -589,7 +639,10 @@ test(
     )
     assert.deepEqual(
       codex({ phase: 'commentary' }),
-      ['Please check'],
+      [
+        'Please check',
+        'A response',
+      ],
     )
   },
 )

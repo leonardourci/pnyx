@@ -51,6 +51,144 @@ const action = ({
 })
 
 test(
+  'internal commentary survives a quiet ending and keeps every progress record',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      transcript: [
+        {
+          ...entry({
+            id: 'wake',
+            minute: 0,
+            role: 'user',
+            text: '',
+          }),
+          hidden: true,
+        },
+        {
+          ...entry({
+            id: 'first',
+            minute: 1,
+          }),
+          final: false,
+        },
+        {
+          ...entry({
+            id: 'second',
+            minute: 2,
+          }),
+          final: false,
+        },
+        {
+          ...entry({
+            id: 'quiet',
+            minute: 3,
+            text: 'NO_REPLY',
+          }),
+          final: true,
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.id),
+      ['second'],
+    )
+    assert.deepEqual(
+      result.folds.get('second')?.notes.map(item => item.id),
+      ['first'],
+    )
+  },
+)
+
+test(
+  'progress and tools retain their order between multiple completed replies',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      transcript: [
+        entry({
+          id: 'owner',
+          minute: 0,
+          role: 'user',
+        }),
+        {
+          ...entry({
+            id: 'first-note',
+            minute: 1,
+          }),
+          final: false,
+        },
+        {
+          ...entry({
+            id: 'first-tool',
+            minute: 2,
+            role: 'Read',
+          }),
+          kind: 'tool',
+        },
+        {
+          ...entry({
+            id: 'first-reply',
+            minute: 3,
+          }),
+          final: true,
+        },
+        {
+          ...entry({
+            id: 'second-note',
+            minute: 4,
+          }),
+          final: false,
+        },
+        {
+          ...entry({
+            id: 'second-reply',
+            minute: 5,
+          }),
+          final: true,
+        },
+        {
+          ...entry({
+            id: 'last-tool',
+            minute: 6,
+            role: 'Read',
+          }),
+          kind: 'tool',
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.id),
+      [
+        'owner',
+        'first-reply',
+        'second-reply',
+        'last-tool',
+      ],
+    )
+    assert.deepEqual(
+      result.folds.get('first-reply')?.notes.map(item => item.id),
+      [
+        'first-note',
+        'first-tool',
+      ],
+    )
+    assert.deepEqual(
+      result.folds.get('second-reply')?.notes.map(item => item.id),
+      ['second-note'],
+    )
+  },
+)
+
+test(
   'owner progress stays visible when a streamed message reaches the native transcript',
   () => {
     const owner = entry({
@@ -130,7 +268,7 @@ test(
       ],
     )
     assert.deepEqual(
-      recorded.folds.get(saved[0]!.id)?.notes.map(entry => entry.text),
+      recorded.folds.get('completed')?.notes.map(entry => entry.text),
       ['Preparing the count'],
     )
     const finished = conversation({
@@ -157,10 +295,7 @@ test(
     )
     assert.deepEqual(
       finished.folds.get('answer')?.notes.map(entry => entry.text),
-      [
-        'Preparing the count',
-        'Checking the pebbles',
-      ],
+      ['Checking the pebbles'],
     )
   },
 )
@@ -187,11 +322,14 @@ test(
           minute: 1,
           text: 'Agreed, I sent it to the worker.',
         }),
-        entry({
-          id: 'quiet',
-          minute: 3,
-          text: quiet,
-        }),
+        {
+          ...entry({
+            id: 'quiet',
+            minute: 3,
+            text: quiet,
+          }),
+          streaming: working,
+        },
       ],
       actions: [
         action({
@@ -236,7 +374,7 @@ test(
 )
 
 test(
-  'an internal wake remains an invisible boundary even when its words are stripped',
+  'an internal wake hides its input while preserving assistant commentary',
   () => {
     const wake = recordEntries({
       record: {
@@ -295,6 +433,7 @@ test(
       [
         'owner',
         'reply',
+        'reading',
       ],
     )
     assert.equal(
@@ -305,7 +444,7 @@ test(
 )
 
 test(
-  'live internal turns hide their text before the transcript has recorded the input',
+  'live internal commentary remains visible before the transcript records its input',
   () => {
     const transcript = [
       entry({
@@ -344,6 +483,7 @@ test(
       [
         'owner',
         'reply',
+        'live-report-progress',
       ],
     )
     assert.equal(
@@ -437,6 +577,138 @@ test(
         latest: newSession,
       }).entries,
       entries.slice(-1),
+    )
+  },
+)
+
+test(
+  'mixed native blocks keep thinking and tool progress before the text that follows them',
+  () => {
+    const entries = recordEntries({
+      offset: 0,
+      record: {
+        type: 'assistant',
+        timestamp: at({ minute: 1 }),
+        message: {
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Reason before answering',
+            },
+            {
+              type: 'text',
+              text: 'First response',
+            },
+            {
+              type: 'tool_use',
+              id: 'inspect',
+              name: 'Read',
+              input: { file_path: 'release.txt' },
+            },
+            {
+              type: 'text',
+              text: 'Final response',
+            },
+          ],
+        },
+      },
+    })
+    const conversation = hydraConversation({
+      messages: [],
+      columns: [],
+      working: false,
+      transcript: [
+        entry({
+          id: 'owner',
+          minute: 0,
+          role: 'You',
+        }),
+        ...entries,
+      ],
+      actions: [],
+      thinking: true,
+    })
+    const rendered = conversation.entries.flatMap(item => [
+      ...(conversation.folds.get(item.id)?.notes ?? []),
+      item,
+    ])
+    assert.deepEqual(
+      rendered.map(item => item.text),
+      [
+        'owner',
+        'Reason before answering',
+        'First response',
+        '{"file_path":"release.txt"}',
+        'Final response',
+      ],
+    )
+    assert.deepEqual(
+      entries.map(item => item.id),
+      [
+        '0:t0',
+        '0:m0',
+        '0:t2',
+        '0:m1',
+      ],
+    )
+  },
+)
+
+test(
+  'quiet reply prefixes hide only while streaming',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      actions: [],
+      columns: [],
+      working: false,
+      thinking: false,
+      transcript: [
+        {
+          id: 'partial',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO',
+          streaming: true,
+        },
+        {
+          id: 'no',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO',
+          final: true,
+        },
+        {
+          id: 'n',
+          kind: 'message',
+          role: 'assistant',
+          text: 'N',
+          final: true,
+        },
+        {
+          id: 'quiet',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO_REPLY',
+          final: true,
+        },
+        {
+          id: 'explain',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO_REPLY is a marker',
+          final: true,
+        },
+      ],
+    })
+    assert.deepEqual(
+      result.entries.map(entry => entry.text),
+      [
+        'NO',
+        'N',
+        'NO_REPLY is a marker',
+      ],
     )
   },
 )

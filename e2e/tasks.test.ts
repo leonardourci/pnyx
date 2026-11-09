@@ -830,7 +830,7 @@ test(
 )
 
 test(
-  'a card carries its Intent until Hydra rewrites it for a changed goal, follows the worker\'s newest words and asks you to merge',
+  'a card keeps its Intent, follows the worker\'s newest words and shows review readiness',
   async () => {
     const s = await pnyx.scenario()
     const app = await s.project({ name: 'card-context-app' })
@@ -950,7 +950,7 @@ test(
         ],
       })
       await page.shows({
-        what: 'the merge question reading Needs you',
+        what: 'the linked change reading Ready for review',
         check: ({ state }) => {
           const task = card({ state })!
           const merge = task.asks?.filter(ask => ask.kind === 'merge').map(ask => ask.id) ?? []
@@ -958,7 +958,7 @@ test(
           return merge.length === 1
             && waitingQuestions({ card: task }).map(question => question.ask?.id)
               .join() === merge.join()
-            && statusLabel({ status: cardStatus({ card: task }) }) === 'Needs you'
+            && statusLabel({ status: cardStatus({ card: task }) }) === 'Ready for review'
         },
       })
       assert.deepEqual(

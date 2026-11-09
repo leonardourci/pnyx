@@ -615,7 +615,7 @@ test(
     })
     assert.equal(
       held.question,
-      'Review and merge PR #148?',
+      'Ready for review: PR #148',
     )
     assert.ok(held.context)
     assert.ok(held.context.includes(heldUrl))
@@ -782,6 +782,42 @@ test(
     await s.owner({
       args: [
         'task',
+        'create',
+        '--title',
+        'Review the green change',
+        '--key',
+        'green-review',
+        '--project',
+        app,
+      ],
+    })
+    await s.owner({
+      args: [
+        'link',
+        'green-review',
+        '--url',
+        url,
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'green-review' }).asks?.length ?? 0,
+      0,
+    )
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'merge',
+          'green-review',
+          '--reason',
+          'Approval is still pending',
+        ],
+      }),
+      'FORBIDDEN',
+    )
+    await s.owner({
+      args: [
+        'task',
         'answer',
         'green',
         ask.id,
@@ -801,10 +837,18 @@ test(
       args: [
         'task',
         'merge',
-        'green',
+        'green-review',
         '--reason',
         'The owner approved the green pull request',
       ],
+    })
+    assert.equal(
+      s.task({ key: 'green-review' }).links[0]?.state,
+      'merged',
+    )
+    await until({
+      what: 'the same confirmed merge on the canonical task',
+      check: () => s.task({ key: 'green' }).column === s.column({ role: 'done' }),
     })
     assert.equal(
       s.task({ key: 'green' }).column,

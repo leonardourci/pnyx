@@ -7,6 +7,7 @@ import { HydraError } from '#store/errors.ts'
 import { reminderInterval } from './time.ts'
 import { cloneValue } from '#app/preimage.ts'
 import { cardFacts } from './columns.ts'
+import { deferredQuestions } from './ask-state.ts'
 
 const REMINDER_WORD_LIMIT = 30
 const TITLE_WORD_LIMIT = 10
@@ -27,6 +28,16 @@ function reminderExcerpt({
   return words.length > limit ? `${text}…` : text
 }
 
+export function reminderTaskMention({ card }: { card: Pick<Card, 'id' | 'title'> }): string {
+  return taskMention({
+    id: card.id,
+    title: reminderExcerpt({
+      words: card.title.trim().split(/\s+/),
+      limit: TITLE_WORD_LIMIT,
+    }),
+  })
+}
+
 export function reminderMessage({
   card,
   detail = 'is due.',
@@ -35,14 +46,7 @@ export function reminderMessage({
   detail?: string
 }): string {
   const titleWords = card.title.trim().split(/\s+/)
-  const title = reminderExcerpt({
-    words: titleWords,
-    limit: TITLE_WORD_LIMIT,
-  })
-  const mention = taskMention({
-    id: card.id,
-    title,
-  })
+  const mention = reminderTaskMention({ card })
   const remaining = REMINDER_WORD_LIMIT - REMINDER_PREFIX_WORDS - Math.min(
     titleWords.length,
     TITLE_WORD_LIMIT,
@@ -216,9 +220,27 @@ export function stopReminders({
 }
 
 export function reminderDeadline({ state }: { state: HydraState }): number | undefined {
-  const at = waitingReminders({ state })[0]?.at
+  const deadlines = deferredQuestions({ state }).map(question => question.at)
+    .filter(Number.isFinite)
 
-  return at ? Date.parse(at) : undefined
+  for (const card of Object.values(state.cards)) {
+    const reminder = card.reminder
+
+    if (reminder && (!reminder.dueAt || reminder.repeat)) {
+      const question = card.asks?.find(ask => ask.id === reminder.repeat?.question)
+      const activeAt = question?.deferredUntil ?? reminder.at
+      const deadline = Math.max(
+        Date.parse(reminder.at),
+        Date.parse(activeAt),
+      )
+
+      if (Number.isFinite(deadline)) {
+        deadlines.push(deadline)
+      }
+    }
+  }
+
+  return deadlines.length ? Math.min(...deadlines) : undefined
 }
 
 export function applyReminder({

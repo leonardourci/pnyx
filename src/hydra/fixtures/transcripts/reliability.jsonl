@@ -1,0 +1,7 @@
+{"type":"user","timestamp":"2026-10-22T10:00:00.000Z","message":{"content":"Check the synthetic release."}}
+{"type":"assistant","timestamp":"2026-10-22T10:00:01.000Z","message":{"id":"synthetic-progress","stop_reason":"tool_use","content":[{"type":"text","text":"Checking the release."},{"type":"tool_use","id":"check-release","name":"Read","input":{"file_path":"release.txt"}}]}}
+{"type":"user","timestamp":"2026-10-22T10:00:02.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"check-release","content":"All checks passed."}]}}
+{"type":"assistant","timestamp":"2026-10-22T10:00:03.000Z","message":{"stop_reason":"end_turn","content":"The release is ready."}}
+{"type":"user","timestamp":"2026-10-22T10:00:04.000Z","message":{"content":"<pnyx-wake>Check the synthetic helper outcome.</pnyx-wake>"}}
+{"type":"assistant","timestamp":"2026-10-22T10:00:05.000Z","message":{"stop_reason":"tool_use","content":"A helper result is ready."}}
+{"type":"assistant","timestamp":"2026-10-22T10:00:06.000Z","message":{"stop_reason":"end_turn","content":"NO_REPLY"}}

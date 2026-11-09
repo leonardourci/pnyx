@@ -20,6 +20,10 @@ The Claude SDK warning about a shadowed permission callback is logged at most on
 
 The Oracle, thread reader, latest-message feed, reply confirmation and hook harvesting consume that neutral shape. Redaction and display limits stay in their consumers. The browser imports the shared text and call presentation helpers; its bundle does not load the provider adapters.
 
+Hydra chat retains assistant commentary, tool calls and results across quiet endings, session changes and history paging. Progress folds precede the reply they led to. Equal timestamps use native record positions to keep a tool result before its reply. Hidden inputs remain turn boundaries and never appear as owner text. Historical harvesting appends missing traces and boundaries for recorded Hydra sessions without rewriting prior events.
+
+Redaction happens before transport offsets are assigned, so a later read cannot shorten a chunk and break its rejoining. Streaming plain text includes the last received word while incomplete Markdown stays held until it can render. The saved transcript replaces live text without a second message.
+
 ## Usage
 
 Each provider's adapter reads usage from its own transcript format and emits neutral `HostedUsage` events for live readings; `src/workers/usage.ts` picks the transcript reader by harness. Consumers never interpret vendor fields. `src/workers/usage.ts` combines those readings, recorded task totals and quota plan windows into `AgentUsage`. The server pushes that derived shape over the existing WebSocket; both the composer and task card render `web/src/workers/usage.tsx`. The browser keeps spend and usage in a separate live map and merges them into the displayed cards; its saved Hydra state contains only confirmed event state.

@@ -241,7 +241,15 @@ export type HydraChange = EventBase & (
   }
   | {
     type: 'task.asked'
-    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered' | 'answeredAt' | 'fromMessage' | 'choice' | 'closed' | 'mergeHold' | 'reaskedAt' | 'answerRound'>
+    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered' | 'answeredAt' | 'fromMessage' | 'choice' | 'closed' | 'mergeHold' | 'reaskedAt' | 'answerRound' | 'deferredUntil' | 'deferredFromMessage'>
+  }
+  | {
+    type: 'task.ask.deferred'
+    data: {
+      ask: string
+      until: string | null
+      fromMessage?: AnswerMessage
+    }
   }
   | {
     type: 'task.ask.closed'
@@ -384,6 +392,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.asked',
   'task.ask.escalated',
   'task.ask.closed',
+  'task.ask.deferred',
   'task.ask.reopened',
   'task.mirrored',
   'hydra.message',

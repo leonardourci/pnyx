@@ -7,11 +7,13 @@ import { EVENT_VERSION } from '#store/events.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { AgentSession, SessionEvent } from '#workers/model.ts'
 import { cardSessionId, taskForMessage } from '#workers/session-attachments.ts'
-import { transcriptEntries } from '#hydra/transcripts-read.ts'
-import { chatRecordId, recordedChatIds } from '#hydra/chat-records.ts'
+import { transcriptEntries, type ThreadEntry } from '#hydra/transcripts-read.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { chatRecordKey } from '#hydra/chat-events.ts'
+import { chatRecordId, recordedChats } from '#hydra/chat-records.ts'
+import type { ChatEvent } from '#hydra/model.ts'
 import type { Writer } from '#app/writer.ts'
 import { readTranscript } from '#oracle/index.ts'
-import { redact } from '#oracle/text.ts'
 import { codexThreadTitle } from '#workers/codex.ts'
 import type { FoundSettings } from '#workers/provider.ts'
 import { LIVE_HOOK_SETTINGS, observedSettings } from './settings.ts'
@@ -22,7 +24,100 @@ const CURSORS = 'harvest.json'
 type Cursors = Record<string, {
   identity: string
   pos: number
+  conversation?: number
+  backfill?: {
+    pos: number
+    item: number
+    end: number
+  }
 }>
+const CONVERSATION_VERSION = 1
+const BACKFILL_ENTRIES = 32
+const BACKFILL_BYTES = 64 * 1024
+
+function recordChat({
+  writer,
+  entry,
+  session,
+  cardId,
+  agentId,
+  at,
+  recorded,
+  repair = false,
+}: {
+  writer: Writer
+  entry: ThreadEntry
+  session: string
+  cardId: string
+  agentId: string
+  at: string
+  recorded: Map<string, ChatEvent>
+  repair?: boolean
+}) {
+  if (entry.kind === 'divider') {
+    return
+  }
+
+  const messageId = chatRecordId({
+    session,
+    nativeId: entry.id,
+    messageId: entry.messageId,
+    part: entry.part,
+  })
+  const data: ChatEvent['data'] = {
+    session,
+    nativeId: entry.id,
+    block: entry.block,
+    final: entry.final,
+    messageId: entry.messageId,
+    part: entry.part,
+    role: entry.role,
+    kind: entry.kind,
+    hidden: entry.hidden,
+    call: entry.call,
+    text: entry.text,
+  }
+  const key = chatRecordKey({ data })
+  const known = recorded.get(key)
+  const unchanged = known && known.data.text === data.text
+    && known.data.block === data.block && known.data.final === data.final
+    && (known.data.kind ?? 'message') === data.kind
+    && Boolean(known.data.hidden) === Boolean(data.hidden)
+    && known.data.call === data.call && known.data.role === data.role
+
+  if (known && (!repair || unchanged)) {
+    return
+  }
+
+  let id = messageId
+
+  if (known) {
+    data.replaces = known.id
+    id = noteId({
+      cardKey: session,
+      ref: `chat-repair:${messageId}:${JSON.stringify(data)}`,
+    })
+  }
+
+  const event: ChatEvent = {
+    v: EVENT_VERSION,
+    seq: writer.state.seq + 1,
+    id,
+    at: entry.at ?? at,
+    actor: `session:${session}`,
+    cardId,
+    agentId,
+    type: 'chat.message',
+    sessionId: session,
+    messageId,
+    data,
+  }
+  writer.append({ event })
+  recorded.set(
+    key,
+    event,
+  )
+}
 
 function readCursors({ dir }: { dir: string }): Cursors {
   try {
@@ -205,7 +300,7 @@ export function harvestTranscripts({
   const cursors = readCursors({ dir: writer.dir })
   let appended = 0
   let moved = false
-  const recorded = new Set(recordedChatIds({ dir: writer.dir }))
+  const recorded = recordedChats({ dir: writer.dir })
 
   for (const id of cardIds) {
     const path = detached?.session.agent.transcriptPath
@@ -279,46 +374,26 @@ export function harvestTranscripts({
         for (const entry of transcriptEntries({
           parsed,
           offset: line.pos,
-        }).filter(e => e.kind === 'message')) {
-          const messageId = chatRecordId({
-            session,
-            nativeId: entry.id,
-            messageId: entry.messageId,
-            part: entry.part,
-          })
-
-          const known = recorded.has(messageId) || messageId in writer.state.eventIds
-
-          if (!known) {
-            writer.append({
-              event: {
-                v: EVENT_VERSION,
-                seq: writer.state.seq + 1,
-                id: messageId,
-                at: entry.at ?? at,
-                actor: `session:${session}`,
-                cardId: detached ? taskForMessage({
-                  memberships: detached.memberships,
-                  fallback: detached.task,
-                  at: entry.at,
-                }) : id,
-                agentId: `${agent!.provider}:${agent!.agentId ?? agent!.sessionId}`,
-                type: 'chat.message',
-                sessionId: session,
-                messageId,
-                data: {
-                  session,
-                  nativeId: entry.id,
-                  final: entry.final,
-                  messageId: entry.messageId,
-                  part: entry.part,
-                  role: entry.role,
-                  text: redact({ text: entry.text }),
-                },
-              },
-            })
-            recorded.add(messageId)
+          boundaries: id === HYDRA_CARD,
+        })) {
+          if (id !== HYDRA_CARD && entry.kind !== 'message') {
+            continue
           }
+
+          const cardId = detached ? taskForMessage({
+            memberships: detached.memberships,
+            fallback: detached.task,
+            at: entry.at,
+          }) : id
+          recordChat({
+            writer,
+            entry,
+            session,
+            cardId,
+            agentId: `${agent!.provider}:${agent!.agentId ?? agent!.sessionId}`,
+            at,
+            recorded,
+          })
         }
       }
 
@@ -405,6 +480,11 @@ export function harvestTranscripts({
     cursors[name] = {
       identity: tail.identity,
       pos: tail.end,
+      conversation: id === HYDRA_CARD
+        ? cursors[name]?.conversation
+          ?? (tail.reset || !cursors[name] ? CONVERSATION_VERSION : undefined)
+        : undefined,
+      backfill: cursors[name]?.backfill,
     }
     moved = true
   }
@@ -417,4 +497,118 @@ export function harvestTranscripts({
   }
 
   return appended
+}
+
+export function backfillConversations({
+  writer,
+  at,
+}: {
+  writer: Writer
+  at: string
+}) {
+  const cursors = readCursors({ dir: writer.dir })
+  const recorded = recordedChats({ dir: writer.dir })
+
+  for (const [
+    name,
+    cursor,
+  ] of Object.entries(cursors)) {
+    if (!name.startsWith(`${HYDRA_CARD}\n`) || cursor.conversation === CONVERSATION_VERSION) {
+      continue
+    }
+
+    const path = name.slice(HYDRA_CARD.length + 1)
+    const session = Object.values(writer.state.sessions ?? {})
+      .find(session => session.agent.transcriptPath === path)
+
+    if (!session) {
+      continue
+    }
+
+    const progress = cursor.backfill ?? {
+      pos: 0,
+      item: 0,
+      end: cursor.pos,
+    }
+    const transcript = readTranscript({
+      cursor: {
+        source: path,
+        identity: cursor.identity,
+        pos: progress.pos,
+      },
+      through: progress.end,
+      maxBytes: BACKFILL_BYTES,
+    })
+
+    const stalled = transcript?.end === progress.pos && progress.pos < progress.end
+
+    if (!transcript || transcript.reset || stalled) {
+      continue
+    }
+
+    let remaining = BACKFILL_ENTRIES
+
+    for (const line of transcript.lines) {
+      const entries = transcriptEntries({
+        parsed: readTranscriptRecord({ record: line.record }),
+        offset: line.pos,
+        boundaries: true,
+      })
+      const start = line.pos === progress.pos ? progress.item : 0
+
+      for (let item = start; item < entries.length; item++) {
+        if (remaining === 0) {
+          cursor.backfill = {
+            pos: line.pos,
+            item,
+            end: progress.end,
+          }
+          writeCursors({
+            dir: writer.dir,
+            cursors,
+          })
+
+          return {
+            progressed: true,
+          }
+        }
+
+        recordChat({
+          writer,
+          entry: entries[item]!,
+          session: session.id,
+          cardId: HYDRA_CARD,
+          agentId: session.id,
+          at,
+          recorded,
+          repair: true,
+        })
+        remaining--
+      }
+    }
+
+    cursor.backfill = {
+      pos: transcript.end,
+      item: 0,
+      end: progress.end,
+    }
+
+    if (transcript.end >= progress.end) {
+      cursor.conversation = CONVERSATION_VERSION
+      delete cursor.backfill
+    }
+
+    writeCursors({
+      dir: writer.dir,
+      cursors,
+    })
+
+    return {
+      progressed: true,
+    }
+  }
+
+  return {
+    progressed: false,
+  }
 }

@@ -1,6 +1,7 @@
 import { messageReference } from './message-reference.ts'
 import { loggedEntry } from './history.ts'
 import { chatRecordId } from './chat-records.ts'
+import { effectiveChatEvents } from './chat-events.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -23,10 +24,12 @@ import { effectiveView } from '#settings/store.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import type { TurnActions } from './conversation.ts'
 import type { TurnTiming } from './chat-messages.ts'
+import { threadEntryOrder } from './thread-order.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
   final?: boolean
+  block?: number
   reference?: string
   id: string
   hidden?: boolean
@@ -92,7 +95,8 @@ export const replyEntryId = ({ reply }: { reply: string }) => `reply:${reply}`
 export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
   const fromPart = (entry.part ?? 0) > 0
   const continued = entry.continued === true || fromPart || entry.role.endsWith(' · continued')
-  const text = redact({ text: entry.text })
+  // Transport parts were redacted before their offsets were assigned.
+  const text = entry.messageId ? entry.text : redact({ text: entry.text })
 
   if (text.length <= MAX_TEXT) {
     return [
@@ -178,6 +182,7 @@ export function transcriptEntries({
     at: message.at,
     hidden: message.internal,
     final: parsed.final,
+    block: message.block,
   }))
 
   for (const trace of parsed.traces) {
@@ -187,6 +192,7 @@ export function transcriptEntries({
 
     const entry: ThreadEntry = {
       id: `${offset}:t${trace.index}`,
+      block: trace.index,
       kind: trace.kind,
       role: trace.role,
       at: parsed.at,
@@ -200,7 +206,10 @@ export function transcriptEntries({
     entries.push(entry)
   }
 
-  return entries.flatMap(entry => splitEntry({ entry }))
+  return entries.sort((
+    a,
+    b,
+  ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({ entry }))
 }
 
 export function threadPath({ card }: { card: Card }): string | undefined {
@@ -503,7 +512,7 @@ export function readThread(
     view: effectiveView({ state }),
     card: card.id,
   })
-  const tools = card.id !== HYDRA_CARD && selected.tools
+  const tools = card.id === HYDRA_CARD || selected.tools
   const thinking = selected.thinking
 
   if (path) {
@@ -668,11 +677,38 @@ export function readThread(
 
   const seenReplies = new Set<string>()
   const seenChats = new Set<string>()
-
-  for (const e of threadEvents({
+  // A moved task's events are renumbered across the Hydras it passed through, so the cursor's boundary is looked up in the same list.
+  const logged = threadEvents({
     hydraId,
     card,
-  })) {
+  })
+  const replyBoundary = logged.find(event => event.seq === replySeq)
+
+  const beforeReply = ({
+    event,
+    index,
+  }: {
+    event: HydraEvent
+    index: number
+  }) => {
+    if (!replyBoundary) {
+      return event.seq < replySeq!
+    }
+
+    let time = event.at.localeCompare(replyBoundary.at)
+
+    if (event.type === 'chat.message' && replyBoundary.type === 'chat.message') {
+      time = threadEntryOrder({
+        first: loggedEntry({ event }),
+        second: loggedEntry({ event: replyBoundary }),
+      })
+    }
+
+    return time < 0 || time === 0 && (event.seq < replySeq!
+      || event.seq === replySeq && index < replyPart!)
+  }
+
+  for (const e of effectiveChatEvents({ events: logged })) {
     if (e.seq === replySeq) {
       excludedAt.push(e.at)
     }
@@ -689,7 +725,7 @@ export function readThread(
       const sameSession = session && e.data.session === session
       const participant = e.cardId === card.id || sameSession
 
-      if ((!result.unavailable && sameSession) || !participant || e.seq > replySeq!) {
+      if ((!result.unavailable && sameSession) || !participant) {
         continue
       }
 
@@ -701,7 +737,10 @@ export function readThread(
         item,
         index,
       ) => {
-        if (e.seq < replySeq! || index < replyPart!) {
+        if (beforeReply({
+          event: e,
+          index,
+        })) {
           candidates.push({
             item,
             reply: `${e.seq}:${index}`,
@@ -716,7 +755,7 @@ export function readThread(
       continue
     }
 
-    if (e.cardId !== card.id || e.seq > replySeq! || seenReplies.has(e.data.reply)) {
+    if (e.cardId !== card.id || seenReplies.has(e.data.reply)) {
       continue
     }
 
@@ -743,7 +782,10 @@ export function readThread(
       item,
       index,
     ) => {
-      if (e.seq < replySeq! || index < replyPart!) {
+      if (beforeReply({
+        event: e,
+        index,
+      })) {
         candidates.push({
           item,
           reply: `${e.seq}:${index}`,
@@ -756,11 +798,45 @@ export function readThread(
     result.unavailable = 'Showing stored messages; the native transcript is unavailable.'
   }
 
-  candidates.sort((
+  const positions = new Map(candidates.map((
+    candidate,
+    index,
+  ) => [
+    candidate,
+    index,
+  ]))
+  const native = candidates.filter(candidate => candidate.native)
+  const replies = candidates.filter(candidate => candidate.reply).sort((
     a,
     b,
-  ) => (a.item.at ?? '').localeCompare(b.item.at ?? ''))
-  const page = candidates.slice(-PAGE)
+  ) => threadEntryOrder({
+    first: a.item,
+    second: b.item,
+  }))
+  const page: typeof candidates = []
+
+  // Consume a contiguous suffix from each source even when a record was timestamped earlier.
+  while (page.length < PAGE && (native.length || replies.length)) {
+    const nativeLast = native.at(-1)
+    const replyLast = replies.at(-1)
+    const takeNative = nativeLast && (!replyLast || (nativeLast.item.at ?? '') >= (replyLast.item.at ?? ''))
+    const selected = takeNative ? native.pop() : replies.pop()
+
+    if (selected) {
+      page.push(selected)
+    }
+  }
+
+  const firstNative = page.findLast(candidate => candidate.native)?.native
+  const firstReply = page.findLast(candidate => candidate.reply)?.reply
+  page.sort((
+    a,
+    b,
+  ) => threadEntryOrder({
+    first: a.item,
+    second: b.item,
+  })
+    || positions.get(a)! - positions.get(b)!)
   result.entries = page.map(e => e.item)
 
   if (card.id === HYDRA_CARD) {
@@ -778,7 +854,7 @@ export function readThread(
   }
 
   if (candidates.length > page.length || earlierNative) {
-    result.older = `n${page.find(e => e.native)?.native ?? emptyNativeCursor ?? nativeCursor ?? ''};r${page.find(e => e.reply)?.reply ?? replyCursor ?? ''}`
+    result.older = `n${firstNative ?? emptyNativeCursor ?? nativeCursor ?? ''};r${firstReply ?? replyCursor ?? ''}`
   }
 
   return result

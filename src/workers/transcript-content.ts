@@ -85,18 +85,33 @@ export function transcriptText({
   texts: {
     text: string
     hidden?: boolean
+    block?: number
   }[]
   at?: string
 }): TranscriptMessage[] {
-  const messages = texts.map(({
+  const messages = texts.flatMap(({
     text,
     hidden,
-  }) => hidden ? '' : visibleText({ text }))
-    .filter(Boolean)
-    .map(text => at ? {
-      at,
-      text,
-    } : { text })
+    block,
+  }) => {
+    const visible = hidden ? '' : visibleText({ text })
+
+    if (!visible) {
+      return []
+    }
+
+    const message: TranscriptMessage = { text: visible }
+
+    if (at) {
+      message.at = at
+    }
+
+    if (block !== undefined) {
+      message.block = block
+    }
+
+    return [message]
+  })
 
   if (messages.length === 0 && texts.some(({ text }) => wakeInput({ text }))) {
     return [

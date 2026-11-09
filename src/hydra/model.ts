@@ -47,6 +47,7 @@ export interface HydraMessage {
   // ask: the worker question this message delivers; answers: Hydra's question this owner message answers.
   ask?: string
   answers?: string
+  discusses?: string
   fromMessage?: AnswerMessage
   choice?: string
   liftsHold?: string
@@ -88,9 +89,14 @@ export type ChatEvent = EventBase & {
   data: {
     session: string
     nativeId: string
+    replaces?: string
+    block?: number
     final?: boolean
     messageId?: string
     part?: number
+    kind?: 'message' | 'tool' | 'thinking'
+    hidden?: boolean
+    call?: string
     role: string
     text: string
   }

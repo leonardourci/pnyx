@@ -2,6 +2,8 @@ import type { HydraState } from '#app/model.ts'
 import { askWording, openAsks } from './ask-state.ts'
 import type { Ask, Card } from './model.ts'
 import { liveTask } from './select.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 
 export const QUESTION_REMINDER_MS = 4 * 60 * 60_000
 
@@ -16,7 +18,17 @@ export function questionReminder({
   ask: Ask
   now: number
 }) {
-  if (ask.audience !== 'owner' || ask.answered || ask.closed || !liveTask({ card })) {
+  const visible = card.id === HYDRA_CARD || liveTask({ card })
+
+  if (ask.audience !== 'owner' || ask.answered || ask.closed || ask.deferredUntil || !visible) {
+    return undefined
+  }
+
+  if (!isCanonicalQuestion({
+    state,
+    card,
+    ask,
+  })) {
     return undefined
   }
 

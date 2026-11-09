@@ -1,4 +1,5 @@
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import { threadEntryOrder } from '#hydra/thread-order.ts'
 
 export async function loadEarlierMessages({
   past,
@@ -61,7 +62,10 @@ export async function loadEarlierMessages({
   const entries = [...found.values()].sort((
     a,
     b,
-  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  ) => threadEntryOrder({
+    first: a,
+    second: b,
+  }))
 
   return {
     ...earliest,

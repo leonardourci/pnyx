@@ -107,6 +107,8 @@ pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra send --task <id> --kind progress --text <message>
 Omit --kind progress for actionable results: queue a report for Hydra to relay; this does not confirm owner delivery.
 --kind progress is a worker's routine progress: it updates the task's card and joins Hydra's next wake without waking Hydra.
+pnyx-axi hydra ask --question <question> [--context <text>] [--choice <label>]... [--recommend <n>] [--details <text> | --details-file <path>]
+Hydra asks an owner decision with no task in chat. Task decisions use task ask --to owner on their card.
 pnyx-axi hydra stop
 hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
 pnyx-axi hydra usage
@@ -235,12 +237,18 @@ and never merges while a check is red or still running.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
+Short requests such as "why?" or "explain", and recognized clarification questions ending in "?", keep the question open. Longer instructions remain answers even when they begin with those words. Use discuss-question for other follow-up wording; an explicit discussion cannot be quoted as an answer.
 Sends the answer to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice. Retry failed delivery with reply --idempotency-key <reply-id>.
 Hydra can replace an answered merge Hold with --from-message <owner-message> --choice Merge only when that saved owner message is newer than the Hold answer. Undo restores Hold.
 pnyx-axi task reask <task> <question> --reason <why>
 Hydra re-asks an answered merge Hold in chat and on the card. It grants no approval until the owner answers Merge.
 Answers without an owner source resolve once delivered. An uncertain delivery holds those questions; check the session before using --undelivered to answer or escalate again.
 pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
+Evidence closure applies to report-linked choices, worker or Go questions, and a merge question whose own PR has settled. Ordinary owner questions require an answer or explicit task completion.
+pnyx-axi task discuss-question <task> <question> --text <clarification>
+Sends discussion to Hydra without recording an answer or releasing a hold.
+pnyx-axi task defer-question <task> <question> --until <future-time|clear> [--from-message <owner-message>]
+Later pauses active Waiting on you and question reminders until the owner's date. The question stays unanswered and still gates work. Hydra needs the owner's newer message; workers cannot defer owner questions.
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
 Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
@@ -280,7 +288,7 @@ attach moves an interactive session to the task; an occupied destination is reje
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
 task create accepts --project <name|path>; task project assigns an existing task to an attached project.
-task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start or working declaration stops worker-started; task completion stops task-done, which requires unfinished work. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, moves tasks to Needs you, and groups everything due in one Pnyx chat message, with at most 30 words per bullet and a link to each full task. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
+task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start or working declaration stops worker-started; task completion stops task-done, which requires unfinished work. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, moves tasks to Needs you, and groups everything due in one Pnyx chat message. Owner questions use one line: N questions waiting on you, with one link per task; scheduled reminders keep their short lines. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
 
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.

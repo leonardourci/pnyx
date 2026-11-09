@@ -1,5 +1,6 @@
 import { readLog } from '#app/event-log.ts'
 import { noteId } from '#tasks/notes.ts'
+import { chatPosition, rememberChat } from './chat-events.ts'
 import type { ChatEvent } from './model.ts'
 
 export function chatRecordId({
@@ -8,9 +9,14 @@ export function chatRecordId({
   messageId,
   part,
 }: Pick<ChatEvent['data'], 'session' | 'nativeId' | 'messageId' | 'part'>): string {
-  const legacy = /^(.*)\.(\d+)$/.exec(nativeId)
-  const message = messageId ?? legacy?.[1] ?? nativeId
-  const position = part ?? (legacy ? Number(legacy[2]) : 0)
+  const {
+    message,
+    position,
+  } = chatPosition({
+    nativeId,
+    messageId,
+    part,
+  })
 
   return noteId({
     cardKey: session,
@@ -23,10 +29,10 @@ export function chatRecordId({
 
 const recorded = new Map<string, {
   end: number
-  ids: Set<string>
+  events: Map<string, ChatEvent>
 }>()
 
-export function recordedChatIds({ dir }: { dir: string }): ReadonlySet<string> {
+export function recordedChats({ dir }: { dir: string }): Map<string, ChatEvent> {
   let previous = recorded.get(dir)
   let tail = readLog({
     dir,
@@ -39,11 +45,14 @@ export function recordedChatIds({ dir }: { dir: string }): ReadonlySet<string> {
     tail = readLog({ dir })!
   }
 
-  const ids = previous?.ids ?? new Set<string>()
+  const events = previous?.events ?? new Map<string, ChatEvent>()
 
   for (const event of tail.events) {
     if (event.type === 'chat.message') {
-      ids.add(chatRecordId(event.data))
+      rememberChat({
+        event,
+        events,
+      })
     }
   }
 
@@ -51,9 +60,9 @@ export function recordedChatIds({ dir }: { dir: string }): ReadonlySet<string> {
     dir,
     {
       end: tail.end,
-      ids,
+      events,
     },
   )
 
-  return ids
+  return events
 }
