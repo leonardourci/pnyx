@@ -183,5 +183,45 @@ test(
         },
       ],
     )
+    const reminder: ThreadEntry = {
+      id: 'reminder',
+      kind: 'message',
+      role: 'Pnyx',
+      text: 'Review the release receipt.',
+    }
+    assert.deepEqual(
+      checkConversation({
+        expected: [reminder],
+        conversation: {
+          through: 0,
+          entries: [],
+          folds: {},
+          timings: {},
+        },
+      }),
+      [
+        {
+          kind: 'missing',
+          reference: 'reminder',
+        },
+      ],
+    )
+    assert.deepEqual(
+      checkConversation({
+        expected: [],
+        conversation: {
+          through: 0,
+          entries: [reminder],
+          folds: {},
+          timings: {},
+        },
+      }),
+      [
+        {
+          kind: 'unexpected',
+          reference: 'reminder',
+        },
+      ],
+    )
   },
 )

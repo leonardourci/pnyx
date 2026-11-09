@@ -46,7 +46,7 @@ export function checkConversation({
       })
     }
 
-    if (!known.has(key) && entry.role !== 'Pnyx' && entry.kind !== 'divider') {
+    if (!known.has(key)) {
       mismatches.push({
         kind: 'unexpected',
         reference: key,
