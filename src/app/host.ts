@@ -918,6 +918,34 @@ export function createHost({
 
     thread,
 
+    release: ({ task }) => {
+      const entries = [...live].filter(([
+        , entry,
+      ]) => entry.task === task)
+
+      if (entries.some(([
+        , entry,
+      ]) => entry.activity === 'working')) {
+        throw new HydraError({
+          message: `${task}'s worker is mid-turn`,
+          code: 'CONFLICT',
+          help: [`Wait for the turn to end (\`pnyx-axi task show ${task} --hydra ${hydraId}\`), then move it again`],
+        })
+      }
+
+      for (const [
+        key,
+        entry,
+      ] of entries) {
+        retire({
+          key,
+          entry,
+        })
+      }
+
+      return { released: entries.length }
+    },
+
     reconcile: ({ state }) => {
       syncCompactions({ state })
 

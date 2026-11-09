@@ -65,6 +65,14 @@ export async function hostRequestUnlocked({
     case 'stop':
       return host.stop()
 
+    case 'release':
+      return host.release({
+        task: field({
+          body,
+          name: 'task',
+        })!,
+      })
+
     case 'usage':
       return host.usage({
         card: field({
