@@ -56,10 +56,9 @@ export function createIndexSync({
     }): void
   }): void
 }) {
-  // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
-  // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
   let stopped = false
 
+  // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
   const harvestForIndex = async () => {
     try {
       withWriter({
