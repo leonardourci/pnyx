@@ -709,6 +709,8 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.landing': return event.data.after
       ? `For this task only: lands as ${landingWording({ rule: event.data.after })}`
       : 'Follows its project\'s landing rule again'
+    case 'task.moved-out': return `Moved to Hydra ${event.data.to}`
+    case 'task.moved-in': return `Moved here from Hydra ${event.data.from}`
     case 'task.copy': return `Task copy ${event.data.after.state}: ${event.data.after.path}${event.data.after.reason ? ` (${event.data.after.reason})` : ''}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`

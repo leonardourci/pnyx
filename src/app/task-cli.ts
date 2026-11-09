@@ -36,6 +36,8 @@ import { taskReadiness } from '#tasks/dependencies.ts'
 import { askRows, askCommand } from '#tasks/asks.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
+import { moveTask } from '#tasks/move.ts'
+import { requestEnv } from './request-context.ts'
 
 const TASK_DETAIL_LIMIT = 5
 
@@ -111,6 +113,7 @@ export const TASK_OPTIONS: Options = {
   'ready-when': { type: 'string' },
   every: { type: 'string' },
   hold: { type: 'boolean' },
+  'to-hydra': { type: 'string' },
 }
 
 export async function taskCommand({ args }: { args: string[] }): Promise<Output> {
@@ -500,6 +503,31 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     }
   }
 
+  if (action === 'move') {
+    if (requestEnv().PNYX_ACTOR?.startsWith('worker:')) {
+      throw new HydraError({
+        message: 'Only the owner or Hydra moves a task to another Hydra',
+        code: 'OWNER_ONLY',
+        help: ['Ask Hydra with `pnyx-axi task ask <task> --question "<why the task should move>"`'],
+      })
+    }
+
+    explained({ meta: m })
+
+    return moveTask({
+      hydraId,
+      ref: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+      to: required({
+        value: values['to-hydra'] as string | undefined,
+        what: '--to-hydra <hydra>',
+      }),
+      meta: m,
+    })
+  }
+
   if (action === 'history') {
     return taskHistory({
       hydraId,
@@ -507,10 +535,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         value: positionals[1],
         what: 'task id',
       }),
-      before: integer({
-        value: values.before,
-        flag: '--before',
-      }),
+      before: values.before as string | undefined,
       limit: integer({
         value: values.limit,
         flag: '--limit',
@@ -898,7 +923,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, messages, rename, start, copy, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, messages, rename, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }

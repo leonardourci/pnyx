@@ -17,6 +17,7 @@ import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts
 import { traces } from '#preferences/view.ts'
 import { taskReceipt } from './transcripts-task.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
+import { movedHistory } from '#tasks/move-history.ts'
 import { shortened, type ActionRead } from './calls.ts'
 import { readAction } from './transcript-calls.ts'
 import { effectiveView } from '#settings/store.ts'
@@ -436,6 +437,36 @@ function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
   return log.events
 }
 
+// A moved task's logged messages stay in each Hydra it passed through. They are numbered in order across
+// those Hydras, so the reply cursor stays one increasing number; a task that never moved keeps its seqs.
+function threadEvents({
+  hydraId,
+  card,
+}: {
+  hydraId: string
+  card: Card
+}): LoggedMessage[] {
+  const session = cardSessionId({ card })
+  const history = movedHistory({
+    hydraId,
+    task: card.id,
+    matches: ({ event }) => (event.type === 'card.replied' && Boolean(event.data.text) && event.cardId === card.id)
+      || (event.type === 'chat.message' && (event.cardId === card.id || event.data.session === session)),
+  })
+
+  if (!history.some(entry => entry.hydra !== hydraId)) {
+    return repliedEvents({ hydraId })
+  }
+
+  return history.reverse().map((
+    { event },
+    index,
+  ) => ({
+    ...event,
+    seq: index + 1,
+  }))
+}
+
 export function readThread(
   {
     hydraId,
@@ -646,7 +677,12 @@ export function readThread(
 
   const seenReplies = new Set<string>()
   const seenChats = new Set<string>()
-  const replyBoundary = repliedEvents({ hydraId }).find(event => event.seq === replySeq)
+  // A moved task's events are renumbered across the Hydras it passed through, so the cursor's boundary is looked up in the same list.
+  const logged = threadEvents({
+    hydraId,
+    card,
+  })
+  const replyBoundary = logged.find(event => event.seq === replySeq)
 
   const beforeReply = ({
     event,
@@ -672,7 +708,7 @@ export function readThread(
       || event.seq === replySeq && index < replyPart!)
   }
 
-  for (const e of effectiveChatEvents({ events: repliedEvents({ hydraId }) })) {
+  for (const e of effectiveChatEvents({ events: logged })) {
     if (e.seq === replySeq) {
       excludedAt.push(e.at)
     }

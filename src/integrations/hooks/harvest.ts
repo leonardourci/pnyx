@@ -159,6 +159,33 @@ function writeCursors({
   )
 }
 
+// A task moving to another Hydra reads its transcripts on from where this Hydra stopped, so nothing is recorded twice.
+export function carryCursors({
+  from,
+  to,
+  card,
+}: {
+  from: string
+  to: string
+  card: string
+}): void {
+  const prefix = `${card}\n`
+  const carried = Object.entries(readCursors({ dir: from }))
+    .filter(([name]) => name.startsWith(prefix))
+
+  if (!carried.length) {
+    return
+  }
+
+  writeCursors({
+    dir: to,
+    cursors: {
+      ...readCursors({ dir: to }),
+      ...Object.fromEntries(carried),
+    },
+  })
+}
+
 export function appendNote(
   {
     writer,

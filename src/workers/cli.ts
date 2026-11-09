@@ -136,6 +136,12 @@ export function taskSessions({
       sessions.add(event.data.session)
     }
 
+    if (ids.has(event.cardId) && event.type === 'task.moved-in') {
+      for (const session of event.data.sessions) {
+        sessions.add(session.id)
+      }
+    }
+
     if (ids.has(event.cardId) && event.type === 'card.pushed' && event.data.agent) {
       const agent = event.data.agent
       sessions.add(`${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`)

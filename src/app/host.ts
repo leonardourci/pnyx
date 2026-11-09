@@ -704,6 +704,7 @@ export function createHost({
   const {
     start,
     continueInPnyx,
+    starting,
   } = createWorkerStarts({
     closing: () => closing,
     at,
@@ -917,6 +918,44 @@ export function createHost({
     action,
 
     thread,
+
+    release: ({ task }) => {
+      const entries = [...live].filter(([
+        , entry,
+      ]) => entry.task === task)
+
+      if (starting({ task })) {
+        return { busy: 'starting' }
+      }
+
+      if (entries.some(([
+        , entry,
+      ]) => entry.activity === 'working')) {
+        return { busy: 'mid-turn' }
+      }
+
+      // A message delivered but not yet taken would be lost with the session.
+      const waiting = ({ entry }: { entry: Live }) => entry.pendingDirect.size > 0
+        || (entry.session?.snapshot().work.unsettledInputs.length ?? 0) > 0
+
+      if (entries.some(([
+        , entry,
+      ]) => waiting({ entry }))) {
+        return { busy: 'taking a message' }
+      }
+
+      for (const [
+        key,
+        entry,
+      ] of entries) {
+        retire({
+          key,
+          entry,
+        })
+      }
+
+      return { released: entries.length }
+    },
 
     reconcile: ({ state }) => {
       syncCompactions({ state })

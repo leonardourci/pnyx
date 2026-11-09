@@ -23,6 +23,12 @@ export function labelsForEvent({
     labels.push(event.data.project)
   } else if (event.type === 'task.project' && event.data.after) {
     labels.push(event.data.after)
+  } else if (event.type === 'task.moved-in') {
+    labels.push(...event.data.card.tags)
+
+    if (event.data.card.project) {
+      labels.push(event.data.card.project)
+    }
   } else if (event.type === 'hydra.project') {
     labels.push(event.data.after.path)
   }

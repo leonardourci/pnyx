@@ -6,7 +6,7 @@ import { AxiError } from 'axi-sdk-js'
 import type { Column } from './columns-model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
 import { projectsFor } from '#projects/read.ts'
-import { MAX_BRIEF_LENGTH, type Card, type NotedEvent } from './model.ts'
+import { MAX_BRIEF_LENGTH, type Card } from './model.ts'
 import { clip, guard, parse, COMMON, WRITE, meta, required, commit, HISTORY_MAX, summarize, integer, TEXT_CUT, type Output } from '#app/cli-support.ts'
 import { canonical } from '#store/paths.ts'
 import { loadHydra } from '#app/store.ts'
@@ -18,9 +18,9 @@ import { decidePush } from './push.ts'
 import { reminderTime } from './time.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from './push-rules.ts'
-import { readEvents } from '#app/event-log.ts'
 import { taskSessions } from '#workers/cli.ts'
 import { tagsTask } from './updates.ts'
+import { movedHistory, type HistoryEntry } from './move-history.ts'
 import { columnRule } from './column-defaults.ts'
 import { decideView } from '#preferences/decisions.ts'
 import { columnByRef, lockedColumn, LOCKED_DELETE, validateColumns } from './column-rules.ts'
@@ -343,7 +343,7 @@ export function taskHistory({
 }: {
   hydraId: string
   ref: string
-  before?: number
+  before?: string
   limit: number
   full: boolean
 }): Output {
@@ -364,27 +364,32 @@ export function taskHistory({
     ...Object.values(state.cards).filter(c => c.parentId === task.id)
       .map(c => c.id),
   ])
-  const events = readEvents({ hydraId })
   const sessions = taskSessions({
     hydraId,
     ids,
   })
-  const matches = events.filter(e => (before === undefined || e.seq < before) && (ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || tagsTask({
-    event: e,
-    ids,
-  })))
-    .reverse()
+  const history = movedHistory({
+    hydraId,
+    task: task.id,
+    matches: ({ event: e }) => ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || tagsTask({
+      event: e,
+      ids,
+    }),
+  })
+  const matches = history.slice(historyStart({
+    history,
+    hydraId,
+    before,
+  }))
   const page = matches.slice(
     0,
     limit,
   )
-
-  const help = [
-    ...(matches.length > limit ? [`Run \`pnyx-axi task history ${ref} --before ${page.at(-1)!.seq} --hydra ${hydraId}\` for older events`] : []),
-    ...(full || !page.length ? [] : [`Run \`pnyx-axi task history ${ref} --full --hydra ${hydraId}\` for each event's data`]),
-  ]
-
-  return {
+  const moved = history.some(entry => entry.hydra !== hydraId)
+  const last = page.at(-1)
+  const more = matches.length > limit
+  const help: string[] = []
+  const out: Output = {
     hydraId,
     task: task.id,
     sessions: sessions.size ? [...sessions].map(id => ({
@@ -392,23 +397,118 @@ export function taskHistory({
       transcript: state.sessions?.[id]?.agent.transcriptPath ?? 'unavailable',
       command: `pnyx-axi task chat ${task.id} --session ${id} --hydra ${hydraId}`,
     })) : 'none: no agent has worked on this task',
-    events: page.length ? page.map(e => ({
-      seq: e.seq,
-      id: e.id,
-      at: e.at,
-      type: e.type,
-      card: e.cardId,
-      actor: e.actor,
-      summary: summarize({ event: e }),
-      ...(full ? {
-        data: e.data,
-        reason: e.reason,
-        details: e.details,
-      } : {}),
+    events: page.length ? page.map(entry => historyRow({
+      entry,
+      moved,
+      full,
     })) : 'none: no matching events',
-    ...(matches.length > limit ? { next: page.at(-1)!.seq } : {}),
-    ...(help.length ? { help } : {}),
   }
+
+  if (more && last) {
+    // A cursor on this Hydra stays a plain seq; one on an earlier Hydra names it.
+    const next = last.hydra === hydraId ? last.event.seq : `${last.hydra}:${last.event.seq}`
+    out.next = next
+    help.push(`Run \`pnyx-axi task history ${ref} --before ${next} --hydra ${hydraId}\` for older events`)
+  }
+
+  if (!full && page.length) {
+    help.push(`Run \`pnyx-axi task history ${ref} --full --hydra ${hydraId}\` for each event's data`)
+  }
+
+  if (help.length) {
+    out.help = help
+  }
+
+  return out
+}
+
+// Only a moved task's rows name their Hydra, so every other history keeps its columns.
+function historyRow({
+  entry,
+  moved,
+  full,
+}: {
+  entry: HistoryEntry
+  moved: boolean
+  full: boolean
+}): Output {
+  const { event } = entry
+  const row: Output = {}
+
+  if (moved) {
+    row.hydra = entry.hydra
+  }
+
+  Object.assign(
+    row,
+    {
+      seq: event.seq,
+      id: event.id,
+      at: event.at,
+      type: event.type,
+      card: event.cardId,
+      actor: event.actor,
+      summary: summarize({ event }),
+    },
+  )
+
+  if (full) {
+    Object.assign(
+      row,
+      {
+        data: event.data,
+        reason: event.reason,
+        details: event.details,
+      },
+    )
+  }
+
+  return row
+}
+
+// --before takes a seq on this Hydra, or <hydra>:<seq> for the events a moved task had on an earlier Hydra.
+function historyStart({
+  history,
+  hydraId,
+  before,
+}: {
+  history: HistoryEntry[]
+  hydraId: string
+  before?: string
+}): number {
+  if (before === undefined) {
+    return 0
+  }
+
+  const [
+    hydra,
+    seq,
+  ] = before.includes(':') ? before.split(
+    ':',
+    2,
+  ) : [
+    hydraId,
+    before,
+  ]
+  const at = Number(seq)
+
+  if (!/^\d+$/.test(seq ?? '') || !Number.isSafeInteger(at)) {
+    throw new HydraError({
+      message: '--before takes a seq or <hydra>:<seq>',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  // The cursor names the last row shown, so paging continues right after it, even into another Hydra's rows.
+  const shown = history.findIndex(entry => entry.hydra === hydra && entry.event.seq === at)
+
+  if (shown !== -1) {
+    return shown + 1
+  }
+
+  const index = history.findIndex(entry => entry.hydra === hydra && entry.event.seq < at)
+
+  return index === -1 ? history.length : index
 }
 
 function columnCommand({ args }: { args: string[] }): Output {
@@ -734,7 +834,12 @@ function cardNotes({
   cut: boolean
 } {
   const ids = new Set((card.notes ?? []).map(n => n.id))
-  const events = ids.size ? readEvents({ hydraId }).filter((e): e is NotedEvent => e.type === 'card.noted' && ids.has(e.id)) : []
+  // A moved task's notes stay in the logs of the Hydras it came from.
+  const events = ids.size ? movedHistory({
+    hydraId,
+    task: card.id,
+    matches: ({ event }) => event.type === 'card.noted' && ids.has(event.id),
+  }).flatMap(({ event }) => (event.type === 'card.noted' ? [event] : [])) : []
   let cut = false
   const notes: Output = {}
 
