@@ -100,7 +100,8 @@ export function hydraConversation({
       && entry.role.startsWith('assistant') && !entry.hidden)
     // Hydra can answer the owner mid-turn and still close the turn with NO_REPLY; that answer is the reply.
     const replies = texts.filter(entry => entry.final !== false && spoken({ entry }))
-    const last = ownerStarted ? replies.at(-1) : texts.at(-1)
+    const currentReplies = current ? texts.filter(entry => spoken({ entry })) : replies
+    const last = ownerStarted ? currentReplies.at(-1) : texts.at(-1)
     const quiet = last && !spoken({ entry: last })
     const completed = replies.filter(entry => entry.final === true)
     const visibleReply = last && !quiet && (ownerStarted || (!current && last.final !== false))

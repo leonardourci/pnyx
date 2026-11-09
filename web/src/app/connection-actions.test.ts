@@ -273,7 +273,7 @@ test(
 )
 
 test(
-  'live spend and usage survive events and stay out of persisted Hydra state',
+  'live spend and usage survive events and same-session snapshots without entering persisted state',
   t => {
     const {
       connection,
@@ -306,6 +306,10 @@ test(
       state: emptyHydra(),
       event,
     })
+    state.cards.task!.agent = {
+      provider: 'claude-code',
+      sessionId: 'current',
+    }
     socket.receive({
       message: {
         type: 'snapshot',
@@ -326,14 +330,15 @@ test(
       recorded: spend,
       windows: [],
     }
+    const readings = {
+      type: 'latest' as const,
+      messages: {},
+      actions: {},
+      spend: { task: spend },
+      usage: { task: usage },
+    }
     socket.receive({
-      message: {
-        type: 'latest',
-        messages: {},
-        actions: {},
-        spend: { task: spend },
-        usage: { task: usage },
-      },
+      message: readings,
     })
     assert.deepEqual(
       connection.snapshot().state.cards.task!.spend,
@@ -377,7 +382,7 @@ test(
       },
     })
     assert.equal(
-      connection.snapshot().state.cards.task!.spend!.total,
+      connection.snapshot().state.cards.task!.spend?.total,
       4,
     )
     assert.equal(
@@ -408,7 +413,111 @@ test(
       },
     })
     assert.equal(
+      connection.snapshot().state.cards.task!.spend?.total,
+      4,
+    )
+    assert.deepEqual(
+      connection.snapshot().state.cards.task!.usage,
+      usage,
+    )
+    const replacementEvent = {
+      ...event,
+      id: 'replacement',
+      seq: 2,
+      type: 'card.pushed' as const,
+      data: {
+        key: 'task',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'replacement',
+        },
+      },
+    }
+    socket.receive({
+      message: {
+        type: 'event',
+        event: replacementEvent,
+      },
+    })
+    assert.equal(
       connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task!.usage,
+      undefined,
+    )
+    const replacement = reduce({
+      state,
+      event: replacementEvent,
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: replacement.seq,
+        state: replacement,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task!.usage,
+      undefined,
+    )
+    socket.receive({ message: readings })
+    const nextSession = structuredClone(replacement)
+    nextSession.cards.task!.agent!.sessionId = 'next-session'
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: nextSession.seq,
+        state: nextSession,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task!.usage,
+      undefined,
+    )
+    socket.receive({ message: readings })
+    const nextProvider = structuredClone(nextSession)
+    nextProvider.cards.task!.agent!.provider = 'codex'
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: nextProvider.seq,
+        state: nextProvider,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task!.usage,
+      undefined,
+    )
+    socket.receive({ message: readings })
+    const nextAgent = structuredClone(nextProvider)
+    nextAgent.cards.task!.agent!.agentId = 'child'
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: nextAgent.seq,
+        state: nextAgent,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend,
+      undefined,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task!.usage,
       undefined,
     )
   },

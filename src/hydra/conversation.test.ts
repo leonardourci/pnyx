@@ -51,6 +51,121 @@ const action = ({
 })
 
 test(
+  'owner progress stays visible when a streamed message reaches the native transcript',
+  () => {
+    const owner = entry({
+      id: 'owner',
+      minute: 0,
+      role: 'user',
+    })
+    const earlier: ThreadEntry = {
+      ...entry({
+        id: 'earlier',
+        minute: 1,
+        text: 'Preparing the count',
+      }),
+      final: false,
+    }
+    const completed: ThreadEntry = {
+      ...entry({
+        id: 'completed',
+        minute: 2,
+        text: 'Counted the first batch',
+      }),
+      final: true,
+    }
+    const live: ThreadEntry = {
+      ...entry({
+        id: 'live:progress',
+        minute: 3,
+        text: 'Checking the pebbles',
+      }),
+      streaming: true,
+    }
+    const saved = recordEntries({
+      record: {
+        type: 'assistant',
+        timestamp: at({ minute: 3 }),
+        message: {
+          stop_reason: 'tool_use',
+          content: 'Checking the pebbles',
+        },
+      },
+      offset: 100,
+    })
+    const conversation = ({
+      transcript,
+      working = true,
+    }: {
+      transcript: ThreadEntry[]
+      working?: boolean
+    }) => hydraConversation({
+      messages: [],
+      transcript: [
+        owner,
+        earlier,
+        completed,
+        ...transcript,
+      ],
+      actions: [],
+      columns: [],
+      working,
+      thinking: false,
+    })
+    assert.deepEqual(
+      conversation({ transcript: [live] }).entries.map(entry => entry.text),
+      [
+        'owner',
+        'Counted the first batch',
+        'Checking the pebbles',
+      ],
+    )
+    const recorded = conversation({ transcript: saved })
+    assert.deepEqual(
+      recorded.entries.map(entry => entry.text),
+      [
+        'owner',
+        'Counted the first batch',
+        'Checking the pebbles',
+      ],
+    )
+    assert.deepEqual(
+      recorded.folds.get(saved[0]!.id)?.notes.map(entry => entry.text),
+      ['Preparing the count'],
+    )
+    const finished = conversation({
+      transcript: [
+        ...saved,
+        {
+          ...entry({
+            id: 'answer',
+            minute: 4,
+            text: 'Counted the pebbles',
+          }),
+          final: true,
+        },
+      ],
+      working: false,
+    })
+    assert.deepEqual(
+      finished.entries.map(entry => entry.text),
+      [
+        'owner',
+        'Counted the first batch',
+        'Counted the pebbles',
+      ],
+    )
+    assert.deepEqual(
+      finished.folds.get('answer')?.notes.map(entry => entry.text),
+      [
+        'Preparing the count',
+        'Checking the pebbles',
+      ],
+    )
+  },
+)
+
+test(
   'an owner turn that ends with NO_REPLY still shows the reply written before it',
   () => {
     const conversation = ({
