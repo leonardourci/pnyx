@@ -25,6 +25,8 @@ Install Google Chrome before running the full suite. `scripts/browser/chat-strea
 
 The fixture holds after a known partial delta. The check verifies the server's page socket received that exact text and the real page painted it before release. It then covers native transcript handoff, tool and commentary rows, the final text, duplicate or missing rendered rows, server restart with reconnect, and switching between Hydras without painting another conversation. Run it after a build with `node scripts/verification/test.ts scripts/browser/chat-stream.test.ts`.
 
+Historical recovery tests check that Oracle readiness finishes before backfill, that batches yield and resume after stopping, and that a write between batches is retained once. Compaction history checks exclude tool and thinking records even when their role names start with `assistant`.
+
 For an archived home, run the read-only replay against an evidence copy:
 
 ```sh
