@@ -70,15 +70,12 @@ export function arrivalRate({
   return (length - arrivals[0]!.len) / WINDOW
 }
 
-// The whole word under the cursor goes in at once so it never jumps lines mid-word.
 function typingEnd({
   text,
   cursor,
-  final,
 }: {
   text: string
   cursor: number
-  final: boolean
 }) {
   const i = Math.min(
     Math.floor(cursor),
@@ -103,8 +100,7 @@ function typingEnd({
     return /[\uD800-\uDBFF]/.test(text[i - 1] ?? '') ? i + 1 : i
   }
 
-  // A word still touching the end of the received text may grow.
-  return end >= text.length && !final ? start : end
+  return end
 }
 
 // `fenced` describes the text on screen, so a step stops where that fence closes.
@@ -199,6 +195,12 @@ export function safeEnd({
   }
 
   if (fenced) {
+    const closingFence = /^ {0,3}(`{1,2}|~{1,2})$/.test(line)
+
+    if (closingFence && !complete) {
+      return lineStart
+    }
+
     return end
   }
 
@@ -435,7 +437,6 @@ export function revealStep({
   const word = typingEnd({
     text,
     cursor: target,
-    final,
   })
   const end = fenced ? Math.min(
     word,

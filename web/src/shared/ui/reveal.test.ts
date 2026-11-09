@@ -110,6 +110,24 @@ const reader = (): Reader => ({
 })
 
 test(
+  'a held text delta reveals its trailing word before the next delta or final result',
+  () => {
+    assert.equal(
+      revealStep({
+        text: 'Release checks',
+        cursor: 8,
+        shown: 8,
+        speed: 1000,
+        elapsed: FRAME,
+        final: false,
+        fenced: false,
+      }).shown,
+      14,
+    )
+  },
+)
+
+test(
   'the tail check holds half-written Markdown until it can show it whole',
   () => {
     const at = ({
@@ -319,8 +337,7 @@ test(
 
     assert.equal(
       shown,
-      text.lastIndexOf(' ') + 1,
-      'the last word may still grow',
+      text.length,
     )
   },
 )
