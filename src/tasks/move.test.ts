@@ -11,6 +11,7 @@ import { project } from '#projects/cli.ts'
 import { withWriter } from '#app/writer.ts'
 import { appendNote } from '#integrations/hooks/harvest.ts'
 import { offerHost } from '#app/server-state.ts'
+import { base } from '#app/command-meta.ts'
 
 const INHERITED = [
   'PNYX_HOME',
@@ -800,49 +801,77 @@ test(
   },
 )
 
+// Drops the source's last log line, as a crash right after the target's line would leave it.
+function cutSourceLine() {
+  const log = join(
+    hydraDir({ hydraId: 'src' }),
+    'events.jsonl',
+  )
+  const lines = readFileSync(
+    log,
+    'utf8',
+  ).trimEnd()
+    .split('\n')
+  writeFileSync(
+    log,
+    `${lines.slice(
+      0,
+      -1,
+    ).join('\n')}\n`,
+  )
+  rmSync(join(
+    hydraDir({ hydraId: 'src' }),
+    'snapshot.json',
+  ))
+}
+
 test(
-  'a move cut after the target wrote its line is finished by running it again',
+  'a move cut after the target wrote its line finishes when run again, carrying source edits made since, and refuses once the target copy changed',
   async t => {
     const { app } = await setup({ t })
     await attach({
       path: app,
       hydraId: 'dst',
     })
-    const ship = await create({
-      key: 'ship',
-      flags: [
-        '--project',
-        app,
-      ],
-    })
+    const [
+      ship,
+      other,
+    ] = [
+      await create({
+        key: 'ship',
+        flags: [
+          '--project',
+          app,
+        ],
+      }),
+      await create({
+        key: 'other',
+        flags: [
+          '--project',
+          app,
+        ],
+      }),
+    ]
+
     const moved = await task({ args: move({ id: ship.id }) })
-    const log = join(
-      hydraDir({ hydraId: 'src' }),
-      'events.jsonl',
-    )
-    const lines = readFileSync(
-      log,
-      'utf8',
-    ).trimEnd()
-      .split('\n')
-    writeFileSync(
-      log,
-      `${lines.slice(
-        0,
-        -1,
-      ).join('\n')}\n`,
-    )
-    rmSync(join(
-      hydraDir({ hydraId: 'src' }),
-      'snapshot.json',
-    ))
+    cutSourceLine()
     assert.ok(card({
       hydraId: 'src',
       key: 'ship',
     }))
+    await task({
+      args: [
+        'brief',
+        ship.id,
+        '--brief',
+        'Edited after the cut',
+        '--hydra',
+        'src',
+      ],
+    })
 
     const finished = await task({ args: move({ id: ship.id }) })
-    assert.equal(
+    assert.notEqual(
       finished.event,
       moved.event,
     )
@@ -857,9 +886,167 @@ test(
       card({
         hydraId: 'dst',
         key: 'ship',
-      })?.id,
-      ship.id,
+      })?.brief,
+      'Edited after the cut',
     )
+    const history = await task({
+      args: [
+        'history',
+        ship.id,
+        '--hydra',
+        'dst',
+      ],
+    }) as {
+      events: {
+        hydra: string
+        type: string
+      }[]
+    }
+    assert.deepEqual(
+      history.events.slice(
+        0,
+        2,
+      ).map(e => `${e.hydra} ${e.type}`),
+      [
+        'dst task.moved-in',
+        'src task.moved-out',
+      ],
+    )
+
+    await task({ args: move({ id: other.id }) })
+    cutSourceLine()
+    await task({
+      args: [
+        'brief',
+        other.id,
+        '--brief',
+        'Edited on the target',
+        '--hydra',
+        'dst',
+      ],
+    })
+    const both = await refusal({ args: move({ id: other.id }) })
+    assert.match(
+      both.message,
+      /was cut short, and its copy on Hydra dst has changed since/,
+    )
+    assert.ok(both.fix.includes(`pnyx-axi task hide ${other.id}`))
+    assert.ok(card({
+      hydraId: 'src',
+      key: 'other',
+    }))
+  },
+)
+
+test(
+  'a project of the same name on the target does not stand in for the task\'s own',
+  async t => {
+    const {
+      dir,
+      app,
+    } = await setup({ t })
+    const twin = join(
+      dir,
+      'elsewhere',
+      'app',
+    )
+    mkdirSync(
+      twin,
+      { recursive: true },
+    )
+    execFileSync(
+      'git',
+      [
+        'init',
+        '-q',
+        twin,
+      ],
+    )
+    await attach({
+      path: twin,
+      hydraId: 'dst',
+    })
+    const ship = await create({
+      key: 'ship',
+      flags: [
+        '--project',
+        app,
+      ],
+    })
+    await task({
+      args: [
+        'rename',
+        ship.id,
+        '--project',
+        'app',
+        '--hydra',
+        'src',
+      ],
+    })
+    assert.equal(
+      card({
+        hydraId: 'src',
+        key: 'ship',
+      })?.project,
+      'app',
+    )
+    const refused = await refusal({ args: move({ id: ship.id }) })
+    assert.equal(
+      refused.code,
+      'NOT_FOUND',
+    )
+    assert.ok(refused.fix.includes(`pnyx-axi project add ${ship.project} --hydra dst`))
+  },
+)
+
+test(
+  'the moved task\'s chat keeps messages logged on the Hydra it came from',
+  async t => {
+    const { app } = await setup({ t })
+    await attach({
+      path: app,
+      hydraId: 'dst',
+    })
+    const ship = await create({
+      key: 'ship',
+      flags: [
+        '--project',
+        app,
+      ],
+    })
+    withWriter({
+      hydraId: 'src',
+      fn: ({ writer }) => writer.append({
+        event: {
+          ...base({
+            state: writer.state,
+            meta: {
+              at: new Date().toISOString(),
+              actor: 'harvest',
+            },
+            cardId: ship.id,
+          }),
+          type: 'chat.message',
+          data: {
+            session: 'claude:gone',
+            nativeId: 'before-move',
+            role: 'assistant',
+            text: 'Logged before the move',
+          },
+        },
+      }),
+    })
+    await task({ args: move({ id: ship.id }) })
+
+    const chat = await task({
+      args: [
+        'chat',
+        ship.id,
+        '--hydra',
+        'dst',
+      ],
+    }) as { thread: { entries: { text?: string }[] } }
+    assert.ok(chat.thread.entries.some(entry => entry.text?.includes('Logged before the move')))
   },
 )
 
@@ -1008,27 +1195,8 @@ test(
     })
     t.after(withdraw)
 
-    const moved = await task({ args: move({ id: ship.id }) })
-    const log = join(
-      hydraDir({ hydraId: 'src' }),
-      'events.jsonl',
-    )
-    const lines = readFileSync(
-      log,
-      'utf8',
-    ).trimEnd()
-      .split('\n')
-    writeFileSync(
-      log,
-      `${lines.slice(
-        0,
-        -1,
-      ).join('\n')}\n`,
-    )
-    rmSync(join(
-      hydraDir({ hydraId: 'src' }),
-      'snapshot.json',
-    ))
+    await task({ args: move({ id: ship.id }) })
+    cutSourceLine()
     released.length = 0
 
     answer = { busy: 'mid-turn' }
@@ -1042,17 +1210,13 @@ test(
     }))
 
     answer = { released: 1 }
-    const finished = await task({ args: move({ id: ship.id }) })
+    await task({ args: move({ id: ship.id }) })
     assert.deepEqual(
       released,
       [
         ship.id,
         ship.id,
       ],
-    )
-    assert.equal(
-      finished.event,
-      moved.event,
     )
     assert.equal(
       card({
