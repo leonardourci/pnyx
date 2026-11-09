@@ -209,10 +209,14 @@ export function decisionsBlock({
         now,
       })} old` : ''
 
-      return `- ${taskMention({
-        id: item.card.id,
-        title: item.card.title,
-      })} ${item.kind}${waited}: ${item.detail}`
+      const subject = item.card.id === HYDRA_CARD
+        ? `Hydra-wide (card '${HYDRA_CARD}')`
+        : taskMention({
+          id: item.card.id,
+          title: item.card.title,
+        })
+
+      return `- ${subject} ${item.kind}${waited}: ${item.detail}`
     }),
     ...omitted ? [`- ${omitted} more left out of this batch; \`hydra check\` lists them`] : [],
   ].join('\n')
