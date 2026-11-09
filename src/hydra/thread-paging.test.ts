@@ -60,7 +60,7 @@ test(
       native,
       `${rows.map(row => JSON.stringify(row)).join('\n')}\n`,
     )
-    const state = withWriter({
+    let state = withWriter({
       hydraId: 'default',
       create: true,
       fn: ({ writer }) => {
@@ -109,6 +109,7 @@ test(
     const card = state.cards.$hydra!
 
     const pageAll = () => {
+      const card = state.cards.$hydra!
       let page = readThread({
         hydraId: 'default',
         state,
@@ -169,6 +170,56 @@ test(
     assert.equal(
       recorded.at(-1)?.text,
       'Reply 59',
+    )
+    state = withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'late-reply',
+            at: '2026-10-22T11:00:00.000Z',
+            actor: 'harvest',
+            cardId: '$hydra',
+            type: 'chat.message',
+            data: {
+              session: 'claude-code:older',
+              nativeId: '100:m0',
+              role: 'assistant',
+              text: 'Finished',
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'late-tool',
+            at: '2026-10-22T11:00:00.000Z',
+            actor: 'harvest',
+            cardId: '$hydra',
+            type: 'chat.message',
+            data: {
+              session: 'claude-code:older',
+              nativeId: '0:t0',
+              kind: 'tool',
+              role: 'Read',
+              text: 'release.txt',
+            },
+          },
+        })
+
+        return writer.state
+      },
+    })
+    assert.deepEqual(
+      pageAll().slice(-2)
+        .map(entry => entry.reference),
+      [
+        'claude-code:older:0:t0',
+        'claude-code:older:100:m0',
+      ],
     )
   },
 )

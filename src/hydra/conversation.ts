@@ -5,6 +5,7 @@ import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
 import { QUIET_REPLY } from './hydra.ts'
 import { hydraMessages, leadingTask, ownMessage, type TurnTiming } from './chat-messages.ts'
 import { relevantUpdate, type TaskUpdate } from '#tasks/updates.ts'
+import { threadEntryOrder } from './thread-order.ts'
 
 export interface TaskActions {
   task: string
@@ -65,7 +66,10 @@ export function hydraConversation({
     .sort((
       a,
       b,
-    ) => (a.at ?? '').localeCompare(b.at ?? ''))
+    ) => threadEntryOrder({
+      first: a,
+      second: b,
+    }))
   const turns: {
     input?: ThreadEntry
     entries: ThreadEntry[]
@@ -237,7 +241,10 @@ export function hydraConversation({
   entries.sort((
     a,
     b,
-  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  ) => threadEntryOrder({
+    first: a,
+    second: b,
+  }))
 
   const latest = [...timings.values()].at(-1)
 

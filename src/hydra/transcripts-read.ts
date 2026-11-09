@@ -22,6 +22,7 @@ import { effectiveView } from '#settings/store.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import type { TurnActions } from './conversation.ts'
 import type { TurnTiming } from './chat-messages.ts'
+import { threadEntryOrder } from './thread-order.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -651,7 +652,14 @@ export function readThread(
       return event.seq < replySeq!
     }
 
-    const time = event.at.localeCompare(replyBoundary.at)
+    let time = event.at.localeCompare(replyBoundary.at)
+
+    if (event.type === 'chat.message' && replyBoundary.type === 'chat.message') {
+      time = threadEntryOrder({
+        first: loggedEntry({ event }),
+        second: loggedEntry({ event: replyBoundary }),
+      })
+    }
 
     return time < 0 || time === 0 && (event.seq < replySeq!
       || event.seq === replySeq && index < replyPart!)
@@ -758,7 +766,10 @@ export function readThread(
   const replies = candidates.filter(candidate => candidate.reply).sort((
     a,
     b,
-  ) => (a.item.at ?? '').localeCompare(b.item.at ?? ''))
+  ) => threadEntryOrder({
+    first: a.item,
+    second: b.item,
+  }))
   const page: typeof candidates = []
 
   // Consume a contiguous suffix from each source even when a record was timestamped earlier.
@@ -778,7 +789,10 @@ export function readThread(
   page.sort((
     a,
     b,
-  ) => (a.item.at ?? '').localeCompare(b.item.at ?? '')
+  ) => threadEntryOrder({
+    first: a.item,
+    second: b.item,
+  })
     || positions.get(a)! - positions.get(b)!)
   result.entries = page.map(e => e.item)
 
