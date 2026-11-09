@@ -22,6 +22,7 @@ import type { HydraState } from '#app/model.ts'
 const PAGE_LIMIT = 1000
 const BACKFILL_BATCH_LIMIT = 100_000
 const HASH_LENGTH = 12
+const EXAMPLE_LIMIT = 10
 const hash = ({ value }: { value: string }) => createHash('sha256').update(value)
   .digest('hex')
   .slice(
@@ -349,7 +350,7 @@ export function replayChat({
         provider: card.agent?.provider,
         boundaries: true,
       })
-        .filter(entry => !entry.hidden && entry.role !== 'Pnyx' && entry.text.trim() !== 'NO_REPLY')
+        .filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY')
         .sort((
           a,
           b,
@@ -389,7 +390,7 @@ export function replayChat({
         counts,
         examples: mismatches.slice(
           0,
-          10,
+          EXAMPLE_LIMIT,
         ).map(mismatch => ({
           kind: mismatch.kind,
           reference: hash({ value: mismatch.reference }),
