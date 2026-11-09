@@ -273,7 +273,7 @@ export function harvestTranscripts({
   const cursors = readCursors({ dir: writer.dir })
   let appended = 0
   let moved = false
-  const recorded = new Map(recordedChats({ dir: writer.dir }))
+  const recorded = recordedChats({ dir: writer.dir })
 
   for (const id of cardIds) {
     const path = detached?.session.agent.transcriptPath
@@ -480,7 +480,7 @@ export function backfillConversations({
   at: string
 }) {
   const cursors = readCursors({ dir: writer.dir })
-  const recorded = new Map(recordedChats({ dir: writer.dir }))
+  const recorded = recordedChats({ dir: writer.dir })
 
   for (const [
     name,
