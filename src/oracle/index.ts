@@ -593,7 +593,13 @@ export interface TranscriptRead {
 // inode) or one shorter than the cursor is read again from the start. Null when
 // the file is missing or unreadable, so the cursor waits for it.
 // ponytail: reads the unread tail in one buffer; stream it if transcripts grow past memory.
-export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'identity' | 'pos'> }): TranscriptRead | null {
+export function readTranscript({
+  cursor,
+  through,
+}: {
+  cursor: Pick<Cursor, 'source' | 'identity' | 'pos'>
+  through?: number
+}): TranscriptRead | null {
   let fd: number
 
   try {
@@ -610,7 +616,14 @@ export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'id
     const identity = `${stat.dev}:${stat.ino}`
     const reset = (cursor.identity !== '' && cursor.identity !== identity) || stat.size < cursor.pos
     const from = reset ? 0 : cursor.pos
-    const buf = Buffer.alloc(stat.size - from)
+    const admittedEnd = through ?? stat.size
+    const buf = Buffer.alloc(Math.max(
+      0,
+      Math.min(
+        stat.size,
+        admittedEnd,
+      ) - from,
+    ))
     readSync(
       fd,
       buf,
