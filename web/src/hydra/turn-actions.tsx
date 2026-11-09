@@ -44,6 +44,11 @@ export function TurnActionsFold({
 }) {
   const rows = progressRows({ notes: fold.notes })
   const opened = fold.notes[0]?.id
+
+  if (!rows.length && !fold.tasks.length) {
+    return null
+  }
+
   const changes = fold.tasks.reduce(
     (
       count,
