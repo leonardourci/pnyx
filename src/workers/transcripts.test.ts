@@ -389,3 +389,120 @@ test(
     )
   },
 )
+
+test(
+  'a tool trace names what it ran and keeps text output as words, for Codex scripts and Claude results',
+  () => {
+    const traceOf = ({ record }: { record: unknown }) => readTranscriptRecord({ record }).traces
+      .map(trace => ({
+        role: trace.role,
+        text: trace.text,
+      }))
+
+    assert.deepEqual(
+      [
+        ...traceOf({
+          record: {
+            type: 'response_item',
+            timestamp: at,
+            payload: {
+              type: 'custom_tool_call',
+              call_id: 'call_1',
+              name: 'exec',
+              input: 'const r = await tools.exec_command({cmd:"sleep 3 && date",yield_time_ms:10000})\ntext(r.output)',
+            },
+          },
+        }),
+        ...traceOf({
+          record: {
+            type: 'response_item',
+            timestamp: at,
+            payload: {
+              type: 'custom_tool_call_output',
+              call_id: 'call_1',
+              output: [
+                {
+                  type: 'input_text',
+                  text: 'Script completed',
+                },
+                {
+                  type: 'input_text',
+                  text: 'Mon Nov 9',
+                },
+              ],
+            },
+          },
+        }),
+        ...traceOf({
+          record: {
+            type: 'response_item',
+            timestamp: at,
+            payload: {
+              type: 'custom_tool_call',
+              call_id: 'call_2',
+              name: 'exec',
+              input: 'await tools.exec_command({cmd:"date"})\nawait tools.exec_command({cmd:"pwd"})',
+            },
+          },
+        }).map(trace => trace.role),
+        ...traceOf({
+          record: {
+            type: 'response_item',
+            timestamp: at,
+            payload: {
+              type: 'custom_tool_call_output',
+              call_id: 'call_2',
+              output: [
+                {
+                  type: 'input_text',
+                  text: 'Script completed',
+                },
+                {
+                  type: 'input_image',
+                  image_url: 'data:image/png;base64,AAAA',
+                },
+              ],
+            },
+          },
+        }).map(trace => trace.text.startsWith('[')),
+        ...traceOf({
+          record: {
+            type: 'user',
+            timestamp: at,
+            message: {
+              role: 'user',
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'toolu_1',
+                  content: [
+                    {
+                      type: 'text',
+                      text: 'MERGED',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      ],
+      [
+        {
+          role: 'exec_command',
+          text: '{"cmd":"sleep 3 && date"}',
+        },
+        {
+          role: 'tool',
+          text: 'Script completed\nMon Nov 9',
+        },
+        'exec',
+        true,
+        {
+          role: 'tool',
+          text: 'MERGED',
+        },
+      ],
+    )
+  },
+)

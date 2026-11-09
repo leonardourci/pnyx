@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DEFAULT_VIEW, DEFAULT_WIDTHS, viewFor } from './view.ts'
+import { DEFAULT_VIEW, DEFAULT_WIDTHS, traces, viewFor } from './view.ts'
 
 const saved = ({ view }: { view: object }) =>
   viewFor({
@@ -103,6 +103,89 @@ test(
     assert.equal(
       view.defaultColumnWidths.done,
       420,
+    )
+  },
+)
+
+test(
+  'focus mode hides tool calls and thinking unless a card shows them on its own',
+  () => {
+    const shown = ({
+      focusMode,
+      card,
+    }: {
+      focusMode: boolean
+      card: string
+    }) => traces({
+      view: {
+        ...DEFAULT_VIEW,
+        focusMode,
+        cardTraceOverrides: {
+          tools: { tools: true },
+          thinking: { thinking: true },
+        },
+      },
+      card,
+    })
+
+    const pair = ({
+      focusMode,
+      card,
+    }: {
+      focusMode: boolean
+      card: string
+    }) => {
+      const {
+        tools,
+        thinking,
+      } = shown({
+        focusMode,
+        card,
+      })
+
+      return [
+        tools,
+        thinking,
+      ]
+    }
+
+    assert.deepEqual(
+      [
+        pair({
+          focusMode: true,
+          card: 'plain',
+        }),
+        pair({
+          focusMode: true,
+          card: 'tools',
+        }),
+        pair({
+          focusMode: true,
+          card: 'thinking',
+        }),
+        pair({
+          focusMode: false,
+          card: 'plain',
+        }),
+      ],
+      [
+        [
+          false,
+          false,
+        ],
+        [
+          true,
+          false,
+        ],
+        [
+          false,
+          true,
+        ],
+        [
+          true,
+          true,
+        ],
+      ],
     )
   },
 )

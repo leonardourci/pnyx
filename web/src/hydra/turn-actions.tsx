@@ -6,17 +6,49 @@ import type { TurnActions } from '#hydra/conversation.ts'
 
 import { CollapsibleText,Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { UpdateEntry } from '#web-tasks/update-rows.tsx'
-import { Trace } from './trace-row.tsx'
+import type { PnyxLookup } from './pnyx-action.ts'
+import { progressRows } from './progress-rows.ts'
+import { ProgressTrace } from './trace-row.tsx'
+
+// A running turn's progress moves from after Hydra's latest message to before its reply; an open fold stays open.
+const OPENED_PROGRESS = new Set<string>()
+
+const rememberOpen = ({
+  id,
+  open,
+}: {
+  id?: string
+  open: boolean
+}) => {
+  if (id === undefined) {
+    return
+  }
+
+  if (open) {
+    OPENED_PROGRESS.add(id)
+  } else {
+    OPENED_PROGRESS.delete(id)
+  }
+}
 
 export function TurnActionsFold({
   fold,
+  lookup,
   toolDetails = false,
   thinkingDetails = false,
 }: {
   fold: TurnActions
+  lookup: PnyxLookup
   toolDetails?: boolean
   thinkingDetails?: boolean
 }) {
+  const rows = progressRows({ notes: fold.notes })
+  const opened = fold.notes[0]?.id
+
+  if (!rows.length && !fold.tasks.length) {
+    return null
+  }
+
   const changes = fold.tasks.reduce(
     (
       count,
@@ -24,7 +56,7 @@ export function TurnActionsFold({
     ) => count + task.updates.length,
     0,
   )
-  let label = <>Hydra’s progress · {fold.notes.length} {fold.notes.length === 1 ? 'update' : 'updates'}</>
+  let label = <>Hydra’s progress · {rows.length} {rows.length === 1 ? 'update' : 'updates'}</>
 
   if (fold.tasks.length) {
     const tasks = fold.tasks.length === 1
@@ -35,15 +67,28 @@ export function TurnActionsFold({
 
   return (
     <div contentEditable={false} className="turn-actions">
-      <Disclosure title={label}>
-        {fold.notes.length > 0 && (
+      <Disclosure
+        title={label}
+        open={opened !== undefined && OPENED_PROGRESS.has(opened)}
+        onToggle={({ open }) => rememberOpen({
+          id: opened,
+          open,
+        })}
+      >
+        {rows.length > 0 && (
           <section className="turn-progress">
             <span className="eyebrow">Progress</span>
-            {fold.notes.map(note => (
-              <div key={note.id} data-progress-id={note.reference ?? note.id}>
-                {note.kind === 'message'
-                  ? <CollapsibleText text={note.text} />
-                  : <Trace entry={note} details={note.kind === 'tool' ? toolDetails : thinkingDetails} />}
+            {rows.map(row => (
+              <div key={row.entry.id} data-progress-id={row.entry.reference ?? row.entry.id}>
+                {row.kind === 'message'
+                  ? <CollapsibleText text={row.entry.text} />
+                  : (
+                    <ProgressTrace
+                      row={row}
+                      open={row.kind === 'tool' ? toolDetails : thinkingDetails}
+                      lookup={lookup}
+                    />
+                  )}
               </div>
             ))}
           </section>

@@ -1,7 +1,8 @@
-import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { shellCommand } from './pnyx-action.ts'
+import { SentencePart } from './action-bubble.tsx'
+import type { PnyxLookup } from './pnyx-action.ts'
+import { progressLabel, type TraceRow } from './progress-rows.ts'
 
 export const roleLabel = ({
   role,
@@ -11,31 +12,58 @@ export const roleLabel = ({
   assistantLabel?: string
 }) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
 
-export function Trace({
-  entry,
-  details,
+const TraceBlock = ({
+  label,
+  text,
 }: {
-  entry: ThreadEntry
-  details: boolean
+  label: string
+  text: string
+}) => (
+  <div className="trace-block" role="group" aria-label={label}>
+    <span className="eyebrow">{label}</span>
+    <pre className="trace-text">{text}</pre>
+  </div>
+)
+
+// A tool call or thinking in Hydra's progress: a plain label that opens to the command, input and output.
+export function ProgressTrace({
+  row,
+  open,
+  lookup,
+}: {
+  row: TraceRow
+  open: boolean
+  lookup: PnyxLookup
 }) {
-  const firstLine = entry.text.split(
-    '\n',
-    1,
-  )[0]?.slice(
-    0,
-    200,
-  )
-  const label = entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)
-  const summary = (
-    <>
-      <Icon name={entry.kind} size={14} />
-      <strong>{label}</strong>
-      <span>{firstLine}</span>
-    </>
-  )
+  const label = progressLabel({
+    row,
+    lookup,
+  })
+  const tool = row.kind === 'tool' ? row : undefined
+  const copied = tool?.input ?? tool?.output ?? row.entry.text
+  const words = label.sentence.map((
+    part,
+    index,
+  ) => <SentencePart key={index} part={part} />)
 
-  const copy = entry.kind === 'tool' && <CopyButton className="trace-copy" label="Copy" text={() => shellCommand({ text: entry.text }) ?? entry.text} />
-
-  return details ? <details className="trace" data-expandable="true"><summary>{summary}{copy}</summary><pre className="trace-text">{entry.text}</pre></details>
-    : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}{copy}</div></div>
+  return (
+    <details
+      className="trace"
+      data-expandable="true"
+      data-progress-kind={row.kind}
+      open={open}
+    >
+      <summary>
+        <Icon name={label.icon} size={14} />
+        <span className="trace-label">{words}</span>
+        <CopyButton className="trace-copy" label="Copy" text={() => copied} />
+      </summary>
+      {tool ? (
+        <>
+          {tool.input && <TraceBlock label="Input" text={tool.input} />}
+          {tool.output && <TraceBlock label="Output" text={tool.output} />}
+        </>
+      ) : <pre className="trace-text">{row.entry.text}</pre>}
+    </details>
+  )
 }

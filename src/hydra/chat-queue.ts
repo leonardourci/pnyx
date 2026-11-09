@@ -1,4 +1,4 @@
-import { hydraConfig } from './config.ts'
+import { hostedHydra, hydraConfig } from './config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -93,12 +93,18 @@ function hydraQueueView({
   }
 }
 
+// Pnyx is running a turn of this Hydra's agent now.
+export function hydraWorking({ state }: { state: HydraState }) {
+  const card = state.cards[HYDRA_CARD]
+
+  return hostedHydra({ state }) && (card?.sessionActivity ?? card?.activity) === 'working'
+}
+
 export function hydraChatQueue({ state }: { state: HydraState }) {
   const config = hydraConfig({ state })
   const card = state.cards[HYDRA_CARD]
   const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id)
-  const hosted = config.hydra.kind !== 'firstmate'
-  const working = hosted && (card?.sessionActivity ?? card?.activity) === 'working'
+  const working = hydraWorking({ state })
   const view = hydraQueueView({
     state,
     card,
@@ -108,7 +114,6 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
   return {
     ...view,
     held: [...view.held],
-    hosted,
     working,
     through: state.seq,
   }

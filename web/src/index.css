@@ -83,9 +83,7 @@ h1, h2 { font-weight: 700; }
 
 .hydra-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 
-.hydra-status { margin-left: auto; flex-shrink: 0; color: var(--color-muted); font: 400 var(--text-meta) var(--font-sans); letter-spacing: normal; }
-
-.hydra-status[data-down] { color: var(--color-red); }
+.hydra-status { margin-left: auto; flex-shrink: 0; color: var(--color-red); font: 400 var(--text-meta) var(--font-sans); letter-spacing: normal; }
 
 /* A notice from Pnyx, never Hydra's own words. */
 .message[data-pnyx] { color: var(--color-muted); }
@@ -294,6 +292,8 @@ h3 { font-weight: 600; }
 .message-meta, .turn-foot { display: flex; align-items: center; gap: 2px; margin-top: -12px; color: var(--color-muted); font-size: var(--text-meta); }
 
 .message-meta { align-self: flex-end; }
+.message-meta .unsent { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; color: var(--color-red); }
+.message[data-unsent] { opacity: .7; }
 
 .turn-foot { align-self: flex-start; margin-top: -10px; }
 
@@ -314,11 +314,11 @@ h3 { font-weight: 600; }
 
 @media (hover: none) { .trace-copy { opacity: 1; } }
 
-.chat-error, .send-error { display: flex; align-items: flex-start; gap: 8px; border: 1px solid color-mix(in srgb, var(--color-red) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--color-red) 8%, transparent); color: var(--color-red); font-size: var(--text-ui); overflow-wrap: anywhere; }
+.chat-error { display: flex; align-items: flex-start; gap: 8px; border: 1px solid color-mix(in srgb, var(--color-red) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--color-red) 8%, transparent); color: var(--color-red); font-size: var(--text-ui); overflow-wrap: anywhere; }
 
 .chat-error { max-width: 100%; margin-top: 18px; padding: 10px 12px; }
 
-:is(.chat-error, .send-error) > svg { margin-top: 2px; }
+.chat-error > svg { margin-top: 2px; }
 
 .trace { color: var(--color-muted); font-size: var(--text-ui); }
 
@@ -329,6 +329,10 @@ h3 { font-weight: 600; }
 .trace summary strong, .trace-summary strong { flex-shrink: 0; font-weight: 500; }
 
 .trace summary span, .trace-summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
+
+.trace .trace-block { display: grid; gap: 4px; margin-top: 8px; }
+
+.trace .trace-block .trace-text { margin-top: 0; }
 
 .trace .trace-text { margin-top: 6px; max-height: 400px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-raised); }
 
@@ -478,12 +482,6 @@ h3 { font-weight: 600; }
 .chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
 
 .mention-icon { display: inline-flex; color: var(--column-color, currentColor); }
-
-.send-error { flex-shrink: 0; max-height: 96px; overflow: auto; margin: 0 0 8px; padding: 8px 6px 8px 10px; }
-
-.send-error > p { flex: 1; min-width: 0; }
-
-.send-error > .icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; color: inherit; }
 
 .usage-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--composer-control-h); height: var(--composer-control-h); color: var(--color-muted); font: 400 8px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 
@@ -1018,7 +1016,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: var(--text-ui); }
 
-.hydra-chat > :is(.composer, .agent-change-choice, .compaction-queue, .send-error, .save-checking, .waiting-decisions) { margin-inline: var(--chat-inset); }
+.hydra-chat > :is(.composer, .agent-change-choice, .compaction-queue, .save-checking, .waiting-decisions) { margin-inline: var(--chat-inset); }
 
 .hydra-chat > .waiting-decisions { padding-inline: 0; }
 
@@ -1212,6 +1210,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-row .hydra-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .hydra-row .hydra-name > .identity-icon { flex-shrink: 0; }
+.hydra-running { flex: 0 0 8px; width: 8px; height: 8px; margin-left: auto; border-radius: 50%; background: var(--color-line); }
+.hydra-running[data-running] { background: transparent; box-shadow: inset 0 0 0 2px var(--color-blue); animation: hydra-running 1.6s ease-in-out infinite; }
+@keyframes hydra-running { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .hydra-running[data-running] { animation: none; } }
 
 .hydra-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
 

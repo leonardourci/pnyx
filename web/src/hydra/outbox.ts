@@ -132,3 +132,41 @@ export function saveSettingsSaves({
     )
   } catch { /* The mounted connection retains operation IDs when storage is blocked. */ }
 }
+
+// Owner messages the server refused, kept with their reason until a retry sends them.
+export interface UnsentMessage {
+  id: string
+  text: string
+  at: string
+  failed: string
+}
+
+export function readUnsent({ key }: { key: string }): UnsentMessage[] {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey({ key: `unsent:${key}` })) ?? '[]')
+
+    return Array.isArray(saved) ? saved.filter((item): item is UnsentMessage => typeof item?.id === 'string'
+      && typeof item.text === 'string' && typeof item.at === 'string' && typeof item.failed === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function saveUnsent({
+  key,
+  items,
+}: {
+  key: string
+  items: UnsentMessage[]
+}): void {
+  try {
+    if (items.length) {
+      sessionStorage.setItem(
+        storageKey({ key: `unsent:${key}` }),
+        JSON.stringify(items),
+      )
+    } else {
+      sessionStorage.removeItem(storageKey({ key: `unsent:${key}` }))
+    }
+  } catch { /* The mounted chat still shows unsent messages when storage is blocked. */ }
+}

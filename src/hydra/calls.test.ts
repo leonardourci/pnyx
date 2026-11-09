@@ -431,7 +431,7 @@ test(
       [
         [
           'tool',
-          'exec',
+          'exec_command',
           'call_1',
         ],
       ],

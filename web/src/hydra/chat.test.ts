@@ -372,6 +372,7 @@ test(
       ],
       columns: [],
       working: false,
+      tools: true,
       thinking: false,
       actions: [],
     }).timings.get('reply')

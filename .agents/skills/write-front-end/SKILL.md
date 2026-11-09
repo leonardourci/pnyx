@@ -37,7 +37,7 @@ Text people write goes through two shared components, so a new screen gets chips
 
 For reversible edits, publish the result through the shared optimistic resource as soon as the owner acts, then confirm it with the server in the background. Allocate a stable attempt/event ID before sending and retain it across uncertain delivery and retry. Key a created item by its client key, map that key to the confirmed ID, and update its fields in place. Confirmation must keep the same React element and DOM node: no refetch-driven remount, collapse or blink.
 
-On a definite refusal, remove the refused preview and show the server's reason. Restore the draft when useful without replacing a newer edit. While delivery is unconfirmed, retain the preview and show “Checking…”; a timeout or disconnect does not mean the edit failed. Use the shared pending state for these outcomes instead of inventing a second local saved state. Destructive or irreversible actions stay confirm-first; preview the result only after explicit confirmation.
+On a definite refusal, remove the refused preview and show the server's reason. Restore the draft when useful without replacing a newer edit. A message sent in Hydra's chat is the exception: the refused message stays in the chat marked Not sent with the server's reason, and Retry sends it again under the same event ID. While delivery is unconfirmed, retain the preview and show “Checking…”; a timeout or disconnect does not mean the edit failed. Use the shared pending state for these outcomes instead of inventing a second local saved state. Destructive or irreversible actions stay confirm-first; preview the result only after explicit confirmation.
 
 Bad: the editor waits for the server before showing the edit.
 

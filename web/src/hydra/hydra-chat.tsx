@@ -1,7 +1,7 @@
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraChatQueue } from '#hydra/chat-queue.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hostedHydra,hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
@@ -26,7 +26,7 @@ import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { hydraPill,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
+import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
@@ -36,6 +36,7 @@ import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
+import { readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
 import { REDUCED_MOTION } from './streaming.tsx'
 
@@ -57,7 +58,6 @@ const EMPTY_CHAT_QUEUE: HydraChatQueue = {
   compactionRunning: false,
   upgradeRunning: false,
   compactInputs: [],
-  hosted: false,
   working: false,
   through: 0,
 }
@@ -68,7 +68,22 @@ interface Sending {
   text: string
   at: string
   confirmed: boolean
+  // Why the send failed; the message stays, marked not sent, until a retry.
+  failed?: string
 }
+
+const withFailure = ({
+  items,
+  id,
+  failed,
+}: {
+  items: Sending[]
+  id: string
+  failed?: string
+}) => items.map(item => item.id === id ? {
+  ...item,
+  failed,
+} : item)
 
 export function HydraChat({
   hydraId,
@@ -152,7 +167,10 @@ export function HydraChat({
   const [
     sending,
     setSending,
-  ] = useState<Sending[]>([])
+  ] = useState<Sending[]>(() => readUnsent({ key: hydraId }).map(item => ({
+    ...item,
+    confirmed: false,
+  })))
   const [
     away,
     setAway,
@@ -243,17 +261,21 @@ export function HydraChat({
     upgrades,
     compactOperations,
     shownUpgrades,
-    upgrading,
     holding,
     runningChange,
     compactionRunning,
     upgradeRunning,
     working,
-    hosted,
   } = chatQueue
+  // From the Hydra's own state, so a first send shows its working dots before the server's queue arrives.
+  const hosted = hostedHydra({ state })
+  const inFlight = pending.filter(item => item.failed === undefined)
+  // An unsent message stays in the chat even while Hydra holds new input in the queue box.
+  const shownSends = pending.filter(item => item.failed !== undefined
+    || (!holding && !held.has(item.id)))
   const compactInputs = [
     ...chatQueue.compactInputs,
-    ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
+    ...inFlight.filter(item => holding && !held.has(item.id)).map(item => ({
       ...item,
       actor: 'web',
       route: 'hydra' as const,
@@ -271,6 +293,32 @@ export function HydraChat({
       notify({ text: (error as Error).message })
     }
   }
+
+  const unsent = sending.flatMap(({
+    id,
+    text,
+    at,
+    failed,
+  }) => failed === undefined ? [] : [
+    {
+      id,
+      text,
+      at,
+      failed,
+    },
+  ])
+  const unsentKey = JSON.stringify(unsent)
+  // A refused message outlives a reload or a Hydra switch, until a retry sends it.
+  useEffect(
+    () => saveUnsent({
+      key: hydraId,
+      items: unsent,
+    }),
+    [
+      hydraId,
+      unsentKey,
+    ],
+  )
 
   useEffect(
     () => {
@@ -293,6 +341,7 @@ export function HydraChat({
     entries: conversation?.entries ?? [],
     folds: new Map(Object.entries(conversation?.folds ?? {})),
     timings: new Map(Object.entries(conversation?.timings ?? {})),
+    trailing: new Map(Object.entries(conversation?.trailing ?? {})),
   }
   const decisions = chatDecisions({
     state,
@@ -366,13 +415,14 @@ export function HydraChat({
       text: '',
       at: decision.at,
     })),
-    ...pending.filter(s => !holding && !held.has(s.id)).map(s => ({
+    ...shownSends.map(s => ({
       id: s.id,
       kind: 'message' as const,
       role: 'user',
       text: s.text,
       at: s.at,
-      sending: !s.confirmed,
+      sending: !s.confirmed && s.failed === undefined,
+      unsent: s.failed,
     })),
   ].sort((
     a,
@@ -453,11 +503,11 @@ export function HydraChat({
   }
 
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
-  const running = working || (hosted && pending.length > 0)
+  const running = working || (hosted && inFlight.length > 0)
   // A send counts from the owner's message until the server says the turn began.
   const lookup = pnyxLookup({ state })
   const since = (working ? card?.workingSince : undefined)
-    ?? pending.at(-1)?.at ?? null
+    ?? inFlight.at(-1)?.at ?? null
 
   const bottom = () => {
     const element = stream.current
@@ -573,13 +623,42 @@ export function HydraChat({
       }
 
       const id = args[2] ?? crypto.randomUUID()
+      const text = args[1] ?? ''
+      const at = new Date().toISOString()
+
+      const markFailed = ({ reason }: { reason: string }) => {
+        setSending(items => withFailure({
+          items,
+          id,
+          failed: reason,
+        }))
+        // Saved here too, so a refusal that arrives after the owner left this Hydra is still there on return.
+        const saved = readUnsent({ key: hydraId })
+        saveUnsent({
+          key: hydraId,
+          items: [
+            ...saved.filter(item => item.id !== id),
+            {
+              id,
+              text,
+              at: saved.find(item => item.id === id)?.at ?? at,
+              failed: reason,
+            },
+          ],
+        })
+      }
+
       follow.current = true; setAway(false)
-      setSending(items => items.some(s => s.id === id) ? items : [
+      setSending(items => items.some(s => s.id === id) ? withFailure({
+        items,
+        id,
+        failed: undefined,
+      }) : [
         ...items,
         {
           id,
-          text: args[1] ?? '',
-          at: new Date().toISOString(),
+          text,
+          at,
           confirmed: false,
         },
       ])
@@ -595,25 +674,47 @@ export function HydraChat({
         ],
         onChecking,
       }).catch((error: Error) => {
-        setSending(items => items.filter(s => s.id !== id))
+        markFailed({ reason: error.message })
         throw error
       })
 
-      const queued = result.state === 'queued'
-      setSending(items => queued ? items.map(s => s.id === id ? {
+      // Any answer means the server recorded the message; a Hydra that could not take it says why.
+      setSending(items => items.map(s => s.id === id ? {
         ...s,
         confirmed: true,
-      } : s) : items.filter(s => s.id !== id))
+      } : s))
 
-      return {
-        reply: {
-          state: queued ? 'queued' : 'failed',
-          detail: result.detail,
-        },
+      if (result.state === 'failed' && typeof result.detail === 'string') {
+        notify({ text: result.detail })
       }
+
+      return result
     },
-    [command],
+    [
+      command,
+      notify,
+      hydraId,
+    ],
   )
+
+  // A retry keeps the message's id, so a copy the server did record is never sent twice.
+  const retry = ({ id }: { id: string }) => {
+    const message = sending.find(item => item.id === id)
+
+    if (message) {
+      deliver({
+        name: 'reply',
+        args: [
+          HYDRA_CARD,
+          message.text,
+          id,
+        ],
+      }).catch(() => {
+        // The message stays marked not sent with the new reason.
+      })
+    }
+  }
+
   const route: ThreadPage = {
     ...page,
     card: HYDRA_CARD,
@@ -627,14 +728,8 @@ export function HydraChat({
     connected,
   })
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
+  const down = hosted ? hydraDown({ status: state.hydraStatus }) : undefined
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
-  // Hydra's own state, apart from the browser's connection that the offline badge shows.
-  const pill = hydraPill({
-    status: state.hydraStatus,
-    upgrading,
-    working,
-    starting: pending.length > 0,
-  })
 
   return (
     <aside
@@ -653,7 +748,7 @@ export function HydraChat({
         addProject={addProject}
         connected={connected}
       >
-        {hosted && <span className="hydra-status" role="status" data-down={pill.down || undefined}>{pill.text}</span>}
+        {down && <span className="hydra-status" role="status">{down}</span>}
       </HydraHead>
       <div className="hydra-body">
         <div
@@ -726,6 +821,7 @@ export function HydraChat({
               catalog={catalog}
               labelColors={state.labelColors}
               folds={chat.folds}
+              trailing={chat.trailing}
               timings={chat.timings}
               inline={inline}
               entries={entries}
@@ -745,6 +841,7 @@ export function HydraChat({
               toolDetails={view.toolDetails}
               thinkingDetails={view.thinkingDetails}
               sendAgain={sendAgain}
+              retry={retry}
             />
             <DispatchProposals
               state={state}

@@ -242,6 +242,7 @@ test(
     const view = hydraThreadView({
       state,
       page,
+      tools: true,
       thinking: false,
     })
     assert.deepEqual(
@@ -570,6 +571,7 @@ test(
     const conversation = hydraThreadView({
       state,
       page,
+      tools: true,
       thinking: false,
     }).conversation
     assert.deepEqual(

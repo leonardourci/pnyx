@@ -7,13 +7,21 @@ export function Disclosure({
   title,
   children,
   className = '',
+  open,
+  onToggle,
 }: {
   title: ReactNode
   children: ReactNode
   className?: string
+  open?: boolean
+  onToggle?({ open }: { open: boolean }): void
 }) {
   return (
-    <details className={`disclosure ${className}`}>
+    <details
+      className={`disclosure ${className}`}
+      open={open}
+      onToggle={event => onToggle?.({ open: event.currentTarget.open })}
+    >
       <summary contentEditable={false}>
         {title}
         <span className="disclosure-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>

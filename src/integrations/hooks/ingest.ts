@@ -124,9 +124,11 @@ function ingest({
     const session = o.card.agent
       ? writer.state.sessions?.[sessionId({ agent: o.card.agent as AgentRef })] : undefined
 
+    // The host records a hosted session's turns itself; its hooks arrive late and out of order.
     if (session && session.agent.host === 'pnyx') {
       card = {
         ...card,
+        activity: undefined,
         settings: observedSettings({
           agent: session.agent,
           held: session.settings,

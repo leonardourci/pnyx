@@ -275,6 +275,7 @@ test(
       actions: [],
       columns: [],
       working: false,
+      tools: true,
       thinking: false,
     })
     assert.equal(

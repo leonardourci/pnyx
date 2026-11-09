@@ -2,7 +2,7 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { commands } from './cli.ts'
 import { hydraIdentity } from './server-state.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hostedHydra, hydraConfig } from '#hydra/config.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { readInitialEvent } from './event-log.ts'
@@ -10,6 +10,7 @@ import { withRegistryLock } from '#store/storage.ts'
 import { projectsFor } from '#projects/read.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { liveTask } from '#tasks/select.ts'
+import { hydraWorking } from '#hydra/chat-queue.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
 
@@ -29,6 +30,8 @@ export interface HydraSummary {
   // Position in the Hydra list: the set position, else creation time in ms.
   order: number
   hydra: string
+  // Its agent is running a turn now; absent for a Hydra whose agent Pnyx does not run.
+  working?: boolean
   projects: HydraProjectSummary[]
 }
 
@@ -155,6 +158,7 @@ function summarize({ id }: { id: string }): {
         icon: config.icon,
         order: config.position ?? createdAt({ id }),
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
+        working: hostedHydra({ state }) ? hydraWorking({ state }) : undefined,
         projects,
       },
     }

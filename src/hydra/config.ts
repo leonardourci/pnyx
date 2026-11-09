@@ -24,3 +24,6 @@ export function hydraConfig({
     ],
   }
 }
+
+// Pnyx runs this Hydra's agent itself, so it knows when a turn starts and ends.
+export const hostedHydra = ({ state }: { state: HydraState }) => hydraConfig({ state }).hydra.kind !== 'firstmate'

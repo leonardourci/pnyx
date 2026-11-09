@@ -24,6 +24,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { runForRequest } from '#app/api-run.ts'
 import { decidePush } from '#tasks/push.ts'
+import { applyDecision } from '#app/decision.ts'
 import { harvestTranscripts } from './harvest.ts'
 
 const ROOT = join(
@@ -1159,6 +1160,95 @@ test(
     assert.equal(
       repeatCard().settings?.effort,
       'low',
+    )
+  },
+)
+
+// Records the turn state Pnyx's host reports for the repeat session it runs.
+const hostRecords = ({
+  activity,
+  second,
+}: {
+  activity: string
+  second: number
+}) => {
+  const at = `2026-10-29T12:00:${String(second).padStart(
+    2,
+    '0',
+  )}.500Z`
+
+  withWriter({
+    hydraId: 'default',
+    fn: ({ writer }) => applyDecision({
+      writer,
+      decision: decidePush({
+        state: writer.state,
+        key: `claude:${REPEAT_SESSION}`,
+        input: {
+          activity,
+          agent: {
+            provider: 'claude-code',
+            sessionId: REPEAT_SESSION,
+            host: 'pnyx',
+          },
+          source: {
+            adapter: 'pnyx',
+            objectId: REPEAT_SESSION,
+            observedAt: at,
+          },
+        },
+        meta: {
+          at,
+          actor: 'pnyx',
+        },
+      }),
+    }),
+  })
+}
+
+test(
+  'a session Pnyx hosts keeps the turn state its host recorded, whatever its own hooks report',
+  () => {
+    process.env.PNYX_HOME = sandbox().home
+    hostRecords({
+      activity: 'working',
+      second: 0,
+    })
+    hookAt({
+      second: 1,
+      event: 'SessionStart',
+    })
+    hookAt({
+      second: 2,
+      event: 'SubagentStop',
+    })
+    hookAt({
+      second: 3,
+      event: 'Stop',
+    })
+    assert.equal(
+      repeatCard().sessionActivity,
+      'working',
+      'late finishing hooks leave a running turn working',
+    )
+
+    hostRecords({
+      activity: 'finished',
+      second: 4,
+    })
+    hookAt({
+      second: 5,
+      event: 'PreToolUse',
+    })
+    hookAt({
+      second: 6,
+      event: 'UserPromptSubmit',
+      prompt: 'Late prompt report',
+    })
+    assert.equal(
+      repeatCard().sessionActivity,
+      'finished',
+      'late working hooks leave an ended turn finished',
     )
   },
 )

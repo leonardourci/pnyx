@@ -268,6 +268,7 @@ test(
     const wire = JSON.parse(JSON.stringify(hydraThreadView({
       state,
       page,
+      tools: true,
       thinking: true,
     }))) as ThreadPage
     assert.equal(
@@ -454,6 +455,7 @@ test(
       hydraThreadView({
         state,
         page,
+        tools: true,
         thinking: false,
       }).conversation.entries.map(entry => entry.text),
       [
@@ -472,6 +474,7 @@ test(
       hydraThreadView({
         state,
         page: archived,
+        tools: true,
         thinking: false,
       }).conversation.entries.map(entry => entry.text),
       [
@@ -487,6 +490,7 @@ test(
       hydraThreadView({
         state,
         page,
+        tools: true,
         thinking: false,
       }).conversation.entries.map(entry => entry.text),
       [
@@ -505,6 +509,7 @@ test(
   () => {
     const reply = ({ record }: { record: unknown }) => hydraThreadView({
       state: emptyHydra(),
+      tools: true,
       thinking: false,
       page: {
         card: HYDRA_CARD,

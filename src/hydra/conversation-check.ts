@@ -13,6 +13,7 @@ export function conversationEntries({ conversation }: {
   return conversation.entries.flatMap(entry => [
     ...conversation.folds[entry.id]?.notes ?? [],
     entry,
+    ...conversation.trailing[entry.id] ?? [],
   ])
 }
 

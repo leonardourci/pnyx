@@ -5,7 +5,7 @@ import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import { receiptLabel } from '#web-app/view.ts'
 import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-registry.tsx'
-import { Button } from '#web-shared/ui/controls.tsx'
+import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
@@ -43,7 +43,7 @@ import {
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
-import { Trace,roleLabel } from './trace-row.tsx'
+import { roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
 const PILL_GAP = 6
@@ -52,6 +52,8 @@ let highlights = 0
 // A message the owner just sent shows at once, faded until the server records it.
 export type ChatEntry = ThreadEntry & {
   sending?: boolean
+  // Why the owner's message was not sent; it stays with a retry.
+  unsent?: string
   renderKey?: string
 }
 
@@ -102,12 +104,15 @@ export function Messages({
   assistantLabel,
   notify,
   folds,
+  trailing,
   inline,
   timings,
   catalog,
   labelColors,
   sendAgain,
+  retry,
 }: {
+  retry?({ id }: { id: string }): void
   // Sends a task message that may not have arrived again, as a new message with its own id.
   sendAgain?({
     task,
@@ -120,6 +125,8 @@ export function Messages({
   labelColors?: SavedLabelColor[]
   timings: Map<string, TurnTiming>
   folds?: Map<string, TurnActions>
+  // Progress shown after an entry: the rest of its turn so far, or a turn that ended without a reply.
+  trailing?: Map<string, ThreadEntry[]>
   inline?: Map<string, React.ReactNode>
   notify({ text }: { text: string }): void
   openTask?({ id }: { id: string }): void
@@ -730,6 +737,7 @@ export function Messages({
                   tasks: [],
                   notes: folds.get(entry.id)!.notes,
                 }}
+                lookup={lookup}
                 toolDetails={toolDetails}
                 thinkingDetails={thinkingDetails}
               />
@@ -743,12 +751,13 @@ export function Messages({
               })}
               data-streaming={entry.streaming || undefined}
               data-sending={entry.sending || undefined}
+              data-unsent={entry.unsent !== undefined || undefined}
               data-pnyx={entry.role === 'Pnyx' || undefined}
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
               {taskReferences && !inline?.has(entry.id) && <MessageTask entry={entry} />}
-              {inline?.get(entry.id) ?? (entry.kind === 'message' ? (
+              {inline?.get(entry.id) ?? (
                 <ChatMessageText
                   catalog={ownMessage({ entry }) ? catalog : undefined}
                   colors={labelColors}
@@ -831,9 +840,7 @@ export function Messages({
                     )
                   }}
                 />
-              ) : (
-                <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
-              ))}
+              )}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([
@@ -858,6 +865,14 @@ export function Messages({
             </article>
             {ownMessage({ entry }) && !entry.continued && (
               <div className="message-meta" contentEditable={false}>
+                {entry.unsent !== undefined && (
+                  <span className="unsent" role="alert">
+                    <Icon name="error" size={14} />Not sent · {entry.unsent}
+                  </span>
+                )}
+                {entry.unsent !== undefined && retry && (
+                  <InlineButton onClick={() => retry({ id: entry.id })}>Retry</InlineButton>
+                )}
                 {entry.at && (
                   <time
                     dateTime={entry.at}
@@ -878,12 +893,24 @@ export function Messages({
                 />
               </div>
             )}
+            {trailing?.get(entry.id)?.length ? (
+              <TurnActionsFold
+                fold={{
+                  tasks: [],
+                  notes: trailing.get(entry.id)!,
+                }}
+                lookup={lookup}
+                toolDetails={toolDetails}
+                thinkingDetails={thinkingDetails}
+              />
+            ) : null}
             {folds?.get(entry.id)?.tasks.length ? (
               <TurnActionsFold
                 fold={{
                   tasks: folds.get(entry.id)!.tasks,
                   notes: [],
                 }}
+                lookup={lookup}
               />
             ) : null}
             {timings.has(entry.id) && (
