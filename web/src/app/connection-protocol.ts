@@ -1,3 +1,6 @@
+import type { HydraState } from '#app/model.ts'
+import { sessionId } from '#workers/session-attachments.ts'
+
 export { commandTimeout, retryable } from '#app/server-protocol.ts'
 
 export const reconnectDelay = ({ attempt }: { attempt: number }) =>
@@ -8,6 +11,24 @@ export const reconnectDelay = ({ attempt }: { attempt: number }) =>
     ),
     10000,
   )
+
+export function retainedReadings<Value>({
+  current,
+  before,
+  after,
+}: {
+  current: Record<string, Value>
+  before: HydraState
+  after: HydraState
+}): Record<string, Value> {
+  return Object.fromEntries(Object.entries(current).filter(([id]) => {
+    const previous = before.cards[id]?.agent
+    const next = after.cards[id]?.agent
+
+    return previous !== undefined && next !== undefined
+      && sessionId({ agent: previous }) === sessionId({ agent: next })
+  }))
+}
 
 // A push carries only the cards that changed; null drops a card's value.
 export function withChanges<Value>({

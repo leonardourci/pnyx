@@ -14,7 +14,7 @@ import { argument } from '#web-tasks/optimistic.ts'
 import { noteUpdate,staleUpdates } from '#web-tasks/updates-cache.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
-import { reconnectDelay,withChanges } from './connection-protocol.ts'
+import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
 import { createConnectionRequests } from './connection-requests.ts'
 import { confirmedState,removeStored,save,stored } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
@@ -584,6 +584,27 @@ export function createHydraConnection() {
     })
   }
 
+  const confirmState = ({
+    scope,
+    state,
+  }: {
+    scope: Scope
+    state: HydraState
+  }) => {
+    const before = scope.resource.snapshot().confirmed
+    scope.spend = retainedReadings({
+      current: scope.spend,
+      before,
+      after: state,
+    })
+    scope.usage = retainedReadings({
+      current: scope.usage,
+      before,
+      after: state,
+    })
+    scope.resource.confirm({ state })
+  }
+
   const receive = ({ message }: { message: ServerMessage }) => {
     if (message.type === 'pong') {
       return
@@ -676,10 +697,11 @@ export function createHydraConnection() {
         retrySubscription({ scope })
       }
     } else if (message.type === 'snapshot') {
-      scope.resource.confirm({ state: confirmedState({ state: message.state }) })
+      confirmState({
+        scope,
+        state: confirmedState({ state: message.state }),
+      })
       scope.actions = {}
-      scope.spend = {}
-      scope.usage = {}
       scope.hasSnapshot = true
       confirmSaves({ scope })
       // The shown queue stays until the one the server sends after every snapshot arrives.
@@ -710,7 +732,8 @@ export function createHydraConnection() {
         return
       }
 
-      scope.resource.confirm({
+      confirmState({
+        scope,
         state: reduce({
           state,
           event: message.event,
