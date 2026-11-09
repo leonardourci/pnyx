@@ -32,13 +32,26 @@ const identityOf = ({ hydra }: { hydra: HydraSummary }): HydraIdentity => ({
 
 const HYDRA_DRAG = 'application/pnyx-hydra'
 
-// Only a Hydra whose agent Pnyx runs reports whether it is running.
-const RunningDot = ({ working }: { working?: boolean }) => {
+const runningId = ({ id }: { id: string }) => `hydra-running-${id}`
+
+// Only a Hydra whose agent Pnyx runs reports whether it is running; screen readers hear it as the button's description.
+const RunningDot = ({
+  id,
+  working,
+}: {
+  id: string
+  working?: boolean
+}) => {
   if (working === undefined) {
     return null
   }
 
-  return <span className="hydra-running" data-running={working || undefined} aria-hidden="true" />
+  return (
+    <>
+      <span className="hydra-running" data-running={working || undefined} aria-hidden="true" />
+      <span id={runningId({ id })} hidden>Running</span>
+    </>
+  )
 }
 
 const otherNames = ({
@@ -358,6 +371,7 @@ export function Hydras({
                     className="hydra-name"
                     data-hydra-current={active ? '' : undefined}
                     aria-current={active ? 'page' : undefined}
+                    aria-describedby={h.working ? runningId({ id: h.id }) : undefined}
                     title="Double-click or right-click to edit"
                     onDoubleClick={() => setEditing(h.id)}
                     onContextMenu={event => openMenu({
@@ -375,7 +389,9 @@ export function Hydras({
                       },
                     })}
                     onClick={() => active && !loading ? showHydra() : openHydra({ id: h.id })}
-                  ><HydraLabel name={h.name} icon={h.icon} /><RunningDot working={h.working} />
+                  >
+                    <HydraLabel name={h.name} icon={h.icon} />
+                    <RunningDot id={h.id} working={h.working} />
                   </Button>
                 )}
               </div>
