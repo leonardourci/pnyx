@@ -2471,7 +2471,7 @@ test(
   },
 )
 
-async function heldMerge({ t }: { t: TestContext }) {
+async function openMerge({ t }: { t: TestContext }) {
   const l = await lab({ t })
   const ref = await l.create({ key: 'merge-refusals' })
   const question = 'synthetic-merge-hold'
@@ -2493,6 +2493,20 @@ async function heldMerge({ t }: { t: TestContext }) {
       },
     },
   })
+
+  return {
+    l,
+    ref,
+    question,
+  }
+}
+
+async function heldMerge({ t }: { t: TestContext }) {
+  const {
+    l,
+    ref,
+    question,
+  } = await openMerge({ t })
   await l.task({
     args: [
       'answer',
@@ -2514,6 +2528,85 @@ async function heldMerge({ t }: { t: TestContext }) {
     held,
   }
 }
+
+test(
+  'a review note reaches Hydra alone without deciding, or with Merge or Hold',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+    } = await openMerge({ t })
+    const lastMessage = () => l.state().hydraMessages!.at(-1)!
+    await l.task({
+      args: [
+        'discuss-question',
+        ref,
+        question,
+        '--text',
+        'Highlight for the reviewer: this also changes the Hydra chat.',
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      lastMessage().discusses,
+      question,
+    )
+    assert.equal(
+      lastMessage().text,
+      'Highlight for the reviewer: this also changes the Hydra chat.',
+    )
+    assert.ok(!l.card({ ref }).asks?.[0]?.answered)
+
+    for (const [
+      choice,
+      note,
+    ] of [
+        [
+          'Hold',
+          'The caret still jumps; fix that first.',
+        ],
+        [
+          'Merge',
+          'Fixed now. Follow up on paste separately.',
+        ],
+      ]) {
+      await l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          choice!,
+          '--text',
+          note!,
+        ],
+        actor: 'web',
+      })
+      assert.deepEqual(
+        {
+          text: lastMessage().text,
+          choice: lastMessage().choice,
+          answers: lastMessage().answers,
+        },
+        {
+          text: note,
+          choice,
+          answers: question,
+        },
+      )
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        choice,
+      )
+    }
+
+    assert.ok(mergeApproval({
+      card: l.card({ ref }),
+      url: l.card({ ref }).asks![0]!.url!,
+    }))
+  },
+)
 
 test(
   'the owner can lift Hold explicitly from the review controls without allowing agent or resend bypasses',
