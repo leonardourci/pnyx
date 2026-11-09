@@ -415,10 +415,12 @@ test(
         {
           at: '2026-10-12T10:00:03.000Z',
           text: 'Why is the invoice export timing out?',
+          block: 0,
         },
         {
           at: '2026-10-12T10:00:07.000Z',
           text: 'The export query scans every invoice without an index.',
+          block: 0,
         },
       ],
     )

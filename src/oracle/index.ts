@@ -231,6 +231,8 @@ function catchUp({
   const archived = db.prepare('SELECT 1 FROM docs WHERE session = ? AND line = ? AND source = ? LIMIT 1')
   const nativeCopies = db.prepare('SELECT id, card FROM docs WHERE session = ? AND line = ? AND source <> ?')
   const dropDoc = db.prepare('DELETE FROM docs WHERE id = ?')
+  const dropEvent = db.prepare('DELETE FROM docs WHERE source = ? AND pos = ?')
+  const state = loadHydra({ hydraId }).state
   // Cards whose card_fts row no longer matches their chunks, title or link titles.
   const dirty = new Set<string>()
   // ponytail: words of dropped chunks stay in terms; a typo may expand to a word that no longer matches.
@@ -387,6 +389,16 @@ function catchUp({
             })
           }
         } else if (event.type === 'chat.message') {
+          const replaced = event.data.replaces ? state.eventIds[event.data.replaces] : undefined
+
+          if (replaced !== undefined) {
+            dropEvent.run(
+              EVENTS,
+              replaced,
+            )
+            dirty.add(event.cardId === HYDRA_CARD ? '$board' : event.cardId)
+          }
+
           add({
             card: event.cardId,
             kind: 'transcript',
@@ -435,7 +447,6 @@ function catchUp({
         seq: read.events.at(-1)?.seq ?? cursor.seq,
       })
 
-      const state = loadHydra({ hydraId }).state
       const hydra = state.cards[HYDRA_CARD]
       const hydraSession = hydra ? cardSessionId({ card: hydra }) : undefined
       let transcripts = 0
