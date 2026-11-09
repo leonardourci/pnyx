@@ -1,3 +1,7 @@
+## Intent
+
+<!-- State the goal in plain words, list each requested outcome as a short bullet, and say what done looks like for the user. Write fresh public prose; never paste prompts, chat logs or private data. -->
+
 ## Problem
 
 <!-- What is wrong or missing, and who it affects. Plain English, no session history. -->
@@ -8,7 +12,7 @@
 
 ## Validation
 
-<!-- What was run and what passed. Note any test that failed or was skipped, and why. -->
+<!-- What was run and what passed. For each new or changed test, name the user-visible behavior or past bug it guards and the flip that made its assertion fail; follow audit-tests. Note any test that failed or was skipped, and why. -->
 
 ## Review
 
