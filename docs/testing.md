@@ -1,7 +1,7 @@
 # Tests
 
 - A `*.test.ts` beside the code it covers is a unit test, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
-- `e2e/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. The default suite has no browser tests: check a page change in the local preview and the pull request's screenshots. The optional clipboard regression below exercises native browser editing.
+- `e2e/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. The default suite also runs the headless chat regression described below. Other page changes still need a local preview and pull request screenshots. The optional clipboard regression below exercises native browser editing.
 - `fixtures/` beside the code: synthetic inputs. `src/test-harness/recordings/` holds the recorded agent sessions the fakes replay.
 
 Run the flows after a build (`scenarios` is the launcher's name for the `e2e/` lane):
@@ -18,6 +18,24 @@ For a small batch, pass explicit paths: `node scripts/verification/test.ts src/t
 The launcher fails a suite on `MaxListenersExceededWarning`, including warnings from the shared flow server. A passing run must release its listeners rather than raise their limit.
 
 `pnpm verify` picks what to run from the files the branch changes (see [Development](development.md)).
+
+## Chat streaming and replay
+
+Install Google Chrome before running the full suite. `scripts/browser/chat-stream.test.ts` runs through the normal test launcher, including `pnpm test`, `pnpm verify` and CI. It uses pinned development dependencies for `chrome-devtools-axi` and its MCP server, an isolated headless browser, a random bridge port, a temporary home, and the existing recorded Claude fixture. It never attaches to an existing browser. The Ubuntu 24.04 CI image includes Chrome; see its [installed software](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md#browsers-and-drivers).
+
+The fixture holds after a known partial delta. The check verifies the server's page socket received that exact text and the real page painted it before release. It then covers native transcript handoff, tool and commentary rows, the final text, duplicate or missing rendered rows, and server restart with reconnect. Run it after a build with `node scripts/verification/test.ts scripts/browser/chat-stream.test.ts`.
+
+For an archived home, run the read-only replay against an evidence copy:
+
+```sh
+node --conditions=source scripts/verification/replay-chat.ts --archive /path/to/evidence-copy
+```
+
+The copy must contain `hydras/<id>/events.jsonl`, `snapshot.json` and `harvest.json`. Only native sessions identified by its Hydra harvest cursors are read, bounded at those cursors. The default permitted roots are the current user's Claude projects and Codex sessions; override them with `--claude-transcripts <folder>` and `--codex-transcripts <folder>` for relocated or synthetic evidence.
+
+The check copies inputs into a temporary home, runs normal historical harvesting there, pages the entire conversation, and compares visible and folded records against the native inputs and owner messages. It reports missing messages, duplicate identities, changed text, ordering, missing tools or progress, hidden rows and unexpected rows. Successful output contains counts and hashed references, never transcript text. Mismatches produce a nonzero exit status. The input files are never changed, and the temporary home is removed on exit.
+
+An `undated` count identifies records whose timestamps are absent. Their identity and text are checked, but cross-source ordering is checked only for dated records. The page and replay share native decoders; synthetic format fixtures assert expected text separately. Replay checks saved history, while the browser regression checks streaming and rendering.
 
 ## Native clipboard regression
 
