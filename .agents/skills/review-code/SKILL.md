@@ -14,7 +14,7 @@ Each finding is tagged:
 
 ## Before reading the diff
 
-- [ ] Verify the goal: read the PR description and linked issue, state the goal in one line, and check the diff achieves it and only it. Missed or extra scope is a finding.
+- [ ] Verify the goal: read the PR's Intent and linked issue, state the goal in one line, and check every requested outcome against the diff. Flag missing outcomes, claims the diff does not deliver and unasked additions.
 - [ ] Diff against the branch the PR targets, including uncommitted changes. A stacked PR reviews against its parent branch, not `main`.
 - [ ] Read the intended behavior, `AGENTS.md` and [follow-conventions](../follow-conventions/SKILL.md). For `web/`, also read [write-front-end](../write-front-end/SKILL.md); for a cleanup or refactor, [deslop](../deslop/SKILL.md).
 - [ ] If the tree mixes work from another branch, drop changes the base already has, unless the drift is deliberate here.
