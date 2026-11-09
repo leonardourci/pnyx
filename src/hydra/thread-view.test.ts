@@ -91,7 +91,7 @@ function recordedPages({
 }
 
 test(
-  'the Claude Code Hydra thread excludes tools in saved and live pages',
+  'the Claude Code Hydra thread keeps tools in saved and live pages',
   t => {
     assert.deepEqual(
       recordedPages({
@@ -103,6 +103,8 @@ test(
         saved: [
           'message',
           'message',
+          'tool',
+          'tool',
           'message',
           'message',
           'message',
@@ -111,6 +113,8 @@ test(
         live: [
           'message',
           'message',
+          'tool',
+          'tool',
           'message',
           'message',
           'message',
@@ -123,7 +127,7 @@ test(
 )
 
 test(
-  'the Codex Hydra thread excludes tools in saved and live pages',
+  'the Codex Hydra thread keeps tools in saved and live pages',
   t => {
     assert.deepEqual(
       recordedPages({
@@ -134,10 +138,14 @@ test(
       {
         saved: [
           'message',
+          'tool',
+          'tool',
           'message',
         ],
         live: [
           'message',
+          'tool',
+          'tool',
           'message',
           'message',
         ],

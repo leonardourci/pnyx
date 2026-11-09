@@ -92,6 +92,9 @@ export type ChatEvent = EventBase & {
     final?: boolean
     messageId?: string
     part?: number
+    kind?: 'message' | 'tool' | 'thinking'
+    hidden?: boolean
+    call?: string
     role: string
     text: string
   }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -10,6 +10,9 @@ import { withWriter } from '#app/writer.ts'
 import { hydraThreadView } from '#hydra/thread-view.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { harvestTranscripts } from './harvest.ts'
+import { recordEntries } from '#hydra/transcripts-read.ts'
+import type { ChatEvent } from '#hydra/model.ts'
+import { replayOwned } from '#app/reducer.ts'
 
 test(
   'harvesting survives replacement and lost cursors, preserves repeated sends and hides legacy copies',
@@ -253,6 +256,204 @@ test(
         'utf8',
       ),
       before,
+    )
+  },
+)
+
+test(
+  'legacy Hydra cursors backfill tools and internal boundaries once without rewriting the log',
+  t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-chat-history-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      process.env.PNYX_HOME = previous
+
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const transcript = join(
+      home,
+      'session.jsonl',
+    )
+    copyFileSync(
+      new URL(
+        '../../hydra/fixtures/transcripts/reliability.jsonl',
+        import.meta.url,
+      ),
+      transcript,
+    )
+    const session = {
+      id: 'claude-code:old',
+      originCardId: '$hydra',
+      taskId: null,
+      attention: [],
+      sourceRefs: [],
+      agent: {
+        provider: 'claude-code',
+        sessionId: 'old',
+        transcriptPath: transcript,
+      },
+    }
+    withWriter({
+      hydraId: 'default',
+      create: true,
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: 1,
+            id: 'create',
+            at: '2026-10-22T09:00:00.000Z',
+            actor: 'web',
+            cardId: '$hydra',
+            type: 'task.created',
+            data: {
+              key: '$hydra',
+              title: 'Hydra',
+            },
+          },
+        })
+        writer.state.sessions = { [session.id]: session }
+        let offset = 0
+
+        for (const line of readFileSync(
+          transcript,
+          'utf8',
+        ).trimEnd()
+          .split('\n')) {
+          for (const entry of recordEntries({
+            record: JSON.parse(line),
+            offset,
+            tools: false,
+            thinking: false,
+          })) {
+            writer.append({
+              event: {
+                v: 1,
+                seq: writer.state.seq + 1,
+                id: `legacy:${entry.id}`,
+                at: entry.at!,
+                actor: 'harvest',
+                cardId: '$hydra',
+                type: 'chat.message',
+                data: {
+                  session: session.id,
+                  nativeId: entry.id,
+                  role: entry.role,
+                  text: entry.text,
+                  final: entry.final,
+                },
+              },
+            })
+          }
+
+          offset += Buffer.byteLength(line) + 1
+        }
+      },
+    })
+    const folder = join(
+      home,
+      'hydras/default',
+    )
+    const info = statSync(transcript)
+    writeFileSync(
+      join(
+        folder,
+        'harvest.json',
+      ),
+      JSON.stringify({
+        [`$hydra\n${transcript}`]: {
+          identity: `${info.dev}:${info.ino}`,
+          pos: info.size,
+        },
+      }),
+    )
+    const log = join(
+      folder,
+      'events.jsonl',
+    )
+    const before = readFileSync(
+      log,
+      'utf8',
+    )
+    const harvest = () => withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.state.sessions = { [session.id]: session }
+
+        return harvestTranscripts({
+          writer,
+          cardIds: ['$hydra'],
+          at: '2026-10-22T11:00:00.000Z',
+        })
+      },
+    })
+    harvest()
+    const events = readEvents({ hydraId: 'default' })
+    assert.deepEqual(
+      events.filter((event): event is ChatEvent => event.type === 'chat.message' && event.data.kind === 'tool').map(event => event.data.call),
+      [
+        'check-release',
+        'check-release',
+      ],
+    )
+    assert.equal(
+      events.filter(event => event.type === 'chat.message' && event.data.hidden).length,
+      1,
+    )
+    assert.ok(readFileSync(
+      log,
+      'utf8',
+    ).startsWith(before))
+    harvest()
+    assert.equal(
+      readEvents({ hydraId: 'default' }).length,
+      events.length,
+    )
+    rmSync(transcript)
+    const state = replayOwned({
+      state: loadHydra({ hydraId: 'default' }).state,
+      events,
+    })
+    const page = readThread({
+      hydraId: 'default',
+      state,
+      card: state.cards.$hydra!,
+      homes: [],
+    })
+    const conversation = hydraThreadView({
+      state,
+      page,
+      thinking: false,
+    }).conversation
+    assert.deepEqual(
+      conversation.entries.map(entry => entry.text),
+      [
+        'Check the synthetic release.',
+        'The release is ready.',
+        'A helper result is ready.',
+      ],
+    )
+    assert.deepEqual(
+      conversation.folds[conversation.entries[1]!.id]!.notes.map(entry => entry.kind),
+      [
+        'message',
+        'tool',
+        'tool',
+      ],
     )
   },
 )

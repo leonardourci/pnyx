@@ -7,7 +7,8 @@ import { EVENT_VERSION } from '#store/events.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { AgentSession, SessionEvent } from '#workers/model.ts'
 import { cardSessionId, taskForMessage } from '#workers/session-attachments.ts'
-import { transcriptEntries } from '#hydra/transcripts-read.ts'
+import { transcriptEntries, type ThreadEntry } from '#hydra/transcripts-read.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { chatRecordId, recordedChatIds } from '#hydra/chat-records.ts'
 import type { Writer } from '#app/writer.ts'
 import { readTranscript } from '#oracle/index.ts'
@@ -22,7 +23,71 @@ const CURSORS = 'harvest.json'
 type Cursors = Record<string, {
   identity: string
   pos: number
+  conversation?: number
 }>
+const CONVERSATION_VERSION = 1
+
+function recordChat({
+  writer,
+  entry,
+  session,
+  cardId,
+  agentId,
+  at,
+  recorded,
+}: {
+  writer: Writer
+  entry: ThreadEntry
+  session: string
+  cardId: string
+  agentId: string
+  at: string
+  recorded: Set<string>
+}) {
+  if (entry.kind === 'divider') {
+    return
+  }
+
+  const messageId = chatRecordId({
+    session,
+    nativeId: entry.id,
+    messageId: entry.messageId,
+    part: entry.part,
+  })
+  const known = recorded.has(messageId) || messageId in writer.state.eventIds
+
+  if (known) {
+    return
+  }
+
+  writer.append({
+    event: {
+      v: EVENT_VERSION,
+      seq: writer.state.seq + 1,
+      id: messageId,
+      at: entry.at ?? at,
+      actor: `session:${session}`,
+      cardId,
+      agentId,
+      type: 'chat.message',
+      sessionId: session,
+      messageId,
+      data: {
+        session,
+        nativeId: entry.id,
+        final: entry.final,
+        messageId: entry.messageId,
+        part: entry.part,
+        role: entry.role,
+        kind: entry.kind,
+        hidden: entry.hidden,
+        call: entry.call,
+        text: redact({ text: entry.text }),
+      },
+    },
+  })
+  recorded.add(messageId)
+}
 
 function readCursors({ dir }: { dir: string }): Cursors {
   try {
@@ -180,6 +245,56 @@ export function harvestTranscripts({
   let moved = false
   const recorded = new Set(recordedChatIds({ dir: writer.dir }))
 
+  for (const [
+    name,
+    cursor,
+  ] of Object.entries(cursors)) {
+    if (!name.startsWith(`${HYDRA_CARD}\n`) || cursor.conversation === CONVERSATION_VERSION) {
+      continue
+    }
+
+    const path = name.slice(HYDRA_CARD.length + 1)
+    const sessions = Object.values(writer.state.sessions ?? {})
+    const session = sessions.find(session => session.agent.transcriptPath === path)
+
+    if (!session) {
+      continue
+    }
+
+    const transcript = readTranscript({
+      cursor: {
+        source: path,
+        identity: '',
+        pos: 0,
+      },
+    })
+
+    if (!transcript || transcript.end < cursor.pos) {
+      continue
+    }
+
+    for (const line of transcript.lines.filter(line => line.pos < cursor.pos)) {
+      for (const entry of transcriptEntries({
+        parsed: readTranscriptRecord({ record: line.record }),
+        offset: line.pos,
+        boundaries: true,
+      })) {
+        recordChat({
+          writer,
+          entry,
+          session: session.id,
+          cardId: HYDRA_CARD,
+          agentId: session.id,
+          at,
+          recorded,
+        })
+      }
+    }
+
+    cursor.conversation = CONVERSATION_VERSION
+    moved = true
+  }
+
   for (const id of cardIds) {
     const path = detached?.session.agent.transcriptPath
       ?? writer.state.cards[id]?.agent?.transcriptPath
@@ -252,46 +367,26 @@ export function harvestTranscripts({
         for (const entry of transcriptEntries({
           parsed,
           offset: line.pos,
-        }).filter(e => e.kind === 'message')) {
-          const messageId = chatRecordId({
-            session,
-            nativeId: entry.id,
-            messageId: entry.messageId,
-            part: entry.part,
-          })
-
-          const known = recorded.has(messageId) || messageId in writer.state.eventIds
-
-          if (!known) {
-            writer.append({
-              event: {
-                v: EVENT_VERSION,
-                seq: writer.state.seq + 1,
-                id: messageId,
-                at: entry.at ?? at,
-                actor: `session:${session}`,
-                cardId: detached ? taskForMessage({
-                  memberships: detached.memberships,
-                  fallback: detached.task,
-                  at: entry.at,
-                }) : id,
-                agentId: `${agent!.provider}:${agent!.agentId ?? agent!.sessionId}`,
-                type: 'chat.message',
-                sessionId: session,
-                messageId,
-                data: {
-                  session,
-                  nativeId: entry.id,
-                  final: entry.final,
-                  messageId: entry.messageId,
-                  part: entry.part,
-                  role: entry.role,
-                  text: redact({ text: entry.text }),
-                },
-              },
-            })
-            recorded.add(messageId)
+          boundaries: id === HYDRA_CARD,
+        })) {
+          if (id !== HYDRA_CARD && entry.kind !== 'message') {
+            continue
           }
+
+          const cardId = detached ? taskForMessage({
+            memberships: detached.memberships,
+            fallback: detached.task,
+            at: entry.at,
+          }) : id
+          recordChat({
+            writer,
+            entry,
+            session,
+            cardId,
+            agentId: `${agent!.provider}:${agent!.agentId ?? agent!.sessionId}`,
+            at,
+            recorded,
+          })
         }
       }
 
@@ -378,6 +473,7 @@ export function harvestTranscripts({
     cursors[name] = {
       identity: tail.identity,
       pos: tail.end,
+      conversation: id === HYDRA_CARD ? CONVERSATION_VERSION : undefined,
     }
     moved = true
   }

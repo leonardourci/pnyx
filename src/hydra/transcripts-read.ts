@@ -472,7 +472,7 @@ export function readThread(
     view: effectiveView({ state }),
     card: card.id,
   })
-  const tools = card.id !== HYDRA_CARD && selected.tools
+  const tools = card.id === HYDRA_CARD || selected.tools
   const thinking = selected.thinking
 
   if (path) {
