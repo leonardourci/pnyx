@@ -9,7 +9,8 @@ import type { AgentSession, SessionEvent } from '#workers/model.ts'
 import { cardSessionId, taskForMessage } from '#workers/session-attachments.ts'
 import { transcriptEntries, type ThreadEntry } from '#hydra/transcripts-read.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { chatRecordId, recordedChatIds } from '#hydra/chat-records.ts'
+import { chatRecordId, recordedChats } from '#hydra/chat-records.ts'
+import type { ChatEvent } from '#hydra/model.ts'
 import type { Writer } from '#app/writer.ts'
 import { readTranscript } from '#oracle/index.ts'
 import { codexThreadTitle } from '#workers/codex.ts'
@@ -34,6 +35,7 @@ function recordChat({
   agentId,
   at,
   recorded,
+  repair = false,
 }: {
   writer: Writer
   entry: ThreadEntry
@@ -41,7 +43,8 @@ function recordChat({
   cardId: string
   agentId: string
   at: string
-  recorded: Set<string>
+  recorded: Map<string, ChatEvent>
+  repair?: boolean
 }) {
   if (entry.kind === 'divider') {
     return
@@ -53,39 +56,58 @@ function recordChat({
     messageId: entry.messageId,
     part: entry.part,
   })
-  const known = recorded.has(messageId) || messageId in writer.state.eventIds
+  const known = recorded.get(messageId)
+  const data: ChatEvent['data'] = {
+    session,
+    nativeId: entry.id,
+    block: entry.block,
+    final: entry.final,
+    messageId: entry.messageId,
+    part: entry.part,
+    role: entry.role,
+    kind: entry.kind,
+    hidden: entry.hidden,
+    call: entry.call,
+    text: entry.text,
+  }
+  const unchanged = known && known.data.text === data.text
+    && known.data.block === data.block && known.data.final === data.final
+    && (known.data.kind ?? 'message') === data.kind
+    && Boolean(known.data.hidden) === Boolean(data.hidden)
+    && known.data.call === data.call && known.data.role === data.role
 
-  if (known) {
+  if (known && (!repair || unchanged)) {
     return
   }
 
-  writer.append({
-    event: {
-      v: EVENT_VERSION,
-      seq: writer.state.seq + 1,
-      id: messageId,
-      at: entry.at ?? at,
-      actor: `session:${session}`,
-      cardId,
-      agentId,
-      type: 'chat.message',
-      sessionId: session,
-      messageId,
-      data: {
-        session,
-        nativeId: entry.id,
-        final: entry.final,
-        messageId: entry.messageId,
-        part: entry.part,
-        role: entry.role,
-        kind: entry.kind,
-        hidden: entry.hidden,
-        call: entry.call,
-        text: entry.text,
-      },
-    },
-  })
-  recorded.add(messageId)
+  let id = messageId
+
+  if (known) {
+    data.replaces = known.id
+    id = noteId({
+      cardKey: session,
+      ref: `chat-repair:${messageId}:${JSON.stringify(data)}`,
+    })
+  }
+
+  const event: ChatEvent = {
+    v: EVENT_VERSION,
+    seq: writer.state.seq + 1,
+    id,
+    at: entry.at ?? at,
+    actor: `session:${session}`,
+    cardId,
+    agentId,
+    type: 'chat.message',
+    sessionId: session,
+    messageId,
+    data,
+  }
+  writer.append({ event })
+  recorded.set(
+    messageId,
+    event,
+  )
 }
 
 function readCursors({ dir }: { dir: string }): Cursors {
@@ -242,7 +264,7 @@ export function harvestTranscripts({
   const cursors = readCursors({ dir: writer.dir })
   let appended = 0
   let moved = false
-  const recorded = new Set(recordedChatIds({ dir: writer.dir }))
+  const recorded = new Map(recordedChats({ dir: writer.dir }))
 
   for (const [
     name,
@@ -287,6 +309,7 @@ export function harvestTranscripts({
           agentId: session.id,
           at,
           recorded,
+          repair: true,
         })
       }
     }

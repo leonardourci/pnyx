@@ -13,6 +13,8 @@ import { readThread } from '#hydra/transcripts-read.ts'
 import { harvestTranscripts } from './harvest.ts'
 import { recordEntries } from '#hydra/transcripts-read.ts'
 import type { ChatEvent } from '#hydra/model.ts'
+import { updateIndex, openReader, searchPath } from '#oracle/index.ts'
+import { redact } from '#oracle/text.ts'
 import { replayOwned } from '#app/reducer.ts'
 
 test(
@@ -313,6 +315,17 @@ test(
         },
       })}\n`,
     )
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:08.000Z',
+        message: {
+          stop_reason: 'end_turn',
+          content: longTool,
+        },
+      })}\n`,
+    )
     const session = {
       id: 'claude-code:old',
       originCardId: '$hydra',
@@ -371,7 +384,7 @@ test(
                   session: session.id,
                   nativeId: entry.id,
                   role: entry.role,
-                  text: entry.text,
+                  text: redact({ text: entry.text }),
                   final: entry.final,
                 },
               },
@@ -419,8 +432,37 @@ test(
         })
       },
     })
+
+    updateIndex({ hydraId: 'default' })
+
     harvest()
     const events = readEvents({ hydraId: 'default' })
+    updateIndex({ hydraId: 'default' })
+    const correction = events.find((event): event is ChatEvent => event.type === 'chat.message'
+      && event.data.replaces !== undefined && event.data.part === 1000)
+    assert.ok(correction)
+    const replaced = events.find(event => event.id === correction.data.replaces)
+    assert.ok(replaced)
+    const index = openReader({ path: searchPath({ hydraId: 'default' }) })
+
+    try {
+      assert.equal(
+        index.prepare('SELECT count(*) AS count FROM docs WHERE source = ? AND pos = ?')
+          .get(
+            'events',
+            replaced.seq,
+          )!.count,
+        0,
+      )
+      assert.ok(Number(index.prepare('SELECT count(*) AS count FROM docs WHERE source = ? AND pos = ?')
+        .get(
+          'events',
+          correction.seq,
+        )!.count) > 0)
+    } finally {
+      index.close()
+    }
+
     assert.deepEqual(
       events.filter((event): event is ChatEvent => event.type === 'chat.message' && event.data.kind === 'tool' && event.data.call === 'check-release').map(event => event.data.call),
       [
@@ -506,10 +548,17 @@ test(
       [
         'Check the synthetic release.',
         'The release is ready.',
+        longTool,
+      ],
+    )
+    assert.deepEqual(
+      conversation.folds[conversation.entries[2]!.id]!.notes.map(entry => entry.text),
+      [
         'A helper result is ready.',
         longTool,
       ],
     )
+    assert.ok(events.some(event => event.type === 'chat.message' && event.data.replaces))
     assert.deepEqual(
       conversation.folds[conversation.entries[1]!.id]!.notes.map(entry => entry.kind),
       [
