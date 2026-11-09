@@ -5,6 +5,7 @@ import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
 import { taskMentions } from '#hydra/mentions.ts'
+import { reviewRequests, type ReviewRequest } from '#web-tasks/review-requests.ts'
 
 export interface ChatDecision {
   id: string
@@ -13,6 +14,7 @@ export interface ChatDecision {
   ask: Ask
   blocker: boolean
   relatedTask?: Card
+  review?: ReviewRequest
 }
 
 export function chatDecisions({
@@ -64,6 +66,11 @@ export function chatDecisions({
         return []
       }
 
+      const review = reviewRequests({
+        state,
+        card,
+      }).find(request => request.card.id === card.id && request.ask.id === ask.id)
+
       return [
         {
           id: `ask:${card.id}:${ask.id}`,
@@ -72,6 +79,7 @@ export function chatDecisions({
           ask,
           blocker,
           relatedTask,
+          review,
         },
       ]
     })

@@ -138,6 +138,15 @@ test(
 test(
   'review controls require an open, ready pull request link',
   () => {
+    const state = emptyHydra()
+    state.cards[card.id] = structuredClone(card)
+    assert.equal(
+      chatDecisions({
+        state,
+        selectedTask: card.id,
+      })[0]?.review?.ask.id,
+      'approval',
+    )
     const excluded: Link[] = [
       {
         ...card.links[0]!,
@@ -166,6 +175,23 @@ test(
     ]
 
     for (const link of excluded) {
+      state.cards[card.id] = {
+        ...card,
+        links: [link],
+      }
+      const contextual = chatDecisions({
+        state,
+        selectedTask: card.id,
+      })
+      assert.equal(
+        contextual[0]?.ask.id,
+        'approval',
+      )
+      assert.equal(
+        contextual[0]?.review,
+        undefined,
+        JSON.stringify(link),
+      )
       assert.deepEqual(
         taskQuestions({
           card: {

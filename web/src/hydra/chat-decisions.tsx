@@ -19,7 +19,6 @@ export function ChatDecisionCard({
     card,
     ask,
   } = decision
-  const link = card.links.find(link => link.url === ask.url)
   let content = (
     <AskPanel
       card={card}
@@ -29,14 +28,10 @@ export function ChatDecisionCard({
     />
   )
 
-  if (ask.kind === 'merge' && link) {
+  if (decision.review) {
     content = (
       <ReviewReadiness
-        request={{
-          card,
-          ask,
-          link,
-        }}
+        request={decision.review}
         command={command}
         notify={notify}
       />
