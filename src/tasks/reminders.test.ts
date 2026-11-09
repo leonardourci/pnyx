@@ -68,6 +68,52 @@ afterEach(() => {
 })
 
 test(
+  'malformed saved dates cannot block another reminder or poison an empty deadline',
+  async () => {
+    await run({
+      args: [
+        'remind',
+        'work',
+        later,
+      ],
+    })
+    const saved = state()
+    const broken = structuredClone(task())
+    broken.id = 'malformed-task'
+    broken.key = 'malformed'
+    broken.reminder = {
+      id: 'malformed-reminder',
+      at: 'not a date',
+    }
+    saved.cards[broken.id] = broken
+    assert.equal(
+      reminderDeadline({ state: saved }),
+      Date.parse(later),
+    )
+    delete broken.reminder
+    broken.asks = [
+      {
+        id: 'malformed-deferral',
+        at: now,
+        actor: 'hydra',
+        audience: 'owner',
+        question: 'Choose a format?',
+        deferredUntil: 'not a date',
+      },
+    ]
+    assert.equal(
+      reminderDeadline({ state: saved }),
+      Date.parse(later),
+    )
+    delete saved.cards[saved.keys.work!]!.reminder
+    assert.equal(
+      reminderDeadline({ state: saved }),
+      undefined,
+    )
+  },
+)
+
+test(
   'reminder times are explicit, future, timezone-aware, and tomorrow means local 9:00',
   () => {
     assert.equal(
@@ -493,15 +539,11 @@ test(
     })
     await run({
       args: [
-        'close-question',
+        'status',
         'choice',
-        closed.id,
-        '--actor',
-        'hydra',
-        '--reason',
-        'The choice is superseded',
-        '--evidence',
-        'The synthetic specification removed the field',
+        'done',
+        '--note',
+        'The choice work is finished',
       ],
     })
     assert.equal(

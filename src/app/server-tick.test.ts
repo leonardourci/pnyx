@@ -8,9 +8,10 @@ import { hydraDir } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { withWriter } from './writer.ts'
 import { createServerTick } from './server-tick.ts'
+import { openDecisions } from '#tasks/decisions.ts'
 
 test(
-  'a recovery failure does not prevent review, due reminders or scheduler health advancing',
+  'a recovery failure does not prevent reminders, deferred questions or scheduler health advancing',
   async t => {
     const previous = process.env.PNYX_HOME
     const root = mkdtempSync(join(
@@ -51,6 +52,38 @@ test(
     ])
     const state = () => loadHydra({ hydraId: 'lab' }).state
     const task = state().keys.work!
+    await commands.settings([
+      'set',
+      '--json',
+      '{"reviewMinutes":0}',
+      '--hydra',
+      'lab',
+    ])
+    const asked = await commands.task([
+      'ask',
+      task,
+      '--question',
+      'Which response format?',
+      '--to',
+      'owner',
+      '--actor',
+      'hydra',
+      '--reason',
+      'The owner chooses',
+      '--hydra',
+      'lab',
+    ])
+    const question = String(asked.ask)
+    const until = '2099-11-10T12:00:00.000Z'
+    await commands.task([
+      'defer-question',
+      task,
+      question,
+      '--until',
+      until,
+      '--hydra',
+      'lab',
+    ])
     withWriter({
       hydraId: 'lab',
       fn: ({ writer }) => writer.append({
@@ -75,6 +108,11 @@ test(
       () => {},
     )
     let reviewed = 0
+    let time = Date.now()
+    let scheduled: {
+      at: number
+      fire(): void
+    } | undefined
     const tick = createServerTick({
       hydraId: 'lab',
       dir: hydraDir({ hydraId: 'lab' }),
@@ -83,8 +121,18 @@ test(
       pump: () => {},
       followDelay: 60_000,
       reminderScheduler: {
-        now: Date.now,
-        schedule: () => () => {},
+        now: () => time,
+        schedule: ({
+          at,
+          fire,
+        }) => {
+          scheduled = {
+            at,
+            fire,
+          }
+
+          return () => {}
+        },
       },
       runWorker: async () => {
         throw new Error('Unexpected worker')
@@ -111,6 +159,37 @@ test(
     })
     tick.kick()
     await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      scheduled?.at,
+      Date.parse(until),
+    )
+    assert.equal(
+      openDecisions({ state: state() }).some(item => item.id === question),
+      false,
+    )
+    time = Date.parse(until) - 1
+    tick.kick()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      openDecisions({ state: state() }).some(item => item.id === question),
+      false,
+    )
+    time = Date.parse(until)
+    assert.ok(scheduled)
+    scheduled.fire()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      openDecisions({ state: state() }).some(item => item.id === question),
+      true,
+    )
+    assert.equal(
+      state().cards[task]?.asks?.[0]?.answered,
+      undefined,
+    )
+    assert.equal(
+      state().hydraMessages?.some(message => message.reminderQuestions?.length),
+      false,
+    )
     closed = true
     clearTimeout(tick.expiryTimer)
     tick.cancelReminder()

@@ -1,5 +1,5 @@
 import { waitingPrompt } from './questions.ts'
-import { askWording, openAsks } from './ask-state.ts'
+import { askWording, openAsks, activeAsks } from './ask-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
@@ -48,7 +48,7 @@ function cardDecisions({
   state: HydraState
   card: Card
 }): OpenDecision[] {
-  const asks = openAsks({ card }).map((ask): OpenDecision => {
+  const asks = activeAsks({ card }).map((ask): OpenDecision => {
     const choice = ask.recommended ? ask.options?.[ask.recommended - 1]?.label : undefined
 
     const wording = askWording({ ask }).question
@@ -112,19 +112,21 @@ function cardDecisions({
     })
 
   return [
-    ...asks.filter(item => !card.hidden
-      || card.asks?.some(ask => ask.id === item.id && ask.origin)),
+    ...asks.filter(item => !card.hidden || item.kind === 'owner question'),
     ...(card.hidden ? [] : permissions),
     ...(card.hidden ? [] : prompts),
     ...(card.hidden ? [] : merges),
   ]
 }
 
-// Report choices remain owed even when an older client hid their task.
+// Owner questions remain owed even when an older client hid their task.
 export function openDecisions({ state }: { state: HydraState }): OpenDecision[] {
   const items = Object.values(state.cards)
     .filter(card => card.id !== HYDRA_CARD
-      && (liveTask({ card }) || openAsks({ card }).some(ask => ask.origin)))
+      && (liveTask({ card }) || openAsks({
+        card,
+        audience: 'owner',
+      }).length > 0))
     .flatMap(card => cardDecisions({
       state,
       card,

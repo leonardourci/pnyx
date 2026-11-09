@@ -16,7 +16,7 @@ export function questionReminder({
   ask: Ask
   now: number
 }) {
-  if (ask.audience !== 'owner' || ask.answered || ask.closed || !liveTask({ card })) {
+  if (ask.audience !== 'owner' || ask.answered || ask.closed || ask.deferredUntil || !liveTask({ card })) {
     return undefined
   }
 

@@ -729,6 +729,8 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
     case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
     case 'task.ask.closed': return `Closed ${event.data.ask}: ${event.data.reason} (${event.data.evidence})`
+    case 'task.ask.deferred': return event.data.until
+      ? `Deferred ${event.data.ask} until ${event.data.until}` : `Question ${event.data.ask} is active again`
     case 'task.ask.reopened': return `${event.data.reask ? 'Hydra re-asked' : 'Reopened'} ${event.data.ask}`
     case 'task.ask.escalated': return `Escalated ${event.data.ask} to the owner${event.data.question ? `: ${event.data.question}` : ''}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`

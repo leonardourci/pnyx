@@ -23,9 +23,578 @@ import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { answerDelivery, openAsks } from './ask-state.ts'
 import { ownerGates } from './owner-gates.ts'
 import { relevantUpdate } from './updates.ts'
+import { openDecisions } from './decisions.ts'
+import { dueQuestionReminders } from './question-reminders.ts'
+import { fireReminders } from './fire-reminders.ts'
+import { cardDoneDeadline } from './retention-rules.ts'
+import { reminderDeadline } from './reminders.ts'
 
 const hydraId = 'question-lab'
 const reason = 'Synthetic question regression'
+
+test(
+  'clarification reaches Hydra without answering or releasing an owner question',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({
+      key: 'clarify',
+      hold: true,
+      worker: false,
+    })
+    const id = await l.ask({ ref })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        id,
+        '--text',
+        'why?',
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        id,
+        '--text',
+        'explain',
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    assert.equal(
+      l.state().hydraMessages?.at(-1)?.discusses,
+      id,
+    )
+    assert.equal(
+      ownerGates({ card: l.card({ ref }) }).includes(`ask:${id}`),
+      true,
+    )
+    const discussion = l.state().hydraMessages?.find(message => message.text === 'why?')
+    assert.equal(
+      discussion?.text,
+      'why?',
+    )
+    assert.equal(
+      discussion?.answers,
+      undefined,
+    )
+    assert.match(
+      discussion?.context ?? '',
+      /Clarification/,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          id,
+          '--from-message',
+          discussion!.id,
+        ],
+      }),
+      /clarification/i,
+    )
+    await l.task({
+      args: [
+        'discuss-question',
+        ref,
+        id,
+        '--text',
+        'What does this change in production?',
+      ],
+      actor: 'web',
+    })
+    const followUp = l.state().hydraMessages!.at(-1)!
+    assert.equal(
+      followUp.discusses,
+      id,
+    )
+    assert.equal(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).hydraMessages?.at(-1)?.discusses,
+      id,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'release',
+          ref,
+          '--from-message',
+          followUp.id,
+        ],
+      }),
+      /clarification/i,
+    )
+    assert.ok(l.card({ ref }).hold)
+    await assert.rejects(
+      l.relay({
+        ref,
+        question: id,
+        message: followUp.id,
+      }),
+      /clarification/i,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          id,
+          '--from-message',
+          followUp.id,
+        ],
+      }),
+      /clarification/i,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        id,
+        '--text',
+        'Why not both? Ship A first.',
+      ],
+      actor: 'web',
+    })
+    assert.ok(l.card({ ref }).asks?.[0]?.answered)
+    const next = await l.ask({ ref })
+    const instruction = l.chat({
+      ref,
+      text: 'Explain it in the PR, then proceed with this task.',
+    })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        next,
+        '--from-message',
+        instruction,
+      ],
+    })
+    assert.equal(
+      l.card({ ref }).asks?.find(ask => ask.id === next)?.fromMessage?.text,
+      'Explain it in the PR, then proceed with this task.',
+    )
+    await l.task({
+      args: [
+        'release',
+        ref,
+        '--from-message',
+        instruction,
+      ],
+    })
+    assert.equal(
+      l.card({ ref }).hold,
+      undefined,
+    )
+  },
+)
+
+test(
+  'unrelated merge completion preserves an owner decision through the writer and replay',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({
+      key: 'setting',
+      worker: false,
+    })
+    const id = await l.ask({ ref })
+    const second = await l.ask({ ref })
+    l.event({
+      ref,
+      change: {
+        type: 'card.pushed',
+        data: {
+          key: l.card({ ref }).key,
+          activity: 'ended',
+        },
+      },
+    })
+    assert.equal(
+      l.card({ ref }).asks?.find(ask => ask.id === id)?.closed,
+      undefined,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.find(ask => ask.id === second)?.closed,
+      undefined,
+    )
+    l.event({
+      ref,
+      change: {
+        type: 'card.linked',
+        data: {
+          url: 'https://github.com/example/project/pull/12',
+          before: null,
+          after: {
+            kind: 'github_pr',
+            url: 'https://github.com/example/project/pull/12',
+            state: 'merged',
+          },
+        },
+      },
+    })
+    l.event({
+      ref,
+      change: {
+        type: 'task.declared',
+        data: {
+          state: 'done',
+          note: 'Related pull request merged',
+        },
+      },
+    })
+    assert.equal(
+      openDecisions({ state: l.state() }).some(item => item.id === id),
+      true,
+    )
+    assert.equal(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]?.asks?.[0]?.closed,
+      undefined,
+    )
+    assert.equal(
+      cardDoneDeadline({
+        card: {
+          ...l.card({ ref }),
+          doneAt: '2026-01-01T12:00:00.000Z',
+        },
+      }),
+      undefined,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'close-question',
+          ref,
+          id,
+          '--evidence',
+          'A related pull request merged',
+        ],
+      }),
+      /remains open/i,
+    )
+    await l.task({
+      args: [
+        'status',
+        ref,
+        'done',
+        '--note',
+        'All work explicitly finished',
+      ],
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.closed?.reason,
+      'Task ended',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.find(ask => ask.id === second)?.closed?.reason,
+      'Task ended',
+    )
+    const cancelFirst = await l.ask({ ref })
+    const cancelSecond = await l.ask({ ref })
+    const current = l.card({ ref })
+    l.event({
+      ref,
+      change: {
+        type: 'card.outcome',
+        data: {
+          before: null,
+          after: {
+            state: 'cancelled',
+            closed: true,
+          },
+          card: {
+            title: current.title,
+            workspace: current.workspace,
+            tags: current.tags,
+            links: current.links,
+          },
+        },
+      },
+    })
+    assert.ok(l.card({ ref }).asks?.find(ask => ask.id === cancelFirst)?.closed)
+    assert.ok(l.card({ ref }).asks?.find(ask => ask.id === cancelSecond)?.closed)
+    const moved = await l.ask({ ref })
+    await commands.move([
+      ref,
+      'done',
+      '--hydra',
+      hydraId,
+      '--actor',
+      'web',
+      '--reason',
+      reason,
+    ])
+    assert.ok(l.card({ ref }).asks?.find(ask => ask.id === moved)?.closed)
+  },
+)
+
+test(
+  'Later suppresses active attention and reminders until the date without granting authority',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({
+      key: 'later',
+      worker: false,
+    })
+    const id = await l.ask({ ref })
+    const until = '2099-11-10T12:00:00.000Z'
+    await l.task({
+      args: [
+        'remind',
+        ref,
+        '2099-11-09T12:00:00.000Z',
+        '--every',
+        '4 hours',
+        '--until',
+        'question-answered',
+        '--question',
+        id,
+      ],
+    })
+    const other = await l.create({
+      key: 'other-reminder',
+      worker: false,
+    })
+    await l.task({
+      args: [
+        'remind',
+        other,
+        '2099-11-09T12:00:00.000Z',
+      ],
+    })
+    await l.task({
+      args: [
+        'defer-question',
+        ref,
+        id,
+        '--until',
+        until,
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      openDecisions({ state: l.state() }).some(item => item.id === id),
+      false,
+    )
+    assert.equal(
+      ownerGates({ card: l.card({ ref }) }).includes(`ask:${id}`),
+      true,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    assert.deepEqual(
+      dueQuestionReminders({
+        state: l.state(),
+        now: Date.parse(until) - 1,
+      }),
+      [],
+    )
+    const restored = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    })
+    assert.equal(
+      openDecisions({ state: restored }).some(item => item.id === id),
+      false,
+    )
+    assert.equal(
+      fireReminders({
+        hydraId,
+        at: '2099-11-09T12:00:00.000Z',
+      }),
+      1,
+    )
+    assert.equal(
+      l.card({ ref }).reminder?.at,
+      '2099-11-09T12:00:00.000Z',
+    )
+    assert.equal(
+      l.card({ ref }).reminder?.dueAt,
+      undefined,
+    )
+    assert.equal(
+      l.card({ ref: other }).reminder?.dueAt,
+      '2099-11-09T12:00:00.000Z',
+    )
+    assert.equal(
+      l.state().hydraMessages?.at(-1)?.task,
+      other,
+    )
+    assert.equal(
+      reminderDeadline({ state: l.state() }),
+      Date.parse(until),
+    )
+    fireReminders({
+      hydraId,
+      at: until,
+    })
+    assert.equal(
+      openDecisions({ state: l.state() }).some(item => item.id === id),
+      true,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    assert.equal(
+      ownerGates({ card: l.card({ ref }) }).includes(`ask:${id}`),
+      true,
+    )
+  },
+)
+
+test(
+  'a worker or Hydra without owner evidence cannot defer an owner question',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({
+      key: 'defer-authority',
+      worker: false,
+    })
+    const id = await l.ask({ ref })
+
+    await assert.rejects(
+      l.task({
+        args: [
+          'defer-question',
+          ref,
+          id,
+          '--until',
+          '2099-11-10T12:00:00Z',
+        ],
+      }),
+      /owner/i,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'defer-question',
+          ref,
+          id,
+          '--until',
+          '2099-11-10T12:00:00Z',
+        ],
+        actor: 'worker:defer-authority',
+      }),
+      /owner/i,
+    )
+    const report = l.chat({
+      ref,
+      actor: 'worker:defer-authority',
+      text: 'Later until November 10.',
+    })
+    await assert.rejects(
+      l.task({
+        args: [
+          'defer-question',
+          ref,
+          id,
+          '--until',
+          '2099-11-10T12:00:00Z',
+          '--from-message',
+          report,
+        ],
+      }),
+      /owner/i,
+    )
+    const stale = l.chat({
+      ref,
+      text: 'Later until November 10.',
+      at: '2000-01-01T12:00:00.000Z',
+    })
+    await assert.rejects(
+      l.task({
+        args: [
+          'defer-question',
+          ref,
+          id,
+          '--until',
+          '2099-11-10T12:00:00Z',
+          '--from-message',
+          stale,
+        ],
+      }),
+      /owner/i,
+    )
+    await l.task({
+      args: [
+        'discuss-question',
+        ref,
+        id,
+        '--text',
+        'What does this change?',
+      ],
+      actor: 'web',
+    })
+    const discussion = l.state().hydraMessages!.at(-1)!.id
+    await assert.rejects(
+      l.task({
+        args: [
+          'defer-question',
+          ref,
+          id,
+          '--until',
+          '2099-11-10T12:00:00Z',
+          '--from-message',
+          discussion,
+        ],
+      }),
+      /owner/i,
+    )
+
+    assert.equal(
+      openDecisions({ state: l.state() }).some(item => item.id === id),
+      true,
+    )
+    const instruction = l.chat({
+      ref,
+      text: 'Later until November 10, 2099 at noon UTC.',
+    })
+    await l.task({
+      args: [
+        'defer-question',
+        ref,
+        id,
+        '--until',
+        '2099-11-10T12:00:00Z',
+        '--from-message',
+        instruction,
+      ],
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.deferredUntil,
+      '2099-11-10T12:00:00.000Z',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.deferredFromMessage?.id,
+      instruction,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+  },
+)
 
 type Change = {
   [Kind in HydraEvent['type']]: Pick<Extract<HydraEvent, { type: Kind }>, 'type' | 'data'>

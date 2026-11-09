@@ -103,6 +103,8 @@ export interface Ask {
   mergeHold?: Pick<Ask, 'answered' | 'answeredAt' | 'fromMessage' | 'choice'>
   reaskedAt?: string
   answerRound?: string
+  deferredUntil?: string
+  deferredFromMessage?: AnswerMessage
 }
 
 // An investigation's answer is its stored report; a build task's is its landed work.

@@ -8,6 +8,7 @@ import { withWriter, type Writer } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
 import { readSettings } from '#settings/store.ts'
 import { dueQuestionReminders } from './question-reminders.ts'
+import { deferredQuestions } from './ask-state.ts'
 import { reminderDeadline, reminderMessage } from './reminders.ts'
 
 export function fireReminders({
@@ -50,6 +51,31 @@ export function fireReminders({
       digest,
     },
     fn: ({ writer }) => {
+      for (const {
+        card,
+        ask,
+      } of deferredQuestions({ state: writer.state }).filter(question => question.at <= time)) {
+        const resumed = hydraEvent({
+          state: writer.state,
+          cardId: card.id,
+          meta: {
+            at,
+            actor: 'pnyx',
+          },
+          change: {
+            type: 'task.ask.deferred',
+            data: {
+              ask: ask.id,
+              until: null,
+            },
+          },
+        })
+
+        if ('event' in resumed) {
+          writer.append({ event: resumed.event })
+        }
+      }
+
       const recordReceipt = ({ fired }: { fired: number }) => {
         writer.append({
           event: {
@@ -74,7 +100,11 @@ export function fireReminders({
       const dueCards = Object.values(writer.state.cards).filter(card => {
         const reminder = card.reminder
 
-        return reminder && (!reminder.dueAt || reminder.repeat) && Date.parse(reminder.at) <= time
+        const question = card.asks?.find(ask => ask.id === reminder?.repeat?.question)
+
+        const pending = reminder && (!reminder.dueAt || reminder.repeat)
+
+        return pending && !question?.deferredUntil && Date.parse(reminder.at) <= time
       })
       const pendingQuestions = questions({ state: writer.state })
       const lines: string[] = []

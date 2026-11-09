@@ -885,7 +885,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
   }
 
-  if (action === 'ask' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question' || action === 'reask') {
+  if (action === 'ask' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question' || action === 'reask'
+    || action === 'defer-question' || action === 'discuss-question') {
     return askCommand({
       action,
       positionals,
