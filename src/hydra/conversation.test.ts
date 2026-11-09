@@ -855,3 +855,50 @@ test(
     )
   },
 )
+
+test(
+  'progress before a Pnyx notice folds above the notice instead of showing as chat rows',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      transcript: [
+        entry({
+          id: 'owner',
+          minute: 0,
+          role: 'user',
+        }),
+        {
+          ...entry({
+            id: 'command',
+            minute: 1,
+            role: 'Bash',
+            text: '{"command":"git status"}',
+          }),
+          kind: 'tool',
+        },
+        entry({
+          id: 'notice',
+          minute: 2,
+          role: 'Pnyx',
+          text: 'Hydra restarted',
+        }),
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: true,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.id),
+      [
+        'owner',
+        'notice',
+      ],
+    )
+    assert.deepEqual(
+      result.folds.get('notice')?.notes.map(item => item.id),
+      ['command'],
+    )
+  },
+)
