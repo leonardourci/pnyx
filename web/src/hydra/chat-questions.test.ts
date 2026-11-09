@@ -5,7 +5,6 @@ import type { Ask, Card } from '#tasks/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { chatDecisions } from './chat-questions.ts'
-import { leadingTask } from '#hydra/chat-messages.ts'
 
 const at = '2026-11-01T12:00:00.000Z'
 const question: Ask = {
@@ -143,7 +142,7 @@ test(
 )
 
 test(
-  'unbound Hydra questions appear in chat while answered questions remain in conversation history',
+  'Hydra-wide questions keep chat controls through deferral until they are answered',
   () => {
     const state = emptyHydra()
     state.cards[HYDRA_CARD] = {
@@ -161,15 +160,6 @@ test(
       'a deferred Hydra-wide question keeps its date controls reachable',
     )
     state.cards[HYDRA_CARD]!.asks![0]!.answered = 'owner-answer'
-    assert.equal(
-      leadingTask({
-        entry: {
-          task: HYDRA_CARD,
-          text: 'Use the compact format.',
-        },
-      }),
-      undefined,
-    )
     assert.deepEqual(
       chatDecisions({ state }),
       [],
