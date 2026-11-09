@@ -232,3 +232,38 @@ test(
     )
   },
 )
+
+test(
+  'progress trailing a turn without a reply counts as present',
+  () => {
+    const owner: ThreadEntry = {
+      id: 'owner',
+      kind: 'message',
+      role: 'user',
+      text: 'Check the build',
+    }
+    const tool: ThreadEntry = {
+      id: 'tool',
+      kind: 'tool',
+      role: 'Bash',
+      text: '{"command":"pnpm build"}',
+    }
+
+    assert.deepEqual(
+      checkConversation({
+        expected: [
+          owner,
+          tool,
+        ],
+        conversation: {
+          through: 0,
+          entries: [owner],
+          folds: {},
+          timings: {},
+          trailing: { owner: [tool] },
+        },
+      }),
+      [],
+    )
+  },
+)
