@@ -106,6 +106,8 @@ pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra send --task <id> --kind progress --text <message>
 Omit --kind progress for actionable results: queue a report for Hydra to relay; this does not confirm owner delivery.
 --kind progress is a worker's routine progress: it updates the task's card and joins Hydra's next wake without waking Hydra.
+pnyx-axi hydra ask --question <question> [--context <text>] [--choice <label>]... [--recommend <n>] [--details <text> | --details-file <path>]
+Hydra asks an owner decision with no task in chat. Task decisions use task ask --to owner on their card.
 pnyx-axi hydra stop
 hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
 pnyx-axi hydra usage
@@ -280,7 +282,7 @@ attach moves an interactive session to the task; an occupied destination is reje
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
 task create accepts --project <name|path>; task project assigns an existing task to an attached project.
-task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start or working declaration stops worker-started; task completion stops task-done, which requires unfinished work. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, moves tasks to Needs you, and groups everything due in one Pnyx chat message, with at most 30 words per bullet and a link to each full task. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
+task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start or working declaration stops worker-started; task completion stops task-done, which requires unfinished work. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, moves tasks to Needs you, and groups everything due in one Pnyx chat message. Owner questions use one line: N questions waiting on you, with one link per task; scheduled reminders keep their short lines. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
 
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
