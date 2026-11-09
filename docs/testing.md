@@ -23,7 +23,7 @@ The launcher fails a suite on `MaxListenersExceededWarning`, including warnings 
 
 Install Google Chrome before running the full suite. `scripts/browser/chat-stream.test.ts` runs through the normal test launcher, including `pnpm test`, `pnpm verify` and CI. It uses pinned development dependencies for `chrome-devtools-axi` and its MCP server, an isolated headless browser, a random bridge port, a temporary home, and the existing recorded Claude fixture. It never attaches to an existing browser. The Ubuntu 24.04 CI image includes Chrome; see its [installed software](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md#browsers-and-drivers).
 
-The fixture holds after a known partial delta. The check verifies the server's page socket received that exact text and the real page painted it before release. It then covers native transcript handoff, tool and commentary rows, the final text, duplicate or missing rendered rows, and server restart with reconnect. Run it after a build with `node scripts/verification/test.ts scripts/browser/chat-stream.test.ts`.
+The fixture holds after a known partial delta. The check verifies the server's page socket received that exact text and the real page painted it before release. It then covers native transcript handoff, tool and commentary rows, the final text, duplicate or missing rendered rows, server restart with reconnect, and switching between Hydras without painting another conversation. Run it after a build with `node scripts/verification/test.ts scripts/browser/chat-stream.test.ts`.
 
 For an archived home, run the read-only replay against an evidence copy:
 

@@ -20,7 +20,7 @@ const mediaFolder = process.env.PNYX_CHAT_MEDIA
 const pnyx = scenarioGroup()
 
 test(
-  'recorded agent text streams into the page once through native handoff and reconnect',
+  'recorded chat streams once through handoff, reconnect and Hydra switches',
   async t => {
     const s = await pnyx.scenario()
     const wire = await openPage({
@@ -286,6 +286,72 @@ test(
     }`,
       })
       await capture({ name: 'final' })
+      const other = await pnyx.scenario()
+      await other.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'A separate conversation',
+        ],
+      })
+      await until({
+        what: 'the separate Hydra turn to finish',
+        check: () => other.state().cards.$hydra?.sessionActivity === 'finished',
+      })
+      await evaluate({
+        script: `() => {
+        window.scopeLeaks = 0;
+        window.scopeObserver = new MutationObserver(() => {
+          const current = document.querySelector('main[data-hydra]')?.dataset.hydra;
+          const text = document.querySelector('[aria-label="Hydra conversation"]')?.textContent ?? '';
+          if (current === ${JSON.stringify(other.hydraId)} && text.includes('Release checks are complete.')) window.scopeLeaks++;
+          if (current === ${JSON.stringify(s.hydraId)} && text.includes('A separate conversation')) window.scopeLeaks++;
+        });
+        window.scopeObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await run({
+        args: ['run'],
+        input: `await page.wait('.hydras-panel [data-hydra="${other.hydraId}"] .hydra-name'); await page.click('.hydras-panel [data-hydra="${other.hydraId}"] .hydra-name');`,
+      })
+      await evaluate({
+        script: `async () => {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Hydra switch lost its conversation')); }, ${PAINT_TIMEOUT_MS});
+          const check = () => {
+            const text = document.querySelector('[aria-label="Hydra conversation"]')?.textContent ?? '';
+            if (text.includes('A separate conversation') && !text.includes('Release checks')) { clearTimeout(timer); observer.disconnect(); resolve(); }
+          };
+          const observer = new MutationObserver(check);
+          observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+          check();
+        });
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await run({
+        args: ['run'],
+        input: `await page.click('.hydras-panel [data-hydra="${s.hydraId}"] .hydra-name');`,
+      })
+      await evaluate({
+        script: `async () => {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Returning to Hydra lost its conversation')); }, ${PAINT_TIMEOUT_MS});
+          const check = () => {
+            const text = document.querySelector('[aria-label="Hydra conversation"]')?.textContent ?? '';
+            if (text.includes('Release checks are complete.') && !text.includes('A separate conversation')) { clearTimeout(timer); observer.disconnect(); resolve(); }
+          };
+          const observer = new MutationObserver(check);
+          observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+          check();
+        });
+        window.scopeObserver.disconnect();
+        if (window.scopeLeaks) throw new Error('Hydra switch painted another conversation');
+        return 'chat-assertion-passed';
+      }`,
+      })
     } catch (error) {
       await capture({ name: 'failure' })
       throw error
