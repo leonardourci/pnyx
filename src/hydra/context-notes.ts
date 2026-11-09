@@ -74,7 +74,7 @@ export function applyContextNotes({
       return
     }
 
-    const retained = notes.filter(note => isOwnerAnswer({ note })
+    const retained = notes.filter(note => ownerAnswer || isOwnerAnswer({ note })
       || note.task !== task)
     const next: ContextNote = {
       id,

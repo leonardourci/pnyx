@@ -169,8 +169,27 @@ test(
       },
       {
         v: 1,
-        id: 'answered',
+        id: 'routine-before-answer',
         seq: 4,
+        at,
+        actor: 'pnyx',
+        cardId: '$hydra',
+        type: 'hydra.helper-finished',
+        data: {
+          batch: 'routine-before-answer',
+          outcomes: [
+            {
+              task: 'work',
+              status: 'handled',
+              summary: 'Export became ready.',
+            },
+          ],
+        },
+      },
+      {
+        v: 1,
+        id: 'answered',
+        seq: 5,
         at,
         actor: 'cli',
         cardId: 'work',
@@ -191,7 +210,7 @@ test(
       {
         v: 1,
         id: 'native-question',
-        seq: 5,
+        seq: 6,
         at,
         actor: 'pnyx',
         cardId: 'work',
@@ -213,7 +232,7 @@ test(
       {
         v: 1,
         id: 'native-answer',
-        seq: 6,
+        seq: 7,
         at,
         actor: 'cli',
         cardId: 'work',
@@ -230,7 +249,7 @@ test(
       {
         v: 1,
         id: 'native-receipt',
-        seq: 7,
+        seq: 8,
         at,
         actor: 'pnyx',
         cardId: 'work',
@@ -258,6 +277,7 @@ test(
     assert.deepEqual(
       state.contextNotes?.map(note => note.text),
       [
+        'Routine helper, Export task: Export became ready.',
         'Owner answered Export task, "Keep the old export for compatibility?": Yes, keep it.',
         'Owner answered Export task, "Which export format?": Compact',
       ],
