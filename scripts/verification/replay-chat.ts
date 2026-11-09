@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,7 +8,7 @@ import { readLog } from '#app/event-log.ts'
 import { replayOwned } from '#app/reducer.ts'
 import { withWriter } from '#app/writer.ts'
 import { writeSnapshot } from '#app/snapshot.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
 import { checkConversation } from '#hydra/conversation-check.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { joinMessageParts } from '#hydra/history.ts'
@@ -147,6 +147,7 @@ export function replayChat({
         conversation?: number
       }>
       const copied: typeof cursors = {}
+      const admitted = new Map<string, string>()
       const expectedNative: ThreadEntry[] = []
       const inventory: {
         session: string
@@ -164,8 +165,8 @@ export function replayChat({
         const path = key.slice(HYDRA_CARD.length + 1)
         const approved = roots.some(root => {
           const part = relative(
-            root,
-            path,
+            realpathSync(root),
+            realpathSync(path),
           )
 
           return part !== '..' && !part.startsWith('../') && !isAbsolute(part)
@@ -175,6 +176,10 @@ export function replayChat({
 
         if (!approved || !session) {
           throw new Error('A Hydra transcript is outside the selected roots or has no recorded session.')
+        }
+
+        if (!Number.isSafeInteger(cursor.pos) || cursor.pos < 0) {
+          throw new Error('An archived transcript cursor has an invalid byte position.')
         }
 
         const native = transcriptBytes({
@@ -194,11 +199,10 @@ export function replayChat({
           ...cursor,
           identity: `${info.dev}:${info.ino}`,
         }
-        session.agent.transcriptPath = destination
-
-        if (state.cards[HYDRA_CARD]?.agent?.transcriptPath === path) {
-          state.cards[HYDRA_CARD]!.agent!.transcriptPath = destination
-        }
+        admitted.set(
+          path,
+          destination,
+        )
 
         inventory.push({
           session: hash({ value: session.id }),
@@ -233,6 +237,22 @@ export function replayChat({
         }
       }
 
+      const currentPath = state.cards[HYDRA_CARD]?.agent?.transcriptPath
+
+      if (currentPath && !admitted.has(currentPath)) {
+        throw new Error('The current Hydra transcript has no admitted archived cursor.')
+      }
+
+      for (const session of Object.values(state.sessions ?? {})) {
+        session.agent.transcriptPath = admitted.get(session.agent.transcriptPath ?? '')
+      }
+
+      for (const card of Object.values(state.cards)) {
+        if (card.agent) {
+          card.agent.transcriptPath = admitted.get(card.agent.transcriptPath ?? '')
+        }
+      }
+
       writeFileSync(
         join(
           target,
@@ -252,6 +272,15 @@ export function replayChat({
         ),
         JSON.stringify(copied),
       )
+
+      while (withWriter({
+        hydraId: hydra,
+        fn: ({ writer }) => backfillConversations({
+          writer,
+          at: events.at(-1)!.at,
+        }),
+      }).progressed) { /* Offline replay drains bounded server migration batches. */ }
+
       const repaired = withWriter({
         hydraId: hydra,
         fn: ({ writer }) => {
