@@ -32,7 +32,7 @@ const recorded = new Map<string, {
   events: Map<string, ChatEvent>
 }>()
 
-export function recordedChats({ dir }: { dir: string }): ReadonlyMap<string, ChatEvent> {
+export function recordedChats({ dir }: { dir: string }): Map<string, ChatEvent> {
   let previous = recorded.get(dir)
   let tail = readLog({
     dir,
