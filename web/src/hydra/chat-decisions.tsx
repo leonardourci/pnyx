@@ -39,7 +39,7 @@ export function ChatDecisionCard({
   }
 
   return (
-    <div className="chat-decision" contentEditable={ask.answered ? false : undefined}>
+    <div className="chat-decision">
       {decision.blocker && <strong className="eyebrow">Blocker</strong>}
       {card.id === HYDRA_CARD ? <span className="eyebrow">Hydra question</span> : <TaskReference id={decision.relatedTask?.id ?? card.id} />}
       {content}
