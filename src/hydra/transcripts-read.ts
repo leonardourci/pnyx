@@ -637,6 +637,24 @@ export function readThread(
 
   const seenReplies = new Set<string>()
   const seenChats = new Set<string>()
+  const replyBoundary = repliedEvents({ hydraId }).find(event => event.seq === replySeq)
+
+  const beforeReply = ({
+    event,
+    index,
+  }: {
+    event: HydraEvent
+    index: number
+  }) => {
+    if (!replyBoundary) {
+      return event.seq < replySeq!
+    }
+
+    const time = event.at.localeCompare(replyBoundary.at)
+
+    return time < 0 || time === 0 && (event.seq < replySeq!
+      || event.seq === replySeq && index < replyPart!)
+  }
 
   for (const e of repliedEvents({ hydraId })) {
     if (e.seq === replySeq) {
@@ -655,7 +673,7 @@ export function readThread(
       const sameSession = session && e.data.session === session
       const participant = e.cardId === card.id || sameSession
 
-      if ((!result.unavailable && sameSession) || !participant || e.seq > replySeq!) {
+      if ((!result.unavailable && sameSession) || !participant) {
         continue
       }
 
@@ -667,7 +685,10 @@ export function readThread(
         item,
         index,
       ) => {
-        if (e.seq < replySeq! || index < replyPart!) {
+        if (beforeReply({
+          event: e,
+          index,
+        })) {
           candidates.push({
             item,
             reply: `${e.seq}:${index}`,
@@ -682,7 +703,7 @@ export function readThread(
       continue
     }
 
-    if (e.cardId !== card.id || e.seq > replySeq! || seenReplies.has(e.data.reply)) {
+    if (e.cardId !== card.id || seenReplies.has(e.data.reply)) {
       continue
     }
 
@@ -709,7 +730,10 @@ export function readThread(
       item,
       index,
     ) => {
-      if (e.seq < replySeq! || index < replyPart!) {
+      if (beforeReply({
+        event: e,
+        index,
+      })) {
         candidates.push({
           item,
           reply: `${e.seq}:${index}`,
@@ -722,11 +746,39 @@ export function readThread(
     result.unavailable = 'Showing stored messages; the native transcript is unavailable.'
   }
 
-  candidates.sort((
+  const positions = new Map(candidates.map((
+    candidate,
+    index,
+  ) => [
+    candidate,
+    index,
+  ]))
+  const native = candidates.filter(candidate => candidate.native)
+  const replies = candidates.filter(candidate => candidate.reply).sort((
     a,
     b,
   ) => (a.item.at ?? '').localeCompare(b.item.at ?? ''))
-  const page = candidates.slice(-PAGE)
+  const page: typeof candidates = []
+
+  // Consume a contiguous suffix from each source even when a record was timestamped earlier.
+  while (page.length < PAGE && (native.length || replies.length)) {
+    const nativeLast = native.at(-1)
+    const replyLast = replies.at(-1)
+    const takeNative = nativeLast && (!replyLast || (nativeLast.item.at ?? '') >= (replyLast.item.at ?? ''))
+    const selected = takeNative ? native.pop() : replies.pop()
+
+    if (selected) {
+      page.push(selected)
+    }
+  }
+
+  const firstNative = page.findLast(candidate => candidate.native)?.native
+  const firstReply = page.findLast(candidate => candidate.reply)?.reply
+  page.sort((
+    a,
+    b,
+  ) => (a.item.at ?? '').localeCompare(b.item.at ?? '')
+    || positions.get(a)! - positions.get(b)!)
   result.entries = page.map(e => e.item)
 
   if (card.id === HYDRA_CARD) {
@@ -744,7 +796,7 @@ export function readThread(
   }
 
   if (candidates.length > page.length || earlierNative) {
-    result.older = `n${page.find(e => e.native)?.native ?? emptyNativeCursor ?? nativeCursor ?? ''};r${page.find(e => e.reply)?.reply ?? replyCursor ?? ''}`
+    result.older = `n${firstNative ?? emptyNativeCursor ?? nativeCursor ?? ''};r${firstReply ?? replyCursor ?? ''}`
   }
 
   return result
