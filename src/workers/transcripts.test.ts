@@ -435,6 +435,38 @@ test(
         }),
         ...traceOf({
           record: {
+            type: 'response_item',
+            timestamp: at,
+            payload: {
+              type: 'custom_tool_call',
+              call_id: 'call_2',
+              name: 'exec',
+              input: 'await tools.exec_command({cmd:"date"})\nawait tools.exec_command({cmd:"pwd"})',
+            },
+          },
+        }).map(trace => trace.role),
+        ...traceOf({
+          record: {
+            type: 'response_item',
+            timestamp: at,
+            payload: {
+              type: 'custom_tool_call_output',
+              call_id: 'call_2',
+              output: [
+                {
+                  type: 'input_text',
+                  text: 'Script completed',
+                },
+                {
+                  type: 'input_image',
+                  image_url: 'data:image/png;base64,AAAA',
+                },
+              ],
+            },
+          },
+        }).map(trace => trace.text.startsWith('[')),
+        ...traceOf({
+          record: {
             type: 'user',
             timestamp: at,
             message: {
@@ -464,6 +496,8 @@ test(
           role: 'tool',
           text: 'Script completed\nMon Nov 9',
         },
+        'exec',
+        true,
         {
           role: 'tool',
           text: 'MERGED',
