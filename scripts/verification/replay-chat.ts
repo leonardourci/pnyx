@@ -20,6 +20,7 @@ import { readThread, recordEntries, type ThreadEntry } from '#hydra/transcripts-
 import type { HydraState } from '#app/model.ts'
 
 const PAGE_LIMIT = 1000
+const BACKFILL_BATCH_LIMIT = 100_000
 const HASH_LENGTH = 12
 const hash = ({ value }: { value: string }) => createHash('sha256').update(value)
   .digest('hex')
@@ -273,13 +274,26 @@ export function replayChat({
         JSON.stringify(copied),
       )
 
-      while (withWriter({
-        hydraId: hydra,
-        fn: ({ writer }) => backfillConversations({
-          writer,
-          at: events.at(-1)!.at,
-        }),
-      }).progressed) { /* Offline replay drains bounded server migration batches. */ }
+      let complete = false
+
+      for (let batch = 0; batch < BACKFILL_BATCH_LIMIT; batch++) {
+        const result = withWriter({
+          hydraId: hydra,
+          fn: ({ writer }) => backfillConversations({
+            writer,
+            at: events.at(-1)!.at,
+          }),
+        })
+
+        if (!result.progressed) {
+          complete = true
+          break
+        }
+      }
+
+      if (!complete) {
+        throw new Error('Conversation backfill did not finish within the replay limit.')
+      }
 
       const repaired = withWriter({
         hydraId: hydra,
