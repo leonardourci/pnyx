@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { readEvents } from '#app/event-log.ts'
@@ -295,6 +296,23 @@ test(
       ),
       transcript,
     )
+    const longTool = `${'a'.repeat(999)}Xsk-${'b'.repeat(40)}${' z'.repeat(1000)}`
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'user',
+        timestamp: '2026-10-22T10:00:07.000Z',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'boundary-read',
+              content: longTool,
+            },
+          ],
+        },
+      })}\n`,
+    )
     const session = {
       id: 'claude-code:old',
       originCardId: '$hydra',
@@ -404,7 +422,7 @@ test(
     harvest()
     const events = readEvents({ hydraId: 'default' })
     assert.deepEqual(
-      events.filter((event): event is ChatEvent => event.type === 'chat.message' && event.data.kind === 'tool').map(event => event.data.call),
+      events.filter((event): event is ChatEvent => event.type === 'chat.message' && event.data.kind === 'tool' && event.data.call === 'check-release').map(event => event.data.call),
       [
         'check-release',
         'check-release',
@@ -422,6 +440,50 @@ test(
     assert.equal(
       readEvents({ hydraId: 'default' }).length,
       events.length,
+    )
+    const archivedBytes = readFileSync(
+      log,
+      'utf8',
+    )
+    const checked = JSON.parse(execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        fileURLToPath(new URL(
+          '../../../scripts/verification/replay-chat.ts',
+          import.meta.url,
+        )),
+        '--archive',
+        home,
+        '--claude-transcripts',
+        home,
+        '--codex-transcripts',
+        home,
+      ],
+      {
+        env: process.env,
+        encoding: 'utf8',
+      },
+    ))
+    assert.deepEqual(
+      checked[0].counts,
+      {
+        missing: 0,
+        duplicate: 0,
+        order: 0,
+        text: 0,
+        tool: 0,
+        progress: 0,
+        hidden: 0,
+        unexpected: 0,
+      },
+    )
+    assert.equal(
+      readFileSync(
+        log,
+        'utf8',
+      ),
+      archivedBytes,
     )
     rmSync(transcript)
     const state = replayOwned({
@@ -445,6 +507,7 @@ test(
         'Check the synthetic release.',
         'The release is ready.',
         'A helper result is ready.',
+        longTool,
       ],
     )
     assert.deepEqual(

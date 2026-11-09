@@ -12,7 +12,6 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { chatRecordId, recordedChatIds } from '#hydra/chat-records.ts'
 import type { Writer } from '#app/writer.ts'
 import { readTranscript } from '#oracle/index.ts'
-import { redact } from '#oracle/text.ts'
 import { codexThreadTitle } from '#workers/codex.ts'
 import type { FoundSettings } from '#workers/provider.ts'
 import { LIVE_HOOK_SETTINGS, observedSettings } from './settings.ts'
@@ -82,7 +81,7 @@ function recordChat({
         kind: entry.kind,
         hidden: entry.hidden,
         call: entry.call,
-        text: redact({ text: entry.text }),
+        text: entry.text,
       },
     },
   })
@@ -267,6 +266,7 @@ export function harvestTranscripts({
         identity: '',
         pos: 0,
       },
+      through: cursor.pos,
     })
 
     if (!transcript || transcript.end < cursor.pos) {
