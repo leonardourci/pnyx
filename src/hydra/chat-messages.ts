@@ -30,9 +30,11 @@ export interface TurnTiming {
   latest: boolean
 }
 
-// A streamed reply that so far reads as the start of Hydra's quiet reply hides, as the finished one does.
-const quiet = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')
-  && Boolean(entry.text.trim()) && QUIET_REPLY.startsWith(entry.text.trim())
+// Quiet reply prefixes hide only while text is streaming.
+export const quietReply = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')
+  && Boolean(entry.text.trim()) && (entry.streaming
+  ? QUIET_REPLY.startsWith(entry.text.trim())
+  : entry.text.trim() === QUIET_REPLY)
 
 export const injectedInstructions = ({
   entry,
@@ -54,7 +56,7 @@ export function hydraMessages({
   boundaries?: boolean
 }): ThreadEntry[] {
   transcript = transcript.filter(entry => {
-    const visible = boundaries || !quiet({ entry })
+    const visible = boundaries || !quietReply({ entry })
 
     return visible && !injectedInstructions({
       entry,

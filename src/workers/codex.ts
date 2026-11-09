@@ -1950,6 +1950,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
         return {
           text,
           hidden: opensImage || closesImage,
+          block: index,
         }
       }),
     })

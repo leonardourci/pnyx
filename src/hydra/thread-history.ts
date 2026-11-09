@@ -1,5 +1,6 @@
 import { HydraError } from '#store/errors.ts'
 import type { ThreadPage } from './transcripts-read.ts'
+import { threadEntryOrder } from './thread-order.ts'
 
 export function mergeThreadPages({
   before,
@@ -47,7 +48,10 @@ export function mergeThreadPages({
   const ordered = [...entries.values()].sort((
     a,
     b,
-  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  ) => threadEntryOrder({
+    first: a,
+    second: b,
+  }))
   const older = olderPage ? latest.older : before.entries.length ? before.older : latest.older
 
   return {

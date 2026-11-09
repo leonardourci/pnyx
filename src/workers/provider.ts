@@ -354,6 +354,7 @@ export interface Provider {
 }
 
 export interface TranscriptMessage {
+  block?: number
   internal?: boolean
   at?: string
   text: string

@@ -1,6 +1,7 @@
+import { setImmediate } from 'node:timers/promises'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
 import { upgradeUnderway } from '#upgrade/queue.ts'
 import { indexRuns } from './index-runs.ts'
 
@@ -55,7 +56,9 @@ export function createIndexSync({
     }): void
   }): void
 }) {
-  // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
+  let stopped = false
+  let backfilling: Promise<void> | undefined
+
   // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
   const harvestForIndex = () => {
     try {
@@ -72,38 +75,85 @@ export function createIndexSync({
     }
   }
 
-  const historyIndex = indexRuns({
-    start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
-      // The next change, or the restarted server, catches the index up.
-      if (upgradeUnderway()) {
-        resolve(undefined)
+  const backfillForIndex = async (): Promise<void> => {
+    let progressed = false
 
-        return
+    try {
+      await setImmediate()
+
+      while (!stopped && !upgradeUnderway()) {
+        const batch = withWriter({
+          hydraId,
+          fn: ({ writer }) => backfillConversations({
+            writer,
+            at: new Date().toISOString(),
+          }),
+        })
+
+        if (!batch.progressed) {
+          break
+        }
+
+        progressed = true
+        await setImmediate()
       }
+    } catch (error) {
+      console.error(`pnyx oracle index: conversation recovery failed: ${(error as Error).message}`)
+    } finally {
+      backfilling = undefined
 
+      if (progressed && !stopped && !upgradeUnderway()) {
+        historyIndex.changed()
+      }
+    }
+  }
+
+  const historyIndex = indexRuns({
+    start: () => {
       harvestForIndex()
-      startWorker({
-        file: INDEX_WORKER,
-        timeout: INDEX_WORKER_TIMEOUT_MS,
-        args: [hydraId],
-        done: ({
-          error,
-          stdout,
-        }) => {
-          if (!error) {
-            return resolve(undefined)
-          }
 
-          const failure = workerError({ stdout }) ?? {
-            message: error.message,
-            code: 'UNKNOWN',
-          }
-          console.error(`pnyx oracle index: ${failure.message}`)
-          resolve(failure)
-        },
+      return new Promise<ReturnType<typeof workerError>>(resolve => {
+        // The next change, or the restarted server, catches the index up.
+        if (stopped || upgradeUnderway()) {
+          resolve(undefined)
+
+          return
+        }
+
+        startWorker({
+          file: INDEX_WORKER,
+          timeout: INDEX_WORKER_TIMEOUT_MS,
+          args: [hydraId],
+          done: ({
+            error,
+            stdout,
+          }) => {
+            let failure: ReturnType<typeof workerError>
+
+            if (error) {
+              failure = workerError({ stdout }) ?? {
+                message: error.message,
+                code: 'UNKNOWN',
+              }
+              console.error(`pnyx oracle index: ${failure.message}`)
+            }
+
+            resolve(failure)
+
+            if (!backfilling && !stopped && !upgradeUnderway()) {
+              backfilling = backfillForIndex()
+            }
+          },
+        })
       })
-    }),
+    },
   })
 
-  return historyIndex
+  return {
+    ...historyIndex,
+    stop() {
+      stopped = true
+      historyIndex.stop()
+    },
+  }
 }

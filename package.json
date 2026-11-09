@@ -49,6 +49,8 @@
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
+    "chrome-devtools-axi": "0.1.35",
+    "chrome-devtools-mcp": "1.12.0",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "marked": "^18.1.1",

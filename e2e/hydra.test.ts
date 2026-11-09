@@ -13,6 +13,7 @@ import { taskMention } from '#hydra/mentions.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
+import { assertConversation } from '#test-harness/conversation.ts'
 
 const inscribePrompt = ({ text }: { text: string }) => text.includes(skillSource({ name: 'inscribe' }))
   && text.includes('pnyx-axi hydra history')
@@ -1807,6 +1808,10 @@ test(
       conversation({ page: older }),
     )
     assert.ok(restored.conversation!.entries.some(entry => entry.text === 'Ship it'))
+    assertConversation({
+      state: s.state(),
+      page: restored,
+    })
     assert.notEqual(
       restored.conversation!.stream,
       older.conversation!.stream,

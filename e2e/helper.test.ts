@@ -11,6 +11,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { taskLease } from '#routine-helper/leases.ts'
+import { assertConversation } from '#test-harness/conversation.ts'
 import type { HelperChange } from '#routine-helper/state.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { permissionEvent } from '#workers/permission-rules.ts'
@@ -1794,6 +1795,10 @@ test(
       args: [HYDRA_CARD],
     })).thread as ThreadPage
     assert.ok(answered.conversation?.entries.every(entry => !entry.text.includes('<pnyx-context>')))
+    assertConversation({
+      state: s.state(),
+      page: answered,
+    })
     assert.deepEqual(
       answered.conversation?.entries.filter(entry => entry.role === 'user').slice(-2)
         .map(entry => entry.text),
@@ -2088,5 +2093,22 @@ test(
       [idleTask.id],
     )
     assert.ok(s.task({ key: 'idle' }).reminder?.dueAt)
+    const reminderPage = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      const reminded = (await reminderPage.command({
+        name: 'thread',
+        args: [HYDRA_CARD],
+      })).thread as ThreadPage
+      assertConversation({
+        state: s.state(),
+        page: reminded,
+      })
+    } finally {
+      reminderPage.close()
+    }
   },
 )

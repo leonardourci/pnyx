@@ -6,8 +6,17 @@ import type { TurnActions } from '#hydra/conversation.ts'
 
 import { CollapsibleText,Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { UpdateEntry } from '#web-tasks/update-rows.tsx'
+import { Trace } from './trace-row.tsx'
 
-export function TurnActionsFold({ fold }: { fold: TurnActions }) {
+export function TurnActionsFold({
+  fold,
+  toolDetails = false,
+  thinkingDetails = false,
+}: {
+  fold: TurnActions
+  toolDetails?: boolean
+  thinkingDetails?: boolean
+}) {
   const changes = fold.tasks.reduce(
     (
       count,
@@ -15,7 +24,7 @@ export function TurnActionsFold({ fold }: { fold: TurnActions }) {
     ) => count + task.updates.length,
     0,
   )
-  let label = <>Hydra’s progress · {fold.notes.length} notes</>
+  let label = <>Hydra’s progress · {fold.notes.length} {fold.notes.length === 1 ? 'update' : 'updates'}</>
 
   if (fold.tasks.length) {
     const tasks = fold.tasks.length === 1
@@ -29,8 +38,14 @@ export function TurnActionsFold({ fold }: { fold: TurnActions }) {
       <Disclosure title={label}>
         {fold.notes.length > 0 && (
           <section className="turn-progress">
-            <span className="eyebrow">Progress notes</span>
-            {fold.notes.map(note => <CollapsibleText key={note.id} text={note.text} />)}
+            <span className="eyebrow">Progress</span>
+            {fold.notes.map(note => (
+              <div key={note.id} data-progress-id={note.reference ?? note.id}>
+                {note.kind === 'message'
+                  ? <CollapsibleText text={note.text} />
+                  : <Trace entry={note} details={note.kind === 'tool' ? toolDetails : thinkingDetails} />}
+              </div>
+            ))}
           </section>
         )}
         {fold.tasks.map(task => (

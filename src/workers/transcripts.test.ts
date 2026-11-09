@@ -30,6 +30,7 @@ test(
         {
           at,
           text: 'Ready',
+          block: 0,
         },
       ],
     )
@@ -49,6 +50,7 @@ test(
         {
           at,
           text: 'Ready',
+          block: 0,
         },
       ],
     )
@@ -204,6 +206,7 @@ test(
         {
           at,
           text: 'Describe this image',
+          block: 3,
         },
       ],
     )
@@ -340,6 +343,7 @@ test(
         {
           at,
           text: 'Explain the result.',
+          block: 0,
         },
       ],
     )
@@ -349,6 +353,7 @@ test(
         {
           at,
           text: 'Explain the result.',
+          block: 0,
         },
       ],
     )
