@@ -25,7 +25,7 @@ Commit with Conventional Commits, split by concern, with each area or module in 
 
 A pull request has two GitHub checks:
 
-- **pnpm verify** runs on every push. It runs nothing itself; it confirms that `pnpm verify` passed on that exact commit and that the required review boxes are ticked and the description has every section filled with its placeholders removed. A new push needs a new `pnpm verify` run.
+- **pnpm verify** runs on every push. It runs nothing itself; it confirms that `pnpm verify` passed on that exact commit and that the required review boxes are ticked and the description has substantive Problem, Fix, Validation and Review sections with their placeholders removed. A new push needs a new `pnpm verify` run.
 - **The full test run** runs the test suite on GitHub. It starts only after a maintainer approves it.
 
 Both must pass before merging. The repository owner reviews and merges with a merge commit. [Development](docs/development.md#verification) has the details, including which checks each kind of change runs and `pnpm verify --mechanical` for renames and moves.
@@ -34,7 +34,7 @@ Both must pass before merging. The repository owner reviews and merges with a me
 
 After `pnpm verify` passes and CI is green on a PR that is ready for review, the owner or Hydra may request the challenger review with a PR comment: `@coderabbitai review`. Contributors and workers leave that request to them. CodeRabbit replaces the separate agent challenger before merge; the required local review checklists still apply. Resolve each finding or answer it with a reason, then update the description and rerun verification after any fixes. A later review is requested explicitly again. `pnpm verify` neither requests nor requires CodeRabbit.
 
-[.coderabbit.yaml](.coderabbit.yaml) disables automatic and incremental reviews, uses the assertive profile and keeps the summary in the walkthrough comment so the PR description, review boxes and verification marker stay intact. Configured guideline additions are follow-conventions and review-code for all paths, audit-tests for unit, scenario, e2e and browser tests, write-front-end for `web/**` and write-ci-workflow for `.github/workflows/**`; CodeRabbit discovers `AGENTS.md` by default. It skips `pnpm-lock.yaml`. See the [configuration reference](https://docs.coderabbit.ai/reference/configuration) for the supported settings.
+[.coderabbit.yaml](.coderabbit.yaml) disables automatic and incremental reviews, uses the assertive profile and keeps the summary in the walkthrough comment so the PR description, review boxes and verification marker stay intact. Configured guideline additions are follow-conventions and review-code for all paths, audit-tests for application code, scripts and tests, write-front-end for `web/**` and write-ci-workflow for `.github/workflows/**`; CodeRabbit discovers `AGENTS.md` by default. It skips `pnpm-lock.yaml`. See the [configuration reference](https://docs.coderabbit.ai/reference/configuration) for the supported settings.
 
 ## Reporting bugs
 
