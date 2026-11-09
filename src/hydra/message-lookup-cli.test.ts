@@ -312,6 +312,10 @@ test(
         '--hydra',
         'fixture',
       ])
+      assert.match(
+        String(history.text),
+        /Keep the sample input unchanged/,
+      )
       assert.doesNotMatch(
         String(history.text),
         /contextprefixedword|contextonlyword|pnyx-context/,
@@ -334,6 +338,18 @@ test(
         ])
         ownerReference = String(sent.message)
         ownerText = 'Keep the sample input.\n\nPreserve the sample format.'
+        const ownerHistory = await commands.hydra([
+          'history',
+          '--since',
+          'origin',
+          '--hydra',
+          'fixture',
+        ])
+        assert.match(
+          String(ownerHistory.text),
+          /Keep the sample input\.\n\nPreserve the sample format/,
+        )
+
         ownerAt = state().hydraMessages!.find(message => message.id === ownerReference)!.at
         expectedOwnerMessages = [
           'The sample result is deterministic.',
