@@ -1,6 +1,6 @@
 import { commandOf } from './tool-input.ts'
 import { object } from './transcript-usage.ts'
-import { withoutInjected, wakeInput } from '#oracle/text.ts'
+import { visibleText, wakeInput } from '#oracle/text.ts'
 import type { FoundSettings, TranscriptMessage, TranscriptCall, TranscriptTrace } from './provider.ts'
 
 const TEXT_BLOCKS = [
@@ -91,7 +91,7 @@ export function transcriptText({
   const messages = texts.map(({
     text,
     hidden,
-  }) => hidden || wakeInput({ text }) ? '' : withoutInjected({ text }))
+  }) => hidden ? '' : visibleText({ text }))
     .filter(Boolean)
     .map(text => at ? {
       at,
