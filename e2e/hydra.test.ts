@@ -1830,3 +1830,57 @@ test(
     )
   },
 )
+
+test(
+  'the Hydra list says a Hydra is running for exactly as long as its turn runs',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    const working = async () => {
+      const receipt = await page.command({
+        name: 'hydras',
+        args: [],
+      })
+      const hydras = receipt.hydras as {
+        id: string
+        working?: boolean
+      }[]
+
+      return hydras.find(hydra => hydra.id === s.hydraId)?.working
+    }
+
+    const turn = pnyx.claude.plan({
+      text: 'Check the running dot',
+      reply: 'Checked.',
+      hold: true,
+    })
+
+    try {
+      assert.equal(
+        await working(),
+        false,
+      )
+      await send({
+        s,
+        text: 'Check the running dot',
+        id: 'running-dot',
+      })
+      await until({
+        what: 'the Hydra listed as running',
+        check: async () => await working() === true,
+      })
+      turn.release()
+      await until({
+        what: 'the Hydra listed as idle once its turn ends',
+        check: async () => await working() === false,
+      })
+    } finally {
+      turn.release()
+      page.close()
+    }
+  },
+)
