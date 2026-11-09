@@ -1870,14 +1870,22 @@ test(
         id: 'running-dot',
       })
       await until({
-        what: 'the Hydra listed as running',
-        check: async () => await working() === true,
+        what: 'the turn running',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
       })
+      assert.equal(
+        await working(),
+        true,
+      )
       turn.release()
       await until({
-        what: 'the Hydra listed as idle once its turn ends',
-        check: async () => await working() === false,
+        what: 'the turn finished',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
       })
+      assert.equal(
+        await working(),
+        false,
+      )
     } finally {
       turn.release()
       page.close()
