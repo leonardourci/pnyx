@@ -24,7 +24,7 @@ export function TurnActionsFold({
     ) => count + task.updates.length,
     0,
   )
-  let label = <>Hydra’s progress · {fold.notes.length} updates</>
+  let label = <>Hydra’s progress · {fold.notes.length} {fold.notes.length === 1 ? 'update' : 'updates'}</>
 
   if (fold.tasks.length) {
     const tasks = fold.tasks.length === 1

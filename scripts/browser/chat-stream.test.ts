@@ -167,6 +167,13 @@ test(
           `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
         ],
       })
+      await run({
+        args: [
+          'resize',
+          '1200',
+          '760',
+        ],
+      })
       await evaluate({
         script: `() => {
       const region = document.querySelector('[aria-label="Hydra conversation"]');
