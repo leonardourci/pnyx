@@ -8,6 +8,42 @@ import { emptyHydra, reduce } from '#app/reducer.ts'
 import { readThread, recordEntries, splitEntry, type ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveReplies } from '#workers/streaming.ts'
+import { joinMessageParts } from './history.ts'
+
+test(
+  'transport chunks preserve redacted offsets when a word crosses their boundary',
+  () => {
+    const text = `${'a'.repeat(999)}Xsk-${'b'.repeat(40)}${' z'.repeat(1000)}`
+    const parts = splitEntry({
+      entry: {
+        id: 'tool',
+        kind: 'tool',
+        role: 'Read',
+        text,
+      },
+    })
+    const archived = parts.flatMap(entry => splitEntry({ entry }))
+    assert.equal(
+      joinMessageParts({ entries: archived }).length,
+      1,
+    )
+    assert.equal(
+      joinMessageParts({ entries: archived })[0]?.text,
+      text,
+    )
+    assert.equal(
+      splitEntry({
+        entry: {
+          id: 'secret',
+          kind: 'message',
+          role: 'assistant',
+          text: `sk-${'a'.repeat(40)}`,
+        },
+      })[0]?.text,
+      '[redacted]',
+    )
+  },
+)
 
 // The saved and live Hydra pages of a recorded session, whose transcript holds tool calls.
 function recordedPages({
