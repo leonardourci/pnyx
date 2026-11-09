@@ -13,6 +13,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { viewFor, patchView, DEFAULT_VIEW } from '#preferences/view.ts'
 import { decided } from './decision.ts'
+import { currentHolder } from '#tasks/move.ts'
 
 function currentValue({
   card,
@@ -96,12 +97,18 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} belongs to apply ${target.transaction}; append a correction with apply` })
   }
 
-  // Each side's boardId is the Hydra that wrote it; where the task is now comes from this Hydra's own record.
+  // Each side's boardId is the Hydra that wrote it; the task may have moved on since, so follow it to its holder.
   if (target.type === 'task.moved-in' || target.type === 'task.moved-out') {
     const back = target.type === 'task.moved-in' ? target.data.from : target.boardId
-    const here = Boolean(state.cards[target.cardId])
+    const holder = target.boardId && currentHolder({
+      hydraId: target.boardId,
+      state,
+      card: target.cardId,
+    })
 
-    const holder = here ? target.boardId : state.movedOut?.[target.cardId]?.to
+    if (!holder) {
+      throw notUndoable({ message: `a move between Hydras is undone by moving the task back; find where ${target.cardId} is now with \`pnyx-axi oracle ${target.cardId}\`` })
+    }
 
     if (holder === back) {
       throw notUndoable({ message: `the task is already back on Hydra ${back}` })

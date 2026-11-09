@@ -657,3 +657,37 @@ export async function moveTask({
     },
   })
 }
+
+// Follows a moved task from Hydra to Hydra to the one that holds it now; undefined once the trail ends.
+export function currentHolder({
+  hydraId,
+  state,
+  card,
+}: {
+  hydraId: string
+  state: HydraState
+  card: string
+}): string | undefined {
+  const seen = new Set<string>()
+  let at: string | undefined = hydraId
+  let current = state
+
+  while (at && !seen.has(at)) {
+    if (current.cards[card]) {
+      return at
+    }
+
+    seen.add(at)
+    at = current.movedOut?.[card]?.to
+
+    if (at && !hydraIds().includes(at)) {
+      return undefined
+    }
+
+    if (at) {
+      current = loadHydra({ hydraId: at }).state
+    }
+  }
+
+  return undefined
+}
