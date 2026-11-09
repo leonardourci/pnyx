@@ -98,41 +98,72 @@ export function hydraConversation({
     const current = index === turns.length - 1 && working
     const texts = turn.entries.filter(entry => entry.kind === 'message'
       && entry.role.startsWith('assistant') && !entry.hidden)
-    // Hydra can answer the owner mid-turn and still close the turn with NO_REPLY; that answer is the reply.
-    const replies = texts.filter(entry => entry.final !== false && spoken({ entry }))
-    const currentReplies = current ? texts.filter(entry => spoken({ entry })) : replies
-    const last = ownerStarted ? currentReplies.at(-1) : texts.at(-1)
-    const quiet = last && !spoken({ entry: last })
+    const replies = texts.filter(entry => spoken({ entry }))
+    const last = replies.at(-1)
     const completed = replies.filter(entry => entry.final === true)
-    const visibleReply = last && !quiet && (ownerStarted || (!current && last.final !== false))
+    const visible = new Set(completed)
+
+    if (last) {
+      visible.add(last)
+    }
 
     if (ownerStarted) {
       entries.push(turn.input!)
-
-      if (thinking) {
-        entries.push(...turn.entries.filter(entry => entry.kind === 'thinking'))
-      }
     }
 
-    entries.push(...completed)
+    let progress: ThreadEntry[] = []
 
-    if (visibleReply) {
-      if (!completed.includes(last)) {
-        entries.push(last)
-      }
-
-      if (ownerStarted && !current && turn.input?.at && last.at) {
-        timings.set(
-          last.id,
+    for (const entry of turn.entries) {
+      if (entry.role === 'Pnyx') {
+        entries.push(
+          ...progress,
           {
-            start: turn.input.at,
-            end: last.at,
-            reply: last.text,
-            task: leadingTask({ entry: last }),
-            latest: false,
+            ...entry,
+            hidden: false,
           },
         )
+        progress = []
+        continue
       }
+
+      const trace = entry.kind === 'tool' || thinking && entry.kind === 'thinking'
+
+      if (entry.hidden || !trace && !replies.includes(entry)) {
+        continue
+      }
+
+      if (!visible.has(entry)) {
+        progress.push(entry)
+        continue
+      }
+
+      if (progress.length) {
+        folds.set(
+          entry.id,
+          {
+            tasks: [],
+            notes: progress,
+          },
+        )
+        progress = []
+      }
+
+      entries.push(entry)
+    }
+
+    entries.push(...progress)
+
+    if (ownerStarted && !current && turn.input?.at && last?.at) {
+      timings.set(
+        last.id,
+        {
+          start: turn.input.at,
+          end: last.at,
+          reply: last.text,
+          task: leadingTask({ entry: last }),
+          latest: false,
+        },
+      )
     }
 
     if (!ownerStarted) {
@@ -184,11 +215,8 @@ export function hydraConversation({
       )
     }
 
-    const notes = texts.filter(entry => entry !== last
-      && !completed.includes(entry) && spoken({ entry }))
-
-    if (tasks.size || notes.length) {
-      const anchor = visibleReply ? last.id : turn.input!.id
+    if (tasks.size) {
+      const anchor = last?.id ?? turn.input!.id
       folds.set(
         anchor,
         {
@@ -200,16 +228,12 @@ export function hydraConversation({
             title: titles[task] ?? task,
             updates,
           })),
-          notes,
+          notes: folds.get(anchor)?.notes ?? [],
         },
       )
     }
   }
 
-  entries.push(...reconciled.filter(entry => entry.role === 'Pnyx').map(entry => ({
-    ...entry,
-    hidden: false,
-  })))
   entries.sort((
     a,
     b,

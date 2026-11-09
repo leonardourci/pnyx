@@ -457,7 +457,7 @@ test(
 )
 
 test(
-  'terminal and unknown provider replies stay visible while continuation text stays hidden',
+  'terminal, continuation and unknown provider text all remain available',
   () => {
     const reply = ({ record }: { record: unknown }) => hydraThreadView({
       state: emptyHydra(),
@@ -553,11 +553,17 @@ test(
     )
     assert.deepEqual(
       claude({ stop: 'tool_use' }),
-      ['Please check'],
+      [
+        'Please check',
+        'A response',
+      ],
     )
     assert.deepEqual(
       claude({ stop: 'pause_turn' }),
-      ['Please check'],
+      [
+        'Please check',
+        'A response',
+      ],
     )
     assert.deepEqual(
       codex({ phase: 'final_answer' }),
@@ -589,7 +595,10 @@ test(
     )
     assert.deepEqual(
       codex({ phase: 'commentary' }),
-      ['Please check'],
+      [
+        'Please check',
+        'A response',
+      ],
     )
   },
 )
