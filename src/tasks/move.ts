@@ -474,6 +474,14 @@ export async function moveTask({
     }
   }
 
+  if (!card && gone) {
+    throw refuse({
+      message: `${ref} moved to Hydra ${gone.to}`,
+      help: `Run \`pnyx-axi task move ${gone.id} --to-hydra ${to} --hydra ${gone.to}\``,
+      code: 'NOT_FOUND',
+    })
+  }
+
   if (!card) {
     throw missing({
       hydraId,
@@ -489,6 +497,17 @@ export async function moveTask({
   })
 
   if (unfinished) {
+    await releaseWorker({
+      hydraId,
+      card,
+      actor: meta.actor,
+      rerun: rerunCommand({
+        card,
+        to,
+        hydraId,
+      }),
+    })
+
     return withWriter({
       hydraId,
       fn: ({ writer: source }) => {

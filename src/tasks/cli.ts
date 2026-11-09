@@ -492,7 +492,7 @@ function historyStart({
   ]
   const at = Number(seq)
 
-  if (!Number.isInteger(at)) {
+  if (!/^\d+$/.test(seq ?? '') || !Number.isSafeInteger(at)) {
     throw new HydraError({
       message: '--before takes a seq or <hydra>:<seq>',
       code: 'VALIDATION_ERROR',

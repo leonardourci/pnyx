@@ -37,6 +37,7 @@ import { askRows, askCommand } from '#tasks/asks.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { moveTask } from '#tasks/move.ts'
+import { requestEnv } from './request-context.ts'
 
 const TASK_DETAIL_LIMIT = 5
 
@@ -503,6 +504,14 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'move') {
+    if (requestEnv().PNYX_ACTOR?.startsWith('worker:')) {
+      throw new HydraError({
+        message: 'Only the owner or Hydra moves a task to another Hydra',
+        code: 'OWNER_ONLY',
+        help: ['Ask Hydra with `pnyx-axi task ask <task> --question "<why the task should move>"`'],
+      })
+    }
+
     explained({ meta: m })
 
     return moveTask({

@@ -264,7 +264,7 @@ pnyx-axi task move <task> --to-hydra <hydra> [--reason <why>]
 Moves the task to another Hydra with its asks, questions, links, column, history and Pnyx-run worker session; its task copy stays in place.
 Refused, with the command that clears it, while the target lacks its project, its worker is starting, mid-turn or runs outside Pnyx, the routine helper holds it,
 or it is queued, a subtask or parent, or tied by a prerequisite or wait to a task that stays. Undo refuses; move it back with the same command.
-Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start, task move and permission, as to move. Pnyx keeps it on the event,
+Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start, permission, move and task move. Pnyx keeps it on the event,
 and shows the changes in the task’s Updates and the turn’s fold. --details keeps longer context on the same event.
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task queue <task> --behind <task|session>
