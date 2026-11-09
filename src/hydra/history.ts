@@ -312,7 +312,8 @@ function historyMessages({ events }: { events: HydraEvent[] }): {
 
     let entry: ThreadEntry
 
-    if (event.type === 'chat.message' && event.cardId === HYDRA_CARD && event.data.role.startsWith('assistant')) {
+    if (event.type === 'chat.message' && event.cardId === HYDRA_CARD && event.data.role.startsWith('assistant')
+      && (event.data.kind ?? 'message') === 'message') {
       entry = {
         ...loggedEntry({ event }),
         role: 'Hydra',

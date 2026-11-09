@@ -352,3 +352,61 @@ test(
     )
   },
 )
+
+test(
+  'compaction history excludes assistant-prefixed traces while retaining legacy messages',
+  () => {
+    const events: HydraEvent[] = [
+      {
+        ...base,
+        seq: 1,
+        id: 'reply',
+        type: 'chat.message',
+        data: {
+          session: 'fixture',
+          nativeId: '0:m0',
+          role: 'assistant',
+          text: 'The release is ready.',
+        },
+      },
+      {
+        ...base,
+        seq: 2,
+        id: 'tool',
+        type: 'chat.message',
+        data: {
+          session: 'fixture',
+          nativeId: '100:t0',
+          role: 'assistant_tool',
+          kind: 'tool',
+          text: 'Raw tool output.',
+        },
+      },
+      {
+        ...base,
+        seq: 3,
+        id: 'thinking',
+        type: 'chat.message',
+        data: {
+          session: 'fixture',
+          nativeId: '200:t0',
+          role: 'assistant_thinking',
+          kind: 'thinking',
+          text: 'Private reasoning.',
+        },
+      },
+    ]
+    const history = readHistory({
+      state: replay({
+        state: emptyHydra(),
+        events,
+      }),
+      events,
+      since: 'origin',
+    })
+    assert.equal(
+      history.text,
+      '[Hydra] The release is ready.',
+    )
+  },
+)
