@@ -87,6 +87,13 @@ export function hydraConversation({
     }
   }
 
+  const orderedActions = actions.toSorted((
+    a,
+    b,
+  ) => a.seq - b.seq)
+  const entries: ThreadEntry[] = []
+  const folds = new Map<string, TurnActions>()
+
   const foldBefore = ({
     entry,
     progress,
@@ -105,13 +112,7 @@ export function hydraConversation({
     }
   }
 
-  const orderedActions = actions.toSorted((
-    a,
-    b,
-  ) => a.seq - b.seq)
-  const entries: ThreadEntry[] = []
-  const folds = new Map<string, TurnActions>()
-  // Progress after a turn's last shown entry, shown after it while the turn runs or when it ends without a reply.
+  // Progress after a turn's last shown entry: the running turn's calls so far, or a turn that ended without a reply.
   const trailing = new Map<string, ThreadEntry[]>()
   const timings = new Map<string, TurnTiming>()
 
