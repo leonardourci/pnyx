@@ -1,6 +1,6 @@
 import { readLog } from '#app/event-log.ts'
 import { noteId } from '#tasks/notes.ts'
-import type { HydraEvent } from '#app/model.ts'
+import { chatPosition, rememberChat } from './chat-events.ts'
 import type { ChatEvent } from './model.ts'
 
 export function chatRecordId({
@@ -9,9 +9,14 @@ export function chatRecordId({
   messageId,
   part,
 }: Pick<ChatEvent['data'], 'session' | 'nativeId' | 'messageId' | 'part'>): string {
-  const legacy = /^(.*)\.(\d+)$/.exec(nativeId)
-  const message = messageId ?? legacy?.[1] ?? nativeId
-  const position = part ?? (legacy ? Number(legacy[2]) : 0)
+  const {
+    message,
+    position,
+  } = chatPosition({
+    nativeId,
+    messageId,
+    part,
+  })
 
   return noteId({
     cardKey: session,
@@ -20,24 +25,6 @@ export function chatRecordId({
       position,
     ])}`,
   })
-}
-
-function rememberChat({
-  event,
-  events,
-}: {
-  event: ChatEvent
-  events: Map<string, ChatEvent>
-}) {
-  const identity = chatRecordId(event.data)
-  const known = events.get(identity)
-
-  if (!known || event.data.replaces === known.id) {
-    events.set(
-      identity,
-      event,
-    )
-  }
 }
 
 const recorded = new Map<string, {
@@ -78,22 +65,4 @@ export function recordedChats({ dir }: { dir: string }): ReadonlyMap<string, Cha
   )
 
   return events
-}
-
-export function effectiveChatEvents({ events }: { events: HydraEvent[] }): HydraEvent[] {
-  const chosen = new Map<string, ChatEvent>()
-
-  for (const event of events) {
-    if (event.type !== 'chat.message') {
-      continue
-    }
-
-    rememberChat({
-      event,
-      events: chosen,
-    })
-  }
-
-  return events.filter(event => event.type !== 'chat.message'
-    || chosen.get(chatRecordId(event.data)) === event)
 }

@@ -7,7 +7,7 @@ import type { ChatEvent, HydraOperation } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
-import { effectiveChatEvents } from './chat-records.ts'
+import { effectiveChatEvents } from './chat-events.ts'
 import { messageReference } from './message-reference.ts'
 import { HISTORY_BUDGET } from './history-command.ts'
 

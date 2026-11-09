@@ -1,6 +1,7 @@
 import { messageReference } from './message-reference.ts'
 import { loggedEntry } from './history.ts'
-import { chatRecordId, effectiveChatEvents } from './chat-records.ts'
+import { chatRecordId } from './chat-records.ts'
+import { effectiveChatEvents } from './chat-events.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'

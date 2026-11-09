@@ -9,6 +9,7 @@ import type { AgentSession, SessionEvent } from '#workers/model.ts'
 import { cardSessionId, taskForMessage } from '#workers/session-attachments.ts'
 import { transcriptEntries, type ThreadEntry } from '#hydra/transcripts-read.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { chatRecordKey } from '#hydra/chat-events.ts'
 import { chatRecordId, recordedChats } from '#hydra/chat-records.ts'
 import type { ChatEvent } from '#hydra/model.ts'
 import type { Writer } from '#app/writer.ts'
@@ -63,7 +64,6 @@ function recordChat({
     messageId: entry.messageId,
     part: entry.part,
   })
-  const known = recorded.get(messageId)
   const data: ChatEvent['data'] = {
     session,
     nativeId: entry.id,
@@ -77,6 +77,8 @@ function recordChat({
     call: entry.call,
     text: entry.text,
   }
+  const key = chatRecordKey({ data })
+  const known = recorded.get(key)
   const unchanged = known && known.data.text === data.text
     && known.data.block === data.block && known.data.final === data.final
     && (known.data.kind ?? 'message') === data.kind
@@ -112,7 +114,7 @@ function recordChat({
   }
   writer.append({ event })
   recorded.set(
-    messageId,
+    key,
     event,
   )
 }
