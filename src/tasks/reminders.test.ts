@@ -493,15 +493,11 @@ test(
     })
     await run({
       args: [
-        'close-question',
+        'status',
         'choice',
-        closed.id,
-        '--actor',
-        'hydra',
-        '--reason',
-        'The choice is superseded',
-        '--evidence',
-        'The synthetic specification removed the field',
+        'done',
+        '--note',
+        'The choice work is finished',
       ],
     })
     assert.equal(

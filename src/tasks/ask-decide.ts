@@ -8,6 +8,7 @@ import { findCard } from './push-rules.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { isManagedTask } from './select.ts'
 import { askWording, openAsks, pendingAnswer } from './ask-state.ts'
+import { clarificationMessage } from './question-actions.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500
@@ -455,6 +456,10 @@ export function askAnswer({
       text: message.text,
       at: message.at,
     }
+
+    if (clarificationMessage({ message })) {
+      throw invalid({ message: 'A clarification is not an answer; keep the question open and explain it' })
+    }
   }
 
   if (ask.audience === 'owner' && actor === HYDRA_ACTOR && !source) {
@@ -628,6 +633,15 @@ export function decideAskClosure({
     card,
     ask,
   })
+
+  if (ask.audience === 'owner' && !ask.origin && !ask.kind) {
+    throw invalid({ message: 'This owner question remains open until answered or its task explicitly finishes' })
+  }
+
+  if (ask.kind === 'merge' && !card.links.some(link =>
+    link.url === ask.url && (link.state === 'merged' || link.state === 'closed'))) {
+    throw invalid({ message: 'A merge question remains open until its own pull request merges or closes, or the owner answers it' })
+  }
 
   return hydraEvent({
     state,

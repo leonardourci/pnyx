@@ -8,6 +8,7 @@ import type { Card } from './model.ts'
 import { askAnswer } from './ask-decide.ts'
 import { openAsks } from './ask-state.ts'
 import { isManagedTask } from './select.ts'
+import { clarificationMessage } from './question-actions.ts'
 
 export function requireUnheld({ card }: { card: Card }): void {
   if (card.hold) {
@@ -82,6 +83,13 @@ export function decideHold({
       message: '--from-message must name the owner’s own message sent after the current hold',
       field: 'message',
       code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (clarificationMessage({ message: source })) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'A clarification does not release a discussion hold',
     })
   }
 

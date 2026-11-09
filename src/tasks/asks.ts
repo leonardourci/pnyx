@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { HYDRA_ACTOR } from '#app/actors.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
+import { clarificationText, decideQuestionAction } from './question-actions.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Ask, AskAudience, Card } from './model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -72,6 +73,10 @@ const askState = ({
 
   if (ask.answered) {
     return `answered (${ask.answered})`
+  }
+
+  if (ask.deferredUntil) {
+    return `later until ${ask.deferredUntil}`
   }
 
   const pending = pendingAnswer({
@@ -288,6 +293,17 @@ async function answerCommand({
   })
   const repeat = m.id !== undefined
     && (m.id in state.eventIds || !!card.replies?.some(r => r.id === m.id))
+
+  if (ownerActor({ actor: m.actor }) && picked === undefined && typed !== undefined
+    && clarificationText({ text: typed })) {
+    return questionActionCommand({
+      hydraId,
+      ref,
+      id,
+      text: typed,
+      meta: m,
+    })
+  }
 
   // Checked before routing so a missing route can't hide a refusal; the write checks again under the lock.
   if (!repeat) {
@@ -520,6 +536,61 @@ async function askOne({
   }
 }
 
+async function questionActionCommand({
+  hydraId,
+  ref,
+  id,
+  until,
+  text,
+  fromMessage,
+  meta,
+}: {
+  hydraId: string
+  ref: string
+  id: string
+  until?: string
+  text?: string
+  fromMessage?: string
+  meta: Meta
+}): Promise<Output> {
+  const written = commit({
+    hydraId,
+    meta,
+    intent: {
+      type: until === undefined ? 'hydra.message' : 'task.ask.deferred',
+      card: ref,
+    },
+    decide: ({ state }) => decideQuestionAction({
+      state,
+      ref,
+      id,
+      until,
+      text,
+      fromMessage,
+      meta,
+    }),
+  })
+  const event = written.event as { id?: string } | undefined
+
+  if (until === undefined && event?.id) {
+    await handToHydra({
+      hydraId,
+      id: event.id,
+      actor: meta.actor,
+    })
+  }
+
+  if (until === undefined) {
+    return {
+      ...written,
+      clarification: id,
+      help: ['Clarification sent to Hydra; the question remains open'],
+    }
+  }
+
+  return written
+}
+
 export function askCommand({
   action,
   positionals,
@@ -527,7 +598,7 @@ export function askCommand({
   hydraId,
   meta: given,
 }: {
-  action: 'ask' | 'answer' | 'escalate' | 'close-question' | 'reopen-question' | 'reask'
+  action: 'ask' | 'answer' | 'escalate' | 'close-question' | 'reopen-question' | 'reask' | 'defer-question' | 'discuss-question'
   positionals: string[]
   values: Values
   hydraId: string
@@ -538,6 +609,24 @@ export function askCommand({
     value: positionals[1],
     what: 'task id',
   })
+
+  if (action === 'defer-question' || action === 'discuss-question') {
+    return questionActionCommand({
+      hydraId,
+      ref,
+      id: required({
+        value: positionals[2],
+        what: 'question id',
+      }),
+      until: action === 'defer-question' ? required({
+        value: text({ value: values.until }),
+        what: '--until',
+      }) : undefined,
+      text: text({ value: values.text }),
+      fromMessage: text({ value: values['from-message'] }),
+      meta: m,
+    })
+  }
 
   if (action === 'close-question' || action === 'reopen-question' || action === 'reask') {
     return commit({
