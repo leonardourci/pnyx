@@ -22,6 +22,7 @@ const page = ({
     entries: [],
     timings: {},
     folds: {},
+    trailing: {},
   },
 })
 

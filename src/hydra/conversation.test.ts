@@ -91,6 +91,7 @@ test(
       actions: [],
       columns: [],
       working: false,
+      tools: true,
       thinking: false,
     })
     assert.deepEqual(
@@ -163,6 +164,7 @@ test(
       actions: [],
       columns: [],
       working: false,
+      tools: true,
       thinking: false,
     })
     assert.deepEqual(
@@ -171,7 +173,6 @@ test(
         'owner',
         'first-reply',
         'second-reply',
-        'last-tool',
       ],
     )
     assert.deepEqual(
@@ -184,6 +185,10 @@ test(
     assert.deepEqual(
       result.folds.get('second-reply')?.notes.map(item => item.id),
       ['second-note'],
+    )
+    assert.deepEqual(
+      result.trailing.get('second-reply')?.map(item => item.id),
+      ['last-tool'],
     )
   },
 )
@@ -248,6 +253,7 @@ test(
       actions: [],
       columns: [],
       working,
+      tools: true,
       thinking: false,
     })
     assert.deepEqual(
@@ -339,6 +345,7 @@ test(
       ],
       columns: [],
       working,
+      tools: true,
       thinking: false,
     })
     const result = conversation({
@@ -426,6 +433,7 @@ test(
       ],
       columns: [],
       working: true,
+      tools: true,
       thinking: true,
     })
     assert.deepEqual(
@@ -470,6 +478,7 @@ test(
         owner: false,
       },
       working: true,
+      tools: true,
       thinking: false,
       actions: [
         action({
@@ -627,6 +636,7 @@ test(
         ...entries,
       ],
       actions: [],
+      tools: true,
       thinking: true,
     })
     const rendered = conversation.entries.flatMap(item => [
@@ -663,6 +673,7 @@ test(
       actions: [],
       columns: [],
       working: false,
+      tools: true,
       thinking: false,
       transcript: [
         {
@@ -708,6 +719,138 @@ test(
         'NO',
         'N',
         'NO_REPLY is a marker',
+      ],
+    )
+  },
+)
+
+const liveTurn: ThreadEntry[] = [
+  entry({
+    id: 'owner',
+    minute: 0,
+    role: 'user',
+  }),
+  {
+    ...entry({
+      id: 'plan',
+      minute: 1,
+      text: 'Checking the release',
+    }),
+    final: false,
+    streaming: true,
+  },
+  {
+    ...entry({
+      id: 'thought',
+      minute: 2,
+      role: 'assistant',
+    }),
+    kind: 'thinking',
+  },
+  {
+    ...entry({
+      id: 'command',
+      minute: 3,
+      role: 'Bash',
+      text: '{"command":"gh pr view 12"}',
+    }),
+    kind: 'tool',
+  },
+  {
+    ...entry({
+      id: 'output',
+      minute: 4,
+      role: 'tool',
+      text: 'MERGED',
+    }),
+    kind: 'tool',
+  },
+]
+
+const traceIds = ({ result }: { result: ReturnType<typeof hydraConversation> }) => [
+  ...result.entries,
+  ...[...result.folds.values()].flatMap(fold => fold.notes),
+  ...[...result.trailing.values()].flat(),
+].filter(item => item.kind !== 'message')
+  .map(item => item.id)
+
+test(
+  'focus mode keeps tool calls and thinking out of a live turn, its folds and its trailing progress',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      transcript: liveTurn,
+      actions: [],
+      columns: [],
+      working: true,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.id),
+      [
+        'owner',
+        'plan',
+      ],
+    )
+    assert.deepEqual(
+      traceIds({ result }),
+      [],
+    )
+  },
+)
+
+test(
+  'without focus mode a live turn\'s tool calls and thinking stay inside its progress after the latest reply',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      transcript: liveTurn,
+      actions: [],
+      columns: [],
+      working: true,
+      tools: true,
+      thinking: true,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.id),
+      [
+        'owner',
+        'plan',
+      ],
+    )
+    assert.deepEqual(
+      result.trailing.get('plan')?.map(item => item.id),
+      [
+        'thought',
+        'command',
+        'output',
+      ],
+    )
+  },
+)
+
+test(
+  'a turn with no reply yet keeps its progress after the owner\'s message',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      transcript: liveTurn.filter(item => item.id !== 'plan'),
+      actions: [],
+      columns: [],
+      working: true,
+      tools: true,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.id),
+      ['owner'],
+    )
+    assert.deepEqual(
+      result.trailing.get('owner')?.map(item => item.id),
+      [
+        'command',
+        'output',
       ],
     )
   },

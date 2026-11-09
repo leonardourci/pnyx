@@ -66,6 +66,7 @@ test(
             },
           },
           timings: {},
+          trailing: {},
         },
       }),
       [],
@@ -90,6 +91,7 @@ test(
           ],
           folds: {},
           timings: {},
+          trailing: {},
         },
       }),
       [
@@ -128,6 +130,7 @@ test(
           ],
           folds: {},
           timings: {},
+          trailing: {},
         },
       }),
       [
@@ -152,6 +155,7 @@ test(
           ],
           folds: {},
           timings: {},
+          trailing: {},
         },
       }),
       [],
@@ -170,6 +174,7 @@ test(
           ],
           folds: {},
           timings: {},
+          trailing: {},
         },
       }),
       [
@@ -197,6 +202,7 @@ test(
           entries: [],
           folds: {},
           timings: {},
+          trailing: {},
         },
       }),
       [
@@ -214,6 +220,7 @@ test(
           entries: [reminder],
           folds: {},
           timings: {},
+          trailing: {},
         },
       }),
       [

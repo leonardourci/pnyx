@@ -358,6 +358,7 @@ export function replayChat({
       const conversation = hydraThreadView({
         state: repaired,
         page,
+        tools: true,
         thinking: true,
       }).conversation
       const ordered = expected.filter(entry => entry.at !== undefined)

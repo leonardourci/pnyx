@@ -71,6 +71,7 @@ export interface ThreadPage {
     entries: ThreadEntry[]
     folds: Record<string, TurnActions>
     timings: Record<string, TurnTiming>
+    trailing: Record<string, ThreadEntry[]>
   }
   unavailable?: string
   currentTurn?: {

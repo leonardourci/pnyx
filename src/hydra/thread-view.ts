@@ -10,10 +10,12 @@ import { hydraChatQueue } from './chat-queue.ts'
 export function hydraThreadView({
   state,
   page,
+  tools,
   thinking,
 }: {
   state: HydraState
   page: ThreadPage
+  tools: boolean
   thinking: boolean
 }): ThreadPage & { conversation: NonNullable<ThreadPage['conversation']> } {
   const config = hydraConfig({ state })
@@ -39,6 +41,7 @@ export function hydraThreadView({
     actions: page.actions ?? [],
     columns: config.columns,
     working,
+    tools,
     thinking,
     titles: Object.fromEntries(Object.values(state.cards).map(card => [
       card.id,
@@ -56,6 +59,7 @@ export function hydraThreadView({
       entries: conversation.entries,
       folds: Object.fromEntries(conversation.folds),
       timings: Object.fromEntries(conversation.timings),
+      trailing: Object.fromEntries(conversation.trailing),
     },
   }
 }

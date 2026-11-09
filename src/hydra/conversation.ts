@@ -26,6 +26,7 @@ export function hydraConversation({
   actions,
   columns,
   working,
+  tools,
   thinking,
   titles = {},
   oldest,
@@ -37,6 +38,7 @@ export function hydraConversation({
   actions: HydraEvent[]
   columns: HydraColumn[]
   working: boolean
+  tools: boolean
   thinking: boolean
   titles?: Record<string, string>
   oldest?: string
@@ -85,12 +87,32 @@ export function hydraConversation({
     }
   }
 
+  const foldBefore = ({
+    entry,
+    progress,
+  }: {
+    entry: ThreadEntry
+    progress: ThreadEntry[]
+  }) => {
+    if (progress.length) {
+      folds.set(
+        entry.id,
+        {
+          tasks: [],
+          notes: progress,
+        },
+      )
+    }
+  }
+
   const orderedActions = actions.toSorted((
     a,
     b,
   ) => a.seq - b.seq)
   const entries: ThreadEntry[] = []
   const folds = new Map<string, TurnActions>()
+  // Progress after a turn's last shown entry, shown after it while the turn runs or when it ends without a reply.
+  const trailing = new Map<string, ThreadEntry[]>()
   const timings = new Map<string, TurnTiming>()
 
   for (const [
@@ -118,18 +140,19 @@ export function hydraConversation({
 
     for (const entry of turn.entries) {
       if (entry.role === 'Pnyx') {
-        entries.push(
-          ...progress,
-          {
-            ...entry,
-            hidden: false,
-          },
-        )
+        foldBefore({
+          entry,
+          progress,
+        })
+        entries.push({
+          ...entry,
+          hidden: false,
+        })
         progress = []
         continue
       }
 
-      const trace = entry.kind === 'tool' || thinking && entry.kind === 'thinking'
+      const trace = tools && entry.kind === 'tool' || thinking && entry.kind === 'thinking'
 
       if (entry.hidden || !trace && !replies.includes(entry)) {
         continue
@@ -140,21 +163,25 @@ export function hydraConversation({
         continue
       }
 
-      if (progress.length) {
-        folds.set(
-          entry.id,
-          {
-            tasks: [],
-            notes: progress,
-          },
-        )
-        progress = []
-      }
-
+      foldBefore({
+        entry,
+        progress,
+      })
+      progress = []
       entries.push(entry)
     }
 
-    entries.push(...progress)
+    const anchor = entries.at(-1)
+
+    if (progress.length && anchor) {
+      trailing.set(
+        anchor.id,
+        [
+          ...trailing.get(anchor.id) ?? [],
+          ...progress,
+        ],
+      )
+    }
 
     if (ownerStarted && !current && turn.input?.at && last?.at) {
       timings.set(
@@ -255,5 +282,6 @@ export function hydraConversation({
     entries,
     timings,
     folds,
+    trailing,
   }
 }

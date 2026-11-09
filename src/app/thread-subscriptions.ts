@@ -118,13 +118,18 @@ export function createThreadSubscriptions({
       olderPage: older,
     })
 
+    const {
+      tools,
+      thinking,
+    } = traces({
+      view: effectiveView({ state: current }),
+      card: HYDRA_CARD,
+    })
     const prepared = hydraThreadView({
       state: current,
       page: sub.history,
-      thinking: traces({
-        view: effectiveView({ state: current }),
-        card: HYDRA_CARD,
-      }).thinking,
+      tools,
+      thinking,
     })
 
     const sent = JSON.stringify({

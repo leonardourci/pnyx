@@ -294,6 +294,7 @@ test(
       const visible = card === HYDRA_CARD
         ? hydraThreadView({
           state: state(),
+          tools: true,
           thinking: false,
           page: nativePage,
         }).conversation.entries
@@ -357,6 +358,7 @@ test(
         ]
         const projected = hydraThreadView({
           state: state(),
+          tools: true,
           thinking: false,
           page: readThread({
             hydraId: 'fixture',
