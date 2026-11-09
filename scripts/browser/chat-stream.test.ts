@@ -174,6 +174,10 @@ test(
           '760',
         ],
       })
+      await run({
+        args: ['run'],
+        input: `await page.wait('[aria-label="Hydra conversation"]', ${PAINT_TIMEOUT_MS});`,
+      })
       await evaluate({
         script: `() => {
       const region = document.querySelector('[aria-label="Hydra conversation"]');
@@ -247,6 +251,9 @@ test(
       });
       const rows = [...document.querySelectorAll('.hydra-chat [data-entry-id], .hydra-chat [data-progress-id]')];
       if (rows.filter(row => row.textContent.includes('Reading the release checklist.')).length !== 1) throw new Error('Commentary duplicated or missing');
+      const progress = rows.find(row => row.textContent.includes('Reading the release checklist.'));
+      const answer = document.querySelector('.hydra-chat article[data-streaming]');
+      if (!answer || !(progress.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING)) throw new Error('Progress appears after its reply');
       return 'chat-assertion-passed';
     }`,
       })
@@ -360,6 +367,8 @@ test(
       }`,
       })
     } catch (error) {
+      const diagnostic = await run({ args: ['console'] })
+      process.stderr.write(diagnostic.stdout)
       await capture({ name: 'failure' })
       throw error
     } finally {
