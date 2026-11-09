@@ -575,5 +575,6 @@ export function createWorkerStarts({
   return {
     start,
     continueInPnyx,
+    starting: ({ task }: { task: string }) => starting.has(task),
   }
 }
