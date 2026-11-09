@@ -637,30 +637,33 @@ export function readTranscript({
         admittedEnd,
       ) - from,
     )
-    let length = Math.min(
+    let buf = Buffer.alloc(Math.min(
       available,
       maxBytes ?? available,
+    ))
+    readSync(
+      fd,
+      buf,
+      0,
+      buf.length,
+      from,
     )
-    let buf: Buffer
 
     // A batch can exceed its byte budget only to finish its first native record.
-    while (true) {
-      buf = Buffer.alloc(length)
+    while (!buf.includes(10) && buf.length < available) {
+      buf = Buffer.alloc(Math.min(
+        available,
+        Math.max(
+          1,
+          buf.length * 2,
+        ),
+      ))
       readSync(
         fd,
         buf,
         0,
         buf.length,
         from,
-      )
-
-      if (buf.includes(10) || length === available) {
-        break
-      }
-
-      length = Math.min(
-        available,
-        length * 2,
       )
     }
 
