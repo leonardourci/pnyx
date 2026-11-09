@@ -23,7 +23,8 @@ import { UsageRing } from '#web-workers/usage-ring.tsx'
 import { useCallback,useEffect,useLayoutEffect,useRef,useState } from 'react'
 import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
-import { ChatDecisionCard,chatDecisions,type ChatDecision } from './chat-decisions.tsx'
+import { ChatDecisionCard } from './chat-decisions.tsx'
+import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { hydraPill,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
@@ -90,6 +91,7 @@ export function HydraChat({
   openTask,
   action,
   taskActions,
+  selectedTask,
 }: {
   hydraId: string
   // The Hydra's name and icon for the header, and the names of the owner's other Hydras.
@@ -106,6 +108,7 @@ export function HydraChat({
   projectRequest?: boolean
   projectRequested?(): void
   action?: CurrentAction
+  selectedTask?: string | null
   taskActions?: Record<string, CurrentAction>
   liveThread: ThreadPage | null
   queue: HydraQueue
@@ -283,21 +286,19 @@ export function HydraChat({
     loadingEarlier,
     setLoadingEarlier,
   ] = useState(false)
-  const transcript = page?.entries ?? []
   const olderCursor = page?.older
-  const firstAt = transcript[0]?.at
   const conversation = page?.conversation
   const chat = {
     entries: conversation?.entries ?? [],
     folds: new Map(Object.entries(conversation?.folds ?? {})),
     timings: new Map(Object.entries(conversation?.timings ?? {})),
   }
-  const decisions = chatDecisions({ cards: Object.values(state.cards) })
-  const shownDecisions = decisions.filter(decision => {
-    const loaded = firstAt !== undefined && decision.at >= firstAt
-
-    return !olderCursor || loaded
+  const decisions = chatDecisions({
+    state,
+    selectedTask,
+    draft,
   })
+  const shownDecisions = decisions
   const inline = new Map(shownDecisions.map(decision => [
     decision.id,
     <ChatDecisionCard
@@ -817,7 +818,7 @@ export function HydraChat({
           const question = decisions.find(item =>
             item.card.id === decision.card.id && item.ask.id === decision.id)
 
-          if (decision.kind === 'owner question' && question) {
+          if (decision.card.id === HYDRA_CARD && question) {
             await jumpDecision({ decision: question })
           } else {
             openTask({ id: decision.card.id })

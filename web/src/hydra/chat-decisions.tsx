@@ -7,20 +7,7 @@ import { AskPanel } from '#web-tasks/ask.tsx'
 import { clock } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 
-export interface ChatDecision {
-  id: string
-  at: string
-  card: Card
-  ask: Ask
-}
-
-export const chatDecisions = ({ cards }: { cards: Card[] }): ChatDecision[] => cards.flatMap(card =>
-  (card.asks ?? []).filter(ask => ask.audience === 'owner' && !ask.closed).map(ask => ({
-    id: `ask:${card.id}:${ask.id}`,
-    at: ask.reaskedAt ?? ask.escalated?.at ?? ask.at,
-    card,
-    ask,
-  })))
+import type { ChatDecision } from './chat-questions.ts'
 
 export function ChatDecisionCard({
   decision,
@@ -38,7 +25,8 @@ export function ChatDecisionCard({
 
   return (
     <div className="chat-decision" contentEditable={ask.answered ? false : undefined}>
-      <TaskReference id={card.id} />
+      {decision.blocker && <strong className="eyebrow">Blocker</strong>}
+      {card.id === '$hydra' ? <span className="eyebrow">Hydra question</span> : <TaskReference id={card.id} />}
       {ask.answered ? (
         <Decided
           card={card}
