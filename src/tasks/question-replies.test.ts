@@ -2516,6 +2516,61 @@ async function heldMerge({ t }: { t: TestContext }) {
 }
 
 test(
+  'the owner can lift Hold explicitly from the review controls without allowing agent or resend bypasses',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+      held,
+    } = await heldMerge({ t })
+    const args = [
+      'answer',
+      ref,
+      question,
+      '--choice',
+      'Merge',
+    ]
+    await assert.rejects(
+      l.task({ args }),
+      /owner's own answer/,
+    )
+    await assert.rejects(
+      l.task({
+        args,
+        actor: `worker:${ref}`,
+      }),
+      /agent cannot answer/,
+    )
+    await l.task({
+      args,
+      actor: 'web',
+    })
+    const approved = l.card({ ref }).asks?.[0]
+    assert.equal(
+      approved?.choice,
+      'Merge',
+    )
+    assert.equal(
+      approved?.mergeHold?.answered,
+      held.answered,
+    )
+    assert.ok(mergeApproval({
+      card: l.card({ ref }),
+      url: approved!.url!,
+    }))
+    const replayed = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    }).cards[ref]?.asks
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(replayed)),
+      l.card({ ref }).asks,
+    )
+  },
+)
+
+test(
   'a held merge refuses older, equal, missing and non-owner sources without changing Hold',
   async t => {
     const {

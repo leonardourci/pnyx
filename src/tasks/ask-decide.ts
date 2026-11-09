@@ -500,12 +500,14 @@ export function askAnswer({
   }
 
   const heldMerge = answeredMergeHold({ ask })
-  const liftsHold = heldMerge && actor === HYDRA_ACTOR && !!source && label === 'Merge'
+  const ownerChoice = ownerActor({ actor }) && !undelivered
+  const relayedChoice = actor === HYDRA_ACTOR && !!source
+  const liftsHold = heldMerge && label === 'Merge' && (ownerChoice || relayedChoice)
 
   const newerThanHold = source && ask.answeredAt
     && Date.parse(source.at) > Date.parse(ask.answeredAt)
 
-  if (liftsHold && !newerThanHold) {
+  if (liftsHold && source && !newerThanHold) {
     throw invalid({ message: 'the owner’s message must be newer than the Hold answer' })
   }
 

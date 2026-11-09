@@ -52,6 +52,10 @@ export interface Link {
   }
 }
 
+export function readyForReview({ link }: { link: Link }): boolean {
+  return link.kind === 'github_pr' && link.state === 'open' && link.draft === false
+}
+
 // closed: the source closed the task, so even a failure is final and needs no one.
 // source: the adapter that observed the outcome; only that source may change it.
 export interface Outcome {

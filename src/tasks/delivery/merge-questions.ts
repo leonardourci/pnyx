@@ -1,6 +1,6 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import type { Card } from '#tasks/model.ts'
-import { cardLanding, type Link } from './model.ts'
+import type { Ask, Card } from '#tasks/model.ts'
+import { cardLanding, readyForReview, type Link } from './model.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { openAsks } from '#tasks/ask-state.ts'
@@ -25,14 +25,16 @@ export function mergeApproval({
 
 export function canonicalMergeQuestion({
   state,
+  cards: linkedCards,
   card,
   url,
 }: {
   state?: HydraState
+  cards?: Record<string, Card>
   card: Card
   url: string
 }) {
-  const cards = state ? Object.values(state.cards) : [card]
+  const cards = Object.values(state?.cards ?? linkedCards ?? { [card.id]: card })
   const questions = cards.flatMap(card => (card.asks ?? [])
     .filter(ask => ask.kind === 'merge' && ask.url === url)
     .map(ask => {
@@ -66,6 +68,31 @@ export function canonicalMergeQuestion({
     a,
     b,
   ) => b.activeAt - a.activeAt || a.ask.id.localeCompare(b.ask.id))[0]
+}
+
+export function isCanonicalQuestion({
+  state,
+  cards,
+  card,
+  ask,
+}: {
+  state?: HydraState
+  cards?: Record<string, Card>
+  card: Card
+  ask: Ask
+}): boolean {
+  if (ask.kind !== 'merge' || !ask.url) {
+    return true
+  }
+
+  const canonical = canonicalMergeQuestion({
+    state,
+    cards,
+    card,
+    url: ask.url,
+  })
+
+  return canonical?.card.id === card.id && canonical.ask.id === ask.id
 }
 
 export function reconcileAsks({
@@ -143,7 +170,7 @@ export function reconcileAsks({
     card,
     projects: state.projects ?? [],
   })?.merge === 'owner'
-  const ready = link?.kind === 'github_pr' && link.state === 'open' && link.draft === false
+  const ready = link && readyForReview({ link })
   const existing = link && canonicalMergeQuestion({
     state,
     card,
@@ -225,7 +252,7 @@ function mergeQuestion({
     audience: 'owner',
     kind: 'merge',
     url: link.url,
-    question: `Review and merge PR #${number}?`,
+    question: `Ready for review: PR #${number}`,
     context: context.join('\n'),
     options: [
       { label: 'Merge' },
