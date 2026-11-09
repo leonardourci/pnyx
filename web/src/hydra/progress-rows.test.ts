@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
-import { actionLabel } from './action-label.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
-import { progressRows } from './progress-rows.ts'
+import { progressLabel, progressRows } from './progress-rows.ts'
 
 const lookup: PnyxLookup = {
   task: () => undefined,
@@ -29,7 +28,7 @@ const trace = ({
 })
 
 test(
-  'a tool call and its result make one row that names the call and keeps the command and output',
+  'a tool call and its result make one row that names the call and keeps the command and output; redacted thinking makes none',
   () => {
     const rows = progressRows({
       notes: [
@@ -44,6 +43,12 @@ test(
           kind: 'thinking',
           role: 'assistant',
           text: 'The pull request may have merged.',
+        },
+        {
+          id: 'redacted',
+          kind: 'thinking',
+          role: 'assistant',
+          text: '',
         },
         trace({
           id: 'result',
@@ -79,13 +84,10 @@ test(
       'MERGED',
     )
     assert.deepEqual(
-      actionLabel({
-        action: {
-          calls: [call.call],
-          done: true,
-        },
+      progressLabel({
+        row: call,
         lookup,
-      })?.sentence,
+      }).sentence,
       ['Reading PR #12'],
     )
     assert.equal(
@@ -96,6 +98,13 @@ test(
     assert.equal(
       orphan.output,
       'late output',
+    )
+    assert.deepEqual(
+      progressLabel({
+        row: orphan,
+        lookup,
+      }).sentence,
+      ['Tool output'],
     )
   },
 )

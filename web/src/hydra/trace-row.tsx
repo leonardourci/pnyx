@@ -1,9 +1,8 @@
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { SentencePart } from './action-bubble.tsx'
-import { actionLabel, type ActionLabel } from './action-label.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
-import type { TraceRow } from './progress-rows.ts'
+import { progressLabel, type TraceRow } from './progress-rows.ts'
 
 export const roleLabel = ({
   role,
@@ -13,35 +12,18 @@ export const roleLabel = ({
   assistantLabel?: string
 }) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
 
-const THINKING: ActionLabel = {
-  icon: 'thinking',
-  sentence: ['Thinking'],
-}
-
-function rowLabel({
-  row,
-  lookup,
+const TraceBlock = ({
+  label,
+  text,
 }: {
-  row: TraceRow
-  lookup: PnyxLookup
-}): ActionLabel {
-  if (row.kind === 'thinking') {
-    return THINKING
-  }
-
-  const named = row.call && actionLabel({
-    action: {
-      calls: [row.call],
-      done: true,
-    },
-    lookup,
-  })
-
-  return named || {
-    icon: 'tool',
-    sentence: [row.call ? `Used ${row.call.tool}` : 'Tool output'],
-  }
-}
+  label: string
+  text: string
+}) => (
+  <div className="trace-block" role="group" aria-label={label}>
+    <span className="eyebrow">{label}</span>
+    <pre className="trace-text">{text}</pre>
+  </div>
+)
 
 // A tool call or thinking in Hydra's progress: a plain label that opens to the command, input and output.
 export function ProgressTrace({
@@ -53,7 +35,7 @@ export function ProgressTrace({
   open: boolean
   lookup: PnyxLookup
 }) {
-  const label = rowLabel({
+  const label = progressLabel({
     row,
     lookup,
   })
@@ -78,8 +60,8 @@ export function ProgressTrace({
       </summary>
       {tool ? (
         <>
-          {tool.input && <pre className="trace-text" aria-label="Input">{tool.input}</pre>}
-          {tool.output && <pre className="trace-text" aria-label="Output">{tool.output}</pre>}
+          {tool.input && <TraceBlock label="Input" text={tool.input} />}
+          {tool.output && <TraceBlock label="Output" text={tool.output} />}
         </>
       ) : <pre className="trace-text">{row.entry.text}</pre>}
     </details>

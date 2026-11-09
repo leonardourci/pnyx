@@ -330,6 +330,10 @@ h3 { font-weight: 600; }
 
 .trace summary span, .trace-summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
 
+.trace .trace-block { display: grid; gap: 4px; margin-top: 8px; }
+
+.trace .trace-block .trace-text { margin-top: 0; }
+
 .trace .trace-text { margin-top: 6px; max-height: 400px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-raised); }
 
 .receipt { display: block; margin-top: 4px; text-align: right; font-size: var(--text-meta); color: var(--color-green); }

@@ -10,6 +10,27 @@ import type { PnyxLookup } from './pnyx-action.ts'
 import { progressRows } from './progress-rows.ts'
 import { ProgressTrace } from './trace-row.tsx'
 
+// A running turn's progress moves from after Hydra's latest message to before its reply; an open fold stays open.
+const OPENED_PROGRESS = new Set<string>()
+
+const rememberOpen = ({
+  id,
+  open,
+}: {
+  id?: string
+  open: boolean
+}) => {
+  if (id === undefined) {
+    return
+  }
+
+  if (open) {
+    OPENED_PROGRESS.add(id)
+  } else {
+    OPENED_PROGRESS.delete(id)
+  }
+}
+
 export function TurnActionsFold({
   fold,
   lookup,
@@ -22,6 +43,7 @@ export function TurnActionsFold({
   thinkingDetails?: boolean
 }) {
   const rows = progressRows({ notes: fold.notes })
+  const opened = fold.notes[0]?.id
   const changes = fold.tasks.reduce(
     (
       count,
@@ -40,7 +62,14 @@ export function TurnActionsFold({
 
   return (
     <div contentEditable={false} className="turn-actions">
-      <Disclosure title={label}>
+      <Disclosure
+        title={label}
+        open={opened !== undefined && OPENED_PROGRESS.has(opened)}
+        onToggle={({ open }) => rememberOpen({
+          id: opened,
+          open,
+        })}
+      >
         {rows.length > 0 && (
           <section className="turn-progress">
             <span className="eyebrow">Progress</span>

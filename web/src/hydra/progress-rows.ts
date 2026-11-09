@@ -1,7 +1,8 @@
 import { callOf, obj, type ToolCall } from '#hydra/calls.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import { transcriptCall } from '#workers/transcript-content.ts'
-import { shellCommand } from './pnyx-action.ts'
+import { actionLabel, type ActionLabel } from './action-label.ts'
+import { shellCommand, type PnyxLookup } from './pnyx-action.ts'
 
 // A tool result is recorded under this role; the call itself carries the tool's name.
 const RESULT_ROLE = 'tool'
@@ -10,7 +11,7 @@ interface ToolRow {
   kind: 'tool'
   entry: ThreadEntry
   call?: ToolCall
-  // What the row shows once opened: the command, or the call's input as written.
+  // What the row shows once opened: the shell command, else the call's input as indented JSON.
   input?: string
   output?: string
 }
@@ -78,6 +79,11 @@ export function progressRows({ notes }: { notes: ThreadEntry[] }): ProgressRow[]
   const calls = new Map<string, ToolRow>()
 
   for (const entry of notes) {
+    // Redacted thinking has no words to show.
+    if (entry.kind === 'thinking' && !entry.text.trim()) {
+      continue
+    }
+
     if (entry.kind !== 'tool') {
       rows.push(entry.kind === 'thinking' ? {
         kind: 'thinking',
@@ -112,4 +118,39 @@ export function progressRows({ notes }: { notes: ThreadEntry[] }): ProgressRow[]
   }
 
   return rows
+}
+
+const THINKING: ActionLabel = {
+  icon: 'thinking',
+  sentence: ['Thinking'],
+}
+
+// The same words the worker cards use for a call, so a progress row never shows raw input.
+export function progressLabel({
+  row,
+  lookup,
+}: {
+  row: TraceRow
+  lookup: PnyxLookup
+}): ActionLabel {
+  if (row.kind === 'thinking') {
+    return THINKING
+  }
+
+  const named = row.call && actionLabel({
+    action: {
+      calls: [row.call],
+      done: true,
+    },
+    lookup,
+  })
+
+  if (named) {
+    return named
+  }
+
+  return {
+    icon: 'tool',
+    sentence: [row.call ? `Used ${row.call.tool}` : 'Tool output'],
+  }
 }
