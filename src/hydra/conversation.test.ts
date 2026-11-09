@@ -66,10 +66,18 @@ test(
       }),
       final: false,
     }
+    const completed: ThreadEntry = {
+      ...entry({
+        id: 'completed',
+        minute: 2,
+        text: 'Counted the first batch',
+      }),
+      final: true,
+    }
     const live: ThreadEntry = {
       ...entry({
         id: 'live:progress',
-        minute: 2,
+        minute: 3,
         text: 'Checking the pebbles',
       }),
       streaming: true,
@@ -77,7 +85,7 @@ test(
     const saved = recordEntries({
       record: {
         type: 'assistant',
-        timestamp: at({ minute: 2 }),
+        timestamp: at({ minute: 3 }),
         message: {
           stop_reason: 'tool_use',
           content: 'Checking the pebbles',
@@ -96,6 +104,7 @@ test(
       transcript: [
         owner,
         earlier,
+        completed,
         ...transcript,
       ],
       actions: [],
@@ -107,6 +116,7 @@ test(
       conversation({ transcript: [live] }).entries.map(entry => entry.text),
       [
         'owner',
+        'Counted the first batch',
         'Checking the pebbles',
       ],
     )
@@ -115,6 +125,7 @@ test(
       recorded.entries.map(entry => entry.text),
       [
         'owner',
+        'Counted the first batch',
         'Checking the pebbles',
       ],
     )
@@ -128,7 +139,7 @@ test(
         {
           ...entry({
             id: 'answer',
-            minute: 3,
+            minute: 4,
             text: 'Counted the pebbles',
           }),
           final: true,
@@ -140,6 +151,7 @@ test(
       finished.entries.map(entry => entry.text),
       [
         'owner',
+        'Counted the first batch',
         'Counted the pebbles',
       ],
     )
