@@ -623,11 +623,31 @@ export function HydraChat({
       }
 
       const id = args[2] ?? crypto.randomUUID()
-      const markFailed = ({ reason }: { reason: string }) => setSending(items => withFailure({
-        items,
-        id,
-        failed: reason,
-      }))
+      const text = args[1] ?? ''
+      const at = new Date().toISOString()
+
+      const markFailed = ({ reason }: { reason: string }) => {
+        setSending(items => withFailure({
+          items,
+          id,
+          failed: reason,
+        }))
+        // Saved here too, so a refusal that arrives after the owner left this Hydra is still there on return.
+        const saved = readUnsent({ key: hydraId })
+        saveUnsent({
+          key: hydraId,
+          items: [
+            ...saved.filter(item => item.id !== id),
+            {
+              id,
+              text,
+              at: saved.find(item => item.id === id)?.at ?? at,
+              failed: reason,
+            },
+          ],
+        })
+      }
+
       follow.current = true; setAway(false)
       setSending(items => items.some(s => s.id === id) ? withFailure({
         items,
@@ -637,8 +657,8 @@ export function HydraChat({
         ...items,
         {
           id,
-          text: args[1] ?? '',
-          at: new Date().toISOString(),
+          text,
+          at,
           confirmed: false,
         },
       ])
@@ -673,19 +693,20 @@ export function HydraChat({
     [
       command,
       notify,
+      hydraId,
     ],
   )
 
   // A retry keeps the message's id, so a copy the server did record is never sent twice.
   const retry = ({ id }: { id: string }) => {
-    const unsent = sending.find(item => item.id === id)
+    const message = sending.find(item => item.id === id)
 
-    if (unsent) {
+    if (message) {
       deliver({
         name: 'reply',
         args: [
           HYDRA_CARD,
-          unsent.text,
+          message.text,
           id,
         ],
       }).catch(() => {
