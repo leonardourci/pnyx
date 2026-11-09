@@ -26,7 +26,7 @@ import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { hydraPill,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
+import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
@@ -243,7 +243,6 @@ export function HydraChat({
     upgrades,
     compactOperations,
     shownUpgrades,
-    upgrading,
     holding,
     runningChange,
     compactionRunning,
@@ -628,14 +627,8 @@ export function HydraChat({
     connected,
   })
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
+  const down = hosted ? hydraDown({ status: state.hydraStatus }) : undefined
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
-  // Hydra's own state, apart from the browser's connection that the offline badge shows.
-  const pill = hydraPill({
-    status: state.hydraStatus,
-    upgrading,
-    working,
-    starting: pending.length > 0,
-  })
 
   return (
     <aside
@@ -654,7 +647,7 @@ export function HydraChat({
         addProject={addProject}
         connected={connected}
       >
-        {hosted && <span className="hydra-status" role="status" data-down={pill.down || undefined}>{pill.text}</span>}
+        {down && <span className="hydra-status" role="status">{down}</span>}
       </HydraHead>
       <div className="hydra-body">
         <div

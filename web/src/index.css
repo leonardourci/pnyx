@@ -83,9 +83,7 @@ h1, h2 { font-weight: 700; }
 
 .hydra-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 
-.hydra-status { margin-left: auto; flex-shrink: 0; color: var(--color-muted); font: 400 var(--text-meta) var(--font-sans); letter-spacing: normal; }
-
-.hydra-status[data-down] { color: var(--color-red); }
+.hydra-status { margin-left: auto; flex-shrink: 0; color: var(--color-red); font: 400 var(--text-meta) var(--font-sans); letter-spacing: normal; }
 
 /* A notice from Pnyx, never Hydra's own words. */
 .message[data-pnyx] { color: var(--color-muted); }
