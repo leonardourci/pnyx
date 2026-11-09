@@ -57,9 +57,12 @@ export function cardDoneDeadline({
 }): number | undefined {
   const delay = card.doneAfterHours ?? hours
   const kept = card.doneAfterHours === 0 || delay === 'off'
-  const pendingReportChoice = openAsks({ card }).some(ask => ask.origin)
+  const pendingOwnerChoice = openAsks({
+    card,
+    audience: 'owner',
+  }).length > 0
 
-  if (pendingReportChoice || card.hidden || card.keepDone || !card.doneAt || kept) {
+  if (pendingOwnerChoice || card.hidden || card.keepDone || !card.doneAt || kept) {
     return undefined
   }
 
