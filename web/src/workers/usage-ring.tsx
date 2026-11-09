@@ -90,9 +90,10 @@ export function useUsageRefresh({
   )
 
   return {
-    refresh: () => {
+    // Before a session there are no plan limits to refresh.
+    refresh: session ? () => {
       load({ refresh: true }).catch(console.error)
-    },
+    } : undefined,
     refreshing,
     error,
   }
@@ -134,6 +135,7 @@ export function UsageRing({
         tabIndex={0}
         aria-label={label}
         data-tone={tone}
+        data-empty={percent === undefined || undefined}
       >
         <svg
           viewBox="0 0 30 30"

@@ -50,6 +50,7 @@ export function HydraAgent({
   return (
     <AgentPickers
       label="Hydra agent settings"
+      foldable
       agent={agent}
       lastUsed={state.hydraAgent}
       inherited={inherited}
