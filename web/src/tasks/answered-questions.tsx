@@ -73,7 +73,7 @@ export function AnsweredQuestion({
             })
             notify({ text: ask.mergeHold ? 'Hold restored.' : 'Question reopened.' })
           } catch (error) {
-            notify({ text: String(error) })
+            notify({ text: error instanceof Error ? error.message : String(error) })
           }
         }}
       >Undo answer
