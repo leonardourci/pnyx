@@ -160,6 +160,8 @@ test(
       before: [commentary],
     })
 
+    let cleanupFailure: { error: unknown } | undefined
+
     try {
       await run({
         args: [
@@ -367,13 +369,34 @@ test(
       }`,
       })
     } catch (error) {
-      const diagnostic = await run({ args: ['console'] })
-      process.stderr.write(diagnostic.stdout)
-      await capture({ name: 'failure' })
+      try {
+        const diagnostic = await run({ args: ['console'] })
+        process.stderr.write(diagnostic.stdout)
+        await capture({ name: 'failure' })
+      } catch (diagnosticError) {
+        console.error(
+          'Chat diagnostics failed:',
+          diagnosticError,
+        )
+      }
+
       throw error
     } finally {
       held.release()
-      await run({ args: ['stop'] })
+
+      try {
+        await run({ args: ['stop'] })
+      } catch (stopError) {
+        cleanupFailure = { error: stopError }
+        console.error(
+          'Browser cleanup failed:',
+          stopError,
+        )
+      }
+    }
+
+    if (cleanupFailure) {
+      throw cleanupFailure.error
     }
   },
 )
