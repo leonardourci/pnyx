@@ -322,11 +322,14 @@ test(
           minute: 1,
           text: 'Agreed, I sent it to the worker.',
         }),
-        entry({
-          id: 'quiet',
-          minute: 3,
-          text: quiet,
-        }),
+        {
+          ...entry({
+            id: 'quiet',
+            minute: 3,
+            text: quiet,
+          }),
+          streaming: working,
+        },
       ],
       actions: [
         action({
@@ -647,6 +650,64 @@ test(
         '0:m0',
         '0:t2',
         '0:m1',
+      ],
+    )
+  },
+)
+
+test(
+  'quiet reply prefixes hide only while streaming',
+  () => {
+    const result = hydraConversation({
+      messages: [],
+      actions: [],
+      columns: [],
+      working: false,
+      thinking: false,
+      transcript: [
+        {
+          id: 'partial',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO',
+          streaming: true,
+        },
+        {
+          id: 'no',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO',
+          final: true,
+        },
+        {
+          id: 'n',
+          kind: 'message',
+          role: 'assistant',
+          text: 'N',
+          final: true,
+        },
+        {
+          id: 'quiet',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO_REPLY',
+          final: true,
+        },
+        {
+          id: 'explain',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO_REPLY is a marker',
+          final: true,
+        },
+      ],
+    })
+    assert.deepEqual(
+      result.entries.map(entry => entry.text),
+      [
+        'NO',
+        'N',
+        'NO_REPLY is a marker',
       ],
     )
   },

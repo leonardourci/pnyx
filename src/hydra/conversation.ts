@@ -2,8 +2,7 @@ import type { HydraEvent } from '#app/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { HydraMessage } from './model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
-import { QUIET_REPLY } from './hydra.ts'
-import { hydraMessages, leadingTask, ownMessage, type TurnTiming } from './chat-messages.ts'
+import { hydraMessages, leadingTask, ownMessage, quietReply, type TurnTiming } from './chat-messages.ts'
 import { relevantUpdate, type TaskUpdate } from '#tasks/updates.ts'
 import { threadEntryOrder } from './thread-order.ts'
 
@@ -18,7 +17,7 @@ export interface TurnActions {
   notes: ThreadEntry[]
 }
 
-const spoken = ({ entry }: { entry: ThreadEntry }) => !QUIET_REPLY.startsWith(entry.text.trim())
+const spoken = ({ entry }: { entry: ThreadEntry }) => entry.text.trim() !== '' && !quietReply({ entry })
 
 export function hydraConversation({
   messages,
