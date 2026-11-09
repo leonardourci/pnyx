@@ -27,6 +27,8 @@ export interface SettingChoice {
 export interface FastSetting {
   on: boolean
   disabled: boolean
+  // What Fast reaches beyond this agent, shown when hovering its row.
+  note?: string
   toggle(): void
 }
 
@@ -193,6 +195,7 @@ function SettingsMenuRow({
   drills,
   pressed,
   current,
+  note,
   disabled,
   onClick,
 }: {
@@ -203,6 +206,7 @@ function SettingsMenuRow({
   pressed?: boolean
   // The row the owner last left, focused again when the list returns.
   current?: boolean
+  note?: string
   disabled: boolean
   onClick(): void
 }) {
@@ -216,6 +220,7 @@ function SettingsMenuRow({
       <Button
         className="account-model-choose agent-setting-row"
         aria-pressed={pressed}
+        title={note}
         disabled={disabled}
         onClick={onClick}
       >
@@ -346,6 +351,7 @@ function SettingsMenu({
           name="Fast"
           value={fast.on ? 'On' : 'Off'}
           pressed={fast.on}
+          note={fast.note}
           disabled={fast.disabled}
           onClick={fast.toggle}
         />

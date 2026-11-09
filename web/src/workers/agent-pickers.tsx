@@ -244,6 +244,7 @@ export function AgentPickers({
   const fast: FastSetting | undefined = fastShown ? {
     on: agent.fast === true,
     disabled: locked,
+    note: fastNote,
     toggle: toggleFast,
   } : undefined
   const room = useRef<HTMLDivElement>(null)
