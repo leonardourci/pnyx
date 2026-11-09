@@ -757,7 +757,7 @@ export function Messages({
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
               {taskReferences && !inline?.has(entry.id) && <MessageTask entry={entry} />}
-              {inline?.get(entry.id) ?? (entry.kind === 'message' ? (
+              {inline?.get(entry.id) ?? (
                 <ChatMessageText
                   catalog={ownMessage({ entry }) ? catalog : undefined}
                   colors={labelColors}
@@ -840,7 +840,7 @@ export function Messages({
                     )
                   }}
                 />
-              ) : null)}
+              )}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([
