@@ -1,16 +1,25 @@
 import type { HydraEvent } from '#app/model.ts'
 import type { ChatEvent } from './model.ts'
 
+export function legacyChatPosition({ nativeId }: Pick<ChatEvent['data'], 'nativeId'>) {
+  const legacy = /^(.*)\.(\d+)$/.exec(nativeId)
+
+  return legacy ? {
+    message: legacy[1],
+    position: Number(legacy[2]),
+  } : undefined
+}
+
 export function chatPosition({
   nativeId,
   messageId,
   part,
 }: Pick<ChatEvent['data'], 'nativeId' | 'messageId' | 'part'>) {
-  const legacy = /^(.*)\.(\d+)$/.exec(nativeId)
+  const legacy = legacyChatPosition({ nativeId })
 
   return {
-    message: messageId ?? legacy?.[1] ?? nativeId,
-    position: part ?? (legacy ? Number(legacy[2]) : 0),
+    message: messageId ?? legacy?.message ?? nativeId,
+    position: part ?? legacy?.position ?? 0,
   }
 }
 

@@ -7,7 +7,7 @@ import type { ChatEvent, HydraOperation } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
-import { effectiveChatEvents } from './chat-events.ts'
+import { effectiveChatEvents, legacyChatPosition } from './chat-events.ts'
 import { messageReference } from './message-reference.ts'
 import { HISTORY_BUDGET } from './history-command.ts'
 
@@ -253,10 +253,10 @@ export function inscribeOperation({
 
 export function loggedEntry({ event }: { event: ChatEvent }): ThreadEntry {
   // Older harvests kept the transport position only in nativeId.
-  const legacy = /^(.*)\.(\d+)$/.exec(event.data.nativeId)
-  const nativeId = event.data.messageId ?? legacy?.[1]
+  const legacy = legacyChatPosition({ nativeId: event.data.nativeId })
+  const nativeId = event.data.messageId ?? legacy?.message
   const messageId = nativeId ? `${event.data.session}:${nativeId}` : undefined
-  const part = event.data.part ?? (legacy ? Number(legacy[2]) : undefined)
+  const part = event.data.part ?? legacy?.position
 
   return {
     id: event.id,
