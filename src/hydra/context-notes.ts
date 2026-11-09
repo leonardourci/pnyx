@@ -3,8 +3,10 @@ import { askWording } from '#tasks/ask-state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { needsMain } from '#routine-helper/state.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { historyCommand } from './history-command.ts'
 
 const CONTEXT_NOTE_LIMIT = 20
+const CONTEXT_TURN_LINES = 8
 const CONTEXT_NOTE_CHARS = 400
 const QUESTION_CHARS = 90
 const ANSWER_CHARS = 180
@@ -13,7 +15,13 @@ export interface ContextNote {
   id: string
   seq: number
   text: string
+  task?: string
+  ownerAnswer?: boolean
 }
+
+// Older snapshots recorded owner answers without metadata.
+const isOwnerAnswer = ({ note }: { note: ContextNote }) => note.ownerAnswer === true
+  || note.text.startsWith('Owner answered ')
 
 function line({
   text,
@@ -41,7 +49,10 @@ export function applyContextNotes({
   event: HydraEvent
 }): void {
   if (event.type === 'hydra.context-delivered') {
-    state.contextNotes = (state.contextNotes ?? []).filter(note => note.seq > event.data.through)
+    const delivered = event.data.ids
+    state.contextNotes = (state.contextNotes ?? []).filter(note => delivered
+      ? !delivered.includes(note.id)
+      : note.seq > event.data.through)
 
     return
   }
@@ -49,9 +60,13 @@ export function applyContextNotes({
   const add = ({
     id = event.id,
     text,
+    task = event.cardId,
+    ownerAnswer = false,
   }: {
     id?: string
     text: string
+    task?: string
+    ownerAnswer?: boolean
   }) => {
     const notes = state.contextNotes ?? []
 
@@ -59,28 +74,45 @@ export function applyContextNotes({
       return
     }
 
-    state.contextNotes = [
-      ...notes,
-      {
-        id,
-        seq: event.seq,
-        text: line({ text }),
-      },
-    ].slice(-CONTEXT_NOTE_LIMIT)
+    const retained = notes.filter(note => ownerAnswer || isOwnerAnswer({ note })
+      || note.task !== task)
+    const next: ContextNote = {
+      id,
+      seq: event.seq,
+      text: line({ text }),
+      task,
+    }
+
+    if (ownerAnswer) {
+      next.ownerAnswer = true
+    }
+
+    const pending = [
+      ...retained,
+      next,
+    ]
+    const routine = pending.filter(note => !isOwnerAnswer({ note }))
+      .slice(-CONTEXT_NOTE_LIMIT)
+    state.contextNotes = pending.filter(note => isOwnerAnswer({ note })
+      || routine.includes(note))
   }
 
   const answered = ({
     id,
+    task = event.cardId,
     title,
     question,
     answer,
   }: {
     id?: string
+    task?: string
     title: string
     question: string
     answer: string
   }) => add({
     id,
+    task,
+    ownerAnswer: true,
     text: `Owner answered ${line({
       text: title,
       limit: QUESTION_CHARS,
@@ -123,7 +155,7 @@ export function applyContextNotes({
 
   if (event.type === 'hydra.helper-finished' && !event.data.error) {
     for (const outcome of event.data.outcomes) {
-      if (needsMain({ outcome })) {
+      if (needsMain({ outcome }) || outcome.status === 'still_waiting') {
         continue
       }
 
@@ -138,6 +170,7 @@ export function applyContextNotes({
 
       add({
         id: `${event.id}:${outcome.task}`,
+        task: outcome.task,
         text: `Routine helper, ${state.cards[outcome.task]?.title ?? outcome.task}: ${outcome.summary}`,
       })
     }
@@ -180,21 +213,49 @@ export function applyContextNotes({
   }
 
   answered({
+    task,
     title: target.title,
     question: askWording({ ask }).question,
     answer,
   })
 }
 
-export function contextNoteBlock({ notes }: { notes: ContextNote[] }): string {
+export function contextTurnNotes({ notes }: { notes: ContextNote[] }): ContextNote[] {
+  const limit = notes.length > CONTEXT_TURN_LINES ? CONTEXT_TURN_LINES - 1 : CONTEXT_TURN_LINES
+
+  return notes.slice(
+    0,
+    limit,
+  )
+}
+
+export function contextNoteBlock({
+  notes,
+  hydraId,
+}: {
+  notes: ContextNote[]
+  hydraId: string
+}): string {
   if (!notes.length) {
     return ''
   }
 
-  const text = notes.map(note => `- ${note.text.replace(
+  const shown = contextTurnNotes({ notes })
+  const lines = shown.map(note => `- ${note.text.replace(
     /</g,
     '&lt;',
-  )}`).join('\n')
+  )}`)
+  const omitted = notes.length - shown.length
+
+  if (omitted) {
+    lines.push(`- and ${omitted} more; read \`${historyCommand({
+      hydraId,
+      since: 'origin',
+      through: notes.at(-1)!.seq,
+    })}\` for the rest.`)
+  }
+
+  const text = lines.join('\n')
 
   return `<pnyx-context>Since your last turn (context only; these facts need no action or reply):\n${text}\n</pnyx-context>`
 }

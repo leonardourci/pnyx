@@ -270,6 +270,57 @@ test(
         'The sample result is deterministic.',
       )
 
+      const all = await invoke({ args: [] })
+      assert.deepEqual(
+        all.messages.map(message => message.text),
+        card === HYDRA_CARD
+          ? [
+            'Keep the sample input unchanged.',
+            'The sample result is deterministic.',
+          ]
+          : [
+            'Describe the sample change.',
+            'Keep the sample input unchanged.',
+            'Explain the result.',
+            'The sample result is deterministic.',
+          ],
+      )
+      const nativePage = readThread({
+        hydraId: 'fixture',
+        state: state(),
+        card: state().cards[card],
+        homes: [],
+      })
+      const visible = card === HYDRA_CARD
+        ? hydraThreadView({
+          state: state(),
+          thinking: false,
+          page: nativePage,
+        }).conversation.entries
+        : nativePage.entries
+      assert.deepEqual(
+        visible.filter(entry => entry.role === 'user').map(entry => entry.text),
+        [
+          'Describe the sample change.',
+          'Explain the result.',
+        ],
+      )
+      const history = await commands.hydra([
+        'history',
+        '--since',
+        'origin',
+        '--hydra',
+        'fixture',
+      ])
+      assert.match(
+        String(history.text),
+        /Keep the sample input unchanged/,
+      )
+      assert.doesNotMatch(
+        String(history.text),
+        /contextprefixedword|contextonlyword|pnyx-context/,
+      )
+
       let ownerReference: string
       let ownerText: string
       let ownerAt: string
@@ -287,6 +338,18 @@ test(
         ])
         ownerReference = String(sent.message)
         ownerText = 'Keep the sample input.\n\nPreserve the sample format.'
+        const ownerHistory = await commands.hydra([
+          'history',
+          '--since',
+          'origin',
+          '--hydra',
+          'fixture',
+        ])
+        assert.match(
+          String(ownerHistory.text),
+          /Keep the sample input\.\n\nPreserve the sample format/,
+        )
+
         ownerAt = state().hydraMessages!.find(message => message.id === ownerReference)!.at
         expectedOwnerMessages = [
           'The sample result is deterministic.',

@@ -1726,6 +1726,82 @@ test(
       reopened.conversation?.entries.filter(entry => entry.role === 'Pnyx' && entry.text.includes('The export is ready for review.')).length,
       1,
     )
+    withWriter({
+      hydraId: s.hydraId,
+      fn: ({ writer }) => writer.append({
+        effects: false,
+        event: {
+          v: 1,
+          id: 'context-overflow',
+          seq: writer.state.seq + 1,
+          at: new Date().toISOString(),
+          actor: 'pnyx',
+          cardId: HYDRA_CARD,
+          type: 'hydra.helper-finished',
+          data: {
+            batch: 'context-overflow',
+            outcomes: Array.from(
+              { length: 10 },
+              (
+                _,
+                index,
+              ) => ({
+                task: `context-task-${index}`,
+                status: 'handled',
+                summary: `Sample result ${index} is ready.`,
+              }),
+            ),
+          },
+        },
+      }),
+    })
+    const resumed = await s.chat({ text: 'Explain the export result.' })
+    assert.match(
+      resumed.received.at(-1)!,
+      /<pnyx-context>[\s\S]*Sample result 0 is ready/,
+    )
+    assert.ok(resumed.received.at(-1)!.endsWith('Explain the export result.'))
+    const context = resumed.received.at(-1)!.match(/<pnyx-context>[\s\S]*?<\/pnyx-context>/)![0]
+    assert.equal(
+      context.split('\n').filter(line => line.startsWith('- ')).length,
+      8,
+    )
+    assert.match(
+      context,
+      /and 3 more; read `pnyx-axi hydra history/,
+    )
+
+    await until({
+      what: 'the context-carrying turn to finish',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    assert.equal(
+      s.state().contextNotes?.length,
+      3,
+    )
+    await s.chat({ text: 'Continue with the remaining context.' })
+    assert.match(
+      resumed.received.at(-1)!,
+      /Sample result 7 is ready/,
+    )
+    await until({
+      what: 'the remaining context to be consumed',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished'
+        && s.state().contextNotes?.length === 0,
+    })
+    const answered = (await reconnected.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    assert.ok(answered.conversation?.entries.every(entry => !entry.text.includes('<pnyx-context>')))
+    assert.deepEqual(
+      answered.conversation?.entries.filter(entry => entry.role === 'user').slice(-2)
+        .map(entry => entry.text),
+      [
+        'Explain the export result.',
+        'Continue with the remaining context.',
+      ],
+    )
   },
 )
 

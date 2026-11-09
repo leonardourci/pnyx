@@ -1,5 +1,5 @@
 import { createDigestContext } from './digest-context.ts'
-import { contextNoteBlock } from './context-notes.ts'
+import { contextNoteBlock, contextTurnNotes } from './context-notes.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
@@ -132,7 +132,7 @@ export function createHydraTurns({
 }) {
   let hydraTurn = Promise.resolve()
   let outcomesPresented = 0
-  let contextPresented = 0
+  const contextPresented = new Map<string, number>()
   const helperBatchesPresented = new Set<string>()
   const hydraInstructions = () =>
     `You are Hydra for Pnyx Hydra "${hydraId}". Your contract is AGENTS.md in your current folder; follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
@@ -685,12 +685,15 @@ export function createHydraTurns({
         const continuingTurn = joinsTurn && running?.activity === 'working'
         const pendingNotes = loadHydra({ hydraId }).state.contextNotes ?? []
         const notes = continuingTurn || compactCommand({ text }) ? [] : pendingNotes
-        const context = contextNoteBlock({ notes })
+        const context = contextNoteBlock({
+          notes,
+          hydraId,
+        })
 
-        if (notes.length) {
-          contextPresented = Math.max(
-            contextPresented,
-            ...notes.map(note => note.seq),
+        for (const note of contextTurnNotes({ notes })) {
+          contextPresented.set(
+            note.id,
+            note.seq,
           )
         }
 
@@ -806,10 +809,10 @@ export function createHydraTurns({
       const outcome = session?.snapshot().outcome
 
       if (outcome && outcome.status !== 'completed') {
-        contextPresented = 0
+        contextPresented.clear()
       }
 
-      if (contextPresented && outcome?.status === 'completed') {
+      if (contextPresented.size && outcome?.status === 'completed') {
         applyDecision({
           writer,
           decision: hydraEvent({
@@ -821,11 +824,14 @@ export function createHydraTurns({
             },
             change: {
               type: 'hydra.context-delivered',
-              data: { through: contextPresented },
+              data: {
+                through: Math.max(...contextPresented.values()),
+                ids: [...contextPresented.keys()],
+              },
             },
           }),
         })
-        contextPresented = 0
+        contextPresented.clear()
       }
 
       const batches = [...helperBatchesPresented]
@@ -860,7 +866,7 @@ export function createHydraTurns({
   }
 
   const sessionEnded = ({ entry }: { entry: Live }) => {
-    contextPresented = 0
+    contextPresented.clear()
 
     // A check turn cut before it finished hands its updates back; they reach Hydra once the owner continues it.
     if (entry.activity === 'working') {

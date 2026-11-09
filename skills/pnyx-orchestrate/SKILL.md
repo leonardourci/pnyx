@@ -25,7 +25,7 @@ Raising your own, a worker's or a candidate's permission level still needs the o
 - When Pnyx runs you, never wait inside your turn: no `hydra check --wait` (Pnyx refuses it), no sleeps, no polling. End the turn; Pnyx wakes you with the next change, and worker updates wait for you in its queue.
 - Load the skill a step names before taking that step (see Load before).
 
-Read “Since your last turn” notes for context only. Pnyx already routed the owner answer, routine helper outcome or dependency resume; do not repeat it or start work from that note alone. For a worker waiting on another task, record `task status <task> paused --wait-for <dependency> [--ready-when task-done|pr-opened|pr-merged]` (default `task-done`). The server checks readiness and resumes the worker; no Hydra turn is needed.
+Read “Since your last turn” notes for context only. Pnyx already routed the owner answer, routine helper outcome or dependency resume; do not repeat it or start work from that note alone. Notes contain only the newest routine change per task and pending owner answers; overflow names a history command to read the rest. For a worker waiting on another task, record `task status <task> paused --wait-for <dependency> [--ready-when task-done|pr-opened|pr-merged]` (default `task-done`). The server checks readiness and resumes the worker; no Hydra turn is needed.
 
 ## Discovery and recovery
 

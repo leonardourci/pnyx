@@ -2,7 +2,7 @@ import type { HydraEvent } from '#app/model.ts'
 import type { Attention } from '#workers/model.ts'
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
-export const CHUNKER_VERSION = 8
+export const CHUNKER_VERSION = 9
 
 // About 256 tokens at 3 characters a token.
 const CHUNK_MAX = 768
@@ -18,12 +18,57 @@ const SECRETS = [
 
 // Text a harness injects into a user turn: reminders, hook output, command tags,
 // Codex's context blocks and the AGENTS.md instructions Codex adds under a header line.
-const INJECTED = /(?:# AGENTS\.md instructions for [^\n]*\s*)?<(system-reminder|environment_context|user_instructions|INSTRUCTIONS|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook|pnyx-wake|pnyx-digest|pnyx-worker)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g
+const INJECTED_TAGS = [
+  'system-reminder',
+  'environment_context',
+  'user_instructions',
+  'INSTRUCTIONS',
+  'command-name',
+  'command-message',
+  'command-args',
+  'local-command-stdout',
+  'local-command-stderr',
+  'local-command-caveat',
+  'user-prompt-submit-hook',
+  'pnyx-wake',
+  'pnyx-digest',
+  'pnyx-context',
+  'pnyx-worker',
+]
+const INJECTED = new RegExp(
+  String.raw`(?:# AGENTS\.md instructions for [^\n]*\s*)?<(${INJECTED_TAGS.join('|')})(?:\s[^>]*)?>[\s\S]*?<\/\1>`,
+  'g',
+)
 
 export const withoutInjected = ({ text }: { text: string }) => text.replace(
   INJECTED,
   '',
 ).trim()
+
+// A wake's trailing reminders are internal too, even after other injected context.
+export function wakeInput({ text }: { text: string }): boolean {
+  let through = 0
+
+  for (const block of text.matchAll(INJECTED)) {
+    if (text.slice(
+      through,
+      block.index,
+    ).trim()) {
+      return false
+    }
+
+    if (block[1] === 'pnyx-wake') {
+      return true
+    }
+
+    through = block.index + block[0].length
+  }
+
+  return false
+}
+
+export const visibleText = ({ text }: { text: string }): string =>
+  wakeInput({ text }) ? '' : withoutInjected({ text })
 
 export function redact({ text }: { text: string }): string {
   return SECRETS.reduce(

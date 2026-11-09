@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { contextNoteBlock } from './context-notes.ts'
+import { contextNoteBlock, contextTurnNotes } from './context-notes.ts'
 import { eventReasons } from './wake-reasons.ts'
 
 const at = '2026-10-20T10:00:00Z'
@@ -25,7 +25,7 @@ test(
           batch: `batch-${index}`,
           outcomes: [
             {
-              task: 'work',
+              task: `work-${index}`,
               status: 'handled',
               summary: `Result ${index}\n${'detail '.repeat(100)}`,
             },
@@ -69,7 +69,10 @@ test(
       1,
     )
     assert.match(
-      contextNoteBlock({ notes: state.contextNotes! }),
+      contextNoteBlock({
+        notes: state.contextNotes!,
+        hydraId: 'fixture',
+      }),
       /Since your last turn.*context only/,
     )
   },
@@ -166,8 +169,27 @@ test(
       },
       {
         v: 1,
-        id: 'answered',
+        id: 'routine-before-answer',
         seq: 4,
+        at,
+        actor: 'pnyx',
+        cardId: '$hydra',
+        type: 'hydra.helper-finished',
+        data: {
+          batch: 'routine-before-answer',
+          outcomes: [
+            {
+              task: 'work',
+              status: 'handled',
+              summary: 'Export became ready.',
+            },
+          ],
+        },
+      },
+      {
+        v: 1,
+        id: 'answered',
+        seq: 5,
         at,
         actor: 'cli',
         cardId: 'work',
@@ -188,7 +210,7 @@ test(
       {
         v: 1,
         id: 'native-question',
-        seq: 5,
+        seq: 6,
         at,
         actor: 'pnyx',
         cardId: 'work',
@@ -210,7 +232,7 @@ test(
       {
         v: 1,
         id: 'native-answer',
-        seq: 6,
+        seq: 7,
         at,
         actor: 'cli',
         cardId: 'work',
@@ -227,7 +249,7 @@ test(
       {
         v: 1,
         id: 'native-receipt',
-        seq: 7,
+        seq: 8,
         at,
         actor: 'pnyx',
         cardId: 'work',
@@ -255,9 +277,223 @@ test(
     assert.deepEqual(
       state.contextNotes?.map(note => note.text),
       [
+        'Routine helper, Export task: Export became ready.',
         'Owner answered Export task, "Keep the old export for compatibility?": Yes, keep it.',
         'Owner answered Export task, "Which export format?": Compact',
       ],
+    )
+
+    for (let index = 0; index < 25; index++) {
+      state = reduce({
+        state,
+        event: {
+          v: 1,
+          id: `routine-${index}`,
+          seq: state.seq + 1,
+          at,
+          actor: 'pnyx',
+          cardId: '$hydra',
+          type: 'hydra.helper-finished',
+          data: {
+            batch: `routine-${index}`,
+            outcomes: [
+              {
+                task: index === 0 ? 'work' : `other-${index}`,
+                status: 'handled',
+                summary: 'The task finished.',
+              },
+            ],
+          },
+        },
+      })
+    }
+
+    assert.deepEqual(
+      state.contextNotes?.filter(note => note.ownerAnswer).map(note => note.text),
+      [
+        'Owner answered Export task, "Keep the old export for compatibility?": Yes, keep it.',
+        'Owner answered Export task, "Which export format?": Compact',
+      ],
+    )
+    assert.equal(
+      state.contextNotes?.length,
+      22,
+    )
+    const block = contextNoteBlock({
+      notes: state.contextNotes!,
+      hydraId: 'fixture',
+    })
+    assert.match(
+      block,
+      /Yes, keep it/,
+    )
+    assert.match(
+      block,
+      /Compact/,
+    )
+  },
+)
+
+test(
+  'unchanged waits never become notes and only the newest routine change per task remains',
+  () => {
+    let state = emptyHydra()
+
+    const finish = ({
+      id,
+      status,
+      summary,
+    }: {
+      id: string
+      status: 'handled' | 'still_waiting'
+      summary: string
+    }) => {
+      state = reduce({
+        state,
+        event: {
+          v: 1,
+          id,
+          seq: state.seq + 1,
+          at,
+          actor: 'pnyx',
+          cardId: '$hydra',
+          type: 'hydra.helper-finished',
+          data: {
+            batch: id,
+            outcomes: [
+              {
+                task: 'work',
+                status,
+                summary,
+              },
+            ],
+          },
+        },
+      })
+    }
+
+    finish({
+      id: 'working',
+      status: 'still_waiting',
+      summary: 'Still working.',
+    })
+    finish({
+      id: 'waiting',
+      status: 'still_waiting',
+      summary: 'Still waiting on checks.',
+    })
+    finish({
+      id: 'unchanged',
+      status: 'still_waiting',
+      summary: 'No new request.',
+    })
+    assert.deepEqual(
+      state.contextNotes ?? [],
+      [],
+    )
+    finish({
+      id: 'ready',
+      status: 'handled',
+      summary: 'The task became ready.',
+    })
+    finish({
+      id: 'failed',
+      status: 'handled',
+      summary: 'The task failed validation.',
+    })
+    assert.deepEqual(
+      state.contextNotes?.map(note => note.text),
+      ['Routine helper, work: The task failed validation.'],
+    )
+    finish({
+      id: 'finished',
+      status: 'handled',
+      summary: 'The task finished.',
+    })
+    finish({
+      id: 'repeat',
+      status: 'handled',
+      summary: 'The task finished.',
+    })
+    assert.deepEqual(
+      state.contextNotes?.map(note => note.id),
+      ['finished:work'],
+    )
+  },
+)
+
+test(
+  'context turns cap lines, point overflow to history and acknowledge only the notes shown',
+  () => {
+    const notes = Array.from(
+      { length: 10 },
+      (
+        _,
+        index,
+      ) => ({
+        id: `note-${index}`,
+        seq: 10,
+        text: `Task ${index} finished.`,
+        task: `task-${index}`,
+      }),
+    )
+    const block = contextNoteBlock({
+      notes,
+      hydraId: 'fixture',
+    })
+    assert.equal(
+      block.split('\n').filter(text => text.startsWith('- ')).length,
+      8,
+    )
+    assert.match(
+      block,
+      /and 3 more; read `pnyx-axi hydra history --hydra fixture --since origin --through 10 --budget 6000`/,
+    )
+    assert.doesNotMatch(
+      block,
+      /Task 7 finished/,
+    )
+    const shown = contextTurnNotes({ notes })
+    const state = reduce({
+      state: {
+        ...emptyHydra(),
+        contextNotes: notes,
+      },
+      event: {
+        v: 1,
+        id: 'delivered',
+        seq: 11,
+        at,
+        actor: 'pnyx',
+        cardId: '$hydra',
+        type: 'hydra.context-delivered',
+        data: {
+          through: shown.at(-1)!.seq,
+          ids: shown.map(note => note.id),
+        },
+      },
+    })
+    assert.deepEqual(
+      state.contextNotes?.map(note => note.id),
+      [
+        'note-7',
+        'note-8',
+        'note-9',
+      ],
+    )
+    assert.match(
+      contextNoteBlock({
+        notes: state.contextNotes!,
+        hydraId: 'fixture',
+      }),
+      /Task 7 finished/,
+    )
+    assert.equal(
+      contextNoteBlock({
+        notes: [],
+        hydraId: 'fixture',
+      }),
+      '',
     )
   },
 )

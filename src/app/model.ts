@@ -36,7 +36,10 @@ export type HydraChange = EventBase & (
   }
   | {
     type: 'hydra.context-delivered'
-    data: { through: number }
+    data: {
+      through: number
+      ids?: string[]
+    }
   }
   | RecoveryEvent
   | {

@@ -1,6 +1,6 @@
 import { transcriptMessages } from '#workers/transcripts.ts'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -596,6 +596,146 @@ test(
         'harvest.json',
       )),
       false,
+    )
+  },
+)
+
+test(
+  'Oracle omits context notes from native transcripts and previously harvested messages after rebuilding',
+  () => {
+    const home = mkdtempSync(join(
+      scratch,
+      'pnyx-oracle-context-',
+    ))
+    process.env.PNYX_HOME = home
+    const transcriptPath = join(
+      home,
+      'context.jsonl',
+    )
+    cpSync(
+      new URL(
+        '../hydra/fixtures/transcripts/lookup-session.jsonl',
+        import.meta.url,
+      ),
+      transcriptPath,
+    )
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const pushed = decidePush({
+          state: writer.state,
+          key: HYDRA_CARD,
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'context-session',
+              transcriptPath,
+            },
+          },
+          meta: {
+            at: '2026-01-01T00:00:00.000Z',
+            actor: 'fixture',
+          },
+        })
+        assert.ok('event' in pushed)
+        writer.append({ event: pushed.event })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'legacy-context',
+            at: '2026-01-01T00:00:00.000Z',
+            actor: 'fixture',
+            cardId: HYDRA_CARD,
+            type: 'chat.message',
+            data: {
+              session: 'older-session',
+              nativeId: '0:m0',
+              role: 'user',
+              text: '<pnyx-context>harvestedcontextword</pnyx-context>\nRetain the archive.',
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'legacy-context-wake',
+            at: '2026-01-01T00:00:01.000Z',
+            actor: 'fixture',
+            cardId: HYDRA_CARD,
+            type: 'chat.message',
+            data: {
+              session: 'older-session',
+              nativeId: '1:m0',
+              role: 'user',
+              text: '<pnyx-context>Routine context</pnyx-context>\n<pnyx-wake>Check work</pnyx-wake>\narchivedwakeword',
+            },
+          },
+        })
+      },
+    })
+    const find = ({ text }: { text: string }) => search({
+      hydraId: 'default',
+      query: {
+        text,
+        limit: 20,
+        highlight: false,
+      },
+    }).hits
+    updateIndex({ hydraId: 'default' })
+    assert.equal(
+      find({ text: 'sample' }).length,
+      1,
+    )
+    assert.equal(
+      find({ text: 'archive' }).length,
+      1,
+    )
+    assert.deepEqual(
+      find({ text: 'contextprefixedword' }),
+      [],
+    )
+    assert.deepEqual(
+      find({ text: 'contextonlyword' }),
+      [],
+    )
+    assert.deepEqual(
+      find({ text: 'harvestedcontextword' }),
+      [],
+    )
+    assert.deepEqual(
+      find({ text: 'archivedwakeword' }),
+      [],
+    )
+    const { DatabaseSync } = sqlite()
+    const oldIndex = new DatabaseSync(searchPath({ hydraId: 'default' }))
+    oldIndex.exec("UPDATE meta SET value = '8' WHERE key = 'chunker_version'; DELETE FROM docs; DELETE FROM card_fts;")
+    oldIndex.close()
+    updateIndex({ hydraId: 'default' })
+    assert.equal(
+      find({ text: 'sample' }).length,
+      1,
+    )
+    assert.equal(
+      find({ text: 'archive' }).length,
+      1,
+    )
+    assert.deepEqual(
+      find({ text: 'contextprefixedword' }),
+      [],
+    )
+    assert.deepEqual(
+      find({ text: 'contextonlyword' }),
+      [],
+    )
+    assert.deepEqual(
+      find({ text: 'harvestedcontextword' }),
+      [],
+    )
+    assert.deepEqual(
+      find({ text: 'archivedwakeword' }),
+      [],
     )
   },
 )

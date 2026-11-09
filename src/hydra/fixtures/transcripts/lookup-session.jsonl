@@ -1,4 +1,5 @@
-{"type":"user","timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"user","content":"Describe the sample change."}}
+{"type":"user","timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"user","content":"<pnyx-context>contextprefixedword</pnyx-context>\nDescribe the sample change."}}
 {"type":"assistant","timestamp":"2026-01-01T00:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Keep the sample input unchanged."}]}}
+{"type":"user","timestamp":"2026-01-01T00:00:01.500Z","message":{"role":"user","content":"<pnyx-context>contextonlyword</pnyx-context>"}}
 {"type":"user","timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"user","content":"Explain the result."}}
 {"type":"assistant","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"The sample result is deterministic."}]}}

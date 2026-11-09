@@ -156,7 +156,9 @@
     {
       "id": "evt_11",
       "seq": 11,
-      "text": "Owner answered Ship it, \"Ship to production?\": Yes"
+      "text": "Owner answered Ship it, \"Ship to production?\": Yes",
+      "task": "c1",
+      "ownerAnswer": true
     }
   ]
 }

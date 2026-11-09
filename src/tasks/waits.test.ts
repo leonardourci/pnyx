@@ -370,6 +370,14 @@ test(
     )
     const events = readEvents({ hydraId })
     const resumed = events.find(event => event.type === 'task.wait-resumed')!
+    assert.deepEqual(
+      state().contextNotes?.map(note => note.task),
+      [card().id],
+    )
+    assert.match(
+      state().contextNotes![0]!.text,
+      /worker resume queued.*Shared component/,
+    )
     const replayed = replay({
       state: emptyHydra(),
       events,

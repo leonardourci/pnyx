@@ -13,7 +13,7 @@ import { readEventsFrom } from '#app/event-log.ts'
 import { privateDir } from '#store/storage.ts'
 import type { IndexResult, Kind } from './model.ts'
 import { words } from './query.ts'
-import { CHUNKER_VERSION, chunk, eventText, redact } from './text.ts'
+import { CHUNKER_VERSION, chunk, eventText, redact, visibleText } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
 export const SCHEMA_VERSION = 8
@@ -393,7 +393,7 @@ function catchUp({
             source: EVENTS,
             pos: event.seq,
             at: event.at,
-            text: event.data.text,
+            text: visibleText({ text: event.data.text }),
             session: event.data.session,
             line: Number.parseInt(event.data.nativeId),
           })
