@@ -110,30 +110,81 @@ test(
 test(
   'focus mode hides tool calls and thinking unless a card shows them on its own',
   () => {
-    const shown = ({ focusMode }: { focusMode: boolean }) => traces({
+    const shown = ({
+      focusMode,
+      card,
+    }: {
+      focusMode: boolean
+      card: string
+    }) => traces({
       view: {
         ...DEFAULT_VIEW,
         focusMode,
-        cardTraceOverrides: { open: { tools: true } },
+        cardTraceOverrides: {
+          tools: { tools: true },
+          thinking: { thinking: true },
+        },
       },
-      card: 'open',
+      card,
     })
+
+    const pair = ({
+      focusMode,
+      card,
+    }: {
+      focusMode: boolean
+      card: string
+    }) => {
+      const {
+        tools,
+        thinking,
+      } = shown({
+        focusMode,
+        card,
+      })
+
+      return [
+        tools,
+        thinking,
+      ]
+    }
 
     assert.deepEqual(
       [
-        traces({
-          view: DEFAULT_VIEW,
+        pair({
+          focusMode: true,
           card: 'plain',
-        }).tools,
-        shown({ focusMode: true }).tools,
-        shown({ focusMode: true }).thinking,
-        shown({ focusMode: false }).thinking,
+        }),
+        pair({
+          focusMode: true,
+          card: 'tools',
+        }),
+        pair({
+          focusMode: true,
+          card: 'thinking',
+        }),
+        pair({
+          focusMode: false,
+          card: 'plain',
+        }),
       ],
       [
-        false,
-        true,
-        false,
-        true,
+        [
+          false,
+          false,
+        ],
+        [
+          true,
+          false,
+        ],
+        [
+          false,
+          true,
+        ],
+        [
+          true,
+          true,
+        ],
       ],
     )
   },
