@@ -93,12 +93,18 @@ function hydraQueueView({
   }
 }
 
+// Pnyx is running a turn of this Hydra's agent now.
+export function hydraWorking({ state }: { state: HydraState }) {
+  const card = state.cards[HYDRA_CARD]
+
+  return hostedHydra({ state }) && (card?.sessionActivity ?? card?.activity) === 'working'
+}
+
 export function hydraChatQueue({ state }: { state: HydraState }) {
   const config = hydraConfig({ state })
   const card = state.cards[HYDRA_CARD]
   const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id)
-  const hosted = hostedHydra({ state })
-  const working = hosted && (card?.sessionActivity ?? card?.activity) === 'working'
+  const working = hydraWorking({ state })
   const view = hydraQueueView({
     state,
     card,
