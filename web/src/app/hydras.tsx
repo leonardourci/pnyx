@@ -32,18 +32,13 @@ const identityOf = ({ hydra }: { hydra: HydraSummary }): HydraIdentity => ({
 
 const HYDRA_DRAG = 'application/pnyx-hydra'
 
-const RunningDot = ({ working }: { working: boolean }) => {
-  const label = working ? 'Running' : 'Idle'
+// Only a Hydra whose agent Pnyx runs reports whether it is running.
+const RunningDot = ({ working }: { working?: boolean }) => {
+  if (working === undefined) {
+    return null
+  }
 
-  return (
-    <span
-      className="hydra-running"
-      data-running={working || undefined}
-      role="img"
-      aria-label={label}
-      title={label}
-    />
-  )
+  return <span className="hydra-running" data-running={working || undefined} aria-hidden="true" />
 }
 
 const otherNames = ({
@@ -380,7 +375,7 @@ export function Hydras({
                       },
                     })}
                     onClick={() => active && !loading ? showHydra() : openHydra({ id: h.id })}
-                  ><HydraLabel name={h.name} icon={h.icon} /><RunningDot working={!!h.working} />
+                  ><HydraLabel name={h.name} icon={h.icon} /><RunningDot working={h.working} />
                   </Button>
                 )}
               </div>
