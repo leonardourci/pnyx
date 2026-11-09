@@ -16,7 +16,6 @@ interface ToolRow {
   output?: string
 }
 
-// A row drawn as a trace: a tool call or thinking.
 export type TraceRow = ToolRow | {
   kind: 'thinking'
   entry: ThreadEntry
