@@ -18,6 +18,7 @@ import { createIndexSync } from '#oracle/index-sync.ts'
 import { setImmediate } from 'node:timers/promises'
 import { updateIndex, openReader, searchPath } from '#oracle/index.ts'
 import { redact } from '#oracle/text.ts'
+import { until } from '#test-harness/harness.ts'
 import { replayOwned } from '#app/reducer.ts'
 
 test(
@@ -726,35 +727,68 @@ test(
       hydraId: 'default',
       startWorker,
     })
-    const turn = (async () => {
-      await setImmediate()
-      const saved = readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message')
-      assert.ok(saved.length > 0 && saved.length < 70)
-      const cursor = JSON.parse(readFileSync(
+    t.after(() => first.stop())
+    await first.ready()
+    assert.equal(
+      readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message').length,
+      0,
+    )
+    assert.equal(
+      workers,
+      1,
+    )
+    await setImmediate()
+    const partial = readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message')
+    assert.ok(partial.length > 0 && partial.length < 70)
+    first.stop()
+    const sourcePrefix = records.slice(
+      0,
+      69,
+    ).map(record => JSON.stringify(record))
+      .join('\n') + '\n'
+    const intervening = recordEntries({
+      record: records[69],
+      offset: Buffer.byteLength(sourcePrefix),
+    })[0]!
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'intervening',
+          at: '2026-10-22T10:00:00Z',
+          actor: 'harvest',
+          cardId: '$hydra',
+          type: 'chat.message',
+          data: {
+            session: 'fixture',
+            nativeId: intervening.id,
+            block: intervening.block,
+            role: intervening.role,
+            kind: 'tool',
+            call: intervening.call,
+            text: intervening.text,
+          },
+        },
+      }),
+    })
+    const second = createIndexSync({
+      hydraId: 'default',
+      startWorker,
+    })
+    t.after(() => second.stop())
+    await second.ready()
+    await until({
+      what: 'historical conversation migration to finish',
+      check: () => JSON.parse(readFileSync(
         join(
           folder,
           'harvest.json',
         ),
         'utf8',
-      ))[`$hydra\n${transcript}`]
-      assert.equal(
-        cursor.conversation,
-        undefined,
-      )
-      assert.ok(cursor.backfill)
-      first.stop()
-    })()
-    await first.ready()
-    await turn
-    assert.equal(
-      workers,
-      0,
-    )
-    const second = createIndexSync({
-      hydraId: 'default',
-      startWorker,
+      ))[`$hydra\n${transcript}`].conversation === 1,
     })
-    await second.ready()
     second.stop()
     const saved = readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message')
     assert.equal(
@@ -774,7 +808,7 @@ test(
     )
     assert.equal(
       workers,
-      1,
+      2,
     )
     const cursor = JSON.parse(readFileSync(
       join(
