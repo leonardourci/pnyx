@@ -69,6 +69,10 @@ function cardDecisions({
       detail: `${ask.id} to you ${quote({ text: ask.question })}`,
     }
   })
+  if (card.id === HYDRA_CARD) {
+    return asks.filter(ask => ask.kind === 'owner question')
+  }
+
   const permissions = pendingPermissions({ card }).map((p): OpenDecision => {
     const questions = asked({ questions: p.questions })
 
@@ -122,11 +126,10 @@ function cardDecisions({
 // Owner questions remain owed even when an older client hid their task.
 export function openDecisions({ state }: { state: HydraState }): OpenDecision[] {
   const items = Object.values(state.cards)
-    .filter(card => card.id !== HYDRA_CARD
-      && (liveTask({ card }) || openAsks({
-        card,
-        audience: 'owner',
-      }).length > 0))
+    .filter(card => liveTask({ card }) || openAsks({
+      card,
+      audience: 'owner',
+    }).length > 0)
     .flatMap(card => cardDecisions({
       state,
       card,

@@ -28,9 +28,70 @@ import { dueQuestionReminders } from './question-reminders.ts'
 import { fireReminders } from './fire-reminders.ts'
 import { cardDoneDeadline } from './retention-rules.ts'
 import { reminderDeadline } from './reminders.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const hydraId = 'question-lab'
 const reason = 'Synthetic question regression'
+
+test(
+  'a Hydra-wide owner question stays in chat without creating a task card',
+  async t => {
+    const l = await lab({ t })
+    const asked = await commands.hydra([
+      'ask',
+      '--question',
+      'Which preference should apply across this Hydra?',
+      '--actor',
+      'hydra',
+      '--reason',
+      reason,
+      '--hydra',
+      hydraId,
+    ])
+    const id = String(asked.ask)
+    assert.equal(
+      l.state().cards[HYDRA_CARD]?.asks?.[0]?.id,
+      id,
+    )
+    assert.equal(
+      Object.values(l.state().cards).filter(card => card.id !== HYDRA_CARD).length,
+      0,
+    )
+    assert.equal(
+      openDecisions({ state: l.state() }).find(item => item.id === id)?.card.id,
+      HYDRA_CARD,
+    )
+    await l.task({
+      args: [
+        'answer',
+        HYDRA_CARD,
+        id,
+        '--text',
+        'Use the compact format.',
+      ],
+      actor: 'web',
+    })
+    assert.ok(l.state().cards[HYDRA_CARD]?.asks?.[0]?.answered)
+    assert.equal(
+      openDecisions({ state: l.state() }).some(item => item.id === id),
+      false,
+    )
+    await assert.rejects(
+      async () => commands.hydra([
+        'ask',
+        '--question',
+        'A worker bypass?',
+        '--actor',
+        'worker:example',
+        '--reason',
+        reason,
+        '--hydra',
+        hydraId,
+      ]),
+      /only Hydra/i,
+    )
+  },
+)
 
 test(
   'clarification reaches Hydra without answering or releasing an owner question',

@@ -9,6 +9,7 @@ import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { isManagedTask } from './select.ts'
 import { askWording, openAsks, pendingAnswer } from './ask-state.ts'
 import { clarificationMessage } from './question-actions.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500
@@ -56,7 +57,7 @@ const askableTask = ({
     ref,
   })
 
-  if (isManagedTask({ card })) {
+  if (isManagedTask({ card }) && card.id !== HYDRA_CARD) {
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
@@ -150,6 +151,10 @@ export function decideAsk({
   })
 
   let origin: Ask['origin']
+
+  if (card.id === HYDRA_CARD && audience !== 'owner') {
+    throw invalid({ message: 'A Hydra-wide question goes to the owner; workers ask on their own task' })
+  }
 
   if (fromReport !== undefined) {
     if (audience !== 'owner') {

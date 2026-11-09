@@ -4,9 +4,10 @@ import { taskMentions } from './mentions.ts'
 import type { HydraMessage } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { withoutInjected } from '#oracle/text.ts'
+import { HYDRA_CARD } from './identity.ts'
 
 export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
-  if (!entry.task) {
+  if (!entry.task || entry.task === HYDRA_CARD) {
     return undefined
   }
 
