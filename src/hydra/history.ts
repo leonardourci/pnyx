@@ -8,8 +8,10 @@ import type { ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
 import { messageReference } from './message-reference.ts'
+import { HISTORY_BUDGET } from './history-command.ts'
 
-export const HISTORY_BUDGET = 6000
+export { HISTORY_BUDGET, historyCommand } from './history-command.ts'
+
 const HISTORY_PAGE_BYTES = 24000
 export const NEITHER_LIMIT = 15000
 export const NEITHER_REASON = 'Neither requires less than 15,000 tokens since the last successful compaction.'
@@ -100,22 +102,6 @@ export function historyBoundary({
   }
 
   return milestone.through
-}
-
-export function historyCommand({
-  hydraId,
-  since,
-  through,
-  budget = HISTORY_BUDGET,
-}: {
-  hydraId: string
-  since: string
-  through?: number
-  budget?: number
-}): string {
-  const end = through === undefined ? '' : ` --through ${through}`
-
-  return `pnyx-axi hydra history --hydra ${hydraId} --since ${since}${end} --budget ${budget}`
 }
 
 // Transport parts rejoin before rendering or counting, including parts from different pages.
