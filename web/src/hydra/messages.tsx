@@ -866,8 +866,8 @@ export function Messages({
             {ownMessage({ entry }) && !entry.continued && (
               <div className="message-meta" contentEditable={false}>
                 {entry.unsent !== undefined && (
-                  <span className="unsent" role="alert" title={entry.unsent}>
-                    <Icon name="error" size={14} />Not sent
+                  <span className="unsent" role="alert">
+                    <Icon name="error" size={14} />Not sent · {entry.unsent}
                   </span>
                 )}
                 {entry.unsent !== undefined && retry && (

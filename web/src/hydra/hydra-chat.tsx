@@ -36,6 +36,7 @@ import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
+import { readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
 import { REDUCED_MOTION } from './streaming.tsx'
 
@@ -166,7 +167,10 @@ export function HydraChat({
   const [
     sending,
     setSending,
-  ] = useState<Sending[]>([])
+  ] = useState<Sending[]>(() => readUnsent({ key: hydraId }).map(item => ({
+    ...item,
+    confirmed: false,
+  })))
   const [
     away,
     setAway,
@@ -263,9 +267,12 @@ export function HydraChat({
     upgradeRunning,
     working,
   } = chatQueue
-  // From the Hydra's own state, so a first send shows its working sign before the server's queue arrives.
+  // From the Hydra's own state, so a first send shows its working dots before the server's queue arrives.
   const hosted = hostedHydra({ state })
   const inFlight = pending.filter(item => item.failed === undefined)
+  // An unsent message stays in the chat even while Hydra holds new input in the queue box.
+  const shownSends = pending.filter(item => item.failed !== undefined
+    || (!holding && !held.has(item.id)))
   const compactInputs = [
     ...chatQueue.compactInputs,
     ...inFlight.filter(item => holding && !held.has(item.id)).map(item => ({
@@ -286,6 +293,32 @@ export function HydraChat({
       notify({ text: (error as Error).message })
     }
   }
+
+  const unsent = sending.flatMap(({
+    id,
+    text,
+    at,
+    failed,
+  }) => failed === undefined ? [] : [
+    {
+      id,
+      text,
+      at,
+      failed,
+    },
+  ])
+  const unsentKey = JSON.stringify(unsent)
+  // A refused message outlives a reload or a Hydra switch, until a retry sends it.
+  useEffect(
+    () => saveUnsent({
+      key: hydraId,
+      items: unsent,
+    }),
+    [
+      hydraId,
+      unsentKey,
+    ],
+  )
 
   useEffect(
     () => {
@@ -382,7 +415,7 @@ export function HydraChat({
       text: '',
       at: decision.at,
     })),
-    ...pending.filter(s => s.failed !== undefined || !holding && !held.has(s.id)).map(s => ({
+    ...shownSends.map(s => ({
       id: s.id,
       kind: 'message' as const,
       role: 'user',
@@ -590,7 +623,7 @@ export function HydraChat({
       }
 
       const id = args[2] ?? crypto.randomUUID()
-      const failed = ({ reason }: { reason: string }) => setSending(items => withFailure({
+      const markFailed = ({ reason }: { reason: string }) => setSending(items => withFailure({
         items,
         id,
         failed: reason,
@@ -599,6 +632,7 @@ export function HydraChat({
       setSending(items => items.some(s => s.id === id) ? withFailure({
         items,
         id,
+        failed: undefined,
       }) : [
         ...items,
         {
@@ -620,29 +654,26 @@ export function HydraChat({
         ],
         onChecking,
       }).catch((error: Error) => {
-        failed({ reason: error.message })
+        markFailed({ reason: error.message })
         throw error
       })
 
-      const queued = result.state === 'queued'
+      // Any answer means the server recorded the message; a Hydra that could not take it says why.
+      setSending(items => items.map(s => s.id === id ? {
+        ...s,
+        confirmed: true,
+      } : s))
 
-      if (queued) {
-        setSending(items => items.map(s => s.id === id ? {
-          ...s,
-          confirmed: true,
-        } : s))
-      } else {
-        failed({ reason: typeof result.detail === 'string' ? result.detail : 'It could not be delivered.' })
+      if (result.state === 'failed' && typeof result.detail === 'string') {
+        notify({ text: result.detail })
       }
 
-      return {
-        reply: {
-          state: queued ? 'queued' : 'failed',
-          detail: result.detail,
-        },
-      }
+      return result
     },
-    [command],
+    [
+      command,
+      notify,
+    ],
   )
 
   // A retry keeps the message's id, so a copy the server did record is never sent twice.

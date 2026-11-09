@@ -483,9 +483,6 @@ h3 { font-weight: 600; }
 
 .mention-icon { display: inline-flex; color: var(--column-color, currentColor); }
 
-
-
-
 .usage-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--composer-control-h); height: var(--composer-control-h); color: var(--color-muted); font: 400 8px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 
 .usage-ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
