@@ -1212,6 +1212,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-row .hydra-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .hydra-row .hydra-name > .identity-icon { flex-shrink: 0; }
+.hydra-running { flex: 0 0 8px; width: 8px; height: 8px; margin-left: auto; border-radius: 50%; background: var(--color-line); }
+.hydra-running[data-running] { background: transparent; box-shadow: inset 0 0 0 2px var(--color-blue); animation: hydra-running 1.6s ease-in-out infinite; }
+@keyframes hydra-running { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .hydra-running[data-running] { animation: none; } }
 
 .hydra-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
 

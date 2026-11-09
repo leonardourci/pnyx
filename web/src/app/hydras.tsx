@@ -32,6 +32,20 @@ const identityOf = ({ hydra }: { hydra: HydraSummary }): HydraIdentity => ({
 
 const HYDRA_DRAG = 'application/pnyx-hydra'
 
+const RunningDot = ({ working }: { working: boolean }) => {
+  const label = working ? 'Running' : 'Idle'
+
+  return (
+    <span
+      className="hydra-running"
+      data-running={working || undefined}
+      role="img"
+      aria-label={label}
+      title={label}
+    />
+  )
+}
+
 const otherNames = ({
   hydras,
   id,
@@ -366,7 +380,7 @@ export function Hydras({
                       },
                     })}
                     onClick={() => active && !loading ? showHydra() : openHydra({ id: h.id })}
-                  ><HydraLabel name={h.name} icon={h.icon} />
+                  ><HydraLabel name={h.name} icon={h.icon} /><RunningDot working={!!h.working} />
                   </Button>
                 )}
               </div>

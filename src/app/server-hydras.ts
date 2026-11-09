@@ -10,6 +10,7 @@ import { withRegistryLock } from '#store/storage.ts'
 import { projectsFor } from '#projects/read.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { liveTask } from '#tasks/select.ts'
+import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
 
@@ -29,6 +30,8 @@ export interface HydraSummary {
   // Position in the Hydra list: the set position, else creation time in ms.
   order: number
   hydra: string
+  // Its agent is running a turn now.
+  working?: boolean
   projects: HydraProjectSummary[]
 }
 
@@ -155,6 +158,7 @@ function summarize({ id }: { id: string }): {
         icon: config.icon,
         order: config.position ?? createdAt({ id }),
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
+        working: hydraChatQueue({ state }).working,
         projects,
       },
     }
