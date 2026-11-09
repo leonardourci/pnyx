@@ -1809,13 +1809,8 @@ const scriptString = ({
   }
 }
 
-function scriptCalls({
-  id,
-  script,
-}: {
-  id: string
-  script: string
-}): TranscriptCall[] {
+// The tool calls a code-mode script makes, each with the input its tool reads.
+function scriptTools({ script }: { script: string }) {
   const starts = [...script.matchAll(SCRIPT_CALL)]
 
   return starts.map((
@@ -1830,19 +1825,53 @@ function scriptCalls({
       pattern: SCRIPT_PATH,
       text: body,
     }) ?? PATCHED_FILE.exec(body)?.[1]
-
-    return transcriptCall({
-      id,
-      tool: match[1]!,
-      input: {
-        cmd: scriptString({
-          pattern: SCRIPT_COMMAND,
-          text: body,
-        }),
-        path,
-      },
+    const cmd = scriptString({
+      pattern: SCRIPT_COMMAND,
+      text: body,
     })
+
+    return {
+      tool: match[1]!,
+      input: Object.fromEntries(Object.entries({
+        cmd,
+        path,
+      }).filter(([
+        , value,
+      ]) => value !== undefined)),
+    }
   })
+}
+
+function scriptCalls({
+  id,
+  script,
+}: {
+  id: string
+  script: string
+}): TranscriptCall[] {
+  return scriptTools({ script }).map(({
+    tool,
+    input,
+  }) => transcriptCall({
+    id,
+    tool,
+    input,
+  }))
+}
+
+// A script that makes one call reads as that call, so its progress row names what it ran.
+function scriptedTrace({ payload }: { payload: Record<string, unknown> }) {
+  const scripted = payload.type === 'custom_tool_call' && payload.name === CODE_MODE_TOOL
+    && typeof payload.input === 'string' ? scriptTools({ script: payload.input }) : []
+
+  return scripted.length === 1 ? {
+    name: scripted[0]!.tool,
+    detail: scripted[0]!.input,
+  } : {
+    name: payload.name,
+    detail: payload.summary ?? payload.content ?? payload.output
+      ?? payload.arguments ?? payload.input,
+  }
 }
 
 function customCalls({
@@ -1968,9 +1997,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
     parsed.traces.push(transcriptTrace({
       index: 0,
       kind: tool ? 'tool' : 'thinking',
-      name: payload.name,
-      detail: payload.summary ?? payload.content ?? payload.output
-        ?? payload.arguments ?? payload.input,
+      ...scriptedTrace({ payload }),
       call: payload.call_id ?? payload.id,
     }))
   }

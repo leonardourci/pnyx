@@ -32,6 +32,18 @@ export function blockText({ value }: { value: unknown }): string {
   return text && typeof block.text === 'string' ? block.text : ''
 }
 
+// Text blocks read as their words; any other detail keeps its recorded shape.
+function traceText({ detail }: { detail: unknown }) {
+  if (typeof detail === 'string') {
+    return detail
+  }
+
+  const texts = Array.isArray(detail) ? detail.map(raw => blockText({ value: raw })) : []
+  const allText = texts.length > 0 && texts.every(Boolean)
+
+  return allText ? texts.join('\n') : JSON.stringify(detail)
+}
+
 export function transcriptTrace({
   index,
   kind,
@@ -45,12 +57,11 @@ export function transcriptTrace({
   detail: unknown
   call: unknown
 }): TranscriptTrace {
-  const recorded = detail ?? UNRECORDED_DETAIL
   const trace: TranscriptTrace = {
     index,
     kind,
     role: typeof name === 'string' ? name : kind,
-    text: typeof recorded === 'string' ? recorded : JSON.stringify(recorded),
+    text: traceText({ detail: detail ?? UNRECORDED_DETAIL }),
   }
 
   if (kind === 'tool' && typeof call === 'string') {
