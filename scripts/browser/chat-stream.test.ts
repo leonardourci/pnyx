@@ -550,7 +550,7 @@ test(
       if (!window.heldFrames.length) throw new Error('The send was not held');
       const mine = [...document.querySelectorAll('.hydra-chat article.mine[data-sending]')].filter(row => row.textContent.includes('Check the deploy'));
       if (mine.length !== 1) throw new Error('The sent message did not show at once');
-      if (!document.querySelector('.hydra-chat .chat-running')) throw new Error('The working sign did not start with the send');
+      if (!document.querySelector('.hydra-chat .chat-running')) throw new Error('The working dots did not start with the send');
       window.releaseFrames();
       return 'chat-assertion-passed';
     }`,
@@ -572,6 +572,19 @@ test(
           type: 'assistant',
           timestamp: owner.at,
           message: commentary.message,
+        })}\n${JSON.stringify({
+          type: 'user',
+          timestamp: owner.at,
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'deploy-notes',
+                content: 'Ship on Friday.',
+              },
+            ],
+          },
         })}\n`,
       )
       await waitFor({
@@ -594,10 +607,13 @@ test(
       await evaluate({
         script: `() => {
       const row = [...document.querySelectorAll('.hydra-chat .turn-progress .trace')].find(trace => trace.querySelector('summary').textContent.includes('deploy-notes.txt'));
-      row.closest('.turn-actions').querySelector('details').open = true;
+      const fold = row.closest('.turn-actions').querySelector('details');
+      if (fold.open || row.open) throw new Error('Progress did not start collapsed');
+      fold.open = true;
       row.querySelector('summary').click();
       if (!row.open) throw new Error('The tool row did not open');
-      if (!row.querySelector('pre[aria-label="Input"]')?.textContent.includes('deploy-notes.txt')) throw new Error('The opened row did not show the call');
+      if (!row.querySelector('[aria-label="Input"]')?.textContent.includes('deploy-notes.txt')) throw new Error('The opened row did not show the call');
+      if (!row.querySelector('[aria-label="Output"]')?.textContent.includes('Ship on Friday.')) throw new Error('The opened row did not show the output');
       return 'chat-assertion-passed';
     }`,
       })
@@ -612,7 +628,7 @@ test(
         ],
       })
       await waitFor({
-        what: 'focus mode hide the tool call and keep the commentary and working sign',
+        what: 'focus mode hide the tool call and keep the commentary and working dots',
         condition: `!document.querySelector('.hydra-chat .trace')
           && [...document.querySelectorAll('.hydra-chat [data-progress-id]')].some(row => row.textContent.includes('Reading the deploy notes.'))
           && document.querySelector('.hydra-chat .chat-running')`,
@@ -621,7 +637,7 @@ test(
 
       held.release()
       await waitFor({
-        what: 'the turn to end with the Hydra idle and the working sign gone',
+        what: 'the turn to end with the Hydra idle and the working dots gone',
         condition: `[...document.querySelectorAll('.hydra-chat article.message')].some(row => row.textContent.includes('The deploy is ready.'))
           && !document.querySelector('.hydra-chat .chat-running')
           && document.querySelector('${hydraRow}:not([data-running])')`,
@@ -646,18 +662,27 @@ test(
     }`,
       })
       await waitFor({
-        what: 'the refused message kept as not sent, without the working sign',
+        what: 'the refused message kept as not sent, without the working dots',
         condition: `[...document.querySelectorAll('.hydra-chat article.mine[data-unsent]')].filter(row => row.textContent.includes('Check the rollback')).length === 1
           && !document.querySelector('.hydra-chat .chat-running')`,
       })
       await capture({ name: 'status-unsent' })
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await waitFor({
+        what: 'the refused message still not sent after a reload',
+        condition: '[...document.querySelectorAll(\'.hydra-chat article.mine[data-unsent]\')].filter(row => row.textContent.includes(\'Check the rollback\')).length === 1',
+      })
       pnyx.claude.plan({
         text: 'Check the rollback',
         reply: 'The rollback is ready.',
       })
       await evaluate({
         script: `() => {
-      window.restoreSend();
       [...document.querySelectorAll('.hydra-chat .message-meta [role=button]')].find(button => button.textContent === 'Retry').click();
       return 'chat-assertion-passed';
     }`,
@@ -672,11 +697,53 @@ test(
         s.events().filter(event => event.type === 'hydra.message' && event.data.text === 'Check the rollback').length,
         1,
       )
+
+      // The server records the message, but the page hears a refusal first.
+      pnyx.claude.plan({
+        text: 'Check the logs',
+        reply: 'The logs are clean.',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Check the logs\');',
+      })
+      await evaluate({
+        script: `() => {
+      const send = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (data) {
+        if (typeof data !== 'string' || !data.includes('"args":["send"')) return send.call(this, data);
+        WebSocket.prototype.send = send;
+        const frame = JSON.parse(data);
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'error', scope: frame.scope, id: frame.id, error: 'Hydra refused this message.', code: 'VALIDATION_ERROR', saved: false }) }));
+        return send.call(this, data);
+      };
+      document.querySelector('[aria-label="Send reply"]').click();
+      return 'chat-assertion-passed';
+    }`,
+      })
+      await waitFor({
+        what: 'the recorded message shown once as sent and answered',
+        condition: `[...document.querySelectorAll('.hydra-chat article.mine')].filter(row => row.textContent.includes('Check the logs')).length === 1
+          && !document.querySelector('.hydra-chat [data-unsent]')
+          && [...document.querySelectorAll('.hydra-chat article.message')].some(row => row.textContent.includes('The logs are clean.'))`,
+      })
+      assert.equal(
+        s.events().filter(event => event.type === 'hydra.message' && event.data.text === 'Check the logs').length,
+        1,
+      )
     } catch (error) {
       process.stderr.write((await run({ args: ['console'] })).stdout)
       throw error
     } finally {
       held.release()
+      await s.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({ focusMode: true }),
+        ],
+      })
       await run({ args: ['stop'] })
     }
   },
