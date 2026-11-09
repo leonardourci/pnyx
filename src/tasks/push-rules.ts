@@ -5,6 +5,7 @@ import { HydraError } from '#store/errors.ts'
 import { invalid, asRecord, onlyKeys, optionalText, text } from '#app/command-validation.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { liveTask } from './select.ts'
+import { movedAway } from './move-state.ts'
 
 export function findCard({
   state,
@@ -15,7 +16,10 @@ export function findCard({
 }): Card {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
-  const moved = state.movedOut?.[ref]
+  const moved = movedAway({
+    state,
+    ref,
+  })
 
   if (!card && moved) {
     throw new HydraError({

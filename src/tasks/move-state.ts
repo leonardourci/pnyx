@@ -5,8 +5,7 @@ import type { Card } from './model.ts'
 import type { Column } from './columns-model.ts'
 import { refreshTasks } from './columns.ts'
 
-// The card's whole record and every session it had, so either Hydra's log replays on its own.
-// Both sides of one move share the event id, which is how history finds the other side.
+// Both sides carry the whole card and its sessions so either log replays alone; they share the event id.
 export interface MovedCard {
   card: Card
   sessions: AgentSession[]
@@ -22,6 +21,8 @@ export type HydraMoveEvent = EventBase & (
     data: MovedCard & {
       from: string
       column: Column
+      // When each of the card's owner questions was last reminded, so the target does not remind them again at once.
+      reminders?: Record<string, string>
     }
   }
 )
@@ -31,6 +32,26 @@ export interface MovedOut {
   to: string
   at: string
   move: string
+  key: string
+}
+
+// The card a reference named before it moved away, by id or key.
+export function movedAway({
+  state,
+  ref,
+}: {
+  state: HydraState
+  ref: string
+}): (MovedOut & { id: string }) | undefined {
+  const found = Object.entries(state.movedOut ?? {}).find(([
+    id,
+    moved,
+  ]) => id === ref || moved.key === ref)
+
+  return found && {
+    ...found[1],
+    id: found[0],
+  }
 }
 
 function moveOut({
@@ -67,6 +88,7 @@ function moveOut({
       to: event.data.to,
       at: event.at,
       move: event.id,
+      key: card.key,
     },
   }
 }
@@ -90,6 +112,10 @@ function moveIn({
   state.cards[card.id] = card
   state.keys[card.key] = card.id
   delete state.movedOut?.[card.id]
+  state.questionReminders = {
+    ...state.questionReminders,
+    ...event.data.reminders,
+  }
 
   const attached = new Set(card.sessionIds ?? [])
   const sessions = state.sessions ?? {}
