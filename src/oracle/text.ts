@@ -67,6 +67,9 @@ export function wakeInput({ text }: { text: string }): boolean {
   return false
 }
 
+export const visibleText = ({ text }: { text: string }): string =>
+  wakeInput({ text }) ? '' : withoutInjected({ text })
+
 export function redact({ text }: { text: string }): string {
   return SECRETS.reduce(
     (
