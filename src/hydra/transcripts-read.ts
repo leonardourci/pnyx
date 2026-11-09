@@ -1,6 +1,6 @@
 import { messageReference } from './message-reference.ts'
 import { loggedEntry } from './history.ts'
-import { chatRecordId } from './chat-records.ts'
+import { chatRecordId, effectiveChatEvents } from './chat-records.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -671,7 +671,7 @@ export function readThread(
       || event.seq === replySeq && index < replyPart!)
   }
 
-  for (const e of repliedEvents({ hydraId })) {
+  for (const e of effectiveChatEvents({ events: repliedEvents({ hydraId }) })) {
     if (e.seq === replySeq) {
       excludedAt.push(e.at)
     }

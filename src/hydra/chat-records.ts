@@ -1,5 +1,6 @@
 import { readLog } from '#app/event-log.ts'
 import { noteId } from '#tasks/notes.ts'
+import type { HydraEvent } from '#app/model.ts'
 import type { ChatEvent } from './model.ts'
 
 export function chatRecordId({
@@ -21,12 +22,30 @@ export function chatRecordId({
   })
 }
 
+function rememberChat({
+  event,
+  events,
+}: {
+  event: ChatEvent
+  events: Map<string, ChatEvent>
+}) {
+  const identity = chatRecordId(event.data)
+  const known = events.get(identity)
+
+  if (!known || event.data.replaces === known.id) {
+    events.set(
+      identity,
+      event,
+    )
+  }
+}
+
 const recorded = new Map<string, {
   end: number
-  ids: Set<string>
+  events: Map<string, ChatEvent>
 }>()
 
-export function recordedChatIds({ dir }: { dir: string }): ReadonlySet<string> {
+export function recordedChats({ dir }: { dir: string }): ReadonlyMap<string, ChatEvent> {
   let previous = recorded.get(dir)
   let tail = readLog({
     dir,
@@ -39,11 +58,14 @@ export function recordedChatIds({ dir }: { dir: string }): ReadonlySet<string> {
     tail = readLog({ dir })!
   }
 
-  const ids = previous?.ids ?? new Set<string>()
+  const events = previous?.events ?? new Map<string, ChatEvent>()
 
   for (const event of tail.events) {
     if (event.type === 'chat.message') {
-      ids.add(chatRecordId(event.data))
+      rememberChat({
+        event,
+        events,
+      })
     }
   }
 
@@ -51,9 +73,27 @@ export function recordedChatIds({ dir }: { dir: string }): ReadonlySet<string> {
     dir,
     {
       end: tail.end,
-      ids,
+      events,
     },
   )
 
-  return ids
+  return events
+}
+
+export function effectiveChatEvents({ events }: { events: HydraEvent[] }): HydraEvent[] {
+  const chosen = new Map<string, ChatEvent>()
+
+  for (const event of events) {
+    if (event.type !== 'chat.message') {
+      continue
+    }
+
+    rememberChat({
+      event,
+      events: chosen,
+    })
+  }
+
+  return events.filter(event => event.type !== 'chat.message'
+    || chosen.get(chatRecordId(event.data)) === event)
 }

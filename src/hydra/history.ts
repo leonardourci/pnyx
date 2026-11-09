@@ -7,6 +7,7 @@ import type { ChatEvent, HydraOperation } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
+import { effectiveChatEvents } from './chat-records.ts'
 import { messageReference } from './message-reference.ts'
 import { HISTORY_BUDGET } from './history-command.ts'
 
@@ -285,7 +286,7 @@ function historyMessages({ events }: { events: HydraEvent[] }): {
   const entries: ThreadEntry[] = []
   const sequences = new Map<string, number>()
 
-  for (const event of events) {
+  for (const event of effectiveChatEvents({ events })) {
     if (event.type === 'hydra.helper-finished') {
       for (const outcome of event.data.outcomes) {
         if (outcome.status === 'still_waiting') {
