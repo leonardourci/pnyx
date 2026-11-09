@@ -697,6 +697,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                     liveThread={hydraThread}
                     action={actions[HYDRA_CARD]}
                     taskActions={actions}
+                    selectedTask={selectedRef}
                     queue={hydraQueue}
                     command={command}
                     connected={connected}

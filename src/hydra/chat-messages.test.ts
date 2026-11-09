@@ -5,6 +5,7 @@ import { hydraMessages, leadingTask } from './chat-messages.ts'
 import { hydraDelivery } from './hydra.ts'
 import { taskMention } from './mentions.ts'
 import type { HydraMessage } from './model.ts'
+import { HYDRA_CARD } from './identity.ts'
 import { recordEntries, type ThreadEntry } from './transcripts-read.ts'
 
 const message = ({
@@ -736,6 +737,15 @@ test(
 test(
   'a message about a task opens with its chip unless its words already mention that task',
   () => {
+    assert.equal(
+      leadingTask({
+        entry: {
+          task: HYDRA_CARD,
+          text: 'Use the compact format.',
+        },
+      }),
+      undefined,
+    )
     const login = taskMention({
       id: 'task-login',
       title: 'Fix the login',

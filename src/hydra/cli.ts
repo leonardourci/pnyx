@@ -29,6 +29,7 @@ import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { harvestHydra, hydraHistory, hydraInscribe } from './history-cli.ts'
+import { hydraQuestion } from './questions-cli.ts'
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
   const {
@@ -372,6 +373,10 @@ function homeHydraId({ home }: { home: string }): string {
 }
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
+  if (args[0] === 'ask') {
+    return hydraQuestion({ args: args.slice(1) })
+  }
+
   if (args[0] === 'worker-notes') {
     return hydraCommand({
       args: [

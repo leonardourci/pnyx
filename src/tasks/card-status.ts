@@ -5,6 +5,7 @@ import { reportActor } from '#hydra/hydra.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
+import { readyForReview } from '#tasks/delivery/model.ts'
 
 const ACTIVITY_TEXT: Record<string, string> = {
   working: 'working',
@@ -44,8 +45,18 @@ const inFlight = ({ question }: { question: OwnerQuestion }) =>
   !!question.delivery && question.delivery.state in ANSWER_STATES
 
 // What the owner still has to answer, failed sends included; the status word and closed card share it.
-export const waitingQuestions = ({ card }: { card: Card }) =>
-  ownerQuestions({ card }).filter(question => !inFlight({ question }))
+export const waitingQuestions = ({
+  card,
+  cards,
+}: {
+  card: Card
+  cards?: Record<string, Card>
+}) =>
+  ownerQuestions({
+    card,
+    cards,
+  }).filter(question =>
+    !question.ask?.deferredUntil && !inFlight({ question }))
 
 // The status word's rule, newest information first; the page adds elapsed times to done and stopped.
 export function cardStatus({
@@ -63,8 +74,22 @@ export function cardStatus({
     }
   }
 
-  const waiting = waitingQuestions({ card })
+  const waiting = waitingQuestions({
+    card,
+    cards,
+  })
   const unsent = waiting.filter(question => question.delivery?.state === 'failed')
+  const reviewOnly = waiting.length > 0 && waiting.every(question => question.ask?.kind === 'merge')
+  const readyReviews = reviewOnly && waiting.every(question => card.links.some(link =>
+    link.url === question.ask?.url && readyForReview({ link })))
+
+  if (readyReviews && !card.reminder?.dueAt && !unsent.length) {
+    return {
+      kind: 'asks',
+      text: 'ready for review',
+      count: waiting.length > 1 ? waiting.length : undefined,
+    }
+  }
 
   if (waiting.length || card.reminder?.dueAt) {
     return {
@@ -74,7 +99,10 @@ export function cardStatus({
     }
   }
 
-  const states = ownerQuestions({ card }).map(question => question.delivery?.state)
+  const states = ownerQuestions({
+    card,
+    cards,
+  }).map(question => question.delivery?.state)
   // Delivery that may have failed says more than delivery still on its way.
   const sending = ([
     'delivery_unknown',

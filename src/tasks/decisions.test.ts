@@ -4,6 +4,7 @@ import { decisionsBlock } from './decisions.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Ask, Card } from './model.ts'
 import { taskMention } from '#hydra/mentions.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const now = Date.parse('2026-10-23T12:00:00.000Z')
 
@@ -127,6 +128,15 @@ test(
             }),
           ],
         }),
+        card({
+          id: HYDRA_CARD,
+          asks: [
+            ask({
+              id: 'ask-hydra',
+              at: '2026-10-23T11:59:40.000Z',
+            }),
+          ],
+        }),
       ],
     })
     const mention = ({ id }: { id: string }) => taskMention({
@@ -140,12 +150,13 @@ test(
         now,
       }),
       [
-        'Open decisions (6):',
+        'Open decisions (7):',
         `- ${mention({ id: 'old' })} owner question, 4 h old: ask-old "Question ask-old?"`,
         `- ${mention({ id: 'hours' })} owner question, 2 h old: ask-hours "Question ask-hours?"`,
         `- ${mention({ id: 'hour' })} owner question, 90 min old: ask-hour "Question ask-hour?"`,
         `- ${mention({ id: 'mid' })} worker question, 45 min old: ask-mid to you "Question ask-mid?"`,
         `- ${mention({ id: 'new' })} owner question, under 1 min old: ask-new "Question ask-new?"`,
+        "- Hydra-wide (card '$hydra') owner question, under 1 min old: ask-hydra \"Question ask-hydra?\"",
         `- ${mention({ id: 'prompt' })} blocking prompt: "Which database?"`,
       ].join('\n'),
     )

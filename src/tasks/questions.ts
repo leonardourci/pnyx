@@ -4,6 +4,7 @@ import { requestId } from '#workers/answers.ts'
 import { PERMISSION_PREFIX, pendingPermissions } from '#workers/permission-rules.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
 import { answerDelivery, askWording, openAsks } from './ask-state.ts'
+import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 
 export interface OwnerQuestion {
   text: string
@@ -22,7 +23,13 @@ export const waitingPrompt = ({ prompt }: { prompt: Attention }) =>
 const asked = ({ questions }: { questions?: { question: string }[] }) => questions?.map(q => q.question).join(' ')
 
 // Everything on the card waiting on the owner; the status word and the closed card's question box both read it.
-export function ownerQuestions({ card }: { card: Card }): OwnerQuestion[] {
+export function ownerQuestions({
+  card,
+  cards,
+}: {
+  card: Card
+  cards?: Record<string, Card>
+}): OwnerQuestion[] {
   const permissions = pendingPermissions({ card })
     .map((permission): OwnerQuestion => {
       const own = card.attention.find(prompt => prompt.key === `${PERMISSION_PREFIX}${permission.id}`)
@@ -44,14 +51,19 @@ export function ownerQuestions({ card }: { card: Card }): OwnerQuestion[] {
   const asks = openAsks({
     card,
     audience: 'owner',
-  }).map((ask): OwnerQuestion => ({
-    text: askWording({ ask }).question,
+  }).filter(ask => isCanonicalQuestion({
+    cards,
+    card,
     ask,
-    delivery: answerDelivery({
-      card,
-      question: ask.id,
-    }),
   }))
+    .map((ask): OwnerQuestion => ({
+      text: askWording({ ask }).question,
+      ask,
+      delivery: answerDelivery({
+        card,
+        question: ask.id,
+      }),
+    }))
 
   return [
     ...permissions,

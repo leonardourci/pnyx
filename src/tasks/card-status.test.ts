@@ -65,6 +65,69 @@ const reply = ({
   answers,
 })
 
+test(
+  'Later questions remain accessible on the card without active attention',
+  () => {
+    const deferred = {
+      ...task,
+      asks: [
+        ask({
+          id: 'later',
+          deferredUntil: later,
+        }),
+      ],
+    }
+    assert.deepEqual(
+      waitingQuestions({ card: deferred }),
+      [],
+    )
+    assert.equal(
+      word({ card: deferred }),
+      'Finished its turn',
+    )
+  },
+)
+
+test(
+  'a sole review request uses readiness instead of a question state',
+  () => {
+    const url = 'https://github.com/synthetic/review/pull/1'
+    const review = {
+      ...task,
+      links: [
+        {
+          kind: 'github_pr' as const,
+          url,
+          state: 'open' as const,
+          draft: false,
+        },
+      ],
+      asks: [
+        ask({
+          id: 'review',
+          kind: 'merge',
+          url,
+        }),
+      ],
+    }
+    assert.equal(
+      word({ card: review }),
+      'Ready for review',
+    )
+    review.links[0]!.draft = true
+    assert.equal(
+      word({ card: review }),
+      'Needs you',
+    )
+    review.links[0]!.draft = false
+    review.asks.push(ask({ id: 'real-question' }))
+    assert.equal(
+      word({ card: review }),
+      'Needs you · 2',
+    )
+  },
+)
+
 const declared = ({
   state,
   actor = 'worker:task-test',

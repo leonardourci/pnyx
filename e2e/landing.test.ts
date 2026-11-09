@@ -615,7 +615,7 @@ test(
     })
     assert.equal(
       held.question,
-      'Review and merge PR #148?',
+      'Ready for review: PR #148',
     )
     assert.ok(held.context)
     assert.ok(held.context.includes(heldUrl))

@@ -8,6 +8,7 @@ import { liveTask } from './select.ts'
 import { mergeApproved, quote } from '#hydra/wake-reasons.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
+import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 
 // The fixed words a decision line names its item with; the orchestrator skill lists them.
 type DecisionKind = 'owner question' | 'worker question' | 'permission' | 'blocking prompt' | 'approved merge'
@@ -48,27 +49,37 @@ function cardDecisions({
   state: HydraState
   card: Card
 }): OpenDecision[] {
-  const asks = activeAsks({ card }).map((ask): OpenDecision => {
-    const choice = ask.recommended ? ask.options?.[ask.recommended - 1]?.label : undefined
+  const asks = activeAsks({ card }).filter(ask => isCanonicalQuestion({
+    state,
+    card,
+    ask,
+  }))
+    .map((ask): OpenDecision => {
+      const choice = ask.recommended ? ask.options?.[ask.recommended - 1]?.label : undefined
 
-    const wording = askWording({ ask }).question
+      const wording = askWording({ ask }).question
 
-    return ask.audience === 'owner' ? {
-      kind: 'owner question',
-      id: ask.id,
-      text: wording,
-      card,
-      at: ask.escalated?.at ?? ask.at,
-      detail: `${ask.id} ${quote({ text: wording })}${choice ? ` (recommended: ${choice})` : ''}`,
-    } : {
-      kind: 'worker question',
-      id: ask.id,
-      text: ask.question,
-      card,
-      at: ask.at,
-      detail: `${ask.id} to you ${quote({ text: ask.question })}`,
-    }
-  })
+      return ask.audience === 'owner' ? {
+        kind: 'owner question',
+        id: ask.id,
+        text: wording,
+        card,
+        at: ask.escalated?.at ?? ask.at,
+        detail: `${ask.id} ${quote({ text: wording })}${choice ? ` (recommended: ${choice})` : ''}`,
+      } : {
+        kind: 'worker question',
+        id: ask.id,
+        text: ask.question,
+        card,
+        at: ask.at,
+        detail: `${ask.id} to you ${quote({ text: ask.question })}`,
+      }
+    })
+
+  if (card.id === HYDRA_CARD) {
+    return asks.filter(ask => ask.kind === 'owner question')
+  }
+
   const permissions = pendingPermissions({ card }).map((p): OpenDecision => {
     const questions = asked({ questions: p.questions })
 
@@ -122,11 +133,10 @@ function cardDecisions({
 // Owner questions remain owed even when an older client hid their task.
 export function openDecisions({ state }: { state: HydraState }): OpenDecision[] {
   const items = Object.values(state.cards)
-    .filter(card => card.id !== HYDRA_CARD
-      && (liveTask({ card }) || openAsks({
-        card,
-        audience: 'owner',
-      }).length > 0))
+    .filter(card => liveTask({ card }) || openAsks({
+      card,
+      audience: 'owner',
+    }).length > 0)
     .flatMap(card => cardDecisions({
       state,
       card,
@@ -199,10 +209,14 @@ export function decisionsBlock({
         now,
       })} old` : ''
 
-      return `- ${taskMention({
-        id: item.card.id,
-        title: item.card.title,
-      })} ${item.kind}${waited}: ${item.detail}`
+      const subject = item.card.id === HYDRA_CARD
+        ? `Hydra-wide (card '${HYDRA_CARD}')`
+        : taskMention({
+          id: item.card.id,
+          title: item.card.title,
+        })
+
+      return `- ${subject} ${item.kind}${waited}: ${item.detail}`
     }),
     ...omitted ? [`- ${omitted} more left out of this batch; \`hydra check\` lists them`] : [],
   ].join('\n')

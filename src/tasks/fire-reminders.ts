@@ -9,7 +9,8 @@ import { base } from '#app/command-meta.ts'
 import { readSettings } from '#settings/store.ts'
 import { dueQuestionReminders } from './question-reminders.ts'
 import { deferredQuestions } from './ask-state.ts'
-import { reminderDeadline, reminderMessage } from './reminders.ts'
+import { reminderDeadline, reminderMessage, reminderTaskMention } from './reminders.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 export function fireReminders({
   hydraId,
@@ -168,12 +169,14 @@ export function fireReminders({
       }
 
       for (const question of pendingQuestions) {
-        const card = writer.state.cards[question.task]
-        lines.push(reminderMessage({
-          card,
-          detail: `still needs your answer. ${question.detail}`,
-        }))
-        taskIds.add(card.id)
+        taskIds.add(question.task)
+      }
+
+      if (pendingQuestions.length) {
+        const tasks = [...new Set(pendingQuestions.map(question => question.task))]
+        const cards = tasks.map(id => id === HYDRA_CARD ? 'Hydra' : reminderTaskMention({ card: writer.state.cards[id] }))
+        const label = pendingQuestions.length === 1 ? 'question' : 'questions'
+        lines.push(`${pendingQuestions.length} ${label} waiting on you: ${cards.join(' · ')}`)
       }
 
       if (!lines.length) {

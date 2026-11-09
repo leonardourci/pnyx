@@ -28,9 +28,70 @@ import { dueQuestionReminders } from './question-reminders.ts'
 import { fireReminders } from './fire-reminders.ts'
 import { cardDoneDeadline } from './retention-rules.ts'
 import { reminderDeadline } from './reminders.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const hydraId = 'question-lab'
 const reason = 'Synthetic question regression'
+
+test(
+  'a Hydra-wide owner question stays in chat without creating a task card',
+  async t => {
+    const l = await lab({ t })
+    const asked = await commands.hydra([
+      'ask',
+      '--question',
+      'Which preference should apply across this Hydra?',
+      '--actor',
+      'hydra',
+      '--reason',
+      reason,
+      '--hydra',
+      hydraId,
+    ])
+    const id = String(asked.ask)
+    assert.equal(
+      l.state().cards[HYDRA_CARD]?.asks?.[0]?.id,
+      id,
+    )
+    assert.equal(
+      Object.values(l.state().cards).filter(card => card.id !== HYDRA_CARD).length,
+      0,
+    )
+    assert.equal(
+      openDecisions({ state: l.state() }).find(item => item.id === id)?.card.id,
+      HYDRA_CARD,
+    )
+    await l.task({
+      args: [
+        'answer',
+        HYDRA_CARD,
+        id,
+        '--text',
+        'Use the compact format.',
+      ],
+      actor: 'web',
+    })
+    assert.ok(l.state().cards[HYDRA_CARD]?.asks?.[0]?.answered)
+    assert.equal(
+      openDecisions({ state: l.state() }).some(item => item.id === id),
+      false,
+    )
+    await assert.rejects(
+      async () => commands.hydra([
+        'ask',
+        '--question',
+        'A worker bypass?',
+        '--actor',
+        'worker:example',
+        '--reason',
+        reason,
+        '--hydra',
+        hydraId,
+      ]),
+      /only Hydra/i,
+    )
+  },
+)
 
 test(
   'clarification reaches Hydra without answering or releasing an owner question',
@@ -2453,6 +2514,61 @@ async function heldMerge({ t }: { t: TestContext }) {
     held,
   }
 }
+
+test(
+  'the owner can lift Hold explicitly from the review controls without allowing agent or resend bypasses',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+      held,
+    } = await heldMerge({ t })
+    const args = [
+      'answer',
+      ref,
+      question,
+      '--choice',
+      'Merge',
+    ]
+    await assert.rejects(
+      l.task({ args }),
+      /owner's own answer/,
+    )
+    await assert.rejects(
+      l.task({
+        args,
+        actor: `worker:${ref}`,
+      }),
+      /agent cannot answer/,
+    )
+    await l.task({
+      args,
+      actor: 'web',
+    })
+    const approved = l.card({ ref }).asks?.[0]
+    assert.equal(
+      approved?.choice,
+      'Merge',
+    )
+    assert.equal(
+      approved?.mergeHold?.answered,
+      held.answered,
+    )
+    assert.ok(mergeApproval({
+      card: l.card({ ref }),
+      url: approved!.url!,
+    }))
+    const replayed = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId }),
+    }).cards[ref]?.asks
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(replayed)),
+      l.card({ ref }).asks,
+    )
+  },
+)
 
 test(
   'a held merge refuses older, equal, missing and non-owner sources without changing Hold',

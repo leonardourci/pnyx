@@ -18,7 +18,9 @@ import { cardState, TASK_DRAG } from './view.ts'
 import { currentState, waitingQuestions } from '#tasks/card-status.ts'
 import { ownerQuestions } from '#tasks/questions.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
-import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
+import { TaskQuestion } from './task-question.tsx'
+import { reviewRequests } from './review-requests.ts'
+import { ReviewSummary } from './review-readiness.tsx'
 import { harnessName } from '#web-workers/view.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
 
@@ -283,11 +285,22 @@ export function HydraCard({
     at: said.at,
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
-  const waiting = waitingQuestions({ card })
+  const waiting = waitingQuestions({
+    card,
+    cards: state?.cards,
+  })
   // A question whose answer is still on its way shows only when nothing else waits.
-  const question = waiting[0] ?? ownerQuestions({ card })[0]
+  const question = waiting[0] ?? ownerQuestions({
+    card,
+    cards: state?.cards,
+  })[0]
   const request = question?.permission
   const attention = question?.attention
+  const review = reviewRequests({
+    state,
+    card,
+  })[0]
+  const reviewSummary = review && (!question || question.ask?.kind === 'merge')
   const asked = question?.ask
   const canAnswer = attention && answerPrompt({
     card,
@@ -296,12 +309,26 @@ export function HydraCard({
   const delivery = question?.delivery
   const answerSaved = delivery && delivery.state !== 'delivered'
   let questionLabel = answerSaved ? 'Answer saved' : 'Question'
+  const deferred = !!asked?.deferredUntil
+
+  if (deferred) {
+    questionLabel = 'Later'
+  } else if (asked?.kind === 'merge') {
+    questionLabel = 'Review pending'
+  }
 
   if (waiting.length > 1) {
     questionLabel = `${waiting.length} questions`
   }
 
-  const answerLabel = answerSaved ? 'Review answer' : 'Answer'
+  let answerLabel = answerSaved ? 'Review answer' : 'Answer'
+
+  if (deferred) {
+    answerLabel = 'View question'
+  } else if (asked?.kind === 'merge') {
+    answerLabel = 'Review'
+  }
+
   const deliveryText = delivery?.state === 'failed'
     ? 'Delivery failed. Open the task to send the answer again.'
     : 'Waiting to reach the worker.'
@@ -527,14 +554,13 @@ export function HydraCard({
                   state={!!factual}
                 />
               )}
-              {hasTaskQuestion({ card }) && (
-                <TaskQuestion
-                  card={card}
-                  command={command}
-                  notify={notify}
-                  answer={answer}
-                />
-              )}
+              <TaskQuestion
+                card={card}
+                state={state}
+                command={command}
+                notify={notify}
+                answer={answer}
+              />
               {card.intent && (
                 <section className="card-section card-intent" aria-label="Intent">
                   <h3 className="eyebrow">Intent</h3>
@@ -603,7 +629,7 @@ export function HydraCard({
         {!selected && card.copy?.state === 'flagged' && (
           <Tooltip content={card.copy.reason}><span className="copy-warning" tabIndex={0}>copy not cleaned</span></Tooltip>
         )}
-        {!selected && question && (
+        {!selected && question && !reviewSummary && (
           <div className="card-question" aria-label="Task question">
             <strong className="eyebrow">{questionLabel}</strong>
             <CollapsibleText text={question.text} />
@@ -624,6 +650,14 @@ export function HydraCard({
             >{answerLabel}
             </Button>
           </div>
+        )}
+        {!selected && reviewSummary && (
+          <ReviewSummary
+            request={review}
+            open={() => {
+              open({ id: card.id })
+            }}
+          />
         )}
         {(!selected || reminding) && (
           <div className="card-rest">

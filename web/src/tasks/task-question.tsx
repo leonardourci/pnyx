@@ -4,26 +4,40 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
 import { AskPanel } from './ask.tsx'
-import { ownerQuestions } from '#tasks/questions.ts'
 import type { Command } from '#web-app/connection.ts'
 import { genericPrompts } from './view.ts'
-
-export const hasTaskQuestion = ({ card }: { card: Card }) => ownerQuestions({ card }).length > 0
+import { AnsweredQuestions, recordedAnswers } from './answered-questions.tsx'
+import type { HydraState } from '#app/model.ts'
+import { taskQuestions } from './task-question.ts'
+import { ReviewReadiness } from './review-readiness.tsx'
 
 export function TaskQuestion({
   card,
+  state,
   command,
   notify,
   answer,
 }: {
   card: Card
+  state?: HydraState
   command: Command
   notify({ text }: { text: string }): void
   answer({ card }: { card: Card }): void
 }) {
   const permissions = card.permissions?.filter(request => request.status === 'pending') ?? []
-  const asks = ownerQuestions({ card }).flatMap(question => question.ask ? [question.ask] : [])
+  const {
+    questions,
+    reviews,
+    asks,
+  } = taskQuestions({
+    state,
+    card,
+  })
   const prompts = genericPrompts({ card })
+
+  if (!questions.length && !recordedAnswers({ card }).length && !reviews.length) {
+    return null
+  }
 
   return (
     <div className="task-requests">
@@ -42,6 +56,14 @@ export function TaskQuestion({
         notify={notify}
         pendingOnly
       />
+      {reviews.map(request => (
+        <ReviewReadiness
+          key={request.ask.id}
+          request={request}
+          command={command}
+          notify={notify}
+        />
+      ))}
       {asks.map(ask => (
         <AskPanel
           key={ask.id}
@@ -51,6 +73,7 @@ export function TaskQuestion({
           notify={notify}
         />
       ))}
+      <AnsweredQuestions card={card} command={command} notify={notify} />
       {prompts.map(question => (
         <div key={question.attention!.key} className="pending-decision">
           <CollapsibleText text={question.text} />
