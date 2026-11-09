@@ -24,6 +24,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { runForRequest } from '#app/api-run.ts'
 import { decidePush } from '#tasks/push.ts'
+import { applyDecision } from '#app/decision.ts'
 import { harvestTranscripts } from './harvest.ts'
 
 const ROOT = join(
@@ -1160,5 +1161,63 @@ test(
       repeatCard().settings?.effort,
       'low',
     )
+  },
+)
+
+test(
+  'a session Pnyx hosts keeps the turn state its host recorded, whatever its own hooks report',
+  () => {
+    process.env.PNYX_HOME = sandbox().home
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: decidePush({
+          state: writer.state,
+          key: `claude:${REPEAT_SESSION}`,
+          input: {
+            activity: 'working',
+            agent: {
+              provider: 'claude-code',
+              sessionId: REPEAT_SESSION,
+              host: 'pnyx',
+            },
+            source: {
+              adapter: 'pnyx',
+              objectId: REPEAT_SESSION,
+              observedAt: '2026-10-29T11:59:59.000Z',
+            },
+          },
+          meta: {
+            at: '2026-10-29T11:59:59.000Z',
+            actor: 'pnyx',
+          },
+        }),
+      }),
+    })
+
+    for (const [
+      second,
+      event,
+    ] of [
+        [
+          0,
+          'SessionStart',
+        ],
+        [
+          5,
+          'SubagentStop',
+        ],
+      ] as const) {
+      hookAt({
+        second,
+        event,
+      })
+      assert.equal(
+        repeatCard().sessionActivity,
+        'working',
+        event,
+      )
+    }
   },
 )
