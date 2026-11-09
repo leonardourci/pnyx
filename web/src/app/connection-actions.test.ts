@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 import { emptyHydra, reduce } from '#app/reducer.ts'
+import type { HydraEvent } from '#app/model.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { createHydraConnection } from './connection-store.ts'
 
@@ -48,6 +49,218 @@ class BrowserSocket {
     })
   }
 }
+
+test(
+  'Later updates shared attention immediately and keeps one return date through reprojection and confirmation',
+  async t => {
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2099-10-16T11:00:00Z'),
+    })
+    const { connection } = browserFixture({ t })
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    const created: HydraEvent = {
+      v: 1,
+      seq: 1,
+      id: 'created',
+      at: '2099-10-16T11:00:00Z',
+      actor: 'web',
+      cardId: 'task',
+      type: 'task.created',
+      data: {
+        key: 'task',
+        title: 'Choose the schema',
+      },
+    }
+    const asked: HydraEvent = {
+      v: 1,
+      seq: 2,
+      id: 'asked',
+      at: '2099-10-16T11:00:00Z',
+      actor: 'hydra',
+      cardId: 'task',
+      type: 'task.asked',
+      data: {
+        id: 'question',
+        audience: 'owner',
+        question: 'Which schema?',
+      },
+    }
+    const state = reduce({
+      state: reduce({
+        state: emptyHydra(),
+        event: created,
+      }),
+      event: asked,
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: state.seq,
+        state,
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'latest',
+        messages: {},
+        actions: {},
+      },
+    })
+    const result = connection.commandFor({ id: 'default' })({
+      name: 'task',
+      args: [
+        'defer-question',
+        'task',
+        'question',
+        '--until',
+        'in 2 hours',
+        '--event-id',
+        'later-attempt',
+      ],
+    }).catch(error => error)
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      '2099-10-16T13:00:00.000Z',
+    )
+    const request = socket.sent.find(message => message.name === 'task')!
+    assert.equal(
+      request.args?.[4],
+      '2099-10-16T13:00:00.000Z',
+    )
+    t.mock.timers.tick(3 * 60 * 60_000)
+    socket.receive({
+      message: {
+        type: 'event',
+        event: {
+          ...created,
+          seq: 3,
+          id: 'other-task',
+          cardId: 'other',
+          data: {
+            key: 'other',
+            title: 'Other work',
+          },
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      '2099-10-16T13:00:00.000Z',
+    )
+    socket.receive({
+      message: {
+        type: 'event',
+        event: {
+          v: 1,
+          seq: 4,
+          id: 'later-attempt',
+          at: '2099-10-16T11:00:00Z',
+          actor: 'web',
+          cardId: 'task',
+          type: 'task.ask.deferred',
+          data: {
+            ask: 'question',
+            until: '2099-10-16T13:00:00.000Z',
+          },
+        },
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: request.id,
+      },
+    })
+    const outcome = await result
+    assert.ok(!(outcome instanceof Error))
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      '2099-10-16T13:00:00.000Z',
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.answered,
+      undefined,
+    )
+    const clear = connection.commandFor({ id: 'default' })({
+      name: 'task',
+      args: [
+        'defer-question',
+        'task',
+        'question',
+        '--until',
+        'clear',
+        '--event-id',
+        'clear-attempt',
+      ],
+    }).catch(error => error)
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      undefined,
+    )
+    const clearRequest = socket.sent.find(message => message.args?.includes('clear-attempt'))!
+    socket.receive({
+      message: {
+        type: 'event',
+        event: {
+          ...created,
+          seq: 5,
+          id: 'another-task',
+          cardId: 'another',
+          data: {
+            key: 'another',
+            title: 'Another update',
+          },
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      undefined,
+    )
+    socket.receive({
+      message: {
+        type: 'event',
+        event: {
+          v: 1,
+          seq: 6,
+          id: 'clear-attempt',
+          at: '2099-10-16T14:00:00Z',
+          actor: 'web',
+          cardId: 'task',
+          type: 'task.ask.deferred',
+          data: {
+            ask: 'question',
+            until: null,
+          },
+        },
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: clearRequest.id,
+      },
+    })
+    assert.ok(!((await clear) instanceof Error))
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      undefined,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.answered,
+      undefined,
+    )
+  },
+)
 
 function browserFixture({
   t,

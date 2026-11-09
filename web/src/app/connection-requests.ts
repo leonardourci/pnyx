@@ -6,7 +6,7 @@ import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import { reminderTime } from '#tasks/time.ts'
 import { saveEventId, savedReceipt } from '#app/save-receipts.ts'
 import { commandTimeout, retryable } from './connection-protocol.ts'
-import { currentRevision, optimisticState } from '#web-tasks/optimistic.ts'
+import { argument, currentRevision, optimisticState } from '#web-tasks/optimistic.ts'
 import { commandArguments, editTargets } from './pending-state.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Scope, Request, HydraListResource } from './connection-model.ts'
@@ -166,6 +166,35 @@ export function createConnectionRequests({
           when: args[2] ?? '',
           now: new Date().toISOString(),
         })
+      }
+
+      if (name === 'task' && args[0] === 'defer-question') {
+        const until = argument({
+          args,
+          flag: '--until',
+        })
+
+        if (until !== undefined && until !== 'clear') {
+          const normalized = reminderTime({
+            when: until,
+            now: new Date().toISOString(),
+          })
+          const original = args
+          args = original.map((
+            value,
+            index,
+          ) => {
+            if (original[index - 1] === '--until') {
+              return normalized
+            }
+
+            if (value.startsWith('--until=')) {
+              return `--until=${normalized}`
+            }
+
+            return value
+          })
+        }
       }
 
       const id = savedId ?? crypto.randomUUID()
