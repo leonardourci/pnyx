@@ -1832,12 +1832,10 @@ function scriptTools({ script }: { script: string }) {
 
     return {
       tool: match[1]!,
-      input: Object.fromEntries(Object.entries({
+      input: {
         cmd,
         path,
-      }).filter(([
-        , value,
-      ]) => value !== undefined)),
+      },
     }
   })
 }
@@ -1861,13 +1859,21 @@ function scriptCalls({
 
 // A script that makes one call reads as that call, so its progress row names what it ran.
 function scriptedTrace({ payload }: { payload: Record<string, unknown> }) {
-  const scripted = payload.type === 'custom_tool_call' && payload.name === CODE_MODE_TOOL
-    && typeof payload.input === 'string' ? scriptTools({ script: payload.input }) : []
+  const codeMode = payload.type === 'custom_tool_call' && payload.name === CODE_MODE_TOOL
+  const script = codeMode && typeof payload.input === 'string' ? payload.input : undefined
+  const [
+    only,
+    ...more
+  ] = script === undefined ? [] : scriptTools({ script })
 
-  return scripted.length === 1 ? {
-    name: scripted[0]!.tool,
-    detail: scripted[0]!.input,
-  } : {
+  if (only && more.length === 0) {
+    return {
+      name: only.tool,
+      detail: only.input,
+    }
+  }
+
+  return {
     name: payload.name,
     detail: payload.summary ?? payload.content ?? payload.output
       ?? payload.arguments ?? payload.input,
