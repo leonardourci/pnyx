@@ -57,7 +57,6 @@ const EMPTY_CHAT_QUEUE: HydraChatQueue = {
   compactionRunning: false,
   upgradeRunning: false,
   compactInputs: [],
-  hosted: false,
   working: false,
   through: 0,
 }

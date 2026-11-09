@@ -108,7 +108,6 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
   return {
     ...view,
     held: [...view.held],
-    hosted,
     working,
     through: state.seq,
   }
