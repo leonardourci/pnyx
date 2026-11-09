@@ -6,6 +6,8 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { runFixture } from '#test-harness/child-fixture.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import { assertConversation } from '#test-harness/conversation.ts'
 
 const HELD = 'Held while compacting'
 
@@ -129,6 +131,19 @@ async function compact({
 
       return chat?.holding === false && chat.held.length === 0
     },
+  })
+
+  await until({
+    what: 'the recap turn to finish',
+    check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+  })
+  const final = (await page.command({
+    name: 'thread',
+    args: [HYDRA_CARD],
+  })).thread as ThreadPage
+  assertConversation({
+    state: s.state(),
+    page: final,
   })
 
   return s.state().cards[HYDRA_CARD]!.compaction!.operations
