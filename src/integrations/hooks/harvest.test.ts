@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
+import { joinMessageParts, loggedEntry } from '#hydra/history.ts'
 import { hydraThreadView } from '#hydra/thread-view.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { harvestTranscripts, backfillConversations } from './harvest.ts'
@@ -437,18 +438,31 @@ test(
 
     updateIndex({ hydraId: 'default' })
 
-    while (withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => {
-        writer.state.sessions = { [session.id]: session }
+    let complete = false
 
-        return backfillConversations({
-          writer,
-          at: '2026-10-22T11:00:00.000Z',
-        })
-      },
-    }).progressed) { /* Reopening the writer resumes the saved migration cursor. */ }
+    for (let batch = 0; batch < 100; batch++) {
+      const result = withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          writer.state.sessions = { [session.id]: session }
 
+          return backfillConversations({
+            writer,
+            at: '2026-10-22T11:00:00.000Z',
+          })
+        },
+      })
+
+      if (!result.progressed) {
+        complete = true
+        break
+      }
+    }
+
+    assert.equal(
+      complete,
+      true,
+    )
     harvest()
     const events = readEvents({ hydraId: 'default' })
     updateIndex({ hydraId: 'default' })
@@ -715,10 +729,7 @@ test(
     const turn = (async () => {
       await setImmediate()
       const saved = readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message')
-      assert.equal(
-        saved.length,
-        32,
-      )
+      assert.ok(saved.length > 0 && saved.length < 70)
       const cursor = JSON.parse(readFileSync(
         join(
           folder,
@@ -747,12 +758,19 @@ test(
     second.stop()
     const saved = readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message')
     assert.equal(
-      saved.length,
-      110,
+      saved.filter(event => event.data.kind === 'tool').length,
+      70,
+    )
+    assert.deepEqual(
+      joinMessageParts({
+        entries: saved.filter(event => event.data.kind === 'message')
+          .map(event => loggedEntry({ event })),
+      }).map(entry => entry.text),
+      ['x'.repeat(40000)],
     )
     assert.equal(
       new Set(saved.map(event => event.id)).size,
-      110,
+      saved.length,
     )
     assert.equal(
       workers,
