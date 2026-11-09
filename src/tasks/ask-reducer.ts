@@ -130,7 +130,7 @@ export function applyAsk({
     }
   } else if (event.type === 'task.ask.deferred' && card.asks) {
     card.asks = card.asks.map(ask => {
-      if (ask.id !== event.data.ask || ask.answered || ask.closed) {
+      if (ask.id !== event.data.ask || ask.audience !== 'owner' || ask.answered || ask.closed) {
         return ask
       }
 
@@ -166,6 +166,11 @@ export function applyAsk({
       }
 
       const reopened = { ...a }
+
+      if (reopened.deferredUntil && Date.parse(reopened.deferredUntil) <= Date.parse(event.at)) {
+        delete reopened.deferredUntil
+        delete reopened.deferredFromMessage
+      }
 
       if (event.data.reask) {
         reopened.mergeHold = {

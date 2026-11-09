@@ -1,12 +1,171 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyHydra } from '#app/reducer.ts'
+import { emptyHydra, reduce } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { Ask, Card } from './model.ts'
 import { reconcileAsks, mergeApproval } from '#tasks/delivery/merge-questions.ts'
+import { activeAsks } from './ask-state.ts'
 
 const at = '2026-11-01T12:00:00.000Z'
 const url = 'https://github.com/example/project/pull/12'
+
+test(
+  'replaying a deferral leaves a worker question active',
+  () => {
+    const {
+      state,
+      card,
+      ask,
+    } = lab()
+    ask.audience = 'hydra'
+    const deferred = reduce({
+      state,
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'invalid-worker-deferral',
+        at,
+        actor: 'pnyx',
+        cardId: card.id,
+        type: 'task.ask.deferred',
+        data: {
+          ask: ask.id,
+          until: '2099-11-10T12:00:00.000Z',
+        },
+      },
+    })
+    assert.equal(
+      deferred.cards[card.id]?.asks?.[0]?.deferredUntil,
+      undefined,
+    )
+    assert.equal(
+      activeAsks({ card: deferred.cards[card.id]! })[0]?.id,
+      'ask-decision',
+    )
+  },
+)
+
+test(
+  'Undo preserves a future Later date and clears an expired deferral immediately',
+  () => {
+    const {
+      state,
+      card,
+      ask,
+    } = lab()
+    const deferred = reduce({
+      state,
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'defer',
+        at,
+        actor: 'web',
+        cardId: card.id,
+        type: 'task.ask.deferred',
+        data: {
+          ask: ask.id,
+          until: '2026-11-02T12:00:00.000Z',
+          fromMessage: {
+            id: 'owner-later',
+            text: 'Later until November 2 at noon UTC.',
+            at,
+          },
+        },
+      },
+    })
+    const answered = reduce({
+      state: deferred,
+      event: {
+        v: 1,
+        seq: 2,
+        id: 'first-answer',
+        at: '2026-11-01T12:01:00.000Z',
+        actor: 'web',
+        cardId: card.id,
+        type: 'hydra.message',
+        data: {
+          task: card.id,
+          hydra: 'lab',
+          action: 'send',
+          text: 'Use the compact format.',
+          answers: ask.id,
+        },
+      },
+    })
+    const undone = reduce({
+      state: answered,
+      event: {
+        v: 1,
+        seq: 3,
+        id: 'first-undo',
+        at: '2026-11-01T12:02:00.000Z',
+        actor: 'web',
+        cardId: card.id,
+        type: 'task.ask.reopened',
+        data: {
+          ask: ask.id,
+          answer: 'first-answer',
+        },
+      },
+    })
+    assert.equal(
+      undone.cards[card.id]?.asks?.[0]?.deferredUntil,
+      '2026-11-02T12:00:00.000Z',
+    )
+    assert.deepEqual(
+      activeAsks({ card: undone.cards[card.id]! }),
+      [],
+    )
+    const answeredAgain = reduce({
+      state: undone,
+      event: {
+        v: 1,
+        seq: 4,
+        id: 'second-answer',
+        at: '2026-11-03T12:01:00.000Z',
+        actor: 'web',
+        cardId: card.id,
+        type: 'hydra.message',
+        data: {
+          task: card.id,
+          hydra: 'lab',
+          action: 'send',
+          text: 'Use the expanded format.',
+          answers: ask.id,
+        },
+      },
+    })
+    const reopened = reduce({
+      state: answeredAgain,
+      event: {
+        v: 1,
+        seq: 5,
+        id: 'second-undo',
+        at: '2026-11-03T12:02:00.000Z',
+        actor: 'web',
+        cardId: card.id,
+        type: 'task.ask.reopened',
+        data: {
+          ask: ask.id,
+          answer: 'second-answer',
+        },
+      },
+    })
+    assert.equal(
+      reopened.cards[card.id]?.asks?.[0]?.deferredUntil,
+      undefined,
+    )
+    assert.equal(
+      reopened.cards[card.id]?.asks?.[0]?.deferredFromMessage,
+      undefined,
+    )
+    assert.equal(
+      activeAsks({ card: reopened.cards[card.id]! })[0]?.id,
+      'ask-decision',
+    )
+  },
+)
 
 type Change = {
   [Kind in HydraEvent['type']]: Pick<Extract<HydraEvent, { type: Kind }>, 'type' | 'data'>
