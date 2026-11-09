@@ -8,7 +8,7 @@ import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { PickerField, useModels, type CellMark } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
-import { AccountModelPicker, accountName, type Selection } from './account-model-picker.tsx'
+import { AccountModelPicker, type Selection } from './account-model-picker.tsx'
 import { AgentSettingsMenu, useFolded, type FastSetting, type SettingChoice } from './agent-settings-menu.tsx'
 import { hydraDefault, resolvedAccount, useHeadsDispatch } from './heads-dispatch.ts'
 
@@ -193,10 +193,6 @@ export function AgentPickers({
     defaultAgent,
     saveDefault: defaultAction === 'none' ? undefined : saveDefault,
   }
-  const shownAccount = effective ? accountName({
-    account,
-    effective,
-  }) : 'No account'
   const choices: SettingChoice[] = ([
     'effort',
     'mode',
@@ -330,7 +326,6 @@ export function AgentPickers({
           label={label}
           selection={selection}
           modelLabel={modelLabel}
-          accountName={shownAccount}
           choices={choices}
           fast={fast}
           disabled={locked}

@@ -4,6 +4,7 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { MenuOption } from '#web-shared/ui/menu-option.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import {
+  accountName,
   MENU_MARK_ICON,
   MENU_ROW_ICON,
   MenuHead,
@@ -73,7 +74,9 @@ export function useFolded({
       }
 
       const leave = (event: FocusEvent) => {
-        if (!roomElement.contains(event.relatedTarget as Node | null)) {
+        const target = event.relatedTarget
+
+        if (!(target instanceof Node) || !roomElement.contains(target)) {
           fit()
         }
       }
@@ -113,7 +116,7 @@ const listKeys = ({
   back?(): void
 }) => {
   const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.account-model-choose:not(:disabled)')]
-  const at = rows.indexOf(document.activeElement as HTMLButtonElement)
+  const at = rows.findIndex(row => row === document.activeElement)
 
   if (event.key === 'Backspace' && back) {
     event.preventDefault()
@@ -268,7 +271,6 @@ function SettingsMenu({
   provider,
   selection,
   modelLabel,
-  accountName,
   choices,
   fast,
   close,
@@ -276,7 +278,6 @@ function SettingsMenu({
   provider: Provider
   selection: Selection
   modelLabel: string
-  accountName: string
   choices: SettingChoice[]
   fast?: FastSetting
   close(): void
@@ -318,7 +319,10 @@ function SettingsMenu({
       <SettingsMenuRow
         icon={provider.icon}
         name="Model"
-        value={`${modelLabel} · ${accountName}`}
+        value={`${modelLabel} · ${accountName({
+          account: selection.account,
+          effective: selection.effective,
+        })}`}
         drills
         current={left === 'model'}
         disabled={!selection.connected}
@@ -355,7 +359,6 @@ export function AgentSettingsMenu({
   label,
   selection,
   modelLabel,
-  accountName,
   choices,
   fast,
   disabled,
@@ -364,7 +367,6 @@ export function AgentSettingsMenu({
   label: string
   selection: Selection
   modelLabel: string
-  accountName: string
   choices: SettingChoice[]
   fast?: FastSetting
   disabled: boolean
@@ -405,7 +407,6 @@ export function AgentSettingsMenu({
           provider={provider}
           selection={selection}
           modelLabel={modelLabel}
-          accountName={accountName}
           choices={choices}
           fast={fast}
           close={close}
