@@ -10,6 +10,7 @@ import { loadHydra } from '#app/store.ts'
 import { project } from '#projects/cli.ts'
 import { withWriter } from '#app/writer.ts'
 import { appendNote } from '#integrations/hooks/harvest.ts'
+import { offerHost } from '#app/server-state.ts'
 
 const INHERITED = [
   'PNYX_HOME',
@@ -858,6 +859,207 @@ test(
         key: 'ship',
       })?.id,
       ship.id,
+    )
+  },
+)
+
+test(
+  'undo after the task moved on names the Hydra that holds it now',
+  async t => {
+    const { app } = await setup({ t })
+    await commands.hydra([
+      'create',
+      'far',
+    ])
+
+    for (const hydraId of [
+      'dst',
+      'far',
+    ]) {
+      await attach({
+        path: app,
+        hydraId,
+      })
+    }
+
+    const ship = await create({
+      key: 'ship',
+      flags: [
+        '--project',
+        app,
+      ],
+    })
+    const first = await task({ args: move({ id: ship.id }) })
+
+    const hint = async ({ hydraId }: { hydraId: string }) => {
+      try {
+        await commands.undo([
+          String(first.event),
+          '--hydra',
+          hydraId,
+        ])
+      } catch (error) {
+        return (error as Error).message
+      }
+
+      assert.fail('undo of a move succeeded')
+    }
+
+    const hops = async ({ path }: { path: string[][] }) => {
+      for (const [
+        from,
+        to,
+      ] of path) {
+        await task({
+          args: move({
+            id: ship.id,
+            from: from!,
+            to: to!,
+          }),
+        })
+      }
+    }
+
+    const fix = `pnyx-axi task move ${ship.id} --to-hydra src --hydra far`
+
+    // src -> dst -> far: src last sent it to dst, but far holds it.
+    await hops({
+      path: [
+        [
+          'dst',
+          'far',
+        ],
+      ],
+    })
+    assert.ok((await hint({ hydraId: 'src' })).includes(fix))
+
+    // src -> dst -> src -> far: dst last sent it back to src, which sent it on to far.
+    await hops({
+      path: [
+        [
+          'far',
+          'dst',
+        ],
+        [
+          'dst',
+          'src',
+        ],
+        [
+          'src',
+          'far',
+        ],
+      ],
+    })
+    assert.ok((await hint({ hydraId: 'dst' })).includes(fix))
+  },
+)
+
+test(
+  'finishing an interrupted move releases the source worker first and waits while it is busy',
+  async t => {
+    const {
+      dir,
+      app,
+    } = await setup({ t })
+    await attach({
+      path: app,
+      hydraId: 'dst',
+    })
+    const ship = await create({
+      key: 'ship',
+      flags: [
+        '--project',
+        app,
+      ],
+    })
+    const file = join(
+      dir,
+      'hosted.json',
+    )
+    writeFileSync(
+      file,
+      JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'hosted-session',
+          host: 'pnyx',
+        },
+        activity: 'finished',
+      }),
+    )
+    await commands.push([
+      '--key',
+      'ship',
+      '--file',
+      file,
+      '--hydra',
+      'src',
+    ])
+    // A stand-in for the server's host of Hydra src, which answers each release as the test says.
+    const released: string[] = []
+    let answer: Record<string, unknown> = { released: 1 }
+    const withdraw = offerHost({
+      hydraId: 'src',
+      ask: async ({ body }) => {
+        released.push(String(body.task))
+
+        return answer
+      },
+    })
+    t.after(withdraw)
+
+    const moved = await task({ args: move({ id: ship.id }) })
+    const log = join(
+      hydraDir({ hydraId: 'src' }),
+      'events.jsonl',
+    )
+    const lines = readFileSync(
+      log,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+    writeFileSync(
+      log,
+      `${lines.slice(
+        0,
+        -1,
+      ).join('\n')}\n`,
+    )
+    rmSync(join(
+      hydraDir({ hydraId: 'src' }),
+      'snapshot.json',
+    ))
+    released.length = 0
+
+    answer = { busy: 'mid-turn' }
+    assert.match(
+      (await refusal({ args: move({ id: ship.id }) })).message,
+      /worker is mid-turn/,
+    )
+    assert.ok(card({
+      hydraId: 'src',
+      key: 'ship',
+    }))
+
+    answer = { released: 1 }
+    const finished = await task({ args: move({ id: ship.id }) })
+    assert.deepEqual(
+      released,
+      [
+        ship.id,
+        ship.id,
+      ],
+    )
+    assert.equal(
+      finished.event,
+      moved.event,
+    )
+    assert.equal(
+      card({
+        hydraId: 'src',
+        key: 'ship',
+      }),
+      undefined,
     )
   },
 )
