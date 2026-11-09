@@ -360,5 +360,27 @@ test(
       transcriptMessages({ record: codex({ text: context }) }),
       [],
     )
+    const wake = `${context}\n<pnyx-wake>Check pending work.</pnyx-wake>\nMemory changed; load owner memory.`
+    assert.deepEqual(
+      transcriptMessages({ record: claude({ text: wake }) }),
+      [],
+    )
+    assert.deepEqual(
+      transcriptMessages({ record: codex({ text: wake }) }),
+      [],
+    )
+    assert.deepEqual(
+      transcriptMessages({
+        record: codex({ text: wake }),
+        includeInternal: true,
+      }),
+      [
+        {
+          text: '',
+          at,
+          internal: true,
+        },
+      ],
+    )
   },
 )

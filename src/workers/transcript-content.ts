@@ -1,6 +1,6 @@
 import { commandOf } from './tool-input.ts'
 import { object } from './transcript-usage.ts'
-import { withoutInjected } from '#oracle/text.ts'
+import { withoutInjected, wakeInput } from '#oracle/text.ts'
 import type { FoundSettings, TranscriptMessage, TranscriptCall, TranscriptTrace } from './provider.ts'
 
 const TEXT_BLOCKS = [
@@ -77,9 +77,6 @@ export function onOff({ fast }: { fast: boolean | undefined }) {
 
   return fast ? 'on' : 'off'
 }
-
-// Pnyx's own wake turns are not anyone's words.
-const wakeInput = ({ text }: { text: string }) => /^\s*<pnyx-wake>[\s\S]*<\/pnyx-wake>/.test(text)
 
 export function transcriptText({
   texts,
