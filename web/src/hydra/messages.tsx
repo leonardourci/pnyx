@@ -43,7 +43,7 @@ import {
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
-import { Trace,roleLabel } from './trace-row.tsx'
+import { roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
 const PILL_GAP = 6
@@ -102,6 +102,7 @@ export function Messages({
   assistantLabel,
   notify,
   folds,
+  trailing,
   inline,
   timings,
   catalog,
@@ -120,6 +121,8 @@ export function Messages({
   labelColors?: SavedLabelColor[]
   timings: Map<string, TurnTiming>
   folds?: Map<string, TurnActions>
+  // Progress shown after an entry: the rest of its turn so far, or a turn that ended without a reply.
+  trailing?: Map<string, ThreadEntry[]>
   inline?: Map<string, React.ReactNode>
   notify({ text }: { text: string }): void
   openTask?({ id }: { id: string }): void
@@ -730,6 +733,7 @@ export function Messages({
                   tasks: [],
                   notes: folds.get(entry.id)!.notes,
                 }}
+                lookup={lookup}
                 toolDetails={toolDetails}
                 thinkingDetails={thinkingDetails}
               />
@@ -831,9 +835,7 @@ export function Messages({
                     )
                   }}
                 />
-              ) : (
-                <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
-              ))}
+              ) : null)}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([
@@ -878,12 +880,24 @@ export function Messages({
                 />
               </div>
             )}
+            {trailing?.get(entry.id)?.length ? (
+              <TurnActionsFold
+                fold={{
+                  tasks: [],
+                  notes: trailing.get(entry.id)!,
+                }}
+                lookup={lookup}
+                toolDetails={toolDetails}
+                thinkingDetails={thinkingDetails}
+              />
+            ) : null}
             {folds?.get(entry.id)?.tasks.length ? (
               <TurnActionsFold
                 fold={{
                   tasks: folds.get(entry.id)!.tasks,
                   notes: [],
                 }}
+                lookup={lookup}
               />
             ) : null}
             {timings.has(entry.id) && (

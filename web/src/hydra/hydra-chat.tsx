@@ -293,6 +293,7 @@ export function HydraChat({
     entries: conversation?.entries ?? [],
     folds: new Map(Object.entries(conversation?.folds ?? {})),
     timings: new Map(Object.entries(conversation?.timings ?? {})),
+    trailing: new Map(Object.entries(conversation?.trailing ?? {})),
   }
   const decisions = chatDecisions({
     state,
@@ -726,6 +727,7 @@ export function HydraChat({
               catalog={catalog}
               labelColors={state.labelColors}
               folds={chat.folds}
+              trailing={chat.trailing}
               timings={chat.timings}
               inline={inline}
               entries={entries}
