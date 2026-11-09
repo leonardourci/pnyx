@@ -130,8 +130,8 @@ export function traces({
   card: string
 }) {
   const overrides = view.cardTraceOverrides[card]
-  const tools = !view.focusMode
-  const thinking = !view.focusMode
+  const tools = overrides?.tools ?? !view.focusMode
+  const thinking = overrides?.thinking ?? !view.focusMode
 
   return {
     tools,
