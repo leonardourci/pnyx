@@ -6,8 +6,7 @@ export interface HistoryEntry {
   event: HydraEvent
 }
 
-// A moved task's history, newest first: this Hydra's events since the card arrived, then each earlier
-// Hydra's events up to the move that took the card away, found by the id both sides of a move share.
+// Newest first, following the id both sides of a move share back through each Hydra the card left.
 export function movedHistory({
   hydraId,
   task,
@@ -23,9 +22,10 @@ export function movedHistory({
   let events = readEvents({ hydraId })
 
   while (hydra) {
-    const stay = events.filter(event => event.seq <= upTo && matches({ event }))
+    const stay = events.filter(event => event.seq <= upTo)
     const arrival = stay.findLast(event => event.type === 'task.moved-in' && event.cardId === task)
-    const part = arrival ? stay.filter(event => event.seq >= arrival.seq) : stay
+    const since = arrival?.seq ?? 0
+    const part = stay.filter(event => event.seq >= since && matches({ event }))
 
     for (const event of part.reverse()) {
       entries.push({
