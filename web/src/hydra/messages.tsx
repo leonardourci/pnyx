@@ -724,6 +724,16 @@ export function Messages({
           </div>
         ) : (
           <Fragment key={entry.renderKey ?? entry.id}>
+            {folds?.get(entry.id)?.notes.length ? (
+              <TurnActionsFold
+                fold={{
+                  tasks: [],
+                  notes: folds.get(entry.id)!.notes,
+                }}
+                toolDetails={toolDetails}
+                thinkingDetails={thinkingDetails}
+              />
+            ) : null}
             <article
               data-entry-id={entry.id}
               className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
@@ -868,7 +878,14 @@ export function Messages({
                 />
               </div>
             )}
-            {folds?.has(entry.id) && <TurnActionsFold fold={folds.get(entry.id)!} />}
+            {folds?.get(entry.id)?.tasks.length ? (
+              <TurnActionsFold
+                fold={{
+                  tasks: folds.get(entry.id)!.tasks,
+                  notes: [],
+                }}
+              />
+            ) : null}
             {timings.has(entry.id) && (
               <TurnFooter turn={timings.get(entry.id)!} taskTitle={taskTitle} />
             )}
