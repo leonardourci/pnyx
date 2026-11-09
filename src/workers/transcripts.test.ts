@@ -310,3 +310,55 @@ test(
     )
   },
 )
+
+test(
+  'context notes hide in both providers while preserving the owner message',
+  () => {
+    const context = '<pnyx-context>Since your last turn (context only):\nA routine update.\n</pnyx-context>'
+    const claude = ({ text }: { text: string }) => ({
+      type: 'user',
+      timestamp: at,
+      message: { content: text },
+    })
+    const codex = ({ text }: { text: string }) => ({
+      type: 'response_item',
+      timestamp: at,
+      payload: {
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text,
+          },
+        ],
+      },
+    })
+    assert.deepEqual(
+      transcriptMessages({ record: claude({ text: `${context}\nExplain the result.` }) }),
+      [
+        {
+          at,
+          text: 'Explain the result.',
+        },
+      ],
+    )
+    assert.deepEqual(
+      transcriptMessages({ record: codex({ text: `${context}\nExplain the result.` }) }),
+      [
+        {
+          at,
+          text: 'Explain the result.',
+        },
+      ],
+    )
+    assert.deepEqual(
+      transcriptMessages({ record: claude({ text: context }) }),
+      [],
+    )
+    assert.deepEqual(
+      transcriptMessages({ record: codex({ text: context }) }),
+      [],
+    )
+  },
+)
