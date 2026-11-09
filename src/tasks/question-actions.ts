@@ -11,7 +11,11 @@ import type { AnswerMessage } from './model.ts'
 import type { HydraMessage } from '#hydra/model.ts'
 
 export function clarificationText({ text }: { text: string }): boolean {
-  return /^(?:why\b|(?:please\s+)?(?:explain|clarify)\b|(?:can|could|would) you (?:please )?(?:explain|clarify)\b|help me understand\b|what do you mean\b|tell me more\b)/i.test(text.trim())
+  const value = text.trim()
+  const shortRequest = /^(?:why|(?:please\s+)?(?:explain|clarify)|(?:can|could|would) you (?:please )?(?:explain|clarify)|help me understand|what do you mean|tell me more)[.!?]*$/i.test(value)
+  const startsClarification = /^(?:why\b|(?:please\s+)?(?:explain|clarify)\b|(?:can|could|would) you (?:please )?(?:explain|clarify)\b|help me understand\b|what do you mean\b|tell me more\b)/i.test(value)
+
+  return shortRequest || (value.endsWith('?') && startsClarification)
 }
 
 export const clarificationMessage = ({ message }: { message: Pick<HydraMessage, 'text' | 'discusses'> }) =>

@@ -56,11 +56,29 @@ test(
       l.card({ ref }).asks?.[0]?.answered,
       undefined,
     )
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        id,
+        '--text',
+        'explain',
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    assert.equal(
+      l.state().hydraMessages?.at(-1)?.discusses,
+      id,
+    )
     assert.equal(
       ownerGates({ card: l.card({ ref }) }).includes(`ask:${id}`),
       true,
     )
-    const discussion = l.state().hydraMessages?.at(-1)
+    const discussion = l.state().hydraMessages?.find(message => message.text === 'why?')
     assert.equal(
       discussion?.text,
       'why?',
@@ -141,6 +159,47 @@ test(
     )
     assert.equal(
       l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        id,
+        '--text',
+        'Why not both? Ship A first.',
+      ],
+      actor: 'web',
+    })
+    assert.ok(l.card({ ref }).asks?.[0]?.answered)
+    const next = await l.ask({ ref })
+    const instruction = l.chat({
+      ref,
+      text: 'Explain it in the PR, then proceed with this task.',
+    })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        next,
+        '--from-message',
+        instruction,
+      ],
+    })
+    assert.equal(
+      l.card({ ref }).asks?.find(ask => ask.id === next)?.fromMessage?.text,
+      'Explain it in the PR, then proceed with this task.',
+    )
+    await l.task({
+      args: [
+        'release',
+        ref,
+        '--from-message',
+        instruction,
+      ],
+    })
+    assert.equal(
+      l.card({ ref }).hold,
       undefined,
     )
   },

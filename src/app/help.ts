@@ -234,7 +234,7 @@ and never merges while a check is red or still running.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
-Clarification requests such as "why?" or "explain" keep the question open and go to Hydra as discussion. A clarification cannot be quoted as an owner answer.
+Short requests such as "why?" or "explain", and recognized clarification questions ending in "?", keep the question open. Longer instructions remain answers even when they begin with those words. Use discuss-question for other follow-up wording; an explicit discussion cannot be quoted as an answer.
 Sends the answer to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice. Retry failed delivery with reply --idempotency-key <reply-id>.
 Hydra can replace an answered merge Hold with --from-message <owner-message> --choice Merge only when that saved owner message is newer than the Hold answer. Undo restores Hold.
 pnyx-axi task reask <task> <question> --reason <why>
