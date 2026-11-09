@@ -18,7 +18,7 @@ knowledge_base:
       - files: '.agents/skills/review-code/SKILL.md'
         applyTo: '**'
       - files: '.agents/skills/audit-tests/SKILL.md'
-        applyTo: '**/*.test.ts,e2e/**,scripts/browser/**'
+        applyTo: 'src/**,web/**,scripts/**,e2e/**'
       - files: '.agents/skills/write-front-end/SKILL.md'
         applyTo: 'web/**'
       - files: '.agents/skills/write-ci-workflow/SKILL.md'
