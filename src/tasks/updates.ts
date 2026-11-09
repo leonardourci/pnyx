@@ -346,6 +346,11 @@ function updateRow({
       state: 'Question closed',
       note: `${data.reason} (${data.evidence})`,
     }
+    case 'task.ask.deferred': return {
+      kind: 'status',
+      state: data.until ? 'Question deferred' : 'Question active again',
+      note: data.until ? `${data.ask} until ${data.until}` : String(data.ask),
+    }
     case 'task.ask.reopened': return {
       kind: 'status',
       state: data.reask ? 'Hydra asked again' : 'Question reopened',

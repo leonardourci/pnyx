@@ -1,4 +1,5 @@
 import type { Ask, AskAudience, Card } from './model.ts'
+import type { HydraState } from '#app/model.ts'
 
 const currentAnswerReplies = ({
   card,
@@ -34,6 +35,30 @@ export const openAsks = ({
   audience?: AskAudience
 }) => (card.asks ?? []).filter(a =>
   !a.answered && !a.closed && (!audience || a.audience === audience))
+
+export const activeAsks = ({
+  card,
+  audience,
+}: {
+  card: Card
+  audience?: AskAudience
+}) =>
+  openAsks({
+    card,
+    audience,
+  }).filter(ask => !ask.deferredUntil)
+
+export const deferredQuestions = ({ state }: { state: HydraState }) =>
+  Object.values(state.cards).flatMap(card => openAsks({
+    card,
+    audience: 'owner',
+  })
+    .filter((ask): ask is Ask & { deferredUntil: string } => ask.deferredUntil !== undefined)
+    .map(ask => ({
+      card,
+      ask,
+      at: Date.parse(ask.deferredUntil),
+    })))
 
 export const askWording = ({ ask }: { ask: Ask }) => ({
   question: ask.escalated?.question ?? ask.question,

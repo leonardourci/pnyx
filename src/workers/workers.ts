@@ -55,6 +55,7 @@ const TRACKED: readonly EventType[] = [
   'task.asked',
   'task.ask.escalated',
   'task.ask.closed',
+  'task.ask.deferred',
   'task.ask.reopened',
   'task.session',
   'board.columns',

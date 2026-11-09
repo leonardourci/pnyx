@@ -47,6 +47,7 @@ export interface HydraMessage {
   // ask: the worker question this message delivers; answers: Hydra's question this owner message answers.
   ask?: string
   answers?: string
+  discusses?: string
   fromMessage?: AnswerMessage
   choice?: string
   liftsHold?: string

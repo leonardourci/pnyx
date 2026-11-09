@@ -128,6 +128,7 @@ export function mergeApproved({
   url?: string
 }): boolean {
   if (url !== undefined && mergeApproval({
+    state,
     card,
     url,
   })) {
@@ -305,6 +306,7 @@ function ordinaryReasons({
     const runsHere = pnyxRunsHydra({ state })
 
     if (runsHere && card && link && approved?.answered === event.id && mergeApproval({
+      state,
       card,
       url: link.url,
     })
@@ -494,6 +496,7 @@ function changesReadiness({
     case 'task.project':
     case 'task.asked':
     case 'task.ask.closed':
+    case 'task.ask.deferred':
     case 'task.ask.reopened':
     case 'task.permission':
       return true

@@ -107,7 +107,7 @@ export function applyAsk({
   }
 
   if (event.type !== 'task.asked' && event.type !== 'task.ask.escalated'
-    && event.type !== 'task.ask.closed' && event.type !== 'task.ask.reopened') {
+    && event.type !== 'task.ask.closed' && event.type !== 'task.ask.reopened' && event.type !== 'task.ask.deferred') {
     return false
   }
 
@@ -128,6 +128,23 @@ export function applyAsk({
         },
       ]
     }
+  } else if (event.type === 'task.ask.deferred' && card.asks) {
+    card.asks = card.asks.map(ask => {
+      if (ask.id !== event.data.ask || ask.answered || ask.closed) {
+        return ask
+      }
+
+      const deferred = { ...ask }
+      delete deferred.deferredUntil
+      delete deferred.deferredFromMessage
+
+      if (event.data.until) {
+        deferred.deferredUntil = event.data.until
+        deferred.deferredFromMessage = event.data.fromMessage
+      }
+
+      return deferred
+    })
   } else if (event.type === 'task.ask.closed' && card.asks) {
     card.asks = card.asks.map(a => a.id === event.data.ask ? {
       ...a,

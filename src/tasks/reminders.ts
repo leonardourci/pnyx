@@ -7,6 +7,7 @@ import { HydraError } from '#store/errors.ts'
 import { reminderInterval } from './time.ts'
 import { cloneValue } from '#app/preimage.ts'
 import { cardFacts } from './columns.ts'
+import { deferredQuestions } from './ask-state.ts'
 
 const REMINDER_WORD_LIMIT = 30
 const TITLE_WORD_LIMIT = 10
@@ -216,9 +217,22 @@ export function stopReminders({
 }
 
 export function reminderDeadline({ state }: { state: HydraState }): number | undefined {
-  const at = waitingReminders({ state })[0]?.at
+  const deadlines = deferredQuestions({ state }).map(question => question.at)
 
-  return at ? Date.parse(at) : undefined
+  for (const card of Object.values(state.cards)) {
+    const reminder = card.reminder
+
+    if (reminder && (!reminder.dueAt || reminder.repeat)) {
+      const question = card.asks?.find(ask => ask.id === reminder.repeat?.question)
+      const activeAt = question?.deferredUntil ?? reminder.at
+      deadlines.push(Math.max(
+        Date.parse(reminder.at),
+        Date.parse(activeAt),
+      ))
+    }
+  }
+
+  return deadlines.length ? Math.min(...deadlines) : undefined
 }
 
 export function applyReminder({
