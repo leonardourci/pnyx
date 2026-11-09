@@ -45,6 +45,28 @@ export const withoutInjected = ({ text }: { text: string }) => text.replace(
   '',
 ).trim()
 
+// A wake's trailing reminders are internal too, even after other injected context.
+export function wakeInput({ text }: { text: string }): boolean {
+  let through = 0
+
+  for (const block of text.matchAll(INJECTED)) {
+    if (text.slice(
+      through,
+      block.index,
+    ).trim()) {
+      return false
+    }
+
+    if (block[1] === 'pnyx-wake') {
+      return true
+    }
+
+    through = block.index + block[0].length
+  }
+
+  return false
+}
+
 export function redact({ text }: { text: string }): string {
   return SECRETS.reduce(
     (

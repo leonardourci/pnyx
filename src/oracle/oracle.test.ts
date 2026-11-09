@@ -656,6 +656,23 @@ test(
             },
           },
         })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'legacy-context-wake',
+            at: '2026-01-01T00:00:01.000Z',
+            actor: 'fixture',
+            cardId: HYDRA_CARD,
+            type: 'chat.message',
+            data: {
+              session: 'older-session',
+              nativeId: '1:m0',
+              role: 'user',
+              text: '<pnyx-context>Routine context</pnyx-context>\n<pnyx-wake>Check work</pnyx-wake>\narchivedwakeword',
+            },
+          },
+        })
       },
     })
     const find = ({ text }: { text: string }) => search({
@@ -687,6 +704,10 @@ test(
       find({ text: 'harvestedcontextword' }),
       [],
     )
+    assert.deepEqual(
+      find({ text: 'archivedwakeword' }),
+      [],
+    )
     const { DatabaseSync } = sqlite()
     const oldIndex = new DatabaseSync(searchPath({ hydraId: 'default' }))
     oldIndex.exec("UPDATE meta SET value = '8' WHERE key = 'chunker_version'; DELETE FROM docs; DELETE FROM card_fts;")
@@ -710,6 +731,10 @@ test(
     )
     assert.deepEqual(
       find({ text: 'harvestedcontextword' }),
+      [],
+    )
+    assert.deepEqual(
+      find({ text: 'archivedwakeword' }),
       [],
     )
   },
