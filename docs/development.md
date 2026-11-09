@@ -25,7 +25,9 @@ Owner actions in the app run in the server, which holds each Hydra in memory and
 
 The browser caches confirmed Hydra state under the installation and Hydra URL. The former identity-only `pnyx:<identity>:hydra-state` cache is removed on access; an older tab without a current cache loads a fresh snapshot from the server.
 
-The offline badge appears after the page detects a connection failure or a missed heartbeat and clears when its WebSocket opens again. Initial loading, switching Hydras and resynchronizing state do not imply that the page is offline. Actions still wait for the selected Hydra's subscription to be ready.
+The offline badge appears after the page detects a connection failure or a missed heartbeat and clears when its WebSocket opens again. Initial loading, switching Hydras and resynchronizing state do not imply that the page is offline. Actions still wait for the selected Hydra's subscription to be ready. The socket retries automatically with backoff capped at ten seconds and no attempt limit. Returning to a visible page, restoring it from the browser cache or coming back online replaces a stale connection immediately. Restarting or upgrading the server reloads the selected Hydra's state and conversation subscriptions automatically. A rejected handshake refreshes the page token for the same installation; an installation change or missing token asks for a page reload.
+
+Hydra subscriptions have their own loading deadline and retry transient failures automatically, even while socket heartbeats still succeed. A permanent refusal, such as a missing Hydra or denied access, shows its reason and a retry for that Hydra. Ordinary command errors keep their own message and a Dismiss button.
 
 Harvested chat records are identified by session, native message and part. Replacing a transcript file or losing its harvest cursor does not duplicate its messages. Conversation readers also hide older duplicate harvests without changing the append-only log; separate sends with identical words stay separate.
 

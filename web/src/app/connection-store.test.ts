@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
+import { setImmediate } from 'node:timers/promises'
 import { test, type TestContext } from 'node:test'
 import { createHydraConnection } from './connection-store.ts'
+import { emptyHydra } from '#app/reducer.ts'
 
 class TestSocket {
   static OPEN = 1
@@ -13,7 +15,10 @@ class TestSocket {
   onopen?: () => void
   sent: Record<string, unknown>[] = []
 
-  constructor() {
+  token: string | null
+  // eslint-disable-next-line pnyx/object-params -- WebSocket owns the constructor signature.
+  constructor(url: URL) {
+    this.token = url.searchParams.get('token')
     TestSocket.current = this
   }
 
@@ -22,7 +27,9 @@ class TestSocket {
     this.sent.push(JSON.parse(text))
   }
 
-  close() {}
+  close() {
+    this.readyState = 3
+  }
 
   receive({ message }: { message: Record<string, unknown> }) {
     this.onmessage?.({
@@ -43,10 +50,26 @@ function installPage({
   sessionStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 }) {
   const events = new EventTarget()
+  const token = {
+    content: 'fixture',
+    // eslint-disable-next-line pnyx/object-params -- Element owns the attribute signature.
+    setAttribute(
+      _name: string,
+      value: string,
+    ) {
+      this.content = value
+    },
+  }
+  const bootstrap = {
+    installation: 'fixture',
+    token: 'refreshed',
+  }
   const document = Object.assign(
     new EventTarget(),
     {
-      querySelector: () => ({
+      visibilityState: 'visible',
+      // eslint-disable-next-line pnyx/object-params -- Document owns the query signature.
+      querySelector: (selector: string) => selector.includes('pnyx-token') ? token : ({
         content: 'fixture',
         setAttribute() {},
       }),
@@ -69,6 +92,17 @@ function installPage({
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),
     WebSocket: TestSocket,
+    DOMParser: class {
+      parseFromString() {
+        return {
+          // eslint-disable-next-line pnyx/object-params -- Document owns the query signature.
+          querySelector: (selector: string) => ({ content: selector.includes('pnyx-token') ? bootstrap.token : bootstrap.installation }),
+        }
+      }
+    },
+    fetch: async () => {
+      throw new Error('Network unavailable')
+    },
   }
 
   for (const [
@@ -102,10 +136,18 @@ function installPage({
       }
     })
   }
+
+  return {
+    events,
+    document,
+    token,
+    bootstrap,
+  }
 }
 
 // Brings a started connection's socket up on the default Hydra.
 function open({ socket }: { socket: TestSocket }) {
+  socket.onopen?.()
   socket.receive({
     message: {
       type: 'hello',
@@ -214,7 +256,7 @@ test(
       false,
     )
     assert.equal(
-      connection.snapshot().error,
+      connection.snapshot().recovery?.message,
       'Hydra not found',
     )
     await connection.navigate({ url: 'http://pnyx.test/hydra/default/' })
@@ -485,3 +527,467 @@ test(
     )
   },
 )
+
+function recoveryPage({ t }: { t: TestContext }) {
+  const cleanup: { stop?: () => void } = {}
+  t.after(() => cleanup.stop?.())
+  t.mock.timers.enable({
+    apis: [
+      'Date',
+      'setTimeout',
+      'setInterval',
+    ],
+    now: 100_000,
+  })
+  const page = installPage({
+    t,
+    sessionStorage: {
+      getItem: () => null,
+      setItem() {},
+      removeItem() {},
+    },
+  })
+  const connection = createHydraConnection()
+  const stop = connection.start()
+  cleanup.stop = stop
+  open({ socket: TestSocket.current })
+
+  return {
+    ...page,
+    connection,
+    stop,
+  }
+}
+
+test(
+  'server restarts and long outages reconnect without giving up and replace stale state',
+  async t => {
+    const {
+      connection,
+      stop,
+    } = recoveryPage({ t })
+    const original = TestSocket.current
+    original.receive({
+      message: {
+        type: 'snapshot',
+        subscription: 'fixture',
+        seq: 3,
+        state: {
+          ...emptyHydra(),
+          seq: 3,
+        },
+      },
+    })
+
+    for (let outage = 0; outage < 12; outage++) {
+      const lost = TestSocket.current
+      lost.onclose?.()
+      t.mock.timers.tick(10_000)
+      await setImmediate()
+      assert.notEqual(
+        TestSocket.current,
+        lost,
+      )
+    }
+
+    const restored = TestSocket.current
+    open({ socket: restored })
+    restored.receive({
+      message: {
+        type: 'snapshot',
+        subscription: 'fixture',
+        seq: 8,
+        state: {
+          ...emptyHydra(),
+          seq: 8,
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().connected,
+      true,
+    )
+    assert.equal(
+      connection.snapshot().state.seq,
+      8,
+    )
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
+    original.onerror?.()
+    assert.equal(
+      TestSocket.current,
+      restored,
+    )
+    assert.equal(
+      connection.snapshot().connected,
+      true,
+    )
+    stop()
+    t.mock.timers.tick(60_000)
+    assert.equal(
+      TestSocket.current,
+      restored,
+    )
+  },
+)
+
+test(
+  'waking a sleeping or restored page replaces an apparently open stale socket immediately',
+  t => {
+    const {
+      connection,
+      events,
+      document,
+    } = recoveryPage({ t })
+    const sleeping = TestSocket.current
+    document.visibilityState = 'hidden'
+    t.mock.timers.setTime(160_000)
+    document.dispatchEvent(new Event('visibilitychange'))
+    assert.equal(
+      TestSocket.current,
+      sleeping,
+    )
+    document.visibilityState = 'visible'
+    document.dispatchEvent(new Event('visibilitychange'))
+    assert.notEqual(
+      TestSocket.current,
+      sleeping,
+    )
+    open({ socket: TestSocket.current })
+    assert.equal(
+      connection.snapshot().connected,
+      true,
+    )
+    const restored = TestSocket.current
+    t.mock.timers.setTime(220_000)
+    events.dispatchEvent(new Event('pageshow'))
+    assert.notEqual(
+      TestSocket.current,
+      restored,
+    )
+    open({ socket: TestSocket.current })
+    assert.equal(
+      connection.snapshot().connected,
+      true,
+    )
+  },
+)
+
+test(
+  'switching Hydras ignores stale subscriptions and recovers stalled loads despite healthy heartbeats',
+  async t => {
+    const { connection } = recoveryPage({ t })
+    const socket = TestSocket.current
+    await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
+    const abandoned = socket.sent.find(message => message.type === 'subscribe' && message.scope === 'second')!
+    await connection.navigate({ url: 'http://pnyx.test/hydra/default/' })
+    await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
+    const first = socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)!
+    assert.notEqual(
+      first.subscription,
+      abandoned.subscription,
+    )
+    socket.receive({
+      message: {
+        type: 'scope-error',
+        scope: 'second',
+        subscription: abandoned.subscription,
+        code: 'NOT_FOUND',
+        error: 'Stale refusal',
+      },
+    })
+    assert.equal(
+      connection.snapshot().recovery,
+      null,
+    )
+    socket.receive({
+      message: {
+        type: 'scope-error',
+        scope: 'second',
+        subscription: first.subscription,
+        code: 'LOCKED',
+        error: 'Hydra is temporarily locked',
+      },
+    })
+    t.mock.timers.tick(500)
+    const retry = socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)!
+    assert.notEqual(
+      retry.subscription,
+      first.subscription,
+    )
+    socket.receive({
+      message: {
+        type: 'latest',
+        scope: 'second',
+        subscription: first.subscription,
+        messages: {},
+        actions: {},
+      },
+    })
+    assert.equal(
+      connection.snapshot().connected,
+      false,
+    )
+    socket.receive({ message: { type: 'pong' } })
+    t.mock.timers.tick(25_000)
+    socket.receive({ message: { type: 'pong' } })
+    t.mock.timers.tick(1_000)
+    const resumed = socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)!
+    assert.notEqual(
+      resumed.subscription,
+      retry.subscription,
+    )
+    socket.receive({
+      message: {
+        type: 'hello',
+        scope: 'second',
+        subscription: resumed.subscription,
+        installation: 'fixture',
+        hydraId: 'second',
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'latest',
+        scope: 'second',
+        subscription: resumed.subscription,
+        messages: {},
+        actions: {},
+      },
+    })
+    assert.equal(
+      connection.snapshot().connected,
+      true,
+    )
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
+  },
+)
+
+test(
+  'ordinary API errors have no connection recovery action and cannot poison later subscriptions',
+  async t => {
+    const { connection } = recoveryPage({ t })
+    const socket = TestSocket.current
+    const catalog = connection.commandFor({ id: 'default' })({
+      name: 'models',
+      args: ['codex'],
+    })
+    const rejected = assert.rejects(
+      catalog,
+      /Model catalog unavailable/,
+    )
+    const request = socket.sent.find(message => message.name === 'models')!
+    socket.receive({
+      message: {
+        type: 'error',
+        id: request.id,
+        code: 'NOT_FOUND',
+        error: 'Model catalog unavailable',
+      },
+    })
+    await rejected
+    assert.equal(
+      connection.snapshot().error,
+      'Model catalog unavailable',
+    )
+    assert.equal(
+      connection.snapshot().recovery,
+      null,
+    )
+    await connection.navigate({ url: 'http://pnyx.test/hydra/missing/' })
+    const subscription = socket.sent.find(message => message.type === 'subscribe' && message.scope === 'missing')!.subscription
+    socket.receive({
+      message: {
+        type: 'scope-error',
+        scope: 'missing',
+        subscription,
+        code: 'NOT_FOUND',
+        error: 'Hydra not found',
+      },
+    })
+    assert.deepEqual(
+      connection.snapshot().recovery,
+      {
+        message: 'Hydra not found',
+        action: 'retry',
+      },
+    )
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
+    connection.retry()
+    const retried = socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'missing').at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        scope: 'missing',
+        subscription: retried.subscription,
+        installation: 'fixture',
+        hydraId: 'missing',
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'latest',
+        scope: 'missing',
+        subscription: retried.subscription,
+        messages: {},
+        actions: {},
+      },
+    })
+    assert.equal(
+      connection.snapshot().recovery,
+      null,
+    )
+    assert.equal(
+      connection.snapshot().connected,
+      true,
+    )
+  },
+)
+
+test(
+  'missing credentials and installation changes require a reload instead of endless recovery',
+  t => {
+    const {
+      connection,
+      token,
+      events,
+    } = recoveryPage({ t })
+    token.content = ''
+    const first = TestSocket.current
+    first.onclose?.()
+    events.dispatchEvent(new Event('online'))
+    assert.deepEqual(
+      connection.snapshot().recovery,
+      {
+        message: 'This page has no connection token. Reload to connect.',
+        action: 'reload',
+      },
+    )
+    token.content = 'fixture'
+    events.dispatchEvent(new Event('online'))
+    const replacement = TestSocket.current
+    replacement.receive({
+      message: {
+        type: 'hello',
+        installation: 'different',
+        hydraId: 'fixture',
+        subscription: 'fixture',
+      },
+    })
+    assert.equal(
+      connection.snapshot().recovery?.action,
+      'reload',
+    )
+    t.mock.timers.tick(60_000)
+    events.dispatchEvent(new Event('online'))
+    assert.equal(
+      TestSocket.current,
+      replacement,
+    )
+    assert.equal(
+      connection.snapshot().connected,
+      false,
+    )
+  },
+)
+
+for (const scenario of [
+  {
+    name: 'missing credentials',
+    page: {
+      installation: 'fixture',
+      token: '',
+    },
+    message: 'This page has no connection token. Reload to connect.',
+  },
+  {
+    name: 'a changed installation',
+    page: {
+      installation: 'different',
+      token: 'different-token',
+    },
+    message: 'This address now serves another Pnyx installation. Reload to continue.',
+  },
+  {
+    name: 'missing installation metadata',
+    page: {
+      installation: '',
+      token: 'different-token',
+    },
+    message: 'This page has no connection token. Reload to connect.',
+  },
+]) {
+  test(
+    `rejected handshakes refresh credentials and stop on ${scenario.name}`,
+    async t => {
+      const {
+        connection,
+        token,
+        bootstrap,
+      } = recoveryPage({ t })
+      t.mock.method(
+        globalThis,
+        'fetch',
+        async () => new Response('<html></html>'),
+      )
+      TestSocket.current.onclose?.()
+      t.mock.timers.tick(500)
+      const rejected = TestSocket.current
+      assert.equal(
+        rejected.token,
+        'fixture',
+      )
+      rejected.onerror?.()
+      t.mock.timers.tick(1_000)
+      await setImmediate()
+      const refreshed = TestSocket.current
+      assert.equal(
+        refreshed.token,
+        'refreshed',
+      )
+      assert.equal(
+        token.content,
+        'refreshed',
+      )
+      open({ socket: refreshed })
+      assert.equal(
+        connection.snapshot().connected,
+        true,
+      )
+      Object.assign(
+        bootstrap,
+        scenario.page,
+      )
+      refreshed.onclose?.()
+      t.mock.timers.tick(500)
+      const missing = TestSocket.current
+      missing.onerror?.()
+      t.mock.timers.tick(1_000)
+      await setImmediate()
+      assert.deepEqual(
+        connection.snapshot().recovery,
+        {
+          message: scenario.message,
+          action: 'reload',
+        },
+      )
+      assert.equal(
+        token.content,
+        'refreshed',
+      )
+      t.mock.timers.tick(60_000)
+      assert.equal(
+        TestSocket.current,
+        missing,
+      )
+    },
+  )
+}

@@ -525,6 +525,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     icon: h.icon ?? HYDRA_MARK,
   }))
   const opening = navigation.hydras.find(h => h.id === loading)
+  const retryLabel = hydra.creating ? 'Retry creating Hydra' : 'Retry loading Hydra'
   const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
   const otherProjects = others.flatMap(h => h.projects.map(p => ({
     name: p.name,
@@ -649,12 +650,20 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             data-hydra={navigation.hydraId}
             data-provisional={hydra.creating || undefined}
           >
-            {(loading || !loaded) && (
+            {(loading || !loaded || hydra.offline) && (
               <p className="loading-status" role="status">
-                {hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…
+                {hydra.offline && 'Connection lost. Reconnecting automatically.'}
+                {!hydra.offline && <>{hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…</>}
               </p>
             )}
-            {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.retryHydra}>Retry connection</Button></p>}
+            {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.dismissError}>Dismiss</Button></p>}
+            {hydra.recovery && (
+              <p className="error-banner" role="alert">
+                {hydra.recovery.message}
+                {hydra.recovery.action === 'retry' && <Button onClick={hydra.retryHydra}>{retryLabel}</Button>}
+                {hydra.recovery.action === 'reload' && <Button onClick={() => location.reload()}>Reload page</Button>}
+              </p>
+            )}
             {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
             <PendingStatus
               intents={[

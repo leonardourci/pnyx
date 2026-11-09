@@ -21,6 +21,20 @@ import { createHydraCreation } from './hydra-creation.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 
+const HEARTBEAT_INTERVAL_MS = 10_000
+const RECOVERY_TIMEOUT_MS = 25_000
+const TOKEN_REFRESH_TIMEOUT_MS = 5_000
+const NO_TOKEN_MESSAGE = 'This page has no connection token. Reload to connect.'
+const OTHER_INSTALLATION_MESSAGE =
+  'This address now serves another Pnyx installation. Reload to continue.'
+const PERMANENT_SCOPE_ERRORS = new Set([
+  'NOT_FOUND',
+  'VALIDATION_ERROR',
+  'FORBIDDEN',
+  'UNAUTHORIZED',
+  'OWNER_ONLY',
+])
+
 const emptyQueue = (): HydraQueue => ({
   waiting: [],
   reading: [],
@@ -44,6 +58,7 @@ export function createHydraConnection() {
   let listed = false
   let active = false
   let offline = false
+  let reloadError = ''
   let generation = 0
   let attempt = 0
   let received = Date.now()
@@ -159,6 +174,8 @@ export function createHydraConnection() {
       failed: false,
       restoredSaves: false,
       error: '',
+      loadError: '',
+      subscriptionAttempt: 0,
       thread: null,
       queue: emptyQueue(),
       spend: {},
@@ -303,7 +320,31 @@ export function createHydraConnection() {
     const scope = selection()
     const resource = scope.resource.snapshot()
 
+    let recovery: {
+      message: string
+      action?: 'reload' | 'retry'
+    } | null = null
+
+    if (reloadError) {
+      recovery = {
+        message: reloadError,
+        action: 'reload',
+      }
+    } else if (scope.creation && scope.failed) {
+      recovery = {
+        message: scope.error,
+        action: 'retry',
+      }
+    } else if (scope.loadError) {
+      recovery = { message: scope.loadError }
+
+      if (scope.failed) {
+        recovery.action = 'retry'
+      }
+    }
+
     return {
+      recovery,
       state: scope.hasSnapshot ? liveView({
         scope,
         view: resource.view,
@@ -315,7 +356,7 @@ export function createHydraConnection() {
       loading: scope.ready || scope.failed ? '' : scope.id,
       checking: [...requests.values()].some(request => request.scope === scope && request.checking),
       creating: !!scope.creation && scope.id.startsWith('pending-'),
-      error: scope.error,
+      error: scope.creation && scope.failed ? '' : scope.error,
       hydraThread: scope.thread,
       hydraQueue: scope.queue,
       upgrade,
@@ -462,7 +503,7 @@ export function createHydraConnection() {
     }
 
     for (const scope of scopes.values()) {
-      if (scope.id === selected || !scope.subscribed || scope.id.startsWith('pending-')) {
+      if (scope.id === selected || scope.id.startsWith('pending-')) {
         continue
       }
 
@@ -480,19 +521,51 @@ export function createHydraConnection() {
         continue
       }
 
-      send({
-        message: {
-          type: 'unsubscribe',
-          scope: scope.id,
-        },
-      })
+      if (scope.subscribed) {
+        send({
+          message: {
+            type: 'unsubscribe',
+            scope: scope.id,
+          },
+        })
+      }
+
+      clearTimeout(scope.subscriptionTimer)
+      scope.subscription = null
       scope.subscribed = false
       scope.ready = false
     }
   }
 
+  const retrySubscription = ({ scope }: { scope: Scope }) => {
+    clearTimeout(scope.subscriptionTimer)
+    scope.ready = false
+    scope.subscribed = false
+    scope.subscription = null
+    scope.failed = false
+    scope.subscriptionTimer = setTimeout(
+      () => {
+        subscribe({ scope })
+        publish()
+      },
+      reconnectDelay({ attempt: scope.subscriptionAttempt++ }),
+    )
+  }
+
+  const watchSubscription = ({ scope }: { scope: Scope }) => {
+    clearTimeout(scope.subscriptionTimer)
+    scope.subscriptionTimer = setTimeout(
+      () => {
+        scope.loadError = 'Hydra did not finish loading. Retrying automatically.'
+        retrySubscription({ scope })
+        publish()
+      },
+      RECOVERY_TIMEOUT_MS,
+    )
+  }
+
   const subscribe = ({ scope }: { scope: Scope }) => {
-    if (scope.id.startsWith('pending-') || scope.subscribed || !physicalHydra || socket?.readyState !== WebSocket.OPEN) {
+    if (scope.id.startsWith('pending-') || scope.subscribed || scope.failed || !physicalHydra || socket?.readyState !== WebSocket.OPEN) {
       return
     }
 
@@ -500,6 +573,7 @@ export function createHydraConnection() {
     scope.subscription = crypto.randomUUID()
     scope.ready = false
     scope.actions = {}
+    watchSubscription({ scope })
     send({
       message: {
         type: 'subscribe',
@@ -542,7 +616,7 @@ export function createHydraConnection() {
         active = false
         scope.ready = false
         scope.failed = true
-        scope.error = 'This address now serves another Pnyx installation. Reload to continue.'
+        reloadError = OTHER_INSTALLATION_MESSAGE
         clearInterval(watchdog)
         socket?.close()
         publish()
@@ -554,6 +628,7 @@ export function createHydraConnection() {
         physicalHydra = message.scope
         scope.subscribed = true
         scope.subscription = message.subscription ?? null
+        watchSubscription({ scope })
         subscribe({ scope: selection() })
 
         for (const request of requests.values()) {
@@ -590,10 +665,16 @@ export function createHydraConnection() {
         return
       }
     } else if (message.type === 'scope-error') {
-      scope.error = message.error
-      scope.failed = true
+      clearTimeout(scope.subscriptionTimer)
+      scope.loadError = message.error
+      scope.failed = PERMANENT_SCOPE_ERRORS.has(message.code)
       scope.ready = false
       scope.subscribed = false
+
+      if (!scope.failed) {
+        scope.loadError = `${message.error}. Retrying automatically.`
+        retrySubscription({ scope })
+      }
     } else if (message.type === 'snapshot') {
       scope.resource.confirm({ state: confirmedState({ state: message.state }) })
       scope.actions = {}
@@ -617,6 +698,7 @@ export function createHydraConnection() {
 
       if (message.event.seq !== state.seq + 1) {
         scope.ready = false
+        watchSubscription({ scope })
         send({
           message: {
             type: 'resync',
@@ -661,6 +743,9 @@ export function createHydraConnection() {
         changes: message.actions,
       })
       const wasReady = scope.ready
+      clearTimeout(scope.subscriptionTimer)
+      scope.subscriptionAttempt = 0
+      scope.loadError = ''
       scope.ready = true
       scope.failed = false
       attempt = 0
@@ -669,11 +754,16 @@ export function createHydraConnection() {
         window.dispatchEvent(new Event(DISPATCH_CHANGED))
 
         if (scope.id === physicalHydra || scope.id === selected) {
-          void command({
+          command({
             scope,
             name: 'hydras',
             args: [],
           }).catch((error: Error) => {
+            if (error instanceof CommandFailure && error.code === 'DISCONNECTED') {
+              // The next subscription reloads this catalog.
+              return
+            }
+
             scope.error = error.message; publish()
           })
         }
@@ -713,6 +803,7 @@ export function createHydraConnection() {
     listed = false
 
     for (const scope of scopes.values()) {
+      clearTimeout(scope.subscriptionTimer)
       scope.ready = false; scope.subscribed = false; scope.subscription = null
       scope.actions = {}
     }
@@ -730,6 +821,9 @@ export function createHydraConnection() {
     const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
     if (!token) {
+      reloadError = NO_TOKEN_MESSAGE
+      publish()
+
       return
     }
 
@@ -756,8 +850,10 @@ export function createHydraConnection() {
       selection().creation && selected.startsWith('pending-') ? selection().creation!.from : selected,
     )
     const ws = new WebSocket(url)
+    let opened = false
     socket = ws
     received = Date.now()
+    const started = received
 
     const recover = () => {
       if (!active || version !== generation || socket !== ws) {
@@ -765,12 +861,62 @@ export function createHydraConnection() {
       }
 
       socket = null
+      clearInterval(watchdog)
       offline = true
       ws.close()
       disconnected()
       clearTimeout(reconnect)
       reconnect = setTimeout(
-        connect,
+        async () => {
+          if (!opened) {
+            try {
+              const response = await fetch(
+                location.href,
+                {
+                  cache: 'no-store',
+                  signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
+                },
+              )
+
+              if (active && version === generation && response.ok) {
+                const page = new DOMParser().parseFromString(
+                  await response.text(),
+                  'text/html',
+                )
+                const identity = page.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
+                const refreshed = page.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
+
+                if (!active || version !== generation) {
+                  return
+                }
+
+                if (identity === installation && refreshed) {
+                  document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.setAttribute(
+                    'content',
+                    refreshed,
+                  )
+                } else {
+                  active = false
+                  reloadError = NO_TOKEN_MESSAGE
+
+                  if (identity && identity !== installation) {
+                    reloadError = OTHER_INSTALLATION_MESSAGE
+                  }
+
+                  publish()
+
+                  return
+                }
+              }
+            } catch {
+              // An unavailable page uses the same automatic backoff as its socket.
+            }
+          }
+
+          if (active && version === generation) {
+            connect()
+          }
+        },
         reconnectDelay({ attempt: attempt++ }),
       )
     }
@@ -783,7 +929,9 @@ export function createHydraConnection() {
         return
       }
 
+      opened = true
       offline = false
+      reloadError = ''
       publish()
     }
 
@@ -797,7 +945,10 @@ export function createHydraConnection() {
       try {
         receive({ message: JSON.parse(event.data) as ServerMessage })
       } catch (error) {
-        selection().error = error instanceof Error ? error.message : String(error)
+        const scope = selection()
+        scope.loadError = error instanceof Error ? error.message : String(error)
+        scope.ready = false
+        watchSubscription({ scope })
         send({
           message: {
             type: 'resync',
@@ -811,13 +962,16 @@ export function createHydraConnection() {
     clearInterval(watchdog)
     watchdog = setInterval(
       () => {
-        if (Date.now() - received > 25000) {
+        const now = Date.now()
+        const handshakeStalled = !physicalHydra && now - started > RECOVERY_TIMEOUT_MS
+
+        if (now - received > RECOVERY_TIMEOUT_MS || handshakeStalled) {
           recover()
         } else {
           send({ message: { type: 'ping' } })
         }
       },
-      10000,
+      HEARTBEAT_INTERVAL_MS,
     )
   }
 
@@ -844,7 +998,7 @@ export function createHydraConnection() {
     const scope = selection()
 
     if (scope.failed) {
-      scope.error = ''
+      scope.loadError = ''
     }
 
     scope.failed = false
@@ -881,11 +1035,25 @@ export function createHydraConnection() {
   const persistAll = () => scopes.forEach(scope => persist({ scope }))
 
   const wake = () => {
-    if (document.visibilityState !== 'hidden' && socket?.readyState !== WebSocket.OPEN && active) {
-      clearTimeout(reconnect)
-      socket?.close()
-      connect()
+    if (!active || document.visibilityState === 'hidden') {
+      return
     }
+
+    const stale = Date.now() - received > RECOVERY_TIMEOUT_MS
+
+    if (socket?.readyState === WebSocket.OPEN && !stale) {
+      send({ message: { type: 'ping' } })
+
+      return
+    }
+
+    clearTimeout(reconnect)
+    generation++
+    const previous = socket
+    socket = null
+    previous?.close()
+    disconnected()
+    connect()
   }
 
   return {
@@ -916,9 +1084,13 @@ export function createHydraConnection() {
       }
 
       scope.failed = false
-      scope.error = ''
+      scope.loadError = ''
       scope.subscribed = false
       subscribe({ scope })
+      publish()
+    },
+    dismissError() {
+      selection().error = ''
       publish()
     },
     start() {
@@ -932,6 +1104,10 @@ export function createHydraConnection() {
       addEventListener(
         'pagehide',
         persistAll,
+      )
+      addEventListener(
+        'pageshow',
+        wake,
       )
       addEventListener(
         'online',
@@ -964,6 +1140,10 @@ export function createHydraConnection() {
         removeEventListener(
           'pagehide',
           persistAll,
+        )
+        removeEventListener(
+          'pageshow',
+          wake,
         )
         removeEventListener(
           'online',
