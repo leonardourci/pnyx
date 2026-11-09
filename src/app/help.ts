@@ -16,6 +16,7 @@ commands:
   project add|list|set|remove                   Attach, list or detach projects
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
+  task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   rule; account list|set|remove              Heads dispatch rules and worker login folders
@@ -243,7 +244,8 @@ pnyx-axi task close-question <task> <question> --evidence <link or recorded fact
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
 Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
-pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
+pnyx-axi task history <id> [--before <seq>|<hydra>:<seq>] [--limit <n>] [--full]
+A moved task's history continues into the Hydras it came from; those rows name their Hydra, and --before <hydra>:<seq> pages through them.
 pnyx-axi task messages <id> [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>] [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
 Uses the same bounded lookup as hydra message, across every recorded session on the task.
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
@@ -258,7 +260,11 @@ pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
-Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
+pnyx-axi task move <task> --to-hydra <hydra> [--reason <why>]
+Moves the task to another Hydra with its asks, questions, links, column, history and Pnyx-run worker session; its task copy stays in place.
+Refused, with the command that clears it, while the target lacks its project, its worker is mid-turn or runs outside Pnyx, the routine helper holds it,
+or it is queued, a subtask or parent, or tied by a prerequisite or wait to a task that stays. Undo refuses; move it back with the same command.
+Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start, task move and permission, as to move. Pnyx keeps it on the event,
 and shows the changes in the task’s Updates and the turn’s fold. --details keeps longer context on the same event.
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task queue <task> --behind <task|session>

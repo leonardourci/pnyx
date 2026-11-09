@@ -96,6 +96,24 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} belongs to apply ${target.transaction}; append a correction with apply` })
   }
 
+  // Each side's boardId is the Hydra that wrote it, so the move back names both Hydras.
+  if (target.type === 'task.moved-in' || target.type === 'task.moved-out') {
+    const [
+      back,
+      holder,
+    ] = target.type === 'task.moved-in'
+      ? [
+        target.data.from,
+        target.boardId,
+      ]
+      : [
+        target.boardId,
+        target.data.to,
+      ]
+
+    throw notUndoable({ message: `a move between Hydras is undone by moving the task back: run \`pnyx-axi task move ${target.cardId} --to-hydra ${back} --hydra ${holder}\`` })
+  }
+
   if (target.type === 'board.columns') {
     if (target.actor === 'pnyx') {
       throw notUndoable({ message: 'the move onto the default columns cannot be undone' })

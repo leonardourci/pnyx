@@ -15,6 +15,16 @@ export function findCard({
 }): Card {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
+  const moved = state.movedOut?.[ref]
+
+  if (!card && moved) {
+    throw new HydraError({
+      message: `${ref} moved to Hydra ${moved.to}`,
+      code: 'NOT_FOUND',
+      help: [`Repeat the command with --hydra ${moved.to}`],
+    })
+  }
+
   if (!card) {
     throw new HydraError({
       message: `card not found: ${ref}`,
