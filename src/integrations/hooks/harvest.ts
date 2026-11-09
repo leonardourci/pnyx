@@ -24,8 +24,15 @@ type Cursors = Record<string, {
   identity: string
   pos: number
   conversation?: number
+  backfill?: {
+    pos: number
+    item: number
+    end: number
+  }
 }>
 const CONVERSATION_VERSION = 1
+const BACKFILL_ENTRIES = 32
+const BACKFILL_BYTES = 64 * 1024
 
 function recordChat({
   writer,
@@ -266,58 +273,6 @@ export function harvestTranscripts({
   let moved = false
   const recorded = new Map(recordedChats({ dir: writer.dir }))
 
-  for (const [
-    name,
-    cursor,
-  ] of Object.entries(cursors)) {
-    if (!name.startsWith(`${HYDRA_CARD}\n`) || cursor.conversation === CONVERSATION_VERSION) {
-      continue
-    }
-
-    const path = name.slice(HYDRA_CARD.length + 1)
-    const sessions = Object.values(writer.state.sessions ?? {})
-    const session = sessions.find(session => session.agent.transcriptPath === path)
-
-    if (!session) {
-      continue
-    }
-
-    const transcript = readTranscript({
-      cursor: {
-        source: path,
-        identity: '',
-        pos: 0,
-      },
-      through: cursor.pos,
-    })
-
-    if (!transcript || transcript.end < cursor.pos) {
-      continue
-    }
-
-    for (const line of transcript.lines.filter(line => line.pos < cursor.pos)) {
-      for (const entry of transcriptEntries({
-        parsed: readTranscriptRecord({ record: line.record }),
-        offset: line.pos,
-        boundaries: true,
-      })) {
-        recordChat({
-          writer,
-          entry,
-          session: session.id,
-          cardId: HYDRA_CARD,
-          agentId: session.id,
-          at,
-          recorded,
-          repair: true,
-        })
-      }
-    }
-
-    cursor.conversation = CONVERSATION_VERSION
-    moved = true
-  }
-
   for (const id of cardIds) {
     const path = detached?.session.agent.transcriptPath
       ?? writer.state.cards[id]?.agent?.transcriptPath
@@ -496,7 +451,11 @@ export function harvestTranscripts({
     cursors[name] = {
       identity: tail.identity,
       pos: tail.end,
-      conversation: id === HYDRA_CARD ? CONVERSATION_VERSION : undefined,
+      conversation: id === HYDRA_CARD
+        ? cursors[name]?.conversation
+          ?? (tail.reset || !cursors[name] ? CONVERSATION_VERSION : undefined)
+        : undefined,
+      backfill: cursors[name]?.backfill,
     }
     moved = true
   }
@@ -509,4 +468,118 @@ export function harvestTranscripts({
   }
 
   return appended
+}
+
+export function backfillConversations({
+  writer,
+  at,
+}: {
+  writer: Writer
+  at: string
+}) {
+  const cursors = readCursors({ dir: writer.dir })
+  const recorded = new Map(recordedChats({ dir: writer.dir }))
+
+  for (const [
+    name,
+    cursor,
+  ] of Object.entries(cursors)) {
+    if (!name.startsWith(`${HYDRA_CARD}\n`) || cursor.conversation === CONVERSATION_VERSION) {
+      continue
+    }
+
+    const path = name.slice(HYDRA_CARD.length + 1)
+    const session = Object.values(writer.state.sessions ?? {})
+      .find(session => session.agent.transcriptPath === path)
+
+    if (!session) {
+      continue
+    }
+
+    const progress = cursor.backfill ?? {
+      pos: 0,
+      item: 0,
+      end: cursor.pos,
+    }
+    const transcript = readTranscript({
+      cursor: {
+        source: path,
+        identity: cursor.identity,
+        pos: progress.pos,
+      },
+      through: progress.end,
+      maxBytes: BACKFILL_BYTES,
+    })
+
+    const stalled = transcript?.end === progress.pos && progress.pos < progress.end
+
+    if (!transcript || transcript.reset || stalled) {
+      continue
+    }
+
+    let remaining = BACKFILL_ENTRIES
+
+    for (const line of transcript.lines) {
+      const entries = transcriptEntries({
+        parsed: readTranscriptRecord({ record: line.record }),
+        offset: line.pos,
+        boundaries: true,
+      })
+      const start = line.pos === progress.pos ? progress.item : 0
+
+      for (let item = start; item < entries.length; item++) {
+        if (remaining === 0) {
+          cursor.backfill = {
+            pos: line.pos,
+            item,
+            end: progress.end,
+          }
+          writeCursors({
+            dir: writer.dir,
+            cursors,
+          })
+
+          return {
+            progressed: true,
+          }
+        }
+
+        recordChat({
+          writer,
+          entry: entries[item]!,
+          session: session.id,
+          cardId: HYDRA_CARD,
+          agentId: session.id,
+          at,
+          recorded,
+          repair: true,
+        })
+        remaining--
+      }
+    }
+
+    cursor.backfill = {
+      pos: transcript.end,
+      item: 0,
+      end: progress.end,
+    }
+
+    if (transcript.end >= progress.end) {
+      cursor.conversation = CONVERSATION_VERSION
+      delete cursor.backfill
+    }
+
+    writeCursors({
+      dir: writer.dir,
+      cursors,
+    })
+
+    return {
+      progressed: true,
+    }
+  }
+
+  return {
+    progressed: false,
+  }
 }

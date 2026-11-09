@@ -607,9 +607,11 @@ export interface TranscriptRead {
 export function readTranscript({
   cursor,
   through,
+  maxBytes,
 }: {
   cursor: Pick<Cursor, 'source' | 'identity' | 'pos'>
   through?: number
+  maxBytes?: number
 }): TranscriptRead | null {
   let fd: number
 
@@ -628,20 +630,40 @@ export function readTranscript({
     const reset = (cursor.identity !== '' && cursor.identity !== identity) || stat.size < cursor.pos
     const from = reset ? 0 : cursor.pos
     const admittedEnd = through ?? stat.size
-    const buf = Buffer.alloc(Math.max(
+    const available = Math.max(
       0,
       Math.min(
         stat.size,
         admittedEnd,
       ) - from,
-    ))
-    readSync(
-      fd,
-      buf,
-      0,
-      buf.length,
-      from,
     )
+    let length = Math.min(
+      available,
+      maxBytes ?? available,
+    )
+    let buf: Buffer
+
+    // A batch can exceed its byte budget only to finish its first native record.
+    while (true) {
+      buf = Buffer.alloc(length)
+      readSync(
+        fd,
+        buf,
+        0,
+        buf.length,
+        from,
+      )
+
+      if (buf.includes(10) || length === available) {
+        break
+      }
+
+      length = Math.min(
+        available,
+        length * 2,
+      )
+    }
+
     const complete = buf.lastIndexOf(10) + 1
     const lines: TranscriptRead['lines'] = []
 
