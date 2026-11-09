@@ -934,6 +934,16 @@ export function createHost({
         return { busy: 'mid-turn' }
       }
 
+      // A message delivered but not yet taken would be lost with the session.
+      const waiting = ({ entry }: { entry: Live }) => entry.pendingDirect.size > 0
+        || (entry.session?.snapshot().work.unsettledInputs.length ?? 0) > 0
+
+      if (entries.some(([
+        , entry,
+      ]) => waiting({ entry }))) {
+        return { busy: 'taking a message' }
+      }
+
       for (const [
         key,
         entry,
