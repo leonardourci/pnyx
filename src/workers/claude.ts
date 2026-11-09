@@ -1177,7 +1177,13 @@ export const readClaudeTranscript: TranscriptReader = ({
     const texts = typeof content === 'string' ? [content] : blocks
     parsed.messages = transcriptText({
       at,
-      texts: texts.map(raw => ({ text: blockText({ value: raw }) })),
+      texts: texts.map((
+        raw,
+        block,
+      ) => ({
+        text: blockText({ value: raw }),
+        block,
+      })),
     })
   }
 

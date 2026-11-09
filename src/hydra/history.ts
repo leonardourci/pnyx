@@ -267,6 +267,7 @@ export function loggedEntry({ event }: { event: ChatEvent }): ThreadEntry {
     messageId,
     part,
     kind: event.data.kind ?? 'message',
+    block: event.data.block,
     hidden: event.data.hidden,
     call: event.data.call,
     role: event.data.role,

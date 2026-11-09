@@ -17,7 +17,7 @@ function nativePosition({ entry }: { entry: ThreadEntry }) {
   return {
     offset: Number(match[1]),
     kind: match[2] === 'm' ? 0 : 1,
-    block: Number(match[3]),
+    block: entry.block ?? Number(match[3]),
     part: entry.part ?? Number(match[4] ?? 0),
   }
 }
@@ -42,6 +42,6 @@ export function threadEntryOrder({
     return 0
   }
 
-  return before.offset - after.offset || before.kind - after.kind
-    || before.block - after.block || before.part - after.part
+  return before.offset - after.offset || before.block - after.block
+    || before.kind - after.kind || before.part - after.part
 }

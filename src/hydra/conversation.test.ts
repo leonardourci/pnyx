@@ -577,3 +577,77 @@ test(
     )
   },
 )
+
+test(
+  'mixed native blocks keep thinking and tool progress before the text that follows them',
+  () => {
+    const entries = recordEntries({
+      offset: 0,
+      record: {
+        type: 'assistant',
+        timestamp: at({ minute: 1 }),
+        message: {
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Reason before answering',
+            },
+            {
+              type: 'text',
+              text: 'First response',
+            },
+            {
+              type: 'tool_use',
+              id: 'inspect',
+              name: 'Read',
+              input: { file_path: 'release.txt' },
+            },
+            {
+              type: 'text',
+              text: 'Final response',
+            },
+          ],
+        },
+      },
+    })
+    const conversation = hydraConversation({
+      messages: [],
+      columns: [],
+      working: false,
+      transcript: [
+        entry({
+          id: 'owner',
+          minute: 0,
+          role: 'You',
+        }),
+        ...entries,
+      ],
+      actions: [],
+      thinking: true,
+    })
+    const rendered = conversation.entries.flatMap(item => [
+      ...(conversation.folds.get(item.id)?.notes ?? []),
+      item,
+    ])
+    assert.deepEqual(
+      rendered.map(item => item.text),
+      [
+        'owner',
+        'Reason before answering',
+        'First response',
+        '{"file_path":"release.txt"}',
+        'Final response',
+      ],
+    )
+    assert.deepEqual(
+      entries.map(item => item.id),
+      [
+        '0:t0',
+        '0:m0',
+        '0:t2',
+        '0:m1',
+      ],
+    )
+  },
+)

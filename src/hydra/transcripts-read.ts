@@ -27,6 +27,7 @@ import { threadEntryOrder } from './thread-order.ts'
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
   final?: boolean
+  block?: number
   reference?: string
   id: string
   hidden?: boolean
@@ -179,6 +180,7 @@ export function transcriptEntries({
     at: message.at,
     hidden: message.internal,
     final: parsed.final,
+    block: message.block,
   }))
 
   for (const trace of parsed.traces) {
@@ -188,6 +190,7 @@ export function transcriptEntries({
 
     const entry: ThreadEntry = {
       id: `${offset}:t${trace.index}`,
+      block: trace.index,
       kind: trace.kind,
       role: trace.role,
       at: parsed.at,
@@ -201,7 +204,10 @@ export function transcriptEntries({
     entries.push(entry)
   }
 
-  return entries.flatMap(entry => splitEntry({ entry }))
+  return entries.sort((
+    a,
+    b,
+  ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({ entry }))
 }
 
 export function threadPath({ card }: { card: Card }): string | undefined {
