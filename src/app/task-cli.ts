@@ -507,10 +507,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         value: positionals[1],
         what: 'task id',
       }),
-      before: integer({
-        value: values.before,
-        flag: '--before',
-      }),
+      before: values.before as string | undefined,
       limit: integer({
         value: values.limit,
         flag: '--limit',
