@@ -1,4 +1,4 @@
-import { hydraConfig } from './config.ts'
+import { hostedHydra, hydraConfig } from './config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -97,7 +97,7 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
   const config = hydraConfig({ state })
   const card = state.cards[HYDRA_CARD]
   const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id)
-  const hosted = config.hydra.kind !== 'firstmate'
+  const hosted = hostedHydra({ state })
   const working = hosted && (card?.sessionActivity ?? card?.activity) === 'working'
   const view = hydraQueueView({
     state,

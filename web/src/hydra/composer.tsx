@@ -9,7 +9,7 @@ import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
-import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
+import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
@@ -59,13 +59,6 @@ export function Composer({
   projectRequest?: boolean
   projectRequested?(): void
 }) {
-  const [
-    failure,
-    setFailure,
-  ] = useState<{
-    at: string
-    text: string
-  } | null>(null)
   const [
     sending,
     setSending,
@@ -179,7 +172,7 @@ export function Composer({
       draft,
       comments: sendable,
     }
-    setFailure(null); setSending(true); setChecking(false)
+    setSending(true); setChecking(false)
 
     if (taken) {
       write({
@@ -190,10 +183,8 @@ export function Composer({
       field.current?.closePickers()
     }
 
-    let problem: string | null = null
-
     try {
-      const r = await command({
+      await command({
         name: 'reply',
         args: [
           card,
@@ -201,64 +192,18 @@ export function Composer({
           attempt.current.id,
         ],
         onChecking: () => setChecking(true),
-      }); const receipt = r.reply as {
-        state: string
-        detail?: string
-      } | undefined
-
-      if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
-        attempt.current = null
-      } else {
-        problem = receipt?.state === 'delivery_unknown'
-          ? 'This may not have arrived. Check the conversation; sending it again sends a new copy.'
-          : receipt?.detail ?? 'It could not be delivered.'
-
-        // Sending again after an unknown delivery is a new message with its own id, never a silent repeat of this one.
-        if (receipt?.state === 'delivery_unknown') {
-          attempt.current = null
-        }
-      }
-    } catch (e) {
-      problem = (e as Error).message
+      })
+    } catch {
+      // The chat keeps a message that was not sent, marked with a retry; the error is shown there.
     } finally {
-      if (attempt.current) {
-        attempt.current.pending = false
-      }
-
+      attempt.current = null
       saveAttempt({
         key: card,
         hydraId: cacheIdentity,
-        attempt: attempt.current,
+        attempt: null,
       })
       setSending(false)
       setChecking(false)
-    }
-
-    if (problem) {
-      setFailure({
-        at: new Date().toISOString(),
-        text: problem,
-      })
-      const later = current.current
-      const back = taken?.draft ?? (later.draft.trim() ? '' : text)
-      const restored = [
-        back,
-        later.draft,
-      ].filter(part => part.trim()).join('\n\n')
-      write({
-        text: restored,
-        caret: draftView({ text: restored }).display.length,
-      })
-
-      if (taken?.comments.length) {
-        setComments({
-          items: [
-            ...taken.comments,
-            ...later.comments.filter(comment =>
-              !taken.comments.some(sent => sent.id === comment.id)),
-          ],
-        })
-      }
     }
   }
 
@@ -318,21 +263,6 @@ export function Composer({
   return (
     <>
       {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
-      {failure && (
-        <div className="send-error" role="alert">
-          <Icon name="error" size={16} />
-          <p>
-            <strong>Not sent at {clock({ at: failure.at })}.</strong>
-            {' '}Your message is back below. {failure.text.replace(
-              /\s*Draft kept\.$/,
-              '',
-            )}
-          </p>
-          <Button className="icon-button" aria-label="Dismiss" onClick={() => setFailure(null)}>
-            <Icon name="close" size={14} />
-          </Button>
-        </div>
-      )}
       <form
         ref={form}
         aria-busy={sending}

@@ -5,7 +5,7 @@ import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import { receiptLabel } from '#web-app/view.ts'
 import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-registry.tsx'
-import { Button } from '#web-shared/ui/controls.tsx'
+import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
@@ -52,6 +52,8 @@ let highlights = 0
 // A message the owner just sent shows at once, faded until the server records it.
 export type ChatEntry = ThreadEntry & {
   sending?: boolean
+  // Why the owner's message was not sent; it stays with a retry.
+  unsent?: string
   renderKey?: string
 }
 
@@ -108,7 +110,9 @@ export function Messages({
   catalog,
   labelColors,
   sendAgain,
+  retry,
 }: {
+  retry?({ id }: { id: string }): void
   // Sends a task message that may not have arrived again, as a new message with its own id.
   sendAgain?({
     task,
@@ -747,6 +751,7 @@ export function Messages({
               })}
               data-streaming={entry.streaming || undefined}
               data-sending={entry.sending || undefined}
+              data-unsent={entry.unsent !== undefined || undefined}
               data-pnyx={entry.role === 'Pnyx' || undefined}
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
@@ -860,6 +865,14 @@ export function Messages({
             </article>
             {ownMessage({ entry }) && !entry.continued && (
               <div className="message-meta" contentEditable={false}>
+                {entry.unsent !== undefined && (
+                  <span className="unsent" role="alert" title={entry.unsent}>
+                    <Icon name="error" size={14} />Not sent
+                  </span>
+                )}
+                {entry.unsent !== undefined && retry && (
+                  <InlineButton onClick={() => retry({ id: entry.id })}>Retry</InlineButton>
+                )}
                 {entry.at && (
                   <time
                     dateTime={entry.at}
