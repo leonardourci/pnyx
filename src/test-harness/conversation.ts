@@ -30,7 +30,7 @@ export function assertConversation({
     provider: state.cards[HYDRA_CARD]?.agent?.provider,
     boundaries: true,
   })
-    .filter(entry => !entry.hidden && entry.role !== 'Pnyx' && entry.text.trim() !== 'NO_REPLY'
+    .filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY'
       && (oldest === undefined || entry.at === undefined || entry.at >= oldest))
     .sort((
       first,
