@@ -90,7 +90,7 @@ export function liveReplies() {
         entries: [
           ...page.entries,
           ...entries,
-        ].slice(-60),
+        ],
       }
 
       if (currentTurn) {
