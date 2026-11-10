@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { asRecord } from '#app/command-validation.ts'
-import { oneDecimal } from '#app/log-line.ts'
+import { logDay, oneDecimal } from '#app/log-line.ts'
 import { logFiles, MB } from './log-files.ts'
 
 export const PERFORMANCE_WINDOW_MS = 60 * 60 * 1000
@@ -28,6 +28,8 @@ interface Line {
   cpuPercent?: number
   loopDelayP99Ms?: number
 }
+
+type Timed = Line & { ms: number }
 
 interface Group {
   count: number
@@ -130,17 +132,13 @@ export async function performanceReport({
 }) {
   const from = new Date(since).toISOString()
   const to = new Date(until).toISOString()
-  const files = logFiles().filter(file => file.day >= from.slice(
-    0,
-    10,
-  ) && file.day <= to.slice(
-    0,
-    10,
-  ))
+  const firstDay = logDay({ at: from })
+  const lastDay = logDay({ at: to })
+  const files = logFiles().filter(file => file.day >= firstDay && file.day <= lastDay)
   const groups = new Map<string, Group>()
   const samples: Line[] = []
   // The slowest actions so far, slowest first.
-  let slowest: Line[] = []
+  let slowest: Timed[] = []
   let lines = 0
 
   for (const file of files) {
@@ -195,16 +193,20 @@ export async function performanceReport({
 
       if (ms !== undefined) {
         group.durations.push(ms)
-        const fastestKept = slowest.at(-1)?.ms
+        const room = slowest.length < limit
 
-        if (slowest.length < limit || fastestKept === undefined || ms > fastestKept) {
+        // Without room the list holds `limit` entries, so its last one exists.
+        if (room || ms > slowest[limit - 1]!.ms) {
           slowest = [
             ...slowest,
-            line,
+            {
+              ...line,
+              ms,
+            },
           ].toSorted((
             a,
             b,
-          ) => (b.ms ?? 0) - (a.ms ?? 0))
+          ) => b.ms - a.ms)
             .slice(
               0,
               limit,
