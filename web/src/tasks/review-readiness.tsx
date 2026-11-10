@@ -61,10 +61,8 @@ export function ReviewReadiness({
     ]
 
     if (noted) {
-      args.push(
-        '--text',
-        note,
-      )
+      // The = form keeps a note that starts with a dash from reading as an option.
+      args.push(`--text=${note}`)
     }
 
     args.push(

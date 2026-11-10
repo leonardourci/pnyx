@@ -80,10 +80,8 @@ export function AskPanel({
       }
 
       if (text.trim()) {
-        args.push(
-          '--text',
-          text,
-        )
+        // The = form keeps a note that starts with a dash from reading as an option.
+        args.push(`--text=${text}`)
       }
 
       args.push(
