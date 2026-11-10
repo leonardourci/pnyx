@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -1084,16 +1084,16 @@ test(
     }
     `,
       })
-      await run({
-        args: ['run'],
-        input: `await page.wait('.hydra-chat .markdown', ${PAINT_TIMEOUT_MS});`,
+      await waitFor({
+        what: 'the missing-image fallback and four inline images',
+        condition: `document.querySelectorAll('.hydra-chat .message-image img').length === 4
+          && [...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Missing preview'))`,
       })
-      await capture({ name: 'images' })
       await evaluate({
         script: `async () => {
       const images = [...document.querySelectorAll('.hydra-chat .message-image img')];
       if (images.length !== 4) throw new Error('Expected four inline images, got ' + images.length);
-      await Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; })));
+      await Promise.all(images.map(image => image.decode()));
       const content = document.querySelector('.hydra-chat article.mine .markdown');
       if (content.querySelector('script, b, img[alt="Literal HTML"]') || window.imageUnsafe || !content.textContent.includes('<img src=')) throw new Error('HTML must stay literal text');
       if (images.some(image => !image.naturalWidth || image.getBoundingClientRect().width > image.closest('.markdown').getBoundingClientRect().width + 1)) throw new Error('Image exceeds bubble or failed');
@@ -1101,6 +1101,7 @@ test(
       return 'chat-assertion-passed';
     }`,
       })
+      await capture({ name: 'images' })
       await run({
         args: ['run'],
         input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.click('[aria-label="Show image: Markdown preview"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
@@ -1112,28 +1113,16 @@ test(
     }`,
       })
 
-      const home = process.env.PNYX_HOME
-      assert.ok(home)
-      const attachments = join(
-        home,
-        'hydras',
-        s.hydraId,
-        'attachments',
-      )
-      const [
-        attachment,
-        otherAttachment,
-      ] = readdirSync(attachments)
-      assert.ok(attachment)
-      assert.ok(otherAttachment)
-      const src = join(
-        attachments,
-        attachment,
-      )
-      const otherSrc = join(
-        attachments,
-        otherAttachment,
-      )
+      const uploaded = await run({
+        args: ['run'],
+        input: 'console.log(JSON.stringify(await page.eval(() => window.imageFixture)));',
+      })
+      const fixture: unknown = JSON.parse(uploaded.stdout)
+      assert.ok(fixture && typeof fixture === 'object')
+      assert.ok('path' in fixture && typeof fixture.path === 'string')
+      assert.ok('small' in fixture && typeof fixture.small === 'string')
+      const src = fixture.path
+      const otherSrc = fixture.small
       const hydraImages = `Hydra image reply
 
 Literal example: \`${src}\`
@@ -1164,12 +1153,12 @@ Again: [image: ${src}]
       await s.chat({ text: 'Show the Hydra images' })
       await waitFor({
         what: 'automatic token and file images in the Hydra reply',
-        condition: `document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img').length === 6
-          && [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img')].every(image => image.complete && image.naturalWidth > 0)`,
+        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 6',
       })
       await evaluate({
-        script: `() => {
+        script: `async () => {
         const reply = [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"]')].find(row => row.textContent.includes('Hydra image reply'));
+        await Promise.all([...reply.querySelectorAll('.message-image img')].map(image => image.decode()));
         if (!reply.querySelector('img[alt="Image 1"]')) throw new Error('Image token did not render inline');
         if (!reply.querySelector('li:first-child .message-image img')) throw new Error('Files path did not render inline');
         if (reply.querySelectorAll('.attachment-card').length !== 1) throw new Error('Only the unservable file should stay a chip');
@@ -1254,13 +1243,13 @@ Again: [image: ${src}]`
       })
       await waitFor({
         what: 'every image mention in the task worker message',
-        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img').length === 3
-          && [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')].every(image => image.complete && image.naturalWidth > 0)`,
+        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img').length === 3`,
       })
       await evaluate({
-        script: `() => {
+        script: `async () => {
         document.querySelector('[data-task="${task.id}"] .card-current-state .show-more')?.click();
         const images = [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')];
+        await Promise.all(images.map(image => image.decode()));
         if (!images.some(image => image.alt === 'Worker Markdown image') || images.length !== 3) throw new Error('Worker image syntax lost');
         return 'chat-assertion-passed';
       }`,
