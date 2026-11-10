@@ -120,6 +120,15 @@ test(
       }),
       { code: 'MEMORY_FULL' },
     )
+    await assert.rejects(
+      async () => commands.owner([
+        'worker-notes',
+        'save',
+        '--reason',
+        'not a worker-notes action',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
     assert.equal(
       ownerMemory().workers,
       undefined,

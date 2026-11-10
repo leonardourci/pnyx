@@ -93,12 +93,25 @@ function memoryChange({
 
 export const owner = guard({
   handler: ({ args }) => {
+    const usage = 'use owner memory list|set|forget|confirm|move|save|archive or owner worker-notes set|forget'
+    const workerNotes = args[0] === 'worker-notes'
+
+    if (workerNotes && ![
+      'set',
+      'forget',
+    ].includes(args[1] ?? '')) {
+      throw new HydraError({
+        message: usage,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
     const {
       values,
       positionals,
       hydraId,
     } = parse({
-      args: args[0] === 'worker-notes' ? [
+      args: workerNotes ? [
         'memory',
         ...args.slice(1),
         '--key',
@@ -119,7 +132,6 @@ export const owner = guard({
       },
       positionals: 2,
     })
-    const usage = 'use owner memory list|set|forget|confirm|move|save|archive or owner worker-notes set|forget'
 
     if (positionals[0] !== 'memory') {
       throw new HydraError({

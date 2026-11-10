@@ -2,7 +2,7 @@ import type { Learning } from './learnings.ts'
 import { HydraError } from '#store/errors.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 
-// Owner memory is Pnyx-wide: the owner's preferences and general learnings, printed in every Hydra's digest.
+// Owner memory is Pnyx-wide: the owner's preferences, general learnings and worker notes, printed in every Hydra's digest.
 export const OWNER_MEMORY_BUDGET = 24000
 
 // Hydra memory holds only what this Hydra needs: its scope, where it left off, its check cursor.
