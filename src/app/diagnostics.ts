@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { inspect } from 'node:util'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir } from '#store/storage.ts'
-import { logDay, logged, oneDecimal, type LogLine, type LogMode } from './log-line.ts'
+import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type LogMode } from './log-line.ts'
 
 export type { LogLine, LogMode } from './log-line.ts'
 
@@ -214,11 +214,22 @@ export function writeLine({
     error,
     detailed,
     ms,
-    ...fields
   } = line
   // A failure always has an id, so a retry can share it and the timeline can page by it.
   const failureId = level && !operationId ? randomUUID() : operationId
+  const fields: Record<string, unknown> = {}
   let text: string
+
+  for (const key of Object.keys(line)) {
+    const value = line[key as keyof LogLine]
+
+    if (LOG_FIELDS.has(key)) {
+      fields[key] = typeof value === 'string' ? value.slice(
+        0,
+        TEXT_MAX,
+      ) : value
+    }
+  }
 
   // A line that cannot be built must not break the action it describes; a failure still reaches stderr.
   try {
@@ -234,7 +245,8 @@ export function writeLine({
       detailed: detailed ? true : undefined,
       ms: ms === undefined ? undefined : oneDecimal({ value: ms }),
       rss: source === 'server' ? process.memoryUsage.rss() : undefined,
-      error: level && error !== undefined ? failure({ error }) : undefined,
+      // An error line describes its error even when what was thrown is undefined.
+      error: level === 'error' || (level && error !== undefined) ? failure({ error }) : undefined,
     })
   } catch (unbuilt) {
     if (level) {

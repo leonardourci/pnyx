@@ -185,3 +185,68 @@ test(
     )
   },
 )
+
+test(
+  'a written line keeps only the known fields, bounds their text and always describes an error',
+  t => {
+    openLogs()
+    t.after(() => closeLogs())
+    const before = new Set(readdirSync(logsDir()).flatMap(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ).split('\n')))
+    // A wider object passed as a line, as a spread of a card or request would: its other fields stay out.
+    const wider = {
+      operation: 'wider',
+      taskId: 'first',
+      prompt: 'the owner’s message',
+      token: 'secret',
+    } as LogLine
+    log(wider)
+    log({
+      operation: 'long',
+      name: 'n'.repeat(5000),
+    })
+    log({
+      level: 'error',
+      operation: 'rejected without a reason',
+      error: undefined,
+    })
+    const written = readdirSync(logsDir()).flatMap(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ).split('\n'))
+      .filter(text => text && !before.has(text))
+      .map(text => JSON.parse(text) as Record<string, unknown>)
+    const line = ({ operation }: { operation: string }) => written
+      .find(record => record.operation === operation)!
+
+    assert.deepEqual(
+      Object.keys(line({ operation: 'wider' })).toSorted(),
+      [
+        'at',
+        'operation',
+        'pid',
+        'rss',
+        'source',
+        'taskId',
+        'v',
+      ],
+    )
+    assert.equal(
+      String(line({ operation: 'long' }).name).length,
+      200,
+    )
+    const failed = line({ operation: 'rejected without a reason' })
+    assert.equal(
+      (failed.error as { message?: string } | undefined)?.message,
+      'undefined',
+    )
+  },
+)

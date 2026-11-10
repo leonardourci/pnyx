@@ -53,6 +53,43 @@ interface LogFields {
   gcMaxMs?: number
 }
 
+// Every field a line may carry besides its operation, id and duration: a line is built from these and nothing else
+// its object holds, and a field added above must be listed here.
+const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | 'ms'>]-?: true } = {
+  hydraId: true,
+  taskId: true,
+  sessionId: true,
+  correlationId: true,
+  eventSeq: true,
+  name: true,
+  actor: true,
+  status: true,
+  code: true,
+  exitCode: true,
+  provider: true,
+  bytes: true,
+  backlog: true,
+  count: true,
+  tab: true,
+  script: true,
+  blockingMs: true,
+  cpuPercent: true,
+  loopUtilization: true,
+  loopDelayMs: true,
+  loopDelayP99Ms: true,
+  loopDelayMaxMs: true,
+  heapUsed: true,
+  heapTotal: true,
+  heapLarge: true,
+  external: true,
+  arrayBuffers: true,
+  gcCount: true,
+  gcMs: true,
+  gcMaxMs: true,
+}
+
+export const LOG_FIELDS = new Set(Object.keys(FIELDS))
+
 // One variant per severity: an error line needs its error, and warnings and errors are never detailed.
 type Severity =
   | {
