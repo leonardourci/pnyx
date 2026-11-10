@@ -74,7 +74,8 @@ pnyx-axi debug performance [--since <ISO>] [--until <ISO>] [--operation <prefix>
 Read the diagnostic logs of the last hour, or the window given: each action's count, typical
 (median) and worst duration in ms, total time, errors and warnings, the server's memory, CPU and
 event-loop delay over time, and the slowest actions (default ${SLOWEST_LIMIT}). --hydra keeps one Hydra's lines and the
-server-wide ones; --operation keeps the operations starting with that prefix.
+server-wide ones, and the routine helper always reads only its own Hydra; --operation keeps the operations starting
+with that prefix.
 `,
   logs: `usage: pnyx-axi logs [clean]
 Show the diagnostic log folder, the logs setting, how many days are kept, the size cap and each day's
