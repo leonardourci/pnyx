@@ -247,9 +247,11 @@ export function noteFrame({ ms }: { ms: number }) {
 
 // The reveal frames since the last call, for a live update's line.
 export function takeFrames() {
+  // A line about an update with no reveal frames before it leaves both fields out.
+  const drawn = frames > 0
   const taken = {
-    frames: frames || undefined,
-    worstFrameMs: frames ? worstFrameMs : undefined,
+    frames: drawn ? frames : undefined,
+    worstFrameMs: drawn ? worstFrameMs : undefined,
   }
   frames = 0
   worstFrameMs = 0

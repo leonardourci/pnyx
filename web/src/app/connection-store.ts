@@ -974,7 +974,8 @@ export function createHydraConnection() {
         operation: 'page.socket',
         status: 'open',
         ms: performance.now() - connecting,
-        count: failures || undefined,
+        // The attempts that failed before this open, when the socket had been down.
+        count: failures > 0 ? failures : undefined,
       })
       failures = 0
       publish()
@@ -996,7 +997,7 @@ export function createHydraConnection() {
 
         // The store keeps one thread page per Hydra, so a new one replaces the size of the last.
         if (scope?.thread && scope.thread !== thread) {
-          scope.threadChars = (event.data as string).length
+          scope.threadChars = String(event.data).length
         }
 
         // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. Each carries the
