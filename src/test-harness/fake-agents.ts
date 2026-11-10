@@ -105,6 +105,7 @@ interface TurnPlan {
 
 interface ClaudeTurnPlan extends TurnPlan {
   partial?: string
+  stream?: AsyncIterable<string>
   // Native messages sent ahead of the recorded turn, as Claude Code sends compaction statuses; a held plan waits between them.
   before?: SDKMessage[]
   after?: SDKMessage[]
@@ -307,7 +308,30 @@ export function replayClaude({ hydra }: { hydra(): string }) {
             }
           } else if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'
             && recorded.event.delta.type === 'text_delta') {
-            if (plan?.partial) {
+            let streamed = ''
+            const partial = plan?.partial
+            let prefixLength = partial === undefined ? 0 : partial.length
+
+            if (plan?.stream) {
+              for await (const text of plan.stream) {
+                streamed += text
+                assert.ok(answer.startsWith(streamed))
+                yield {
+                  ...recorded,
+                  session_id: id,
+                  event: {
+                    ...recorded.event,
+                    delta: {
+                      type: 'text_delta',
+                      text,
+                    },
+                  },
+                }
+              }
+
+              prefixLength = streamed.length
+              await plan.wait
+            } else if (plan?.partial) {
               assert.ok(answer.startsWith(plan.partial))
               yield {
                 ...recorded,
@@ -330,7 +354,7 @@ export function replayClaude({ hydra }: { hydra(): string }) {
                 ...recorded.event,
                 delta: {
                   type: 'text_delta',
-                  text: answer.slice(plan?.partial?.length ?? 0),
+                  text: answer.slice(prefixLength),
                 },
               },
             }

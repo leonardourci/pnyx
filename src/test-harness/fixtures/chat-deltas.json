@@ -1,0 +1,5566 @@
+{
+  "source": "1. ## Set the Tank Size\n\nGive the simulator one tank with a fixed capacity and a current water level. The player can watch rain fill it and household use drain it. **Start small** so every change is easy to follow. Store capacity and level as numbers, and keep the level between zero and capacity. A simple `Tank` object is enough for the first version.\n\n- Choose a capacity.\n- Track current water.\n- Display both values.\n\n```ts\nfunction createTank() {\n  return {\n    capacity: 100,\n    level: 25,\n  };\n}\n```\n\n2. ## Model Rainfall\n\nRain arrives in millimeters, then adds water to the tank. For a toy model, treat each millimeter as a fixed amount of collected water. A roof collection factor can represent how much rain reaches the tank. This keeps the math understandable while letting players compare light and heavy showers.\n\n- Record rain in millimeters.\n- Set a roof collection factor.\n- Add collected water to the tank.\n\n```ts\nfunction collectRain(\n  rain: number,\n  factor: number,\n) {\n  return rain * factor;\n}\n```\n\n3. ## Prevent Overflow\n\nWhen a storm produces more water than the tank can hold, the extra should spill away. Clamp the resulting level to the tank’s capacity, and optionally record the overflow so the player can see what was lost. This makes the tank behave predictably during heavy rain and keeps its displayed level valid.\n\n- Limit water to capacity.\n- Track overflow separately.\n- Show when the tank is full.\n\n```ts\nfunction fillTank(level: number, amount: number) {\n  const total = level + amount;\n  return Math.min(total, 100);\n}\n```\n\n4. ## Add Household Use\n\nWater leaves the tank when the household uses it. Give each simulated day a fixed demand, then subtract that amount from the level. If the tank has less water than requested, use what remains and report the shortfall. That rule lets the player see how dry weather affects supply.\n\n- Set daily demand.\n- Subtract demand each day.\n- Track unmet use.\n\n```ts\nfunction useWater(level: number, demand: number) {\n  const used = Math.min(level, demand);\n  return level - used;\n}\n```\n\n5. ## Advance the Calendar\n\nThe simulator needs a simple calendar so rainfall and use happen in sequence. Each step can represent one day. Advance the day, apply rain, then subtract household demand. Keeping the order consistent makes the outcome easy to reason about and compare across runs.\n\n- Count simulated days.\n- Apply rain per day.\n- Apply household use after collection.\n\n```ts\nfunction nextDay(day: number) {\n  return day + 1;\n}\n```\n\n6. ## Choose Weather\n\nUse a short weather list with clear rainfall amounts. A sunny day adds no water, a drizzle adds a little, and a storm adds more. These values are illustrative rather than meteorological, so keep them simple and visible to the player.\n\n- Add sunny weather.\n- Add drizzle and storm.\n- Show the day’s weather.\n\n```ts\nfunction rainfall(weather: string) {\n  if (weather === \"storm\") return 30;\n  if (weather === \"drizzle\") return 8;\n  return 0;\n}\n```\n\n7. ## Display Tank Status\n\nTranslate the numeric level into a short status label. Players can then see whether supply is comfortable, low, or empty without interpreting every number. Use thresholds that match the tank capacity and update the label after each daily step.\n\n- Show a water level meter.\n- Label low supply.\n- Make empty and full states clear.\n\n```ts\nfunction tankStatus(level: number) {\n  if (level < 20) return \"Low\";\n  if (level >= 100) return \"Full\";\n  return \"Ready\";\n}\n```\n\n8. ## Compare Demand\n\nDifferent households can use different amounts of water each day. Let the player choose a demand profile, such as careful, typical, or high use. A small table can make those choices easy to compare before starting a run.\n\n| Profile | Daily use |\n|---|---:|\n| Careful | 8 |\n| Typical | 15 |\n| High | 24 |\n\n- Offer three demand profiles.\n- Display the selected daily use.\n- Let the player switch profiles.\n\n```ts\nfunction demandFor(profile: string) {\n  if (profile === \"high\") return 24;\n  if (profile === \"careful\") return 8;\n  return 15;\n}\n```\n\n9. ## Track Rain History\n\nKeep a short record of recent days, including rainfall and tank level. The history helps players understand why a tank rose or fell. A list of a few entries is enough for this toy; there is no need for a large reporting system.\n\n- Record rainfall each day.\n- Record the closing tank level.\n- Show the latest entries.\n\n```ts\nfunction recordDay(day: number, rain: number, level: number) {\n  return {\n    day,\n    rain,\n    level,\n  };\n}\n```\n\n10. ## Add a Refill Rule\n\nA simple refill rule can alert the player when the tank drops below a chosen threshold. For example, the simulator can show a reminder to reduce use or wait for rain. Keep the suggestion informational so the player remains in control of the scenario.\n\n- Choose a low-water threshold.\n- Show a reminder below it.\n- Clear the reminder after refill.\n\n```ts\nfunction needsReminder(level: number) {\n  const threshold = 20;\n  return level < threshold;\n}\n```\n\n11. ## Save the Scenario\n\nSave the tank level, day number, and selected demand profile so the player can resume later. For a browser toy, `localStorage` is a compact option. Keep saved data small, and return to a fresh scenario if loading fails.\n\n- Save after each day.\n- Restore the active scenario.\n- Provide a reset action.\n\n```ts\nfunction saveState(key: string, data: string) {\n  try {\n    localStorage.setItem(key, data);\n    return true;\n  } catch {\n    return false;\n  }\n}\n```\n\n12. ## Explore Rainwater Basics\n\nPresent the simulator as a learning toy: adjust rainfall and household demand, then observe the tank. Explain that its values are simplified and real collection depends on roof area, conditions, and system design. For additional background, see https://www.epa.gov/soakuptherain.\n\n- Let players restart easily.\n- Explain the simplified assumptions.\n- Invite experiments with different weather.\n\n```ts\nfunction restart() {\n  return {\n    day: 1,\n    level: 25,\n    demand: 15,\n  };\n}\n```\n\nLAB_STREAM_03_END",
+  "visible": "SettheTankSizeGivethesimulatoronetankwithafixedcapacityandacurrentwaterlevel.Theplayercanwatchrainfillitandhouseholdusedrainit.Startsmallsoeverychangeiseasytofollow.Storecapacityandlevelasnumbers,andkeepthelevelbetweenzeroandcapacity.AsimpleTankobjectisenoughforthefirstversion.Chooseacapacity.Trackcurrentwater.Displaybothvalues.functioncreateTank(){return{capacity:100,level:25,};}ModelRainfallRainarrivesinmillimeters,thenaddswatertothetank.Foratoymodel,treateachmillimeterasafixedamountofcollectedwater.Aroofcollectionfactorcanrepresenthowmuchrainreachesthetank.Thiskeepsthemathunderstandablewhilelettingplayerscomparelightandheavyshowers.Recordraininmillimeters.Setaroofcollectionfactor.Addcollectedwatertothetank.functioncollectRain(rain:number,factor:number,){returnrain*factor;}PreventOverflowWhenastormproducesmorewaterthanthetankcanhold,theextrashouldspillaway.Clamptheresultingleveltothetank’scapacity,andoptionallyrecordtheoverflowsotheplayercanseewhatwaslost.Thismakesthetankbehavepredictablyduringheavyrainandkeepsitsdisplayedlevelvalid.Limitwatertocapacity.Trackoverflowseparately.Showwhenthetankisfull.functionfillTank(level:number,amount:number){consttotal=level+amount;returnMath.min(total,100);}AddHouseholdUseWaterleavesthetankwhenthehouseholdusesit.Giveeachsimulateddayafixeddemand,thensubtractthatamountfromthelevel.Ifthetankhaslesswaterthanrequested,usewhatremainsandreporttheshortfall.Thatruleletstheplayerseehowdryweatheraffectssupply.Setdailydemand.Subtractdemandeachday.Trackunmetuse.functionuseWater(level:number,demand:number){constused=Math.min(level,demand);returnlevel-used;}AdvancetheCalendarThesimulatorneedsasimplecalendarsorainfallandusehappeninsequence.Eachstepcanrepresentoneday.Advancetheday,applyrain,thensubtracthouseholddemand.Keepingtheorderconsistentmakestheoutcomeeasytoreasonaboutandcompareacrossruns.Countsimulateddays.Applyrainperday.Applyhouseholduseaftercollection.functionnextDay(day:number){returnday+1;}ChooseWeatherUseashortweatherlistwithclearrainfallamounts.Asunnydayaddsnowater,adrizzleaddsalittle,andastormaddsmore.Thesevaluesareillustrativeratherthanmeteorological,sokeepthemsimpleandvisibletotheplayer.Addsunnyweather.Adddrizzleandstorm.Showtheday’sweather.functionrainfall(weather:string){if(weather===\"storm\")return30;if(weather===\"drizzle\")return8;return0;}DisplayTankStatusTranslatethenumericlevelintoashortstatuslabel.Playerscanthenseewhethersupplyiscomfortable,low,oremptywithoutinterpretingeverynumber.Usethresholdsthatmatchthetankcapacityandupdatethelabelaftereachdailystep.Showawaterlevelmeter.Labellowsupply.Makeemptyandfullstatesclear.functiontankStatus(level:number){if(level<20)return\"Low\";if(level>=100)return\"Full\";return\"Ready\";}CompareDemandDifferenthouseholdscanusedifferentamountsofwatereachday.Lettheplayerchooseademandprofile,suchascareful,typical,orhighuse.Asmalltablecanmakethosechoiceseasytocomparebeforestartingarun.ProfileDailyuseCareful8Typical15High24Offerthreedemandprofiles.Displaytheselecteddailyuse.Lettheplayerswitchprofiles.functiondemandFor(profile:string){if(profile===\"high\")return24;if(profile===\"careful\")return8;return15;}TrackRainHistoryKeepashortrecordofrecentdays,includingrainfallandtanklevel.Thehistoryhelpsplayersunderstandwhyatankroseorfell.Alistofafewentriesisenoughforthistoy;thereisnoneedforalargereportingsystem.Recordrainfalleachday.Recordtheclosingtanklevel.Showthelatestentries.functionrecordDay(day:number,rain:number,level:number){return{day,rain,level,};}AddaRefillRuleAsimplerefillrulecanalerttheplayerwhenthetankdropsbelowachosenthreshold.Forexample,thesimulatorcanshowaremindertoreduceuseorwaitforrain.Keepthesuggestioninformationalsotheplayerremainsincontrolofthescenario.Choosealow-waterthreshold.Showareminderbelowit.Clearthereminderafterrefill.functionneedsReminder(level:number){constthreshold=20;returnlevel<threshold;}SavetheScenarioSavethetanklevel,daynumber,andselecteddemandprofilesotheplayercanresumelater.Forabrowsertoy,localStorageisacompactoption.Keepsaveddatasmall,andreturntoafreshscenarioifloadingfails.Saveaftereachday.Restoretheactivescenario.Providearesetaction.functionsaveState(key:string,data:string){try{localStorage.setItem(key,data);returntrue;}catch{returnfalse;}}ExploreRainwaterBasicsPresentthesimulatorasalearningtoy:adjustrainfallandhouseholddemand,thenobservethetank.Explainthatitsvaluesaresimplifiedandrealcollectiondependsonroofarea,conditions,andsystemdesign.Foradditionalbackground,seehttps://www.epa.gov/soakuptherain.Letplayersrestarteasily.Explainthesimplifiedassumptions.Inviteexperimentswithdifferentweather.functionrestart(){return{day:1,level:25,demand:15,};}LAB_STREAM_03_END",
+  "deltas": [
+    [
+      0,
+      "1"
+    ],
+    [
+      0.013,
+      "."
+    ],
+    [
+      0.083,
+      " ##"
+    ],
+    [
+      107.008,
+      " Set"
+    ],
+    [
+      107.037,
+      " the"
+    ],
+    [
+      107.249,
+      " Tank"
+    ],
+    [
+      107.256,
+      " Size"
+    ],
+    [
+      107.26,
+      "\n\n"
+    ],
+    [
+      107.263,
+      "Give"
+    ],
+    [
+      234.551,
+      " the"
+    ],
+    [
+      234.751,
+      " simulator"
+    ],
+    [
+      234.758,
+      " one"
+    ],
+    [
+      234.76,
+      " tank"
+    ],
+    [
+      234.763,
+      " with"
+    ],
+    [
+      234.764,
+      " a"
+    ],
+    [
+      234.766,
+      " fixed"
+    ],
+    [
+      359.772,
+      " capacity"
+    ],
+    [
+      362.952,
+      " and"
+    ],
+    [
+      363.02,
+      " a"
+    ],
+    [
+      363.023,
+      " current"
+    ],
+    [
+      363.026,
+      " water"
+    ],
+    [
+      363.028,
+      " level"
+    ],
+    [
+      363.03,
+      "."
+    ],
+    [
+      519.091,
+      " The"
+    ],
+    [
+      521.319,
+      " player"
+    ],
+    [
+      521.386,
+      " can"
+    ],
+    [
+      521.39,
+      " watch"
+    ],
+    [
+      521.392,
+      " rain"
+    ],
+    [
+      521.419,
+      " fill"
+    ],
+    [
+      521.502,
+      " it"
+    ],
+    [
+      521.545,
+      " and"
+    ],
+    [
+      521.548,
+      " household"
+    ],
+    [
+      683.144,
+      " use"
+    ],
+    [
+      683.155,
+      " drain"
+    ],
+    [
+      683.235,
+      " it"
+    ],
+    [
+      683.238,
+      "."
+    ],
+    [
+      683.24,
+      " **"
+    ],
+    [
+      683.241,
+      "Start"
+    ],
+    [
+      683.243,
+      " small"
+    ],
+    [
+      807.163,
+      "**"
+    ],
+    [
+      809.376,
+      " so"
+    ],
+    [
+      809.496,
+      " every"
+    ],
+    [
+      809.499,
+      " change"
+    ],
+    [
+      809.502,
+      " is"
+    ],
+    [
+      809.504,
+      " easy"
+    ],
+    [
+      809.505,
+      " to"
+    ],
+    [
+      809.507,
+      " follow"
+    ],
+    [
+      809.508,
+      "."
+    ],
+    [
+      915.528,
+      " Store"
+    ],
+    [
+      917.624,
+      " capacity"
+    ],
+    [
+      917.687,
+      " and"
+    ],
+    [
+      917.69,
+      " level"
+    ],
+    [
+      917.693,
+      " as"
+    ],
+    [
+      1059.488,
+      " numbers"
+    ],
+    [
+      1059.718,
+      ","
+    ],
+    [
+      1059.723,
+      " and"
+    ],
+    [
+      1059.726,
+      " keep"
+    ],
+    [
+      1062.493,
+      " the"
+    ],
+    [
+      1062.574,
+      " level"
+    ],
+    [
+      1062.578,
+      " between"
+    ],
+    [
+      1062.581,
+      " zero"
+    ],
+    [
+      1205.144,
+      " and"
+    ],
+    [
+      1205.154,
+      " capacity"
+    ],
+    [
+      1205.339,
+      "."
+    ],
+    [
+      1205.349,
+      " A"
+    ],
+    [
+      1205.352,
+      " simple"
+    ],
+    [
+      1205.354,
+      " `"
+    ],
+    [
+      1205.355,
+      "Tank"
+    ],
+    [
+      1205.416,
+      "`"
+    ],
+    [
+      1350.172,
+      " object"
+    ],
+    [
+      1354.172,
+      " is"
+    ],
+    [
+      1354.999,
+      " enough"
+    ],
+    [
+      1355.254,
+      " for"
+    ],
+    [
+      1355.307,
+      " the"
+    ],
+    [
+      1355.462,
+      " first"
+    ],
+    [
+      1355.61,
+      " version"
+    ],
+    [
+      1355.708,
+      ".\n\n"
+    ],
+    [
+      1457.399,
+      "-"
+    ],
+    [
+      1457.519,
+      " Choose"
+    ],
+    [
+      1457.522,
+      " a"
+    ],
+    [
+      1457.525,
+      " capacity"
+    ],
+    [
+      1457.527,
+      ".\n"
+    ],
+    [
+      1457.529,
+      "-"
+    ],
+    [
+      1602.621,
+      " Track"
+    ],
+    [
+      1602.632,
+      " current"
+    ],
+    [
+      1602.737,
+      " water"
+    ],
+    [
+      1602.74,
+      ".\n"
+    ],
+    [
+      1602.742,
+      "-"
+    ],
+    [
+      1602.744,
+      " Display"
+    ],
+    [
+      1602.746,
+      " both"
+    ],
+    [
+      1725.867,
+      " values"
+    ],
+    [
+      1728.183,
+      ".\n\n"
+    ],
+    [
+      1728.257,
+      "```"
+    ],
+    [
+      1728.26,
+      "ts"
+    ],
+    [
+      1728.263,
+      "\n"
+    ],
+    [
+      1728.264,
+      "function"
+    ],
+    [
+      1728.267,
+      " create"
+    ],
+    [
+      1728.268,
+      "Tank"
+    ],
+    [
+      1728.27,
+      "()"
+    ],
+    [
+      1896.42,
+      " {\n"
+    ],
+    [
+      1896.43,
+      " "
+    ],
+    [
+      1896.63,
+      " return"
+    ],
+    [
+      1896.64,
+      " {\n"
+    ],
+    [
+      1896.644,
+      "   "
+    ],
+    [
+      1896.647,
+      " capacity"
+    ],
+    [
+      1896.649,
+      ":"
+    ],
+    [
+      1896.662,
+      " "
+    ],
+    [
+      2026.794,
+      "100"
+    ],
+    [
+      2026.875,
+      ",\n"
+    ],
+    [
+      2026.878,
+      "   "
+    ],
+    [
+      2026.88,
+      " level"
+    ],
+    [
+      2026.882,
+      ":"
+    ],
+    [
+      2026.883,
+      " "
+    ],
+    [
+      2135.802,
+      "25"
+    ],
+    [
+      2138.364,
+      ",\n"
+    ],
+    [
+      2138.375,
+      " "
+    ],
+    [
+      2140.164,
+      " };\n"
+    ],
+    [
+      2140.173,
+      "}\n"
+    ],
+    [
+      2231.997,
+      "``"
+    ],
+    [
+      2232.095,
+      "`\n\n"
+    ],
+    [
+      2232.099,
+      "2"
+    ],
+    [
+      2232.102,
+      "."
+    ],
+    [
+      2232.135,
+      " ##"
+    ],
+    [
+      2232.279,
+      " Model"
+    ],
+    [
+      2232.36,
+      " Rain"
+    ],
+    [
+      2232.364,
+      "fall"
+    ],
+    [
+      2356.748,
+      "\n\n"
+    ],
+    [
+      2356.94,
+      "Rain"
+    ],
+    [
+      2358.871,
+      " arrives"
+    ],
+    [
+      2359.015,
+      " in"
+    ],
+    [
+      2359.097,
+      " mill"
+    ],
+    [
+      2359.101,
+      "imeters"
+    ],
+    [
+      2359.104,
+      ","
+    ],
+    [
+      2359.106,
+      " then"
+    ],
+    [
+      2464.319,
+      " adds"
+    ],
+    [
+      2464.4,
+      " water"
+    ],
+    [
+      2464.403,
+      " to"
+    ],
+    [
+      2466.531,
+      " the"
+    ],
+    [
+      2466.607,
+      " tank"
+    ],
+    [
+      2607.326,
+      "."
+    ],
+    [
+      2609.584,
+      " For"
+    ],
+    [
+      2609.665,
+      " a"
+    ],
+    [
+      2609.67,
+      " toy"
+    ],
+    [
+      2609.673,
+      " model"
+    ],
+    [
+      2609.703,
+      ","
+    ],
+    [
+      2609.757,
+      " treat"
+    ],
+    [
+      2609.794,
+      " each"
+    ],
+    [
+      2754.534,
+      " mill"
+    ],
+    [
+      2754.691,
+      "imeter"
+    ],
+    [
+      2754.697,
+      " as"
+    ],
+    [
+      2754.701,
+      " a"
+    ],
+    [
+      2754.703,
+      " fixed"
+    ],
+    [
+      2754.706,
+      " amount"
+    ],
+    [
+      2754.708,
+      " of"
+    ],
+    [
+      2754.71,
+      " collected"
+    ],
+    [
+      2899.044,
+      " water"
+    ],
+    [
+      2901.772,
+      "."
+    ],
+    [
+      2901.838,
+      " A"
+    ],
+    [
+      2901.843,
+      " roof"
+    ],
+    [
+      2901.844,
+      " collection"
+    ],
+    [
+      2901.846,
+      " factor"
+    ],
+    [
+      2905.502,
+      " can"
+    ],
+    [
+      2905.519,
+      " represent"
+    ],
+    [
+      3045.25,
+      " how"
+    ],
+    [
+      3045.261,
+      " much"
+    ],
+    [
+      3045.342,
+      " rain"
+    ],
+    [
+      3045.345,
+      " reaches"
+    ],
+    [
+      3045.348,
+      " the"
+    ],
+    [
+      3045.35,
+      " tank"
+    ],
+    [
+      3045.351,
+      "."
+    ],
+    [
+      3045.353,
+      " This"
+    ],
+    [
+      3167.126,
+      " keeps"
+    ],
+    [
+      3167.14,
+      " the"
+    ],
+    [
+      3167.256,
+      " math"
+    ],
+    [
+      3167.26,
+      " understandable"
+    ],
+    [
+      3169.325,
+      " while"
+    ],
+    [
+      3169.389,
+      " letting"
+    ],
+    [
+      3169.392,
+      " players"
+    ],
+    [
+      3169.394,
+      " compare"
+    ],
+    [
+      3275.313,
+      " light"
+    ],
+    [
+      3275.325,
+      " and"
+    ],
+    [
+      3275.329,
+      " heavy"
+    ],
+    [
+      3275.332,
+      " showers"
+    ],
+    [
+      3386.276,
+      ".\n\n"
+    ],
+    [
+      3386.366,
+      "-"
+    ],
+    [
+      3386.369,
+      " Record"
+    ],
+    [
+      3386.372,
+      " rain"
+    ],
+    [
+      3386.374,
+      " in"
+    ],
+    [
+      3386.375,
+      " mill"
+    ],
+    [
+      3386.377,
+      "imeters"
+    ],
+    [
+      3511.082,
+      ".\n"
+    ],
+    [
+      3511.251,
+      "-"
+    ],
+    [
+      3511.262,
+      " Set"
+    ],
+    [
+      3511.266,
+      " a"
+    ],
+    [
+      3511.268,
+      " roof"
+    ],
+    [
+      3624.864,
+      " collection"
+    ],
+    [
+      3624.964,
+      " factor"
+    ],
+    [
+      3624.968,
+      ".\n"
+    ],
+    [
+      3624.97,
+      "-"
+    ],
+    [
+      3624.976,
+      " Add"
+    ],
+    [
+      3624.977,
+      " collected"
+    ],
+    [
+      3723.358,
+      " water"
+    ],
+    [
+      3723.372,
+      " to"
+    ],
+    [
+      3723.489,
+      " the"
+    ],
+    [
+      3723.492,
+      " tank"
+    ],
+    [
+      3725.658,
+      ".\n\n"
+    ],
+    [
+      3725.806,
+      "```"
+    ],
+    [
+      3725.811,
+      "ts"
+    ],
+    [
+      3725.814,
+      "\n"
+    ],
+    [
+      3887.659,
+      "function"
+    ],
+    [
+      3887.668,
+      " collect"
+    ],
+    [
+      3887.672,
+      "Rain"
+    ],
+    [
+      3887.675,
+      "(\n"
+    ],
+    [
+      3887.677,
+      " "
+    ],
+    [
+      3887.678,
+      " rain"
+    ],
+    [
+      3887.679,
+      ":"
+    ],
+    [
+      3887.682,
+      " number"
+    ],
+    [
+      3994.71,
+      ",\n"
+    ],
+    [
+      3994.799,
+      " "
+    ],
+    [
+      3994.802,
+      " factor"
+    ],
+    [
+      3994.805,
+      ":"
+    ],
+    [
+      3994.807,
+      " number"
+    ],
+    [
+      3994.809,
+      ",\n"
+    ],
+    [
+      3994.876,
+      ")"
+    ],
+    [
+      4138.663,
+      " {\n"
+    ],
+    [
+      4138.674,
+      " "
+    ],
+    [
+      4138.677,
+      " return"
+    ],
+    [
+      4138.68,
+      " rain"
+    ],
+    [
+      4138.682,
+      " *"
+    ],
+    [
+      4138.685,
+      " factor"
+    ],
+    [
+      4138.688,
+      ";\n"
+    ],
+    [
+      4138.69,
+      "}\n"
+    ],
+    [
+      4282.633,
+      "``"
+    ],
+    [
+      4282.856,
+      "`\n\n"
+    ],
+    [
+      4282.86,
+      "3"
+    ],
+    [
+      4282.865,
+      "."
+    ],
+    [
+      4282.866,
+      " ##"
+    ],
+    [
+      4282.868,
+      " Prevent"
+    ],
+    [
+      4284.969,
+      " Overflow"
+    ],
+    [
+      4286.407,
+      "\n\n"
+    ],
+    [
+      4391.295,
+      "When"
+    ],
+    [
+      4393.692,
+      " a"
+    ],
+    [
+      4394.671,
+      " storm"
+    ],
+    [
+      4395.281,
+      " produces"
+    ],
+    [
+      4396.024,
+      " more"
+    ],
+    [
+      4398.428,
+      " water"
+    ],
+    [
+      4399.367,
+      " than"
+    ],
+    [
+      4555.351,
+      " the"
+    ],
+    [
+      4555.431,
+      " tank"
+    ],
+    [
+      4555.435,
+      " can"
+    ],
+    [
+      4557.419,
+      " hold"
+    ],
+    [
+      4557.49,
+      ","
+    ],
+    [
+      4557.532,
+      " the"
+    ],
+    [
+      4557.594,
+      " extra"
+    ],
+    [
+      4661.711,
+      " should"
+    ],
+    [
+      4661.83,
+      " spill"
+    ],
+    [
+      4661.834,
+      " away"
+    ],
+    [
+      4661.861,
+      "."
+    ],
+    [
+      4661.864,
+      " Clamp"
+    ],
+    [
+      4768.511,
+      " the"
+    ],
+    [
+      4768.603,
+      " resulting"
+    ],
+    [
+      4769.766,
+      " level"
+    ],
+    [
+      4769.927,
+      " to"
+    ],
+    [
+      4769.941,
+      " the"
+    ],
+    [
+      4769.945,
+      " tank"
+    ],
+    [
+      4769.946,
+      "’s"
+    ],
+    [
+      4770.055,
+      " capacity"
+    ],
+    [
+      4770.058,
+      ","
+    ],
+    [
+      4922.343,
+      " and"
+    ],
+    [
+      4922.471,
+      " optionally"
+    ],
+    [
+      4922.475,
+      " record"
+    ],
+    [
+      4922.479,
+      " the"
+    ],
+    [
+      4922.481,
+      " overflow"
+    ],
+    [
+      4922.483,
+      " so"
+    ],
+    [
+      5040.133,
+      " the"
+    ],
+    [
+      5040.146,
+      " player"
+    ],
+    [
+      5040.149,
+      " can"
+    ],
+    [
+      5040.152,
+      " see"
+    ],
+    [
+      5040.155,
+      " what"
+    ],
+    [
+      5040.264,
+      " was"
+    ],
+    [
+      5040.267,
+      " lost"
+    ],
+    [
+      5040.269,
+      "."
+    ],
+    [
+      5040.271,
+      " This"
+    ],
+    [
+      5147.311,
+      " makes"
+    ],
+    [
+      5147.428,
+      " the"
+    ],
+    [
+      5147.432,
+      " tank"
+    ],
+    [
+      5147.462,
+      " behave"
+    ],
+    [
+      5147.465,
+      " predict"
+    ],
+    [
+      5255.716,
+      "ably"
+    ],
+    [
+      5255.728,
+      " during"
+    ],
+    [
+      5255.731,
+      " heavy"
+    ],
+    [
+      5255.733,
+      " rain"
+    ],
+    [
+      5255.735,
+      " and"
+    ],
+    [
+      5255.738,
+      " keeps"
+    ],
+    [
+      5255.739,
+      " its"
+    ],
+    [
+      5409.513,
+      " displayed"
+    ],
+    [
+      5409.526,
+      " level"
+    ],
+    [
+      5409.531,
+      " valid"
+    ],
+    [
+      5409.534,
+      ".\n\n"
+    ],
+    [
+      5409.536,
+      "-"
+    ],
+    [
+      5409.653,
+      " Limit"
+    ],
+    [
+      5409.656,
+      " water"
+    ],
+    [
+      5546.321,
+      " to"
+    ],
+    [
+      5546.414,
+      " capacity"
+    ],
+    [
+      5546.418,
+      ".\n"
+    ],
+    [
+      5546.421,
+      "-"
+    ],
+    [
+      5546.423,
+      " Track"
+    ],
+    [
+      5546.425,
+      " overflow"
+    ],
+    [
+      5546.427,
+      " separately"
+    ],
+    [
+      5546.429,
+      ".\n"
+    ],
+    [
+      5546.431,
+      "-"
+    ],
+    [
+      5668.433,
+      " Show"
+    ],
+    [
+      5668.448,
+      " when"
+    ],
+    [
+      5668.565,
+      " the"
+    ],
+    [
+      5668.569,
+      " tank"
+    ],
+    [
+      5668.572,
+      " is"
+    ],
+    [
+      5668.574,
+      " full"
+    ],
+    [
+      5813.649,
+      ".\n\n"
+    ],
+    [
+      5813.743,
+      "```"
+    ],
+    [
+      5813.747,
+      "ts"
+    ],
+    [
+      5813.749,
+      "\n"
+    ],
+    [
+      5813.751,
+      "function"
+    ],
+    [
+      5813.753,
+      " fill"
+    ],
+    [
+      5813.755,
+      "Tank"
+    ],
+    [
+      5813.791,
+      "(level"
+    ],
+    [
+      5955.395,
+      ":"
+    ],
+    [
+      5955.612,
+      " number"
+    ],
+    [
+      5955.649,
+      ","
+    ],
+    [
+      5958.139,
+      " amount"
+    ],
+    [
+      5958.209,
+      ":"
+    ],
+    [
+      5958.212,
+      " number"
+    ],
+    [
+      5960.338,
+      ")"
+    ],
+    [
+      5960.417,
+      " {\n"
+    ],
+    [
+      6100.004,
+      " "
+    ],
+    [
+      6100.018,
+      " const"
+    ],
+    [
+      6100.124,
+      " total"
+    ],
+    [
+      6100.127,
+      " ="
+    ],
+    [
+      6100.129,
+      " level"
+    ],
+    [
+      6100.131,
+      " +"
+    ],
+    [
+      6102.132,
+      " amount"
+    ],
+    [
+      6102.228,
+      ";\n"
+    ],
+    [
+      6243.805,
+      " "
+    ],
+    [
+      6243.902,
+      " return"
+    ],
+    [
+      6243.905,
+      " Math"
+    ],
+    [
+      6243.908,
+      ".min"
+    ],
+    [
+      6243.91,
+      "(total"
+    ],
+    [
+      6243.911,
+      ","
+    ],
+    [
+      6244.121,
+      " "
+    ],
+    [
+      6244.196,
+      "100"
+    ],
+    [
+      6387.198,
+      ");\n"
+    ],
+    [
+      6387.277,
+      "}\n"
+    ],
+    [
+      6389.32,
+      "``"
+    ],
+    [
+      6389.376,
+      "`\n\n"
+    ],
+    [
+      6389.379,
+      "4"
+    ],
+    [
+      6389.382,
+      "."
+    ],
+    [
+      6389.383,
+      " ##"
+    ],
+    [
+      6389.385,
+      " Add"
+    ],
+    [
+      6494.818,
+      " Household"
+    ],
+    [
+      6494.944,
+      " Use"
+    ],
+    [
+      6497.103,
+      "\n\n"
+    ],
+    [
+      6497.169,
+      "Water"
+    ],
+    [
+      6497.173,
+      " leaves"
+    ],
+    [
+      6603.454,
+      " the"
+    ],
+    [
+      6603.618,
+      " tank"
+    ],
+    [
+      6603.623,
+      " when"
+    ],
+    [
+      6603.625,
+      " the"
+    ],
+    [
+      6603.627,
+      " household"
+    ],
+    [
+      6603.629,
+      " uses"
+    ],
+    [
+      6609.025,
+      " it"
+    ],
+    [
+      6714.916,
+      "."
+    ],
+    [
+      6715.041,
+      " Give"
+    ],
+    [
+      6715.047,
+      " each"
+    ],
+    [
+      6715.05,
+      " simulated"
+    ],
+    [
+      6821.171,
+      " day"
+    ],
+    [
+      6821.243,
+      " a"
+    ],
+    [
+      6821.246,
+      " fixed"
+    ],
+    [
+      6821.248,
+      " demand"
+    ],
+    [
+      6821.25,
+      ","
+    ],
+    [
+      6821.281,
+      " then"
+    ],
+    [
+      6821.295,
+      " subtract"
+    ],
+    [
+      6821.324,
+      " that"
+    ],
+    [
+      6821.345,
+      " amount"
+    ],
+    [
+      6985.12,
+      " from"
+    ],
+    [
+      6985.251,
+      " the"
+    ],
+    [
+      6985.254,
+      " level"
+    ],
+    [
+      6985.258,
+      "."
+    ],
+    [
+      6985.261,
+      " If"
+    ],
+    [
+      6985.262,
+      " the"
+    ],
+    [
+      6985.264,
+      " tank"
+    ],
+    [
+      6985.266,
+      " has"
+    ],
+    [
+      6985.267,
+      " less"
+    ],
+    [
+      7129.384,
+      " water"
+    ],
+    [
+      7129.536,
+      " than"
+    ],
+    [
+      7129.541,
+      " requested"
+    ],
+    [
+      7129.545,
+      ","
+    ],
+    [
+      7129.549,
+      " use"
+    ],
+    [
+      7129.551,
+      " what"
+    ],
+    [
+      7257.103,
+      " remains"
+    ],
+    [
+      7257.211,
+      " and"
+    ],
+    [
+      7257.216,
+      " report"
+    ],
+    [
+      7257.22,
+      " the"
+    ],
+    [
+      7257.222,
+      " short"
+    ],
+    [
+      7260.122,
+      "fall"
+    ],
+    [
+      7260.204,
+      "."
+    ],
+    [
+      7260.208,
+      " That"
+    ],
+    [
+      7366.11,
+      " rule"
+    ],
+    [
+      7366.2,
+      " lets"
+    ],
+    [
+      7366.204,
+      " the"
+    ],
+    [
+      7369.246,
+      " player"
+    ],
+    [
+      7369.318,
+      " see"
+    ],
+    [
+      7369.322,
+      " how"
+    ],
+    [
+      7369.326,
+      " dry"
+    ],
+    [
+      7505.847,
+      " weather"
+    ],
+    [
+      7505.942,
+      " affects"
+    ],
+    [
+      7505.946,
+      " supply"
+    ],
+    [
+      7505.948,
+      ".\n\n"
+    ],
+    [
+      7505.95,
+      "-"
+    ],
+    [
+      7505.952,
+      " Set"
+    ],
+    [
+      7629.504,
+      " daily"
+    ],
+    [
+      7631.754,
+      " demand"
+    ],
+    [
+      7631.842,
+      ".\n"
+    ],
+    [
+      7631.846,
+      "-"
+    ],
+    [
+      7631.849,
+      " Sub"
+    ],
+    [
+      7631.886,
+      "tract"
+    ],
+    [
+      7631.888,
+      " demand"
+    ],
+    [
+      7631.976,
+      " each"
+    ],
+    [
+      7774.904,
+      " day"
+    ],
+    [
+      7775.04,
+      ".\n"
+    ],
+    [
+      7775.044,
+      "-"
+    ],
+    [
+      7775.048,
+      " Track"
+    ],
+    [
+      7775.054,
+      " unmet"
+    ],
+    [
+      7775.056,
+      " use"
+    ],
+    [
+      7882.554,
+      ".\n\n"
+    ],
+    [
+      7882.679,
+      "```"
+    ],
+    [
+      7882.685,
+      "ts"
+    ],
+    [
+      7882.687,
+      "\n"
+    ],
+    [
+      7882.689,
+      "function"
+    ],
+    [
+      7882.691,
+      " use"
+    ],
+    [
+      7882.693,
+      "Water"
+    ],
+    [
+      7882.695,
+      "(level"
+    ],
+    [
+      8026.129,
+      ":"
+    ],
+    [
+      8026.282,
+      " number"
+    ],
+    [
+      8026.285,
+      ","
+    ],
+    [
+      8028.107,
+      " demand"
+    ],
+    [
+      8028.117,
+      ":"
+    ],
+    [
+      8028.21,
+      " number"
+    ],
+    [
+      8028.214,
+      ")"
+    ],
+    [
+      8028.216,
+      " {\n"
+    ],
+    [
+      8173.55,
+      " "
+    ],
+    [
+      8174.127,
+      " const"
+    ],
+    [
+      8174.134,
+      " used"
+    ],
+    [
+      8174.136,
+      " ="
+    ],
+    [
+      8174.138,
+      " Math"
+    ],
+    [
+      8174.14,
+      ".min"
+    ],
+    [
+      8174.141,
+      "(level"
+    ],
+    [
+      8295.55,
+      ","
+    ],
+    [
+      8295.644,
+      " demand"
+    ],
+    [
+      8295.647,
+      ");\n"
+    ],
+    [
+      8297.711,
+      " "
+    ],
+    [
+      8297.8,
+      " return"
+    ],
+    [
+      8297.803,
+      " level"
+    ],
+    [
+      8297.807,
+      " -"
+    ],
+    [
+      8297.809,
+      " used"
+    ],
+    [
+      8440.201,
+      ";\n"
+    ],
+    [
+      8440.284,
+      "}\n"
+    ],
+    [
+      8440.287,
+      "``"
+    ],
+    [
+      8440.29,
+      "`\n\n"
+    ],
+    [
+      8442.477,
+      "5"
+    ],
+    [
+      8442.482,
+      "."
+    ],
+    [
+      8442.526,
+      " ##"
+    ],
+    [
+      8442.528,
+      " Advance"
+    ],
+    [
+      8552.112,
+      " the"
+    ],
+    [
+      8552.221,
+      " Calendar"
+    ],
+    [
+      8552.225,
+      "\n\n"
+    ],
+    [
+      8552.229,
+      "The"
+    ],
+    [
+      8552.231,
+      " simulator"
+    ],
+    [
+      8552.233,
+      " needs"
+    ],
+    [
+      8656.905,
+      " a"
+    ],
+    [
+      8656.983,
+      " simple"
+    ],
+    [
+      8656.986,
+      " calendar"
+    ],
+    [
+      8656.989,
+      " so"
+    ],
+    [
+      8656.991,
+      " rainfall"
+    ],
+    [
+      8657.021,
+      " and"
+    ],
+    [
+      8800.732,
+      " use"
+    ],
+    [
+      8800.816,
+      " happen"
+    ],
+    [
+      8800.819,
+      " in"
+    ],
+    [
+      8800.822,
+      " sequence"
+    ],
+    [
+      8800.823,
+      "."
+    ],
+    [
+      8802.908,
+      " Each"
+    ],
+    [
+      8802.965,
+      " step"
+    ],
+    [
+      8802.968,
+      " can"
+    ],
+    [
+      8802.991,
+      " represent"
+    ],
+    [
+      8965.456,
+      " one"
+    ],
+    [
+      8965.535,
+      " day"
+    ],
+    [
+      8965.538,
+      "."
+    ],
+    [
+      8965.54,
+      " Advance"
+    ],
+    [
+      8965.543,
+      " the"
+    ],
+    [
+      8965.544,
+      " day"
+    ],
+    [
+      8965.545,
+      ","
+    ],
+    [
+      8965.548,
+      " apply"
+    ],
+    [
+      9107.634,
+      " rain"
+    ],
+    [
+      9107.724,
+      ","
+    ],
+    [
+      9107.728,
+      " then"
+    ],
+    [
+      9107.73,
+      " subtract"
+    ],
+    [
+      9107.759,
+      " household"
+    ],
+    [
+      9107.761,
+      " demand"
+    ],
+    [
+      9107.808,
+      "."
+    ],
+    [
+      9107.846,
+      " Keeping"
+    ],
+    [
+      9240.677,
+      " the"
+    ],
+    [
+      9240.689,
+      " order"
+    ],
+    [
+      9240.812,
+      " consistent"
+    ],
+    [
+      9240.818,
+      " makes"
+    ],
+    [
+      9240.82,
+      " the"
+    ],
+    [
+      9240.823,
+      " outcome"
+    ],
+    [
+      9360.016,
+      " easy"
+    ],
+    [
+      9360.302,
+      " to"
+    ],
+    [
+      9360.57,
+      " reason"
+    ],
+    [
+      9360.905,
+      " about"
+    ],
+    [
+      9361.175,
+      " and"
+    ],
+    [
+      9361.214,
+      " compare"
+    ],
+    [
+      9361.302,
+      " across"
+    ],
+    [
+      9361.468,
+      " runs"
+    ],
+    [
+      9486.535,
+      ".\n\n"
+    ],
+    [
+      9488.794,
+      "-"
+    ],
+    [
+      9488.87,
+      " Count"
+    ],
+    [
+      9488.874,
+      " simulated"
+    ],
+    [
+      9488.877,
+      " days"
+    ],
+    [
+      9488.88,
+      ".\n"
+    ],
+    [
+      9488.882,
+      "-"
+    ],
+    [
+      9488.884,
+      " Apply"
+    ],
+    [
+      9611.808,
+      " rain"
+    ],
+    [
+      9611.985,
+      " per"
+    ],
+    [
+      9611.992,
+      " day"
+    ],
+    [
+      9611.997,
+      ".\n"
+    ],
+    [
+      9611.999,
+      "-"
+    ],
+    [
+      9612.002,
+      " Apply"
+    ],
+    [
+      9754.095,
+      " household"
+    ],
+    [
+      9754.226,
+      " use"
+    ],
+    [
+      9754.23,
+      " after"
+    ],
+    [
+      9756.178,
+      " collection"
+    ],
+    [
+      9756.256,
+      ".\n\n"
+    ],
+    [
+      9756.351,
+      "```"
+    ],
+    [
+      9756.4,
+      "ts"
+    ],
+    [
+      9756.501,
+      "\n"
+    ],
+    [
+      9869.158,
+      "function"
+    ],
+    [
+      9869.267,
+      " next"
+    ],
+    [
+      9871.361,
+      "Day"
+    ],
+    [
+      9871.516,
+      "(day"
+    ],
+    [
+      9871.774,
+      ":"
+    ],
+    [
+      9871.781,
+      " number"
+    ],
+    [
+      10038.589,
+      ")"
+    ],
+    [
+      10038.724,
+      " {\n"
+    ],
+    [
+      10038.728,
+      " "
+    ],
+    [
+      10038.731,
+      " return"
+    ],
+    [
+      10038.898,
+      " day"
+    ],
+    [
+      10039.044,
+      " +"
+    ],
+    [
+      10039.278,
+      " "
+    ],
+    [
+      10039.411,
+      "1"
+    ],
+    [
+      10269.209,
+      ";\n"
+    ],
+    [
+      10269.355,
+      "}\n"
+    ],
+    [
+      10269.359,
+      "``"
+    ],
+    [
+      10269.362,
+      "`\n\n"
+    ],
+    [
+      10364.189,
+      "6"
+    ],
+    [
+      10364.198,
+      "."
+    ],
+    [
+      10364.275,
+      " ##"
+    ],
+    [
+      10364.278,
+      " Choose"
+    ],
+    [
+      10364.28,
+      " Weather"
+    ],
+    [
+      10364.282,
+      "\n\n"
+    ],
+    [
+      10364.284,
+      "Use"
+    ],
+    [
+      10364.286,
+      " a"
+    ],
+    [
+      10364.319,
+      " short"
+    ],
+    [
+      10364.339,
+      " weather"
+    ],
+    [
+      10364.411,
+      " list"
+    ],
+    [
+      10366.289,
+      " with"
+    ],
+    [
+      10366.344,
+      " clear"
+    ],
+    [
+      10366.347,
+      " rainfall"
+    ],
+    [
+      10476.773,
+      " amounts"
+    ],
+    [
+      10476.857,
+      "."
+    ],
+    [
+      10476.861,
+      " A"
+    ],
+    [
+      10476.864,
+      " sunny"
+    ],
+    [
+      10476.865,
+      " day"
+    ],
+    [
+      10476.867,
+      " adds"
+    ],
+    [
+      10476.899,
+      " no"
+    ],
+    [
+      10476.912,
+      " water"
+    ],
+    [
+      10618.433,
+      ","
+    ],
+    [
+      10621.202,
+      " a"
+    ],
+    [
+      10621.528,
+      " drizzle"
+    ],
+    [
+      10621.603,
+      " adds"
+    ],
+    [
+      10621.728,
+      " a"
+    ],
+    [
+      10621.789,
+      " little"
+    ],
+    [
+      10726.864,
+      ","
+    ],
+    [
+      10727.038,
+      " and"
+    ],
+    [
+      10727.047,
+      " a"
+    ],
+    [
+      10729.25,
+      " storm"
+    ],
+    [
+      10729.329,
+      " adds"
+    ],
+    [
+      10729.333,
+      " more"
+    ],
+    [
+      10729.336,
+      "."
+    ],
+    [
+      10729.367,
+      " These"
+    ],
+    [
+      10856.178,
+      " values"
+    ],
+    [
+      10856.273,
+      " are"
+    ],
+    [
+      10856.276,
+      " illustrative"
+    ],
+    [
+      10856.308,
+      " rather"
+    ],
+    [
+      10856.321,
+      " than"
+    ],
+    [
+      10856.325,
+      " meteor"
+    ],
+    [
+      10994.013,
+      "ological"
+    ],
+    [
+      10994.12,
+      ","
+    ],
+    [
+      10994.124,
+      " so"
+    ],
+    [
+      10994.127,
+      " keep"
+    ],
+    [
+      10994.129,
+      " them"
+    ],
+    [
+      10994.131,
+      " simple"
+    ],
+    [
+      10994.132,
+      " and"
+    ],
+    [
+      10994.139,
+      " visible"
+    ],
+    [
+      10994.141,
+      " to"
+    ],
+    [
+      11140.576,
+      " the"
+    ],
+    [
+      11140.584,
+      " player"
+    ],
+    [
+      11140.587,
+      ".\n\n"
+    ],
+    [
+      11140.591,
+      "-"
+    ],
+    [
+      11140.593,
+      " Add"
+    ],
+    [
+      11140.594,
+      " sunny"
+    ],
+    [
+      11140.596,
+      " weather"
+    ],
+    [
+      11247.698,
+      ".\n"
+    ],
+    [
+      11249.895,
+      "-"
+    ],
+    [
+      11249.996,
+      " Add"
+    ],
+    [
+      11250.017,
+      " drizzle"
+    ],
+    [
+      11250.038,
+      " and"
+    ],
+    [
+      11359.119,
+      " storm"
+    ],
+    [
+      11361.325,
+      ".\n"
+    ],
+    [
+      11361.379,
+      "-"
+    ],
+    [
+      11361.382,
+      " Show"
+    ],
+    [
+      11361.385,
+      " the"
+    ],
+    [
+      11361.387,
+      " day"
+    ],
+    [
+      11361.434,
+      "’s"
+    ],
+    [
+      11361.438,
+      " weather"
+    ],
+    [
+      11500.709,
+      ".\n\n"
+    ],
+    [
+      11502.954,
+      "```"
+    ],
+    [
+      11503.018,
+      "ts"
+    ],
+    [
+      11503.021,
+      "\n"
+    ],
+    [
+      11503.023,
+      "function"
+    ],
+    [
+      11503.025,
+      " rainfall"
+    ],
+    [
+      11503.053,
+      "(weather"
+    ],
+    [
+      11627.264,
+      ":"
+    ],
+    [
+      11627.349,
+      " string"
+    ],
+    [
+      11627.352,
+      ")"
+    ],
+    [
+      11627.354,
+      " {\n"
+    ],
+    [
+      11627.356,
+      " "
+    ],
+    [
+      11627.383,
+      " if"
+    ],
+    [
+      11627.385,
+      " ("
+    ],
+    [
+      11627.434,
+      "weather"
+    ],
+    [
+      11770.259,
+      " ==="
+    ],
+    [
+      11770.349,
+      " \""
+    ],
+    [
+      11772.648,
+      "storm"
+    ],
+    [
+      11772.739,
+      "\")"
+    ],
+    [
+      11772.743,
+      " return"
+    ],
+    [
+      11772.746,
+      " "
+    ],
+    [
+      11772.776,
+      "30"
+    ],
+    [
+      11902.109,
+      ";\n"
+    ],
+    [
+      11902.19,
+      " "
+    ],
+    [
+      11902.193,
+      " if"
+    ],
+    [
+      11902.195,
+      " ("
+    ],
+    [
+      11902.197,
+      "weather"
+    ],
+    [
+      11902.198,
+      " ==="
+    ],
+    [
+      11904.287,
+      " \""
+    ],
+    [
+      11904.351,
+      "dr"
+    ],
+    [
+      12051.895,
+      "izzle"
+    ],
+    [
+      12052.021,
+      "\")"
+    ],
+    [
+      12052.026,
+      " return"
+    ],
+    [
+      12052.028,
+      " "
+    ],
+    [
+      12052.085,
+      "8"
+    ],
+    [
+      12052.111,
+      ";\n"
+    ],
+    [
+      12052.185,
+      " "
+    ],
+    [
+      12052.19,
+      " return"
+    ],
+    [
+      12052.193,
+      " "
+    ],
+    [
+      12203.12,
+      "0"
+    ],
+    [
+      12203.207,
+      ";\n"
+    ],
+    [
+      12203.21,
+      "}\n"
+    ],
+    [
+      12203.213,
+      "``"
+    ],
+    [
+      12203.214,
+      "`\n\n"
+    ],
+    [
+      12203.216,
+      "7"
+    ],
+    [
+      12203.217,
+      "."
+    ],
+    [
+      12203.22,
+      " ##"
+    ],
+    [
+      12203.222,
+      " Display"
+    ],
+    [
+      12311.664,
+      " Tank"
+    ],
+    [
+      12311.675,
+      " Status"
+    ],
+    [
+      12311.821,
+      "\n\n"
+    ],
+    [
+      12311.828,
+      "Translate"
+    ],
+    [
+      12435.842,
+      " the"
+    ],
+    [
+      12435.961,
+      " numeric"
+    ],
+    [
+      12435.967,
+      " level"
+    ],
+    [
+      12435.97,
+      " into"
+    ],
+    [
+      12437.779,
+      " a"
+    ],
+    [
+      12437.832,
+      " short"
+    ],
+    [
+      12437.834,
+      " status"
+    ],
+    [
+      12437.885,
+      " label"
+    ],
+    [
+      12546.285,
+      "."
+    ],
+    [
+      12546.394,
+      " Players"
+    ],
+    [
+      12546.398,
+      " can"
+    ],
+    [
+      12546.401,
+      " then"
+    ],
+    [
+      12546.404,
+      " see"
+    ],
+    [
+      12546.406,
+      " whether"
+    ],
+    [
+      12546.443,
+      " supply"
+    ],
+    [
+      12679.535,
+      " is"
+    ],
+    [
+      12679.548,
+      " comfortable"
+    ],
+    [
+      12679.751,
+      ","
+    ],
+    [
+      12679.758,
+      " low"
+    ],
+    [
+      12679.76,
+      ","
+    ],
+    [
+      12679.763,
+      " or"
+    ],
+    [
+      12679.766,
+      " empty"
+    ],
+    [
+      12800.757,
+      " without"
+    ],
+    [
+      12800.922,
+      " interpreting"
+    ],
+    [
+      12800.931,
+      " every"
+    ],
+    [
+      12801.01,
+      " number"
+    ],
+    [
+      12801.013,
+      "."
+    ],
+    [
+      12801.017,
+      " Use"
+    ],
+    [
+      12801.018,
+      " thresholds"
+    ],
+    [
+      12959.385,
+      " that"
+    ],
+    [
+      12959.463,
+      " match"
+    ],
+    [
+      12959.466,
+      " the"
+    ],
+    [
+      12959.469,
+      " tank"
+    ],
+    [
+      12959.47,
+      " capacity"
+    ],
+    [
+      12959.472,
+      " and"
+    ],
+    [
+      12959.476,
+      " update"
+    ],
+    [
+      12959.478,
+      " the"
+    ],
+    [
+      13065.651,
+      " label"
+    ],
+    [
+      13065.662,
+      " after"
+    ],
+    [
+      13065.755,
+      " each"
+    ],
+    [
+      13065.757,
+      " daily"
+    ],
+    [
+      13172.756,
+      " step"
+    ],
+    [
+      13172.839,
+      ".\n\n"
+    ],
+    [
+      13172.842,
+      "-"
+    ],
+    [
+      13174.84,
+      " Show"
+    ],
+    [
+      13174.847,
+      " a"
+    ],
+    [
+      13174.899,
+      " water"
+    ],
+    [
+      13174.902,
+      " level"
+    ],
+    [
+      13174.904,
+      " meter"
+    ],
+    [
+      13320.793,
+      ".\n"
+    ],
+    [
+      13320.879,
+      "-"
+    ],
+    [
+      13323.021,
+      " Label"
+    ],
+    [
+      13323.08,
+      " low"
+    ],
+    [
+      13323.083,
+      " supply"
+    ],
+    [
+      13323.086,
+      ".\n"
+    ],
+    [
+      13323.087,
+      "-"
+    ],
+    [
+      13323.091,
+      " Make"
+    ],
+    [
+      13436.737,
+      " empty"
+    ],
+    [
+      13436.821,
+      " and"
+    ],
+    [
+      13436.824,
+      " full"
+    ],
+    [
+      13436.827,
+      " states"
+    ],
+    [
+      13436.854,
+      " clear"
+    ],
+    [
+      13436.858,
+      ".\n\n"
+    ],
+    [
+      13570.285,
+      "```"
+    ],
+    [
+      13570.376,
+      "ts"
+    ],
+    [
+      13572.45,
+      "\n"
+    ],
+    [
+      13572.546,
+      "function"
+    ],
+    [
+      13572.551,
+      " tank"
+    ],
+    [
+      13572.556,
+      "Status"
+    ],
+    [
+      13572.595,
+      "(level"
+    ],
+    [
+      13572.597,
+      ":"
+    ],
+    [
+      13572.599,
+      " number"
+    ],
+    [
+      13748.993,
+      ")"
+    ],
+    [
+      13749.094,
+      " {\n"
+    ],
+    [
+      13751.458,
+      " "
+    ],
+    [
+      13751.469,
+      " if"
+    ],
+    [
+      13751.645,
+      " ("
+    ],
+    [
+      13751.651,
+      "level"
+    ],
+    [
+      13751.654,
+      " "
+    ],
+    [
+      13751.657,
+      "< "
+    ],
+    [
+      13896.496,
+      "20"
+    ],
+    [
+      13896.694,
+      ")"
+    ],
+    [
+      13896.698,
+      " return"
+    ],
+    [
+      13896.702,
+      " \""
+    ],
+    [
+      13897.477,
+      "Low"
+    ],
+    [
+      13897.504,
+      "\";\n"
+    ],
+    [
+      13897.506,
+      " "
+    ],
+    [
+      13897.509,
+      " if"
+    ],
+    [
+      14020.464,
+      " ("
+    ],
+    [
+      14020.552,
+      "level"
+    ],
+    [
+      14020.673,
+      " >="
+    ],
+    [
+      14020.678,
+      " "
+    ],
+    [
+      14020.682,
+      "100"
+    ],
+    [
+      14020.684,
+      ")"
+    ],
+    [
+      14020.687,
+      " return"
+    ],
+    [
+      14020.689,
+      " \""
+    ],
+    [
+      14164.796,
+      "Full"
+    ],
+    [
+      14164.81,
+      "\";\n"
+    ],
+    [
+      14164.903,
+      " "
+    ],
+    [
+      14164.906,
+      " return"
+    ],
+    [
+      14164.908,
+      " \""
+    ],
+    [
+      14164.91,
+      "Ready"
+    ],
+    [
+      14273.376,
+      "\";\n"
+    ],
+    [
+      14273.451,
+      "}\n"
+    ],
+    [
+      14273.454,
+      "``"
+    ],
+    [
+      14273.457,
+      "`\n\n"
+    ],
+    [
+      14273.458,
+      "8"
+    ],
+    [
+      14273.484,
+      "."
+    ],
+    [
+      14273.487,
+      " ##"
+    ],
+    [
+      14273.501,
+      " Compare"
+    ],
+    [
+      14273.512,
+      " Demand"
+    ],
+    [
+      14400.472,
+      "\n\n"
+    ],
+    [
+      14400.482,
+      "Different"
+    ],
+    [
+      14400.571,
+      " households"
+    ],
+    [
+      14400.574,
+      " can"
+    ],
+    [
+      14510.339,
+      " use"
+    ],
+    [
+      14510.427,
+      " different"
+    ],
+    [
+      14510.43,
+      " amounts"
+    ],
+    [
+      14510.433,
+      " of"
+    ],
+    [
+      14510.46,
+      " water"
+    ],
+    [
+      14510.504,
+      " each"
+    ],
+    [
+      14510.594,
+      " day"
+    ],
+    [
+      14510.663,
+      "."
+    ],
+    [
+      14512.454,
+      " Let"
+    ],
+    [
+      14669.51,
+      " the"
+    ],
+    [
+      14669.521,
+      " player"
+    ],
+    [
+      14669.672,
+      " choose"
+    ],
+    [
+      14669.677,
+      " a"
+    ],
+    [
+      14669.686,
+      " demand"
+    ],
+    [
+      14672.1,
+      " profile"
+    ],
+    [
+      14672.168,
+      ","
+    ],
+    [
+      14672.172,
+      " such"
+    ],
+    [
+      14778.154,
+      " as"
+    ],
+    [
+      14778.226,
+      " careful"
+    ],
+    [
+      14778.228,
+      ","
+    ],
+    [
+      14778.231,
+      " typical"
+    ],
+    [
+      14779.071,
+      ","
+    ],
+    [
+      14779.107,
+      " or"
+    ],
+    [
+      14779.124,
+      " high"
+    ],
+    [
+      14885.961,
+      " use"
+    ],
+    [
+      14886.049,
+      "."
+    ],
+    [
+      14888.052,
+      " A"
+    ],
+    [
+      14992.457,
+      " small"
+    ],
+    [
+      14992.538,
+      " table"
+    ],
+    [
+      14992.541,
+      " can"
+    ],
+    [
+      14992.544,
+      " make"
+    ],
+    [
+      14992.545,
+      " those"
+    ],
+    [
+      14992.547,
+      " choices"
+    ],
+    [
+      14992.549,
+      " easy"
+    ],
+    [
+      14992.551,
+      " to"
+    ],
+    [
+      14992.559,
+      " compare"
+    ],
+    [
+      15100.519,
+      " before"
+    ],
+    [
+      15102.522,
+      " starting"
+    ],
+    [
+      15102.636,
+      " a"
+    ],
+    [
+      15102.644,
+      " run"
+    ],
+    [
+      15226.457,
+      ".\n\n"
+    ],
+    [
+      15226.526,
+      "|"
+    ],
+    [
+      15226.529,
+      " Profile"
+    ],
+    [
+      15228.55,
+      " |"
+    ],
+    [
+      15228.598,
+      " Daily"
+    ],
+    [
+      15228.602,
+      " use"
+    ],
+    [
+      15228.61,
+      " |\n"
+    ],
+    [
+      15228.612,
+      "|"
+    ],
+    [
+      15370.152,
+      "---"
+    ],
+    [
+      15370.251,
+      "|"
+    ],
+    [
+      15370.254,
+      "---"
+    ],
+    [
+      15370.256,
+      ":"
+    ],
+    [
+      15370.267,
+      "|\n"
+    ],
+    [
+      15370.269,
+      "|"
+    ],
+    [
+      15370.271,
+      " Care"
+    ],
+    [
+      15370.272,
+      "ful"
+    ],
+    [
+      15494.723,
+      " |"
+    ],
+    [
+      15494.731,
+      " "
+    ],
+    [
+      15494.801,
+      "8"
+    ],
+    [
+      15494.804,
+      " |\n"
+    ],
+    [
+      15496.822,
+      "|"
+    ],
+    [
+      15496.881,
+      " Typical"
+    ],
+    [
+      15496.884,
+      " |"
+    ],
+    [
+      15608.515,
+      " "
+    ],
+    [
+      15608.611,
+      "15"
+    ],
+    [
+      15608.614,
+      " |\n"
+    ],
+    [
+      15608.616,
+      "|"
+    ],
+    [
+      15608.618,
+      " High"
+    ],
+    [
+      15608.619,
+      " |"
+    ],
+    [
+      15715.245,
+      " "
+    ],
+    [
+      15715.328,
+      "24"
+    ],
+    [
+      15715.332,
+      " |\n\n"
+    ],
+    [
+      15715.334,
+      "-"
+    ],
+    [
+      15715.336,
+      " Offer"
+    ],
+    [
+      15838.938,
+      " three"
+    ],
+    [
+      15839.027,
+      " demand"
+    ],
+    [
+      15839.03,
+      " profiles"
+    ],
+    [
+      15839.033,
+      ".\n"
+    ],
+    [
+      15839.037,
+      "-"
+    ],
+    [
+      15839.039,
+      " Display"
+    ],
+    [
+      15839.041,
+      " the"
+    ],
+    [
+      15841.034,
+      " selected"
+    ],
+    [
+      15841.073,
+      " daily"
+    ],
+    [
+      15999.792,
+      " use"
+    ],
+    [
+      15999.869,
+      ".\n"
+    ],
+    [
+      15999.872,
+      "-"
+    ],
+    [
+      15999.875,
+      " Let"
+    ],
+    [
+      15999.877,
+      " the"
+    ],
+    [
+      15999.878,
+      " player"
+    ],
+    [
+      15999.88,
+      " switch"
+    ],
+    [
+      16126.639,
+      " profiles"
+    ],
+    [
+      16126.778,
+      ".\n\n"
+    ],
+    [
+      16126.783,
+      "```"
+    ],
+    [
+      16126.786,
+      "ts"
+    ],
+    [
+      16128.636,
+      "\n"
+    ],
+    [
+      16128.645,
+      "function"
+    ],
+    [
+      16128.716,
+      " demand"
+    ],
+    [
+      16128.72,
+      "For"
+    ],
+    [
+      16271.883,
+      "(profile"
+    ],
+    [
+      16272.135,
+      ":"
+    ],
+    [
+      16272.206,
+      " string"
+    ],
+    [
+      16272.212,
+      ")"
+    ],
+    [
+      16273.19,
+      " {\n"
+    ],
+    [
+      16273.227,
+      " "
+    ],
+    [
+      16273.23,
+      " if"
+    ],
+    [
+      16273.233,
+      " ("
+    ],
+    [
+      16415.064,
+      "profile"
+    ],
+    [
+      16415.159,
+      " ==="
+    ],
+    [
+      16415.162,
+      " \""
+    ],
+    [
+      16415.164,
+      "high"
+    ],
+    [
+      16415.167,
+      "\")"
+    ],
+    [
+      16415.168,
+      " return"
+    ],
+    [
+      16415.169,
+      " "
+    ],
+    [
+      16415.171,
+      "24"
+    ],
+    [
+      16560.198,
+      ";\n"
+    ],
+    [
+      16560.209,
+      " "
+    ],
+    [
+      16560.306,
+      " if"
+    ],
+    [
+      16560.309,
+      " ("
+    ],
+    [
+      16560.312,
+      "profile"
+    ],
+    [
+      16560.314,
+      " ==="
+    ],
+    [
+      16560.316,
+      " \""
+    ],
+    [
+      16560.318,
+      "care"
+    ],
+    [
+      16712.567,
+      "ful"
+    ],
+    [
+      16712.69,
+      "\")"
+    ],
+    [
+      16714.249,
+      " return"
+    ],
+    [
+      16714.292,
+      " "
+    ],
+    [
+      16714.294,
+      "8"
+    ],
+    [
+      16714.321,
+      ";\n"
+    ],
+    [
+      16714.365,
+      " "
+    ],
+    [
+      16714.398,
+      " return"
+    ],
+    [
+      16847.604,
+      " "
+    ],
+    [
+      16847.673,
+      "15"
+    ],
+    [
+      16847.677,
+      ";\n"
+    ],
+    [
+      16847.679,
+      "}\n"
+    ],
+    [
+      16847.683,
+      "``"
+    ],
+    [
+      16847.685,
+      "`\n\n"
+    ],
+    [
+      16847.686,
+      "9"
+    ],
+    [
+      16847.688,
+      "."
+    ],
+    [
+      16973.231,
+      " ##"
+    ],
+    [
+      16973.322,
+      " Track"
+    ],
+    [
+      16973.325,
+      " Rain"
+    ],
+    [
+      16973.327,
+      " History"
+    ],
+    [
+      16973.329,
+      "\n\n"
+    ],
+    [
+      16973.331,
+      "Keep"
+    ],
+    [
+      16973.333,
+      " a"
+    ],
+    [
+      16973.334,
+      " short"
+    ],
+    [
+      17120.484,
+      " record"
+    ],
+    [
+      17120.565,
+      " of"
+    ],
+    [
+      17123.478,
+      " recent"
+    ],
+    [
+      17123.487,
+      " days"
+    ],
+    [
+      17123.539,
+      ","
+    ],
+    [
+      17225.014,
+      " including"
+    ],
+    [
+      17225.025,
+      " rainfall"
+    ],
+    [
+      17225.156,
+      " and"
+    ],
+    [
+      17227.234,
+      " tank"
+    ],
+    [
+      17227.3,
+      " level"
+    ],
+    [
+      17227.302,
+      "."
+    ],
+    [
+      17227.304,
+      " The"
+    ],
+    [
+      17227.306,
+      " history"
+    ],
+    [
+      17433.441,
+      " helps"
+    ],
+    [
+      17433.542,
+      " players"
+    ],
+    [
+      17433.57,
+      " understand"
+    ],
+    [
+      17433.574,
+      " why"
+    ],
+    [
+      17435.625,
+      " a"
+    ],
+    [
+      17435.744,
+      " tank"
+    ],
+    [
+      17435.747,
+      " rose"
+    ],
+    [
+      17504.711,
+      " or"
+    ],
+    [
+      17504.791,
+      " fell"
+    ],
+    [
+      17504.794,
+      "."
+    ],
+    [
+      17504.845,
+      " A"
+    ],
+    [
+      17506.88,
+      " list"
+    ],
+    [
+      17506.934,
+      " of"
+    ],
+    [
+      17506.937,
+      " a"
+    ],
+    [
+      17620.312,
+      " few"
+    ],
+    [
+      17620.464,
+      " entries"
+    ],
+    [
+      17620.48,
+      " is"
+    ],
+    [
+      17620.484,
+      " enough"
+    ],
+    [
+      17620.487,
+      " for"
+    ],
+    [
+      17620.489,
+      " this"
+    ],
+    [
+      17620.491,
+      " toy"
+    ],
+    [
+      17620.548,
+      ";"
+    ],
+    [
+      17620.551,
+      " there"
+    ],
+    [
+      17785.694,
+      " is"
+    ],
+    [
+      17786.24,
+      " no"
+    ],
+    [
+      17787.799,
+      " need"
+    ],
+    [
+      17787.842,
+      " for"
+    ],
+    [
+      17787.845,
+      " a"
+    ],
+    [
+      17787.847,
+      " large"
+    ],
+    [
+      17787.849,
+      " reporting"
+    ],
+    [
+      17909.361,
+      " system"
+    ],
+    [
+      17909.458,
+      ".\n\n"
+    ],
+    [
+      17909.461,
+      "-"
+    ],
+    [
+      17909.464,
+      " Record"
+    ],
+    [
+      17909.466,
+      " rainfall"
+    ],
+    [
+      17909.467,
+      " each"
+    ],
+    [
+      17909.469,
+      " day"
+    ],
+    [
+      17909.471,
+      ".\n"
+    ],
+    [
+      18039.926,
+      "-"
+    ],
+    [
+      18040.016,
+      " Record"
+    ],
+    [
+      18040.02,
+      " the"
+    ],
+    [
+      18040.029,
+      " closing"
+    ],
+    [
+      18040.031,
+      " tank"
+    ],
+    [
+      18147.242,
+      " level"
+    ],
+    [
+      18147.775,
+      ".\n"
+    ],
+    [
+      18147.781,
+      "-"
+    ],
+    [
+      18147.784,
+      " Show"
+    ],
+    [
+      18149.979,
+      " the"
+    ],
+    [
+      18149.99,
+      " latest"
+    ],
+    [
+      18149.993,
+      " entries"
+    ],
+    [
+      18149.996,
+      ".\n\n"
+    ],
+    [
+      18285.724,
+      "```"
+    ],
+    [
+      18285.819,
+      "ts"
+    ],
+    [
+      18285.822,
+      "\n"
+    ],
+    [
+      18285.824,
+      "function"
+    ],
+    [
+      18285.826,
+      " record"
+    ],
+    [
+      18287.756,
+      "Day"
+    ],
+    [
+      18287.803,
+      "(day"
+    ],
+    [
+      18413.931,
+      ":"
+    ],
+    [
+      18413.942,
+      " number"
+    ],
+    [
+      18414.015,
+      ","
+    ],
+    [
+      18414.019,
+      " rain"
+    ],
+    [
+      18414.021,
+      ":"
+    ],
+    [
+      18414.022,
+      " number"
+    ],
+    [
+      18414.023,
+      ","
+    ],
+    [
+      18414.024,
+      " level"
+    ],
+    [
+      18556.01,
+      ":"
+    ],
+    [
+      18556.103,
+      " number"
+    ],
+    [
+      18556.105,
+      ")"
+    ],
+    [
+      18556.107,
+      " {\n"
+    ],
+    [
+      18556.109,
+      " "
+    ],
+    [
+      18558.007,
+      " return"
+    ],
+    [
+      18558.031,
+      " {\n"
+    ],
+    [
+      18685.813,
+      "   "
+    ],
+    [
+      18685.824,
+      " day"
+    ],
+    [
+      18685.962,
+      ",\n"
+    ],
+    [
+      18685.968,
+      "   "
+    ],
+    [
+      18685.971,
+      " rain"
+    ],
+    [
+      18685.972,
+      ",\n"
+    ],
+    [
+      18687.795,
+      "   "
+    ],
+    [
+      18687.843,
+      " level"
+    ],
+    [
+      18837.811,
+      ",\n"
+    ],
+    [
+      18837.822,
+      " "
+    ],
+    [
+      18837.826,
+      " };\n"
+    ],
+    [
+      18837.973,
+      "}\n"
+    ],
+    [
+      18837.978,
+      "``"
+    ],
+    [
+      18837.98,
+      "`\n\n"
+    ],
+    [
+      18837.982,
+      "10"
+    ],
+    [
+      18838.017,
+      "."
+    ],
+    [
+      18933.603,
+      " ##"
+    ],
+    [
+      18935.75,
+      " Add"
+    ],
+    [
+      18935.76,
+      " a"
+    ],
+    [
+      18935.822,
+      " Re"
+    ],
+    [
+      19043.113,
+      "fill"
+    ],
+    [
+      19043.12,
+      " Rule"
+    ],
+    [
+      19043.123,
+      "\n\n"
+    ],
+    [
+      19043.125,
+      "A"
+    ],
+    [
+      19043.144,
+      " simple"
+    ],
+    [
+      19043.785,
+      " refill"
+    ],
+    [
+      19043.827,
+      " rule"
+    ],
+    [
+      19043.83,
+      " can"
+    ],
+    [
+      19043.849,
+      " alert"
+    ],
+    [
+      19205.236,
+      " the"
+    ],
+    [
+      19205.248,
+      " player"
+    ],
+    [
+      19205.252,
+      " when"
+    ],
+    [
+      19205.254,
+      " the"
+    ],
+    [
+      19205.256,
+      " tank"
+    ],
+    [
+      19206.927,
+      " drops"
+    ],
+    [
+      19311.674,
+      " below"
+    ],
+    [
+      19313.887,
+      " a"
+    ],
+    [
+      19313.945,
+      " chosen"
+    ],
+    [
+      19313.948,
+      " threshold"
+    ],
+    [
+      19313.951,
+      "."
+    ],
+    [
+      19313.972,
+      " For"
+    ],
+    [
+      19314.105,
+      " example"
+    ],
+    [
+      19314.107,
+      ","
+    ],
+    [
+      19456.735,
+      " the"
+    ],
+    [
+      19456.746,
+      " simulator"
+    ],
+    [
+      19456.917,
+      " can"
+    ],
+    [
+      19456.923,
+      " show"
+    ],
+    [
+      19456.926,
+      " a"
+    ],
+    [
+      19456.927,
+      " reminder"
+    ],
+    [
+      19456.929,
+      " to"
+    ],
+    [
+      19456.931,
+      " reduce"
+    ],
+    [
+      19581.628,
+      " use"
+    ],
+    [
+      19581.727,
+      " or"
+    ],
+    [
+      19583.841,
+      " wait"
+    ],
+    [
+      19583.885,
+      " for"
+    ],
+    [
+      19583.888,
+      " rain"
+    ],
+    [
+      19583.89,
+      "."
+    ],
+    [
+      19583.892,
+      " Keep"
+    ],
+    [
+      19695.745,
+      " the"
+    ],
+    [
+      19695.825,
+      " suggestion"
+    ],
+    [
+      19695.827,
+      " informational"
+    ],
+    [
+      19695.832,
+      " so"
+    ],
+    [
+      19695.833,
+      " the"
+    ],
+    [
+      19695.836,
+      " player"
+    ],
+    [
+      19695.838,
+      " remains"
+    ],
+    [
+      19860.83,
+      " in"
+    ],
+    [
+      19860.914,
+      " control"
+    ],
+    [
+      19860.918,
+      " of"
+    ],
+    [
+      19860.921,
+      " the"
+    ],
+    [
+      19860.923,
+      " scenario"
+    ],
+    [
+      19860.926,
+      ".\n\n"
+    ],
+    [
+      19862.958,
+      "-"
+    ],
+    [
+      19863.045,
+      " Choose"
+    ],
+    [
+      20001.608,
+      " a"
+    ],
+    [
+      20001.692,
+      " low"
+    ],
+    [
+      20001.696,
+      "-water"
+    ],
+    [
+      20001.698,
+      " threshold"
+    ],
+    [
+      20001.7,
+      ".\n"
+    ],
+    [
+      20001.702,
+      "-"
+    ],
+    [
+      20001.704,
+      " Show"
+    ],
+    [
+      20001.705,
+      " a"
+    ],
+    [
+      20105.278,
+      " reminder"
+    ],
+    [
+      20105.393,
+      " below"
+    ],
+    [
+      20107.174,
+      " it"
+    ],
+    [
+      20107.226,
+      ".\n"
+    ],
+    [
+      20107.228,
+      "-"
+    ],
+    [
+      20107.23,
+      " Clear"
+    ],
+    [
+      20248.672,
+      " the"
+    ],
+    [
+      20248.682,
+      " reminder"
+    ],
+    [
+      20248.772,
+      " after"
+    ],
+    [
+      20248.775,
+      " refill"
+    ],
+    [
+      20248.778,
+      ".\n\n"
+    ],
+    [
+      20251.853,
+      "```"
+    ],
+    [
+      20251.963,
+      "ts"
+    ],
+    [
+      20251.966,
+      "\n"
+    ],
+    [
+      20358.903,
+      "function"
+    ],
+    [
+      20359.09,
+      " needs"
+    ],
+    [
+      20359.095,
+      "Reminder"
+    ],
+    [
+      20359.098,
+      "(level"
+    ],
+    [
+      20359.1,
+      ":"
+    ],
+    [
+      20359.102,
+      " number"
+    ],
+    [
+      20359.103,
+      ")"
+    ],
+    [
+      20500.212,
+      " {\n"
+    ],
+    [
+      20500.222,
+      " "
+    ],
+    [
+      20500.303,
+      " const"
+    ],
+    [
+      20500.305,
+      " threshold"
+    ],
+    [
+      20500.307,
+      " ="
+    ],
+    [
+      20502.101,
+      " "
+    ],
+    [
+      20502.152,
+      "20"
+    ],
+    [
+      20652.857,
+      ";\n"
+    ],
+    [
+      20653.074,
+      " "
+    ],
+    [
+      20653.112,
+      " return"
+    ],
+    [
+      20653.118,
+      " level"
+    ],
+    [
+      20653.121,
+      " "
+    ],
+    [
+      20653.122,
+      "< threshold"
+    ],
+    [
+      20653.124,
+      ";\n"
+    ],
+    [
+      20653.126,
+      "}\n"
+    ],
+    [
+      20803.314,
+      "``"
+    ],
+    [
+      20803.452,
+      "`\n\n"
+    ],
+    [
+      20803.457,
+      "11"
+    ],
+    [
+      20803.459,
+      "."
+    ],
+    [
+      20803.461,
+      " ##"
+    ],
+    [
+      20803.464,
+      " Save"
+    ],
+    [
+      20803.468,
+      " the"
+    ],
+    [
+      20803.471,
+      " Scenario"
+    ],
+    [
+      20931.993,
+      "\n\n"
+    ],
+    [
+      20932.08,
+      "Save"
+    ],
+    [
+      20932.084,
+      " the"
+    ],
+    [
+      20932.087,
+      " tank"
+    ],
+    [
+      20933.948,
+      " level"
+    ],
+    [
+      20933.997,
+      ","
+    ],
+    [
+      20934,
+      " day"
+    ],
+    [
+      20934.003,
+      " number"
+    ],
+    [
+      21077.327,
+      ","
+    ],
+    [
+      21077.337,
+      " and"
+    ],
+    [
+      21077.422,
+      " selected"
+    ],
+    [
+      21077.425,
+      " demand"
+    ],
+    [
+      21077.427,
+      " profile"
+    ],
+    [
+      21079.362,
+      " so"
+    ],
+    [
+      21079.421,
+      " the"
+    ],
+    [
+      21079.424,
+      " player"
+    ],
+    [
+      21221.618,
+      " can"
+    ],
+    [
+      21221.719,
+      " resume"
+    ],
+    [
+      21221.722,
+      " later"
+    ],
+    [
+      21221.725,
+      "."
+    ],
+    [
+      21223.652,
+      " For"
+    ],
+    [
+      21223.692,
+      " a"
+    ],
+    [
+      21223.714,
+      " browser"
+    ],
+    [
+      21223.717,
+      " toy"
+    ],
+    [
+      21366.064,
+      ","
+    ],
+    [
+      21366.175,
+      " `"
+    ],
+    [
+      21366.179,
+      "local"
+    ],
+    [
+      21366.182,
+      "Storage"
+    ],
+    [
+      21366.184,
+      "`"
+    ],
+    [
+      21366.186,
+      " is"
+    ],
+    [
+      21366.188,
+      " a"
+    ],
+    [
+      21366.227,
+      " compact"
+    ],
+    [
+      21500.952,
+      " option"
+    ],
+    [
+      21501.087,
+      "."
+    ],
+    [
+      21501.092,
+      " Keep"
+    ],
+    [
+      21501.095,
+      " saved"
+    ],
+    [
+      21501.097,
+      " data"
+    ],
+    [
+      21501.099,
+      " small"
+    ],
+    [
+      21501.101,
+      ","
+    ],
+    [
+      21501.103,
+      " and"
+    ],
+    [
+      21606.042,
+      " return"
+    ],
+    [
+      21606.139,
+      " to"
+    ],
+    [
+      21606.145,
+      " a"
+    ],
+    [
+      21606.149,
+      " fresh"
+    ],
+    [
+      21606.151,
+      " scenario"
+    ],
+    [
+      21705.579,
+      " if"
+    ],
+    [
+      21707.072,
+      " loading"
+    ],
+    [
+      21707.134,
+      " fails"
+    ],
+    [
+      21707.137,
+      ".\n\n"
+    ],
+    [
+      21707.14,
+      "-"
+    ],
+    [
+      21707.142,
+      " Save"
+    ],
+    [
+      21707.144,
+      " after"
+    ],
+    [
+      21870.939,
+      " each"
+    ],
+    [
+      21871.019,
+      " day"
+    ],
+    [
+      21871.023,
+      ".\n"
+    ],
+    [
+      21873.21,
+      "-"
+    ],
+    [
+      21873.22,
+      " Restore"
+    ],
+    [
+      21873.305,
+      " the"
+    ],
+    [
+      21873.313,
+      " active"
+    ],
+    [
+      21994.96,
+      " scenario"
+    ],
+    [
+      21995.049,
+      ".\n"
+    ],
+    [
+      21995.052,
+      "-"
+    ],
+    [
+      21995.054,
+      " Provide"
+    ],
+    [
+      21995.056,
+      " a"
+    ],
+    [
+      21995.057,
+      " reset"
+    ],
+    [
+      22104.173,
+      " action"
+    ],
+    [
+      22104.185,
+      ".\n\n"
+    ],
+    [
+      22104.274,
+      "```"
+    ],
+    [
+      22104.277,
+      "ts"
+    ],
+    [
+      22104.278,
+      "\n"
+    ],
+    [
+      22104.28,
+      "function"
+    ],
+    [
+      22104.282,
+      " save"
+    ],
+    [
+      22104.292,
+      "State"
+    ],
+    [
+      22246.873,
+      "(key"
+    ],
+    [
+      22246.967,
+      ":"
+    ],
+    [
+      22246.97,
+      " string"
+    ],
+    [
+      22248.86,
+      ","
+    ],
+    [
+      22248.92,
+      " data"
+    ],
+    [
+      22248.923,
+      ":"
+    ],
+    [
+      22248.926,
+      " string"
+    ],
+    [
+      22248.928,
+      ")"
+    ],
+    [
+      22373.015,
+      " {\n"
+    ],
+    [
+      22373.156,
+      " "
+    ],
+    [
+      22373.16,
+      " try"
+    ],
+    [
+      22373.163,
+      " {\n"
+    ],
+    [
+      22373.165,
+      "   "
+    ],
+    [
+      22373.179,
+      " local"
+    ],
+    [
+      22373.182,
+      "Storage"
+    ],
+    [
+      22520.353,
+      ".set"
+    ],
+    [
+      22520.467,
+      "Item"
+    ],
+    [
+      22520.47,
+      "(key"
+    ],
+    [
+      22520.473,
+      ","
+    ],
+    [
+      22520.475,
+      " data"
+    ],
+    [
+      22522.46,
+      ");\n"
+    ],
+    [
+      22522.536,
+      "   "
+    ],
+    [
+      22522.538,
+      " return"
+    ],
+    [
+      22662.877,
+      " true"
+    ],
+    [
+      22662.886,
+      ";\n"
+    ],
+    [
+      22662.889,
+      " "
+    ],
+    [
+      22662.968,
+      " }"
+    ],
+    [
+      22662.971,
+      " catch"
+    ],
+    [
+      22662.973,
+      " {\n"
+    ],
+    [
+      22662.975,
+      "   "
+    ],
+    [
+      22662.977,
+      " return"
+    ],
+    [
+      22803.579,
+      " false"
+    ],
+    [
+      22803.67,
+      ";\n"
+    ],
+    [
+      22803.673,
+      " "
+    ],
+    [
+      22803.675,
+      " }\n"
+    ],
+    [
+      22803.677,
+      "}\n"
+    ],
+    [
+      22805.752,
+      "``"
+    ],
+    [
+      22805.762,
+      "`\n\n"
+    ],
+    [
+      22805.829,
+      "12"
+    ],
+    [
+      22946.335,
+      "."
+    ],
+    [
+      22946.531,
+      " ##"
+    ],
+    [
+      22946.556,
+      " Explore"
+    ],
+    [
+      22946.566,
+      " Rain"
+    ],
+    [
+      22946.577,
+      "water"
+    ],
+    [
+      22946.579,
+      " Basics"
+    ],
+    [
+      22946.581,
+      "\n\n"
+    ],
+    [
+      22946.662,
+      "Present"
+    ],
+    [
+      23091.842,
+      " the"
+    ],
+    [
+      23092.307,
+      " simulator"
+    ],
+    [
+      23092.373,
+      " as"
+    ],
+    [
+      23092.377,
+      " a"
+    ],
+    [
+      23092.397,
+      " learning"
+    ],
+    [
+      23092.399,
+      " toy"
+    ],
+    [
+      23092.4,
+      ":"
+    ],
+    [
+      23093.835,
+      " adjust"
+    ],
+    [
+      23234.038,
+      " rainfall"
+    ],
+    [
+      23240.662,
+      " and"
+    ],
+    [
+      23240.687,
+      " household"
+    ],
+    [
+      23240.724,
+      " demand"
+    ],
+    [
+      23240.727,
+      ","
+    ],
+    [
+      23240.871,
+      " then"
+    ],
+    [
+      23240.908,
+      " observe"
+    ],
+    [
+      23240.955,
+      " the"
+    ],
+    [
+      23355.467,
+      " tank"
+    ],
+    [
+      23357.269,
+      "."
+    ],
+    [
+      23359.36,
+      " Explain"
+    ],
+    [
+      23360.431,
+      " that"
+    ],
+    [
+      23361.087,
+      " its"
+    ],
+    [
+      23493.71,
+      " values"
+    ],
+    [
+      23493.794,
+      " are"
+    ],
+    [
+      23493.797,
+      " simplified"
+    ],
+    [
+      23493.8,
+      " and"
+    ],
+    [
+      23493.809,
+      " real"
+    ],
+    [
+      23493.81,
+      " collection"
+    ],
+    [
+      23586.927,
+      " depends"
+    ],
+    [
+      23586.95,
+      " on"
+    ],
+    [
+      23586.955,
+      " roof"
+    ],
+    [
+      23586.957,
+      " area"
+    ],
+    [
+      23586.959,
+      ","
+    ],
+    [
+      23586.961,
+      " conditions"
+    ],
+    [
+      23586.962,
+      ","
+    ],
+    [
+      23586.969,
+      " and"
+    ],
+    [
+      23587.003,
+      " system"
+    ],
+    [
+      23739.139,
+      " design"
+    ],
+    [
+      23739.226,
+      "."
+    ],
+    [
+      23741.06,
+      " For"
+    ],
+    [
+      23741.115,
+      " additional"
+    ],
+    [
+      23741.117,
+      " background"
+    ],
+    [
+      23741.119,
+      ","
+    ],
+    [
+      23741.123,
+      " see"
+    ],
+    [
+      23741.127,
+      " https"
+    ],
+    [
+      23867.227,
+      "://"
+    ],
+    [
+      23867.703,
+      "www"
+    ],
+    [
+      23867.711,
+      ".ep"
+    ],
+    [
+      23867.928,
+      "a"
+    ],
+    [
+      23868.01,
+      ".gov"
+    ],
+    [
+      23868.013,
+      "/"
+    ],
+    [
+      23868.016,
+      "so"
+    ],
+    [
+      23981.849,
+      "ak"
+    ],
+    [
+      23982.853,
+      "up"
+    ],
+    [
+      23982.985,
+      "ther"
+    ],
+    [
+      23983.084,
+      "ain"
+    ],
+    [
+      23983.092,
+      ".\n\n"
+    ],
+    [
+      23983.094,
+      "-"
+    ],
+    [
+      23983.096,
+      " Let"
+    ],
+    [
+      24081.775,
+      " players"
+    ],
+    [
+      24081.914,
+      " restart"
+    ],
+    [
+      24081.924,
+      " easily"
+    ],
+    [
+      24196.716,
+      ".\n"
+    ],
+    [
+      24197.088,
+      "-"
+    ],
+    [
+      24197.094,
+      " Explain"
+    ],
+    [
+      24197.097,
+      " the"
+    ],
+    [
+      24197.099,
+      " simplified"
+    ],
+    [
+      24197.1,
+      " assumptions"
+    ],
+    [
+      24314.685,
+      ".\n"
+    ],
+    [
+      24314.696,
+      "-"
+    ],
+    [
+      24314.713,
+      " Invite"
+    ],
+    [
+      24314.722,
+      " experiments"
+    ],
+    [
+      24314.727,
+      " with"
+    ],
+    [
+      24314.728,
+      " different"
+    ],
+    [
+      24315.56,
+      " weather"
+    ],
+    [
+      24315.581,
+      ".\n\n"
+    ],
+    [
+      24315.585,
+      "```"
+    ],
+    [
+      24461.784,
+      "ts"
+    ],
+    [
+      24461.916,
+      "\n"
+    ],
+    [
+      24464.187,
+      "function"
+    ],
+    [
+      24464.199,
+      " restart"
+    ],
+    [
+      24464.203,
+      "()"
+    ],
+    [
+      24464.302,
+      " {\n"
+    ],
+    [
+      24464.305,
+      " "
+    ],
+    [
+      24464.315,
+      " return"
+    ],
+    [
+      24464.318,
+      " {\n"
+    ],
+    [
+      24623.02,
+      "   "
+    ],
+    [
+      24623.122,
+      " day"
+    ],
+    [
+      24623.193,
+      ":"
+    ],
+    [
+      24623.268,
+      " "
+    ],
+    [
+      24623.345,
+      "1"
+    ],
+    [
+      24623.366,
+      ",\n"
+    ],
+    [
+      24623.382,
+      "   "
+    ],
+    [
+      24623.385,
+      " level"
+    ],
+    [
+      24766.974,
+      ":"
+    ],
+    [
+      24767.573,
+      " "
+    ],
+    [
+      24769.112,
+      "25"
+    ],
+    [
+      24769.213,
+      ",\n"
+    ],
+    [
+      24769.416,
+      "   "
+    ],
+    [
+      24769.466,
+      " demand"
+    ],
+    [
+      24769.577,
+      ":"
+    ],
+    [
+      24769.717,
+      " "
+    ],
+    [
+      24915.032,
+      "15"
+    ],
+    [
+      24915.12,
+      ",\n"
+    ],
+    [
+      24915.123,
+      " "
+    ],
+    [
+      24915.126,
+      " };\n"
+    ],
+    [
+      24915.127,
+      "}\n"
+    ],
+    [
+      24915.131,
+      "``"
+    ],
+    [
+      24915.133,
+      "`\n\n"
+    ],
+    [
+      24915.144,
+      "LAB"
+    ],
+    [
+      25018.884,
+      "_STREAM"
+    ],
+    [
+      25018.99,
+      "_"
+    ],
+    [
+      25018.995,
+      "03"
+    ],
+    [
+      25019.025,
+      "_END"
+    ]
+  ]
+}
