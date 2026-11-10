@@ -73,6 +73,8 @@ function installPage({
         content: 'fixture',
         setAttribute() {},
       }),
+      // The page's memory line counts the elements.
+      getElementsByTagName: () => ({ length: 0 }),
     },
   )
   const globals = {
@@ -92,6 +94,12 @@ function installPage({
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),
     WebSocket: TestSocket,
+    // The page's memory line waits for a frame where the browser has no idle callback.
+    // eslint-disable-next-line pnyx/object-params -- the browser owns requestAnimationFrame's signature.
+    requestAnimationFrame: (run: FrameRequestCallback) => setTimeout(
+      () => run(performance.now()),
+      0,
+    ),
     DOMParser: class {
       parseFromString() {
         return {
@@ -566,6 +574,12 @@ test(
       connection,
       stop,
     } = recoveryPage({ t })
+    // What other tests left queued, and this page's first open line, go out before the lines this test reads.
+    t.mock.timers.tick(2000)
+    const sends = t.mock.method(
+      TestSocket.prototype,
+      'send',
+    )
     const original = TestSocket.current
     original.receive({
       message: {
@@ -629,6 +643,125 @@ test(
     assert.equal(
       TestSocket.current,
       restored,
+    )
+    const socketLines = sends.mock.calls.flatMap(call => {
+      const sent = JSON.parse(String(call.arguments[0])) as {
+        type: string
+        lines?: Record<string, unknown>[]
+      }
+
+      return sent.type === 'log' ? sent.lines ?? [] : []
+    })
+      .filter(line => line.operation === 'page.socket')
+    assert.deepEqual(
+      socketLines.map(line => [
+        line.status,
+        line.count,
+      ]),
+      [
+        [
+          'lost',
+          undefined,
+        ],
+        [
+          'failed',
+          undefined,
+        ],
+        [
+          'open',
+          11,
+        ],
+      ],
+      'an outage logs its loss and its first failed attempt once, and the open after it counts the attempts',
+    )
+  },
+)
+
+test(
+  'every 30 seconds the page logs the size of the chat it holds as the frame that brought it, its messages and elements',
+  t => {
+    const { stop } = recoveryPage({ t })
+    t.mock.timers.tick(2000)
+    const sends = t.mock.method(
+      TestSocket.prototype,
+      'send',
+    )
+    const socket = TestSocket.current
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        subscription: 'fixture',
+        seq: 1,
+        state: {
+          ...emptyHydra(),
+          seq: 1,
+        },
+      },
+    })
+    let frame = ''
+    const deliver = socket.onmessage
+
+    socket.onmessage = event => {
+      frame = event.data
+      deliver?.(event)
+    }
+
+    socket.receive({
+      message: {
+        type: 'thread',
+        subscription: 'fixture',
+        thread: {
+          card: '$hydra',
+          entries: [
+            {
+              id: 'first',
+              role: 'You',
+              kind: 'message',
+              text: 'Hello',
+            },
+            {
+              id: 'second',
+              role: 'Hydra',
+              kind: 'message',
+              text: 'Hi',
+            },
+          ],
+          route: false,
+          watching: 'unknown',
+        },
+      },
+    })
+    const threadFrame = frame
+    // A pong on the way keeps the socket from looking stalled.
+    t.mock.timers.tick(20_000)
+    socket.receive({ message: { type: 'pong' } })
+    t.mock.timers.tick(10_000)
+    stop()
+    const memory = sends.mock.calls.flatMap(call => {
+      const sent = JSON.parse(String(call.arguments[0])) as {
+        type: string
+        lines?: Record<string, unknown>[]
+      }
+
+      return sent.type === 'log' ? sent.lines ?? [] : []
+    })
+      .filter(line => line.operation === 'page.memory')
+    assert.deepEqual(
+      memory.map(line => [
+        line.chatChars,
+        line.messages,
+        line.elements,
+        'heapUsed' in line,
+      ]),
+      [
+        [
+          threadFrame.length,
+          2,
+          0,
+          false,
+        ],
+      ],
+      'a browser without a JS heap figure leaves the field out',
     )
   },
 )

@@ -22,7 +22,40 @@ import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { writeSnapshot } from './snapshot.ts'
-import { logFailure } from './diagnostics.ts'
+import { log } from './diagnostics.ts'
+
+// Returns the bytes appended, which move the log's offset.
+function appendLine({
+  path,
+  line,
+  hydraId,
+  name,
+  eventSeq,
+}: {
+  path: string
+  line: string
+  hydraId: string
+  name: string
+  eventSeq?: number
+}): number {
+  const started = performance.now()
+  const data = Buffer.from(line)
+  writeDurably({
+    path,
+    data,
+    flag: 'a',
+  })
+  log({
+    operation: 'events.write',
+    hydraId,
+    name,
+    eventSeq,
+    bytes: data.length,
+    ms: performance.now() - started,
+  })
+
+  return data.length
+}
 
 const MESSAGE_EVENTS = new Set<string>([
   'card.replied',
@@ -148,12 +181,13 @@ export function withWriter<T>({
           }
 
           const line = `${JSON.stringify(event)}\n`
-          writeDurably({
+          offset += appendLine({
             path: logPath({ dir }),
-            data: line,
-            flag: 'a',
+            line,
+            hydraId,
+            name: event.type,
+            eventSeq: event.seq,
           })
-          offset += Buffer.byteLength(line)
           dirty = true
         },
       })
@@ -181,12 +215,13 @@ export function withWriter<T>({
           events: pending,
           receipt: result,
         })}\n`
-        writeDurably({
+        offset += appendLine({
           path: logPath({ dir }),
-          data: line,
-          flag: 'a',
+          line,
+          hydraId,
+          name: 'log.transaction',
+          eventSeq: pending.at(-1)?.seq,
         })
-        offset += Buffer.byteLength(line)
         dirty = true
       }
 
@@ -299,12 +334,13 @@ function heldWrite<T>({
       }
 
       const line = `${JSON.stringify(event)}\n`
-      writeDurably({
+      live.offset += appendLine({
         path,
-        data: line,
-        flag: 'a',
+        line,
+        hydraId,
+        name: event.type,
+        eventSeq: event.seq,
       })
-      live.offset += Buffer.byteLength(line)
       dirty = true
     },
   })
@@ -332,13 +368,14 @@ function heldWrite<T>({
         events: pending,
         receipt: result,
       })}\n`
-      writeDurably({
+      live.offset += appendLine({
         path,
-        data: line,
-        flag: 'a',
+        line,
+        hydraId,
+        name: 'log.transaction',
+        eventSeq: pending.at(-1)?.seq,
       })
       live.state = writer.state
-      live.offset += Buffer.byteLength(line)
       dirty = true
     }
 
@@ -354,13 +391,12 @@ function heldWrite<T>({
             try {
               saveSnapshot({ live })
             } catch (error) {
-              logFailure({
+              log({
+                level: 'error',
                 operation: 'snapshot',
                 error,
-                context: {
-                  hydraId,
-                  eventSeq: live.state.seq,
-                },
+                hydraId,
+                eventSeq: live.state.seq,
               })
             }
           },

@@ -13,6 +13,7 @@ import {
   IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconWriting, IconX,
   IconCards, IconEyeOff, IconInfoCircle, IconKeyboard, IconLayoutColumns, IconLayoutSidebar,
   IconMoon, IconPalette, IconRefresh, IconSparkles, IconSun, IconTypography, IconUsers,
+  IconDatabase, IconFileAnalytics, IconHistory,
 } from '@tabler/icons-react'
 
 // Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
@@ -111,4 +112,7 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   dispatch: IconArrowsSplit2,
   inscribe: IconWriting,
   compact: IconArrowsMinimize,
+  logs: IconFileAnalytics,
+  'log-days': IconHistory,
+  'log-size': IconDatabase,
 }

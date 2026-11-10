@@ -1,4 +1,5 @@
 import { fork } from 'node:child_process'
+import { log } from '#app/diagnostics.ts'
 import { randomUUID } from 'node:crypto'
 import { sendReply } from '#workers/reply.ts'
 import type { Card } from '#tasks/model.ts'
@@ -163,7 +164,14 @@ export function createSourceRunner({
             result,
           })
         } catch (error) {
-          console.error(`pnyx-axi source: ${(error as Error).message}`)
+          log({
+            level: 'error',
+            operation: 'source.capture',
+            hydraId,
+            taskId: job.card,
+            correlationId: job.run,
+            error,
+          })
         }
       },
     )
@@ -181,7 +189,14 @@ export function createSourceRunner({
           },
         })
       } catch (error) {
-        console.error(`pnyx-axi source: ${(error as Error).message}`)
+        log({
+          level: 'error',
+          operation: 'source.capture',
+          hydraId,
+          taskId: job.card,
+          correlationId: job.run,
+          error,
+        })
       } finally {
         running.delete(jobKey)
         finish()
@@ -242,7 +257,13 @@ export function createSourceRunner({
         committed = true
       } catch (error) {
         pending.add(buffered.capture.run)
-        console.error(`pnyx-axi source capture: ${(error as Error).message}`)
+        log({
+          level: 'error',
+          operation: 'source.capture',
+          hydraId,
+          correlationId: buffered.capture.run,
+          error,
+        })
       }
     }
 
@@ -751,7 +772,13 @@ export function createSourceRunner({
               await deliver(notification)
             }
           } catch (error) {
-            console.error(`pnyx-axi source notification: ${(error as Error).message}`)
+            log({
+              level: 'error',
+              operation: 'source.notification',
+              hydraId,
+              taskId: card.id,
+              error,
+            })
           }
         }
       }
@@ -771,7 +798,12 @@ export function createSourceRunner({
         try {
           await reconcile()
         } catch (error) {
-          console.error(`pnyx-axi source: ${(error as Error).message}`)
+          log({
+            level: 'error',
+            operation: 'source.reconcile',
+            hydraId,
+            error,
+          })
         } finally {
           reconciling = undefined
         }

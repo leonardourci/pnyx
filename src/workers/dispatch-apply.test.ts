@@ -687,8 +687,24 @@ test(
       ],
     )
     assert.deepEqual(
-      reported.mock.calls.map(call => call.arguments),
-      [[`pnyx-axi: skipped 1 unreadable lines in ${changesPath()}`]],
+      reported.mock.calls.map(call => {
+        const line = JSON.parse(String(call.arguments[0]))
+
+        return [
+          line.level,
+          line.operation,
+          line.name,
+          line.count,
+        ]
+      }),
+      [
+        [
+          'warn',
+          'journal.unreadable',
+          'dispatch-changes.jsonl',
+          1,
+        ],
+      ],
     )
   },
 )

@@ -1,4 +1,5 @@
 import { refreshTarget } from '#projects/refresh-confirmed.ts'
+import { log } from '#app/diagnostics.ts'
 import { confirmedMerge } from './confirmed.ts'
 import { mergeObservation } from './merge-observation.ts'
 import { sendReply } from '#workers/reply.ts'
@@ -134,7 +135,13 @@ async function tellWorker({
     })
   } catch (error) {
     // A worker that cannot take it leaves the change on the card, where Hydra reads it.
-    console.error(`pnyx-axi follow: ${(error as Error).message}`)
+    log({
+      level: 'warn',
+      operation: 'follow.notify',
+      hydraId,
+      taskId: card.id,
+      error,
+    })
   }
 }
 
@@ -200,7 +207,13 @@ export async function followPullRequests({
     try {
       status = await readStatus({ url: link.url })
     } catch (error) {
-      console.error(`pnyx-axi follow: ${(error as Error).message}`)
+      log({
+        level: 'warn',
+        operation: 'follow.read',
+        hydraId,
+        taskId: card.id,
+        error,
+      })
       continue
     }
 

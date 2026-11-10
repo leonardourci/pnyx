@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
 import { loggedEntry } from './history.ts'
 import { chatRecordId } from './chat-records.ts'
@@ -480,20 +481,50 @@ export function threadAction({
     && task !== undefined && !isManagedTask({ card: task })
 }
 
-export function readThread(
+type ThreadRead = {
+  hydraId: string
+  state: HydraState
+  card: Card
+  homes: string[]
+  before?: string
+}
+
+// A conversation page from the task's transcript and saved events, with a log line for how long the read took.
+export function readThread({
+  hydraId,
+  state,
+  card,
+  homes,
+  before,
+}: ThreadRead): ThreadPage {
+  const started = performance.now()
+  const page = readThreadPage({
+    hydraId,
+    state,
+    card,
+    homes,
+    before,
+  })
+  log({
+    operation: 'history.read',
+    name: before === undefined ? 'latest' : 'older',
+    hydraId,
+    taskId: card.id,
+    count: page.entries.length,
+    ms: performance.now() - started,
+  })
+
+  return page
+}
+
+function readThreadPage(
   {
     hydraId,
     state,
     card,
     homes,
     before,
-  }: {
-    hydraId: string
-    state: HydraState
-    card: Card
-    homes: string[]
-    before?: string
-  },
+  }: ThreadRead,
 ): ThreadPage {
   const found = replyRoute({
     card,

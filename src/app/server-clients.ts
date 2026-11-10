@@ -15,6 +15,7 @@ import type { HydraEvent, HydraState } from './model.ts'
 import { listHydras } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { background } from './background.ts'
+import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
 
 const shownTraces = ({
@@ -91,9 +92,13 @@ export function createServerClients({
     latest?: Latest
     queue?: Extract<ServerMessage, { type: 'hydraQueue' }>
     timer?: ReturnType<typeof setTimeout>
+    // When the tab's socket filled up, so socket.drained can say how long it stayed held.
+    since: number
   }
   const recovery = new Map<HydraClient, Pending>()
   const closedClients = new WeakSet<HydraClient>()
+  // Tabs over their budget that missed a message they cannot get later, warned about once until they drain.
+  const dropping = new WeakSet<HydraClient>()
 
   const mergeLatest = ({
     before,
@@ -122,9 +127,29 @@ export function createServerClients({
     }
   }
 
-  const clearRecovery = ({ ws }: { ws: HydraClient }) => {
-    clearTimeout(recovery.get(ws)?.timer)
+  // drained: everything held went out; closed: the tab or the server went away first.
+  const clearRecovery = ({
+    ws,
+    status,
+  }: {
+    ws: HydraClient
+    status: 'drained' | 'closed'
+  }) => {
+    const pending = recovery.get(ws)
+
+    if (!pending) {
+      return
+    }
+
+    clearTimeout(pending.timer)
     recovery.delete(ws)
+    log({
+      operation: 'socket.drained',
+      hydraId,
+      status,
+      backlog: ws.bufferedAmount,
+      ms: performance.now() - pending.since,
+    })
   }
 
   const retry = ({ ws }: { ws: HydraClient }) => {
@@ -149,7 +174,11 @@ export function createServerClients({
     ws: HydraClient
     message: ServerMessage
   }) => {
-    const pending: Pending = recovery.get(ws) ?? { snapshot: false }
+    const held = recovery.get(ws)
+    const pending: Pending = held ?? {
+      snapshot: false,
+      since: performance.now(),
+    }
 
     if (message.type === 'event' || message.type === 'snapshot' || message.type === 'hydras') {
       pending.snapshot = true
@@ -161,7 +190,29 @@ export function createServerClients({
     } else if (message.type === 'hydraQueue') {
       pending.queue = message
     } else {
+      if (!dropping.has(ws)) {
+        dropping.add(ws)
+        log({
+          level: 'warn',
+          operation: 'socket.dropped',
+          hydraId,
+          name: message.type,
+          backlog: ws.bufferedAmount,
+        })
+      }
+
       return
+    }
+
+    // A tab starts being held when the first message it will get later waits.
+    if (!held) {
+      log({
+        level: 'warn',
+        operation: 'socket.held',
+        hydraId,
+        name: message.type,
+        backlog: ws.bufferedAmount,
+      })
     }
 
     recovery.set(
@@ -201,6 +252,7 @@ export function createServerClients({
     }
 
     ws.send({ message })
+    dropping.delete(ws)
 
     if (pending) {
       if (message.type === 'latest') {
@@ -212,7 +264,10 @@ export function createServerClients({
       }
 
       if (!pending.snapshot && !pending.latest && !pending.queue) {
-        clearRecovery({ ws })
+        clearRecovery({
+          ws,
+          status: 'drained',
+        })
       }
     }
 
@@ -283,7 +338,10 @@ export function createServerClients({
         actions: {},
       },
     })
-    clearRecovery({ ws })
+    clearRecovery({
+      ws,
+      status: 'drained',
+    })
     // Once accepted, the snapshot and its current facts form one recovery batch.
     ws.send({ message: latest })
     ws.send({ message: queue ?? queueMessage() })
@@ -312,7 +370,10 @@ export function createServerClients({
     pending.timer = undefined
 
     if (closedClients.has(ws) || ws.readyState !== ws.OPEN) {
-      clearRecovery({ ws })
+      clearRecovery({
+        ws,
+        status: 'closed',
+      })
 
       return
     }
@@ -518,11 +579,17 @@ export function createServerClients({
     resume,
     closeClient({ ws }: { ws: HydraClient }) {
       closedClients.add(ws)
-      clearRecovery({ ws })
+      clearRecovery({
+        ws,
+        status: 'closed',
+      })
     },
     close() {
       for (const ws of recovery.keys()) {
-        clearRecovery({ ws })
+        clearRecovery({
+          ws,
+          status: 'closed',
+        })
       }
     },
     get spendNow() {

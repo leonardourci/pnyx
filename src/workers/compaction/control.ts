@@ -1,4 +1,5 @@
 import { background } from '#app/background.ts'
+import { log } from '#app/diagnostics.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
@@ -365,7 +366,13 @@ export function createCompactionControl({
 
             advanced = true
           }
-        })().catch((error: Error) => console.error(`pnyx-axi serve: compact queue retained: ${error.message}`))
+        })().catch((error: Error) => log({
+          level: 'error',
+          operation: 'compact.queue',
+          hydraId,
+          taskId: id,
+          error,
+        }))
           .finally(() => {
             releasingCompact.delete(id)
             const current = loadHydra({ hydraId }).state.cards[id]

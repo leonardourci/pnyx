@@ -4,9 +4,8 @@ import { PROJECT_MEMORY_BUDGET } from '#memory/project-memory.ts'
 import { projectMemoryCommand } from '#memory/project-cli.ts'
 import { WORKER_NOTES_BUDGET } from '#memory/workers.ts'
 import { CLONE_TIMEOUT_MS } from './limits.ts'
-import { execFile } from 'node:child_process'
+import { runFile } from '#app/run-process.ts'
 import { isAbsolute, resolve } from 'node:path'
-import { promisify } from 'node:util'
 import { commit, guard, meta, parse, required, WRITE, type Output } from '#app/cli-support.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
@@ -14,8 +13,6 @@ import { loadHydra } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
 import { parseLanding, parseMerger } from '#tasks/delivery/rule.ts'
-
-const clone = promisify(execFile)
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   if (args[0] === 'worker-notes') {
@@ -265,15 +262,15 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     )
 
     try {
-      await clone(
-        'git',
-        [
+      await runFile({
+        command: 'git',
+        args: [
           'clone',
           '--',
           String(values.clone),
           destination,
         ],
-        {
+        options: {
           timeout: CLONE_TIMEOUT_MS,
           maxBuffer: 1024 * 1024,
           env: {
@@ -281,7 +278,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
             GIT_TERMINAL_PROMPT: '0',
           },
         },
-      )
+      })
     } catch {
       throw new HydraError({
         message: `git clone failed into ${destination}; check the URL, access and destination before retrying`,

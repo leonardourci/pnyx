@@ -3,7 +3,7 @@ import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS, patchView, resizeViewPatch } from '#preferences/view.ts'
 import type { Settings } from '#settings/model.ts'
-import { DEFAULT_SETTINGS } from '#settings/settings.ts'
+import { DEFAULT_LOG_DAYS, DEFAULT_LOG_MAX_MB, DEFAULT_SETTINGS, MAX_LOG_DAYS, MAX_LOG_MB } from '#settings/settings.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -22,7 +22,7 @@ import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { AccountSettings } from '#web-workers/account-settings.tsx'
 import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
-import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
+import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, LogDaysPreview, LogLinesPreview, LogSizePreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
 import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { SETTING_ICONS, SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
@@ -34,6 +34,8 @@ const UNITS: Record<string, string> = {
   defaultHydraWidth: 'px',
   doneAfterHours: 'h',
   reviewMinutes: 'min',
+  logDays: 'd',
+  logMaxMB: 'MB',
 }
 export const SETTING_PREVIEWS = new Set([
   'theme',
@@ -48,9 +50,30 @@ export const SETTING_PREVIEWS = new Set([
   'toolDetails',
   'thinkingDetails',
   'doneAfterHours',
+  'logs',
+  'logDays',
+  'logMaxMB',
 ])
 const WIDTH_SLIDER_MAX = 900
 const WIDTH_MAX = 2400
+// The sliders cover a month of logs and 2 GB; the fields take up to the limits.
+const LOG_DAYS_SLIDER_MAX = 30
+const LOG_SIZE_SLIDER_MAX = 2000
+const LOG_SIZE_STEP = 50
+const LOG_LEVELS = [
+  {
+    value: 'off',
+    label: 'Off',
+  },
+  {
+    value: 'on',
+    label: 'On',
+  },
+  {
+    value: 'detailed',
+    label: 'Detailed',
+  },
+]
 const SUGGESTIONS = [
   'width',
   'model',
@@ -153,6 +176,12 @@ export function SettingPreview({
       return <DonePreview hours={settings.doneAfterHours} />
     case 'reviewMinutes':
       return <ReviewPreview minutes={settings.reviewMinutes} />
+    case 'logs':
+      return <LogLinesPreview mode={settings.logs} />
+    case 'logDays':
+      return <LogDaysPreview days={settings.logDays} maxMB={settings.logMaxMB} />
+    case 'logMaxMB':
+      return <LogSizePreview days={settings.logDays} maxMB={settings.logMaxMB} />
     case 'helper':
       return rule && <HelperPreview helper={settings.helper} hydra={rule} />
     case 'hydraAgent':
@@ -404,6 +433,49 @@ export function SettingControl({
       return <HideDone hours={settings.doneAfterHours} save={save} slide={slideTo({ key: 'doneAfterHours' })} />
     case 'reviewMinutes':
       return <ReviewCadence minutes={settings.reviewMinutes} save={save} slide={slideTo({ key: 'reviewMinutes' })} />
+    case 'logs':
+      return (
+        <Segmented
+          label="Logging"
+          value={settings.logs}
+          options={LOG_LEVELS}
+          onChange={({ value }) => save({ patch: { logs: value } })}
+        />
+      )
+    case 'logDays':
+      return (
+        <NumberField
+          label="Days kept"
+          value={settings.logDays}
+          min={1}
+          max={MAX_LOG_DAYS}
+          step={1}
+          slider={{
+            max: LOG_DAYS_SLIDER_MAX,
+            initial: DEFAULT_LOG_DAYS,
+            unit: 'd',
+          }}
+          onChange={({ value }) => save({ patch: { logDays: value } })}
+          onSlide={slideTo({ key: 'logDays' })}
+        />
+      )
+    case 'logMaxMB':
+      return (
+        <NumberField
+          label="Megabytes"
+          value={settings.logMaxMB}
+          min={1}
+          max={MAX_LOG_MB}
+          step={LOG_SIZE_STEP}
+          slider={{
+            max: LOG_SIZE_SLIDER_MAX,
+            initial: DEFAULT_LOG_MAX_MB,
+            unit: 'MB',
+          }}
+          onChange={({ value }) => save({ patch: { logMaxMB: value } })}
+          onSlide={slideTo({ key: 'logMaxMB' })}
+        />
+      )
     case 'helper':
       return (
         rule && (

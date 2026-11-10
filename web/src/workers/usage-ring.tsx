@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Tooltip, TooltipPanel } from '#web-shared/ui/tooltip.tsx'
 import type { Card } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
+import { log } from '#web-app/log.ts'
 import { Usage, usagePercent, usageTone } from './usage.tsx'
 
 const REFRESH_MS = 60_000
@@ -25,6 +26,13 @@ export function useUsageRefresh({
   ] = useState<string>()
   const id = card?.id
   const session = card?.agent?.sessionId
+  // load shows its own errors; anything else it throws goes to the logs.
+  const failed = ({ error }: { error: unknown }) => log({
+    level: 'error',
+    operation: 'page.usage-refresh',
+    taskId: id,
+    error,
+  })
   const load = useCallback(
     async ({ refresh = false }: { refresh?: boolean } = {}) => {
       if (!id || !session) {
@@ -72,10 +80,10 @@ export function useUsageRefresh({
         return
       }
 
-      load().catch(console.error)
+      load().catch(error => failed({ error }))
       const timer = setInterval(
         () => {
-          load().catch(console.error)
+          load().catch(error => failed({ error }))
         },
         REFRESH_MS,
       )
@@ -92,7 +100,7 @@ export function useUsageRefresh({
   return {
     // Before a session there are no plan limits to refresh.
     refresh: session ? () => {
-      load({ refresh: true }).catch(console.error)
+      load({ refresh: true }).catch(error => failed({ error }))
     } : undefined,
     refreshing,
     error,

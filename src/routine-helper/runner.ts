@@ -1,6 +1,7 @@
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { base } from '#app/command-meta.ts'
+import { log } from '#app/diagnostics.ts'
 import { HYDRA_COMMANDS } from '#app/command-registry.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import { agentInput } from '#app/agent-input.ts'
@@ -259,10 +260,12 @@ export function createRoutineHelper({
           throw error
         }
 
-        console.error(
-          'pnyx-axi helper deferred:',
+        log({
+          level: 'warn',
+          operation: 'helper.deferred',
+          hydraId,
           error,
-        )
+        })
 
         if (attempt < WRITE_ATTEMPTS - 1) {
           await delay(
@@ -380,10 +383,12 @@ export function createRoutineHelper({
         throw error
       }
 
-      console.error(
-        'pnyx-axi helper snapshot:',
+      log({
+        level: 'error',
+        operation: 'helper.snapshot',
+        hydraId,
         error,
-      )
+      })
     }
 
     background({
@@ -436,6 +441,7 @@ export function createRoutineHelper({
   }
 
   const run = async ({ batch }: { batch: HelperBatch }) => {
+    const started = performance.now()
     const actor = `helper:${batch.id}`
     const releases: (() => void)[] = []
     let cancelDeadline = () => {}
@@ -694,12 +700,29 @@ export function createRoutineHelper({
         },
       })
 
+      log({
+        operation: 'helper.batch',
+        hydraId,
+        correlationId: batch.id,
+        count: batch.tasks.length,
+        ms: performance.now() - started,
+      })
+
       if (outcomes.some(outcome => needsMain({ outcome }))) {
         outcomesReady()
       }
     } catch (error) {
       agent = undefined
       const failure = closed ? 'Helper turn was stopped' : (error as Error).message
+      log({
+        level: 'warn',
+        operation: 'helper.batch',
+        hydraId,
+        correlationId: batch.id,
+        count: batch.tasks.length,
+        error,
+        ms: performance.now() - started,
+      })
 
       if (!existsSync(join(
         pendingDir,
@@ -745,10 +768,13 @@ export function createRoutineHelper({
             })
           } catch (error) {
             cleaned = false
-            console.error(
-              'pnyx-axi helper cleanup:',
+            log({
+              level: 'error',
+              operation: 'helper.cleanup',
+              hydraId,
+              correlationId: batch.id,
               error,
-            )
+            })
           }
         }
       } finally {
@@ -885,10 +911,14 @@ export function createRoutineHelper({
             })
           } catch (error) {
             cleaned = false
-            console.error(
-              'pnyx-axi helper recovery cleanup:',
+            log({
+              level: 'error',
+              operation: 'helper.recovery-cleanup',
+              hydraId,
+              taskId: task,
+              correlationId: batch.id,
               error,
-            )
+            })
           }
         }
 
@@ -945,10 +975,14 @@ export function createRoutineHelper({
               })
             } catch (error) {
               cleaned = false
-              console.error(
-                'pnyx-axi helper recovery cleanup:',
+              log({
+                level: 'error',
+                operation: 'helper.recovery-cleanup',
+                hydraId,
+                taskId: task,
+                correlationId: id,
                 error,
-              )
+              })
             }
           }
 

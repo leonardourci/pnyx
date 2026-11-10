@@ -17,7 +17,7 @@ import { steeringToFollow } from '#workers/inbox-follow-up.ts'
 import { QUEUE_POLL_MS } from '#workers/queue.ts'
 import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { background } from './background.ts'
-import { logFailure } from './diagnostics.ts'
+import { log } from './diagnostics.ts'
 import type { createHost } from './host.ts'
 import type { HydraState } from './model.ts'
 import type { createServerWorkers } from './server-workers.ts'
@@ -113,13 +113,12 @@ export function createServerTick({
               })
             } catch (error) {
               queueNeedsRetry = true
-              logFailure({
+              log({
+                level: 'error',
                 operation: 'queue',
                 error,
-                context: {
-                  hydraId,
-                  eventSeq: state().seq,
-                },
+                hydraId,
+                eventSeq: state().seq,
               })
             } finally {
               queueRun = undefined
@@ -139,13 +138,12 @@ export function createServerTick({
                 active: () => !closed(),
               })
             } catch (error) {
-              logFailure({
+              log({
+                level: 'error',
                 operation: 'follow',
                 error,
-                context: {
-                  hydraId,
-                  eventSeq: state().seq,
-                },
+                hydraId,
+                eventSeq: state().seq,
               })
             } finally {
               followRun = undefined
@@ -193,13 +191,12 @@ export function createServerTick({
               })
             } catch (error) {
               if (!closed()) {
-                logFailure({
+                log({
+                  level: 'error',
                   operation: 'replies',
                   error,
-                  context: {
-                    hydraId,
-                    eventSeq: state().seq,
-                  },
+                  hydraId,
+                  eventSeq: state().seq,
                 })
               }
             } finally {
@@ -248,13 +245,12 @@ export function createServerTick({
             try {
               await settleDone({ hydraId })
             } catch (error) {
-              logFailure({
+              log({
+                level: 'error',
                 operation: 'settling copies',
                 error,
-                context: {
-                  hydraId,
-                  eventSeq: state().seq,
-                },
+                hydraId,
+                eventSeq: state().seq,
               })
 
               return
@@ -273,10 +269,11 @@ export function createServerTick({
       } catch (error) {
         lastFailureAt = new Date().toISOString()
         // A held lock or a damaged log; the next change retries.
-        logFailure({
+        log({
+          level: 'error',
           operation: 'scheduler tick',
           error,
-          context: { hydraId },
+          hydraId,
         })
       } finally {
         clearTimeout(expiryTimer)

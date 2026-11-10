@@ -2,6 +2,8 @@ import type { CSSProperties, ReactNode } from 'react'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
+import { logDay, logged, type LogLine, type LogMode } from '#app/log-line.ts'
+import { keptDays } from '#diagnostics/retention.ts'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -353,6 +355,194 @@ export function ReviewPreview({ minutes }: { minutes: number }) {
         <span className="preview-timeline-label" style={{ left: '50%' }}>+1.5 h</span>
         <span className="preview-timeline-label" data-end style={{ left: '100%' }}>+3 h</span>
       </div>
+    </Preview>
+  )
+}
+
+// Example lines at each level, shown or dimmed by the same rule the loggers use.
+const LOG_LINES: {
+  text: string
+  line: Pick<LogLine, 'level' | 'detailed'>
+}[] = [
+  {
+    text: '12:04:31 command.page 38 ms',
+    line: {},
+  },
+  {
+    text: '12:04:33 thread.live 2 ms',
+    line: { detailed: true },
+  },
+  {
+    text: '12:04:33 page.frame 17 ms',
+    line: { detailed: true },
+  },
+  {
+    text: '12:04:39 turn.end 8.2 s',
+    line: {},
+  },
+  {
+    text: '12:05:00 process 212 MB',
+    line: {},
+  },
+  {
+    text: '12:05:02 warn follow.read',
+    line: { level: 'warn' },
+  },
+]
+
+const LOG_CAPTIONS: Record<LogMode, string> = {
+  off: 'Only warnings and errors are written.',
+  on: 'One line per action, with its duration and the server’s memory.',
+  detailed: 'Adds a line for every live chat update and frame. Switch back to On once the debugging is done.',
+}
+
+export function LogLinesPreview({ mode }: { mode: LogMode }) {
+  return (
+    <Preview caption={LOG_CAPTIONS[mode]}>
+      <div className="preview-log">
+        {LOG_LINES.map(({
+          text,
+          line,
+        }) => {
+          const hidden = !logged({
+            mode,
+            line,
+          }) || undefined
+          const detailed = line.detailed || undefined
+
+          return (
+            <code key={text} data-hidden={hidden} data-detailed={detailed}>
+              {text}
+            </code>
+          )
+        })}
+      </div>
+    </Preview>
+  )
+}
+
+const BYTES_PER_MB = 1024 * 1024
+const DAY_MS = 24 * 60 * 60 * 1000
+// Ten example days of logs in MB, newest first: one detailed debugging day among ordinary ones.
+const LOG_DAY_SIZES = [
+  6,
+  5,
+  7,
+  240,
+  6,
+  5,
+  4,
+  6,
+  5,
+  7,
+]
+
+const dayName = ({ index }: { index: number }) => index === 0 ? 'Today' : `${index} d ago`
+
+// The example days as a cleanup sees them, ending today, and which of them it keeps.
+function exampleDays({
+  days,
+  maxMB,
+}: {
+  days: number
+  maxMB: number
+}) {
+  const now = Date.now()
+  const files = LOG_DAY_SIZES.map((
+    size,
+    index,
+  ) => ({
+    name: dayName({ index }),
+    size,
+    day: logDay({ at: new Date(now - index * DAY_MS).toISOString() }),
+    bytes: size * BYTES_PER_MB,
+  }))
+  const retained = keptDays({
+    days: files,
+    keepDays: days,
+    maxBytes: maxMB * BYTES_PER_MB,
+    today: files[0]!.day,
+  })
+
+  return {
+    files: files.map(file => ({
+      ...file,
+      kept: retained.kept.has(file.day),
+    })),
+    full: retained.full,
+  }
+}
+
+export function LogDaysPreview({
+  days,
+  maxMB,
+}: {
+  days: number
+  maxMB: number
+}) {
+  const { files } = exampleDays({
+    days,
+    maxMB,
+  })
+  const count = files.filter(file => file.kept).length
+  const caption = `${count} of ${files.length} example days kept; the rest are deleted.`
+
+  return (
+    <Preview caption={caption}>
+      <div className="preview-days">
+        {files.map(file => (
+          <div key={file.name} className="preview-day" data-hidden={!file.kept || undefined}>
+            <span>{file.name}</span>
+            <span className="preview-card-meta">{file.size} MB</span>
+          </div>
+        ))}
+      </div>
+    </Preview>
+  )
+}
+
+export function LogSizePreview({
+  days,
+  maxMB,
+}: {
+  days: number
+  maxMB: number
+}) {
+  const {
+    files,
+    full,
+  } = exampleDays({
+    days,
+    maxMB,
+  })
+  const kept = files.filter(file => file.kept)
+  const used = kept.reduce(
+    (
+      sum,
+      file,
+    ) => sum + file.size,
+    0,
+  )
+  const caption = full
+    ? 'Today alone is past the limit, so it takes only warnings and errors until tomorrow.'
+    : 'Each kept example day takes its share of the limit. Past it, the oldest day goes first.'
+
+  return (
+    <Preview caption={caption}>
+      <div className="preview-meter" role="presentation">
+        {kept.map(file => (
+          <span
+            key={file.name}
+            style={{
+              width: `${Math.min(
+                file.size / maxMB,
+                1,
+              ) * 100}%`,
+            }}
+          />
+        ))}
+      </div>
+      <p className="preview-meter-label">{`${used} of ${maxMB} MB`}</p>
     </Preview>
   )
 }

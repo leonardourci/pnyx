@@ -33,11 +33,13 @@ export const COMMAND_REGISTRY = {
       reads: [
         'timeline',
         'health',
+        'performance',
       ],
     },
     worker: [
       'timeline',
       'health',
+      'performance',
     ],
   },
   approval: {

@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
 import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
@@ -333,7 +334,11 @@ function tryMigrate(): void {
   try {
     migrateOwnerMemory()
   } catch (error) {
-    console.error(`pnyx-axi: ${(error as Error).message}`)
+    log({
+      level: 'error',
+      operation: 'memory.migrate',
+      error,
+    })
   }
 }
 

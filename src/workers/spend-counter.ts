@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import type { UsageReading } from './provider.ts'
 import { isMainThread, parentPort, Worker } from 'node:worker_threads'
 import { spendFor, sessionReadings, type SpendInputs, type TaskSpend } from './task-spend.ts'
@@ -60,7 +61,11 @@ export function spendCounter({
     thread.on(
       'error',
       (error: Error) => {
-        console.error(`pnyx-axi spend: ${error.message}`)
+        log({
+          level: 'error',
+          operation: 'spend.count',
+          error,
+        })
 
         if (worker === thread) {
           worker = undefined
@@ -90,7 +95,11 @@ export function spendCounter({
       worker ??= start()
       worker.postMessage(inputs())
     } catch (error) {
-      console.error(`pnyx-axi spend: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'spend.count',
+        error,
+      })
       busy = false
     }
   }

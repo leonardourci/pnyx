@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { memoryReview } from '#memory/review.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { hydraEvent, pnyxRunsHydra } from './hydra.ts'
@@ -122,7 +123,12 @@ export function startReviewTimer({
           state,
         })
       } catch (error) {
-        console.error(`pnyx-axi reminders: ${(error as Error).message}`)
+        log({
+          level: 'error',
+          operation: 'reminders',
+          hydraId,
+          error,
+        })
       }
 
       const minutes = readSettings().settings.reviewMinutes
@@ -215,7 +221,12 @@ export function startReviewTimer({
         wake()
       }
     } catch (error) {
-      console.error(`pnyx-axi review: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'review',
+        hydraId,
+        error,
+      })
     } finally {
       reviewing = false
     }

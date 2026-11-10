@@ -1,4 +1,5 @@
 import { taskLeasePresent } from '#routine-helper/leases.ts'
+import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
 import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
@@ -6,6 +7,7 @@ import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
 import { trackChildren } from '#workers/children.ts'
+import { watchAgent } from '#workers/agent-memory.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 import { createHostedHelper } from '#routine-helper/hosted-helper.ts'
 import { agentExhausted } from '#workers/dispatch.ts'
@@ -13,6 +15,7 @@ import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
+import type { Provider } from '#workers/provider.ts'
 import { createUsageTracker } from '#workers/usage-tracker.ts'
 import { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
@@ -399,7 +402,12 @@ export function createHost({
     try {
       write({ fn })
     } catch (error) {
-      console.error(`pnyx-axi serve: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'host.note',
+        hydraId,
+        error,
+      })
     }
   }
 
@@ -425,7 +433,14 @@ export function createHost({
     } : {}),
   })
 
-  const providerOf = ({ provider }: { provider: string }) => {
+  const providerOf = ({
+    provider,
+    taskId,
+  }: {
+    provider: string
+    // The task whose agent this opens, Hydra's own included, for the agent's log lines.
+    taskId?: string
+  }): Provider => {
     const known = knownProvider({ name: provider })
 
     if (!known) {
@@ -435,7 +450,51 @@ export function createHost({
       })
     }
 
-    return providers[known]
+    const chosen = providers[known]
+
+    // Every session the server opens, for Hydra, a worker or the helper, logs how long its provider took to start it,
+    // and its agent processes are listed with their memory under its ids.
+    return {
+      ...chosen,
+      // eslint-disable-next-line pnyx/object-params -- the provider owns open's options, which pass through whole.
+      open: async options => {
+        const opening = performance.now()
+        const ids: Parameters<typeof watchAgent>[0]['ids'] = {
+          hydraId,
+          taskId,
+        }
+        const spawned = options.spawned
+
+        // Without the caller's hook a provider starts its process itself, and nothing is tracked.
+        const tracked: typeof spawned = spawned === undefined ? undefined : ({ child }) => {
+          spawned({ child })
+          watchAgent({
+            child,
+            ids,
+          })
+        }
+
+        const session = await chosen.open({
+          ...options,
+          spawned: tracked,
+        })
+        ids.sessionId = `${known}:${session.id}`
+        log({
+          operation: 'session.open',
+          ...ids,
+          provider: known,
+          ms: performance.now() - opening,
+        })
+
+        return session
+      },
+    }
+  }
+
+  // The helper's sessions open through the same wrapper, so they are logged and their memory listed too.
+  const helperProviders = {
+    [PROVIDERS.claude.provider]: providerOf({ provider: PROVIDERS.claude.provider }),
+    [PROVIDERS.codex.provider]: providerOf({ provider: PROVIDERS.codex.provider }),
   }
 
   const {
@@ -550,7 +609,7 @@ export function createHost({
     helperOpen,
   } = createHostedHelper({
     hydraId,
-    providers,
+    providers: helperProviders,
     children,
     helperBound,
     changed,
@@ -996,7 +1055,14 @@ export function createHost({
             attempt: `reconcile:${card.id}:${state.seq}`,
           })
         } catch (error) {
-          console.error(`pnyx-axi serve: ${card.id} inbox assignment could not resume: ${(error as Error).message}`)
+          log({
+            level: 'error',
+            operation: 'inbox resume',
+            hydraId,
+            taskId: card.id,
+            correlationId: oldest.id,
+            error,
+          })
         }
       }
     },

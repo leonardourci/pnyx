@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process'
 import { basename, join } from 'node:path'
-import { promisify } from 'node:util'
+import { log } from '#app/diagnostics.ts'
+import { runFile } from '#app/run-process.ts'
 import type { UpgradeOperation, UpgradeStep, UpgradeStepName } from './model.ts'
 
 // The checkout this pnyx-axi runs from: src/upgrade and dist/upgrade both sit two folders down.
@@ -10,7 +10,6 @@ export const PNYX_ROOT = join(
   '..',
 )
 
-const exec = promisify(execFile)
 const NETWORK_MS = 60_000
 const BUILD_MS = 15 * 60_000
 
@@ -37,10 +36,10 @@ async function run({
   signal?: AbortSignal
 }): Promise<string> {
   try {
-    const { stdout } = await exec(
+    const { stdout } = await runFile({
       command,
       args,
-      {
+      options: {
         cwd: root,
         timeout,
         signal,
@@ -53,7 +52,7 @@ async function run({
           ...env,
         },
       },
-    )
+    })
 
     return stdout.trimEnd()
   } catch (error) {
@@ -239,13 +238,21 @@ export async function runUpgrade({
   }
 
   busy = true
+  const started = performance.now()
 
   try {
-    return await upgrade({
+    const result = await upgrade({
       root,
       progress,
       signal,
     })
+    log({
+      operation: 'upgrade',
+      status: result.state,
+      ms: performance.now() - started,
+    })
+
+    return result
   } finally {
     busy = false
   }
