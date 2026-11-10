@@ -662,19 +662,44 @@ test(
           {
             type: 'tool_use' as const,
             id: 'deploy-notes',
-            name: 'Read',
-            input: { file_path: 'deploy-notes.txt' },
+            name: 'Bash',
+            input: { command: 'cat deploy-notes.txt' },
           },
         ],
       },
     }
-    const held = pnyx.claude.plan({
-      text: 'Check the deploy',
-      reply: 'The deploy is ready.',
-      partial: 'The deploy',
-      hold: true,
-      before: [commentary],
+    const partial = claudeRecording.turn.find(message => message.type === 'stream_event')
+    assert.ok(partial?.type === 'stream_event')
+    const thinking = {
+      ...partial,
+      event: {
+        type: 'content_block_start' as const,
+        index: 0,
+        content_block: {
+          type: 'thinking' as const,
+          thinking: '',
+          signature: '',
+        },
+      },
+    }
+    const thinkingDone = {
+      ...partial,
+      event: {
+        type: 'content_block_stop' as const,
+        index: 0,
+      },
+    }
+    let finishTools = () => {}
+    const toolsFinished = new Promise<void>(resolve => {
+      finishTools = resolve
     })
+
+    async function* deltas() {
+      yield 'The deploy'
+      await toolsFinished
+    }
+
+    let releaseHeld = () => {}
     const hydraRow = `.hydras-panel [data-hydra="${s.hydraId}"] .hydra-running`
 
     try {
@@ -695,6 +720,68 @@ test(
         what: 'the Hydra idle in the list',
         condition: `document.querySelector('${hydraRow}:not([data-running])')`,
       })
+
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Prepare the status fixture\'); await page.click(\'[aria-label="Send reply"]\');',
+      })
+      const previousAgent = await s.agent({ hydra: true })
+      await until({
+        what: 'the previous turn to finish',
+        check: () => s.answered({ cwd: previousAgent.cwd }) === 1,
+      })
+      const path = s.state().cards.$hydra!.agent!.transcriptPath!
+      appendFileSync(
+        path,
+        `${JSON.stringify({
+          type: 'assistant',
+          timestamp: '2000-01-01T00:00:00Z',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'previous-call',
+                name: 'Bash',
+                input: { command: 'pwd' },
+              },
+            ],
+          },
+        })}\n${JSON.stringify({
+          type: 'user',
+          timestamp: '2000-01-01T00:00:01Z',
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'previous-call',
+                content: '/fixture',
+              },
+            ],
+          },
+        })}\n`,
+      )
+      await until({
+        what: 'the older native action to reach the socket',
+        check: () => wire.actions.$hydra?.at === '2000-01-01T00:00:00Z',
+      })
+
+      const held = pnyx.claude.plan({
+        text: 'Check the deploy',
+        reply: 'The deploy is ready.',
+        stream: deltas(),
+        hold: true,
+        before: [
+          partial,
+          thinking,
+        ],
+        after: [
+          thinkingDone,
+          commentary,
+        ],
+      })
+      releaseHeld = held.release
 
       // The send is held in the page, so what shows comes from the page alone.
       await run({
@@ -722,9 +809,20 @@ test(
       })
       await capture({ name: 'status-sent' })
       await until({
-        what: 'the held agent session to be attached',
-        check: () => s.state().cards.$hydra?.agent?.transcriptPath,
+        what: 'the live thinking fact on the socket',
+        check: () => wire.actions.$hydra?.thinking === true,
       })
+      await waitFor({
+        what: 'thinking from the live turn despite the older transcript action',
+        condition: 'document.querySelector(\'.chat-running .action-text\')?.textContent === \'Thinking\'',
+      })
+      await capture({ name: 'status-thinking' })
+      held.release()
+      await waitFor({
+        what: 'the running shell command before its native record arrives',
+        condition: 'document.querySelector(\'.chat-running .action-text\')?.textContent === \'Running a command\'',
+      })
+      await capture({ name: 'status-command' })
       const packet = (await wire.command({
         name: 'thread',
         args: ['$hydra'],
@@ -800,7 +898,7 @@ test(
       })
       await capture({ name: 'status-focus' })
 
-      held.release()
+      finishTools()
       await waitFor({
         what: 'the turn to end with the Hydra idle and the working dots gone',
         condition: `[...document.querySelectorAll('.hydra-chat article.message')].some(row => row.textContent.includes('The deploy is ready.'))
@@ -900,7 +998,8 @@ test(
       process.stderr.write((await run({ args: ['console'] })).stdout)
       throw error
     } finally {
-      held.release()
+      finishTools()
+      releaseHeld()
       await s.owner({
         args: [
           'settings',
