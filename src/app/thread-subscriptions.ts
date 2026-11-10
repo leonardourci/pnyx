@@ -222,6 +222,7 @@ export function createThreadSubscriptions({
         ...prepared,
         conversation: {
           ...prepared.conversation,
+          through: current.seq,
           stream: sub.view.id,
           version: ++sub.view.version,
         },
@@ -419,6 +420,13 @@ export function createThreadSubscriptions({
     )
   }
 
+  const finishRead = ({ sub, prepared, receipt }: { sub: Subscription; prepared: PreparedThread; receipt?: string }) => {
+    if (sub.client && (receipt !== undefined || threadDelivery.has({ key: sub }))) {
+      deliver({ ws: sub.client, sub, prepared, receipt })
+    }
+    return prepared.thread
+  }
+
   const threadPage = async ({
     sub,
     card,
@@ -434,6 +442,17 @@ export function createThreadSubscriptions({
   }): Promise<ThreadPage> => {
     sub.base = undefined
     const native = sub.native
+
+    if (!native && before === undefined && !retain) {
+      const prepared = versionThread({
+        sub,
+        prepared: currentThread({
+          sub,
+          card,
+        }),
+      })!
+      return finishRead({ sub, prepared, receipt })
+    }
 
     const readPage = async ({ before }: { before?: string }): Promise<ThreadPage> => {
       if (native) {
@@ -483,22 +502,14 @@ export function createThreadSubscriptions({
         })
       }
 
+      sub.base = undefined
       const prepared = prepareThread({
         sub,
         page,
         older: before !== undefined,
       })!
 
-      if (sub.client && (receipt !== undefined || threadDelivery.has({ key: sub }))) {
-        deliver({
-          ws: sub.client,
-          sub,
-          prepared,
-          receipt,
-        })
-      }
-
-      return prepared.thread
+      return finishRead({ sub, prepared, receipt })
     } finally {
       if (retain) {
         sub.restoring = (sub.restoring ?? 1) - 1
