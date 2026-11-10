@@ -381,7 +381,11 @@ test(
         homes: [],
         before: cursor,
       })
-      assert.ok(page.entries.length <= 60)
+      assert.ok(
+        (page.entries[0]?.part ?? 0) === 0,
+        'each page starts at the beginning of a logical message',
+      )
+      assert.ok(page.entries.every(entry => entry.text.length <= 1000))
       pages.unshift(page.entries); cursor = page.older
       assert.ok(
         pages.length < 10,
