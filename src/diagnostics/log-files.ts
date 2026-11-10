@@ -55,8 +55,9 @@ function remove({ files }: { files: LogFile[] }) {
   }
 
   // The current day's file may be among them; the next line starts it again, empty.
-  releaseLogFile()
-  setTodayFull({ full: false })
+  if (files.length) {
+    releaseLogFile()
+  }
 
   return {
     files: files.length,
@@ -88,20 +89,24 @@ export function cleanLogs({
     maxBytes,
     today,
   })
+  const removed = remove({ files: files.filter(file => !retained.kept.has(file.day)) })
   setTodayFull({
+    day: today,
     full: retained.full,
+    overfull: retained.overfull,
     maxBytes,
   })
-  const deleted = files.filter(file => !retained.kept.has(file.day))
 
-  if (!deleted.length) {
-    return {
-      files: 0,
-      bytes: 0,
-    }
-  }
-
-  return remove({ files: deleted })
+  return removed
 }
 
-export const clearLogs = () => remove({ files: logFiles() })
+export function clearLogs() {
+  const removed = remove({ files: logFiles() })
+  setTodayFull({
+    day: logDay({ at: new Date().toISOString() }),
+    full: false,
+    overfull: false,
+  })
+
+  return removed
+}

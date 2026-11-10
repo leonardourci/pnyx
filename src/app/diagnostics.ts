@@ -29,8 +29,13 @@ let file: {
   day: string
   fd: number
 } | undefined
-// Today's file alone passed the size cap: until the day ends it takes only warnings and errors.
-let todayFull = false
+// The day whose file the last cleanup found past the size cap: until it ends that file takes only warnings and
+// errors, and once overfull nothing more, counting the warnings and errors it drops.
+let capped: {
+  day: string
+  overfull: boolean
+} | undefined
+let dropped = 0
 
 export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
   mode = next
@@ -38,16 +43,24 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
 
 export const logMode = () => mode
 
-// Set by each cleanup; the first time today's file passes the cap, a warning says why the action lines stop.
+// Set by each cleanup. The first time today's file passes the cap, a warning says why the action lines stop; while
+// it is overfull, each cleanup writes how many warnings and errors it dropped since the last one.
 export function setTodayFull({
+  day,
   full,
+  overfull,
   maxBytes,
 }: {
+  day: string
   full: boolean
+  overfull: boolean
   maxBytes?: number
 }): void {
-  const filled = full && !todayFull
-  todayFull = full
+  const filled = full && capped?.day !== day
+  const count = dropped
+  // Cleared first, so these two warnings reach the file however full it is.
+  capped = undefined
+  dropped = 0
 
   if (filled) {
     log({
@@ -56,6 +69,19 @@ export function setTodayFull({
       bytes: maxBytes,
     })
   }
+
+  if (count) {
+    log({
+      level: 'warn',
+      operation: 'logs.dropped',
+      count,
+    })
+  }
+
+  capped = full ? {
+    day,
+    overfull,
+  } : undefined
 }
 
 export function openLogs(): void {
@@ -117,14 +143,18 @@ function append({
     return
   }
 
-  if (todayFull && !severe && file?.day === day) {
+  if (capped?.day === day && (capped.overfull || !severe)) {
+    // Action lines stop at the cap by design; only the warnings and errors an overfull day drops are counted.
+    if (severe) {
+      dropped += 1
+    }
+
     return
   }
 
   try {
     if (file?.day !== day) {
       releaseLogFile()
-      todayFull = false
       privateDir({ dir: logsDir() })
       file = {
         day,
