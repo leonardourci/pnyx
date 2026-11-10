@@ -754,15 +754,27 @@ test(
     })
     assert.match(
       build,
-      /project's own instructions require/,
+      /Before you report work as done or ready/,
     )
     assert.match(
       build,
-      /required checks passing on its current revision/,
+      /finish what the brief and your project's instructions require/,
     )
     assert.match(
       build,
-      /repeat affected reviews and verification/,
+      /check the final result/,
+    )
+    assert.match(
+      build,
+      /For code.*required checks pass on its latest commit/,
+    )
+    assert.match(
+      build,
+      /For anything else.*evidence of the end state: a link, screenshot or output/,
+    )
+    assert.match(
+      build,
+      /After later changes.*redo the affected checks/,
     )
     assert.match(
       build,

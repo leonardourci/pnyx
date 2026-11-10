@@ -15,15 +15,27 @@ import { pnyx } from '#test-harness/pnyx.ts'
 function followsProject({ prompt }: { prompt: string }): void {
   assert.match(
     prompt,
-    /project's own instructions require/,
+    /Before you report work as done or ready/,
   )
   assert.match(
     prompt,
-    /required checks passing on its current revision/,
+    /finish what the brief and your project's instructions require/,
   )
   assert.match(
     prompt,
-    /After later changes.*repeat affected reviews and verification/,
+    /check the final result/,
+  )
+  assert.match(
+    prompt,
+    /For code.*required checks pass on its latest commit/,
+  )
+  assert.match(
+    prompt,
+    /For anything else.*evidence of the end state: a link, screenshot or output/,
+  )
+  assert.match(
+    prompt,
+    /After later changes.*redo the affected checks/,
   )
   assert.match(
     prompt,
