@@ -1,11 +1,12 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { DAY_FILE, logsDir, releaseLogFile } from '#app/diagnostics.ts'
+import { DAY_FILE, logsDir, releaseLogFile, setTodayFull } from '#app/diagnostics.ts'
+import { logDay } from '#app/log-line.ts'
+import { keptDays } from './retention.ts'
 
-const DAY_MS = 24 * 60 * 60 * 1000
 export const MB = 1024 * 1024
 
-export interface LogFile {
+interface LogFile {
   day: string
   path: string
   bytes: number
@@ -53,8 +54,9 @@ function remove({ files }: { files: LogFile[] }) {
     )
   }
 
-  // The current day's file may be among them; the next line starts it again.
+  // The current day's file may be among them; the next line starts it again, empty.
   releaseLogFile()
+  setTodayFull({ full: false })
 
   return {
     files: files.length,
@@ -68,7 +70,7 @@ function remove({ files }: { files: LogFile[] }) {
   }
 }
 
-// Keeps the last `days` days, today included, then deletes the oldest files until the rest fit in `maxBytes`.
+// Deletes the days the retention rule does not keep, and tells the writer when today's file alone passes the cap.
 export function cleanLogs({
   days,
   maxBytes,
@@ -78,36 +80,19 @@ export function cleanLogs({
   maxBytes: number
   now?: number
 }) {
-  const oldestKept = new Date(now - (days - 1) * DAY_MS).toISOString()
-    .slice(
-      0,
-      10,
-    )
   const files = logFiles()
-  const expired = files.filter(file => file.day < oldestKept)
-  const kept = files.filter(file => file.day >= oldestKept)
-  let total = kept.reduce(
-    (
-      sum,
-      file,
-    ) => sum + file.bytes,
-    0,
-  )
-  const overSize: LogFile[] = []
-
-  for (const file of kept) {
-    if (total <= maxBytes) {
-      break
-    }
-
-    overSize.push(file)
-    total -= file.bytes
-  }
-
-  const deleted = [
-    ...expired,
-    ...overSize,
-  ]
+  const today = logDay({ at: new Date(now).toISOString() })
+  const retained = keptDays({
+    days: files,
+    keepDays: days,
+    maxBytes,
+    today,
+  })
+  setTodayFull({
+    full: retained.full,
+    maxBytes,
+  })
+  const deleted = files.filter(file => !retained.kept.has(file.day))
 
   if (!deleted.length) {
     return {

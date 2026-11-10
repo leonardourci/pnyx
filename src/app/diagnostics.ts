@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { inspect } from 'node:util'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir } from '#store/storage.ts'
-import { logged, oneDecimal, type LogLine, type LogMode } from './log-line.ts'
+import { logDay, logged, oneDecimal, type LogLine, type LogMode } from './log-line.ts'
 
 export type { LogLine, LogMode } from './log-line.ts'
 
@@ -29,12 +29,34 @@ let file: {
   day: string
   fd: number
 } | undefined
+// Today's file alone passed the size cap: until the day ends it takes only warnings and errors.
+let todayFull = false
 
 export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
   mode = next
 }
 
 export const logMode = () => mode
+
+// Set by each cleanup; the first time today's file passes the cap, a warning says why the action lines stop.
+export function setTodayFull({
+  full,
+  maxBytes,
+}: {
+  full: boolean
+  maxBytes?: number
+}): void {
+  const filled = full && !todayFull
+  todayFull = full
+
+  if (filled) {
+    log({
+      level: 'warn',
+      operation: 'logs.full',
+      bytes: maxBytes,
+    })
+  }
+}
 
 export function openLogs(): void {
   toFiles = true
@@ -95,9 +117,14 @@ function append({
     return
   }
 
+  if (todayFull && !severe && file?.day === day) {
+    return
+  }
+
   try {
     if (file?.day !== day) {
       releaseLogFile()
+      todayFull = false
       privateDir({ dir: logsDir() })
       file = {
         day,
@@ -163,10 +190,7 @@ export function writeLine({
   const failureId = level && !operationId ? randomUUID() : operationId
 
   append({
-    day: at.slice(
-      0,
-      10,
-    ),
+    day: logDay({ at }),
     severe: level !== undefined,
     text: JSON.stringify({
       v: 1,

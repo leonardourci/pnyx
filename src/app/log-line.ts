@@ -9,7 +9,7 @@ export const LOG_MODES = [
 // off keeps only warnings and errors; on writes one line per action; detailed adds a line per live update and frame.
 export type LogMode = (typeof LOG_MODES)[number]
 
-export interface LogFields {
+interface LogFields {
   operation: string
   hydraId?: string
   taskId?: string
@@ -88,6 +88,12 @@ export const logged = ({
 
   return line.detailed ? mode === 'detailed' : mode !== 'off'
 }
+
+// A line's UTC day, which names the file it is written to.
+export const logDay = ({ at }: { at: string }) => at.slice(
+  0,
+  10,
+)
 
 // A page sends at most this many lines in one message, each text at most TEXT_MAX long and a stack at most STACK_MAX.
 export const PAGE_LINES_MAX = 100
