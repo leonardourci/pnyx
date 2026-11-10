@@ -13,6 +13,7 @@ test(
   () => {
     const stream = liveReplies()
     const text = 'A complete streamed paragraph. '.repeat(2200)
+    const splitAt = 60_000
     const page: ThreadPage = {
       card: '$hydra',
       session: 'fixture',
@@ -25,14 +26,14 @@ test(
       id: 'answer',
       text: text.slice(
         0,
-        60000,
+        splitAt,
       ),
       append: false,
     })
     const before = stream.page({ page })
     stream.update({
       id: 'answer',
-      text: text.slice(60000),
+      text: text.slice(splitAt),
       append: true,
     })
     const growing = mergeThreadPages({
@@ -44,8 +45,9 @@ test(
       joined.length,
       1,
     )
-    assert.ok(
-      joined[0]!.text === text,
+    assert.equal(
+      joined[0]!.text,
+      text,
       'the growing reply must retain its full source',
     )
     assert.equal(
