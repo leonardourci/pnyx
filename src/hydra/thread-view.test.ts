@@ -745,13 +745,39 @@ test(
 test(
   'live growth preserves completed replies, quiet boundaries and folded progress across transport chunks',
   () => {
-    const state = emptyHydra()
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: 'hydra',
+          title: 'Hydra',
+        },
+      },
+    })
+    state.cards[HYDRA_CARD]!.agent = {
+      provider: 'codex',
+      sessionId: 'fixture',
+    }
     const base: ThreadPage = {
       card: HYDRA_CARD,
       session: 'fixture',
       route: true,
       watching: 'unknown',
       entries: [
+        {
+          id: 'instructions',
+          kind: 'message',
+          role: 'user',
+          text: '# AGENTS.md instructions\n<INSTRUCTIONS>\nSynthetic guidance\n</INSTRUCTIONS>',
+          at: '2026-11-06T00:00:00Z',
+        },
         {
           id: 'owner',
           kind: 'message',
@@ -775,6 +801,18 @@ test(
       tools: true,
       thinking: true,
     })
+    const latest: ThreadPage = {
+      ...base,
+      entries: [
+        {
+          id: 'continue',
+          kind: 'message',
+          role: 'user',
+          text: 'Continue',
+          at: '2026-11-06T00:00:03Z',
+        },
+      ],
+    }
     const live = liveReplies()
     live.start({
       offset: 0,
@@ -786,10 +824,11 @@ test(
       append: true,
     })
     assert.deepEqual(
-      project({ page: live.page({ page: base }) }).conversation.entries.map(entry => entry.text),
+      project({ page: live.page({ page: latest }) }).conversation.entries.map(entry => entry.text),
       [
         'Explain it',
         'Earlier answer',
+        'Continue',
       ],
     )
     live.update({
@@ -798,10 +837,11 @@ test(
       append: true,
     })
     assert.deepEqual(
-      project({ page: live.page({ page: base }) }).conversation.entries.map(entry => entry.text),
+      project({ page: live.page({ page: latest }) }).conversation.entries.map(entry => entry.text),
       [
         'Explain it',
         'Earlier answer',
+        'Continue',
       ],
     )
     live.update({
@@ -810,10 +850,11 @@ test(
       append: false,
     })
     assert.deepEqual(
-      project({ page: live.page({ page: base }) }).conversation.entries.map(entry => entry.text),
+      project({ page: live.page({ page: latest }) }).conversation.entries.map(entry => entry.text),
       [
         'Explain it',
         'Earlier answer',
+        'Continue',
         'Normal answer.',
       ],
     )
@@ -824,7 +865,7 @@ test(
       append: false,
     })
     assert.equal(
-      project({ page: live.page({ page: base }) }).conversation.entries.at(-1)!.text,
+      project({ page: live.page({ page: latest }) }).conversation.entries.at(-1)!.text,
       longAnswer,
     )
     live.update({
@@ -833,7 +874,7 @@ test(
       append: false,
     })
     assert.equal(
-      project({ page: live.page({ page: base }) }).conversation.entries.at(-1)!.text,
+      project({ page: live.page({ page: latest }) }).conversation.entries.at(-1)!.text,
       'The ending.',
     )
     live.update({
@@ -841,12 +882,13 @@ test(
       text: 'A separate reply.',
       append: false,
     })
-    const second = project({ page: live.page({ page: base }) })
+    const second = project({ page: live.page({ page: latest }) })
     assert.deepEqual(
       second.conversation.entries.map(entry => entry.text),
       [
         'Explain it',
         'Earlier answer',
+        'Continue',
         'A separate reply.',
       ],
     )
@@ -859,14 +901,22 @@ test(
       text: 'Revised progress.',
       append: false,
     })
-    const revised = project({ page: live.page({ page: base }) })
+    const revised = project({ page: live.page({ page: latest }) })
     assert.deepEqual(
       revised.conversation.folds['live:second']!.notes.map(entry => entry.text),
       ['Revised progress.'],
     )
+    assert.equal(
+      revised.entries.find(entry => entry.id === 'instructions')!.text,
+      '',
+    )
+    assert.equal(
+      revised.entries.find(entry => entry.id === 'instructions')!.hidden,
+      true,
+    )
     live.finish()
     assert.equal(
-      project({ page: live.page({ page: base }) }).conversation.entries.at(-1)!.streaming,
+      project({ page: live.page({ page: latest }) }).conversation.entries.at(-1)!.streaming,
       false,
     )
   },
