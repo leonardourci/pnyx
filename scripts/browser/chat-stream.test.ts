@@ -1067,6 +1067,13 @@ test(
       const smallResponse = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: smallBlob });
       if (!smallResponse.ok) throw new Error('Small upload failed');
       window.imageFixture.small = (await smallResponse.json()).path;
+      const sized = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: blob });
+      const large = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: blob });
+      const height = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: smallBlob });
+      if (!sized.ok || !large.ok || !height.ok) throw new Error('Dimension fixture upload failed');
+      window.imageFixture.sized = (await sized.json()).path;
+      window.imageFixture.large = (await large.json()).path;
+      window.imageFixture.height = (await height.json()).path;
       return 'chat-assertion-passed';
     }`,
       })
@@ -1075,7 +1082,7 @@ test(
       () => {
       const value = (() => {
         const src = window.imageFixture.path;
-        return 'Image rendering examples\\n\\nSmall Markdown image\\n\\n![Small preview](' + window.imageFixture.small + ')\\n\\nSized HTML image\\n\\n<img src="' + src + '" alt="Sized preview" width="240" height="72" title="Image title" onerror="window.imageUnsafe=true" style="display:none">\\n\\nLarge HTML image\\n\\n<img src="' + src + '" alt="Large preview" width="2400" height="720">\\n\\nHeight-only HTML image\\n\\n<img src="' + window.imageFixture.small + '" alt="Height-only preview" height="72">\\n\\nBroken image\\n\\n<img src="' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + '" alt="Missing preview" width="1000" height="1000">\\n\\n<img src="javascript:alert(1)" alt="Unsafe preview">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>';
+        return 'Image rendering examples\\n\\nSmall Markdown image\\n\\n![Small preview](' + window.imageFixture.small + ')\\n\\nSized HTML image\\n\\n<img src="' + window.imageFixture.sized + '" alt="Sized preview" width="240" height="72" title="Image title" onerror="window.imageUnsafe=true" style="display:none">\\n\\nLarge HTML image\\n\\n<img src="' + window.imageFixture.large + '" alt="Large preview" width="2400" height="720">\\n\\nHeight-only HTML image\\n\\n<img src="' + window.imageFixture.height + '" alt="Height-only preview" height="72">\\n\\nBroken image\\n\\n<img src="' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + '" alt="Missing preview" width="1000" height="1000">\\n\\n<img src="javascript:alert(1)" alt="Unsafe preview">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>';
       })();
       document.querySelector('[aria-label="Reply to Hydra"]').focus();
       document.execCommand('insertText', false, value);
@@ -1117,23 +1124,45 @@ test(
     }`,
       })
 
+      const home = process.env.PNYX_HOME
+      assert.ok(home)
       const attachments = join(
-        process.env.PNYX_HOME!,
+        home,
         'hydras',
         s.hydraId,
         'attachments',
       )
-      const [attachment] = readdirSync(attachments)
+      const [
+        attachment,
+        otherAttachment,
+      ] = readdirSync(attachments)
       assert.ok(attachment)
+      assert.ok(otherAttachment)
       const src = join(
         attachments,
         attachment,
       )
+      const otherSrc = join(
+        attachments,
+        otherAttachment,
+      )
       const hydraImages = `Hydra image reply
 
-![Hydra Markdown image](${src})
+Literal example: \`${src}\`
 
-<img src="${src}" alt="Hydra HTML image" width="240" height="72">`
+Existing token:
+[image: ${src}]
+
+Files:
+- ${otherSrc}
+- ${src}
+- /tmp/not-served.png
+
+Again: [image: ${src}]
+
+![Duplicate Markdown](${src})
+
+<img src="${src}" alt="Duplicate HTML" width="240">`
       pnyx.claude.plan({
         text: 'Show the Hydra images',
         reply: hydraImages,
@@ -1146,18 +1175,43 @@ test(
       })
       await s.chat({ text: 'Show the Hydra images' })
       await waitFor({
-        what: 'Markdown and HTML images in the Hydra reply',
+        what: 'automatic token and file images in the Hydra reply',
         condition: `document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img').length === 2
           && [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img')].every(image => image.complete && image.naturalWidth > 0)`,
       })
+      await evaluate({
+        script: `() => {
+        const reply = [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"]')].find(row => row.textContent.includes('Hydra image reply'));
+        if (!reply.querySelector('img[alt="Image 1"]')) throw new Error('First image token did not render inline');
+        if (!reply.querySelector('li:first-child .message-image img')) throw new Error('Files path did not render inline');
+        if (reply.querySelector('img[alt="Duplicate Markdown"], img[alt="Duplicate HTML"]')) throw new Error('Later mentions must not render inline');
+        if (new Set([...reply.querySelectorAll('.message-image img')].map(image => image.src)).size !== 2) throw new Error('Distinct automatic sources lost');
+        if (reply.querySelectorAll('.attachment-card').length !== 5) throw new Error('Repeated image mentions must stay chips');
+        return 'chat-assertion-passed';
+      }`,
+      })
       await capture({ name: 'hydra-images' })
+      await run({
+        args: ['run'],
+        input: `await page.click('.hydra-chat article[aria-label="Hydra"] [aria-label="Show image: Image 1"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
+      })
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await waitFor({
+        what: 'automatic images still deduplicated after reload',
+        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 2',
+      })
 
       const folder = s.folder({ name: 'image-worker' })
       const workerImages = `Worker image reply
 
 ![Worker Markdown image](${src})
 
-<img src="${src}" alt="Worker HTML image" width="240" height="72">`
+<img src="${otherSrc}" alt="Worker HTML image" width="240" height="72">`
       pnyx.claude.plan({
         text: 'Show the worker images',
         reply: workerImages,
