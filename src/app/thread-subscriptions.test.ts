@@ -1190,6 +1190,14 @@ test(
     assert.ok(!pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
     t.mock.timers.tick(1)
     assert.ok(pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
+    state.hydraMessages.push({
+      id: 'explicit-notice',
+      hydra: 'hydra',
+      actor: 'hydra',
+      action: 'send',
+      text: 'Notice from an explicit read',
+      at: new Date().toISOString(),
+    })
     const receipt = await threads.threadPage({
       sub: threads.subscriptionMap({ card: HYDRA_CARD }).get(ws)!,
       card,
@@ -1198,6 +1206,9 @@ test(
       receipt.conversation!.stream,
       pushed.at(-1)!.conversation!.stream,
     )
+    assert.ok(receipt.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
+    assert.ok(receipt.conversation!.entries.some(entry => entry.text === 'Notice from an explicit read'))
+    assert.ok(receipt.entries.some(entry => entry.text === 'First words and more.'))
     card.agent = {
       provider: 'claude-code',
       transcriptPath: path,
