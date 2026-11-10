@@ -42,6 +42,16 @@ function followsProject({ prompt }: { prompt: string }): void {
   )
 }
 
+const OWNER_NOTES = 'Write commits in English.'
+const HYDRA_NOTES = 'Report before pausing.'
+
+function carriesStandingNotes({ prompt }: { prompt: string }): void {
+  assert.ok(
+    prompt.includes(`Standing worker instructions (defer to the scope and authority above):\n${OWNER_NOTES}\n${HYDRA_NOTES}\n</pnyx-worker>`),
+    prompt,
+  )
+}
+
 test(
   'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, the card survives a restart, and Hydra\'s own card refuses task-only commands',
   async () => {
@@ -164,6 +174,28 @@ test(
       '--prompt',
       'Start with the failing input.',
     ]
+    await s.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'set',
+        '--text',
+        OWNER_NOTES,
+        '--reason',
+        'every worker needs it',
+      ],
+    })
+    await s.owner({
+      args: [
+        'hydra',
+        'worker-notes',
+        'set',
+        '--text',
+        HYDRA_NOTES,
+        '--reason',
+        'this Hydra needs it',
+      ],
+    })
     await hydra.run({ args: start })
     await hydra.run({ args: start })
     const agent = await s.agent({ cwd: folder })
@@ -192,6 +224,7 @@ test(
     )
     assert.ok(agent.received[0]!.startsWith(`<pnyx-worker task="${card.id}" hydra="${s.hydraId}">`))
     followsProject({ prompt: agent.received[0]! })
+    carriesStandingNotes({ prompt: agent.received[0]! })
     assert.ok(agent.received[0]!.includes('Fix the parser.'))
     assert.ok(agent.received[0]!.endsWith('Start with the failing input.'))
 
@@ -336,6 +369,17 @@ test(
       handoff,
     )
     followsProject({ prompt: handoff! })
+    carriesStandingNotes({ prompt: handoff! })
+    // Owner memory is shared by every flow on this server.
+    await s.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'forget',
+        '--reason',
+        'flow finished',
+      ],
+    })
     assert.equal(
       s.task({ key: 'next' }).agent?.sessionId,
       agent.id,

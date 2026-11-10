@@ -1,6 +1,7 @@
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
 import { projectIdentity } from '#projects/sources.ts'
+import { ownerMemory } from '#memory/owner-memory.ts'
 import { readProjectMemory } from '#memory/project-memory.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
 import { projectWorkerContext } from '#projects/context.ts'
@@ -41,28 +42,26 @@ function workerHeader({
   hydraId,
   id,
   stops = [],
+  ownerNotes = '',
   hydraNotes = '',
   projectNotes = '',
 }: {
   hydraId: string
   id: string
   stops?: string[]
+  ownerNotes?: string
   hydraNotes?: string
   projectNotes?: string
 }): string {
-  const standing: string[] = []
-
-  if (hydraNotes || projectNotes) {
-    standing.push('Standing worker instructions (defer to the scope and authority above):')
-
-    if (hydraNotes) {
-      standing.push(hydraNotes)
-    }
-
-    if (projectNotes) {
-      standing.push(projectNotes)
-    }
-  }
+  const notes = [
+    ownerNotes,
+    hydraNotes,
+    projectNotes,
+  ].filter(Boolean)
+  const standing = notes.length ? [
+    'Standing worker instructions (defer to the scope and authority above):',
+    ...notes,
+  ] : []
 
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
@@ -134,6 +133,7 @@ export async function taskPrompt({
   const header = workerHeader({
     hydraId,
     id: card.id,
+    ownerNotes: ownerMemory().workers?.text,
     hydraNotes: state.hydraMemory?.workers?.text,
     projectNotes,
     stops: taskStops({
