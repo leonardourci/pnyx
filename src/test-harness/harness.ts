@@ -23,6 +23,7 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { upgradeRepo } from './upgrade-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
 import type { Settings } from '#settings/model.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
 
 const BIN = join(
   import.meta.dirname,
@@ -176,6 +177,7 @@ export async function openPage({
   const queues: HydraQueue[] = []
   const threads: ThreadPage[] = []
   const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
+  const actions: Record<string, CurrentAction | null> = {}
   const upgrades: UpgradeStatus[] = []
   const settings: Settings[] = []
   ws.on(
@@ -183,11 +185,18 @@ export async function openPage({
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
 
-      if (message.type === 'latest' && message.usage) {
+      if (message.type === 'latest') {
         Object.assign(
-          usages,
-          message.usage,
+          actions,
+          message.actions,
         )
+
+        if (message.usage) {
+          Object.assign(
+            usages,
+            message.usage,
+          )
+        }
       } else if (message.type === 'upgrade') {
         upgrades.push(message.upgrade)
       } else if (message.type === 'settings') {
@@ -251,6 +260,7 @@ export async function openPage({
     // Every thread page the server pushed to the subscribed tab, in order.
     threads,
     usages,
+    actions,
     upgrades,
     // Every shared settings push, in order: one on connect, then one per change.
     settings,
