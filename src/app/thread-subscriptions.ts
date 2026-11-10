@@ -18,6 +18,8 @@ import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { watchPath, type PathWatch } from './watch.ts'
 import { createThreadDelivery } from './thread-delivery.ts'
 
+export const LIVE_TEXT_DELAY_MS = 80
+
 interface PreparedThread {
   thread: ThreadPage
   signature?: string
@@ -106,6 +108,8 @@ export function createThreadSubscriptions({
   const subscriptionMap = ({ card }: { card: string }) =>
     card === HYDRA_CARD ? hydraSubscriptions : subscriptions
   const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
+  const liveThreadTimers = new Map<Subscription, ReturnType<typeof setTimeout>>()
+  const liveSentAt = new WeakMap<Subscription, number>()
   const threadDelivery = createThreadDelivery({
     send,
     closed,
@@ -307,7 +311,10 @@ export function createThreadSubscriptions({
 
         if (sub) {
           sub.base = undefined
-          if (resync) sub.sent = undefined
+
+          if (resync) {
+            sub.sent = undefined
+          }
         }
       }
     }
@@ -323,96 +330,7 @@ export function createThreadSubscriptions({
           name: 'conversation refresh',
           run: () => {
             threadTimers.delete(ws)
-
-            if (ws.readyState !== ws.OPEN) {
-              return
-            }
-
-            for (const map of threadSubscriptions) {
-              const sub = map.get(ws), card = sub && state().cards[sub.card]
-
-              if (!card) {
-                continue
-              }
-
-              if (sub.restoring) {
-                sub.refreshPending = true
-                continue
-              }
-
-              const unavailable = () => send({
-                ws,
-                message: {
-                  type: 'error',
-                  id: null,
-                  code: 'THREAD_UNAVAILABLE',
-                  error: 'Conversation could not be refreshed',
-                },
-              })
-
-              if (sub.native) {
-                const native = sub.native
-                background({
-                  name: 'native conversation refresh',
-                  run: () => paseoHistory({
-                    card: card.id,
-                    conversation: { read: async ({ before }) => (await native).read({ before }) },
-                    readSaved: ({ before }) => readThread({
-                      hydraId,
-                      state: state(),
-                      card,
-                      homes: homes(),
-                      before,
-                    }),
-                  }).then(
-                    page => {
-                      if (map.get(ws) !== sub || ws.readyState !== ws.OPEN) {
-                        return
-                      }
-
-                      const prepared = prepareThread({
-                        sub,
-                        page,
-                        push: true,
-                      })
-
-                      if (prepared) {
-                        deliver({
-                          ws,
-                          sub,
-                          prepared,
-                        })
-                      }
-                    },
-                    unavailable,
-                  ),
-                })
-
-                continue
-              }
-
-              try {
-                const page = currentThread({
-                  sub,
-                  card,
-                })
-                const prepared = versionThread({
-                  sub,
-                  prepared: page,
-                  push: true,
-                })
-
-                if (prepared) {
-                  deliver({
-                    ws,
-                    sub,
-                    prepared,
-                  })
-                }
-              } catch {
-                unavailable()
-              }
-            }
+            refreshThreadNow({ ws })
           },
         }),
         LATEST_DELAY_MS,
@@ -420,10 +338,168 @@ export function createThreadSubscriptions({
     )
   }
 
-  const finishRead = ({ sub, prepared, receipt }: { sub: Subscription; prepared: PreparedThread; receipt?: string }) => {
-    if (sub.client && (receipt !== undefined || threadDelivery.has({ key: sub }))) {
-      deliver({ ws: sub.client, sub, prepared, receipt })
+  const refreshThreadNow = ({
+    ws,
+    only,
+  }: {
+    ws: HydraClient
+    only?: Subscription
+  }) => {
+    if (ws.readyState !== ws.OPEN) {
+      return
     }
+
+    for (const map of threadSubscriptions) {
+      const sub = map.get(ws), card = sub && state().cards[sub.card]
+
+      if (!card || (only && sub !== only)) {
+        continue
+      }
+
+      if (sub.restoring) {
+        sub.refreshPending = true
+        continue
+      }
+
+      const unavailable = () => send({
+        ws,
+        message: {
+          type: 'error',
+          id: null,
+          code: 'THREAD_UNAVAILABLE',
+          error: 'Conversation could not be refreshed',
+        },
+      })
+
+      if (sub.native) {
+        const native = sub.native
+        background({
+          name: 'native conversation refresh',
+          run: () => paseoHistory({
+            card: card.id,
+            conversation: { read: async ({ before }) => (await native).read({ before }) },
+            readSaved: ({ before }) => readThread({
+              hydraId,
+              state: state(),
+              card,
+              homes: homes(),
+              before,
+            }),
+          }).then(
+            page => {
+              if (map.get(ws) !== sub || ws.readyState !== ws.OPEN) {
+                return
+              }
+
+              const prepared = prepareThread({
+                sub,
+                page,
+                push: true,
+              })
+
+              if (prepared) {
+                deliver({
+                  ws,
+                  sub,
+                  prepared,
+                })
+              }
+            },
+            unavailable,
+          ),
+        })
+
+        continue
+      }
+
+      try {
+        const page = currentThread({
+          sub,
+          card,
+        })
+        const prepared = versionThread({
+          sub,
+          prepared: page,
+          push: true,
+        })
+
+        if (prepared) {
+          deliver({
+            ws,
+            sub,
+            prepared,
+          })
+        }
+      } catch {
+        unavailable()
+      }
+    }
+  }
+
+  const refreshLiveThread = ({
+    ws,
+    card,
+  }: {
+    ws: HydraClient
+    card: string
+  }) => {
+    const sub = subscriptionMap({ card }).get(ws)
+
+    if (closed() || !sub || sub.card !== card || liveThreadTimers.has(sub)) {
+      return
+    }
+
+    const last = liveSentAt.get(sub)
+    const elapsed = last === undefined ? LIVE_TEXT_DELAY_MS : Date.now() - last
+
+    const flush = () => {
+      liveThreadTimers.delete(sub)
+      liveSentAt.set(
+        sub,
+        Date.now(),
+      )
+      background({
+        name: 'live conversation refresh',
+        run: () => refreshThreadNow({
+          ws,
+          only: sub,
+        }),
+      })
+    }
+
+    if (elapsed >= LIVE_TEXT_DELAY_MS) {
+      flush()
+
+      return
+    }
+
+    liveThreadTimers.set(
+      sub,
+      setTimeout(
+        flush,
+        LIVE_TEXT_DELAY_MS - elapsed,
+      ),
+    )
+  }
+
+  const finishRead = ({
+    sub,
+    prepared,
+    receipt,
+  }: {
+    sub: Subscription
+    prepared: PreparedThread
+    receipt?: string
+  }) => {
+    if (sub.client && (receipt !== undefined || threadDelivery.has({ key: sub }))) {
+      deliver({
+        ws: sub.client,
+        sub,
+        prepared,
+        receipt,
+      })
+    }
+
     return prepared.thread
   }
 
@@ -451,7 +527,12 @@ export function createThreadSubscriptions({
           card,
         }),
       })!
-      return finishRead({ sub, prepared, receipt })
+
+      return finishRead({
+        sub,
+        prepared,
+        receipt,
+      })
     }
 
     const readPage = async ({ before }: { before?: string }): Promise<ThreadPage> => {
@@ -509,7 +590,11 @@ export function createThreadSubscriptions({
         older: before !== undefined,
       })!
 
-      return finishRead({ sub, prepared, receipt })
+      return finishRead({
+        sub,
+        prepared,
+        receipt,
+      })
     } finally {
       if (retain) {
         sub.restoring = (sub.restoring ?? 1) - 1
@@ -534,6 +619,8 @@ export function createThreadSubscriptions({
 
     if (previous) {
       previous.watcher?.close()
+      clearTimeout(liveThreadTimers.get(previous))
+      liveThreadTimers.delete(previous)
       threadDelivery.cancel({ key: previous })
     }
 
@@ -619,7 +706,9 @@ export function createThreadSubscriptions({
     threadSubscriptions,
     subscriptionMap,
     threadTimers,
+    liveThreadTimers,
     threadDelivery,
+    refreshLiveThread,
     refreshThread,
     threadPage,
     bindThread,

@@ -92,7 +92,13 @@ export function createHost({
   spawnCodex?: SpawnCodex
   presence?({ session }: { session: AgentSession }): Presence
   changed(): void
-  streamed?({ session }: { session: string }): void
+  streamed?({
+    session,
+    text,
+  }: {
+    session: string
+    text?: boolean
+  }): void
   // Hydra's queue of unread changes grew, or its check turn took or finished them.
   queued?(): void
   wakeDelay?: number

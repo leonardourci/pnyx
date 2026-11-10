@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -10,7 +10,7 @@ import { emptyHydra, reduce } from './reducer.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { createThreadSubscriptions, type Subscription } from './thread-subscriptions.ts'
+import { LIVE_TEXT_DELAY_MS, createThreadSubscriptions, type Subscription } from './thread-subscriptions.ts'
 import { createServerClients } from './server-clients.ts'
 import { MAX_BUFFERED } from './server-transport.ts'
 import { SOCKET_RETRY_MS } from './server-transport.ts'
@@ -902,7 +902,13 @@ test(
         },
       )
     })
-    t.mock.timers.enable({ apis: ['setTimeout'] })
+    t.mock.timers.enable({
+      apis: [
+        'setTimeout',
+        'Date',
+      ],
+      now: Date.parse('2026-11-07T00:00:00Z'),
+    })
     const state = reduce({
       state: emptyHydra(),
       event: {
@@ -960,6 +966,8 @@ test(
         if (message.type === 'thread') {
           pushed.push(message.thread)
         }
+
+        return true
       },
     })
     threads.bindThread({
@@ -981,7 +989,15 @@ test(
       text: 'First words',
       append: true,
     })
-    refresh()
+    threads.refreshLiveThread({
+      ws,
+      card: HYDRA_CARD,
+    })
+    assert.equal(
+      pushed.length,
+      1,
+      'the first words arrive without a cadence timer',
+    )
     assert.deepEqual(
       pushed.at(-1)!.conversation!.entries.map(entry => entry.text),
       [
@@ -994,7 +1010,21 @@ test(
       text: ' and more.',
       append: true,
     })
-    refresh()
+    threads.refreshLiveThread({
+      ws,
+      card: HYDRA_CARD,
+    })
+    t.mock.timers.tick(LIVE_TEXT_DELAY_MS - 1)
+    assert.equal(
+      pushed.length,
+      1,
+      'a burst waits for its coalescing window',
+    )
+    t.mock.timers.tick(1)
+    assert.equal(
+      pushed.length,
+      2,
+    )
     assert.deepEqual(
       pushed.at(-1)!.conversation!.entries.map(entry => entry.text),
       [
@@ -1028,6 +1058,27 @@ test(
       pushed.at(-1)!.conversation!.entries.at(-1)!.id.startsWith('live:'),
       false,
     )
+    const replacement = join(
+      home,
+      'replacement.jsonl',
+    )
+    writeFileSync(
+      replacement,
+      readFileSync(
+        path,
+        'utf8',
+      ).replace(
+        'Explain it',
+        'Review it!',
+      ),
+    )
+    renameSync(
+      replacement,
+      path,
+    )
+    refresh()
+    assert.ok(pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'Review it!'))
+    assert.ok(!pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'Explain it'))
     state.hydraMessages = [
       {
         id: 'notice',
@@ -1039,7 +1090,9 @@ test(
       },
     ]
     threads.refreshThread({ ws })
-    t.mock.timers.tick(LATEST_DELAY_MS)
+    t.mock.timers.tick(LATEST_DELAY_MS - 1)
+    assert.ok(!pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
+    t.mock.timers.tick(1)
     assert.ok(pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
     const receipt = await threads.threadPage({
       sub: threads.subscriptionMap({ card: HYDRA_CARD }).get(ws)!,
@@ -1064,5 +1117,36 @@ test(
     refresh()
     assert.ok(pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'New session'))
     assert.ok(!pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'Explain it'))
+    live.update({
+      id: 'next',
+      text: 'First words after idle',
+      append: true,
+    })
+    threads.refreshLiveThread({
+      ws,
+      card: HYDRA_CARD,
+    })
+    assert.equal(
+      pushed.at(-1)!.conversation!.entries.at(-1)!.text,
+      'First words after idle',
+    )
+    live.update({
+      id: 'next',
+      text: ' pending',
+      append: true,
+    })
+    threads.refreshLiveThread({
+      ws,
+      card: HYDRA_CARD,
+    })
+    threads.bindThread({
+      ws,
+      card,
+    })
+    t.mock.timers.tick(LIVE_TEXT_DELAY_MS)
+    assert.equal(
+      pushed.at(-1)!.conversation!.entries.at(-1)!.text,
+      'First words after idle',
+    )
   },
 )

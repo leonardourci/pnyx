@@ -111,7 +111,9 @@ export async function mountOwnedHydra({
     threadSubscriptions,
     subscriptionMap,
     threadTimers,
+    liveThreadTimers,
     threadDelivery,
+    refreshLiveThread,
     refreshThread,
     threadPage,
     bindThread,
@@ -203,6 +205,7 @@ export async function mountOwnedHydra({
     send,
     threadSubscriptions,
     refreshThread,
+    refreshLiveThread,
     historyIndex: () => historyIndex,
     agents: () => agents,
     spend,
@@ -532,6 +535,8 @@ export async function mountOwnedHydra({
 
           if (sub) {
             sub.watcher?.close()
+            clearTimeout(liveThreadTimers.get(sub))
+            liveThreadTimers.delete(sub)
           }
 
           map.delete(ws)
@@ -623,6 +628,12 @@ export async function mountOwnedHydra({
     }
 
     threadTimers.clear()
+
+    for (const timer of liveThreadTimers.values()) {
+      clearTimeout(timer)
+    }
+
+    liveThreadTimers.clear()
 
     for (const ws of clients) {
       ws.terminate()

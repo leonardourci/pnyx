@@ -23,6 +23,7 @@ export function createLatestFeed({
   send,
   threadSubscriptions,
   refreshThread,
+  refreshLiveThread,
   historyIndex,
   agents,
   spend,
@@ -44,6 +45,13 @@ export function createLatestFeed({
   }: {
     ws: HydraClient
     invalidate?: boolean
+  }): void
+  refreshLiveThread({
+    ws,
+    card,
+  }: {
+    ws: HydraClient
+    card: string
   }): void
   historyIndex(): { changed(): void }
   agents(): Pick<ReturnType<typeof createHost>, 'action'>
@@ -297,7 +305,13 @@ export function createLatestFeed({
   }
 
   // A session Pnyx runs streamed: its cards' latest messages and open thread pages are read again.
-  const streamed = ({ session }: { session: string }) => {
+  const streamed = ({
+    session,
+    text = false,
+  }: {
+    session: string
+    text?: boolean
+  }) => {
     touchLatest({
       ids: Object.values(state().cards).filter(card => card.agent && `${card.agent.provider}:${card.agent.sessionId}` === session)
         .map(card => card.id),
@@ -311,6 +325,14 @@ export function createLatestFeed({
         const agent = state().cards[sub.card]?.agent
 
         if (agent && `${agent.provider}:${agent.sessionId}` === session) {
+          if (text) {
+            refreshLiveThread({
+              ws,
+              card: sub.card,
+            })
+            continue
+          }
+
           refreshThread({
             ws,
             invalidate: false,
