@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { runForClient } from '#app/request-context.ts'
+import { debug } from './cli.ts'
 import { performanceReport } from './performance.ts'
 
 test(
@@ -110,6 +112,69 @@ test(
     assert.equal(
       report.lines,
       6,
+    )
+  },
+)
+
+test(
+  'debug performance from a routine helper reads only its own Hydra, and anyone else every Hydra unless they name one',
+  async () => {
+    const dir = join(
+      process.env.PNYX_HOME!,
+      'logs',
+    )
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        dir,
+        '2026-03-02.jsonl',
+      ),
+      `${[
+        '{"v":1,"at":"2026-03-02T10:00:01.000Z","operation":"command.cli","name":"task show","hydraId":"lab","ms":30}',
+        '{"v":1,"at":"2026-03-02T10:00:02.000Z","operation":"command.cli","name":"task list","hydraId":"other","taskId":"secret-task","ms":50}',
+        '{"v":1,"at":"2026-03-02T10:00:03.000Z","operation":"exec","name":"git fetch","ms":10}',
+      ].join('\n')}\n`,
+    )
+
+    const operations = async ({ identity }: { identity: Record<string, string> }) => {
+      // The command's answer type covers every debug subcommand; performance answers with its report.
+      const view = await runForClient({
+        identity,
+        cwd: process.cwd(),
+        run: () => debug([
+          'performance',
+          '--since',
+          '2026-03-02T10:00:00.000Z',
+          '--until',
+          '2026-03-02T11:00:00.000Z',
+        ]),
+      }) as { operations: { operation: string }[] }
+
+      return view.operations.map(row => row.operation)
+    }
+
+    assert.deepEqual(
+      await operations({
+        identity: {
+          PNYX_ACTOR: 'helper:batch',
+          PNYX_HYDRA: 'lab',
+        },
+      }),
+      [
+        'command.cli task show',
+        'exec git fetch',
+      ],
+    )
+    assert.deepEqual(
+      await operations({ identity: { PNYX_HYDRA: 'lab' } }),
+      [
+        'command.cli task list',
+        'command.cli task show',
+        'exec git fetch',
+      ],
     )
   },
 )

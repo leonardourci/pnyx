@@ -4,6 +4,8 @@ import { oneDecimal } from '#app/log-line.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { askHost } from '#app/server-state.ts'
+import { requestEnv } from '#app/request-context.ts'
+import { isHelper } from '#routine-helper/leases.ts'
 import { readSettings } from '#settings/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { HydraError } from '#store/errors.ts'
@@ -77,7 +79,13 @@ function onlyFlags({
 
 type Values = Record<string, string | boolean | undefined>
 
-async function performanceView({ values }: { values: Values }) {
+async function performanceView({
+  values,
+  hydraId,
+}: {
+  values: Values
+  hydraId?: string
+}) {
   onlyFlags({
     values,
     allowed: [
@@ -106,7 +114,7 @@ async function performanceView({ values }: { values: Values }) {
   }
 
   const report = await performanceReport({
-    hydraId: values.hydra as string | undefined,
+    hydraId,
     since,
     until,
     operation: values.operation as string | undefined,
@@ -153,7 +161,13 @@ export const debug = guard({
     })
 
     if (positionals[0] === 'performance') {
-      return performanceView({ values })
+      const env = requestEnv()
+
+      return performanceView({
+        values,
+        // The routine helper reads only its own Hydra, as for every command; anyone else reads every Hydra unless they name one.
+        hydraId: isHelper({ actor: env.PNYX_ACTOR ?? 'cli' }) ? env.PNYX_HYDRA : values.hydra as string | undefined,
+      })
     }
 
     const limit = readLimit({
