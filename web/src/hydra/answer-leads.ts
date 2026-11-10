@@ -3,7 +3,6 @@ import { ownerActor } from '#app/actors.ts'
 import { askWording } from '#tasks/ask-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 
-// The question an owner message answers or discusses, shown at the head of its chat bubble.
 export interface AnswerLead {
   task: string
   question: string

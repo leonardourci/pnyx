@@ -964,7 +964,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* A list, quote, code block or table can't flow beside the chip, so the chip takes its own line. */
 .message-lead:is(:has(+ .markdown > :first-child:not(.message-block)), :has(+ .markdown > .message-block:first-child > :first-child:not(p))) { float: none; display: block; margin-bottom: var(--block-gap); }
 
-/* An answering message's head: its task chip, the question folded to its opening lines, and every choice. */
 .answer-lead { display: grid; justify-items: start; gap: 2px; margin-bottom: 6px; padding: 6px 9px 7px; border: 1px solid var(--color-line); border-radius: 7px; background: color-mix(in srgb, var(--color-surface) 55%, transparent); }
 .answer-lead .task-reference-space { display: none; }
 .answer-lead .draft-chip { margin: 0; }

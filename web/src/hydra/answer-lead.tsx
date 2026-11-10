@@ -40,7 +40,6 @@ function FullQuestion({ lead }: { lead: AnswerLead }) {
   )
 }
 
-// The task chip carries the question an owner message answers: folded to its opening lines, with every choice.
 export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
   const [
     open,
