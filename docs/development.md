@@ -35,6 +35,10 @@ Completed native replies and explicit chat updates remain visible when a later t
 
 Hydra thread subscriptions keep their loaded history on the server. Re-reading a thread keeps its existing subscription. After a reconnect, the page sends its session and oldest loaded entry so the server restores that range before replacing the conversation. A changed session starts fresh; repeated history cursors fail explicitly. Each thread page carries reconciled conversation entries, turn timings and action folds. Continuation chunks carry a boolean, and injected instruction blocks are hidden before transport. The browser renders that projection and keeps only its unsent previews locally. The server also sends Hydra's held inputs, pending operations and queue state; the browser uses those facts to place its unsent previews.
 
+A conversation page counts as delivered only when the socket accepts it. If the socket buffer is full, the server retains the newest page for that subscription and retries when it can send again; a newer page replaces the pending one. Closing or replacing the subscription cancels its pending delivery. A resync refreshes its conversation as well as its state snapshot, so the final text does not depend on another content change or a reload.
+
+Live replies retain every transport part through handoff to the native transcript. Native history targets 60 parts per page, with at most 1,000 UTF-16 code units per part. If the target falls inside a message, the page includes that message's remaining parts, so it can exceed 60. Native reads remain bounded to a 10 MiB window, and retained-history restoration stops after 1,000 pages.
+
 ## Diagnostic logs
 
 The installed service writes stdout and stderr to `service.log` under `PNYX_HOME`. Background, scheduler, delayed snapshot and startup-resume failures each write one JSON record there. Other service output keeps its existing format. Diagnostics are separate from `events.jsonl` and never change Hydra state.
