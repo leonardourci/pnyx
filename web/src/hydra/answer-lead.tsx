@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
@@ -51,6 +51,10 @@ export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
     setFolded,
   ] = useState(false)
   const preview = questionPreview({ question: lead.question })
+  const measured = useCallback(
+    ({ long }: { long: boolean }) => setFolded(long),
+    [],
+  )
 
   const expand = ({ target }: { target: EventTarget }) => {
     const control = target instanceof Element && target.closest('a, button')
@@ -68,7 +72,7 @@ export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
         preview={preview}
         open={open}
         toggle={() => setOpen(!open)}
-        measured={({ long }) => setFolded(long)}
+        measured={measured}
       />
       <AnswerChoices lead={lead} />
       {lead.discussion && <p className="answer-lead-state">Comment · the question stays open</p>}
