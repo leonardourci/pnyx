@@ -1,4 +1,4 @@
-import { hydraThreadView } from './thread-view.ts'
+import { createHydraThreadView, hydraThreadView } from './thread-view.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,6 +7,7 @@ import { test, type TestContext } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { readThread, recordEntries, splitEntry, type ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { mergeThreadPages } from './thread-history.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { joinMessageParts } from './history.ts'
 
@@ -739,5 +740,95 @@ test(
         'A response',
       ],
     )
+  },
+)
+
+test(
+  'live growth preserves the projected conversation through chunks, quiet replies and handoff',
+  () => {
+    const state = emptyHydra()
+    const base: ThreadPage = {
+      card: HYDRA_CARD,
+      session: 'fixture',
+      route: true,
+      watching: 'unknown',
+      entries: [
+        {
+          id: 'owner',
+          kind: 'message',
+          role: 'user',
+          text: 'Explain it',
+          at: '2026-11-06T00:00:01Z',
+        },
+        {
+          id: 'old',
+          kind: 'message',
+          role: 'assistant',
+          text: 'Earlier answer',
+          final: true,
+          at: '2026-11-06T00:00:02Z',
+        },
+      ],
+    }
+    const project = createHydraThreadView({
+      state,
+      page: base,
+      tools: true,
+      thinking: true,
+    })
+    const live = liveReplies()
+    live.start({
+      offset: 0,
+      ownerStarted: true,
+    })
+
+    const check = () => {
+      const page = live.page({ page: base })
+      assert.deepEqual(
+        project({ page }),
+        hydraThreadView({
+          state,
+          page: mergeThreadPages({
+            before: base,
+            latest: page,
+          }),
+          tools: true,
+          thinking: true,
+        }),
+      )
+    }
+
+    live.update({
+      id: 'answer',
+      text: 'N',
+      append: true,
+    })
+    check()
+    live.update({
+      id: 'answer',
+      text: 'ormal answer. ',
+      append: true,
+    })
+    check()
+    live.update({
+      id: 'answer',
+      text: 'More detail. '.repeat(200),
+      append: true,
+    })
+    check()
+    live.update({
+      id: 'answer',
+      text: 'The ending.',
+      append: true,
+    })
+    check()
+    live.update({
+      id: 'second',
+      text: 'A separate reply.',
+      append: false,
+    })
+    check()
+    live.finish()
+    check()
   },
 )
