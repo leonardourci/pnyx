@@ -8,6 +8,7 @@ import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
 import { HISTORY_LIMIT, HISTORY_MAX } from './cli-support.ts'
 import { DEBUG_LIMIT, DEBUG_MAX, LOG_BYTES } from '#diagnostics/timeline.ts'
 import { SLOWEST_LIMIT, SLOWEST_MAX } from '#diagnostics/performance.ts'
+import { MAX_LOG_DAYS, MAX_LOG_MB } from '#settings/settings.ts'
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
@@ -31,7 +32,7 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
-  debug timeline|health|performance          Read correlated history, runtime health facts, and action durations and memory from the logs
+  debug timeline|health|performance          Read correlated history, runtime health facts, or action durations and memory from the logs
   logs [clean]                               Show the diagnostic log files, or delete them all now
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
@@ -62,7 +63,7 @@ Read event IDs and correlated structured service records, newest timestamp first
 transaction and source IDs are preserved. No transcript or message bodies are returned.
 Filters intersect. Times include their timezone and endpoints are inclusive. Default limit: ${DEBUG_LIMIT}.
 Pass the returned cursor with the same filters for older matches. Service records are the warnings
-and errors in the last ${LOG_BYTES / 1024 / 1024} MiB of the log files, newest first, then service.log;
+and errors in the last ${LOG_BYTES / 1024 / 1024} MiB of the log files, newest day first, then service.log;
 serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
 pnyx-axi debug health [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read unfinished helper batches and their observed native ownership/deadline, unsettled inputs,
@@ -446,7 +447,7 @@ export function commandHelp({ command }: { command: string }): string | undefine
   }
 
   if (command === 'settings') {
-    return 'usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads; this command never resizes a Hydra. Use view set --hydra <name> for saved widths that also resize that Hydra. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, account?, model, effort?, fast? }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. logs takes off (warnings and errors only), on or detailed, logDays the days of logs kept (1 or more) and logMaxMB their total size cap. A repeated --event-id saves once, even when nothing changed.'
+    return `usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads; this command never resizes a Hydra. Use view set --hydra <name> for saved widths that also resize that Hydra. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, account?, model, effort?, fast? }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. logs takes off (warnings and errors only), on or detailed, logDays the days of logs kept (1 to ${MAX_LOG_DAYS}) and logMaxMB their total size cap in MB (1 to ${MAX_LOG_MB}). A repeated --event-id saves once, even when nothing changed.`
   }
 
   return COMMAND_HELP[command]

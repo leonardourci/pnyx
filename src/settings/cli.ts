@@ -1,7 +1,7 @@
 import { AxiError } from 'axi-sdk-js'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
 import { readSettings, saveSettings, settingsReceipt } from './store.ts'
-import { DEFAULT_SETTINGS } from './settings.ts'
+import { DEFAULT_SETTINGS, MAX_LOG_DAYS, MAX_LOG_MB } from './settings.ts'
 import { HELPER_MODELS, type Settings } from './model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { knownHarness } from '#workers/providers.ts'
@@ -47,7 +47,7 @@ export const settings = guard({
           'Every key applies to every Hydra; a patch names only what changes',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once',
-          'logs takes off (warnings and errors only), on or detailed; logDays keeps 1 or more days of logs; logMaxMB caps their total size',
+          `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
         ],
       }
     }

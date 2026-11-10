@@ -353,7 +353,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'logs',
     section: 'logs',
     label: 'Logging',
-    description: 'On writes logs with one line per action. Detailed adds a line for every live chat update and frame, for debugging streaming. Off keeps only warnings and errors.',
+    description: 'Off keeps only warnings and errors in the logs. On writes one line per action. Detailed adds a line for every live chat update and frame, for debugging streaming.',
     values: [
       'Off',
       'On',
