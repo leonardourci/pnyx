@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { logLines, openPage, until } from '#test-harness/harness.ts'
@@ -43,12 +43,20 @@ test(
     const mine = ({ operation }: { operation: string }) => logLines()
       .filter(line => line.operation === operation && line.hydraId === s.hydraId)
 
+    const eventLog = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      s.hydraId,
+      'events.jsonl',
+    )
+    const logBefore = statSync(eventLog).size
+    const seqBefore = s.state().seq
     await page.command({
       name: 'task',
       args: [
         'create',
         '--title',
-        'Logged',
+        'Logged ✓ in 日本語',
         '--key',
         'logged',
       ],
@@ -84,7 +92,20 @@ test(
       typeof created.eventSeq,
       'number',
     )
-    assert.ok(Number(created.bytes) > 0)
+    const appended = mine({ operation: 'events.write' })
+      .filter(line => Number(line.eventSeq) > seqBefore)
+      .reduce(
+        (
+          sum,
+          line,
+        ) => sum + Number(line.bytes),
+        0,
+      )
+    assert.equal(
+      appended,
+      statSync(eventLog).size - logBefore,
+      'event-log lines count the UTF-8 bytes they append',
+    )
 
     await s.owner({
       args: [
@@ -301,10 +322,75 @@ test(
       'today fits in the cap, so it stays',
     )
 
+    for (const refused of [
+      '{"logDays":0}',
+      '{"logMaxMB":0}',
+      '{"logs":"loud"}',
+    ]) {
+      assert.equal(
+        await s.ownerRefused({
+          args: [
+            'settings',
+            'set',
+            '--json',
+            refused,
+          ],
+        }),
+        'VALIDATION_ERROR',
+        refused,
+      )
+    }
+
+    // Today's own file past the cap stays, and takes only warnings and errors until the day ends.
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    appendFileSync(
+      today,
+      `${'x'.repeat(1536 * 1024)}\n`,
+    )
+    await s.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"logDays":1}',
+      ],
+    })
+    await until({
+      what: 'the warning that today passed the cap',
+      check: () => logLines().some(line => line.level === 'warn' && line.operation === 'logs.full'),
+    })
+    assert.ok(
+      existsSync(today),
+      'today stays past the cap',
+    )
+    const actionLines = () => logLines().filter(line => line.operation === 'command.cli').length
+    const actionsBefore = actionLines()
+    await s.owner({
+      args: [
+        'task',
+        'show',
+        'today',
+      ],
+    })
+    assert.equal(
+      actionLines(),
+      actionsBefore,
+      'past the cap today takes no action line',
+    )
+    page.log({ lines: [{ operation: 'past the cap' }] })
+    await until({
+      what: 'a warning still written past the cap',
+      check: () => logLines().some(line => line.level === 'warn' && line.operation === 'page.lines-refused'),
+    })
+
     const shown = await s.owner({ args: ['logs'] })
     assert.match(
       shown,
-      /logDays: 2\nlogMaxMB: 1\n/,
+      /logDays: 1\nlogMaxMB: 1\n/,
     )
     assert.match(
       shown,

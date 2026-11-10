@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import fs, { readdirSync, readFileSync } from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
+import { join } from 'node:path'
 import { test } from 'node:test'
-import { log, type LogLine } from './diagnostics.ts'
+import { closeLogs, log, logsDir, openLogs, type LogLine } from './diagnostics.ts'
 
 test(
   'outside the server a warning or an error prints one JSON line on stderr, and a plain or detailed line prints nothing',
@@ -104,6 +107,70 @@ test(
         failure,
       ].length,
       accepted.length,
+    )
+  },
+)
+
+test(
+  'a log write that fails keeps no file open and sends the failure to stderr, and the next line lands in the file again',
+  t => {
+    openLogs()
+    t.after(() => closeLogs())
+    log({ operation: 'before the disk filled' })
+    const descriptors = () => readdirSync('/dev/fd').length
+    const open = descriptors()
+    const errors = t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    const write = fs.writeSync
+    t.mock.method(
+      fs,
+      'writeSync',
+      () => {
+        throw Object.assign(
+          new Error('no space left on device'),
+          { code: 'ENOSPC' },
+        )
+      },
+    )
+    syncBuiltinESMExports()
+
+    for (const attempt of Array.from({ length: 20 }).keys()) {
+      log({
+        level: 'error',
+        operation: 'failed while full',
+        error: `attempt ${attempt}`,
+      })
+    }
+
+    t.mock.method(
+      fs,
+      'writeSync',
+      write,
+    )
+    syncBuiltinESMExports()
+    assert.ok(
+      descriptors() <= open,
+      'each failed write closed its file',
+    )
+    assert.equal(
+      errors.mock.calls.filter(call => String(call.arguments[0]).includes('"operation":"failed while full"')).length,
+      20,
+    )
+    log({ operation: 'after the disk freed' })
+    const written = readdirSync(logsDir()).map(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ))
+      .join('')
+    assert.match(
+      written,
+      /"operation":"after the disk freed"/,
     )
   },
 )
