@@ -1212,6 +1212,8 @@ export function createHydraConnection() {
       )
 
       return () => {
+        // First, so what the page queued goes out while its socket is still open.
+        stopLog()
         active = false
         generation++
         clearTimeout(reconnect)
@@ -1246,7 +1248,6 @@ export function createHydraConnection() {
           'visibilitychange',
           wake,
         )
-        stopLog()
       }
     },
   }
