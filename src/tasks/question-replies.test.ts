@@ -2537,7 +2537,18 @@ test(
       ref,
       question,
     } = await openMerge({ t })
-    const lastMessage = () => l.state().hydraMessages!.at(-1)!
+
+    const sent = ({ id }: { id: string }) => {
+      const message = l.state().hydraMessages?.find(message => message.id === id)
+
+      return {
+        text: message?.text,
+        choice: message?.choice,
+        answers: message?.answers,
+        discusses: message?.discusses,
+      }
+    }
+
     await l.task({
       args: [
         'discuss-question',
@@ -2545,65 +2556,79 @@ test(
         question,
         '--text',
         'Highlight for the reviewer: this also changes the Hydra chat.',
+        '--event-id',
+        'note-alone',
       ],
       actor: 'web',
     })
-    assert.equal(
-      lastMessage().discusses,
-      question,
+    assert.deepEqual(
+      sent({ id: 'note-alone' }),
+      {
+        text: 'Highlight for the reviewer: this also changes the Hydra chat.',
+        choice: undefined,
+        answers: undefined,
+        discusses: question,
+      },
     )
     assert.equal(
-      lastMessage().text,
-      'Highlight for the reviewer: this also changes the Hydra chat.',
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
     )
-    assert.ok(!l.card({ ref }).asks?.[0]?.answered)
 
-    for (const [
-      choice,
-      note,
-    ] of [
-        [
-          'Hold',
-          'The caret still jumps; fix that first.',
-        ],
-        [
-          'Merge',
-          'Fixed now. Follow up on paste separately.',
-        ],
-      ]) {
-      await l.task({
-        args: [
-          'answer',
-          ref,
-          question,
-          '--choice',
-          choice!,
-          '--text',
-          note!,
-        ],
-        actor: 'web',
-      })
-      assert.deepEqual(
-        {
-          text: lastMessage().text,
-          choice: lastMessage().choice,
-          answers: lastMessage().answers,
-        },
-        {
-          text: note,
-          choice,
-          answers: question,
-        },
-      )
-      assert.equal(
-        l.card({ ref }).asks?.[0]?.choice,
-        choice,
-      )
-    }
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--choice',
+        'Hold',
+        '--text',
+        'The caret still jumps; fix that first.',
+        '--event-id',
+        'note-hold',
+      ],
+      actor: 'web',
+    })
+    assert.deepEqual(
+      sent({ id: 'note-hold' }),
+      {
+        text: 'The caret still jumps; fix that first.',
+        choice: 'Hold',
+        answers: question,
+        discusses: undefined,
+      },
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
 
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--choice',
+        'Merge',
+        '--text',
+        'Fixed now. Follow up on paste separately.',
+        '--event-id',
+        'note-merge',
+      ],
+      actor: 'web',
+    })
+    assert.deepEqual(
+      sent({ id: 'note-merge' }),
+      {
+        text: 'Fixed now. Follow up on paste separately.',
+        choice: 'Merge',
+        answers: question,
+        discusses: undefined,
+      },
+    )
     assert.ok(mergeApproval({
       card: l.card({ ref }),
-      url: l.card({ ref }).asks![0]!.url!,
+      url: 'https://github.com/synthetic/question-lab/pull/281',
     }))
   },
 )
