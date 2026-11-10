@@ -532,6 +532,24 @@ test(
       return 'chat-assertion-passed';
     }`,
       })
+      const socketLines = await until({
+        what: 'the page’s socket lines across the restart, sent after it reconnected',
+        check: () => {
+          const lines = logLines().filter(line => line.source === 'web' && line.operation === 'page.socket'
+            && line.hydraId === s.hydraId)
+
+          return lines.some(line => line.status === 'lost') && lines.at(-1)?.status === 'open' ? lines : undefined
+        },
+      })
+      assert.ok(
+        socketLines.filter(line => line.status === 'failed').length <= 1,
+        'an outage logs at most one failed attempt',
+      )
+      assert.ok(
+        logLines().some(line => line.source === 'web' && line.operation === 'page.snapshot' && line.hydraId === s.hydraId
+          && typeof line.ms === 'number'),
+        'each snapshot the page applies has its line',
+      )
       await capture({ name: 'final' })
       const other = await pnyx.scenario()
       await other.owner({

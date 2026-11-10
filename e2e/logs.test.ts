@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, existsSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { logLines, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -12,9 +13,12 @@ const logsDir = () => join(
   'logs',
 )
 
+// Fixed when the flows load, so a flow that runs across UTC midnight still names the same files.
+const loaded = Date.now()
+
 const dayFile = ({ daysAgo }: { daysAgo: number }) => join(
   logsDir(),
-  `${new Date(Date.now() - daysAgo * DAY_MS).toISOString()
+  `${new Date(loaded - daysAgo * DAY_MS).toISOString()
     .slice(
       0,
       10,
@@ -84,9 +88,15 @@ test(
     )
     assert.ok(Number.isFinite(Date.parse(String(pageCommand.at))))
     assert.equal(
-      mine({ operation: 'socket.send' }).filter(line => line.detailed === true).length,
+      mine({ operation: 'socket.send' }).filter(line => line.name !== 'snapshot').length,
       0,
-      'On writes no detailed line for the live updates the page got',
+      'On writes no line for the live updates the page got',
+    )
+    const mounted = mine({ operation: 'hydra.open' })[0]
+    assert.equal(
+      typeof mounted?.ms,
+      'number',
+      'loading the Hydra has its line',
     )
     await page.refusal({
       name: 'task',
@@ -147,12 +157,17 @@ test(
       typeof cli.ms,
       'number',
     )
+    assert.equal(
+      cli.actor,
+      'cli',
+      'a command from the owner’s terminal is the CLI’s',
+    )
 
     page.log({
       lines: [
         {
           operation: 'page.slow-frame',
-          at: new Date().toISOString(),
+          ageMs: 0,
           tab: 'tab-one',
           hydraId: s.hydraId,
           ms: 120,
@@ -161,7 +176,8 @@ test(
         },
         {
           operation: 'page.long-task',
-          at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          // Queued an hour ago on the page's clock, while its socket was down.
+          ageMs: 60 * 60 * 1000,
           hydraId: s.hydraId,
           ms: 80,
         },
@@ -197,10 +213,10 @@ test(
       what: 'the refused page line counted as a warning',
       check: () => refusedLines().some(line => line.level === 'warn' && line.count === 1),
     })
-    const skewed = mine({ operation: 'page.long-task' })[0]
+    const queued = mine({ operation: 'page.long-task' })[0]
     assert.ok(
-      Math.abs(Date.parse(String(skewed?.at)) - Date.now()) < 60_000,
-      'a page time an hour off takes the server’s time',
+      Math.abs(Date.parse(String(queued?.at)) - (Date.now() - 60 * 60 * 1000)) < 60_000,
+      'a line that waited an hour on the page is placed an hour back',
     )
     page.log({
       lines: Array.from(
@@ -321,12 +337,25 @@ test(
     })
     const live = await until({
       what: 'a detailed line for each live update the page gets',
-      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'event' && line.detailed === true),
+      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'event'),
     })
     assert.ok(Number(live.bytes) > 0)
     assert.equal(
       typeof live.backlog,
       'number',
+    )
+    assert.deepEqual(
+      [
+        live.detailed,
+        live.pid,
+        live.rss,
+      ],
+      [
+        undefined,
+        undefined,
+        undefined,
+      ],
+      'a detailed line leaves out what the lines around it say',
     )
     assert.ok(
       mine({ operation: 'command.page' }).length > quietBefore,
@@ -353,6 +382,51 @@ test(
     assert.equal(
       typeof turn.ms,
       'number',
+    )
+    // The chat open on the page, so the next turn's text reaches it as live thread pages.
+    await page.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })
+    await s.chat({ text: 'Say hello again' })
+    await until({
+      what: 'the second turn ending',
+      check: () => mine({ operation: 'turn.end' }).length === 2,
+    })
+    await s.project({ name: 'logged' })
+    const reading = new Date().toISOString()
+    await s.owner({
+      args: [
+        'project',
+        'memory',
+        '--project',
+        'logged',
+      ],
+    })
+    const seen = new Set(logLines().filter(line => line.hydraId === s.hydraId)
+      .map(line => line.operation))
+    assert.deepEqual(
+      [
+        'command.cli',
+        'command.page',
+        'events.write',
+        'history.read',
+        'hydra.open',
+        'message.taken',
+        'session.open',
+        'snapshot.write',
+        'socket.send',
+        'thread.page',
+        'turn.end',
+        'turn.start',
+      ].filter(operation => !seen.has(operation)),
+      [],
+      'commands, a chat turn and its live thread on an open page write each of their actions’ lines',
+    )
+    assert.ok(
+      logLines().some(line => line.operation === 'exec' && String(line.at) >= reading
+        && /^git [a-z-]+$/.test(String(line.name))),
+      'reading a project runs git, logged by its subcommand',
     )
   },
 )
@@ -554,6 +628,27 @@ test(
       what: 'a starting server deleting days past the kept ones',
       check: () => !existsSync(dayFile({ daysAgo: 30 })),
     })
+    const lifecycle = logLines().filter(line => line.operation === 'server.stop' || line.operation === 'server.start')
+    assert.deepEqual(
+      lifecycle.map(line => [
+        line.operation,
+        typeof line.ms,
+        typeof line.pid,
+      ]),
+      [
+        [
+          'server.stop',
+          'number',
+          'undefined',
+        ],
+        [
+          'server.start',
+          'number',
+          'number',
+        ],
+      ],
+      'the restart has its stop and start lines, and the start names the process the lines after it come from',
+    )
   },
 )
 
@@ -637,7 +732,7 @@ test(
       })
       assert.match(
         report,
-        /operations\[1\]\{operation,count,typicalMs,worstMs,totalMs,errors\}:\n {2}command\.page task create,3,/,
+        /operations\[1\]\{operation,count,typicalMs,worstMs,totalMs,errors,warnings\}:\n {2}command\.page task create,3,/,
       )
       assert.match(
         report,
