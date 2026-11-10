@@ -38,7 +38,13 @@ export function createLatestFeed({
     message: ServerMessage
   }): void
   threadSubscriptions: Map<HydraClient, Subscription>[]
-  refreshThread({ ws }: { ws: HydraClient }): void
+  refreshThread({
+    ws,
+    invalidate,
+  }: {
+    ws: HydraClient
+    invalidate?: boolean
+  }): void
   historyIndex(): { changed(): void }
   agents(): Pick<ReturnType<typeof createHost>, 'action'>
   spend: { count(): void }
@@ -72,7 +78,10 @@ export function createLatestFeed({
         sub,
       ] of map) {
         if (sub.path === path) {
-          refreshThread({ ws })
+          refreshThread({
+            ws,
+            invalidate: false,
+          })
         }
       }
     }
@@ -302,7 +311,10 @@ export function createLatestFeed({
         const agent = state().cards[sub.card]?.agent
 
         if (agent && `${agent.provider}:${agent.sessionId}` === session) {
-          refreshThread({ ws })
+          refreshThread({
+            ws,
+            invalidate: false,
+          })
         }
       }
     }

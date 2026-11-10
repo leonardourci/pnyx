@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -7,6 +7,7 @@ import { setImmediate } from 'node:timers/promises'
 import { LATEST_DELAY_MS } from './latest-feed.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { emptyHydra, reduce } from './reducer.ts'
+import { liveReplies } from '#workers/streaming.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { createThreadSubscriptions, type Subscription } from './thread-subscriptions.ts'
@@ -874,5 +875,194 @@ test(
         'Updated answer',
       ],
     )
+  },
+)
+
+test(
+  'live refreshes retain history and pick up native bytes, settings, explicit reads and session changes',
+  async t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-live-cache-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: 'hydra',
+          title: 'Hydra',
+        },
+      },
+    })
+    const path = join(
+      home,
+      'native.jsonl',
+    )
+    copyFileSync(
+      join(
+        import.meta.dirname,
+        'fixtures',
+        'live-thread.jsonl',
+      ),
+      path,
+    )
+    const card = state.cards[HYDRA_CARD]!
+    card.agent = {
+      provider: 'claude-code',
+      sessionId: 'fixture',
+      transcriptPath: path,
+    }
+    const live = liveReplies()
+    live.start({
+      offset: 0,
+      ownerStarted: true,
+    })
+    const ws: HydraClient = {
+      OPEN: 1,
+      readyState: 1,
+      bufferedAmount: 0,
+      send() {},
+      terminate() {},
+    }
+    const pushed: ThreadPage[] = []
+    const threads = createThreadSubscriptions({
+      hydraId: 'default',
+      state: () => state,
+      homes: () => [],
+      closed: () => false,
+      agents: () => ({ thread: ({ page }) => live.page({ page }) }),
+      send: ({ message }) => {
+        if (message.type === 'thread') {
+          pushed.push(message.thread)
+        }
+      },
+    })
+    threads.bindThread({
+      ws,
+      card,
+    })
+    t.after(() => threads.subscriptionMap({ card: HYDRA_CARD }).get(ws)?.watcher?.close())
+
+    const refresh = () => {
+      threads.refreshThread({
+        ws,
+        invalidate: false,
+      })
+      t.mock.timers.tick(LATEST_DELAY_MS)
+    }
+
+    live.update({
+      id: 'answer',
+      text: 'First words',
+      append: true,
+    })
+    refresh()
+    assert.deepEqual(
+      pushed.at(-1)!.conversation!.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'First words',
+      ],
+    )
+    live.update({
+      id: 'answer',
+      text: ' and more.',
+      append: true,
+    })
+    refresh()
+    assert.deepEqual(
+      pushed.at(-1)!.conversation!.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'First words and more.',
+      ],
+    )
+    appendFileSync(
+      path,
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date().toISOString(),
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: 'First words and more.',
+            },
+          ],
+        },
+      }) + '\n',
+    )
+    live.finish()
+    refresh()
+    assert.equal(
+      pushed.at(-1)!.conversation!.entries.at(-1)!.text,
+      'First words and more.',
+    )
+    assert.equal(
+      pushed.at(-1)!.conversation!.entries.at(-1)!.id.startsWith('live:'),
+      false,
+    )
+    state.hydraMessages = [
+      {
+        id: 'notice',
+        hydra: 'hydra',
+        actor: 'hydra',
+        action: 'send',
+        text: 'A new saved notice',
+        at: new Date().toISOString(),
+      },
+    ]
+    threads.refreshThread({ ws })
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    assert.ok(pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
+    const receipt = await threads.threadPage({
+      sub: threads.subscriptionMap({ card: HYDRA_CARD }).get(ws)!,
+      card,
+    })
+    assert.equal(
+      receipt.conversation!.stream,
+      pushed.at(-1)!.conversation!.stream,
+    )
+    card.agent = {
+      ...card.agent,
+      sessionId: 'replacement',
+    }
+    writeFileSync(
+      path,
+      '{"type":"user","timestamp":"2026-11-06T00:00:01Z","message":{"role":"user","content":"New session"}}\n',
+    )
+    live.start({
+      offset: 0,
+      ownerStarted: true,
+    })
+    refresh()
+    assert.ok(pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'New session'))
+    assert.ok(!pushed.at(-1)!.conversation!.entries.some(entry => entry.text === 'Explain it'))
   },
 )

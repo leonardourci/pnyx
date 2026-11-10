@@ -1,5 +1,6 @@
+import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { hydraThreadView } from '#hydra/thread-view.ts'
+import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
 import { mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#hydra/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
@@ -25,6 +26,11 @@ interface PreparedThread {
 export type Subscription = {
   card: string
   history?: ThreadPage
+  base?: {
+    signature: string
+    page: ThreadPage
+    project?: ReturnType<typeof createHydraThreadView>
+  }
   client?: HydraClient
   restoring?: number
   refreshPending?: boolean
@@ -165,6 +171,27 @@ export function createThreadSubscriptions({
       thinking,
     })
 
+    return versionThread({
+      sub,
+      prepared,
+      push,
+    })
+  }
+
+  const versionThread = ({
+    sub,
+    prepared,
+    push = false,
+  }: {
+    sub: Subscription
+    prepared: ThreadPage
+    push?: boolean
+  }): PreparedThread | undefined => {
+    if (!prepared.conversation) {
+      return { thread: prepared }
+    }
+
+    const current = state()
     const sent = JSON.stringify({
       ...prepared,
       conversation: {
@@ -202,19 +229,84 @@ export function createThreadSubscriptions({
     }
   }
 
+  const currentThread = ({
+    sub,
+    card,
+  }: {
+    sub: Subscription
+    card: Card
+  }) => {
+    const path = threadPath({ card })
+    let native = 'unavailable'
+
+    if (path) {
+      try {
+        const stat = statSync(path)
+        native = `${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`
+      } catch { /* The missing transcript uses the saved event history. */ }
+    }
+
+    const signature = JSON.stringify({
+      native,
+      path,
+      agent: card.agent,
+      homes: homes(),
+    })
+
+    if (!sub.base || sub.base.signature !== signature) {
+      const page = readThread({
+        hydraId,
+        state: state(),
+        card,
+        homes: homes(),
+      })
+
+      if (card.id === HYDRA_CARD) {
+        sub.history = mergeThreadPages({
+          before: sub.history ?? null,
+          latest: page,
+        })
+      }
+
+      const selected = traces({
+        view: effectiveView({ state: state() }),
+        card: HYDRA_CARD,
+      })
+      sub.base = {
+        signature,
+        page,
+        project: card.id === HYDRA_CARD ? createHydraThreadView({
+          state: state(),
+          page: sub.history!,
+          ...selected,
+        }) : undefined,
+      }
+    }
+
+    const page = agents().thread({
+      card,
+      page: sub.base.page,
+    })
+
+    return sub.base.project ? sub.base.project({ page }) : page
+  }
+
   const refreshThread = ({
     ws,
+    invalidate = true,
     resync = false,
   }: {
     ws: HydraClient
+    invalidate?: boolean
     resync?: boolean
   }) => {
-    if (resync) {
+    if (invalidate || resync) {
       for (const map of threadSubscriptions) {
         const sub = map.get(ws)
 
         if (sub) {
-          sub.sent = undefined
+          sub.base = undefined
+          if (resync) sub.sent = undefined
         }
       }
     }
@@ -299,17 +391,13 @@ export function createThreadSubscriptions({
               }
 
               try {
-                const prepared = prepareThread({
+                const page = currentThread({
                   sub,
-                  page: agents().thread({
-                    card,
-                    page: readThread({
-                      hydraId,
-                      state: state(),
-                      card,
-                      homes: homes(),
-                    }),
-                  }),
+                  card,
+                })
+                const prepared = versionThread({
+                  sub,
+                  prepared: page,
                   push: true,
                 })
 
@@ -344,6 +432,7 @@ export function createThreadSubscriptions({
     retain?: ThreadBoundary
     receipt?: string
   }): Promise<ThreadPage> => {
+    sub.base = undefined
     const native = sub.native
 
     const readPage = async ({ before }: { before?: string }): Promise<ThreadPage> => {
@@ -448,7 +537,10 @@ export function createThreadSubscriptions({
     if (paseo) {
       const native = paseoConversation({
         card,
-        changed: () => refreshThread({ ws }),
+        changed: () => refreshThread({
+          ws,
+          invalidate: false,
+        }),
       })
       native.catch(() => undefined)
       const watcher = {
@@ -475,7 +567,10 @@ export function createThreadSubscriptions({
         try {
           file = watchPath({
             path,
-            changed: () => refreshThread({ ws }),
+            changed: () => refreshThread({
+              ws,
+              invalidate: false,
+            }),
           })
         } catch { /* The folder watcher retries when the transcript appears. */ }
       }
@@ -486,7 +581,10 @@ export function createThreadSubscriptions({
           changed: ({ filename }) => {
             if (!filename || String(filename) === basename(path)) {
               followFile()
-              refreshThread({ ws })
+              refreshThread({
+                ws,
+                invalidate: false,
+              })
             }
           },
         })
