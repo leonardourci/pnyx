@@ -25,7 +25,7 @@ paths:
 
 Text people write goes through two shared components, so a new screen gets chips, mentions, skills and images by using them:
 
-- `RichText` (`web/src/shared/ui/rich-text.tsx`) shows agent- or owner-written text: questions, notes, briefs, reports, comments and chat. It shows every token exactly as the composer does while typing: task, column and skill chips, and image chips for `[image: <path>]` tokens and bare absolute image paths that open the picture on click. Never draw an image outside its chip. `CollapsibleText` is `RichText` behind "Show more". A one-line summary inside a control uses `markdownText`.
+- `RichText` (`web/src/shared/ui/rich-text.tsx`) shows agent- or owner-written text: questions, notes, briefs, reports, comments and chat. It shows every token exactly as the composer does while typing: task, column and skill chips, and image chips for `[image: <path>]` tokens and bare absolute image paths that open the picture on click. Markdown images and HTML `img` tags render inline through the same restricted image source and viewer. `CollapsibleText` is `RichText` behind "Show more". A one-line summary inside a control uses `markdownText`.
 - `ComposerField` (`web/src/hydra/composer-field.tsx`) is the composer for owner-written prose: the Hydra composer, comment notes, answers, asks and briefs, and any new one. On its own it is a compact box that grows with its text, without the + menu. It handles @ mentions, / skills and commands, chips, images pasted or dropped at the caret, and copies that keep their references. The app provides its tasks, projects, columns and skills once through `ComposerSourcesProvider`. Model, mode, effort and Fast controls stay on the Hydra composer. A single-line title stays an `Input`.
 
 ```tsx
