@@ -1,6 +1,6 @@
 import { hydraThreadView } from './thread-view.ts'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
@@ -9,6 +9,95 @@ import { readThread, recordEntries, splitEntry, type ThreadPage } from './transc
 import { HYDRA_CARD } from './identity.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { joinMessageParts } from './history.ts'
+
+test(
+  'a native page includes the beginning of a reply larger than its transport target',
+  t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-whole-native-reply-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const path = join(
+      home,
+      'native.jsonl',
+    )
+    const text = 'Keep the beginning and ending. '.repeat(2200).trimEnd()
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-11-09T00:00:00Z',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text,
+            },
+          ],
+        },
+      })}\n`,
+    )
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-09T00:00:00Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: 'hydra',
+          title: 'Hydra',
+        },
+      },
+    })
+    const card = state.cards[HYDRA_CARD]!
+    card.agent = {
+      provider: 'claude-code',
+      sessionId: 'fixture',
+      transcriptPath: path,
+    }
+    const page = readThread({
+      hydraId: 'default',
+      state,
+      card,
+      homes: [],
+    })
+    const messages = joinMessageParts({ entries: page.entries })
+    assert.equal(
+      messages.length,
+      1,
+    )
+    assert.ok(
+      messages[0]!.text === text,
+      'the first page must include the whole latest reply',
+    )
+    assert.equal(
+      page.older,
+      undefined,
+    )
+  },
+)
 
 test(
   'transport chunks preserve redacted offsets when a word crosses their boundary',
