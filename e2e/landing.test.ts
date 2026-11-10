@@ -356,7 +356,7 @@ test(
     )
     assert.match(
       prAgent!.received[0]!,
-      /^Landing: commit on your branch, push it, open a ready pull request/m,
+      /^Landing: commit on your branch, push it, open a pull request, mark it ready only after meeting the readiness requirements above/m,
     )
     assert.equal(
       (await prWorker.refusal({

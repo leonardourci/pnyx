@@ -73,7 +73,7 @@ export function landingLine({
     ? 'then declare needs_you with its URL'
     : 'then use needs_you with its URL only if readiness has not been recorded yet'
 
-  return `Landing: commit on your branch, push it, open a ready pull request and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, ${declaration}: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
+  return `Landing: commit on your branch, push it, open a pull request, mark it ready only after meeting the readiness requirements above, and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, ${declaration}: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
 }
 
 // Where this task's worker stops: an investigation at its stored report, anything else at its landing rule.
