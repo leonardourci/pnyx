@@ -8,7 +8,9 @@ import { logFiles } from './log-files.ts'
 
 export const DEBUG_LIMIT = 50
 export const DEBUG_MAX = 200
-export const LOG_BYTES = 4 * 1024 * 1024
+export const LOG_BYTES = 16 * 1024 * 1024
+// Only warnings and errors carry a level, so other lines are skipped before they are parsed.
+const LEVEL_MARK = '"level":"'
 const CURSOR_BYTES = 2048
 
 export interface TimelineRow {
@@ -137,12 +139,21 @@ function tailRows({
       }
 
       const sourceOffset = start + offset
+      const lineStart = offset
+      offset = end + 1
+
+      if (!buffer.subarray(
+        lineStart,
+        end,
+      ).includes(LEVEL_MARK)) {
+        continue
+      }
+
       const line = buffer.toString(
         'utf8',
-        offset,
+        lineStart,
         end,
       )
-      offset = end + 1
       let value: unknown
 
       try {
