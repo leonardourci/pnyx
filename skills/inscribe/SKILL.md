@@ -10,7 +10,7 @@ metadata:
 
 Keep saved context brief and up to date, and edit or remove entries when things change. Save each fact at the narrowest level that fits:
 
-- Owner memory, Pnyx-wide and read by every Hydra (24000 characters): the owner's preferences under `preferences` and general learnings about tools, workers and routes under `learnings`.
+- Owner memory, Pnyx-wide and read by every Hydra (24000 characters): the owner's preferences under `preferences` general learnings about tools, workers and routes under `learnings`, and standing worker instructions for every Hydra under `workers` (1500 characters, added verbatim to every new worker header; change them with `pnyx-axi owner worker-notes set --text "<whole document>" --reason "<why>"` and keep the key).
 - Project memory, shared by every Hydra on that project (10000 characters): facts, conventions and owner preferences that hold only for that project.
 - Hydra memory, this Hydra only (1500 characters): its scope, where it left off, its check cursor. Successful inscribe milestones track what has been read.
 
