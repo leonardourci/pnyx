@@ -1,3 +1,4 @@
+import type { LogMode } from '#app/log-line.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 
@@ -43,6 +44,10 @@ export interface Settings extends SharedView {
   oracleRememberFilters: boolean
   // The Hydra list's order as Hydra ids; the Hydra list decides where ids it does not name go.
   hydraOrder: string[]
+  // Diagnostic logs: off, on or detailed, how many days they stay and the most space they take.
+  logs: LogMode
+  logDays: number
+  logMaxMB: number
 }
 
 export const SETTING_KEYS = [
@@ -52,6 +57,9 @@ export const SETTING_KEYS = [
   'helper',
   'oracleRememberFilters',
   'hydraOrder',
+  'logs',
+  'logDays',
+  'logMaxMB',
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]

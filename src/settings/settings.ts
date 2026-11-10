@@ -1,3 +1,4 @@
+import { LOG_MODES } from '#app/log-line.ts'
 import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
@@ -11,6 +12,10 @@ import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type Sh
 export const DEFAULT_REVIEW_MINUTES = 30
 // setTimeout's limit, which the review timer schedules with.
 export const MAX_REVIEW_MINUTES = Math.floor(2_147_483_647 / 60_000)
+export const DEFAULT_LOG_DAYS = 7
+export const MAX_LOG_DAYS = 365
+export const DEFAULT_LOG_MAX_MB = 500
+export const MAX_LOG_MB = 100_000
 
 export const DEFAULT_SETTINGS: Settings = {
   ...pickView({ view: DEFAULT_VIEW }),
@@ -19,6 +24,9 @@ export const DEFAULT_SETTINGS: Settings = {
   helper: 'auto',
   oracleRememberFilters: false,
   hydraOrder: [],
+  logs: 'on',
+  logDays: DEFAULT_LOG_DAYS,
+  logMaxMB: DEFAULT_LOG_MAX_MB,
 }
 
 export function pickView({ view }: { view: SharedView }): SharedView {
@@ -206,6 +214,36 @@ export function patchSettings({
     }
 
     next.oracleRememberFilters = patch.oracleRememberFilters
+  }
+
+  if ('logs' in patch) {
+    const logs = LOG_MODES.find(mode => mode === patch.logs)
+
+    if (!logs) {
+      return invalid({ detail: 'logs takes off, on or detailed' })
+    }
+
+    next.logs = logs
+  }
+
+  if ('logDays' in patch) {
+    const days = patch.logDays
+
+    if (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > MAX_LOG_DAYS) {
+      return invalid({ detail: `logDays takes a whole number of days from 1 to ${MAX_LOG_DAYS}` })
+    }
+
+    next.logDays = days
+  }
+
+  if ('logMaxMB' in patch) {
+    const megabytes = patch.logMaxMB
+
+    if (typeof megabytes !== 'number' || !Number.isInteger(megabytes) || megabytes < 1 || megabytes > MAX_LOG_MB) {
+      return invalid({ detail: `logMaxMB takes a whole number of megabytes from 1 to ${MAX_LOG_MB}` })
+    }
+
+    next.logMaxMB = megabytes
   }
 
   if ('hydraOrder' in patch) {

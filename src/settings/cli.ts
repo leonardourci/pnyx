@@ -47,6 +47,7 @@ export const settings = guard({
           'Every key applies to every Hydra; a patch names only what changes',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once',
+          'logs takes off (warnings and errors only), on or detailed; logDays keeps 1 or more days of logs; logMaxMB caps their total size',
         ],
       }
     }
