@@ -147,8 +147,10 @@ export function createThreadSubscriptions({
     page,
     older = false,
     push = false,
+    card,
   }: {
     sub: Subscription
+    card: Card
     page: ThreadPage
     older?: boolean
     // A push the tab did not ask for is skipped when the page has not changed.
@@ -172,9 +174,22 @@ export function createThreadSubscriptions({
       view: effectiveView({ state: current }),
       card: HYDRA_CARD,
     })
+    let visible = sub.history
+
+    if (older && !sub.native) {
+      visible = agents().thread({
+        card,
+        page: {
+          ...sub.history,
+          entries: sub.history.entries.filter(entry => !entry.id.startsWith('live:')),
+          currentTurn: undefined,
+        },
+      })
+    }
+
     const prepared = hydraThreadView({
       state: current,
-      page: sub.history,
+      page: visible,
       tools,
       thinking,
     })
@@ -397,6 +412,7 @@ export function createThreadSubscriptions({
 
               const prepared = prepareThread({
                 sub,
+                card,
                 page,
                 push: true,
               })
@@ -590,6 +606,7 @@ export function createThreadSubscriptions({
       sub.base = undefined
       const prepared = prepareThread({
         sub,
+        card,
         page,
         older: before !== undefined,
       })!

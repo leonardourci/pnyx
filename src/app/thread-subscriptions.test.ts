@@ -1256,5 +1256,71 @@ test(
       pushed.at(-1)!.conversation!.entries.at(-1)!.text,
       'First words after idle',
     )
+    state.hydraMessages = []
+    card.agent = {
+      provider: 'claude-code',
+      sessionId: 'paged',
+      transcriptPath: path,
+    }
+    writeFileSync(
+      path,
+      readFileSync(
+        join(
+          import.meta.dirname,
+          'fixtures',
+          'live-thread.jsonl',
+        ),
+        'utf8',
+      ).repeat(40),
+    )
+    live.start({
+      offset: 0,
+      ownerStarted: true,
+    })
+    live.update({
+      id: 'paged-answer',
+      text: 'A live page',
+      append: false,
+    })
+    threads.bindThread({
+      ws,
+      card,
+    })
+    const pagedSub = threads.subscriptionMap({ card: HYDRA_CARD }).get(ws)!
+    const latestPage = await threads.threadPage({
+      sub: pagedSub,
+      card,
+    })
+    assert.ok(latestPage.older)
+    const olderPage = await threads.threadPage({
+      sub: pagedSub,
+      card,
+      before: latestPage.older,
+    })
+    assert.ok(olderPage.conversation!.entries.some(entry => entry.text === 'A live page'))
+    assert.ok(olderPage.entries.length > latestPage.entries.length)
+    await threads.threadPage({
+      sub: pagedSub,
+      card,
+      retain: {
+        session: latestPage.session,
+        oldest: latestPage.entries[0]!.id,
+      },
+    })
+    live.update({
+      id: 'paged-answer',
+      text: ' keeps growing.',
+      append: true,
+    })
+    const grownPage = await threads.threadPage({
+      sub: pagedSub,
+      card,
+      before: latestPage.older,
+    })
+    assert.deepEqual(
+      grownPage.entries.filter(entry => entry.id.startsWith('live:')).map(entry => entry.text),
+      ['A live page keeps growing.'],
+    )
+    assert.ok(grownPage.conversation!.entries.some(entry => entry.text === 'A live page keeps growing.'))
   },
 )
