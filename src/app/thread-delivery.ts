@@ -1,8 +1,6 @@
 import { background } from './background.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import type { HydraClient, ServerMessage } from './server-transport.ts'
-
-export const THREAD_RETRY_MS = 100
+import { SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 
 interface Delivery {
   ws: HydraClient
@@ -113,7 +111,7 @@ export function createThreadDelivery({
         name: 'conversation delivery',
         run: () => attempt({ key }),
       }),
-      THREAD_RETRY_MS,
+      SOCKET_RETRY_MS,
     )
     delivery.timer.unref()
   }

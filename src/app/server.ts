@@ -519,6 +519,7 @@ export async function mountOwnedHydra({
         }
       },
       close() {
+        tabs.closeClient({ ws })
         clients.delete(ws)
         hydraSubscribers.delete(ws)
         catalogReads.delete(ws)
@@ -611,6 +612,7 @@ export async function mountOwnedHydra({
     transcripts.clear()
     transcriptPolls.clear()
     threadDelivery.close()
+    tabs.close()
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(feed.latestTimer)
     clearTimeout(tick.expiryTimer)

@@ -12,7 +12,7 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { createThreadSubscriptions, type Subscription } from './thread-subscriptions.ts'
 import { createServerClients } from './server-clients.ts'
 import { MAX_BUFFERED } from './server-transport.ts'
-import { THREAD_RETRY_MS } from './thread-delivery.ts'
+import { SOCKET_RETRY_MS } from './server-transport.ts'
 import { threadCommand } from '#app/server-commands/thread.ts'
 import { mountOwnedHydra } from './server.ts'
 import { hydraDir } from './home-migration.ts'
@@ -167,7 +167,7 @@ test(
     t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     const receipts = received.filter(message => message.type === 'receipt')
     assert.deepEqual(
@@ -218,7 +218,7 @@ test(
     t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     const returning = received[0]
     assert.ok(returning?.type === 'receipt')
@@ -249,7 +249,7 @@ test(
       0,
     )
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     assert.deepEqual(
       received.filter(message => message.type === 'thread')
@@ -287,7 +287,7 @@ test(
     })
     buffered = 0
     tabs.sendSnapshot({ ws: client })
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     assert.deepEqual(
       received.filter(message => message.type === 'thread')
@@ -312,7 +312,7 @@ test(
     await setImmediate()
     readyState = 3
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     assert.equal(
       received.filter(message => message.type === 'thread').length,
@@ -355,7 +355,7 @@ test(
       0,
     )
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     assert.deepEqual(
       received.map(message => message.type === 'error' && [
@@ -399,7 +399,7 @@ test(
       0,
     )
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     assert.deepEqual(
       received.map(message => message.type === 'error' && [
@@ -569,7 +569,7 @@ test(
     const beforeClose = received.length
     tab.close()
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     assert.equal(
       received.length,
@@ -629,7 +629,7 @@ test(
     const beforeFinalClose = received.length
     reconnected.close()
     buffered = 0
-    t.mock.timers.tick(THREAD_RETRY_MS)
+    t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     assert.equal(
       received.length,
