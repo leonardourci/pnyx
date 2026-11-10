@@ -1,7 +1,9 @@
 import { getHeapSpaceStatistics } from 'node:v8'
 import { monitorEventLoopDelay, performance, PerformanceObserver } from 'node:perf_hooks'
+import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { oneDecimal } from '#app/log-line.ts'
+import { logAgentMemory } from '#workers/agent-memory.ts'
 
 const PROCESS_LINE_MS = 30_000
 // How often the event-loop delay histogram samples; a stall shorter than this is not seen.
@@ -13,7 +15,8 @@ const PERCENT = 100
 // The loop's share of time keeps two decimals.
 const SHARE_DECIMALS = 100
 
-// One line every 30 seconds by default with the server's CPU, event-loop delay and use, heap and garbage-collection pauses.
+// One line every 30 seconds by default with the server's CPU, event-loop delay and use, heap and garbage-collection
+// pauses, and one with the memory of every agent the server runs.
 export function startProcessLines({ every = PROCESS_LINE_MS }: { every?: number }) {
   const delay = monitorEventLoopDelay({ resolution: LOOP_DELAY_RESOLUTION_MS })
   const gc = {
@@ -73,6 +76,11 @@ export function startProcessLines({ every = PROCESS_LINE_MS }: { every?: number 
       gcCount: gc.count,
       gcMs: oneDecimal({ value: gc.ms }),
       gcMaxMs: oneDecimal({ value: gc.maxMs }),
+    })
+
+    background({
+      name: 'agent.memory',
+      run: logAgentMemory,
     })
 
     since = now

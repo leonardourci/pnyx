@@ -101,7 +101,13 @@ export function createHydraTurns({
   }): void
   stoppedFor: ReturnType<typeof createHydraOperations>['stoppedFor']
   helperPending(): boolean
-  providerOf({ provider }: { provider: string }): Provider
+  providerOf({
+    provider,
+    taskId,
+  }: {
+    provider: string
+    taskId?: string
+  }): Provider
   environment({ hydra }: { hydra?: boolean }): NodeJS.ProcessEnv
   sessionKey({ agent }: { agent: AgentRef }): string
   open({
@@ -479,7 +485,10 @@ export function createHydraTurns({
         }
 
         if (!agent || !live.has(sessionId({ agent }))) {
-          prepared = await providerOf({ provider }).open({
+          prepared = await providerOf({
+            provider,
+            taskId: HYDRA_CARD,
+          }).open({
             cwd,
             agent,
             settings,

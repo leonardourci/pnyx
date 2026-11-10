@@ -9,6 +9,14 @@ export const LOG_MODES = [
 // off keeps only warnings and errors; on writes one line per action; detailed adds a line per live update and frame.
 export type LogMode = (typeof LOG_MODES)[number]
 
+// One agent's whole process tree, as the agent.memory line lists it.
+interface AgentMemory {
+  hydraId: string
+  taskId?: string
+  sessionId?: string
+  rss: number
+}
+
 interface LogFields {
   operation: string
   hydraId?: string
@@ -60,6 +68,7 @@ interface LogFields {
   gcCount?: number
   gcMs?: number
   gcMaxMs?: number
+  agents?: AgentMemory[]
 }
 
 // Every field a line may carry besides its operation, id and duration: a line is built from these and nothing else
@@ -101,6 +110,7 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   gcCount: true,
   gcMs: true,
   gcMaxMs: true,
+  agents: true,
 }
 
 export const LOG_FIELDS = new Set(Object.keys(FIELDS))

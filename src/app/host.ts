@@ -7,6 +7,7 @@ import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
 import { trackChildren } from '#workers/children.ts'
+import { watchAgent } from '#workers/agent-memory.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 import { createHostedHelper } from '#routine-helper/hosted-helper.ts'
 import { agentExhausted } from '#workers/dispatch.ts'
@@ -432,7 +433,14 @@ export function createHost({
     } : {}),
   })
 
-  const providerOf = ({ provider }: { provider: string }): Provider => {
+  const providerOf = ({
+    provider,
+    taskId,
+  }: {
+    provider: string
+    // The task whose agent this opens, Hydra's own included, for the agent's log lines.
+    taskId?: string
+  }): Provider => {
     const known = knownProvider({ name: provider })
 
     if (!known) {
@@ -444,17 +452,32 @@ export function createHost({
 
     const chosen = providers[known]
 
-    // Every session the server opens, for Hydra, a worker or the helper, logs how long its provider took to start it.
+    // Every session the server opens, for Hydra, a worker or the helper, logs how long its provider took to start it,
+    // and its agent processes are listed with their memory under its ids.
     return {
       ...chosen,
       // eslint-disable-next-line pnyx/object-params -- the provider owns open's options, which pass through whole.
       open: async options => {
         const opening = performance.now()
-        const session = await chosen.open(options)
+        const ids: Parameters<typeof watchAgent>[0]['ids'] = {
+          hydraId,
+          taskId,
+        }
+        const spawned = options.spawned
+        const session = await chosen.open({
+          ...options,
+          spawned: spawned && (({ child }) => {
+            spawned({ child })
+            watchAgent({
+              child,
+              ids,
+            })
+          }),
+        })
+        ids.sessionId = `${known}:${session.id}`
         log({
           operation: 'session.open',
-          hydraId,
-          sessionId: `${known}:${session.id}`,
+          ...ids,
           provider: known,
           ms: performance.now() - opening,
         })
@@ -462,6 +485,12 @@ export function createHost({
         return session
       },
     }
+  }
+
+  // The helper's sessions open through the same wrapper, so they are logged and their memory listed too.
+  const helperProviders = {
+    [PROVIDERS.claude.provider]: providerOf({ provider: PROVIDERS.claude.provider }),
+    [PROVIDERS.codex.provider]: providerOf({ provider: PROVIDERS.codex.provider }),
   }
 
   const {
@@ -576,7 +605,7 @@ export function createHost({
     helperOpen,
   } = createHostedHelper({
     hydraId,
-    providers,
+    providers: helperProviders,
     children,
     helperBound,
     changed,

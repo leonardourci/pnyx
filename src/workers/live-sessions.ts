@@ -2,6 +2,7 @@ import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
+import { logAgentMemory } from './agent-memory.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -101,7 +102,13 @@ export function createLiveSessions({
     note: string
   }): void
   folderOf({ card }: { card: Card & { agent: AgentRef } }): string
-  providerOf({ provider }: { provider: string }): Provider
+  providerOf({
+    provider,
+    taskId,
+  }: {
+    provider: string
+    taskId?: string
+  }): Provider
   environment({
     hydra,
     task,
@@ -190,7 +197,10 @@ export function createLiveSessions({
     try {
       const contract = card.id === HYDRA_CARD
         ? turns().hydraSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
-      entry.session ??= await providerOf({ provider: card.agent.provider }).open({
+      entry.session ??= await providerOf({
+        provider: card.agent.provider,
+        taskId: card.id,
+      }).open({
         cwd: folderOf({ card }),
         agent: card.agent,
         settings: card.settings ?? {},
@@ -464,6 +474,13 @@ export function createLiveSessions({
             sessionId: key,
             provider: card.agent.provider,
           })
+          background({
+            name: 'agent.memory',
+            run: () => logAgentMemory({
+              sessionId: key,
+              name: 'turn.start',
+            }),
+          })
         }
 
         const receipt = typeof received === 'object' && received.type === 'input' ? received.receipt : undefined
@@ -488,6 +505,13 @@ export function createLiveSessions({
             provider: card.agent.provider,
             status: received.outcome.status,
             ms: turnStarted === undefined ? undefined : performance.now() - turnStarted,
+          })
+          background({
+            name: 'agent.memory',
+            run: () => logAgentMemory({
+              sessionId: key,
+              name: 'turn.end',
+            }),
           })
           turnStarted = undefined
         }

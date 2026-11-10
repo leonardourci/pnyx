@@ -180,7 +180,13 @@ export function createAgentSwitch({
     key: string
     entry: Live
   }): void
-  providerOf({ provider }: { provider: string }): Provider
+  providerOf({
+    provider,
+    taskId,
+  }: {
+    provider: string
+    taskId?: string
+  }): Provider
   digest({ remember }: { remember?: boolean }): Promise<string>
   environment({ hydra }: { hydra?: boolean }): NodeJS.ProcessEnv
   host(): Host
@@ -421,7 +427,10 @@ export function createAgentSwitch({
           })
           const cwd = hydraAgentFolder({ hydraId })
           const settings = agentSettings({ agent: candidate })
-          const provider = providerOf({ provider: providerIdOf({ harness: candidate.harness }) })
+          const provider = providerOf({
+            provider: providerIdOf({ harness: candidate.harness }),
+            taskId: HYDRA_CARD,
+          })
           const summarySettings = {
             ...settings,
             mode: PROVIDERS[candidate.harness].defaultMode,
