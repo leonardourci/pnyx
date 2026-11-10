@@ -25,12 +25,14 @@ export function Tooltip({
   children,
   interactive = false,
   label,
+  disabled = false,
 }: {
   content: ReactNode
   delay?: number
   children: ReactNode
   interactive?: boolean
   label?: string
+  disabled?: boolean
 }) {
   const id = useId()
   const anchor = useRef<HTMLSpanElement>(null)
@@ -63,6 +65,10 @@ export function Tooltip({
   }
 
   const show = () => {
+    if (disabled) {
+      return
+    }
+
     clearTimeout(closeTimer.current)
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,

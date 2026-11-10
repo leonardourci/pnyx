@@ -31,20 +31,31 @@ export function Disclosure({
   )
 }
 
+// preview: shown while folded, so the rest of text renders only once opened. open and toggle let a caller own the state.
 export function CollapsibleText({
   text,
+  preview: folded,
+  open,
+  toggle,
   className = '',
 }: {
   text: string
+  preview?: string
+  open?: boolean
+  toggle?(): void
   className?: string
 }) {
   const [
-      expanded,
-      setExpanded,
+      own,
+      setOwn,
     ] = useState(false), [
-      long,
-      setLong,
+      overflowing,
+      setOverflowing,
     ] = useState(false), id = useId()
+  const expanded = open ?? own
+  const flip = toggle ?? (() => setOwn(!own))
+  const shown = expanded || folded === undefined ? text : folded
+  const long = overflowing || shown !== text
   const preview = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(
@@ -55,7 +66,7 @@ export function CollapsibleText({
         return
       }
 
-      const measure = () => setLong(element.scrollHeight > element.clientHeight + 1)
+      const measure = () => setOverflowing(element.scrollHeight > element.clientHeight + 1)
       measure()
       const observer = new ResizeObserver(measure)
       observer.observe(element)
@@ -70,14 +81,14 @@ export function CollapsibleText({
 
   return (
     <div className={`collapsible-text ${className}`}>
-      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><RichText text={text} /></div>
+      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><RichText text={shown} /></div>
       {(long || expanded) && (
         <Button
           contentEditable={false}
           className="show-more"
           aria-expanded={expanded}
           aria-controls={id}
-          onClick={() => setExpanded(!expanded)}
+          onClick={flip}
         >
           {expanded ? 'Show less' : 'Show more'}
         </Button>
