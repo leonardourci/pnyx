@@ -3,6 +3,7 @@ import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { runCli } from '#cli/run.ts'
 import { log } from './diagnostics.ts'
+import { DEFAULT_HYDRA } from './home-migration.ts'
 import { IDENTITY, requestExitCode, requestInvocation, runForClient } from './request-context.ts'
 
 export type RunRequest = {
@@ -19,20 +20,20 @@ export type RunAnswer = {
 
 const strings = ({ value }: { value: unknown }) => Array.isArray(value) && value.every(item => typeof item === 'string')
 
-// The Hydra a command line names, for its log line; the command parses its own flags.
+// The Hydra a command line runs on, for its log line: the one it names, or the default one; the command parses its own flags.
 function namedHydra({
   argv,
   env,
-}: Pick<RunRequest, 'argv' | 'env'>): string | undefined {
+}: Pick<RunRequest, 'argv' | 'env'>): string {
   const inline = argv.find(arg => arg.startsWith('--hydra='))
 
   if (inline) {
-    return inline.slice('--hydra='.length)
+    return inline.slice('--hydra='.length) || DEFAULT_HYDRA
   }
 
   const flag = argv.indexOf('--hydra')
 
-  return flag < 0 ? env.PNYX_HYDRA : argv[flag + 1]
+  return (flag < 0 ? env.PNYX_HYDRA : argv[flag + 1]) || DEFAULT_HYDRA
 }
 
 function request({ body }: { body: unknown }): RunRequest {
@@ -105,7 +106,8 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
       log({
         operation: 'command.cli',
         name: requestInvocation().name,
-        actor: env.PNYX_ACTOR,
+        // An unlabelled command line is the owner's terminal, as its events record it.
+        actor: env.PNYX_ACTOR || 'cli',
         hydraId: namedHydra({
           argv,
           env,
