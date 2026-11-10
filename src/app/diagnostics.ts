@@ -188,11 +188,11 @@ export function writeLine({
   } = line
   // A failure always has an id, so a retry can share it and the timeline can page by it.
   const failureId = level && !operationId ? randomUUID() : operationId
+  let text: string
 
-  append({
-    day: logDay({ at }),
-    severe: level !== undefined,
-    text: JSON.stringify({
+  // A line that cannot be built must not break the action it describes; a failure still reaches stderr.
+  try {
+    text = JSON.stringify({
       v: 1,
       at,
       level,
@@ -205,7 +205,19 @@ export function writeLine({
       ms: ms === undefined ? undefined : oneDecimal({ value: ms }),
       rss: source === 'server' ? process.memoryUsage.rss() : undefined,
       error: level && error !== undefined ? failure({ error }) : undefined,
-    }),
+    })
+  } catch (unbuilt) {
+    if (level) {
+      console.error(`${operation}: ${String(unbuilt)}`)
+    }
+
+    return
+  }
+
+  append({
+    day: logDay({ at }),
+    severe: level !== undefined,
+    text,
   })
 }
 
