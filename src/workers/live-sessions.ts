@@ -65,7 +65,13 @@ export function createLiveSessions({
   closing(): boolean
   controller: AbortController
   children: ReturnType<typeof trackChildren>
-  streamed({ session }: { session: string }): void
+  streamed({
+    session,
+    text,
+  }: {
+    session: string
+    text?: boolean
+  }): void
   usageTracker: ReturnType<typeof createUsageTracker>
   compaction: ReturnType<typeof createCompactionControl>
   at(): string
@@ -635,7 +641,10 @@ export function createLiveSessions({
 
         if (typeof activity !== 'string') {
           entry.replies.update(activity)
-          streamed({ session: key })
+          streamed({
+            session: key,
+            text: true,
+          })
 
           continue
         }

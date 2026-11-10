@@ -13,6 +13,7 @@ export const MIN_SPEED = 120 / 1000
 const REACH = 200
 const FROM_START = 400
 const LONG_WORD = 24
+const MAX_FRAME_ELAPSED_MS = 100
 
 const MARKER_LINE = /^ {0,3}(?:#{1,6}|[-*+]|\d{1,9}[.)]?|>|[-=_*]+)?[ \t]*$/
 const MARKER = /^ {0,3}(?:#{1,6}|[-*+]|\d{1,9}[.)]|>)[ \t]+/
@@ -432,7 +433,13 @@ export function revealStep({
 }) {
   const target = Math.min(
     text.length,
-    cursor + speed * elapsed,
+    cursor + speed * Math.max(
+      0,
+      Math.min(
+        elapsed,
+        MAX_FRAME_ELAPSED_MS,
+      ),
+    ),
   )
   const word = typingEnd({
     text,

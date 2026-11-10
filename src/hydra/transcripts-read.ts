@@ -467,6 +467,19 @@ function threadEvents({
   }))
 }
 
+export function threadAction({
+  event,
+  state,
+}: {
+  event: HydraEvent
+  state: HydraState
+}): boolean {
+  const task = state.cards[event.cardId]
+
+  return event.actor === 'hydra' && event.type !== 'hydra.message' && event.type !== 'chat.message'
+    && task !== undefined && !isManagedTask({ card: task })
+}
+
 export function readThread(
   {
     hydraId,
@@ -850,13 +863,14 @@ export function readThread(
     const firstAt = result.entries[0]?.at
     const beforeAt = excludedAt.toSorted()[0]
     result.actions = repliedEvents({ hydraId }).filter(event => {
-      const task = state.cards[event.cardId]
       const afterStart = firstAt !== undefined && event.at >= firstAt
       const beforeEnd = beforeAt === undefined || event.at <= beforeAt
       const inPage = afterStart && beforeEnd
 
-      return inPage && event.actor === 'hydra' && event.type !== 'chat.message'
-        && task !== undefined && !isManagedTask({ card: task })
+      return inPage && threadAction({
+        event,
+        state,
+      })
     })
   }
 

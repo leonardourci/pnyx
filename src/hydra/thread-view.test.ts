@@ -1,4 +1,4 @@
-import { hydraThreadView } from './thread-view.ts'
+import { createHydraThreadView, hydraThreadView } from './thread-view.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -738,6 +738,186 @@ test(
         'Please check',
         'A response',
       ],
+    )
+  },
+)
+
+test(
+  'live growth preserves completed replies, quiet boundaries and folded progress across transport chunks',
+  () => {
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: 'hydra',
+          title: 'Hydra',
+        },
+      },
+    })
+    state.cards[HYDRA_CARD]!.agent = {
+      provider: 'codex',
+      sessionId: 'fixture',
+    }
+    const base: ThreadPage = {
+      card: HYDRA_CARD,
+      session: 'fixture',
+      route: true,
+      watching: 'unknown',
+      entries: [
+        {
+          id: 'instructions',
+          kind: 'message',
+          role: 'user',
+          text: '# AGENTS.md instructions\n<INSTRUCTIONS>\nSynthetic guidance\n</INSTRUCTIONS>',
+          at: '2026-11-06T00:00:00Z',
+        },
+        {
+          id: 'owner',
+          kind: 'message',
+          role: 'user',
+          text: 'Explain it',
+          at: '2026-11-06T00:00:01Z',
+        },
+        {
+          id: 'old',
+          kind: 'message',
+          role: 'assistant',
+          text: 'Earlier answer',
+          final: true,
+          at: '2026-11-06T00:00:02Z',
+        },
+      ],
+    }
+    const project = createHydraThreadView({
+      state,
+      page: base,
+      tools: true,
+      thinking: true,
+    })
+    const latest: ThreadPage = {
+      ...base,
+      entries: [
+        {
+          id: 'continue',
+          kind: 'message',
+          role: 'user',
+          text: 'Continue',
+          at: '2026-11-06T00:00:03Z',
+        },
+      ],
+    }
+    const live = liveReplies()
+    live.start({
+      offset: 0,
+      ownerStarted: true,
+    })
+    live.update({
+      id: 'answer',
+      text: 'N',
+      append: true,
+    })
+    assert.deepEqual(
+      project({ page: live.page({ page: latest }) }).conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+        'Continue',
+      ],
+    )
+    live.update({
+      id: 'answer',
+      text: 'O_REPLY',
+      append: true,
+    })
+    assert.deepEqual(
+      project({ page: live.page({ page: latest }) }).conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+        'Continue',
+      ],
+    )
+    live.update({
+      id: 'answer',
+      text: 'Normal answer.',
+      append: false,
+    })
+    assert.deepEqual(
+      project({ page: live.page({ page: latest }) }).conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+        'Continue',
+        'Normal answer.',
+      ],
+    )
+    const longAnswer = 'More detail. '.repeat(200)
+    live.update({
+      id: 'answer',
+      text: longAnswer,
+      append: false,
+    })
+    assert.equal(
+      project({ page: live.page({ page: latest }) }).conversation.entries.at(-1)!.text,
+      longAnswer,
+    )
+    live.update({
+      id: 'answer',
+      text: 'The ending.',
+      append: false,
+    })
+    assert.equal(
+      project({ page: live.page({ page: latest }) }).conversation.entries.at(-1)!.text,
+      'The ending.',
+    )
+    live.update({
+      id: 'second',
+      text: 'A separate reply.',
+      append: false,
+    })
+    const second = project({ page: live.page({ page: latest }) })
+    assert.deepEqual(
+      second.conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+        'Continue',
+        'A separate reply.',
+      ],
+    )
+    assert.deepEqual(
+      second.conversation.folds['live:second']!.notes.map(entry => entry.text),
+      ['The ending.'],
+    )
+    live.update({
+      id: 'answer',
+      text: 'Revised progress.',
+      append: false,
+    })
+    const revised = project({ page: live.page({ page: latest }) })
+    assert.deepEqual(
+      revised.conversation.folds['live:second']!.notes.map(entry => entry.text),
+      ['Revised progress.'],
+    )
+    assert.equal(
+      revised.entries.find(entry => entry.id === 'instructions')!.text,
+      '',
+    )
+    assert.equal(
+      revised.entries.find(entry => entry.id === 'instructions')!.hidden,
+      true,
+    )
+    live.finish()
+    assert.equal(
+      project({ page: live.page({ page: latest }) }).conversation.entries.at(-1)!.streaming,
+      false,
     )
   },
 )
