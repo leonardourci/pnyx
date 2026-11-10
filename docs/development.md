@@ -17,7 +17,7 @@ pnpm test
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
-`pnpm run build` compiles into `dist.next` and renames it to `dist` only after the whole build passed, so a failed or interrupted build leaves the last working `dist`.
+`pnpm run build` compiles into its own `dist.next.<pid>` folder and renames it to `dist` only after the whole build passed, so a failed or interrupted build leaves the last working `dist`.
 
 Imports across folders use the `package.json` aliases: `#<folder>/<file>.ts` resolves to `src/` and `#web-<folder>/<file>` to `web/src/`. Built code resolves `#…` to `dist/`, so anything that runs TypeScript from `src/` passes `--conditions=source`, or its `#` imports load the built files. The test launcher, `pnpm dev:server` and the Vite scripts pass it. A child the server starts with `execFile` and a login service installed from source take it from `SOURCE_CONDITIONS` in `src/app/source-conditions.ts`. The session-start hook adds it when its CLI is a `.ts` file.
 

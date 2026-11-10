@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
@@ -52,7 +52,7 @@ const building = ({ version }: { version: string }) => ({ out }: { out: string }
 
 let root: string
 
-// What the built CLI prints, which only a whole file can.
+// Runs the built CLI; a half-written file fails to parse.
 const cli = () => execFileSync(
   process.execPath,
   [
@@ -127,31 +127,34 @@ test(
 test(
   'a build killed halfway keeps the old dist, and the next build still passes',
   async () => {
-    const half = join(
+    const written = join(
       root,
-      'dist.next',
-      CLI,
+      'written',
     )
     // Writes half a CLI, then hangs as a compiler cut mid-write would have.
     const hanging = `
-      const { mkdirSync, writeFileSync } = require('node:fs')
-      const { execFileSync } = require('node:child_process')
-      const { dirname } = require('node:path')
-      import(${JSON.stringify(new URL(
+      import { execFileSync } from 'node:child_process'
+      import { mkdirSync, writeFileSync } from 'node:fs'
+      import { join } from 'node:path'
+      import { stagedBuild } from ${JSON.stringify(new URL(
         './staged.ts',
         import.meta.url,
-      ).href)}).then(({ stagedBuild }) => stagedBuild({
+      ).href)}
+
+      stagedBuild({
         root: ${JSON.stringify(root)},
-        build: () => {
-          mkdirSync(dirname(${JSON.stringify(half)}), { recursive: true })
-          writeFileSync(${JSON.stringify(half)}, 'console.lo')
+        build: ({ out }) => {
+          mkdirSync(join(out, 'cli'), { recursive: true })
+          writeFileSync(join(out, ${JSON.stringify(CLI)}), 'console.lo')
+          writeFileSync(${JSON.stringify(written)}, '')
           execFileSync('sleep', ['30'])
         },
-      }))
+      })
     `
     const child = spawn(
       process.execPath,
       [
+        '--input-type=module',
         '-e',
         hanging,
       ],
@@ -166,17 +169,22 @@ test(
     ))
     const deadline = Date.now() + WRITTEN_MS
 
-    while (!existsSync(half) && Date.now() < deadline) {
-      await delay(20)
+    try {
+      while (!existsSync(written) && Date.now() < deadline) {
+        await delay(20)
+      }
+
+      assert.ok(existsSync(written))
+    } finally {
+      // The whole group, as a stopped session takes its build down with it.
+      process.kill(
+        -child.pid!,
+        'SIGKILL',
+      )
+      await closed
     }
 
-    assert.ok(existsSync(half))
-    // The whole group, as a stopped session takes its build down with it.
-    process.kill(
-      -child.pid!,
-      'SIGKILL',
-    )
-    await closed
+    rmSync(written)
 
     assert.equal(
       cli(),
@@ -195,6 +203,34 @@ test(
     assert.deepEqual(
       readdirSync(root),
       ['dist'],
+    )
+  },
+)
+
+test(
+  'a build finds the last working dist a swap cut halfway left aside',
+  () => {
+    renameSync(
+      join(
+        root,
+        'dist',
+      ),
+      join(
+        root,
+        'dist.old',
+      ),
+    )
+
+    assert.throws(() => stagedBuild({
+      root,
+      build: () => {
+        throw new Error('error TS2322')
+      },
+    }))
+
+    assert.equal(
+      cli(),
+      'one',
     )
   },
 )
