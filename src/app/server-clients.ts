@@ -13,7 +13,8 @@ import { readEvents } from './event-log.ts'
 import type { createHost } from './host.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import { listHydras } from './server-hydras.ts'
-import { MAX_BUFFERED, type HydraClient, type ServerMessage } from './server-transport.ts'
+import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
+import { background } from './background.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
 
 const shownTraces = ({
@@ -57,7 +58,13 @@ export function createServerClients({
     ws: HydraClient
     card: Card
   }): void
-  refreshThread({ ws }: { ws: HydraClient }): void
+  refreshThread({
+    ws,
+    resync,
+  }: {
+    ws: HydraClient
+    resync?: boolean
+  }): void
   feed(): {
     latest: Record<string, LatestMessage>
     actions: Record<string, CurrentAction>
@@ -78,7 +85,91 @@ export function createServerClients({
     return derivedHistory
   }
 
-  const resyncing = new WeakSet<HydraClient>()
+  type Latest = Extract<ServerMessage, { type: 'latest' }>
+  interface Pending {
+    snapshot: boolean
+    latest?: Latest
+    queue?: Extract<ServerMessage, { type: 'hydraQueue' }>
+    timer?: ReturnType<typeof setTimeout>
+  }
+  const recovery = new Map<HydraClient, Pending>()
+  const closedClients = new WeakSet<HydraClient>()
+
+  const mergeLatest = ({
+    before,
+    latest,
+  }: {
+    before?: Latest
+    latest: Latest
+  }): Latest => {
+    const previous = before ?? {
+      type: 'latest',
+      messages: {},
+      actions: {},
+    }
+
+    return {
+      ...previous,
+      ...latest,
+      messages: {
+        ...previous.messages,
+        ...latest.messages,
+      },
+      actions: {
+        ...previous.actions,
+        ...latest.actions,
+      },
+    }
+  }
+
+  const clearRecovery = ({ ws }: { ws: HydraClient }) => {
+    clearTimeout(recovery.get(ws)?.timer)
+    recovery.delete(ws)
+  }
+
+  const retry = ({ ws }: { ws: HydraClient }) => {
+    const pending = recovery.get(ws)
+
+    if (pending && !pending.timer) {
+      pending.timer = setTimeout(
+        () => background({
+          name: 'socket recovery',
+          run: () => flush({ ws }),
+        }),
+        SOCKET_RETRY_MS,
+      )
+      pending.timer.unref()
+    }
+  }
+
+  const defer = ({
+    ws,
+    message,
+  }: {
+    ws: HydraClient
+    message: ServerMessage
+  }) => {
+    const pending: Pending = recovery.get(ws) ?? { snapshot: false }
+
+    if (message.type === 'event' || message.type === 'snapshot' || message.type === 'hydras') {
+      pending.snapshot = true
+    } else if (message.type === 'latest') {
+      pending.latest = mergeLatest({
+        before: pending.latest,
+        latest: message,
+      })
+    } else if (message.type === 'hydraQueue') {
+      pending.queue = message
+    } else {
+      return
+    }
+
+    recovery.set(
+      ws,
+      pending,
+    )
+    retry({ ws })
+  }
 
   const send = ({
     ws,
@@ -86,16 +177,46 @@ export function createServerClients({
   }: {
     ws: HydraClient
     message: ServerMessage
-  }) => {
+  }): boolean => {
+    if (closedClients.has(ws) || ws.readyState !== ws.OPEN) {
+      return false
+    }
+
     if (ws.bufferedAmount > MAX_BUFFERED) {
-      resyncing.add(ws)
+      defer({
+        ws,
+        message,
+      })
 
-      return
+      return false
     }
 
-    if (ws.readyState === ws.OPEN) {
-      ws.send({ message })
+    const pending = recovery.get(ws)
+
+    if (message.type === 'latest' && pending?.latest) {
+      message = mergeLatest({
+        before: pending.latest,
+        latest: message,
+      })
     }
+
+    ws.send({ message })
+
+    if (pending) {
+      if (message.type === 'latest') {
+        delete pending.latest
+      }
+
+      if (message.type === 'hydraQueue') {
+        delete pending.queue
+      }
+
+      if (!pending.snapshot && !pending.latest && !pending.queue) {
+        clearRecovery({ ws })
+      }
+    }
+
+    return true
   }
 
   const queueMessage = (): ServerMessage => {
@@ -131,8 +252,8 @@ export function createServerClients({
     ws: HydraClient
     queue?: ServerMessage
   }) => {
-    resyncing.delete(ws)
-    send({
+    const pending = recovery.get(ws)
+    const accepted = send({
       ws,
       message: {
         type: 'snapshot',
@@ -140,8 +261,13 @@ export function createServerClients({
         state: state(),
       },
     })
-    ws.send({
-      message: {
+
+    if (!accepted) {
+      return false
+    }
+
+    const latest = mergeLatest({
+      before: {
         type: 'latest',
         ...spendNow,
         usage: agents().usageViews({
@@ -151,12 +277,16 @@ export function createServerClients({
         messages: feed().latest,
         actions: feed().actions,
       },
+      latest: pending?.latest ?? {
+        type: 'latest',
+        messages: {},
+        actions: {},
+      },
     })
-
-    sendQueue({
-      ws,
-      queue,
-    })
+    clearRecovery({ ws })
+    // Once accepted, the snapshot and its current facts form one recovery batch.
+    ws.send({ message: latest })
+    ws.send({ message: queue ?? queueMessage() })
 
     if (hydraSubscribers.has(ws)) {
       ws.send({
@@ -167,14 +297,65 @@ export function createServerClients({
         },
       })
     }
+
+    return true
   }
 
-  // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
+  const flush = ({ ws }: { ws: HydraClient }) => {
+    const pending = recovery.get(ws)
+
+    if (!pending) {
+      return
+    }
+
+    clearTimeout(pending.timer)
+    pending.timer = undefined
+
+    if (closedClients.has(ws) || ws.readyState !== ws.OPEN) {
+      clearRecovery({ ws })
+
+      return
+    }
+
+    if (ws.bufferedAmount > MAX_BUFFERED) {
+      retry({ ws })
+
+      return
+    }
+
+    if (pending.snapshot) {
+      if (sendSnapshot({ ws })) {
+        refreshThread({
+          ws,
+          resync: true,
+        })
+      }
+
+      return
+    }
+
+    if (pending.latest) {
+      send({
+        ws,
+        message: pending.latest,
+      })
+    }
+
+    if (pending.queue) {
+      send({
+        ws,
+        message: pending.queue,
+      })
+    }
+
+    retry({ ws })
+  }
+
   const broadcast = ({ event }: { event: HydraEvent }) => {
     const queue = queueMessage()
 
     for (const ws of clients) {
-      if (!resyncing.has(ws)) {
+      if (!recovery.get(ws)?.snapshot) {
         send({
           ws,
           message: {
@@ -186,11 +367,8 @@ export function createServerClients({
           ws,
           queue,
         })
-      } else if (ws.bufferedAmount <= MAX_BUFFERED) {
-        sendSnapshot({
-          ws,
-          queue,
-        })
+      } else {
+        flush({ ws })
       }
 
       for (const map of threadSubscriptions) {
@@ -338,6 +516,15 @@ export function createServerClients({
     spend,
     sendSettings,
     resume,
+    closeClient({ ws }: { ws: HydraClient }) {
+      closedClients.add(ws)
+      clearRecovery({ ws })
+    },
+    close() {
+      for (const ws of recovery.keys()) {
+        clearRecovery({ ws })
+      }
+    },
     get spendNow() {
       return spendNow
     },

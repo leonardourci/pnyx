@@ -7,6 +7,7 @@ import { findCard } from '#tasks/push-rules.ts'
 import type { HydraState } from '#app/model.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
 import type { CommandRequest } from './dispatch.ts'
+import { background } from '#app/background.ts'
 
 type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 
@@ -98,7 +99,6 @@ export function threadCommand({
     && old.path === threadPath({ card }) && old.paseo === card.agent?.paseoAgentId
 
   if (!sameThread) {
-    unbind()
     bindThread({
       ws,
       card,
@@ -106,27 +106,23 @@ export function threadCommand({
   }
 
   const sub = map.get(ws)!
-  void threadPage({
-    sub,
-    card,
-    before,
-    retain,
-  }).then(
-    thread => {
-      if (ws.readyState === ws.OPEN) {
-        send({
-          ws,
-          message: {
-            type: 'receipt',
-            id,
-            thread,
-          },
+  background({
+    name: 'conversation read',
+    run: async () => {
+      try {
+        await threadPage({
+          sub,
+          card,
+          before,
+          retain,
+          receipt: id,
+        })
+      } catch (error) {
+        fail({
+          error: error instanceof Error ? error.message : String(error),
+          code: error instanceof HydraError ? error.code : 'UNKNOWN',
         })
       }
     },
-    (error: Error) => fail({
-      error: error.message,
-      code: error instanceof HydraError ? error.code : 'UNKNOWN',
-    }),
-  )
+  })
 }

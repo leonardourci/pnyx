@@ -87,8 +87,7 @@ export interface ThreadPage {
   watching: 'unknown'
 }
 const MAX_BYTES = 10 * 1024 * 1024
-// Chunk long entries instead of losing their tail. Sixty bounded entries stay
-// below the socket budget even for JSON-escaped control characters.
+// Parts bound each transport entry without cutting a logical message at a page boundary.
 const MAX_TEXT = 1000
 
 export const replyEntryId = ({ reply }: { reply: string }) => `reply:${reply}`
@@ -816,8 +815,15 @@ export function readThread(
   }))
   const page: typeof candidates = []
 
+  const incomplete = () => {
+    const firstPart = page.at(-1)?.item.part
+
+    return firstPart !== undefined && firstPart > 0
+  }
+
   // Consume a contiguous suffix from each source even when a record was timestamped earlier.
-  while (page.length < PAGE && (native.length || replies.length)) {
+  // A boundary message stays whole even when it exceeds the page target.
+  while ((page.length < PAGE || incomplete()) && (native.length || replies.length)) {
     const nativeLast = native.at(-1)
     const replyLast = replies.at(-1)
     const takeNative = nativeLast && (!replyLast || (nativeLast.item.at ?? '') >= (replyLast.item.at ?? ''))

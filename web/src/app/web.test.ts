@@ -381,7 +381,6 @@ test(
         homes: [],
         before: cursor,
       })
-      assert.ok(page.entries.length <= 60)
       pages.unshift(page.entries); cursor = page.older
       assert.ok(
         pages.length < 10,
@@ -389,6 +388,20 @@ test(
       )
     } while (cursor)
 
+    assert.deepEqual(
+      pages.map(page => page.length),
+      [
+        100,
+        60,
+      ],
+    )
+    assert.deepEqual(
+      pages.map(page => page[0]?.part),
+      [
+        0,
+        undefined,
+      ],
+    )
     const entries = pages.flat()
     assert.equal(
       new Set(entries.map(e => e.id)).size,

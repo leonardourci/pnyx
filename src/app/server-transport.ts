@@ -24,6 +24,8 @@ export const commands = {
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
 export const RESUME_LIMIT = 1000
 
+export const SOCKET_RETRY_MS = 100
+
 // A tab with more than this unsent is dropped from the event stream and resynced with a snapshot.
 export const MAX_BUFFERED = 1 << 20
 

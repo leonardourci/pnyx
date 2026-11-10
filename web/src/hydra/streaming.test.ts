@@ -2,7 +2,99 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
 import { liveReplies } from '#workers/streaming.ts'
+import { splitEntry } from '#hydra/transcripts-read.ts'
+import { joinMessageParts } from '#hydra/history.ts'
+import { mergeThreadPages } from '#hydra/thread-history.ts'
+import { keepStreamedKeys } from './chat.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
+
+test(
+  'a live reply keeps every transport part and its render key through a long native handoff',
+  () => {
+    const stream = liveReplies()
+    const text = 'A complete streamed paragraph. '.repeat(2200)
+    const splitAt = 60_000
+    const page: ThreadPage = {
+      card: '$hydra',
+      session: 'fixture',
+      entries: [],
+      route: true,
+      watching: 'unknown',
+    }
+    stream.start({ offset: 0 })
+    stream.update({
+      id: 'answer',
+      text: text.slice(
+        0,
+        splitAt,
+      ),
+      append: false,
+    })
+    const before = stream.page({ page })
+    stream.update({
+      id: 'answer',
+      text: text.slice(splitAt),
+      append: true,
+    })
+    const growing = mergeThreadPages({
+      before,
+      latest: stream.page({ page }),
+    })
+    const joined = joinMessageParts({ entries: growing.entries })
+    assert.equal(
+      joined.length,
+      1,
+    )
+    assert.equal(
+      joined[0]!.text,
+      text,
+      'the growing reply must retain its full source',
+    )
+    assert.equal(
+      joined[0]!.id,
+      'live:answer',
+    )
+    assert.ok(growing.entries.every(entry => entry.text.length <= 1000))
+    const keys = new Map<string, string>()
+    const live = keepStreamedKeys({
+      entries: joined,
+      previous: [],
+      keys,
+    })
+    stream.finish()
+    const saved = stream.page({
+      page: {
+        ...page,
+        entries: splitEntry({
+          entry: {
+            id: '100:m0',
+            role: 'assistant',
+            kind: 'message',
+            text,
+            final: true,
+          },
+        }),
+      },
+    })
+    const final = keepStreamedKeys({
+      entries: joinMessageParts({ entries: saved.entries }),
+      previous: live,
+      keys,
+    })
+    assert.equal(
+      final.length,
+      1,
+    )
+    assert.equal(
+      final[0]!.text,
+      text,
+    )
+    assert.equal(
+      final[0]!.renderKey,
+      'live:answer',
+    )
+  },
+)
 
 test(
   'Claude forwards text before the result under one id per block, excluding thinking and nested agent output',
