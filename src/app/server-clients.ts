@@ -86,16 +86,20 @@ export function createServerClients({
   }: {
     ws: HydraClient
     message: ServerMessage
-  }) => {
+  }): boolean => {
     if (ws.bufferedAmount > MAX_BUFFERED) {
       resyncing.add(ws)
 
-      return
+      return false
     }
 
     if (ws.readyState === ws.OPEN) {
       ws.send({ message })
+
+      return true
     }
+
+    return false
   }
 
   const queueMessage = (): ServerMessage => {

@@ -111,6 +111,7 @@ export async function mountOwnedHydra({
     threadSubscriptions,
     subscriptionMap,
     threadTimers,
+    threadDelivery,
     refreshThread,
     threadPage,
     bindThread,
@@ -495,6 +496,10 @@ export async function mountOwnedHydra({
       receive({ message }) {
         if (message?.type === 'resync') {
           sendSnapshot({ ws })
+          refreshThread({
+            ws,
+            resync: true,
+          })
         } else if (message?.type === 'command') {
           runCommand({
             ws,
@@ -521,7 +526,13 @@ export async function mountOwnedHydra({
         threadTimers.delete(ws)
 
         for (const map of threadSubscriptions) {
-          map.get(ws)?.watcher?.close()
+          const sub = map.get(ws)
+
+          if (sub) {
+            sub.watcher?.close()
+            threadDelivery.remove({ key: sub })
+          }
+
           map.delete(ws)
         }
       },
@@ -599,6 +610,7 @@ export async function mountOwnedHydra({
     folders.clear()
     transcripts.clear()
     transcriptPolls.clear()
+    threadDelivery.close()
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(feed.latestTimer)
     clearTimeout(tick.expiryTimer)

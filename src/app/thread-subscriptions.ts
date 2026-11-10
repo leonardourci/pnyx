@@ -15,6 +15,12 @@ import { LATEST_DELAY_MS } from './latest-feed.ts'
 import type { EventType, HydraEvent, HydraState } from './model.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { watchPath, type PathWatch } from './watch.ts'
+import { createThreadDelivery } from './thread-delivery.ts'
+
+interface PreparedThread {
+  thread: ThreadPage
+  signature?: string
+}
 
 export type Subscription = {
   card: string
@@ -82,7 +88,7 @@ export function createThreadSubscriptions({
   }: {
     ws: HydraClient
     message: ServerMessage
-  }): void
+  }): boolean
   agents(): Pick<ReturnType<typeof createHost>, 'thread'>
 }) {
   const subscriptions = new Map<HydraClient, Subscription>()
@@ -94,6 +100,33 @@ export function createThreadSubscriptions({
   const subscriptionMap = ({ card }: { card: string }) =>
     card === HYDRA_CARD ? hydraSubscriptions : subscriptions
   const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
+  const threadDelivery = createThreadDelivery({
+    send,
+    closed,
+  })
+
+  const deliver = ({
+    ws,
+    sub,
+    prepared,
+    receipt,
+  }: {
+    ws: HydraClient
+    sub: Subscription
+    prepared: PreparedThread
+    receipt?: string
+  }) => threadDelivery.push({
+    key: sub,
+    ws,
+    thread: prepared.thread,
+    receipt,
+    current: () => subscriptionMap({ card: sub.card }).get(ws) === sub,
+    accepted: () => {
+      if (prepared.signature !== undefined) {
+        sub.sent = prepared.signature
+      }
+    },
+  })
 
   const prepareThread = ({
     sub,
@@ -106,9 +139,9 @@ export function createThreadSubscriptions({
     older?: boolean
     // A push the tab did not ask for is skipped when the page has not changed.
     push?: boolean
-  }): ThreadPage | undefined => {
+  }): PreparedThread | undefined => {
     if (page.card !== HYDRA_CARD) {
-      return page
+      return { thread: page }
     }
 
     const current = state()
@@ -140,11 +173,10 @@ export function createThreadSubscriptions({
       },
     })
 
-    if (push && sent === sub.sent) {
+    if (push && sent === sub.sent && !threadDelivery.has({ key: sub })) {
       return undefined
     }
 
-    sub.sent = sent
     sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
       card.id,
       card.title,
@@ -158,16 +190,35 @@ export function createThreadSubscriptions({
     }
 
     return {
-      ...prepared,
-      conversation: {
-        ...prepared.conversation,
-        stream: sub.view.id,
-        version: ++sub.view.version,
+      signature: sent,
+      thread: {
+        ...prepared,
+        conversation: {
+          ...prepared.conversation,
+          stream: sub.view.id,
+          version: ++sub.view.version,
+        },
       },
     }
   }
 
-  const refreshThread = ({ ws }: { ws: HydraClient }) => {
+  const refreshThread = ({
+    ws,
+    resync = false,
+  }: {
+    ws: HydraClient
+    resync?: boolean
+  }) => {
+    if (resync) {
+      for (const map of threadSubscriptions) {
+        const sub = map.get(ws)
+
+        if (sub) {
+          sub.sent = undefined
+        }
+      }
+    }
+
     if (closed() || threadTimers.has(ws)) {
       return
     }
@@ -226,19 +277,17 @@ export function createThreadSubscriptions({
                         return
                       }
 
-                      const thread = prepareThread({
+                      const prepared = prepareThread({
                         sub,
                         page,
                         push: true,
                       })
 
-                      if (thread) {
-                        send({
+                      if (prepared) {
+                        deliver({
                           ws,
-                          message: {
-                            type: 'thread',
-                            thread,
-                          },
+                          sub,
+                          prepared,
                         })
                       }
                     },
@@ -250,7 +299,7 @@ export function createThreadSubscriptions({
               }
 
               try {
-                const thread = prepareThread({
+                const prepared = prepareThread({
                   sub,
                   page: agents().thread({
                     card,
@@ -264,13 +313,11 @@ export function createThreadSubscriptions({
                   push: true,
                 })
 
-                if (thread) {
-                  send({
+                if (prepared) {
+                  deliver({
                     ws,
-                    message: {
-                      type: 'thread',
-                      thread,
-                    },
+                    sub,
+                    prepared,
                   })
                 }
               } catch {
@@ -289,11 +336,13 @@ export function createThreadSubscriptions({
     card,
     before,
     retain,
+    receipt,
   }: {
     sub: Subscription
     card: Card
     before?: string
     retain?: ThreadBoundary
+    receipt?: string
   }): Promise<ThreadPage> => {
     const native = sub.native
 
@@ -345,11 +394,22 @@ export function createThreadSubscriptions({
         })
       }
 
-      return prepareThread({
+      const prepared = prepareThread({
         sub,
         page,
         older: before !== undefined,
       })!
+
+      if (sub.client && (receipt !== undefined || threadDelivery.has({ key: sub }))) {
+        deliver({
+          ws: sub.client,
+          sub,
+          prepared,
+          receipt,
+        })
+      }
+
+      return prepared.thread
     } finally {
       if (retain) {
         sub.restoring = (sub.restoring ?? 1) - 1
@@ -370,7 +430,13 @@ export function createThreadSubscriptions({
     card: Card
   }) => {
     const map = subscriptionMap({ card: card.id })
-    map.get(ws)?.watcher?.close()
+    const previous = map.get(ws)
+
+    if (previous) {
+      previous.watcher?.close()
+      threadDelivery.remove({ key: previous })
+    }
+
     const path = threadPath({ card })
     const sub: Subscription = {
       card: card.id,
@@ -444,6 +510,7 @@ export function createThreadSubscriptions({
     threadSubscriptions,
     subscriptionMap,
     threadTimers,
+    threadDelivery,
     refreshThread,
     threadPage,
     bindThread,
