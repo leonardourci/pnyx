@@ -39,6 +39,15 @@ export function startProcessLines({ every = PROCESS_LINE_MS }: { every?: number 
   delay.enable()
   observer.observe({ entryTypes: ['gc'] })
 
+  // The histogram records the time between its timer's firings, so the interval itself is taken off; a timer that
+  // fired a little early reads as no delay.
+  const loopDelay = ({ ns }: { ns: number }) => oneDecimal({
+    value: Math.max(
+      0,
+      ns / NS_PER_MS - LOOP_DELAY_RESOLUTION_MS,
+    ),
+  })
+
   const sample = () => {
     const now = performance.now()
     const span = now - since
@@ -53,9 +62,9 @@ export function startProcessLines({ every = PROCESS_LINE_MS }: { every?: number 
       // Percent of one core, so it can pass 100.
       cpuPercent: oneDecimal({ value: (used.user + used.system) / US_PER_MS / span * PERCENT }),
       loopUtilization: Math.round(loopShare * SHARE_DECIMALS) / SHARE_DECIMALS,
-      loopDelayMs: oneDecimal({ value: delay.mean / NS_PER_MS }),
-      loopDelayP99Ms: oneDecimal({ value: delay.percentile(LOOP_DELAY_PERCENTILE) / NS_PER_MS }),
-      loopDelayMaxMs: oneDecimal({ value: delay.max / NS_PER_MS }),
+      loopDelayMs: loopDelay({ ns: delay.mean }),
+      loopDelayP99Ms: loopDelay({ ns: delay.percentile(LOOP_DELAY_PERCENTILE) }),
+      loopDelayMaxMs: loopDelay({ ns: delay.max }),
       heapUsed: memory.heapUsed,
       heapTotal: memory.heapTotal,
       heapLarge: large?.space_used_size,
