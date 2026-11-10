@@ -386,7 +386,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'logMaxMB',
     section: 'logs',
     label: 'Log size limit',
-    description: 'The most space the logs take together; the oldest day is deleted first.',
+    description: 'The most space the logs take together. Older days go first; today’s file stays, and past the limit it keeps only warnings and errors.',
     related: [
       'disk',
       'space',
