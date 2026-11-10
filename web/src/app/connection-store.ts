@@ -18,6 +18,7 @@ import { reconnectDelay,retainedReadings,withChanges } from './connection-protoc
 import { createConnectionRequests } from './connection-requests.ts'
 import { confirmedState,removeStored,save,stored } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
+import { log, setLogMode, startPageLog } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 
@@ -802,6 +803,7 @@ export function createHydraConnection() {
     } else if (message.type === 'upgrade') {
       upgrade = message.upgrade
     } else if (message.type === 'settings') {
+      setLogMode({ mode: message.settings.logs })
       sharedSettings().receive({
         state: {
           settings: message.settings,
@@ -877,6 +879,7 @@ export function createHydraConnection() {
     socket = ws
     received = Date.now()
     const started = received
+    const connecting = performance.now()
 
     const recover = () => {
       if (!active || version !== generation || socket !== ws) {
@@ -887,6 +890,10 @@ export function createHydraConnection() {
       clearInterval(watchdog)
       offline = true
       ws.close()
+      log({
+        operation: 'page.socket',
+        status: opened ? 'lost' : 'failed',
+      })
       disconnected()
       clearTimeout(reconnect)
       reconnect = setTimeout(
@@ -955,6 +962,11 @@ export function createHydraConnection() {
       opened = true
       offline = false
       reloadError = ''
+      log({
+        operation: 'page.socket',
+        status: 'open',
+        ms: performance.now() - connecting,
+      })
       publish()
     }
 
@@ -964,9 +976,20 @@ export function createHydraConnection() {
       }
 
       received = Date.now()
+      const handling = performance.now()
 
       try {
-        receive({ message: JSON.parse(event.data) as ServerMessage })
+        const message = JSON.parse(event.data) as ServerMessage
+        receive({ message })
+        // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates.
+        log({
+          operation: message.type === 'snapshot' ? 'page.snapshot' : 'page.update',
+          detailed: message.type !== 'snapshot',
+          hydraId: message.scope,
+          name: message.type,
+          bytes: String(event.data).length,
+          ms: performance.now() - handling,
+        })
       } catch (error) {
         const scope = selection()
         scope.loadError = error instanceof Error ? error.message : String(error)
@@ -1118,6 +1141,18 @@ export function createHydraConnection() {
     },
     start() {
       active = true
+      const stopLog = startPageLog({
+        send: ({ lines }) => {
+          if (socket?.readyState !== WebSocket.OPEN) {
+            return false
+          }
+
+          socket.send(`{"type":"log","lines":[${lines.join(',')}]}`)
+
+          return true
+        },
+        hydra: () => selected,
+      })
       restoreCreations()
       connect()
       addEventListener(
@@ -1176,6 +1211,7 @@ export function createHydraConnection() {
           'visibilitychange',
           wake,
         )
+        stopLog()
       }
     },
   }

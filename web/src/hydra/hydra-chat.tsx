@@ -8,6 +8,7 @@ import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import type { Command } from '#web-app/connection.ts'
+import { markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
@@ -649,6 +650,7 @@ export function HydraChat({
       }
 
       follow.current = true; setAway(false)
+      markSend({ hydraId })
       setSending(items => items.some(s => s.id === id) ? withFailure({
         items,
         id,
