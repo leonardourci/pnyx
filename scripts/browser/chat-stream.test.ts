@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -9,6 +9,7 @@ import { promisify } from 'node:util'
 import { scenarioGroup, until, openPage } from '#test-harness/harness.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import { installChatContract, assertChatContract } from '#test-harness/chat-contract.ts'
 
 const BROWSER_TIMEOUT_MS = 60_000
 const PAINT_TIMEOUT_MS = 30_000
@@ -18,6 +19,23 @@ const cli = fileURLToPath(import.meta.resolve('chrome-devtools-axi/dist/bin/chro
 const mcp = fileURLToPath(import.meta.resolve('chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js'))
 const mediaFolder = process.env.PNYX_CHAT_MEDIA
 const pnyx = scenarioGroup()
+const CONTRACT_COPIES = 12
+const REPLAY_SCALE = 0.02
+const CONTRACT_START = 'STREAM_CONTRACT_START'
+const CONTRACT_END = 'STREAM_CONTRACT_END'
+
+const recordedChat = JSON.parse(readFileSync(
+  join(
+    dirname(fileURLToPath(import.meta.resolve('#test-harness/chat-contract.ts'))),
+    'fixtures',
+    'chat-deltas.json',
+  ),
+  'utf8',
+)) as {
+  source: string
+  visible: string
+  deltas: [number, string][]
+}
 
 type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>
 
@@ -155,6 +173,154 @@ async function browser({
     waitFor,
   }
 }
+
+test(
+  'a recorded long reply keeps its revealed content and equals reload and native text',
+  async t => {
+    const s = await pnyx.scenario()
+    const wire = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => wire.close())
+    const partial = `${CONTRACT_START}\n\n${Array(CONTRACT_COPIES).fill(recordedChat.source)
+      .join('\n\n')}\n\n`
+    const answer = `${partial}${CONTRACT_END}`
+    const visiblePartial = `${CONTRACT_START}${recordedChat.visible.repeat(CONTRACT_COPIES)}`
+    const visibleAnswer = `${visiblePartial}${CONTRACT_END}`
+    let streamed = false
+
+    async function* deltas() {
+      yield `${CONTRACT_START}\n\n`
+
+      for (let copy = 0; copy < CONTRACT_COPIES; copy++) {
+        let previous = 0
+
+        for (const [
+          at,
+          text,
+        ] of recordedChat.deltas) {
+          const gap = (at - previous) * REPLAY_SCALE
+          previous = at
+
+          if (gap >= 1) {
+            await new Promise<void>(resolve => setTimeout(
+              resolve,
+              gap,
+            ))
+          }
+
+          yield text
+        }
+
+        yield '\n\n'
+      }
+
+      streamed = true
+    }
+
+    const held = pnyx.claude.plan({
+      text: 'Replay the recorded rainwater reply',
+      reply: answer,
+      stream: deltas(),
+      hold: true,
+    })
+    const {
+      run,
+      evaluate,
+    } = await browser({
+      s,
+      session: 'chat-contract',
+    })
+    const url = `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`
+
+    try {
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.wait(\'[aria-label="Reply to Hydra"]\');',
+      })
+      await installChatContract({
+        evaluate,
+        marker: CONTRACT_START,
+        expected: visibleAnswer,
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', "Replay the recorded rainwater reply"); await page.click(\'[aria-label="Send reply"]\');',
+      })
+      await until({
+        what: 'the recorded live prefix',
+        check: () => streamed,
+      })
+      const live = (await wire.command({
+        name: 'thread',
+        args: ['$hydra'],
+      })).thread as ThreadPage
+      assert.ok(
+        live.conversation!.entries.some(entry => entry.text === partial),
+        'the live page must retain every native text part',
+      )
+      await assertChatContract({
+        evaluate,
+        expected: visiblePartial,
+      })
+      held.release()
+      const agent = await s.agent({ hydra: true })
+      await until({
+        what: 'the native final reply',
+        check: () => s.answered({ cwd: agent.cwd }) === 1,
+      })
+      const nativePath = s.state().cards.$hydra!.agent!.transcriptPath
+      assert.ok(nativePath)
+      const records = readFileSync(
+        nativePath,
+        'utf8',
+      ).trim()
+        .split('\n')
+        .map(line => JSON.parse(line))
+      const native = records.filter(record => record.type === 'assistant').at(-1)
+      assert.equal(
+        native.message.content,
+        answer,
+      )
+      const final = (await wire.command({
+        name: 'thread',
+        args: ['$hydra'],
+      })).thread as ThreadPage
+      assert.ok(final.conversation!.entries.some(entry => entry.text === answer))
+      await assertChatContract({
+        evaluate,
+        expected: visibleAnswer,
+        finish: true,
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await installChatContract({
+        evaluate,
+        marker: CONTRACT_START,
+        expected: visibleAnswer,
+      })
+      await assertChatContract({
+        evaluate,
+        expected: visibleAnswer,
+        finish: true,
+      })
+    } finally {
+      held.release()
+      await run({ args: ['stop'] })
+    }
+  },
+)
 
 test(
   'recorded chat streams once through handoff, reconnect and Hydra switches',
