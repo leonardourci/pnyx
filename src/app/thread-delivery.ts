@@ -6,7 +6,7 @@ export const THREAD_RETRY_MS = 100
 
 interface Delivery {
   ws: HydraClient
-  thread: ThreadPage
+  thread?: ThreadPage
   current(): boolean
   accepted(): void
   receipts: Set<string>
@@ -27,6 +27,8 @@ export function createThreadDelivery({
   closed(): boolean
 }) {
   const pending = new Map<object, Delivery>()
+  // A detached scope can leave its physical socket open while an old read finishes.
+  const closedClients = new WeakSet<HydraClient>()
 
   const remove = ({ key }: { key: object }) => {
     clearTimeout(pending.get(key)?.timer)
@@ -40,7 +42,17 @@ export function createThreadDelivery({
       return
     }
 
-    if (closed() || !delivery.current() || delivery.ws.readyState !== delivery.ws.OPEN) {
+    if (closed() || delivery.ws.readyState !== delivery.ws.OPEN) {
+      remove({ key })
+
+      return
+    }
+
+    if (!delivery.current()) {
+      delivery.thread = undefined
+    }
+
+    if (!delivery.thread && !delivery.receipts.size) {
       remove({ key })
 
       return
@@ -50,13 +62,24 @@ export function createThreadDelivery({
 
     if (delivery.receipts.size) {
       for (const id of delivery.receipts) {
-        accepted = send({
-          ws: delivery.ws,
-          message: {
+        let message: ServerMessage = {
+          type: 'error',
+          id,
+          code: 'THREAD_CANCELLED',
+          error: 'Conversation read cancelled because its subscription changed',
+        }
+
+        if (delivery.thread) {
+          message = {
             type: 'receipt',
             id,
             thread: delivery.thread,
-          },
+          }
+        }
+
+        accepted = send({
+          ws: delivery.ws,
+          message,
         })
 
         if (!accepted) {
@@ -65,7 +88,7 @@ export function createThreadDelivery({
 
         delivery.receipts.delete(id)
       }
-    } else {
+    } else if (delivery.thread) {
       accepted = send({
         ws: delivery.ws,
         message: {
@@ -77,7 +100,10 @@ export function createThreadDelivery({
 
     if (accepted) {
       remove({ key })
-      delivery.accepted()
+
+      if (delivery.thread) {
+        delivery.accepted()
+      }
 
       return
     }
@@ -101,6 +127,10 @@ export function createThreadDelivery({
       key: object
       receipt?: string
     }) {
+      if (closedClients.has(delivery.ws)) {
+        return
+      }
+
       const receipts = pending.get(key)?.receipts ?? new Set<string>()
 
       if (receipt !== undefined) {
@@ -120,7 +150,28 @@ export function createThreadDelivery({
     has({ key }: { key: object }) {
       return pending.has(key)
     },
+    cancel({ key }: { key: object }) {
+      const delivery = pending.get(key)
+
+      if (delivery) {
+        clearTimeout(delivery.timer)
+        delivery.thread = undefined
+        attempt({ key })
+      }
+    },
     remove,
+    removeClient({ ws }: { ws: HydraClient }) {
+      closedClients.add(ws)
+
+      for (const [
+        key,
+        delivery,
+      ] of pending) {
+        if (delivery.ws === ws) {
+          remove({ key })
+        }
+      }
+    },
     close() {
       for (const key of pending.keys()) {
         remove({ key })

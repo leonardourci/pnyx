@@ -434,7 +434,7 @@ export function createThreadSubscriptions({
 
     if (previous) {
       previous.watcher?.close()
-      threadDelivery.remove({ key: previous })
+      threadDelivery.cancel({ key: previous })
     }
 
     const path = threadPath({ card })

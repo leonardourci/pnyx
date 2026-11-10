@@ -99,7 +99,6 @@ export function threadCommand({
     && old.path === threadPath({ card }) && old.paseo === card.agent?.paseoAgentId
 
   if (!sameThread) {
-    unbind()
     bindThread({
       ws,
       card,

@@ -524,13 +524,13 @@ export async function mountOwnedHydra({
         catalogReads.delete(ws)
         clearTimeout(threadTimers.get(ws))
         threadTimers.delete(ws)
+        threadDelivery.removeClient({ ws })
 
         for (const map of threadSubscriptions) {
           const sub = map.get(ws)
 
           if (sub) {
             sub.watcher?.close()
-            threadDelivery.remove({ key: sub })
           }
 
           map.delete(ws)

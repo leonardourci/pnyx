@@ -341,11 +341,83 @@ test(
       delivered.at(-1)!.thread.conversation!.stream,
       delivered[0]!.thread.conversation!.stream,
     )
+    received.length = 0
+    buffered = MAX_BUFFERED + 1
+    read({ id: 'queued-before-rebind' })
+    read({ id: 'also-queued-before-rebind' })
+    await setImmediate()
+    threads.bindThread({
+      ws: client,
+      card: state.cards[HYDRA_CARD]!,
+    })
+    assert.equal(
+      received.length,
+      0,
+    )
+    buffered = 0
+    t.mock.timers.tick(THREAD_RETRY_MS)
+    await setImmediate()
+    assert.deepEqual(
+      received.map(message => message.type === 'error' && [
+        message.id,
+        message.code,
+      ]),
+      [
+        [
+          'queued-before-rebind',
+          'THREAD_CANCELLED',
+        ],
+        [
+          'also-queued-before-rebind',
+          'THREAD_CANCELLED',
+        ],
+      ],
+    )
+    received.length = 0
+    buffered = MAX_BUFFERED + 1
+    const delayed = deferred<ThreadPage>()
+    threads.subscriptionMap({ card: HYDRA_CARD }).set(
+      client,
+      {
+        ...reconnected,
+        native: Promise.resolve({
+          read: async () => delayed.promise,
+          close() {},
+        }),
+      },
+    )
+    read({ id: 'rebound-during-read' })
+    await setImmediate()
+    threads.bindThread({
+      ws: client,
+      card: state.cards[HYDRA_CARD]!,
+    })
+    delayed.resolve(latest)
+    await setImmediate()
+    assert.equal(
+      received.length,
+      0,
+    )
+    buffered = 0
+    t.mock.timers.tick(THREAD_RETRY_MS)
+    await setImmediate()
+    assert.deepEqual(
+      received.map(message => message.type === 'error' && [
+        message.id,
+        message.code,
+      ]),
+      [
+        [
+          'rebound-during-read',
+          'THREAD_CANCELLED',
+        ],
+      ],
+    )
   },
 )
 
 test(
-  'a mounted conversation resyncs unchanged text and cancels delivery when its tab closes',
+  'a mounted conversation resyncs unchanged text and sends no stale page to a closed tab',
   async t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -413,6 +485,24 @@ test(
       sessionId: 'fixture',
       transcriptPath: path,
     }
+    state.cards.first = {
+      ...state.cards[HYDRA_CARD]!,
+      id: 'first',
+      key: 'first',
+      title: 'First',
+      agent: {
+        provider: 'claude-code',
+        sessionId: 'first',
+        transcriptPath: path,
+      },
+    }
+    state.cards.second = {
+      ...state.cards[HYDRA_CARD]!,
+      id: 'second',
+      key: 'second',
+      title: 'Second',
+      agent: undefined,
+    }
     writeSnapshot({
       dir,
       state,
@@ -429,7 +519,7 @@ test(
     resources.mounted = mount
     const received: ServerMessage[] = []
     let buffered = 0
-    const client: HydraClient = {
+    const networkClient = (): HydraClient => ({
       OPEN: 1,
       readyState: 1,
       get bufferedAmount() {
@@ -439,9 +529,9 @@ test(
         received.push(message)
       },
       terminate() {},
-    }
+    })
     const tab = mount.connect({
-      ws: client,
+      ws: networkClient(),
       after: null,
     })
     tab.receive({
@@ -486,7 +576,7 @@ test(
       beforeClose,
     )
     const reconnected = mount.connect({
-      ws: client,
+      ws: networkClient(),
       after: null,
     })
     reconnected.receive({
@@ -509,7 +599,42 @@ test(
       restored.conversation!.stream,
       initial.conversation!.stream,
     )
+    buffered = MAX_BUFFERED + 1
+    reconnected.receive({
+      message: {
+        type: 'command',
+        id: 'first-card',
+        name: 'thread',
+        args: ['first'],
+      },
+    })
+    await setImmediate()
+    reconnected.receive({
+      message: {
+        type: 'command',
+        id: 'second-card',
+        name: 'thread',
+        args: ['second'],
+      },
+    })
+    await setImmediate()
+    reconnected.receive({
+      message: {
+        type: 'command',
+        id: 'closes-during-read',
+        name: 'thread',
+        args: ['first'],
+      },
+    })
+    const beforeFinalClose = received.length
     reconnected.close()
+    buffered = 0
+    t.mock.timers.tick(THREAD_RETRY_MS)
+    await setImmediate()
+    assert.equal(
+      received.length,
+      beforeFinalClose,
+    )
     t.mock.timers.reset()
   },
 )
