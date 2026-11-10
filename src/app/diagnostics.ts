@@ -16,8 +16,10 @@ export const logsDir = () => join(
   'logs',
 )
 
-// A day's file, named by its UTC date.
-export const logFileName = ({ day }: { day: string }) => `${day}.jsonl`
+// One file per UTC day, named by its date.
+export const DAY_FILE = /^(\d{4}-\d{2}-\d{2})\.jsonl$/
+
+const dayFile = ({ day }: { day: string }) => `${day}.jsonl`
 
 // Held in memory and changed with the setting, so a line never reads settings.
 let mode: LogMode = 'on'
@@ -102,7 +104,7 @@ function append({
         fd: openSync(
           join(
             logsDir(),
-            logFileName({ day }),
+            dayFile({ day }),
           ),
           'a',
           0o600,
@@ -116,14 +118,26 @@ function append({
       `${text}\n`,
     )
   } catch (error) {
-    // An unwritable log folder must not break the action being logged; the failure still reaches stderr.
-    file = undefined
+    // An unwritable log folder must not break the action being logged: a warning or error goes to stderr instead, with the write error.
+    dropLogFile()
 
     if (severe) {
       console.error(text)
       console.error(String(error))
     }
   }
+}
+
+// After a failed write the descriptor may be unusable, so closing it can fail as well; the write error is the one reported.
+function dropLogFile(): void {
+  const failed = file
+  file = undefined
+
+  try {
+    if (failed) {
+      closeSync(failed.fd)
+    }
+  } catch { /* reported as the write error */ }
 }
 
 export function writeLine({
@@ -171,7 +185,7 @@ export function writeLine({
   })
 }
 
-// The one logger: a plain call is the action's line, detailed lines wait for detailed logging, and warnings and errors are always kept.
+// Writes the line when the level allows it: a detailed line only under Detailed, a warning or error always.
 // eslint-disable-next-line pnyx/object-params -- the line passes on whole, so nothing is copied before the level check.
 export function log(line: LogLine): void {
   // Outside the server only warnings and errors are printed, so other lines stop before they are built.

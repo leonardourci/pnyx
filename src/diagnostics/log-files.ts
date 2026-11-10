@@ -1,8 +1,7 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { logsDir, releaseLogFile } from '#app/diagnostics.ts'
+import { DAY_FILE, logsDir, releaseLogFile } from '#app/diagnostics.ts'
 
-const DAY_FILE = /^(\d{4}-\d{2}-\d{2})\.jsonl$/
 const DAY_MS = 24 * 60 * 60 * 1000
 export const MB = 1024 * 1024
 
