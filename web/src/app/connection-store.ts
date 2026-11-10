@@ -18,7 +18,7 @@ import { reconnectDelay,retainedReadings,withChanges } from './connection-protoc
 import { createConnectionRequests } from './connection-requests.ts'
 import { confirmedState,removeStored,save,stored } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
-import { log, setLogMode, startPageLog } from './log.ts'
+import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 
@@ -990,13 +990,17 @@ export function createHydraConnection() {
       try {
         const message = JSON.parse(event.data) as ServerMessage
         receive({ message })
-        // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. The server's socket.send line has their size.
+        // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. Each carries the
+        // reveal frames drawn since the last; the server's socket.send line has their size.
+        const drawn = takeFrames()
         log({
           operation: message.type === 'snapshot' ? 'page.snapshot' : 'page.update',
           detailed: message.type !== 'snapshot',
           hydraId: message.scope,
           name: message.type,
           ms: performance.now() - handling,
+          frames: drawn.frames,
+          worstFrameMs: drawn.worstFrameMs,
         })
       } catch (error) {
         const scope = selection()

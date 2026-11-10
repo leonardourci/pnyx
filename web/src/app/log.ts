@@ -13,6 +13,11 @@ const SLOW_FRAMES = 'long-animation-frame'
 const LONG_TASKS = 'longtask'
 // A reply's first text later than this belongs to something else, such as a wake long after the send.
 const FIRST_TEXT_MAX_MS = 5 * 60_000
+// A reveal frame counts as slow past this many of the display's frames; the display's frame is the shortest one seen.
+const SLOW_FRAME_BUDGETS = 1.5
+const DISPLAY_FRAME_MS = 1000 / 60
+// No display refreshes faster than this, so a shorter interval, such as two ticks in one frame, says nothing about it.
+const FASTEST_FRAME_MS = 1000 / 240
 
 // The long-animation-frame fields read here; TypeScript's DOM types do not describe that entry yet.
 interface SlowFrame extends PerformanceEntry {
@@ -43,6 +48,8 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let output: Output | undefined
 // The owner's last send in each Hydra's chat, until the reply's first text is on the page.
 const sent = new Map<string, number>()
+// The reveal frames since the last live update's line, and the slowest of them.
+let frames = 0, worstFrameMs = 0, frameBudget = DISPLAY_FRAME_MS
 
 const bounded = ({
   text,
@@ -200,6 +207,46 @@ export function firstTextShown({ hydraId }: { hydraId: string }) {
       ms,
     })
   }
+}
+
+// Counts one reveal frame for the next live update's line; at Detailed, a frame past the display's budget gets its own.
+export function noteFrame({ ms }: { ms: number }) {
+  if (mode !== 'detailed') {
+    return
+  }
+
+  if (ms >= FASTEST_FRAME_MS) {
+    frameBudget = Math.min(
+      frameBudget,
+      ms,
+    )
+  }
+
+  frames += 1
+  worstFrameMs = Math.max(
+    worstFrameMs,
+    ms,
+  )
+
+  if (ms > frameBudget * SLOW_FRAME_BUDGETS) {
+    log({
+      operation: 'page.frame',
+      detailed: true,
+      ms,
+    })
+  }
+}
+
+// The reveal frames since the last call, for a live update's line.
+export function takeFrames() {
+  const taken = {
+    frames: frames || undefined,
+    worstFrameMs: frames ? worstFrameMs : undefined,
+  }
+  frames = 0
+  worstFrameMs = 0
+
+  return taken
 }
 
 // Watches the frames and long tasks the browser reports as slow, and the page's uncaught errors, until stopped.

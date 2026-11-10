@@ -1,4 +1,4 @@
-import { log } from '#web-app/log.ts'
+import { noteFrame } from '#web-app/log.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { shownImageNames } from '#hydra/images.ts'
 import { Markdown, MarkdownBlocks } from './markdown.tsx'
@@ -379,11 +379,7 @@ function tick({
 
   // A reveal's first frame has no interval of its own.
   if (st.last) {
-    log({
-      operation: 'page.frame',
-      detailed: true,
-      ms: elapsed,
-    })
+    noteFrame({ ms: elapsed })
   }
 
   st.frame = 0

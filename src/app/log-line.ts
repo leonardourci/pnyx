@@ -39,6 +39,9 @@ interface LogFields {
   // The longest script in a slow page frame, as the browser names it.
   script?: string
   blockingMs?: number
+  // The reveal frames a page drew since its last update, and the slowest of them.
+  frames?: number
+  worstFrameMs?: number
   // The process line: CPU and event-loop use over the interval, loop delay, heap and garbage collection.
   cpuPercent?: number
   loopUtilization?: number
@@ -76,6 +79,8 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   tab: true,
   script: true,
   blockingMs: true,
+  frames: true,
+  worstFrameMs: true,
   cpuPercent: true,
   loopUtilization: true,
   loopDelayMs: true,
@@ -126,6 +131,8 @@ export const PAGE_NUMBER_FIELDS = [
   'ms',
   'count',
   'blockingMs',
+  'frames',
+  'worstFrameMs',
 ] as const
 
 export type PageLine = Pick<LogFields, 'operation' | 'hydraId' | (typeof PAGE_TEXT_FIELDS)[number]

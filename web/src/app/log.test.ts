@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
 import { PAGE_LINES_MAX } from '#app/log-line.ts'
 import { MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
-import { batchSize, firstTextShown, forgetSend, log, markSend, startPageLog } from './log.ts'
+import { batchSize, firstTextShown, forgetSend, log, markSend, noteFrame, setLogMode, startPageLog, takeFrames } from './log.ts'
 
 test(
   'page log batches stay within the server’s message limit and line count, even when every character takes three bytes in UTF-8',
@@ -166,6 +166,60 @@ test(
           1200,
         ],
       ],
+    )
+  },
+)
+
+test(
+  'at Detailed a reveal frame gets its own line only past one and a half display frames, and the next update counts them all',
+  t => {
+    browser({ t })
+    const sent: Record<string, unknown>[] = []
+    const stop = startPageLog({
+      send: ({ lines }) => {
+        sent.push(...lines.map(line => JSON.parse(line) as Record<string, unknown>))
+
+        return true
+      },
+      hydra: () => 'lab',
+    })
+    noteFrame({ ms: 16.7 })
+    assert.deepEqual(
+      takeFrames(),
+      {
+        frames: undefined,
+        worstFrameMs: undefined,
+      },
+      'On counts no frames',
+    )
+    setLogMode({ mode: 'detailed' })
+    t.after(() => setLogMode({ mode: 'on' }))
+
+    for (const ms of [
+      0,
+      8.3,
+      8.4,
+      16.6,
+      40,
+    ]) {
+      noteFrame({ ms })
+    }
+
+    assert.deepEqual(
+      takeFrames(),
+      {
+        frames: 5,
+        worstFrameMs: 40,
+      },
+    )
+    stop()
+    assert.deepEqual(
+      sent.filter(line => line.operation === 'page.frame').map(line => line.ms),
+      [
+        16.6,
+        40,
+      ],
+      'a 120 Hz display makes a 16.6 ms frame slow; a two-tick frame says nothing about the display',
     )
   },
 )
