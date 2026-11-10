@@ -118,9 +118,10 @@
     async waitFor({
       wanted,
       finish,
+      timeoutMs,
     }) {
       const target = normalize({ value: wanted })
-      const until = performance.now() + 30000
+      const until = performance.now() + timeoutMs
 
       await new Promise((
         resolve,

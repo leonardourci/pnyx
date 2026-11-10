@@ -4,6 +4,8 @@ import { join } from 'node:path'
 
 type Evaluate = ({ script }: { script: string }) => Promise<void>
 
+export const PAINT_TIMEOUT_MS = 30_000
+
 const probe = readFileSync(
   join(
     import.meta.dirname,
@@ -37,10 +39,12 @@ export async function assertChatContract({
   evaluate,
   expected,
   finish = false,
+  timeoutMs = PAINT_TIMEOUT_MS,
 }: {
   evaluate: Evaluate
   expected: string
   finish?: boolean
+  timeoutMs?: number
 }) {
   assert.ok(expected.length > 0)
   await evaluate({
@@ -48,6 +52,7 @@ export async function assertChatContract({
       const proof = await window.chatContract.waitFor(${JSON.stringify({
         wanted: expected,
         finish,
+        timeoutMs,
       })});
       return 'chat-assertion-passed ' + JSON.stringify(proof);
     }`,
