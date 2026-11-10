@@ -734,6 +734,52 @@ test(
       s.task({ key: 'cache' }).copy,
       undefined,
     )
+    await s.owner({
+      args: [
+        'task',
+        'unhide',
+        'report',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'build',
+        'report',
+      ],
+    })
+    const build = await until({
+      what: 'the resumed investigation worker to receive build readiness requirements',
+      check: () => s.received({ cwd: folder }).find(text => text.includes('The owner approved building this.')),
+    })
+    assert.match(
+      build,
+      /Before you report work as done or ready/,
+    )
+    assert.match(
+      build,
+      /finish what the brief and your project's instructions require/,
+    )
+    assert.match(
+      build,
+      /check the final result/,
+    )
+    assert.match(
+      build,
+      /For code.*required checks pass on its latest commit/,
+    )
+    assert.match(
+      build,
+      /For anything else.*evidence of the end state: a link, screenshot or output/,
+    )
+    assert.match(
+      build,
+      /After later changes.*redo the affected checks/,
+    )
+    assert.match(
+      build,
+      /refresh the description and evidence/,
+    )
   },
 )
 

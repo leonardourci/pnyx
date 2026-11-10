@@ -5,7 +5,7 @@ import { ownerMemory } from '#memory/owner-memory.ts'
 import { readProjectMemory } from '#memory/project-memory.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
 import { projectWorkerContext } from '#projects/context.ts'
-import { taskStops } from '#tasks/delivery/rule.ts'
+import { READINESS_INSTRUCTIONS, taskStops } from '#tasks/delivery/rule.ts'
 import { projectsFor } from '#projects/read.ts'
 import { dirname, join } from 'node:path'
 import { declaredState } from '#tasks/declarations.ts'
@@ -71,6 +71,7 @@ function workerHeader({
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking. Ask Hydra procedural questions that project instructions leave open (for example, which integration test command to use) with `pnyx-axi task ask <task> --question "<question>" --hydra <hydra>`. Hydra can route them to its helper; never ask the owner directly. Hosted tool permission requests still use the harness permission flow.',
     `Ask Hydra with \`pnyx-axi task ask ${id} --question "<question>" --hydra ${hydraId}\` about product or architecture choices the owner's ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.`,
     `Native steering: when PNYX_STEERING_WORKER is set, run \`pnyx-axi task inbox read ${id} --hydra ${hydraId}\` at startup, on an inbox notice and before ending a turn. Read records receipt and stops reminders for the returned messages. An ack means read, never completed work. Read and apply instructions in order; report progress and blockers separately, and file any needed question with task ask. A repeated notice is not a new instruction. Checkpoint side effects; after a crash, use inbox read --all and verify existing effects before repeating work. Transport delivery alone is not a read receipt.`,
+    READINESS_INSTRUCTIONS,
     ...stops,
     ...standing,
     '</pnyx-worker>',
