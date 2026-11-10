@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
@@ -361,6 +362,182 @@ test(
         },
       ],
       'recovery must read the current list instead of sending the stale payload',
+    )
+  },
+)
+
+test(
+  'a tab over its socket budget that misses a message it cannot get later is warned about once until it drains',
+  t => {
+    const errors = t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    const tabs = createServerClients({
+      hydraId: 'default',
+      state: () => emptyHydra(),
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting: [],
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+    t.after(() => tabs.close())
+    let buffered = MAX_BUFFERED + 1
+    const received: ServerMessage[] = []
+    const client: HydraClient = {
+      OPEN: 1,
+      readyState: 1,
+      get bufferedAmount() {
+        return buffered
+      },
+      send({ message }) {
+        received.push(message)
+      },
+      terminate() {},
+    }
+    tabs.clients.add(client)
+    const settings: ServerMessage = {
+      type: 'settings',
+      settings: {} as Extract<ServerMessage, { type: 'settings' }>['settings'],
+      revision: 1,
+    }
+    const dropped = () => errors.mock.calls
+      .map(call => JSON.parse(String(call.arguments[0])) as Record<string, unknown>)
+      .filter(line => line.operation === 'socket.dropped')
+
+    tabs.send({
+      ws: client,
+      message: settings,
+    })
+    tabs.send({
+      ws: client,
+      message: settings,
+    })
+    assert.deepEqual(
+      dropped().map(line => [
+        line.level,
+        line.name,
+        line.backlog,
+      ]),
+      [
+        [
+          'warn',
+          'settings',
+          MAX_BUFFERED + 1,
+        ],
+      ],
+    )
+    buffered = 0
+    tabs.send({
+      ws: client,
+      message: settings,
+    })
+    buffered = MAX_BUFFERED + 1
+    tabs.send({
+      ws: client,
+      message: settings,
+    })
+    assert.equal(
+      received.length,
+      1,
+    )
+    assert.equal(
+      dropped().length,
+      2,
+      'a later stretch over the budget is warned about again',
+    )
+  },
+)
+
+test(
+  'a tab held over its socket budget has a warning when it starts being held and a line when it drains',
+  t => {
+    openLogs()
+    t.after(() => closeLogs())
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const tabs = createServerClients({
+      hydraId: 'default',
+      state: () => emptyHydra(),
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting: [],
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+    t.after(() => tabs.close())
+    let buffered = MAX_BUFFERED + 1
+    const client: HydraClient = {
+      OPEN: 1,
+      readyState: 1,
+      get bufferedAmount() {
+        return buffered
+      },
+      send() {},
+      terminate() {},
+    }
+    tabs.clients.add(client)
+    tabs.send({
+      ws: client,
+      message: {
+        type: 'hydraQueue',
+        queue: {
+          waiting: [],
+          reading: [],
+        },
+      },
+    })
+    buffered = 0
+    t.mock.timers.tick(SOCKET_RETRY_MS)
+    const lines = readdirSync(logsDir()).flatMap(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ).split('\n'))
+      .filter(Boolean)
+      .map(text => JSON.parse(text) as Record<string, unknown>)
+      .filter(line => String(line.operation).startsWith('socket.'))
+    assert.deepEqual(
+      lines.map(line => [
+        line.operation,
+        line.level,
+        line.name ?? line.status,
+      ]),
+      [
+        [
+          'socket.held',
+          'warn',
+          'hydraQueue',
+        ],
+        [
+          'socket.drained',
+          undefined,
+          'drained',
+        ],
+      ],
     )
   },
 )

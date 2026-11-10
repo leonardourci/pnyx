@@ -97,6 +97,8 @@ export function createServerClients({
   }
   const recovery = new Map<HydraClient, Pending>()
   const closedClients = new WeakSet<HydraClient>()
+  // Tabs over their budget that missed a message they cannot get later, warned about once until they drain.
+  const dropping = new WeakSet<HydraClient>()
 
   const mergeLatest = ({
     before,
@@ -188,6 +190,17 @@ export function createServerClients({
     } else if (message.type === 'hydraQueue') {
       pending.queue = message
     } else {
+      if (!dropping.has(ws)) {
+        dropping.add(ws)
+        log({
+          level: 'warn',
+          operation: 'socket.dropped',
+          hydraId,
+          name: message.type,
+          backlog: ws.bufferedAmount,
+        })
+      }
+
       return
     }
 
@@ -239,6 +252,7 @@ export function createServerClients({
     }
 
     ws.send({ message })
+    dropping.delete(ws)
 
     if (pending) {
       if (message.type === 'latest') {

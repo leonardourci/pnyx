@@ -632,6 +632,7 @@ export async function startServer({
       }))
     }
 
+    const opening = performance.now()
     const started = mountHydra({
       hydraId: id,
       url: `http://127.0.0.1:${bound}/hydra/${id}/`,
@@ -647,6 +648,12 @@ export async function startServer({
     )
     started.then(
       m => {
+        // Loading the Hydra from its snapshot and event log and starting its host, the start-up cost that grows with a Hydra.
+        log({
+          operation: 'hydra.open',
+          hydraId: id,
+          ms: performance.now() - opening,
+        })
         pendingLogs.get(id)?.()
 
         if (closed) {
