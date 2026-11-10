@@ -356,7 +356,11 @@ test(
     )
     assert.match(
       prAgent!.received[0]!,
-      /^Landing: commit on your branch, push it, open a pull request, mark it ready only after meeting the readiness requirements above/m,
+      /draft if .*requirements.*not yet met/,
+    )
+    assert.match(
+      prAgent!.received[0]!,
+      /mark any draft ready only after meeting/,
     )
     assert.equal(
       (await prWorker.refusal({

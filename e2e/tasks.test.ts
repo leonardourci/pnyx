@@ -13,9 +13,21 @@ import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
 function followsProject({ prompt }: { prompt: string }): void {
-  assert.ok(
-    prompt.includes("Before you report work as ready (a PR for review, a branch, or a report), finish everything your project's own instructions require for that result, with required checks passing on its current revision. After later changes, repeat affected reviews and verification and refresh the description and evidence before reporting readiness again."),
-    'workers receive the project readiness requirements before starting and after handoff',
+  assert.match(
+    prompt,
+    /project's own instructions require/,
+  )
+  assert.match(
+    prompt,
+    /required checks passing on its current revision/,
+  )
+  assert.match(
+    prompt,
+    /After later changes.*repeat affected reviews and verification/,
+  )
+  assert.match(
+    prompt,
+    /refresh the description and evidence/,
   )
   assert.match(
     prompt,

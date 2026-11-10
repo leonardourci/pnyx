@@ -6,6 +6,8 @@ import { LANDINGS, MERGERS, cardLanding, type Landing, type LandingRule, type Me
 import { investigationLine, reportLine } from '#investigations/report.ts'
 import { projectsFor } from '#projects/read.ts'
 
+export const READINESS_INSTRUCTIONS = "Before you report work as ready (a PR for review, a branch, or a report), finish everything your project's own instructions require for that result, with required checks passing on its current revision. After later changes, repeat affected reviews and verification and refresh the description and evidence before reporting readiness again."
+
 // The owner's rule for this task when one was recorded, otherwise its project's.
 export function taskLanding({
   state,
@@ -73,7 +75,7 @@ export function landingLine({
     ? 'then declare needs_you with its URL'
     : 'then use needs_you with its URL only if readiness has not been recorded yet'
 
-  return `Landing: commit on your branch, push it, open a pull request, mark it ready only after meeting the readiness requirements above, and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, ${declaration}: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
+  return `Landing: commit on your branch, push it, open a pull request as a draft if the readiness requirements above are not yet met, mark any draft ready only after meeting those requirements, and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, ${declaration}: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
 }
 
 // Where this task's worker stops: an investigation at its stored report, anything else at its landing rule.
