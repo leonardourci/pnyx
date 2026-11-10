@@ -5,6 +5,8 @@ import { logged } from '#app/log-line.ts'
 
 const run = promisify(execFile)
 const KB = 1024
+// A listing that takes longer is stopped, so a stuck ps never piles up one more process each sample.
+const LISTING_TIMEOUT_MS = 10_000
 // Every process's id, parent and resident memory in kilobytes, without a header, on macOS and Linux alike.
 const LISTING = [
   '-A',
@@ -125,7 +127,10 @@ export async function logAgentMemory({
   const { stdout } = await run(
     'ps',
     LISTING,
-    { encoding: 'utf8' },
+    {
+      encoding: 'utf8',
+      timeout: LISTING_TIMEOUT_MS,
+    },
   )
   const trees = treeMemory({
     listing: stdout,
