@@ -25,6 +25,9 @@ import { pollPath, watchPath } from './watch.ts'
 import { readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
+import { logPageLines } from '#diagnostics/page-lines.ts'
+import { startServerLogs } from '#diagnostics/server-logs.ts'
+import { log } from './diagnostics.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -62,6 +65,8 @@ export async function startServer({
   retryDelays?: number[]
   followDelay?: number
   recoveryPause?: number
+  // How often the process line is written; tests shorten it.
+  processLineMs?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   // The Pnyx folder the daily check and /upgrade read, and how /upgrade restarts the server.
@@ -69,7 +74,12 @@ export async function startServer({
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }): Promise<RunningServer> {
+  const starting = performance.now()
   const releaseClaim = claimServer()
+  const logs = startServerLogs({
+    settings: readSettings().settings,
+    processLineMs: options.processLineMs,
+  })
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload: MAX_MESSAGE_BYTES,
@@ -261,10 +271,12 @@ export async function startServer({
       req,
       res,
     }).catch(error => {
-      console.error(
-        `pnyx-axi request: ${req.method} ${req.url?.split('?')[0] ?? '/'}`,
+      log({
+        level: 'error',
+        operation: 'http.request',
+        name: `${req.method} ${req.url?.split('?')[0] ?? '/'}`,
         error,
-      )
+      })
 
       if (res.destroyed || res.writableEnded) {
         return
@@ -341,9 +353,23 @@ export async function startServer({
           const primary = id!
 
           const send = ({ message }: { message: ServerMessage }) => {
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify(message))
+            if (ws.readyState !== ws.OPEN) {
+              return
             }
+
+            const started = performance.now()
+            const text = JSON.stringify(message)
+            ws.send(text)
+            log({
+              operation: 'socket.send',
+              // A snapshot carries the whole Hydra, so each one gets a line; other messages are live updates.
+              detailed: message.type !== 'snapshot',
+              hydraId: message.scope ?? primary,
+              name: message.type,
+              bytes: text.length,
+              backlog: ws.bufferedAmount,
+              ms: performance.now() - started,
+            })
           }
 
           const attach = ({
@@ -456,6 +482,12 @@ export async function startServer({
                 return
               }
 
+              if (message?.type === 'log') {
+                logPageLines({ value: message.lines })
+
+                return
+              }
+
               const hydra = message?.scope === undefined ? primary : message.scope
 
               if (typeof hydra !== 'string' || !/^[a-z0-9._-]+$/.test(hydra)) {
@@ -527,6 +559,7 @@ export async function startServer({
       )
     })
   } catch (error) {
+    logs.close()
     releaseClaim()
     throw error
   }
@@ -655,7 +688,16 @@ export async function startServer({
       const before = skipped[id]
 
       if (!closed && !mounts.has(id)) {
-        mount({ id }).catch((error: Error) => error.message !== before && console.error(`pnyx-axi serve: skipped Hydra ${id}: ${error.message}`))
+        mount({ id }).catch((error: Error) => {
+          if (error.message !== before) {
+            log({
+              level: 'warn',
+              operation: 'hydra.skipped',
+              hydraId: id,
+              error,
+            })
+          }
+        })
       }
     }
   }
@@ -684,13 +726,17 @@ export async function startServer({
   const settingsWatcher = watchPath({
     path: settingsDir,
     changed: () => {
-      const { revision } = readSettings()
+      const {
+        revision,
+        settings,
+      } = readSettings()
 
       if (closed || revision === settingsRevision) {
         return
       }
 
       settingsRevision = revision
+      logs.apply({ settings })
       served.forEach(m => m.settings())
     },
     interval: CREATION_POLL_MS,
@@ -719,6 +765,7 @@ export async function startServer({
   ).unref()
 
   const close = async () => {
+    const stopping = performance.now()
     closed = true
     watcher.close()
     settingsWatcher.close()
@@ -733,7 +780,11 @@ export async function startServer({
 
       for (const failed of closes) {
         if (failed.status === 'rejected') {
-          console.error(`pnyx-axi serve: a Hydra did not close cleanly: ${(failed.reason as Error).message}`)
+          log({
+            level: 'error',
+            operation: 'hydra.close',
+            error: failed.reason,
+          })
         }
       }
     } finally {
@@ -748,6 +799,11 @@ export async function startServer({
         infoPath(),
         { force: true },
       )
+      log({
+        operation: 'server.stop',
+        ms: performance.now() - stopping,
+      })
+      logs.close()
       releaseClaim()
     }
   }
@@ -771,6 +827,11 @@ export async function startServer({
     await close()
     throw error
   }
+
+  log({
+    operation: 'server.start',
+    ms: performance.now() - starting,
+  })
 
   await Promise.allSettled(hydraIds().map(id => mount({ id })))
   background({
