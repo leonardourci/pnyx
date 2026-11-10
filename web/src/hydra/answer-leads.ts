@@ -10,6 +10,8 @@ export interface AnswerLead {
   choice?: string
   recommended?: number
   discussion: boolean
+  // The message only repeats its choice, which the choices already show.
+  bare: boolean
 }
 
 export function answerLeads({
@@ -20,14 +22,15 @@ export function answerLeads({
   cards: HydraState['cards']
 }): Map<string, AnswerLead> {
   return new Map(messages.flatMap(message => {
-    const id = message.answers ?? message.discusses
+    const discussion = !message.answers
+    const askId = discussion ? message.discusses : message.answers
     const task = message.task
 
-    if (!id || !task || task === HYDRA_CARD || !ownerActor({ actor: message.actor })) {
+    if (!askId || !task || task === HYDRA_CARD || !ownerActor({ actor: message.actor })) {
       return []
     }
 
-    const ask = cards[task]?.asks?.find(ask => ask.id === id)
+    const ask = cards[task]?.asks?.find(ask => ask.id === askId)
 
     if (!ask) {
       return []
@@ -39,7 +42,8 @@ export function answerLeads({
       options: (ask.options ?? []).map(option => option.label),
       choice: message.choice,
       recommended: ask.recommended,
-      discussion: !message.answers,
+      discussion,
+      bare: !!message.choice && message.text.trim() === message.choice,
     }
 
     return [

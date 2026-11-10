@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { questionPreview, type AnswerLead } from './answer-leads.ts'
 
@@ -22,7 +23,7 @@ function AnswerChoices({ lead }: { lead: AnswerLead }) {
 
         return (
           <li key={option} aria-current={chosen || undefined}>
-            {chosen && '✓ '}{option}
+            {chosen && <span aria-hidden="true"><Icon name="check" size={12} /></span>}{option}
             {lead.recommended === i + 1 && <span className="answer-recommended"> · recommended</span>}
           </li>
         )
@@ -45,12 +46,17 @@ export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
     open,
     setOpen,
   ] = useState(false)
+  const [
+    folded,
+    setFolded,
+  ] = useState(false)
   const preview = questionPreview({ question: lead.question })
 
   const expand = ({ target }: { target: EventTarget }) => {
     const control = target instanceof Element && target.closest('a, button')
+    const selecting = !!getSelection()?.toString()
 
-    if (!open && !control) {
+    if (folded && !open && !control && !selecting) {
       setOpen(true)
     }
   }
@@ -62,6 +68,7 @@ export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
         preview={preview}
         open={open}
         toggle={() => setOpen(!open)}
+        measured={({ long }) => setFolded(long)}
       />
       <AnswerChoices lead={lead} />
       {lead.discussion && <p className="answer-lead-state">Comment · the question stays open</p>}
@@ -74,7 +81,7 @@ export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
       <Tooltip
         content={<FullQuestion lead={lead} />}
         delay={PREVIEW_DELAY_MS}
-        disabled={open}
+        disabled={open || !folded}
       >{question}
       </Tooltip>
     </div>

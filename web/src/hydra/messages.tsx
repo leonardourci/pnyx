@@ -179,14 +179,8 @@ export function Messages({
   })
   const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
   const leadOf = ({ entry }: { entry: ChatEntry }) =>
-    entry.reference && ownMessage({ entry }) ? answerLeads?.get(entry.reference) : undefined
-
-  // A bare Merge, Hold or option answer is already marked in its lead's choices.
-  const choiceOnly = ({ entry }: { entry: ChatEntry }) => {
-    const choice = leadOf({ entry })?.choice
-
-    return !!choice && entry.text.trim() === choice
-  }
+    entry.reference ? answerLeads?.get(entry.reference) : undefined
+  const choiceOnly = ({ entry }: { entry: ChatEntry }) => !!leadOf({ entry })?.bare
 
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
