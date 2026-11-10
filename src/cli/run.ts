@@ -13,7 +13,7 @@ import { helpHint } from '#app/cli-support.ts'
 import { recordExitCode, requestEnv, requestInvocation } from '#app/request-context.ts'
 import { commands } from '#app/cli.ts'
 import { home } from './home.ts'
-import { focusedHelp, nextCommands } from './help.ts'
+import { focusedHelp, namesSubcommand, nextCommands } from './help.ts'
 import { version } from './version.ts'
 import { AGENT_HELP, agent } from '#workers/agent-cli.ts'
 import { REPLY_HELP, reply } from '#workers/reply-cli.ts'
@@ -38,7 +38,8 @@ const HELP: Record<string, string> = {
 const help = ({ command }: { command: string }) => commandHelp({ command })
   ?? firstmateHelp({ command }) ?? HELP[command]
 
-// A command line's help, and its name: named after the subcommand only when its help has a section for it (`card <id>` stays `card`).
+// A command line's help, and its name: named after the subcommand only when a usage line spells it out, so an id never splits
+// one command's lines (`card <id>` stays `card`).
 export function invocationOf({ argv }: { argv: string[] }) {
   const [
     command,
@@ -61,7 +62,11 @@ export function invocationOf({ argv }: { argv: string[] }) {
   return {
     command,
     focused,
-    name: focused !== full ? `${command} ${sub}` : command,
+    name: full && sub && namesSubcommand({
+      help: full,
+      command,
+      sub,
+    }) ? `${command} ${sub}` : command,
   }
 }
 
