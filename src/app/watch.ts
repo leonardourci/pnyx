@@ -1,6 +1,7 @@
 import { watch, watchFile, unwatchFile, statSync, readdirSync, type FSWatcher } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { background } from './background.ts'
+import { log } from './diagnostics.ts'
 
 // Native watchers share the daemon's descriptors with agent pipes and open requests.
 const NATIVE_LIMIT = 64
@@ -208,10 +209,12 @@ function follow({
         error => background({
           name: `watch fallback ${path}`,
           run: () => {
-            console.error(
-              `pnyx-axi watch ${path}:`,
+            log({
+              level: 'warn',
+              operation: 'watch',
+              name: path,
               error,
-            )
+            })
             release()
             poll()
           },
@@ -222,10 +225,12 @@ function follow({
         'ENOENT',
         'ENOTDIR',
       ].includes((error as NodeJS.ErrnoException).code ?? '')) {
-        console.error(
-          `pnyx-axi watch ${path}:`,
+        log({
+          level: 'warn',
+          operation: 'watch',
+          name: path,
           error,
-        )
+        })
       }
     }
   }

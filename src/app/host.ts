@@ -1,4 +1,5 @@
 import { taskLeasePresent } from '#routine-helper/leases.ts'
+import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
 import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
@@ -399,7 +400,12 @@ export function createHost({
     try {
       write({ fn })
     } catch (error) {
-      console.error(`pnyx-axi serve: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'host.note',
+        hydraId,
+        error,
+      })
     }
   }
 
@@ -996,7 +1002,14 @@ export function createHost({
             attempt: `reconcile:${card.id}:${state.seq}`,
           })
         } catch (error) {
-          console.error(`pnyx-axi serve: ${card.id} inbox assignment could not resume: ${(error as Error).message}`)
+          log({
+            level: 'error',
+            operation: 'inbox resume',
+            hydraId,
+            taskId: card.id,
+            correlationId: oldest.id,
+            error,
+          })
         }
       }
     },

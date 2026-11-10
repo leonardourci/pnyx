@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { learningConditions } from './learnings.ts'
 import type { HydraState } from '#app/model.ts'
 import { hydraIds } from '#app/home-migration.ts'
@@ -10,7 +11,12 @@ export function memoryConditions() {
     try {
       states[hydraId] = loadHydra({ hydraId }).state
     } catch (error) {
-      console.error(`pnyx-axi: memory conditions unavailable for Hydra ${hydraId}: ${(error as Error).message}`)
+      log({
+        level: 'warn',
+        operation: 'memory.conditions',
+        hydraId,
+        error,
+      })
     }
   }
 

@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { privateDir, writeDurably } from './storage.ts'
@@ -47,7 +48,12 @@ export function readJournal<T>({
   const skipped = lines.length - entries.length
 
   if (skipped) {
-    console.error(`pnyx-axi: skipped ${skipped} unreadable lines in ${path}`)
+    log({
+      level: 'warn',
+      operation: 'journal.unreadable',
+      name: path,
+      count: skipped,
+    })
   }
 
   cache.set(
