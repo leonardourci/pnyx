@@ -82,6 +82,10 @@ test(
         return open
       },
       hydra: () => 'lab',
+      chat: () => ({
+        chars: 0,
+        messages: 0,
+      }),
     })
 
     for (let index = 0; index < 1005; index += 1) {
@@ -144,6 +148,10 @@ test(
         return true
       },
       hydra: () => 'lab',
+      chat: () => ({
+        chars: 0,
+        messages: 0,
+      }),
     })
     markSend({ hydraId: 'lab' })
     markSend({ hydraId: 'other' })
@@ -182,6 +190,10 @@ test(
         return true
       },
       hydra: () => 'lab',
+      chat: () => ({
+        chars: 0,
+        messages: 0,
+      }),
     })
     noteFrame({ ms: 16.7 })
     assert.deepEqual(

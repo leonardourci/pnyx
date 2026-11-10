@@ -180,6 +180,7 @@ export function createHydraConnection() {
       loadError: '',
       subscriptionAttempt: 0,
       thread: null,
+      threadChars: 0,
       queue: emptyQueue(),
       spend: {},
       usage: {},
@@ -989,7 +990,15 @@ export function createHydraConnection() {
 
       try {
         const message = JSON.parse(event.data) as ServerMessage
+        const thread = message.scope ? scopes.get(message.scope)?.thread : undefined
         receive({ message })
+        const scope = message.scope ? scopes.get(message.scope) : undefined
+
+        // The store keeps one thread page per Hydra, so a new one replaces the size of the last.
+        if (scope?.thread && scope.thread !== thread) {
+          scope.threadChars = (event.data as string).length
+        }
+
         // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. Each carries the
         // reveal frames drawn since the last; the server's socket.send line has their size.
         const drawn = takeFrames()
@@ -1164,6 +1173,19 @@ export function createHydraConnection() {
           return true
         },
         hydra: () => selected,
+        chat: () => {
+          let chars = 0, messages = 0
+
+          for (const scope of scopes.values()) {
+            chars += scope.threadChars
+            messages += scope.thread?.entries.length ?? 0
+          }
+
+          return {
+            chars,
+            messages,
+          }
+        },
       })
       restoreCreations()
       connect()

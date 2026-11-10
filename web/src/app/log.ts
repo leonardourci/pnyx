@@ -11,6 +11,7 @@ const MESSAGE_ROOM_BYTES = 1024
 const BATCH_LENGTH = Math.floor((MAX_MESSAGE_BYTES - MESSAGE_ROOM_BYTES) / UTF8_BYTES_PER_UNIT)
 const SLOW_FRAMES = 'long-animation-frame'
 const LONG_TASKS = 'longtask'
+const MEMORY_MS = 30_000
 // A reply's first text later than this belongs to something else, such as a wake long after the send.
 const FIRST_TEXT_MAX_MS = 5 * 60_000
 // A reveal frame counts as slow past this many of the display's frames; the display's frame is the shortest one seen.
@@ -28,10 +29,18 @@ interface SlowFrame extends PerformanceEntry {
   }[]
 }
 
+// Chromium's JS heap figure; other browsers have none, and the line leaves it out.
+type HeapPerformance = Performance & { memory?: { usedJSHeapSize: number } }
+
 interface Output {
   // False while the socket is down, so the lines wait for the next flush.
   send({ lines }: { lines: string[] }): boolean
   hydra(): string
+  // The chat the page holds: the length of the frames that brought it, and its messages.
+  chat(): {
+    chars: number
+    messages: number
+  }
 }
 
 const tab = crypto.randomUUID().slice(
@@ -249,14 +258,44 @@ export function takeFrames() {
   return taken
 }
 
-// Watches the frames and long tasks the browser reports as slow, and the page's uncaught errors, until stopped.
+// The page's memory, read when the browser is idle so it never lands inside a reveal frame.
+function memoryLine() {
+  if (mode === 'off' || !output) {
+    return
+  }
+
+  const chat = output.chat()
+  log({
+    operation: 'page.memory',
+    chatChars: chat.chars,
+    messages: chat.messages,
+    elements: document.getElementsByTagName('*').length,
+    heapUsed: (performance as HeapPerformance).memory?.usedJSHeapSize,
+  })
+}
+
+const whenIdle = () => {
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(memoryLine)
+  } else {
+    // Safari has no idle callback: right after a frame instead.
+    requestAnimationFrame(() => setTimeout(
+      memoryLine,
+      0,
+    ))
+  }
+}
+
+// Watches the frames and long tasks the browser reports as slow, the page's uncaught errors and its memory, until stopped.
 export function startPageLog({
   send,
   hydra,
+  chat,
 }: Output) {
   output = {
     send,
     hydra,
+    chat,
   }
   schedule()
   const slowFramesSupported = PerformanceObserver.supportedEntryTypes.includes(SLOW_FRAMES)
@@ -276,6 +315,11 @@ export function startPageLog({
     }
   })
   observer.observe({ type: slowFramesSupported ? SLOW_FRAMES : LONG_TASKS })
+  const memory = setInterval(
+    whenIdle,
+    MEMORY_MS,
+  )
+
   // eslint-disable-next-line pnyx/object-params -- addEventListener owns the handler signature.
   const failed = (event: ErrorEvent) => log({
     level: 'error',
@@ -305,6 +349,7 @@ export function startPageLog({
 
   return () => {
     observer.disconnect()
+    clearInterval(memory)
     removeEventListener(
       'error',
       failed,

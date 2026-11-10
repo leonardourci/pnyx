@@ -73,6 +73,8 @@ function installPage({
         content: 'fixture',
         setAttribute() {},
       }),
+      // The page's memory line counts the elements.
+      getElementsByTagName: () => ({ length: 0 }),
     },
   )
   const globals = {
@@ -92,6 +94,12 @@ function installPage({
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),
     WebSocket: TestSocket,
+    // The page's memory line waits for a frame where the browser has no idle callback.
+    // eslint-disable-next-line pnyx/object-params -- the browser owns requestAnimationFrame's signature.
+    requestAnimationFrame: (run: FrameRequestCallback) => setTimeout(
+      () => run(performance.now()),
+      0,
+    ),
     DOMParser: class {
       parseFromString() {
         return {

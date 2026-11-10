@@ -42,6 +42,10 @@ interface LogFields {
   // The reveal frames a page drew since its last update, and the slowest of them.
   frames?: number
   worstFrameMs?: number
+  // The page's memory: its chat's size as the length of the frames that brought it, its messages and elements.
+  chatChars?: number
+  messages?: number
+  elements?: number
   // The process line: CPU and event-loop use over the interval, loop delay, heap and garbage collection.
   cpuPercent?: number
   loopUtilization?: number
@@ -81,6 +85,9 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   blockingMs: true,
   frames: true,
   worstFrameMs: true,
+  chatChars: true,
+  messages: true,
+  elements: true,
   cpuPercent: true,
   loopUtilization: true,
   loopDelayMs: true,
@@ -133,6 +140,10 @@ export const PAGE_NUMBER_FIELDS = [
   'blockingMs',
   'frames',
   'worstFrameMs',
+  'chatChars',
+  'messages',
+  'elements',
+  'heapUsed',
 ] as const
 
 export type PageLine = Pick<LogFields, 'operation' | 'hydraId' | (typeof PAGE_TEXT_FIELDS)[number]
