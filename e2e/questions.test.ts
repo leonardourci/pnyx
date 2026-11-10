@@ -734,6 +734,40 @@ test(
       s.task({ key: 'cache' }).copy,
       undefined,
     )
+    await s.owner({
+      args: [
+        'task',
+        'unhide',
+        'report',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'build',
+        'report',
+      ],
+    })
+    const build = await until({
+      what: 'the resumed investigation worker to receive build readiness requirements',
+      check: () => s.received({ cwd: folder }).find(text => text.includes('The owner approved building this.')),
+    })
+    assert.match(
+      build,
+      /project's own instructions require/,
+    )
+    assert.match(
+      build,
+      /required checks passing on its current revision/,
+    )
+    assert.match(
+      build,
+      /repeat affected reviews and verification/,
+    )
+    assert.match(
+      build,
+      /refresh the description and evidence/,
+    )
   },
 )
 
