@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import type { ChildProcess } from 'node:child_process'
 import { readFileSync, rmSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -30,7 +31,12 @@ const signalTree = ({
       )
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
-        console.error(`pnyx-axi serve: could not signal leftover agent ${pid}: ${(error as Error).message}`)
+        log({
+          level: 'warn',
+          operation: 'agent.signal',
+          name: String(pid),
+          error,
+        })
       }
     }
   }
@@ -109,9 +115,13 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
 
       while (left.some(child => treeAlive({ pid: child.pid }))) {
         if (Date.now() > end) {
-          console.error(`pnyx-axi serve: leftover agents did not stop: ${left.filter(child => treeAlive({ pid: child.pid }))
-            .map(child => child.pid)
-            .join(', ')}`)
+          const alive = left.filter(child => treeAlive({ pid: child.pid }))
+          log({
+            level: 'warn',
+            operation: 'agent.sweep',
+            count: alive.length,
+            error: `leftover agents did not stop: ${alive.map(child => child.pid).join(', ')}`,
+          })
 
           return false
         }
