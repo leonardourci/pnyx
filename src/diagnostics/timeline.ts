@@ -4,10 +4,11 @@ import { asRecord } from '#app/command-validation.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
+import { logFiles } from './log-files.ts'
 
 export const DEBUG_LIMIT = 50
 export const DEBUG_MAX = 200
-export const LOG_BYTES = 512 * 1024
+export const LOG_BYTES = 4 * 1024 * 1024
 const CURSOR_BYTES = 2048
 
 export interface TimelineRow {
@@ -89,22 +90,20 @@ export function eventRow({ event }: { event: HydraEvent }): TimelineRow {
   }
 }
 
-export function serviceRows({ hydraId }: { hydraId: string }): {
+// One file's last `bytes`: its structured warnings and errors for the Hydra, and whether older lines were left out.
+function tailRows({
+  path,
+  hydraId,
+  bytes,
+}: {
+  path: string
+  hydraId: string
+  bytes: number
+}): {
   rows: TimelineRow[]
   truncated: boolean
+  read: number
 } {
-  const path = join(
-    pnyxHome(),
-    'service.log',
-  )
-
-  if (!existsSync(path)) {
-    return {
-      rows: [],
-      truncated: false,
-    }
-  }
-
   const fd = openSync(
     path,
     'r',
@@ -114,7 +113,7 @@ export function serviceRows({ hydraId }: { hydraId: string }): {
     const size = fstatSync(fd).size
     const start = Math.max(
       0,
-      size - LOG_BYTES,
+      size - bytes,
     )
     const buffer = Buffer.alloc(size - start)
     readSync(
@@ -153,8 +152,9 @@ export function serviceRows({ hydraId }: { hydraId: string }): {
       }
 
       const record = asRecord({ value })
+      const failure = record?.level === 'error' || record?.level === 'warn'
 
-      if (record?.v !== 1 || record.hydraId !== hydraId || typeof record.operationId !== 'string'
+      if (record?.v !== 1 || !failure || record.hydraId !== hydraId || typeof record.operationId !== 'string'
         || typeof record.at !== 'string' || !Number.isFinite(Date.parse(record.at))
         || typeof record.operation !== 'string') {
         continue
@@ -176,9 +176,53 @@ export function serviceRows({ hydraId }: { hydraId: string }): {
     return {
       rows,
       truncated: start > 0,
+      read: buffer.length,
     }
   } finally {
     closeSync(fd)
+  }
+}
+
+// Warnings and errors from the newest log files back, then from service.log, where they were written before the log folder.
+export function serviceRows({ hydraId }: { hydraId: string }): {
+  rows: TimelineRow[]
+  truncated: boolean
+} {
+  const paths = [
+    ...logFiles().toReversed()
+      .map(file => file.path),
+    join(
+      pnyxHome(),
+      'service.log',
+    ),
+  ].filter(path => existsSync(path))
+  const rows: TimelineRow[] = []
+  let left = LOG_BYTES
+
+  for (const [
+    index,
+    path,
+  ] of paths.entries()) {
+    const tail = tailRows({
+      path,
+      hydraId,
+      bytes: left,
+    })
+    rows.push(...tail.rows)
+    left -= tail.read
+    const olderFiles = index < paths.length - 1
+
+    if (tail.truncated || (left <= 0 && olderFiles)) {
+      return {
+        rows,
+        truncated: true,
+      }
+    }
+  }
+
+  return {
+    rows,
+    truncated: false,
   }
 }
 

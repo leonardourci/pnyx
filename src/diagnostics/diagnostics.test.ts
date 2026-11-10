@@ -299,7 +299,7 @@ test(
 )
 
 test(
-  'service history bounds its read, ignores legacy and torn records and returns identities without error bodies',
+  'service history reads warnings and errors from the newest log files, then service.log, within its bound',
   t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -322,46 +322,74 @@ test(
         },
       )
     })
-    const own = {
+    const failure = {
       v: 1,
-      at: '2026-01-01T00:00:00Z',
+      level: 'error',
+      at: '2026-01-02T00:00:00.000Z',
       hydraId: 'lab',
-      operationId: 'operation',
+      operationId: 'recent',
       operation: 'resume',
-      eventSeq: 4,
+      eventSeq: 5,
       correlationId: 'message',
       error: { message: 'PRIVATE_TRACE_BODY' },
     }
+    mkdirSync(join(
+      home,
+      'logs',
+    ))
+    writeFileSync(
+      join(
+        home,
+        'logs',
+        '2026-01-02.jsonl',
+      ),
+      `${JSON.stringify({
+        v: 1,
+        at: '2026-01-02T00:00:01.000Z',
+        hydraId: 'lab',
+        operationId: 'action',
+        operation: 'command.page',
+        ms: 3,
+      })}\n${JSON.stringify(failure)}\n{"v":1`,
+    )
     writeFileSync(
       join(
         home,
         'service.log',
       ),
       `${'x'.repeat(LOG_BYTES)}\nlegacy error\n${JSON.stringify({
-        ...own,
+        ...failure,
         hydraId: 'other',
-      })}\n${JSON.stringify(own)}\n{"v":1`,
+      })}\n${JSON.stringify({
+        ...failure,
+        at: '2026-01-01T00:00:00.000Z',
+        operationId: 'before the log folder',
+        eventSeq: 4,
+      })}\n`,
     )
     const page = serviceRows({ hydraId: 'lab' })
     assert.equal(
       page.truncated,
       true,
     )
-    assert.equal(
-      page.rows.length,
-      1,
-    )
-    assert.equal(
-      page.rows[0]?.id,
-      'operation',
-    )
-    assert.equal(
-      page.rows[0]?.seq,
-      4,
-    )
-    assert.equal(
-      page.rows[0]?.correlationId,
-      'message',
+    assert.deepEqual(
+      page.rows.map(row => [
+        row.id,
+        row.seq,
+        row.correlationId,
+      ]),
+      [
+        [
+          'recent',
+          5,
+          'message',
+        ],
+        [
+          'before the log folder',
+          4,
+          'message',
+        ],
+      ],
     )
     assert.ok(!JSON.stringify(page).includes('PRIVATE_TRACE_BODY'))
   },
