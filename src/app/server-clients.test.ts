@@ -5,11 +5,12 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
+import { createHydra } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 
 test(
-  'state, working status and actions recover after drain without another update',
+  'state, working status, actions and Hydra lists recover after drain without another update',
   t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -314,6 +315,52 @@ test(
       received.length,
       accepted,
       'one oversized snapshot must not cause a resync loop',
+    )
+
+    received.length = 0
+    buffered = MAX_BUFFERED + 1
+    tabs.hydraSubscribers.add(client)
+    assert.equal(
+      tabs.send({
+        ws: client,
+        message: {
+          type: 'hydras',
+          hydraId: 'default',
+          hydras: [],
+        },
+      }),
+      false,
+    )
+    const added = createHydra({ name: 'Fresh list' })
+    buffered = 0
+    t.mock.timers.tick(SOCKET_RETRY_MS)
+    assert.deepEqual(
+      received.map(message => message.type),
+      [
+        'snapshot',
+        'latest',
+        'hydraQueue',
+        'hydras',
+      ],
+      'a rejected Hydra list must recover without another update',
+    )
+    const list = received.find(message => message.type === 'hydras')
+    assert.ok(list?.type === 'hydras')
+    assert.deepEqual(
+      list.hydras.map(({
+        id,
+        name,
+      }) => ({
+        id,
+        name,
+      })),
+      [
+        {
+          id: added,
+          name: 'Fresh list',
+        },
+      ],
+      'recovery must read the current list instead of sending the stale payload',
     )
   },
 )

@@ -151,7 +151,7 @@ export function createServerClients({
   }) => {
     const pending: Pending = recovery.get(ws) ?? { snapshot: false }
 
-    if (message.type === 'event' || message.type === 'snapshot') {
+    if (message.type === 'event' || message.type === 'snapshot' || message.type === 'hydras') {
       pending.snapshot = true
     } else if (message.type === 'latest') {
       pending.latest = mergeLatest({
