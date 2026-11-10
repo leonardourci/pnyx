@@ -43,7 +43,6 @@ export function Tooltip({
     requested,
     setVisible,
   ] = useState(false)
-  // Disabling hides a tooltip already showing or waiting on its delay.
   const visible = requested && !disabled
 
   const hide = () => {
@@ -51,6 +50,16 @@ export function Tooltip({
     clearTimeout(closeTimer.current)
     setVisible(false)
   }
+
+  // Disabling drops a tooltip already showing or waiting on its delay, so it needs a new hover or focus to return.
+  useEffect(
+    () => {
+      if (disabled) {
+        hide()
+      }
+    },
+    [disabled],
+  )
 
   const leave = () => {
     clearTimeout(closeTimer.current)
@@ -67,6 +76,10 @@ export function Tooltip({
   }
 
   const show = () => {
+    if (disabled) {
+      return
+    }
+
     clearTimeout(closeTimer.current)
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,
