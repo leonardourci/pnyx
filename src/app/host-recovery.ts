@@ -1,6 +1,6 @@
 import { applyDecision } from './decision.ts'
 import { background } from './background.ts'
-import { logFailure } from './diagnostics.ts'
+import { log } from './diagnostics.ts'
 import { readEvents } from './event-log.ts'
 import type { Host, Live } from './host-types.ts'
 import { loadHydra } from './store.ts'
@@ -250,14 +250,13 @@ export function createHostRecovery({
         })
       } catch (error) {
         const message = (error as Error).message
-        logFailure({
+        log({
+          level: 'error',
           operation: 'worker resume',
           error,
-          context: {
-            hydraId,
-            taskId: cut.task,
-            correlationId: cut.resumeAttemptId,
-          },
+          hydraId,
+          taskId: cut.task,
+          correlationId: cut.resumeAttemptId,
         })
         note({
           fn: ({ writer }) => {
@@ -294,14 +293,13 @@ export function createHostRecovery({
           steering: next.id,
         })
       } catch (error) {
-        logFailure({
+        log({
+          level: 'error',
           operation: 'inbox resume',
           error,
-          context: {
-            hydraId,
-            taskId: card.id,
-            correlationId: next.id,
-          },
+          hydraId,
+          taskId: card.id,
+          correlationId: next.id,
         })
       }
     }

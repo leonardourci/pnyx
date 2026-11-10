@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { background } from '#app/background.ts'
-import { logFailure } from '#app/diagnostics.ts'
+import { log } from '#app/diagnostics.ts'
 import { indexedEvents } from '#app/event-log.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
@@ -184,14 +184,13 @@ export function createDiagnosticRecovery({
         reason: 'recovery event persistence failed; automation stopped',
       },
     )
-    logFailure({
+    log({
+      level: 'error',
       operation: 'recovery persistence',
       error,
-      context: {
-        hydraId,
-        taskId: task,
-        correlationId: message,
-      },
+      hydraId,
+      taskId: task,
+      correlationId: message,
     })
   }
 
@@ -344,15 +343,14 @@ export function createDiagnosticRecovery({
       // Only a durable failed receipt proves that a thrown send did not reach the native session.
       const current = state().cards[task]?.replies?.find(reply => reply.id === message)
       status = current?.state === 'failed' ? 'failed' : 'unknown'
-      logFailure({
+      log({
+        level: 'error',
         operation: 'message recovery',
         error,
-        context: {
-          hydraId,
-          taskId: task,
-          sessionId: candidate.sessionId,
-          correlationId: message,
-        },
+        hydraId,
+        taskId: task,
+        sessionId: candidate.sessionId,
+        correlationId: message,
       })
     }
 

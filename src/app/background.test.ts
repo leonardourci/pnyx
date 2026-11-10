@@ -57,12 +57,17 @@ test(
       first.error.stack,
       /Controller unavailable/,
     )
+    assert.equal(
+      typeof first.rss,
+      'number',
+    )
     assert.deepEqual(
       first,
       {
         v: 1,
         at: first.at,
         level: 'error',
+        source: 'server',
         pid: process.pid,
         operation: 'Hydra resume',
         operationId: first.operationId,
@@ -70,6 +75,7 @@ test(
         taskId: '$hydra',
         sessionId: 'codex:synthetic',
         correlationId: 'resume:synthetic',
+        rss: first.rss,
         error: {
           name: 'Error',
           message: 'Controller unavailable\nTry attaching again',
@@ -84,6 +90,7 @@ test(
         v: 1,
         at: retry.at,
         level: 'error',
+        source: 'server',
         pid: process.pid,
         operation: 'Hydra resume retry',
         operationId: first.operationId,
@@ -91,6 +98,7 @@ test(
         taskId: '$hydra',
         sessionId: 'codex:synthetic',
         correlationId: 'resume:synthetic',
+        rss: retry.rss,
         error: {
           name: 'Error',
           message: 'Retry unavailable',

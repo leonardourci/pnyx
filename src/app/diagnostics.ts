@@ -1,64 +1,191 @@
 import { randomUUID } from 'node:crypto'
+import { closeSync, openSync, writeSync } from 'node:fs'
+import { join } from 'node:path'
 import { inspect } from 'node:util'
+import { pnyxHome } from '#store/paths.ts'
+import { privateDir } from '#store/storage.ts'
+import { logged, oneDecimal, type LogLine, type LogMode } from './log-line.ts'
+
+export type { LogLine, LogMode } from './log-line.ts'
 
 const FAILURE_INSPECT_DEPTH = 2
+const FAILURE_INSPECT_CHARS = 2000
 
-export interface DiagnosticContext {
-  hydraId: string
-  taskId?: string
-  sessionId?: string
-  correlationId?: string
-  eventSeq?: number
+export const logsDir = () => join(
+  pnyxHome(),
+  'logs',
+)
+
+// A day's file, named by its UTC date.
+export const logFileName = ({ day }: { day: string }) => `${day}.jsonl`
+
+// Held in memory and changed with the setting, so a line never reads settings.
+let mode: LogMode = 'on'
+// Only the server writes the log folder; any other process keeps warnings and errors on its stderr.
+let toFiles = false
+let file: {
+  day: string
+  fd: number
+} | undefined
+
+export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
+  mode = next
 }
 
-export function logFailure({
-  operation,
-  error,
-  context,
-  operationId = randomUUID(),
-}: {
-  operation: string
-  error: unknown
-  context?: DiagnosticContext
-  operationId?: string
-}): void {
-  const failure: {
-    name?: string
-    message: string
-    code?: string
-    stack?: string
-  } = { message: '' }
+export const logMode = () => mode
 
+export function openLogs(): void {
+  toFiles = true
+}
+
+// The next line opens its day's file again, after cleanup deleted the current one.
+export function releaseLogFile(): void {
+  if (file) {
+    closeSync(file.fd)
+    file = undefined
+  }
+}
+
+export function closeLogs(): void {
+  releaseLogFile()
+  toFiles = false
+}
+
+function failure({ error }: { error: unknown }) {
   if (error instanceof Error) {
-    failure.name = error.name
-    failure.message = error.message
-    failure.stack = error.stack
-
-    if ('code' in error && typeof error.code === 'string') {
-      failure.code = error.code
+    return {
+      name: error.name,
+      message: error.message,
+      code: 'code' in error && typeof error.code === 'string' ? error.code : undefined,
+      stack: error.stack,
     }
-  } else {
-    failure.message = typeof error === 'string' ? error : inspect(
+  }
+
+  return {
+    message: typeof error === 'string' ? error : inspect(
       error,
       {
         customInspect: false,
         depth: FAILURE_INSPECT_DEPTH,
+        maxStringLength: FAILURE_INSPECT_CHARS,
       },
-    )
+    ).slice(
+      0,
+      FAILURE_INSPECT_CHARS,
+    ),
+  }
+}
+
+function append({
+  text,
+  day,
+  severe,
+}: {
+  text: string
+  day: string
+  severe: boolean
+}): void {
+  if (!toFiles) {
+    if (severe) {
+      console.error(text)
+    }
+
+    return
   }
 
-  console.error(JSON.stringify({
-    v: 1,
-    at: new Date().toISOString(),
-    level: 'error',
-    pid: process.pid,
+  try {
+    if (file?.day !== day) {
+      releaseLogFile()
+      privateDir({ dir: logsDir() })
+      file = {
+        day,
+        fd: openSync(
+          join(
+            logsDir(),
+            logFileName({ day }),
+          ),
+          'a',
+          0o600,
+        ),
+      }
+    }
+
+    // ponytail: one synchronous append per line; queue writes if lines ever reach thousands a second.
+    writeSync(
+      file.fd,
+      `${text}\n`,
+    )
+  } catch (error) {
+    // An unwritable log folder must not break the action being logged; the failure still reaches stderr.
+    file = undefined
+
+    if (severe) {
+      console.error(text)
+      console.error(String(error))
+    }
+  }
+}
+
+export function writeLine({
+  line,
+  source,
+  at = new Date().toISOString(),
+}: {
+  line: LogLine
+  source: 'server' | 'web'
+  // When it happened, if not now: a page's lines arrive in batches.
+  at?: string
+}): void {
+  const {
     operation,
     operationId,
-    hydraId: context?.hydraId,
-    taskId: context?.taskId,
-    sessionId: context?.sessionId,
-    correlationId: context?.correlationId,
-    eventSeq: context?.eventSeq,
-    error: failure,
-  }))
+    level,
+    error,
+    detailed,
+    ms,
+    ...fields
+  } = line
+  // A failure always has an id, so a retry can share it and the timeline can page by it.
+  const failureId = level && !operationId ? randomUUID() : operationId
+
+  append({
+    day: at.slice(
+      0,
+      10,
+    ),
+    severe: level !== undefined,
+    text: JSON.stringify({
+      v: 1,
+      at,
+      level,
+      source,
+      pid: source === 'server' ? process.pid : undefined,
+      operation,
+      operationId: failureId,
+      ...fields,
+      detailed: detailed ? true : undefined,
+      ms: ms === undefined ? undefined : oneDecimal({ value: ms }),
+      rss: source === 'server' ? process.memoryUsage.rss() : undefined,
+      error: level && error !== undefined ? failure({ error }) : undefined,
+    }),
+  })
+}
+
+// The one logger: a plain call is the action's line, detailed lines wait for detailed logging, and warnings and errors are always kept.
+// eslint-disable-next-line pnyx/object-params -- the line passes on whole, so nothing is copied before the level check.
+export function log(line: LogLine): void {
+  // Outside the server only warnings and errors are printed, so other lines stop before they are built.
+  const printed = toFiles || line.level !== undefined
+
+  if (!printed || !logged({
+    mode,
+    line,
+  })) {
+    return
+  }
+
+  writeLine({
+    line,
+    source: 'server',
+  })
 }

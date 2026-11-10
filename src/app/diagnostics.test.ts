@@ -1,0 +1,109 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { log, type LogLine } from './diagnostics.ts'
+
+test(
+  'outside the server a warning or an error prints one JSON line on stderr, and a plain or detailed line prints nothing',
+  t => {
+    const output = t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    log({
+      operation: 'quiet',
+      ms: 3,
+    })
+    log({
+      operation: 'quiet detail',
+      detailed: true,
+    })
+    log({
+      level: 'warn',
+      operation: 'warned',
+    })
+    log({
+      level: 'error',
+      operation: 'failed',
+      error: { reason: 'x'.repeat(5000) },
+    })
+    const lines = output.mock.calls.map(call => JSON.parse(String(call.arguments[0])))
+    assert.deepEqual(
+      lines.map(line => [
+        line.level,
+        line.operation,
+      ]),
+      [
+        [
+          'warn',
+          'warned',
+        ],
+        [
+          'error',
+          'failed',
+        ],
+      ],
+    )
+    assert.ok(
+      lines[1].error.message.length <= 2000,
+      'a thrown value that is not an Error is inspected within a bound',
+    )
+  },
+)
+
+test(
+  'the line type refuses an error line without its error, an error on a normal line and a detailed warning or error',
+  () => {
+    // @ts-expect-error an error line carries the error it reports
+    const missing: LogLine = {
+      operation: 'failed',
+      level: 'error',
+    }
+    // @ts-expect-error a normal line carries no error
+    const normal: LogLine = {
+      operation: 'done',
+      error: new Error('unexpected'),
+    }
+    // @ts-expect-error a warning is never detailed
+    const warning: LogLine = {
+      operation: 'warned',
+      level: 'warn',
+      detailed: true,
+    }
+    // @ts-expect-error an error is never detailed
+    const failure: LogLine = {
+      operation: 'failed',
+      level: 'error',
+      error: 'lost',
+      detailed: true,
+    }
+    const accepted: LogLine[] = [
+      {
+        operation: 'done',
+        ms: 1,
+      },
+      {
+        operation: 'frame',
+        detailed: true,
+      },
+      {
+        operation: 'warned',
+        level: 'warn',
+      },
+      {
+        operation: 'failed',
+        level: 'error',
+        error: new Error('lost'),
+      },
+    ]
+    assert.equal(
+      [
+        missing,
+        normal,
+        warning,
+        failure,
+      ].length,
+      accepted.length,
+    )
+  },
+)
