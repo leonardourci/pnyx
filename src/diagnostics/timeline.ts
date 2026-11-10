@@ -165,7 +165,10 @@ function tailRows({
       const record = asRecord({ value })
       const failure = record?.level === 'error' || record?.level === 'warn'
 
-      if (record?.v !== 1 || !failure || record.hydraId !== hydraId || typeof record.operationId !== 'string'
+      // A warning or error about no Hydra in particular, such as a full log folder, belongs to every Hydra.
+      const otherHydra = record?.hydraId !== undefined && record.hydraId !== hydraId
+
+      if (record?.v !== 1 || !failure || otherHydra || typeof record.operationId !== 'string'
         || typeof record.at !== 'string' || !Number.isFinite(Date.parse(record.at))
         || typeof record.operation !== 'string') {
         continue

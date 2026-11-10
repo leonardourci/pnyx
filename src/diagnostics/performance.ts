@@ -34,6 +34,7 @@ type Timed = Line & { ms: number }
 interface Group {
   count: number
   errors: number
+  warnings: number
   durations: number[]
 }
 
@@ -181,12 +182,15 @@ export async function performanceReport({
       const group = groups.get(key) ?? {
         count: 0,
         errors: 0,
+        warnings: 0,
         durations: [],
       }
       group.count += 1
 
       if (line.level === 'error') {
         group.errors += 1
+      } else if (line.level === 'warn') {
+        group.warnings += 1
       }
 
       const ms = line.ms
@@ -245,6 +249,7 @@ export async function performanceReport({
       ),
     }),
     errors: group.errors,
+    warnings: group.warnings,
   }))
     .toSorted((
       a,

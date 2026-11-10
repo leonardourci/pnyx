@@ -350,7 +350,13 @@ test(
         operationId: 'action',
         operation: 'command.page',
         ms: 3,
-      })}\n${JSON.stringify(failure)}\n{"v":1`,
+      })}\n${JSON.stringify(failure)}\n${JSON.stringify({
+        v: 1,
+        level: 'warn',
+        at: '2026-01-02T00:00:02.000Z',
+        operationId: 'server-wide',
+        operation: 'logs.full',
+      })}\n{"v":1`,
     )
     writeFileSync(
       join(
@@ -390,7 +396,13 @@ test(
           5,
           'message',
         ],
+        [
+          'server-wide',
+          undefined,
+          undefined,
+        ],
       ],
+      'a warning about no Hydra in particular belongs to every Hydra’s timeline',
     )
     assert.ok(!JSON.stringify(page).includes('PRIVATE_TRACE_BODY'))
   },

@@ -72,8 +72,8 @@ and the last successful synchronous scheduler pass. Unknown observations remain 
 Facts are per running server, reset at restart, and cause no retry, release or recovery action.
 pnyx-axi debug performance [--since <ISO>] [--until <ISO>] [--operation <prefix>] [--limit <1..${SLOWEST_MAX}>] [--hydra <id>]
 Read the diagnostic logs of the last hour, or the window given: each action's count, typical
-(median) and worst duration in ms and total time, the server's memory, CPU and event-loop delay
-over time, and the slowest actions (default ${SLOWEST_LIMIT}). --hydra keeps one Hydra's lines and the
+(median) and worst duration in ms, total time, errors and warnings, the server's memory, CPU and
+event-loop delay over time, and the slowest actions (default ${SLOWEST_LIMIT}). --hydra keeps one Hydra's lines and the
 server-wide ones; --operation keeps the operations starting with that prefix.
 `,
   logs: `usage: pnyx-axi logs [clean]

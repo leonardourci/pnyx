@@ -28,6 +28,7 @@ test(
         '{"v":1,"at":"2026-03-01T10:00:05.000Z","operation":"command.page","name":"task create","hydraId":"other","ms":5000}',
         '{"v":1,"at":"2026-03-01T10:00:06.000Z","operation":"process","rss":104857600,"heapUsed":52428800,"cpuPercent":2,"loopDelayP99Ms":21}',
         '{"v":1,"at":"2026-03-01T10:00:07.000Z","level":"error","operation":"exec","name":"git fetch","ms":40}',
+        '{"v":1,"at":"2026-03-01T10:00:08.000Z","level":"warn","operation":"logs.full","bytes":1048576}',
         '{"v":1,"at":"2026-03-01T11:30:00.000Z","operation":"command.page","name":"task create","hydraId":"lab","ms":99999}',
       ].join('\n')}\n`,
     )
@@ -47,6 +48,7 @@ test(
           worstMs: 900,
           totalMs: 900,
           errors: 0,
+          warnings: 0,
         },
         {
           operation: 'command.page task create',
@@ -55,6 +57,7 @@ test(
           worstMs: 30,
           totalMs: 60,
           errors: 0,
+          warnings: 0,
         },
         {
           operation: 'exec git fetch',
@@ -63,6 +66,16 @@ test(
           worstMs: 40,
           totalMs: 40,
           errors: 1,
+          warnings: 0,
+        },
+        {
+          operation: 'logs.full',
+          count: 1,
+          typicalMs: undefined,
+          worstMs: undefined,
+          totalMs: 0,
+          errors: 0,
+          warnings: 1,
         },
       ],
     )
@@ -96,7 +109,7 @@ test(
     )
     assert.equal(
       report.lines,
-      5,
+      6,
     )
   },
 )
