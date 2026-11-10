@@ -238,13 +238,14 @@ export function writeLine({
       at,
       level,
       source,
-      pid: source === 'server' ? process.pid : undefined,
+      // A failure keeps the process id, to match it with a crash or the system's own logs.
+      pid: level && source === 'server' ? process.pid : undefined,
       operation,
       operationId: failureId,
       ...fields,
-      detailed: detailed ? true : undefined,
       ms: ms === undefined ? undefined : oneDecimal({ value: ms }),
-      rss: source === 'server' ? process.memoryUsage.rss() : undefined,
+      // Detailed lines come many a second, so the lines around them carry the server's memory.
+      rss: source === 'server' && !detailed ? process.memoryUsage.rss() : undefined,
       // An error line describes its error even when what was thrown is undefined.
       error: level === 'error' || (level && error !== undefined) ? failure({ error }) : undefined,
     })

@@ -853,6 +853,8 @@ export async function startServer({
 
   log({
     operation: 'server.start',
+    // Other lines leave the process id out; this one says which process the lines after it come from.
+    pid: process.pid,
     ms: performance.now() - starting,
   })
 

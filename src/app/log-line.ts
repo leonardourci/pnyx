@@ -26,6 +26,8 @@ interface LogFields {
   code?: string
   exitCode?: number
   provider?: string
+  // The server's process id: server.start has it, and a failure adds it itself.
+  pid?: number
   // How long the action took, from the monotonic clock.
   ms?: number
   bytes?: number
@@ -67,6 +69,7 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   code: true,
   exitCode: true,
   provider: true,
+  pid: true,
   bytes: true,
   backlog: true,
   count: true,

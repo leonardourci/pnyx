@@ -3,7 +3,7 @@ import fs, { readdirSync, readFileSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { closeLogs, log, logsDir, openLogs, type LogLine } from './diagnostics.ts'
+import { closeLogs, log, logsDir, openLogs, setLogMode, type LogLine } from './diagnostics.ts'
 import { logged } from './log-line.ts'
 
 test(
@@ -187,7 +187,7 @@ test(
 )
 
 test(
-  'a written line keeps only the known fields, bounds their text and always describes an error',
+  'a written line keeps only the known fields, bounds their text, always describes an error, and leaves out what a reader can recover',
   t => {
     openLogs()
     t.after(() => closeLogs())
@@ -215,6 +215,13 @@ test(
       operation: 'rejected without a reason',
       error: undefined,
     })
+    setLogMode({ mode: 'detailed' })
+    log({
+      operation: 'frame',
+      detailed: true,
+      ms: 16.7,
+    })
+    setLogMode({ mode: 'on' })
     const written = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),
@@ -232,7 +239,6 @@ test(
       [
         'at',
         'operation',
-        'pid',
         'rss',
         'source',
         'taskId',
@@ -247,6 +253,22 @@ test(
     assert.equal(
       (failed.error as { message?: string } | undefined)?.message,
       'undefined',
+    )
+    assert.equal(
+      failed.pid,
+      process.pid,
+      'a failure keeps the process id',
+    )
+    assert.deepEqual(
+      Object.keys(line({ operation: 'frame' })).toSorted(),
+      [
+        'at',
+        'ms',
+        'operation',
+        'source',
+        'v',
+      ],
+      'Detailed lines leave out the flag, the process id and the memory',
     )
   },
 )
