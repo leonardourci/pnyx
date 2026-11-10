@@ -58,10 +58,11 @@ export function treeMemory({
   const children = new Map<number, number[]>()
 
   for (const row of listing.split('\n')) {
+    // A row without three numbers, such as a blank last line, reads as NaN and is skipped.
     const [
-      pid,
-      parent,
-      kb,
+      pid = Number.NaN,
+      parent = Number.NaN,
+      kb = Number.NaN,
     ] = row.trim().split(/\s+/)
       .map(Number)
 
@@ -70,13 +71,13 @@ export function treeMemory({
     }
 
     rss.set(
-      pid!,
-      kb! * KB,
+      pid,
+      kb * KB,
     )
-    const siblings = children.get(parent!) ?? []
-    siblings.push(pid!)
+    const siblings = children.get(parent) ?? []
+    siblings.push(pid)
     children.set(
-      parent!,
+      parent,
       siblings,
     )
   }
