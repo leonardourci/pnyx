@@ -88,8 +88,9 @@ test(
       messages.length,
       1,
     )
-    assert.ok(
-      messages[0]!.text === text,
+    assert.equal(
+      messages[0]!.text,
+      text,
       'the first page must include the whole latest reply',
     )
     assert.equal(
