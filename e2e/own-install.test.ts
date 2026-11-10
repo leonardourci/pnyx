@@ -3,7 +3,7 @@ import { existsSync, readFileSync, realpathSync, renameSync, symlinkSync, unlink
 import { join } from 'node:path'
 import { before, test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { git, openPage, scenarioGroup, until } from '#test-harness/harness.ts'
+import { git, logLines, openPage, scenarioGroup, until } from '#test-harness/harness.ts'
 
 const HYDRA_RETRY_DELAY_MS = 600_000
 const install = process.env.PNYX_TEST_INSTALL
@@ -289,7 +289,7 @@ for (const {
   ]) {
   test(
     `a missing shipped ${name} skill is reported and Hydra still starts`,
-    async t => {
+    async () => {
       const s = await pnyx.scenario()
       const path = install
       const missing = join(
@@ -303,15 +303,11 @@ for (const {
         'utf8',
       )
       unlinkSync(missing)
-      const errors = t.mock.method(
-        console,
-        'error',
-      )
 
       try {
         await pnyx.restart()
         const agent = await s.chat({ text: 'Start without a shipped skill' })
-        assert.ok(errors.mock.calls.some(call => String(call.arguments[0]).includes(missing)))
+        assert.ok(logLines().some(record => record.level === 'warn' && record.operation === 'skills.missing' && record.name === missing))
         assert.match(
           readFileSync(
             join(

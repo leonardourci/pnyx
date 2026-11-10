@@ -325,8 +325,25 @@ export async function openPage({
   }
 }
 
+// A line as the server's log files hold it.
+export type LogRecord = {
+  [field: string]: unknown
+  operation: string
+  at: string
+  level?: string
+  hydraId?: string
+  operationId?: string
+  eventSeq?: number
+  error?: {
+    name?: string
+    message?: string
+    code?: string
+    stack?: string
+  }
+}
+
 // Every line in the server's log files, oldest day first.
-export function logLines(): Record<string, unknown>[] {
+export function logLines(): LogRecord[] {
   const dir = join(
     process.env.PNYX_HOME!,
     'logs',
@@ -347,7 +364,7 @@ export function logLines(): Record<string, unknown>[] {
       .flatMap(line => {
         // A line the server is still writing is read on the next look.
         try {
-          return [JSON.parse(line) as Record<string, unknown>]
+          return [JSON.parse(line) as LogRecord]
         } catch {
           return []
         }

@@ -10,7 +10,7 @@ import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { spoolWrite } from '#app/spool.ts'
-import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
+import { QUIET_MS, logLines, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 import { MAX_RESUMES, WORKER_RESUME } from '#workers/host.ts'
 
@@ -131,11 +131,6 @@ test(
       }),
     })
     let blocked = false
-    const errors = t.mock.method(
-      console,
-      'error',
-      () => {},
-    )
     const rename = fs.renameSync
     t.mock.method(
       fs,
@@ -204,20 +199,18 @@ test(
     )
     const declared = s.events().find(event => event.type === 'task.declared' && event.data.note === 'Blocked behind a busy writer.')!
     assert.ok(grants[0]!.data.seqs.includes(declared.seq))
-    const snapshotFailure = errors.mock.calls.map(call => String(call.arguments[0]))
-      .filter(line => line.startsWith('{'))
-      .map(line => JSON.parse(line))
-      .find(record => record.operation === 'snapshot' && record.hydraId === s.hydraId)
+    const snapshotFailure = logLines()
+      .find(record => record.level === 'error' && record.operation === 'snapshot' && record.hydraId === s.hydraId)
     assert.ok(
       snapshotFailure,
-      'the snapshot failure must identify its Hydra in a JSON record',
+      'the snapshot failure must identify its Hydra in a log line',
     )
     assert.equal(
-      snapshotFailure.error.code,
+      snapshotFailure.error?.code,
       'EIO',
     )
     assert.equal(
-      snapshotFailure.error.message,
+      snapshotFailure.error?.message,
       'snapshot replace failed',
     )
     assert.equal(
@@ -228,7 +221,7 @@ test(
       typeof snapshotFailure.operationId,
       'string',
     )
-    assert.ok(snapshotFailure.eventSeq >= grants[0]!.seq)
+    assert.ok(Number(snapshotFailure.eventSeq) >= grants[0]!.seq)
     assert.equal(
       (await fetch(`http://127.0.0.1:${pnyx.port()}/health`)).status,
       200,
@@ -298,16 +291,11 @@ test(
           return result
         },
       )
-      const logged = t.mock.method(
-        console,
-        'error',
-        () => {},
-      )
       await assert.rejects(async () => {
         const response = await fetch(`http://127.0.0.1:${pnyx.port()}${path}`)
         await response.text()
       })
-      assert.ok(logged.mock.calls.some(call => call.arguments.join(' ').includes('failed after headers')))
+      assert.ok(logLines().some(record => record.operation === 'http.request' && record.error?.message === 'failed after headers'))
       assert.equal(
         (await fetch(`http://127.0.0.1:${pnyx.port()}/health`)).status,
         200,
@@ -898,11 +886,6 @@ test(
         'kept-snapshot',
       ],
     })
-    const errors = t.mock.method(
-      console,
-      'error',
-      () => {},
-    )
     const rename = fs.renameSync
     t.mock.method(
       fs,
@@ -928,11 +911,11 @@ test(
       syncBuiltinESMExports()
     }
 
-    const logged = errors.mock.calls.map(call => String(call.arguments[0]))
-    assert.ok(logged.some(line => line.includes('snapshot replace failed')))
+    const failures = logLines().filter(record => record.level === 'error' && record.hydraId === s.hydraId)
+    assert.ok(failures.some(record => record.operation === 'snapshot' && record.error?.message === 'snapshot replace failed'))
     // The rest of the Hydra's shutdown (its hold, hook socket and timers) ran after the failed save.
     assert.equal(
-      logged.some(line => line.includes('did not close cleanly')),
+      logLines().some(record => record.operation === 'hydra.close'),
       false,
     )
     assert.equal(

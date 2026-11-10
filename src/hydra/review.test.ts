@@ -278,9 +278,20 @@ test(
       1,
     )
     assert.ok(readEvents({ hydraId: 'lab' }).some(event => event.type === 'hydra.review'))
-    assert.match(
-      String(errors.mock.calls[0]?.arguments[0]),
-      /reminders: Synthetic reminder timestamp failure/,
+    const failure = JSON.parse(String(errors.mock.calls[0]?.arguments[0]))
+    assert.deepEqual(
+      [
+        failure.level,
+        failure.operation,
+        failure.hydraId,
+        failure.error.message,
+      ],
+      [
+        'error',
+        'reminders',
+        'lab',
+        'Synthetic reminder timestamp failure',
+      ],
     )
   },
 )
