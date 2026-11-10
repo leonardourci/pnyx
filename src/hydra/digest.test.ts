@@ -63,6 +63,28 @@ test(
 )
 
 test(
+  'the digest shows owner-wide worker notes under their own heading',
+  () => {
+    const digest = hydraDigest({
+      hydraId: 'lab',
+      state: emptyHydra(),
+      owner: {
+        workers: {
+          text: 'Write commits in English.\nReport before pausing.',
+          at: '2026-01-01T00:00:00Z',
+        },
+      },
+    })
+
+    assert.ok(digest.includes('Standing worker instructions for every Hydra (owner memory key workers):\nWrite commits in English.\nReport before pausing.\n'))
+    assert.doesNotMatch(
+      digest,
+      /Other owner memory/,
+    )
+  },
+)
+
+test(
   'owner context is bounded and tells Hydra how to recover omitted memory',
   () => {
     const digest = hydraDigest({

@@ -2,6 +2,7 @@ import { requestCwd } from '#app/request-context.ts'
 import { sameProjectPath } from './identity.ts'
 import { PROJECT_MEMORY_BUDGET } from '#memory/project-memory.ts'
 import { projectMemoryCommand } from '#memory/project-cli.ts'
+import { WORKER_NOTES_BUDGET } from '#memory/workers.ts'
 import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { execFile } from 'node:child_process'
 import { isAbsolute, resolve } from 'node:path'
@@ -379,7 +380,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
 export const project = guard({ handler: projectCommand })
 export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
-Standing worker instructions (1500 characters) are included verbatim in each new worker header.
+Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. For every project and Hydra, use owner worker-notes.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.

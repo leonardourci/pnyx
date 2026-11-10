@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { commands } from '#app/cli.ts'
+import { OWNER_MEMORY_BUDGET } from './budgets.ts'
 import { ownerMemory } from './owner-memory.ts'
 
 const scratch = mkdtempSync(join(
@@ -85,6 +86,88 @@ test(
     assert.equal(
       ownerMemory().preferences?.text,
       'Short PRs.',
+    )
+  },
+)
+
+test(
+  'owner worker notes need a reason, stay within their budget, count toward owner memory and are saved there',
+  async () => {
+    home()
+
+    const save = ({ flags }: { flags: string[] }) => commands.owner([
+      'worker-notes',
+      'set',
+      ...flags,
+    ])
+
+    await assert.rejects(
+      async () => save({
+        flags: [
+          '--text',
+          'Write commits in English.',
+        ],
+      }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    await assert.rejects(
+      async () => save({
+        flags: [
+          '--text',
+          'x'.repeat(1501),
+          '--reason',
+          'too long',
+        ],
+      }),
+      { code: 'MEMORY_FULL' },
+    )
+    await assert.rejects(
+      async () => commands.owner([
+        'worker-notes',
+        'save',
+        '--reason',
+        'not a worker-notes action',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.equal(
+      ownerMemory().workers,
+      undefined,
+    )
+
+    await save({
+      flags: [
+        '--text',
+        'Write commits in English.',
+        '--reason',
+        'workers kept asking',
+      ],
+    })
+    assert.equal(
+      ownerMemory().workers?.text,
+      'Write commits in English.',
+    )
+    await assert.rejects(
+      async () => commands.owner([
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'x'.repeat(OWNER_MEMORY_BUDGET - 'Write commits in English.'.length + 1),
+      ]),
+      { code: 'MEMORY_FULL' },
+    )
+
+    await commands.owner([
+      'worker-notes',
+      'forget',
+      '--reason',
+      'no longer needed',
+    ])
+    assert.equal(
+      ownerMemory().workers,
+      undefined,
     )
   },
 )
