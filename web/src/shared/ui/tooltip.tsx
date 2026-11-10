@@ -40,9 +40,11 @@ export function Tooltip({
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [
-    visible,
+    requested,
     setVisible,
   ] = useState(false)
+  // Disabling hides a tooltip already showing or waiting on its delay.
+  const visible = requested && !disabled
 
   const hide = () => {
     clearTimeout(timer.current)
@@ -65,10 +67,6 @@ export function Tooltip({
   }
 
   const show = () => {
-    if (disabled) {
-      return
-    }
-
     clearTimeout(closeTimer.current)
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,

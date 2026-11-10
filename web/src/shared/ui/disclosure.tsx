@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { RichText } from './rich-text.tsx'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
@@ -31,20 +31,29 @@ export function Disclosure({
   )
 }
 
+type Control = {
+  open?: undefined
+  toggle?: undefined
+} | {
+  open: boolean
+  toggle(): void
+}
+
 // preview: shown while folded, so the rest of text renders only once opened. open and toggle let a caller own the state.
 export function CollapsibleText({
   text,
   preview: folded,
   open,
   toggle,
+  measured,
   className = '',
 }: {
   text: string
   preview?: string
-  open?: boolean
-  toggle?(): void
+  // Tells the caller whether the text folds away anything.
+  measured?({ long }: { long: boolean }): void
   className?: string
-}) {
+} & Control) {
   const [
       own,
       setOwn,
@@ -56,6 +65,14 @@ export function CollapsibleText({
   const flip = toggle ?? (() => setOwn(!own))
   const shown = expanded || folded === undefined ? text : folded
   const long = overflowing || shown !== text
+
+  useEffect(
+    () => measured?.({ long }),
+    [
+      measured,
+      long,
+    ],
+  )
   const preview = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(
