@@ -1,5 +1,5 @@
 import { MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
-import { logged, PAGE_LINES_MAX, STACK_MAX, TEXT_MAX, type LogLine, type LogMode } from '#app/log-line.ts'
+import { logged, PAGE_LINES_MAX, STACK_MAX, TEXT_MAX, type LogMode, type PageLine } from '#app/log-line.ts'
 
 // The page's log(): lines queue here and go to the server in batches over the socket, which writes them with source web.
 const FLUSH_MS = 2000
@@ -11,6 +11,8 @@ const MESSAGE_ROOM_BYTES = 1024
 const BATCH_LENGTH = Math.floor((MAX_MESSAGE_BYTES - MESSAGE_ROOM_BYTES) / UTF8_BYTES_PER_UNIT)
 const SLOW_FRAMES = 'long-animation-frame'
 const LONG_TASKS = 'longtask'
+// A reply's first text later than this belongs to something else, such as a wake long after the send.
+const FIRST_TEXT_MAX_MS = 5 * 60_000
 
 // The long-animation-frame fields read here; TypeScript's DOM types do not describe that entry yet.
 interface SlowFrame extends PerformanceEntry {
@@ -32,14 +34,15 @@ const tab = crypto.randomUUID().slice(
   8,
 )
 let mode: LogMode = 'on'
-let queue: string[] = []
+// Each line with when it was queued on the monotonic clock, so it is sent with its age.
+let queue: {
+  text: string
+  queued: number
+}[] = []
 let timer: ReturnType<typeof setTimeout> | undefined
 let output: Output | undefined
-// The owner's last send in Hydra's chat, until the reply's first text is on the page.
-let sent: {
-  started: number
-  hydraId: string
-} | undefined
+// The owner's last send in each Hydra's chat, until the reply's first text is on the page.
+const sent = new Map<string, number>()
 
 const bounded = ({
   text,
@@ -89,12 +92,20 @@ export function batchSize({ lines }: { lines: string[] }): number {
 
 function flush() {
   timer = undefined
+  const now = performance.now()
+  // Each line says how long ago it happened, so the server places one that waited for the socket without the page's wall clock.
+  const lines = queue.map(entry => `{"ageMs":${Math.round(now - entry.queued)},${entry.text.slice(1)}`)
+  let delivered = 0
 
-  while (queue.length && output) {
-    const count = batchSize({ lines: queue })
+  while (delivered < lines.length && output) {
+    const batch = lines.slice(
+      delivered,
+      delivered + PAGE_LINES_MAX,
+    )
+    const count = batchSize({ lines: batch })
 
     if (!output.send({
-      lines: queue.slice(
+      lines: batch.slice(
         0,
         count,
       ),
@@ -102,8 +113,10 @@ function flush() {
       break
     }
 
-    queue = queue.slice(count)
+    delivered += count
   }
+
+  queue = queue.slice(delivered)
 
   // Lines wait for a socket; without a sender they wait for the next start.
   if (queue.length && output) {
@@ -126,7 +139,7 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
 
 // Queues the line for the server when the level allows it: a detailed line only under Detailed, a warning or error always.
 // eslint-disable-next-line pnyx/object-params -- the line passes on whole, so nothing is copied before the level check.
-export function log(line: LogLine): void {
+export function log(line: PageLine): void {
   if (!logged({
     mode,
     line,
@@ -140,13 +153,15 @@ export function log(line: LogLine): void {
   } = line
   // A line about no Hydra in particular belongs to the one the page shows.
   const selectedHydra = output?.hydra()
-  queue.push(JSON.stringify({
-    ...fields,
-    at: new Date().toISOString(),
-    tab,
-    hydraId: fields.hydraId ?? selectedHydra,
-    error: line.level && error !== undefined ? pageError({ error }) : undefined,
-  }))
+  queue.push({
+    queued: performance.now(),
+    text: JSON.stringify({
+      ...fields,
+      tab,
+      hydraId: fields.hydraId ?? selectedHydra,
+      error: line.level && error !== undefined ? pageError({ error }) : undefined,
+    }),
+  })
 
   if (queue.length > QUEUE_MAX) {
     queue = queue.slice(-QUEUE_MAX)
@@ -157,28 +172,34 @@ export function log(line: LogLine): void {
 
 // Starts timing the owner's send in Hydra's chat; firstTextShown logs the time to the reply's first text.
 export const markSend = ({ hydraId }: { hydraId: string }) => {
-  sent = {
-    started: performance.now(),
+  sent.set(
     hydraId,
-  }
+    performance.now(),
+  )
 }
 
-// A refused send has no reply to wait for.
-export const forgetSend = () => {
-  sent = undefined
+// A refused send, a turn that ended without streamed text or a chat the owner left has no first text to wait for.
+export const forgetSend = ({ hydraId }: { hydraId: string }) => {
+  sent.delete(hydraId)
 }
 
 export function firstTextShown({ hydraId }: { hydraId: string }) {
-  if (sent?.hydraId !== hydraId) {
+  const started = sent.get(hydraId)
+
+  if (started === undefined) {
     return
   }
 
-  log({
-    operation: 'page.first-text',
-    hydraId: sent.hydraId,
-    ms: performance.now() - sent.started,
-  })
-  sent = undefined
+  sent.delete(hydraId)
+  const ms = performance.now() - started
+
+  if (ms <= FIRST_TEXT_MAX_MS) {
+    log({
+      operation: 'page.first-text',
+      hydraId,
+      ms,
+    })
+  }
 }
 
 // Watches the frames and long tasks the browser reports as slow, and the page's uncaught errors, until stopped.
@@ -208,7 +229,6 @@ export function startPageLog({
     }
   })
   observer.observe({ type: slowFramesSupported ? SLOW_FRAMES : LONG_TASKS })
-
   // eslint-disable-next-line pnyx/object-params -- addEventListener owns the handler signature.
   const failed = (event: ErrorEvent) => log({
     level: 'error',
@@ -230,6 +250,11 @@ export function startPageLog({
     'unhandledrejection',
     rejected,
   )
+  // A reload or a closed tab sends what is queued, such as the error that came before it.
+  addEventListener(
+    'pagehide',
+    flush,
+  )
 
   return () => {
     observer.disconnect()
@@ -240,6 +265,10 @@ export function startPageLog({
     removeEventListener(
       'unhandledrejection',
       rejected,
+    )
+    removeEventListener(
+      'pagehide',
+      flush,
     )
     flush()
     output = undefined

@@ -180,6 +180,7 @@ export function HydraChat({
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
+  const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
@@ -436,14 +437,27 @@ export function HydraChat({
     keys: streamedKeys.current,
   })
   previousEntries.current = entries
-  // Only a reply that starts streaming after the owner's send ends the send's first-text line, not one already running.
-  const newReply = entries.some(entry => entry.streaming && entry.text
+  // The reply to the owner's last send is the first text that streams once the send's own turn started, and was not
+  // already streaming when it was sent.
+  const sendTurn = lastSend.current !== undefined && `${lastSend.current}:hosted` in state.eventIds
+  const newReply = sendTurn && entries.some(entry => entry.streaming && entry.text
     && !streamingAtSend.current.has(entry.id))
   useLayoutEffect(() => {
     if (newReply) {
       firstTextShown({ hydraId })
+      lastSend.current = undefined
+    } else if (sendTurn && chatQueue.working) {
+      sendTurnWorked.current = true
+    } else if (sendTurn && sendTurnWorked.current) {
+      // The send's turn ended without streamed text, such as a turn that only ran tools.
+      forgetSend({ hydraId })
+      lastSend.current = undefined
     }
   })
+  useEffect(
+    () => () => forgetSend({ hydraId }),
+    [hydraId],
+  )
 
   const threadSession = useRef(card?.agent?.sessionId)
   useLayoutEffect(
@@ -637,7 +651,7 @@ export function HydraChat({
       const at = new Date().toISOString()
 
       const markFailed = ({ reason }: { reason: string }) => {
-        forgetSend()
+        forgetSend({ hydraId })
         setSending(items => withFailure({
           items,
           id,
@@ -662,6 +676,8 @@ export function HydraChat({
       follow.current = true; setAway(false)
       streamingAtSend.current = new Set(previousEntries.current.filter(entry => entry.streaming)
         .map(entry => entry.id))
+      lastSend.current = id
+      sendTurnWorked.current = false
       markSend({ hydraId })
       setSending(items => items.some(s => s.id === id) ? withFailure({
         items,

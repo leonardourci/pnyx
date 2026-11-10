@@ -1,22 +1,11 @@
 import { asRecord } from '#app/command-validation.ts'
 import { log, logMode, writeLine, type LogLine } from '#app/diagnostics.ts'
-import { logged, PAGE_LINES_MAX, STACK_MAX, TEXT_MAX } from '#app/log-line.ts'
+import { logged, PAGE_LINES_MAX, PAGE_NUMBER_FIELDS, PAGE_TEXT_FIELDS, STACK_MAX, TEXT_MAX } from '#app/log-line.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
 
 const PAGE_OPERATION = /^page\.[a-z][a-z-]{0,40}$/
-// A page line keeps its own time when that is within 5 minutes of the server's clock; an older one, such as a line queued while the socket was down, takes the time it arrives.
-const PAGE_CLOCK_SKEW_MS = 5 * 60_000
-const PAGE_TEXT_FIELDS = [
-  'taskId',
-  'name',
-  'status',
-  'tab',
-  'script',
-] as const
-const PAGE_NUMBER_FIELDS = [
-  'ms',
-  'blockingMs',
-] as const
+// A page line says how long ago it happened on the page's own clock; one older than this, or from the future, takes the time it arrives.
+const PAGE_AGE_MAX_MS = 24 * 60 * 60_000
 
 const text = ({
   value,
@@ -41,13 +30,12 @@ function pageError({ value }: { value: unknown }): Error {
   return error
 }
 
-// When the page saw it, if its clock agrees with the server's.
+// When the page saw it: its age when sent, from the page's monotonic clock, so the page's wall clock is never trusted.
 function pageTime({ value }: { value: unknown }): string | undefined {
-  const at = typeof value === 'string' ? Date.parse(value) : Number.NaN
+  const age = finite({ value })
+  const known = age !== undefined && age >= 0 && age <= PAGE_AGE_MAX_MS
 
-  const agrees = Number.isFinite(at) && Math.abs(at - Date.now()) <= PAGE_CLOCK_SKEW_MS
-
-  return agrees ? new Date(at).toISOString() : undefined
+  return known ? new Date(Date.now() - age).toISOString() : undefined
 }
 
 function pageLine({ value }: { value: unknown }): LogLine | undefined {
@@ -110,7 +98,7 @@ export function logPageLines({ value }: { value: unknown }): void {
       writeLine({
         line,
         source: 'web',
-        at: pageTime({ value: asRecord({ value: item })?.at }),
+        at: pageTime({ value: asRecord({ value: item })?.ageMs }),
       })
     }
   }

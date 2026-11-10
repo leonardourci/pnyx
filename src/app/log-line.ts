@@ -114,6 +114,23 @@ type Severity =
 
 export type LogLine = LogFields & Severity
 
+// The fields a page line keeps; the server drops any other a page sends.
+export const PAGE_TEXT_FIELDS = [
+  'taskId',
+  'name',
+  'status',
+  'tab',
+  'script',
+] as const
+export const PAGE_NUMBER_FIELDS = [
+  'ms',
+  'count',
+  'blockingMs',
+] as const
+
+export type PageLine = Pick<LogFields, 'operation' | 'hydraId' | (typeof PAGE_TEXT_FIELDS)[number]
+  | (typeof PAGE_NUMBER_FIELDS)[number]> & Severity
+
 // Warnings and errors are always written; a detailed line needs detailed logging.
 export const logged = ({
   mode,

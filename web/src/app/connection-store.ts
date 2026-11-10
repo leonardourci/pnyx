@@ -62,6 +62,8 @@ export function createHydraConnection() {
   let reloadError = ''
   let generation = 0
   let attempt = 0
+  // The socket's attempts that failed since it was last open; an outage logs once, and the open line after it counts them.
+  let failures = 0
   let received = Date.now()
   let reconnect: ReturnType<typeof setTimeout> | undefined
   let upgrade: UpgradeStatus | undefined
@@ -890,10 +892,15 @@ export function createHydraConnection() {
       clearInterval(watchdog)
       offline = true
       ws.close()
-      log({
-        operation: 'page.socket',
-        status: opened ? 'lost' : 'failed',
-      })
+      failures += opened ? 0 : 1
+
+      if (opened || failures === 1) {
+        log({
+          operation: 'page.socket',
+          status: opened ? 'lost' : 'failed',
+        })
+      }
+
       disconnected()
       clearTimeout(reconnect)
       reconnect = setTimeout(
@@ -966,7 +973,9 @@ export function createHydraConnection() {
         operation: 'page.socket',
         status: 'open',
         ms: performance.now() - connecting,
+        count: failures || undefined,
       })
+      failures = 0
       publish()
     }
 
