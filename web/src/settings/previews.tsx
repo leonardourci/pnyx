@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
+import type { LogMode } from '#app/log-line.ts'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -353,6 +354,162 @@ export function ReviewPreview({ minutes }: { minutes: number }) {
         <span className="preview-timeline-label" style={{ left: '50%' }}>+1.5 h</span>
         <span className="preview-timeline-label" data-end style={{ left: '100%' }}>+3 h</span>
       </div>
+    </Preview>
+  )
+}
+
+// Example lines at each level; a detailed line shows only while detailed logging is on, and a warning always.
+const LOG_LINES = [
+  {
+    text: '12:04:31 command.page 38 ms',
+  },
+  {
+    text: '12:04:33 thread.live 2 ms',
+    detailed: true,
+  },
+  {
+    text: '12:04:33 page.frame 17 ms',
+    detailed: true,
+  },
+  {
+    text: '12:04:39 turn.end 8.2 s',
+  },
+  {
+    text: '12:05:00 process 212 MB',
+  },
+  {
+    text: '12:05:02 warn follow.read',
+    warning: true,
+  },
+] as const
+
+const LOG_CAPTIONS: Record<LogMode, string> = {
+  off: 'Only warnings and errors are written.',
+  on: 'One line per action, with its duration and the server’s memory.',
+  detailed: 'Adds a line for every live chat update and frame. Switch back to On once the debugging is done.',
+}
+
+export function LogLinesPreview({ mode }: { mode: LogMode }) {
+  const written = ({ line }: { line: typeof LOG_LINES[number] }) => {
+    if ('warning' in line) {
+      return true
+    }
+
+    return 'detailed' in line ? mode === 'detailed' : mode !== 'off'
+  }
+
+  return (
+    <Preview caption={LOG_CAPTIONS[mode]}>
+      <div className="preview-log">
+        {LOG_LINES.map(line => (
+          <code key={line.text} data-hidden={!written({ line }) || undefined} data-detailed={'detailed' in line || undefined}>
+            {line.text}
+          </code>
+        ))}
+      </div>
+    </Preview>
+  )
+}
+
+// Ten example days of logs in MB, newest first: one detailed debugging day among ordinary ones.
+const LOG_DAY_SIZES = [
+  6,
+  5,
+  7,
+  240,
+  6,
+  5,
+  4,
+  6,
+  5,
+  7,
+]
+
+const dayName = ({ index }: { index: number }) => index === 0 ? 'Today' : `${index} d ago`
+
+// The days a cleanup keeps: the newest days first, until the day limit or the size cap.
+const keptDays = ({
+  days,
+  maxMB,
+}: {
+  days: number
+  maxMB: number
+}) => {
+  let total = 0
+
+  return LOG_DAY_SIZES.map((
+    size,
+    index,
+  ) => {
+    total += size
+
+    return index < days && total <= maxMB
+  })
+}
+
+export function LogDaysPreview({
+  days,
+  maxMB,
+}: {
+  days: number
+  maxMB: number
+}) {
+  const kept = keptDays({
+    days,
+    maxMB,
+  })
+  const count = kept.filter(Boolean).length
+  const caption = `${count} of ${LOG_DAY_SIZES.length} example days kept; the rest are deleted.`
+
+  return (
+    <Preview caption={caption}>
+      <div className="preview-days">
+        {LOG_DAY_SIZES.map((
+          size,
+          index,
+        ) => (
+          <div key={dayName({ index })} className="preview-day" data-hidden={!kept[index] || undefined}>
+            <span>{dayName({ index })}</span>
+            <span className="preview-card-meta">{size} MB</span>
+          </div>
+        ))}
+      </div>
+    </Preview>
+  )
+}
+
+export function LogSizePreview({
+  days,
+  maxMB,
+}: {
+  days: number
+  maxMB: number
+}) {
+  const kept = keptDays({
+    days,
+    maxMB,
+  })
+  const sizes = LOG_DAY_SIZES.filter((
+    _,
+    index,
+  ) => kept[index])
+  const used = sizes.reduce(
+    (
+      sum,
+      size,
+    ) => sum + size,
+    0,
+  )
+
+  return (
+    <Preview caption="Each kept example day takes its share of the limit. Past it, the oldest day goes first.">
+      <div className="preview-meter" role="presentation">
+        {sizes.map((
+          size,
+          index,
+        ) => <span key={dayName({ index })} style={{ width: `${size / maxMB * 100}%` }} />)}
+      </div>
+      <p className="preview-meter-label">{`${used} of ${maxMB} MB`}</p>
     </Preview>
   )
 }

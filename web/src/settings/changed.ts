@@ -14,10 +14,14 @@ const differs = ({
   initial: unknown
 }) => JSON.stringify(value) !== JSON.stringify(initial)
 
-const HYDRA_KEYS = [
+// The settings outside a board's view.
+const OTHER_KEYS = [
   'doneAfterHours',
   'reviewMinutes',
   'helper',
+  'logs',
+  'logDays',
+  'logMaxMB',
 ] as const
 
 // Column widths count once any column differs, since the map also names columns the default does not.
@@ -37,7 +41,7 @@ export function changedIds({
     initial: initialOf({ id: key }),
   })))
 
-  for (const key of HYDRA_KEYS) {
+  for (const key of OTHER_KEYS) {
     if (differs({
       value: settings[key],
       initial: DEFAULT_SETTINGS[key],
