@@ -1,4 +1,6 @@
 import { AxiError } from 'axi-sdk-js'
+import { invocationOf } from '#cli/run.ts'
+import { log } from '#app/diagnostics.ts'
 import type { createIndexSync } from '#oracle/index-sync.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
@@ -46,7 +48,7 @@ export function createServerCommands({
   state,
   homes,
   closed,
-  send,
+  send: sendToTab,
   kick,
   agents,
   catalogCommand,
@@ -103,6 +105,39 @@ export function createServerCommands({
     }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
+    const started = performance.now()
+    const argv = typeof message.name === 'string' && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')
+      ? [
+        message.name,
+        ...message.args,
+      ]
+      : undefined
+    let answered = false
+
+    // A command's one receipt or error ends its log line.
+    const send: typeof sendToTab = ({
+      ws: tab,
+      message: answer,
+    }) => {
+      const final = answer.type === 'receipt' || answer.type === 'error'
+
+      if (final && !answered && answer.id === id) {
+        answered = true
+        log({
+          operation: 'command.page',
+          name: argv ? invocationOf({ argv }).name : String(message.name),
+          hydraId,
+          status: answer.type === 'error' ? 'error' : 'ok',
+          code: answer.type === 'error' ? answer.code : undefined,
+          ms: performance.now() - started,
+        })
+      }
+
+      return sendToTab({
+        ws: tab,
+        message: answer,
+      })
+    }
 
     const fail = ({
       error,

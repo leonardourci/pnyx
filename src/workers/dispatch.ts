@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process'
+import { runFile } from '#app/run-process.ts'
 import { knownHarness, providerIdOf } from './providers.ts'
-import { isDeepStrictEqual, promisify } from 'node:util'
+import { isDeepStrictEqual } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from './controls.ts'
 import type { PlanWindow } from './provider.ts'
@@ -113,11 +113,10 @@ export async function readQuota({ account }: { account: Account }): Promise<Quot
   const env = accountEnvironment({ account })
   // quota-axi reads one named login folder only through quota; a default login is read as its harness reads it.
   const profileOnly = Boolean(env[loginVariable({ provider: account.provider })])
-  const quotaAxi = promisify(execFile)
   const run = async ({ command }: { command?: string }): Promise<unknown> =>
-    JSON.parse((await quotaAxi(
-      'quota-axi',
-      [
+    JSON.parse((await runFile({
+      command: 'quota-axi',
+      args: [
         ...(command ? [command] : []),
         '--provider',
         account.provider,
@@ -126,12 +125,11 @@ export async function readQuota({ account }: { account: Account }): Promise<Quot
         '--full',
         '--json',
       ],
-      {
+      options: {
         ...QUOTA_RUN,
-        encoding: 'utf8',
         env,
       },
-    )).stdout)
+    })).stdout)
   let reading: QuotaReading = { auth: 'unknown' }
 
   try {
@@ -181,9 +179,9 @@ export async function readUsage({
   const env = accountEnvironment({ account })
 
   try {
-    const { stdout } = await promisify(execFile)(
-      'quota-axi',
-      [
+    const { stdout } = await runFile({
+      command: 'quota-axi',
+      args: [
         '--provider',
         account.provider,
         // A snapshot answers for every login, and quota-axi refuses a profile read against one.
@@ -194,11 +192,11 @@ export async function readUsage({
         refresh ? '0' : '5m',
         '--json',
       ],
-      {
+      options: {
         ...QUOTA_RUN,
         env,
       },
-    )
+    })
     const row = (JSON.parse(stdout) as {
       providers?: {
         provider: string

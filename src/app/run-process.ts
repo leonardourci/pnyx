@@ -1,4 +1,40 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn, type ExecFileOptions } from 'node:child_process'
+import { basename } from 'node:path'
+import { promisify } from 'node:util'
+import { log } from './diagnostics.ts'
+
+const execFileAsync = promisify(execFile)
+// Flags whose next argument is a value, so `git -C <folder> fetch` is named after fetch.
+const VALUE_FLAGS = new Set([
+  '-C',
+  '-c',
+])
+const SUBCOMMAND = /^[a-z][a-z-]*$/
+
+// The tool and its first subcommand for the log line, never a path or value.
+// ponytail: skips only -C and -c values; a value after another flag can be taken for the subcommand.
+function runName({
+  command,
+  args,
+}: {
+  command: string
+  args: string[]
+}): string {
+  const tool = basename(command)
+  let takesValue = false
+
+  for (const arg of args) {
+    if (takesValue || arg.startsWith('-')) {
+      takesValue = VALUE_FLAGS.has(arg)
+
+      continue
+    }
+
+    return SUBCOMMAND.test(arg) ? `${tool} ${arg}` : tool
+  }
+
+  return tool
+}
 
 // What a finished child printed and how it ended: status is null when a signal or the timeout stopped it.
 export type ProcessResult = {
@@ -27,6 +63,8 @@ export function runProcess({
   return new Promise(resolve => {
     let stdout = '', stderr = '', settled = false
 
+    const started = performance.now()
+
     const done = ({
       status,
       error,
@@ -36,6 +74,16 @@ export function runProcess({
       }
 
       settled = true
+      log({
+        operation: 'exec',
+        name: runName({
+          command,
+          args,
+        }),
+        exitCode: status ?? undefined,
+        code: error?.code,
+        ms: performance.now() - started,
+      })
       const result: ProcessResult = {
         status,
         stdout,
@@ -87,4 +135,51 @@ export function runProcess({
     )
     child.stdin.end(input)
   })
+}
+
+// execFile's promise, which rejects on a failed exit, with the same log line as runProcess.
+export async function runFile({
+  command,
+  args,
+  options,
+}: {
+  command: string
+  args: string[]
+  options: ExecFileOptions
+}): Promise<{
+  stdout: string
+  stderr: string
+}> {
+  const started = performance.now()
+  let exitCode = 0
+  let code: string | undefined
+
+  try {
+    return await execFileAsync(
+      command,
+      args,
+      {
+        ...options,
+        encoding: 'utf8',
+      },
+    )
+  } catch (error) {
+    // A failed exit carries its status as a number; a child that never started, an error name.
+    const reason = error instanceof Error && 'code' in error ? error.code : undefined
+    exitCode = typeof reason === 'number' ? reason : 1
+    code = typeof reason === 'string' ? reason : undefined
+
+    throw error
+  } finally {
+    log({
+      operation: 'exec',
+      name: runName({
+        command,
+        args,
+      }),
+      exitCode,
+      code,
+      ms: performance.now() - started,
+    })
+  }
 }

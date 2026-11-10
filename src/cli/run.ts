@@ -38,14 +38,8 @@ const HELP: Record<string, string> = {
 const help = ({ command }: { command: string }) => commandHelp({ command })
   ?? firstmateHelp({ command }) ?? HELP[command]
 
-// Runs one pnyx-axi command line and writes what it prints, in this process or for a client of the server.
-export async function runCli({
-  argv,
-  stdout,
-}: {
-  argv: string[]
-  stdout: Writable
-}): Promise<void> {
+// A command line's help, and its name: named after the subcommand only when its help has a section for it (`card <id>` stays `card`).
+export function invocationOf({ argv }: { argv: string[] }) {
   const [
     command,
     sub,
@@ -64,11 +58,31 @@ export async function runCli({
     rest: helpPath,
   }) : full
 
-  // Named after the subcommand only when its help has a section for it (`card <id>` stays `card`).
+  return {
+    command,
+    focused,
+    name: focused !== full ? `${command} ${sub}` : command,
+  }
+}
+
+// Runs one pnyx-axi command line and writes what it prints, in this process or for a client of the server.
+export async function runCli({
+  argv,
+  stdout,
+}: {
+  argv: string[]
+  stdout: Writable
+}): Promise<void> {
+  const {
+    command,
+    focused,
+    name,
+  } = invocationOf({ argv })
+
   // serve runs outside any client request, so it records no invocation.
   if (command !== 'serve') {
     const invocation = requestInvocation()
-    invocation.name = focused !== full ? `${command} ${sub}` : command
+    invocation.name = name
     invocation.help = focused
   }
 
