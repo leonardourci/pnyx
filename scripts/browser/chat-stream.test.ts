@@ -1014,7 +1014,7 @@ test(
 )
 
 test(
-  'chat renders safe Markdown and HTML images through the attachment viewer',
+  'chat renders every Markdown, token and file image and escapes HTML',
   async () => {
     const s = await pnyx.scenario()
     const {
@@ -1038,7 +1038,7 @@ test(
         args: [
           'resize',
           '1200',
-          '1200',
+          '1600',
         ],
       })
       await run({
@@ -1067,13 +1067,6 @@ test(
       const smallResponse = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: smallBlob });
       if (!smallResponse.ok) throw new Error('Small upload failed');
       window.imageFixture.small = (await smallResponse.json()).path;
-      const sized = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: blob });
-      const large = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: blob });
-      const height = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: smallBlob });
-      if (!sized.ok || !large.ok || !height.ok) throw new Error('Dimension fixture upload failed');
-      window.imageFixture.sized = (await sized.json()).path;
-      window.imageFixture.large = (await large.json()).path;
-      window.imageFixture.height = (await height.json()).path;
       return 'chat-assertion-passed';
     }`,
       })
@@ -1082,7 +1075,7 @@ test(
       () => {
       const value = (() => {
         const src = window.imageFixture.path;
-        return 'Image rendering examples\\n\\nSmall Markdown image\\n\\n![Small preview](' + window.imageFixture.small + ')\\n\\nSized HTML image\\n\\n<img src="' + window.imageFixture.sized + '" alt="Sized preview" width="240" height="72" title="Image title" onerror="window.imageUnsafe=true" style="display:none">\\n\\nLarge HTML image\\n\\n<img src="' + window.imageFixture.large + '" alt="Large preview" width="2400" height="720">\\n\\nHeight-only HTML image\\n\\n<img src="' + window.imageFixture.height + '" alt="Height-only preview" height="72">\\n\\nBroken image\\n\\n<img src="' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + '" alt="Missing preview" width="1000" height="1000">\\n\\n<img src="javascript:alert(1)" alt="Unsafe preview">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>';
+        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))';
       })();
       document.querySelector('[aria-label="Reply to Hydra"]').focus();
       document.execCommand('insertText', false, value);
@@ -1101,21 +1094,16 @@ test(
       const images = [...document.querySelectorAll('.hydra-chat .message-image img')];
       if (images.length !== 4) throw new Error('Expected four inline images, got ' + images.length);
       await Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; })));
-      const sized = images.find(image => image.alt === 'Sized preview');
-      if (sized.getAttribute('width') !== '240' || sized.getAttribute('height') !== '72' || sized.title !== 'Image title') throw new Error('Allowed attributes lost');
-      if (sized.hasAttribute('onerror') || sized.hasAttribute('style') && sized.style.display === 'none' || window.imageUnsafe) throw new Error('Unsafe HTML ran');
-      if (document.querySelector('.hydra-chat .markdown script, .hydra-chat .markdown b')) throw new Error('Other HTML rendered');
+      const content = document.querySelector('.hydra-chat article.mine .markdown');
+      if (content.querySelector('script, b, img[alt="Literal HTML"]') || window.imageUnsafe || !content.textContent.includes('<img src=')) throw new Error('HTML must stay literal text');
       if (images.some(image => !image.naturalWidth || image.getBoundingClientRect().width > image.closest('.markdown').getBoundingClientRect().width + 1)) throw new Error('Image exceeds bubble or failed');
-      const heightOnly = images.find(image => image.alt === 'Height-only preview');
-      if (Math.abs(heightOnly.getBoundingClientRect().height - 72) > 1 || Math.abs(heightOnly.getBoundingClientRect().width - 240) > 1) throw new Error('Height-only size ignored');
-      if (Math.abs(sized.getBoundingClientRect().width - 240) > 1) throw new Error('Width ignored');
       if (![...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Unsafe preview'))) throw new Error('Unsafe source lacks fallback');
       return 'chat-assertion-passed';
     }`,
       })
       await run({
         args: ['run'],
-        input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.click('[aria-label="Show image: Sized preview"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
+        input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.click('[aria-label="Show image: Markdown preview"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
       })
       await evaluate({
         script: `() => {
@@ -1160,9 +1148,9 @@ Files:
 
 Again: [image: ${src}]
 
-![Duplicate Markdown](${src})
+![Repeated Markdown](${src})
 
-<img src="${src}" alt="Duplicate HTML" width="240">`
+[image: ${otherSrc}]`
       pnyx.claude.plan({
         text: 'Show the Hydra images',
         reply: hydraImages,
@@ -1176,24 +1164,28 @@ Again: [image: ${src}]
       await s.chat({ text: 'Show the Hydra images' })
       await waitFor({
         what: 'automatic token and file images in the Hydra reply',
-        condition: `document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img').length === 2
+        condition: `document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img').length === 6
           && [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img')].every(image => image.complete && image.naturalWidth > 0)`,
       })
       await evaluate({
         script: `() => {
         const reply = [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"]')].find(row => row.textContent.includes('Hydra image reply'));
-        if (!reply.querySelector('img[alt="Image 1"]')) throw new Error('First image token did not render inline');
+        if (!reply.querySelector('img[alt="Image 1"]')) throw new Error('Image token did not render inline');
         if (!reply.querySelector('li:first-child .message-image img')) throw new Error('Files path did not render inline');
-        if (reply.querySelector('img[alt="Duplicate Markdown"], img[alt="Duplicate HTML"]')) throw new Error('Later mentions must not render inline');
-        if (new Set([...reply.querySelectorAll('.message-image img')].map(image => image.src)).size !== 2) throw new Error('Distinct automatic sources lost');
-        if (reply.querySelectorAll('.attachment-card').length !== 5) throw new Error('Repeated image mentions must stay chips');
+        if (reply.querySelectorAll('.attachment-card').length !== 1) throw new Error('Only the unservable file should stay a chip');
         return 'chat-assertion-passed';
       }`,
       })
       await capture({ name: 'hydra-images' })
+      await evaluate({
+        script: `() => {
+          document.querySelector('.hydra-chat article[aria-label="Hydra"] .message-image').click();
+          return 'chat-assertion-passed';
+        }`,
+      })
       await run({
         args: ['run'],
-        input: `await page.click('.hydra-chat article[aria-label="Hydra"] [aria-label="Show image: Image 1"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
+        input: `await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
       })
       await run({
         args: [
@@ -1202,8 +1194,8 @@ Again: [image: ${src}]
         ],
       })
       await waitFor({
-        what: 'automatic images still deduplicated after reload',
-        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 2',
+        what: 'all automatic image mentions remain inline after reload',
+        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 6',
       })
 
       const folder = s.folder({ name: 'image-worker' })
@@ -1211,7 +1203,10 @@ Again: [image: ${src}]
 
 ![Worker Markdown image](${src})
 
-<img src="${otherSrc}" alt="Worker HTML image" width="240" height="72">`
+Files:
+- ${otherSrc}
+
+Again: [image: ${src}]`
       pnyx.claude.plan({
         text: 'Show the worker images',
         reply: workerImages,
@@ -1258,15 +1253,15 @@ Again: [image: ${src}]
         input: `await page.click('[data-task="${task.id}"]');`,
       })
       await waitFor({
-        what: 'Markdown and HTML images in the task worker message',
-        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img').length === 2
+        what: 'every image mention in the task worker message',
+        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img').length === 3
           && [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')].every(image => image.complete && image.naturalWidth > 0)`,
       })
       await evaluate({
         script: `() => {
         document.querySelector('[data-task="${task.id}"] .card-current-state .show-more')?.click();
         const images = [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')];
-        if (!images.some(image => image.alt === 'Worker Markdown image') || !images.some(image => image.alt === 'Worker HTML image')) throw new Error('Worker image syntax lost');
+        if (!images.some(image => image.alt === 'Worker Markdown image') || images.length !== 3) throw new Error('Worker image syntax lost');
         return 'chat-assertion-passed';
       }`,
       })

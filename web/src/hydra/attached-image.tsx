@@ -195,14 +195,10 @@ function imageSource({ path }: { path: string }) {
 export function MessageImage({
   src,
   alt = 'Image',
-  width,
-  height,
   title,
 }: {
   src: string
   alt?: string
-  width?: number
-  height?: number
   title?: string
 }) {
   const [
@@ -213,24 +209,8 @@ export function MessageImage({
     open,
     setOpen,
   ] = useState(false)
-  const [
-    natural,
-    setNatural,
-  ] = useState<{
-    source: string
-    ratio: number
-  }>()
   const source = imageSource({ path: src })
   const label = alt || 'Image'
-  let displayWidth = width
-
-  if (height && natural && natural.source === source) {
-    const heightWidth = height * natural.ratio
-    displayWidth = width ? Math.min(
-      width,
-      heightWidth,
-    ) : heightWidth
-  }
 
   if (!source || failedSource === source) {
     return <span className="message-image-fallback" title={title}>Image unavailable: {label}</span>
@@ -248,23 +228,12 @@ export function MessageImage({
           event.stopPropagation()
           setOpen(true)
         }}
-        style={{ width: displayWidth }}
       >
         <img
           src={source}
           alt={alt}
-          width={width}
-          height={height}
           title={title}
-          style={{
-            width: displayWidth ? '100%' : undefined,
-            maxHeight: height,
-          }}
           referrerPolicy="no-referrer"
-          onLoad={event => setNatural({
-            source,
-            ratio: event.currentTarget.naturalWidth / event.currentTarget.naturalHeight,
-          })}
           onError={() => setFailedSource(source)}
         />
       </button>

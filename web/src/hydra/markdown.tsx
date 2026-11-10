@@ -1,6 +1,6 @@
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
-import { Fragment, memo, useContext, useMemo, type ComponentProps, type ReactNode } from 'react'
+import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import type { Token, Tokens } from 'marked'
 import { decodeEntities, inlineText, markdown } from './markdown-text.ts'
 import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#hydra/images.ts'
@@ -11,7 +11,7 @@ import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
-// Tokens become React elements, never executable HTML.
+// Tokens become React elements; raw HTML remains visible text.
 export function markdownHref({ href }: { href: string }): string | undefined {
   try {
     const url = new URL(decodeEntities({ text: href }))
@@ -26,195 +26,6 @@ export function markdownHref({ href }: { href: string }): string | undefined {
   }
 }
 
-function htmlImages({ text }: { text: string }) {
-  return [...text.matchAll(/<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi)].flatMap(match => {
-    const template = document.createElement('template')
-    template.innerHTML = match[0]
-    const image = template.content.firstElementChild
-
-    if (image?.tagName !== 'IMG') {
-      return []
-    }
-
-    const dimension = ({ name }: { name: string }) => {
-      const value = image.getAttribute(name) ?? ''
-
-      return /^\d+$/.test(value) && Number(value) > 0 && Number.isFinite(Number(value)) ? Number(value) : undefined
-    }
-
-    return [
-      {
-        index: match.index,
-        raw: match[0],
-        props: {
-          src: image.getAttribute('src') ?? '',
-          alt: image.getAttribute('alt') ?? undefined,
-          title: image.getAttribute('title') ?? undefined,
-          width: dimension({ name: 'width' }),
-          height: dimension({ name: 'height' }),
-        },
-      },
-    ]
-  })
-}
-
-// First offsets keep deduplication stable when streamed blocks render independently.
-export function messageImagePositions({
-  text,
-  tokens,
-}: {
-  text: string
-  tokens?: Token[]
-}) {
-  const positions = new Map<string, number>()
-  const hasImages = text.includes('![') || /<img\b/i.test(text) || !text.matchAll(SHOWN_IMAGE).next().done
-
-  if (!hasImages) {
-    return positions
-  }
-
-  const add = ({
-    path,
-    offset,
-  }: {
-    path: string
-    offset: number
-  }) => {
-    if (!positions.has(path)) {
-      positions.set(
-        path,
-        offset,
-      )
-    }
-  }
-
-  const visit = ({
-    tokens,
-    source,
-    offset,
-  }: {
-    tokens: Token[]
-    source: string
-    offset: number
-  }) => {
-    let cursor = 0
-
-    for (const token of tokens) {
-      const found = source.indexOf(
-        token.raw,
-        cursor,
-      )
-
-      if (found < 0) {
-        continue
-      }
-
-      cursor = found + token.raw.length
-      const at = offset + found
-
-      if (token.type === 'image') {
-        add({
-          path: decodeEntities({ text: token.href }),
-          offset: at,
-        })
-      } else if (token.type === 'html') {
-        for (const image of htmlImages({ text: token.raw })) {
-          add({
-            path: image.props.src,
-            offset: at + image.index,
-          })
-        }
-      } else if (token.type === 'text' && !token.tokens) {
-        for (const match of token.raw.matchAll(SHOWN_IMAGE)) {
-          add({
-            path: shownImagePath({ match }).path,
-            offset: at + match.index,
-          })
-        }
-      } else if (token.type === 'list') {
-        visit({
-          tokens: (token as Tokens.List).items,
-          source: token.raw,
-          offset: at,
-        })
-      } else if (token.type === 'table') {
-        const table = token as Tokens.Table
-        const cells = [
-          ...table.header,
-          ...table.rows.flat(),
-        ]
-        visit({
-          tokens: cells.flatMap(cell => cell.tokens),
-          source: token.raw,
-          offset: at,
-        })
-      } else if ('tokens' in token && token.tokens && token.type !== 'codespan') {
-        visit({
-          tokens: token.tokens,
-          source: token.raw,
-          offset: at,
-        })
-      }
-    }
-  }
-
-  visit({
-    tokens: tokens ?? markdown.lexer(text),
-    source: text,
-    offset: 0,
-  })
-
-  return positions
-}
-
-function messageImage({
-  props,
-  inlineImages,
-}: {
-  props: ComponentProps<typeof MessageImage>
-  inlineImages?: Set<string>
-}) {
-  const first = inlineImages?.delete(props.src)
-
-  return first
-    ? <MessageImage {...props} />
-    : <ImageChip path={props.src} label={props.alt || 'Image'} />
-}
-
-function messageHtml({
-  text,
-  inlineImages,
-}: {
-  text: string
-  inlineImages?: Set<string>
-}): ReactNode {
-  const parts: ReactNode[] = []
-  let end = 0
-
-  for (const image of htmlImages({ text })) {
-    parts.push(
-      <ChatTokenText
-        key={end}
-        text={text.slice(
-          end,
-          image.index,
-        )}
-      />,
-      <Sourced key={`${image.index}:html-image`} markdown={image.raw}>
-        {messageImage({
-          props: image.props,
-          inlineImages,
-        })}
-      </Sourced>,
-    )
-    end = image.index + image.raw.length
-  }
-
-  parts.push(<ChatTokenText key={end} text={text.slice(end)} />)
-
-  return parts
-}
-
 type TaskLink = {
   openTask?({ id }: { id: string }): void
   columnLook?({ id }: { id: string }): {
@@ -222,8 +33,6 @@ type TaskLink = {
     tone: string
   }
   images?: Map<string, string>
-  inlineImages?: Set<string>
-  imagePositions?: Map<string, number>
 }
 
 function Sourced({
@@ -239,11 +48,9 @@ function Sourced({
 const withImages = ({
   text,
   images,
-  inlineImages,
 }: {
   text: string
   images?: Map<string, string>
-  inlineImages?: Set<string>
 }): ReactNode => {
   const parts: ReactNode[] = []
   let end = 0
@@ -255,8 +62,6 @@ const withImages = ({
       match,
       names: images,
     })
-    const first = inlineImages?.delete(path)
-    const sourceUrl = attachmentSource({ path })
     parts.push(
       <ChatTokenText
         key={end}
@@ -266,9 +71,19 @@ const withImages = ({
         )}
       />,
       <Sourced key={`${match.index}:image`} markdown={source}>
-        {first && sourceUrl
-          ? <MessageImage src={path} alt={label} />
-          : <ImageChip path={path} label={label} />}
+        {attachmentSource({ path })
+          ? (
+            <MessageImage
+              src={path}
+              alt={label}
+            />
+          )
+          : (
+            <ImageChip
+              path={path}
+              label={label}
+            />
+          )}
       </Sourced>,
     )
     end = match.index + source.length
@@ -285,32 +100,16 @@ const inline = ({
   openTask,
   columnLook,
   images,
-  inlineImages,
 }: { tokens: Token[] } & TaskLink): ReactNode =>
   tokens.map((
     token,
     i,
   ) => {
-    if (token.type === 'image') {
-      return (
-        <Sourced key={i} markdown={token.raw}>{messageImage({
-          props: {
-            src: decodeEntities({ text: token.href }),
-            alt: decodeEntities({ text: token.text }),
-            title: token.title ?? undefined,
-          },
-          inlineImages,
-        })}
-        </Sourced>
-      )
-    }
-
     const children = 'tokens' in token && token.tokens ? inline({
       tokens: token.tokens,
       openTask,
       columnLook,
       images,
-      inlineImages,
     })
       : 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
 
@@ -319,14 +118,17 @@ const inline = ({
       case 'em': return <em key={i}>{children}</em>
       case 'del': return <del key={i}>{children}</del>
       case 'codespan': return <code key={i}><ChatTokenText text={token.text} code /></code>
-      case 'html': return (
-        <Fragment key={i}>{messageHtml({
-          text: token.text,
-          inlineImages,
-        })}
-        </Fragment>
-      )
+      case 'html': return <ChatTokenText key={i} text={token.text} />
       case 'br': return <br key={i} />
+      case 'image': return (
+        <Sourced key={i} markdown={token.raw}>
+          <MessageImage
+            src={decodeEntities({ text: token.href })}
+            alt={decodeEntities({ text: token.text })}
+            title={token.title ?? undefined}
+          />
+        </Sourced>
+      )
       case 'link': {
         const task = mentionId({ href: token.href })
         const skillPointer = /^pnyx-skill:([\w%~.-]+)$/.exec(token.href)
@@ -411,7 +213,6 @@ const inline = ({
         <Fragment key={i}>{typeof children === 'string' ? withImages({
           text: children,
           images,
-          inlineImages,
         }) : children}
         </Fragment>
       )
@@ -438,12 +239,11 @@ function Code({
   )
 }
 
-function table({
+function Table({
   token,
   openTask,
   columnLook,
   images,
-  inlineImages,
 }: { token: Tokens.Table } & TaskLink) {
   const align = token.align.map(a => ({ textAlign: a ?? undefined }))
   const cells = ({
@@ -461,7 +261,6 @@ function table({
       openTask,
       columnLook,
       images,
-      inlineImages,
     })}
     </Cell>
   ))
@@ -530,12 +329,8 @@ const renderBlocks = ({
   openTask,
   columnLook,
   images,
-  imagePositions = messageImagePositions({ text }),
 }: Blocks): ReactNode => {
   let index = first
-  const inlineImages = new Set([...imagePositions].filter(([
-    , offset,
-  ]) => offset >= start && offset < start + text.length).map(([path]) => path))
 
   const wrap = ({
     offset,
@@ -597,7 +392,6 @@ const renderBlocks = ({
               openTask,
               columnLook,
               images,
-              inlineImages,
             })}
             </Heading>
           ); break
@@ -608,11 +402,9 @@ const renderBlocks = ({
             openTask,
             columnLook,
             images,
-            inlineImages,
           }) : withImages({
             text: token.text,
             images,
-            inlineImages,
           })
           const paragraph = <p>{content}</p>
 
@@ -623,20 +415,15 @@ const renderBlocks = ({
           node = paragraph; break
         }
         case 'code': node = <Code text={token.text} language={token.lang} />; break
-        case 'html': node = (
-          <p>{messageHtml({
-            text: token.text,
-            inlineImages,
-          })}
-          </p>
+        case 'html': node = <p><ChatTokenText text={token.text} /></p>; break
+        case 'table': node = (
+          <Table
+            token={token as Tokens.Table}
+            openTask={openTask}
+            columnLook={columnLook}
+            images={images}
+          />
         ); break
-        case 'table': node = table({
-          token: token as Tokens.Table,
-          openTask,
-          columnLook,
-          images,
-          inlineImages,
-        }); break
         default: node = <p>{token.raw}</p>
       }
 
@@ -760,17 +547,6 @@ export const Markdown = memo(function Markdown({
     [text],
   )
 
-  const imagePositions = useMemo(
-    () => messageImagePositions({
-      text,
-      tokens,
-    }),
-    [
-      text,
-      tokens,
-    ],
-  )
-
   return (
     <ChatTokensContext.Provider
       value={{
@@ -781,7 +557,6 @@ export const Markdown = memo(function Markdown({
       <div className="markdown">{renderBlocks({
         text,
         tokens,
-        imagePositions,
         block: block ? ({
           quote,
           ...props

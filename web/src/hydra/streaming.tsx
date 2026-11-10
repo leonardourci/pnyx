@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { shownImageNames } from '#hydra/images.ts'
-import { Markdown, MarkdownBlocks, messageImagePositions } from './markdown.tsx'
+import { Markdown, MarkdownBlocks } from './markdown.tsx'
 import { markdown } from './markdown-text.ts'
 import {
   EDGE,
@@ -443,11 +443,6 @@ function StreamedText({
     [text],
   )
 
-  const imagePositions = useMemo(
-    () => messageImagePositions({ text }),
-    [text],
-  )
-
   if (!state.current) {
     const shown = mountShown({
       text,
@@ -612,7 +607,6 @@ function StreamedText({
           openTask={openTask}
           columnLook={columnLook}
           images={images}
-          imagePositions={imagePositions}
         />
       ))}
     </div>
