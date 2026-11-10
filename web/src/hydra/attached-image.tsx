@@ -107,7 +107,7 @@ export function ImageViewer({
   label: string
   close(): void
 }) {
-  const src = imageSource({ path })
+  const src = attachmentSource({ path })
 
   return createPortal(
     <Dialog
@@ -116,7 +116,7 @@ export function ImageViewer({
       actions={src && <CopyButton label="Copy image" write={() => copyImage({ src })} />}
       close={close}
     >
-      {src ? <img src={src} alt={label} referrerPolicy="no-referrer" /> : <p className="muted">{imageLine({ path })}</p>}
+      {src ? <img src={src} alt={label} /> : <p className="muted">{imageLine({ path })}</p>}
     </Dialog>,
     document.body,
   )
@@ -180,18 +180,6 @@ export function ImageChip({
   )
 }
 
-function imageSource({ path }: { path: string }) {
-  if (/^https:\/\//i.test(path)) {
-    try {
-      return new URL(path).href
-    } catch {
-      return undefined
-    }
-  }
-
-  return attachmentSource({ path })
-}
-
 export function MessageImage({
   src,
   alt = 'Image',
@@ -209,7 +197,7 @@ export function MessageImage({
     open,
     setOpen,
   ] = useState(false)
-  const source = imageSource({ path: src })
+  const source = attachmentSource({ path: src })
   const label = alt || 'Image'
 
   if (!source || failedSource === source) {
@@ -233,7 +221,6 @@ export function MessageImage({
           src={source}
           alt={alt}
           title={title}
-          referrerPolicy="no-referrer"
           onError={() => setFailedSource(source)}
         />
       </button>

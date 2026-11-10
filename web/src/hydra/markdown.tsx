@@ -120,15 +120,25 @@ const inline = ({
       case 'codespan': return <code key={i}><ChatTokenText text={token.text} code /></code>
       case 'html': return <ChatTokenText key={i} text={token.text} />
       case 'br': return <br key={i} />
-      case 'image': return (
-        <Sourced key={i} markdown={token.raw}>
-          <MessageImage
-            src={decodeEntities({ text: token.href })}
-            alt={decodeEntities({ text: token.text })}
-            title={token.title ?? undefined}
-          />
-        </Sourced>
-      )
+      case 'image': {
+        const src = decodeEntities({ text: token.href })
+        const alt = decodeEntities({ text: token.text })
+        const href = markdownHref({ href: src })
+
+        return (
+          <Sourced key={i} markdown={token.raw}>
+            {href ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                contentEditable={false}
+              >{alt}
+              </a>
+            ) : <MessageImage src={src} alt={alt} title={token.title ?? undefined} />}
+          </Sourced>
+        )
+      }
       case 'link': {
         const task = mentionId({ href: token.href })
         const skillPointer = /^pnyx-skill:([\w%~.-]+)$/.exec(token.href)
