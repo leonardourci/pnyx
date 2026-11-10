@@ -4,6 +4,16 @@ import { promisify } from 'node:util'
 import { log } from './diagnostics.ts'
 
 const execFileAsync = promisify(execFile)
+// Tools whose first word is a subcommand; any other tool's first word may be a value, such as a task id.
+const SUBCOMMAND_TOOLS = new Set([
+  'git',
+  'gh-axi',
+  'launchctl',
+  'systemctl',
+  'pnpm',
+  'paseo',
+  'herdr',
+])
 // Flags whose next argument is a value, so `git -C <folder> fetch` is named after fetch.
 const VALUE_FLAGS = new Set([
   '-C',
@@ -11,8 +21,8 @@ const VALUE_FLAGS = new Set([
 ])
 const SUBCOMMAND = /^[a-z][a-z-]*$/
 
-// The tool and its first subcommand for the log line, never a path or value.
-// ponytail: skips only -C and -c values; a value after another flag can be taken for the subcommand.
+// The tool, and its subcommand when it has one, for the log line; never a path or value.
+// ponytail: only -C and -c are known to take a value; another flag's value can still read as the subcommand.
 function runName({
   command,
   args,
@@ -21,6 +31,11 @@ function runName({
   args: string[]
 }): string {
   const tool = basename(command)
+
+  if (!SUBCOMMAND_TOOLS.has(tool)) {
+    return tool
+  }
+
   let takesValue = false
 
   for (const arg of args) {
