@@ -2,29 +2,9 @@ import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
 import { matchingSuggestions } from '#hydra/suggestion-matches.ts'
 import type { Catalog,Suggestion } from '#hydra/transcripts-catalog.ts'
 import { skillReference } from '#hydra/transcripts-skill-reference.ts'
-import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
-import { isServerCommand,RESTART_COMMAND } from '#upgrade/model.ts'
 import { useEffect,type Dispatch,type RefObject,type SetStateAction } from 'react'
 import { draftView,replaceDisplay } from './draft.ts'
 import { slashPrefix } from './view.ts'
-
-const COMPACT_NAME = /compact/i
-
-export function slashIcons({ item }: { item: Suggestion }): string[] | undefined {
-  if (isServerCommand({ item })) {
-    return [item.command === RESTART_COMMAND ? 'restart' : 'upgrade']
-  }
-
-  if (item.builtin && item.command.slice(1) === INSCRIBE_SKILL) {
-    return ['inscribe']
-  }
-
-  if (COMPACT_NAME.test(item.command)) {
-    return ['compact']
-  }
-
-  return item.command === ADD_PROJECT_COMMAND ? ['attach'] : undefined
-}
 
 export function useSlashMenu({
   catalog,
