@@ -1,4 +1,5 @@
-import { basename, join } from 'node:path'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 import { log } from '#app/diagnostics.ts'
 import { runFile } from '#app/run-process.ts'
 import type { UpgradeOperation, UpgradeStep, UpgradeStepName } from './model.ts'
@@ -210,6 +211,19 @@ export async function refusals({ root }: { root: string }): Promise<string[]> {
   return reasons
 }
 
+// Holds the commit an upgrade began on until it ends, so the next one can tell a cut upgrade from an up-to-date folder.
+const startedFromPath = async ({ root }: { root: string }) => resolve(
+  root,
+  await git({
+    root,
+    args: [
+      'rev-parse',
+      '--git-path',
+      'pnyx-upgrade-from',
+    ],
+  }),
+)
+
 export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'failed' | 'error' | 'reasons' | 'rolledBack'> & {
   state: 'upgraded' | 'current' | 'failed' | 'refused' | 'stopped'
 }
@@ -269,7 +283,7 @@ async function upgrade({
 }): Promise<UpgradeResult> {
   const steps: UpgradeStep[] = []
   const reasons = await refusals({ root })
-  const from = await unknownOnFailure({
+  const head = await unknownOnFailure({
     read: () => git({
       root,
       args: [
@@ -284,7 +298,7 @@ async function upgrade({
       state: 'refused',
       steps,
       reasons,
-      from,
+      from: head,
       to: await unknownOnFailure({ read: () => remoteMain({ root }) }),
     }
   }
@@ -293,9 +307,33 @@ async function upgrade({
     return {
       state: 'stopped',
       steps,
-      from,
+      from: head,
       rolledBack: true,
     }
+  }
+
+  const startedFrom = await startedFromPath({ root })
+  // An upgrade cut before it ended is finished from the commit it began on, or goes back to it.
+  const cut = existsSync(startedFrom) ? readFileSync(
+    startedFrom,
+    'utf8',
+  ).trim() : ''
+  const from = cut || head
+  writeFileSync(
+    startedFrom,
+    `${from}\n`,
+  )
+
+  // A folder left partly upgraded keeps the commit, so the next upgrade still knows where it began.
+  const ended = ({ result }: { result: UpgradeResult }) => {
+    if (result.rolledBack !== false) {
+      rmSync(
+        startedFrom,
+        { force: true },
+      )
+    }
+
+    return result
   }
 
   let to: string | undefined
@@ -362,7 +400,7 @@ async function upgrade({
       },
     })
 
-    const head = await git({
+    const pulled = await git({
       root,
       args: [
         'rev-parse',
@@ -370,13 +408,15 @@ async function upgrade({
       ],
     })
 
-    if (head === from) {
-      return {
-        state: 'current',
-        steps,
-        from,
-        to,
-      }
+    if (pulled === from) {
+      return ended({
+        result: {
+          state: 'current',
+          steps,
+          from,
+          to,
+        },
+      })
     }
 
     await step({
@@ -402,12 +442,14 @@ async function upgrade({
       }),
     })
 
-    return {
-      state: 'upgraded',
-      steps,
-      from,
-      to,
-    }
+    return ended({
+      result: {
+        state: 'upgraded',
+        steps,
+        from,
+        to,
+      },
+    })
   } catch (error) {
     const failed = steps.at(-1)!.step
     const stopped = signal?.aborted
@@ -428,15 +470,17 @@ async function upgrade({
       ].filter(Boolean).join('\n')
     }
 
-    return {
-      state: stopped ? 'stopped' : 'failed',
-      steps,
-      from,
-      to,
-      failed,
-      error: detail,
-      rolledBack,
-    }
+    return ended({
+      result: {
+        state: stopped ? 'stopped' : 'failed',
+        steps,
+        from,
+        to,
+        failed,
+        error: detail,
+        rolledBack,
+      },
+    })
   }
 }
 

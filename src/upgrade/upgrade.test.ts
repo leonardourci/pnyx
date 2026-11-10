@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import { upgrade as upgradeCli } from './cli.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
 import { building, git, upgradeRepo } from '#test-harness/upgrade-fixture.ts'
@@ -18,6 +20,8 @@ after(() => rmSync(
     force: true,
   },
 ))
+
+const BUILDING_MS = 30_000
 
 let repo: ReturnType<typeof upgradeRepo>
 
@@ -202,6 +206,92 @@ test(
         ],
       }),
       '',
+    )
+  },
+)
+
+test(
+  'an upgrade whose caller was killed mid-build is finished by the next upgrade',
+  async () => {
+    const from = repo.head()
+    const hold = join(
+      repo.install,
+      'hold',
+    )
+    const building = join(
+      repo.install,
+      'building',
+    )
+    const to = repo.publish({
+      // Hangs while the hold file is there; like the real build, it writes nothing before it passes.
+      files: { 'build.sh': 'if [ -f hold ]; then touch building; exec sleep 30; fi\necho two > built.txt\n' },
+      message: 'two',
+    })
+    writeFileSync(
+      hold,
+      '',
+    )
+    const caller = spawn(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        `import { runUpgrade } from ${JSON.stringify(new URL(
+          './runner.ts',
+          import.meta.url,
+        ).href)}\nawait runUpgrade({ root: ${JSON.stringify(repo.install)} })`,
+      ],
+      {
+        detached: true,
+        stdio: 'ignore',
+      },
+    )
+    const closed = new Promise(resolve => caller.once(
+      'close',
+      resolve,
+    ))
+    const deadline = Date.now() + BUILDING_MS
+
+    while (!existsSync(building) && Date.now() < deadline) {
+      await delay(20)
+    }
+
+    assert.ok(existsSync(building))
+    // The whole group, as a stopped session takes the upgrade and its build down with it.
+    process.kill(
+      -caller.pid!,
+      'SIGKILL',
+    )
+    await closed
+    rmSync(hold)
+
+    assert.equal(
+      repo.built(),
+      'one',
+    )
+    assert.equal(
+      repo.head(),
+      to,
+    )
+
+    const result = await runUpgrade({ root: repo.install })
+
+    assert.equal(
+      result.state,
+      'upgraded',
+    )
+    assert.equal(
+      result.from,
+      from,
+    )
+    assert.equal(
+      repo.built(),
+      'two',
+    )
+    assert.equal(
+      (await runUpgrade({ root: repo.install })).state,
+      'current',
     )
   },
 )
