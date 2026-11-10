@@ -7,7 +7,6 @@ import { test, type TestContext } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { readThread, recordEntries, splitEntry, type ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { mergeThreadPages } from './thread-history.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { joinMessageParts } from './history.ts'
 
@@ -744,7 +743,7 @@ test(
 )
 
 test(
-  'live growth preserves the projected conversation through chunks, quiet replies and handoff',
+  'live growth preserves completed replies, quiet boundaries and folded progress across transport chunks',
   () => {
     const state = emptyHydra()
     const base: ThreadPage = {
@@ -781,54 +780,94 @@ test(
       offset: 0,
       ownerStarted: true,
     })
-
-    const check = () => {
-      const page = live.page({ page: base })
-      assert.deepEqual(
-        project({ page }),
-        hydraThreadView({
-          state,
-          page: mergeThreadPages({
-            before: base,
-            latest: page,
-          }),
-          tools: true,
-          thinking: true,
-        }),
-      )
-    }
-
     live.update({
       id: 'answer',
       text: 'N',
       append: true,
     })
-    check()
+    assert.deepEqual(
+      project({ page: live.page({ page: base }) }).conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+      ],
+    )
     live.update({
       id: 'answer',
-      text: 'ormal answer. ',
+      text: 'O_REPLY',
       append: true,
     })
-    check()
+    assert.deepEqual(
+      project({ page: live.page({ page: base }) }).conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+      ],
+    )
     live.update({
       id: 'answer',
-      text: 'More detail. '.repeat(200),
-      append: true,
+      text: 'Normal answer.',
+      append: false,
     })
-    check()
+    assert.deepEqual(
+      project({ page: live.page({ page: base }) }).conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+        'Normal answer.',
+      ],
+    )
+    const longAnswer = 'More detail. '.repeat(200)
+    live.update({
+      id: 'answer',
+      text: longAnswer,
+      append: false,
+    })
+    assert.equal(
+      project({ page: live.page({ page: base }) }).conversation.entries.at(-1)!.text,
+      longAnswer,
+    )
     live.update({
       id: 'answer',
       text: 'The ending.',
-      append: true,
+      append: false,
     })
-    check()
+    assert.equal(
+      project({ page: live.page({ page: base }) }).conversation.entries.at(-1)!.text,
+      'The ending.',
+    )
     live.update({
       id: 'second',
       text: 'A separate reply.',
       append: false,
     })
-    check()
+    const second = project({ page: live.page({ page: base }) })
+    assert.deepEqual(
+      second.conversation.entries.map(entry => entry.text),
+      [
+        'Explain it',
+        'Earlier answer',
+        'A separate reply.',
+      ],
+    )
+    assert.deepEqual(
+      second.conversation.folds['live:second']!.notes.map(entry => entry.text),
+      ['The ending.'],
+    )
+    live.update({
+      id: 'answer',
+      text: 'Revised progress.',
+      append: false,
+    })
+    const revised = project({ page: live.page({ page: base }) })
+    assert.deepEqual(
+      revised.conversation.folds['live:second']!.notes.map(entry => entry.text),
+      ['Revised progress.'],
+    )
     live.finish()
-    check()
+    assert.equal(
+      project({ page: live.page({ page: base }) }).conversation.entries.at(-1)!.streaming,
+      false,
+    )
   },
 )
