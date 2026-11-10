@@ -107,7 +107,7 @@ export function ImageViewer({
   label: string
   close(): void
 }) {
-  const src = attachmentSource({ path })
+  const src = imageSource({ path })
 
   return createPortal(
     <Dialog
@@ -116,7 +116,7 @@ export function ImageViewer({
       actions={src && <CopyButton label="Copy image" write={() => copyImage({ src })} />}
       close={close}
     >
-      {src ? <img src={src} alt={label} /> : <p className="muted">{imageLine({ path })}</p>}
+      {src ? <img src={src} alt={label} referrerPolicy="no-referrer" /> : <p className="muted">{imageLine({ path })}</p>}
     </Dialog>,
     document.body,
   )
@@ -176,6 +176,75 @@ export function ImageChip({
         open={() => setOpen(true)}
       />
       {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}
+    </>
+  )
+}
+
+function imageSource({ path }: { path: string }) {
+  if (/^https:\/\//i.test(path)) {
+    try {
+      return new URL(path).href
+    } catch {
+      return undefined
+    }
+  }
+
+  return attachmentSource({ path })
+}
+
+export function MessageImage({
+  src,
+  alt = 'Image',
+  width,
+  height,
+  title,
+}: {
+  src: string
+  alt?: string
+  width?: number
+  height?: number
+  title?: string
+}) {
+  const [
+    failedSource,
+    setFailedSource,
+  ] = useState<string>()
+  const [
+    open,
+    setOpen,
+  ] = useState(false)
+  const source = imageSource({ path: src })
+  const label = alt || 'Image'
+
+  if (!source || failedSource === source) {
+    return <span className="message-image-fallback" title={title}>Image unavailable: {label}</span>
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="message-image"
+        aria-label={`Show image: ${label}`}
+        contentEditable={false}
+        onClick={() => setOpen(true)}
+        style={{ width }}
+      >
+        <img
+          src={source}
+          alt={alt}
+          width={width}
+          height={height}
+          title={title}
+          style={{
+            width: width ? '100%' : undefined,
+            maxHeight: height,
+          }}
+          referrerPolicy="no-referrer"
+          onError={() => setFailedSource(source)}
+        />
+      </button>
+      {open && <ImageViewer path={src} label={label} close={() => setOpen(false)} />}
     </>
   )
 }

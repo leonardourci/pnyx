@@ -4,15 +4,14 @@ import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import type { Token, Tokens } from 'marked'
 import { decodeEntities, inlineText, markdown } from './markdown-text.ts'
 import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#hydra/images.ts'
-import { ImageChip } from './attached-image.tsx'
+import { ImageChip, MessageImage } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
-// Tokens become React elements, never HTML. Raw HTML remains visible text;
-// images remain links so transcripts cannot trigger remote tracking requests.
+// Tokens become React elements, never executable HTML.
 export function markdownHref({ href }: { href: string }): string | undefined {
   try {
     const url = new URL(decodeEntities({ text: href }))
@@ -25,6 +24,51 @@ export function markdownHref({ href }: { href: string }): string | undefined {
   } catch {
     return undefined
   }
+}
+
+function messageHtml({ text }: { text: string }): ReactNode {
+  const parts: ReactNode[] = []
+  let end = 0
+
+  for (const match of text.matchAll(/<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi)) {
+    const template = document.createElement('template')
+    template.innerHTML = match[0]
+    const image = template.content.firstElementChild
+
+    if (image?.tagName !== 'IMG') {
+      continue
+    }
+
+    const dimension = ({ name }: { name: string }) => {
+      const value = image.getAttribute(name) ?? ''
+
+      return /^\d+$/.test(value) && Number(value) > 0 && Number.isFinite(Number(value)) ? Number(value) : undefined
+    }
+
+    parts.push(
+      <ChatTokenText
+        key={end}
+        text={text.slice(
+          end,
+          match.index,
+        )}
+      />,
+      <Sourced key={`${match.index}:html-image`} markdown={match[0]}>
+        <MessageImage
+          src={image.getAttribute('src') ?? ''}
+          alt={image.getAttribute('alt') ?? undefined}
+          title={image.getAttribute('title') ?? undefined}
+          width={dimension({ name: 'width' })}
+          height={dimension({ name: 'height' })}
+        />
+      </Sourced>,
+    )
+    end = match.index + match[0].length
+  }
+
+  parts.push(<ChatTokenText key={end} text={text.slice(end)} />)
+
+  return parts
 }
 
 type TaskLink = {
@@ -110,11 +154,12 @@ const inline = ({
       case 'em': return <em key={i}>{children}</em>
       case 'del': return <del key={i}>{children}</del>
       case 'codespan': return <code key={i}><ChatTokenText text={token.text} code /></code>
-      case 'html': return <ChatTokenText key={i} text={token.text} />
+      case 'html': return <Fragment key={i}>{messageHtml({ text: token.text })}</Fragment>
+      case 'image': return <Sourced key={i} markdown={token.raw}><MessageImage src={decodeEntities({ text: token.href })} alt={decodeEntities({ text: token.text })} title={token.title ?? undefined} /></Sourced>
       case 'br': return <br key={i} />
-      case 'link': case 'image': {
-        const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
-        const skillPointer = token.type === 'link' ? /^pnyx-skill:([\w%~.-]+)$/.exec(token.href) : null
+      case 'link': {
+        const task = mentionId({ href: token.href })
+        const skillPointer = /^pnyx-skill:([\w%~.-]+)$/.exec(token.href)
         const skillValue = skillPointer ? decodeValue({ value: skillPointer[1]! }) : undefined
         const skill = skillValue ? readSkillReference({ value: skillValue }) : undefined
 
@@ -122,7 +167,7 @@ const inline = ({
           return <Sourced key={i} markdown={token.raw}><SkillToken skill={skill} /></Sourced>
         }
 
-        const pointer = token.type === 'link' ? /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href) : null
+        const pointer = /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href)
         const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
         const label = inlineText({ tokens: token.tokens ?? [] }).replace(
           /^@/,
@@ -398,7 +443,7 @@ const renderBlocks = ({
           node = paragraph; break
         }
         case 'code': node = <Code text={token.text} language={token.lang} />; break
-        case 'html': node = <p><ChatTokenText text={token.text} /></p>; break
+        case 'html': node = <p>{messageHtml({ text: token.text })}</p>; break
         case 'table': node = (
           <Table
             token={token as Tokens.Table}
