@@ -1,3 +1,5 @@
+import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
+import { skillIcon } from './skill-icons.ts'
 import type { TurnActions } from '#hydra/conversation.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
@@ -727,6 +729,17 @@ export function Messages({
             role="separator"
             aria-label={entry.text}
           >
+            {entry.text === 'Inscribed' && (
+              <Icon
+                name={skillIcon({
+                  skill: {
+                    name: INSCRIBE_SKILL,
+                    builtin: true,
+                  },
+                })}
+                size={14}
+              />
+            )}
             <span>{entry.text}</span>
           </div>
         ) : (

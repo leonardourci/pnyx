@@ -24,7 +24,8 @@ import { useComposerUploads } from './composer-uploads.ts'
 import { DraftMirror } from './draft-mirror.tsx'
 import { mentionCandidates } from './mention-candidates.ts'
 import { folderSuggestions } from './mention-folders.ts'
-import { slashIcons,useSlashMenu } from './slash-menu.ts'
+import { useSlashMenu } from './slash-menu.ts'
+import { slashIcons } from './skill-icons.ts'
 
 export interface ComposerFieldHandle {
   input: HTMLTextAreaElement | null
