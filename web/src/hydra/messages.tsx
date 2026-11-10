@@ -45,6 +45,8 @@ import {
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
+import { AnswerLeadHead } from './answer-lead.tsx'
+import type { AnswerLead } from './answer-leads.ts'
 import { roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
 
@@ -67,6 +69,16 @@ function MessageTask({ entry }: { entry: ChatEntry }) {
       <TaskReference id={task} />
     </span>
   ) : null
+}
+
+function MessageLead({
+  entry,
+  lead,
+}: {
+  entry: ChatEntry
+  lead?: AnswerLead
+}) {
+  return lead ? <AnswerLeadHead lead={lead} /> : <MessageTask entry={entry} />
 }
 
 function ChatMessageText({
@@ -113,8 +125,11 @@ export function Messages({
   labelColors,
   sendAgain,
   retry,
+  answerLeads,
 }: {
   retry?({ id }: { id: string }): void
+  // The question each answering owner message carries, by message id.
+  answerLeads?: Map<string, AnswerLead>
   // Sends a task message that may not have arrived again, as a new message with its own id.
   sendAgain?({
     task,
@@ -163,6 +178,16 @@ export function Messages({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
   const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
+  const leadOf = ({ entry }: { entry: ChatEntry }) =>
+    entry.reference && ownMessage({ entry }) ? answerLeads?.get(entry.reference) : undefined
+
+  // A bare Merge, Hold or option answer is already marked in its lead's choices.
+  const choiceOnly = ({ entry }: { entry: ChatEntry }) => {
+    const choice = leadOf({ entry })?.choice
+
+    return !!choice && entry.text.trim() === choice
+  }
+
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -769,8 +794,10 @@ export function Messages({
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
-              {taskReferences && !inline?.has(entry.id) && <MessageTask entry={entry} />}
-              {inline?.get(entry.id) ?? (
+              {taskReferences && !inline?.has(entry.id) && (
+                <MessageLead entry={entry} lead={leadOf({ entry })} />
+              )}
+              {inline?.get(entry.id) ?? (!choiceOnly({ entry }) && (
                 <ChatMessageText
                   catalog={ownMessage({ entry }) ? catalog : undefined}
                   colors={labelColors}
@@ -853,7 +880,7 @@ export function Messages({
                     )
                   }}
                 />
-              )}
+              ))}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([

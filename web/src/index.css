@@ -964,6 +964,25 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* A list, quote, code block or table can't flow beside the chip, so the chip takes its own line. */
 .message-lead:is(:has(+ .markdown > :first-child:not(.message-block)), :has(+ .markdown > .message-block:first-child > :first-child:not(p))) { float: none; display: block; margin-bottom: var(--block-gap); }
 
+/* An answering message's head: its task chip, the question folded to its opening lines, and every choice. */
+.answer-lead { display: grid; justify-items: start; gap: 2px; margin-bottom: 6px; padding: 6px 9px 7px; border: 1px solid var(--color-line); border-radius: 7px; background: color-mix(in srgb, var(--color-surface) 55%, transparent); }
+.answer-lead .task-reference-space { display: none; }
+.answer-lead .draft-chip { margin: 0; }
+.answer-lead > .tooltip-anchor { display: block; width: 100%; }
+.answer-lead-question { display: grid; gap: 4px; color: var(--color-muted); cursor: pointer; }
+.answer-lead-question .text-preview { max-height: 2lh; -webkit-line-clamp: 2; line-clamp: 2; }
+.answer-lead-question :is(.text-preview, .collapsible-text > div, .markdown) { font-size: var(--text-ui); line-height: 1.45; }
+.answer-choices { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.answer-choices > li { padding: 0 7px; border: 1px solid var(--color-line); border-radius: 999px; font-size: var(--text-meta); line-height: 1.6; color: var(--color-muted); }
+.answer-choices > li[aria-current] { border-color: var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); font-weight: 600; }
+.answer-recommended { font-weight: 400; font-style: italic; }
+.answer-lead-state { margin: 0; font-size: var(--text-meta); font-style: italic; }
+.tooltip .answer-lead-preview { display: grid; gap: 6px; }
+.tooltip .answer-lead-preview .markdown { font-size: inherit; line-height: inherit; }
+.tooltip .answer-lead-preview :is(.markdown span, .markdown strong, .answer-recommended) { display: inline; }
+.tooltip .answer-choices > li { border-color: currentColor; color: inherit; opacity: .8; }
+.tooltip .answer-choices > li[aria-current] { opacity: 1; background: transparent; color: inherit; }
+
 .task-create { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
 
 .message.mine { font-family: var(--font-sans); }

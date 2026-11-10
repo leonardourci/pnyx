@@ -22,9 +22,10 @@ import { CompactionQueue,CompactionRow } from '#web-workers/compaction.tsx'
 import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
-import { useCallback,useEffect,useLayoutEffect,useRef,useState } from 'react'
+import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState } from 'react'
 import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
+import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
@@ -757,6 +758,16 @@ export function HydraChat({
     actions: taskActions,
     connected,
   })
+  const leads = useMemo(
+    () => answerLeads({
+      messages: state.hydraMessages,
+      cards: state.cards,
+    }),
+    [
+      state.hydraMessages,
+      state.cards,
+    ],
+  )
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const down = hosted ? hydraDown({ status: state.hydraStatus }) : undefined
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
@@ -860,6 +871,7 @@ export function HydraChat({
               notify={notify}
               openTask={openTask}
               taskReferences={references}
+              answerLeads={leads}
               comments={comments}
               setComments={setComments}
               quote={({ text }) => setDraft({
