@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -1021,6 +1021,7 @@ test(
       run,
       evaluate,
       capture,
+      waitFor,
     } = await browser({
       s,
       session: 'chat-images',
@@ -1115,6 +1116,107 @@ test(
       return 'chat-assertion-passed';
     }`,
       })
+
+      const attachments = join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        s.hydraId,
+        'attachments',
+      )
+      const [attachment] = readdirSync(attachments)
+      assert.ok(attachment)
+      const src = join(
+        attachments,
+        attachment,
+      )
+      const hydraImages = `Hydra image reply
+
+![Hydra Markdown image](${src})
+
+<img src="${src}" alt="Hydra HTML image" width="240" height="72">`
+      pnyx.claude.plan({
+        text: 'Show the Hydra images',
+        reply: hydraImages,
+      })
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await s.chat({ text: 'Show the Hydra images' })
+      await waitFor({
+        what: 'Markdown and HTML images in the Hydra reply',
+        condition: `document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img').length === 2
+          && [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"] .message-image img')].every(image => image.complete && image.naturalWidth > 0)`,
+      })
+      await capture({ name: 'hydra-images' })
+
+      const folder = s.folder({ name: 'image-worker' })
+      const workerImages = `Worker image reply
+
+![Worker Markdown image](${src})
+
+<img src="${src}" alt="Worker HTML image" width="240" height="72">`
+      pnyx.claude.plan({
+        text: 'Show the worker images',
+        reply: workerImages,
+      })
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Worker image examples',
+          '--key',
+          'image-worker',
+          '--folder',
+          folder,
+        ],
+      })
+      await s.owner({
+        args: [
+          'task',
+          'start',
+          'image-worker',
+          '--prompt',
+          'Show the worker images',
+        ],
+      })
+      await until({
+        what: 'the worker image reply to finish',
+        check: () => s.task({ key: 'image-worker' }).sessionActivity === 'finished',
+      })
+      const worker = s.as({ agent: await s.agent({ cwd: folder }) })
+      await worker.run({
+        args: [
+          'task',
+          'status',
+          'image-worker',
+          'working',
+          '--note',
+          workerImages,
+        ],
+      })
+      const task = s.task({ key: 'image-worker' })
+      await run({
+        args: ['run'],
+        input: `await page.click('[data-task="${task.id}"]');`,
+      })
+      await waitFor({
+        what: 'Markdown and HTML images in the task worker message',
+        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img').length === 2
+          && [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')].every(image => image.complete && image.naturalWidth > 0)`,
+      })
+      await evaluate({
+        script: `() => {
+        document.querySelector('[data-task="${task.id}"] .card-current-state .show-more')?.click();
+        const images = [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')];
+        if (!images.some(image => image.alt === 'Worker Markdown image') || !images.some(image => image.alt === 'Worker HTML image')) throw new Error('Worker image syntax lost');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await capture({ name: 'worker-images' })
     } finally {
       await run({ args: ['stop'] })
     }
