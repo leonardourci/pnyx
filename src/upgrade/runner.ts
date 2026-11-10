@@ -114,6 +114,11 @@ const remoteMain = async ({ root }: { root: string }) => (await git({
 // Whether origin's main has a commit this checkout lacks; undefined when origin cannot be read.
 export async function upgradeAvailable({ root = PNYX_ROOT }: { root?: string } = {}) {
   try {
+    // A cut upgrade already pulled, so origin has nothing newer, yet the build is still the old one.
+    if (existsSync(await startCommitFile({ root }))) {
+      return true
+    }
+
     const remote = await remoteMain({ root })
 
     if (!remote) {
@@ -211,8 +216,8 @@ export async function refusals({ root }: { root: string }): Promise<string[]> {
   return reasons
 }
 
-// Holds the commit an upgrade began on until it ends, so the next one can tell a cut upgrade from an up-to-date folder.
-const startedFromPath = async ({ root }: { root: string }) => resolve(
+// The file that holds the commit an upgrade began on until it ends, so the next one can tell a cut upgrade from an up-to-date folder.
+const startCommitFile = async ({ root }: { root: string }) => resolve(
   root,
   await git({
     root,
@@ -312,23 +317,28 @@ async function upgrade({
     }
   }
 
-  const startedFrom = await startedFromPath({ root })
+  const startFile = await startCommitFile({ root })
+  const cut = existsSync(startFile)
   // An upgrade cut before it ended is finished from the commit it began on, or goes back to it.
-  const cut = existsSync(startedFrom) ? readFileSync(
-    startedFrom,
+  const from = cut ? readFileSync(
+    startFile,
     'utf8',
-  ).trim() : ''
-  const from = cut || head
-  writeFileSync(
-    startedFrom,
-    `${from}\n`,
-  )
+  ).trim() : head
 
-  // A folder left partly upgraded keeps the commit, so the next upgrade still knows where it began.
+  if (!cut) {
+    writeFileSync(
+      startFile,
+      `${from}\n`,
+    )
+  }
+
   const ended = ({ result }: { result: UpgradeResult }) => {
-    if (result.rolledBack !== false) {
+    const partlyUpgraded = result.rolledBack === false
+
+    // A folder left partly upgraded keeps the file, so the next upgrade still knows where it began.
+    if (!partlyUpgraded) {
       rmSync(
-        startedFrom,
+        startFile,
         { force: true },
       )
     }
@@ -460,7 +470,8 @@ async function upgrade({
       await rollback({
         root,
         from: from!,
-        failed,
+        // The cut upgrade may have installed already, whatever step failed in this one.
+        failed: cut ? 'build' : failed,
       })
     } catch (rollbackError) {
       rolledBack = false

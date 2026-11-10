@@ -210,61 +210,72 @@ test(
   },
 )
 
-test(
-  'an upgrade whose caller was killed mid-build is finished by the next upgrade',
-  async () => {
-    const from = repo.head()
-    const hold = join(
-      repo.install,
-      'hold',
-    )
-    const building = join(
-      repo.install,
-      'building',
-    )
-    const to = repo.publish({
-      // Hangs while the hold file is there; like the real build, it writes nothing before it passes.
-      files: { 'build.sh': 'if [ -f hold ]; then touch building; exec sleep 30; fi\necho two > built.txt\n' },
-      message: 'two',
-    })
-    writeFileSync(
-      hold,
-      '',
-    )
-    const caller = spawn(
-      process.execPath,
-      [
-        '--conditions=source',
-        '--input-type=module',
-        '-e',
-        `import { runUpgrade } from ${JSON.stringify(new URL(
-          './runner.ts',
-          import.meta.url,
-        ).href)}\nawait runUpgrade({ root: ${JSON.stringify(repo.install)} })`,
-      ],
-      {
-        detached: true,
-        stdio: 'ignore',
-      },
-    )
-    const closed = new Promise(resolve => caller.once(
-      'close',
-      resolve,
-    ))
-    const deadline = Date.now() + BUILDING_MS
+// Starts an upgrade to a new commit in its own process and kills it mid-build, as a stopped session would.
+async function cutUpgrade() {
+  const hold = join(
+    repo.install,
+    'hold',
+  )
+  const building = join(
+    repo.install,
+    'building',
+  )
+  const to = repo.publish({
+    // Hangs while the hold file is there; like the real build, it writes nothing before it passes.
+    files: { 'build.sh': 'if [ -f hold ]; then touch building; exec sleep 30; fi\necho two > built.txt\n' },
+    message: 'two',
+  })
+  writeFileSync(
+    hold,
+    '',
+  )
+  const caller = spawn(
+    process.execPath,
+    [
+      '--conditions=source',
+      '--input-type=module',
+      '-e',
+      `import { runUpgrade } from ${JSON.stringify(new URL(
+        './runner.ts',
+        import.meta.url,
+      ).href)}\nawait runUpgrade({ root: ${JSON.stringify(repo.install)} })`,
+    ],
+    {
+      detached: true,
+      stdio: 'ignore',
+    },
+  )
+  const closed = new Promise(resolve => caller.once(
+    'close',
+    resolve,
+  ))
+  const deadline = Date.now() + BUILDING_MS
 
+  try {
     while (!existsSync(building) && Date.now() < deadline) {
       await delay(20)
     }
 
     assert.ok(existsSync(building))
+  } finally {
     // The whole group, as a stopped session takes the upgrade and its build down with it.
     process.kill(
       -caller.pid!,
       'SIGKILL',
     )
     await closed
-    rmSync(hold)
+  }
+
+  rmSync(hold)
+
+  return to
+}
+
+test(
+  'an upgrade whose caller was killed mid-build is finished by the next upgrade',
+  async () => {
+    const from = repo.head()
+    const to = await cutUpgrade()
 
     assert.equal(
       repo.built(),
@@ -273,6 +284,10 @@ test(
     assert.equal(
       repo.head(),
       to,
+    )
+    assert.equal(
+      await upgradeAvailable({ root: repo.install }),
+      true,
     )
 
     const result = await runUpgrade({ root: repo.install })
@@ -290,8 +305,56 @@ test(
       'two',
     )
     assert.equal(
+      await upgradeAvailable({ root: repo.install }),
+      false,
+    )
+    assert.equal(
       (await runUpgrade({ root: repo.install })).state,
       'current',
+    )
+  },
+)
+
+test(
+  'a failed step while finishing a cut upgrade goes back to the commit that upgrade began on',
+  async () => {
+    const from = repo.head()
+    await cutUpgrade()
+    // The pull fails, after the cut upgrade had already pulled.
+    git({
+      cwd: repo.install,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        join(
+          root,
+          'missing.git',
+        ),
+      ],
+    })
+
+    const result = await runUpgrade({ root: repo.install })
+
+    assert.equal(
+      result.state,
+      'failed',
+    )
+    assert.equal(
+      result.failed,
+      'pull',
+    )
+    assert.equal(
+      result.rolledBack,
+      true,
+    )
+    assert.equal(
+      repo.head(),
+      from,
+    )
+    assert.equal(
+      repo.built(),
+      'one',
     )
   },
 )
