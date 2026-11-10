@@ -5,7 +5,7 @@ import { cleanLogs, MB } from './log-files.ts'
 import { startProcessLines } from './process-line.ts'
 
 // Deletes expired and over-size logs this often, so detailed logging passes the size cap by at most a minute of lines.
-export const LOG_CLEAN_MS = 60_000
+const LOG_CLEAN_MS = 60_000
 
 type LogSettings = Pick<Settings, 'logs' | 'logDays' | 'logMaxMB'>
 

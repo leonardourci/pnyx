@@ -18,7 +18,7 @@ export interface LogFields {
   // Joins a failure to its retry.
   operationId?: string
   eventSeq?: number
-  // What exactly ran within the operation, such as the command or tool name; the debug view groups by it.
+  // Narrows the operation, such as the command, tool, message type or file; debug performance groups by operation and name.
   name?: string
   // Who asked: the owner's page or CLI, Hydra, or a worker.
   actor?: string

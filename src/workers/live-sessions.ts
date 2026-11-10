@@ -190,7 +190,6 @@ export function createLiveSessions({
     try {
       const contract = card.id === HYDRA_CARD
         ? turns().hydraSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
-
       entry.session ??= await providerOf({ provider: card.agent.provider }).open({
         cwd: folderOf({ card }),
         agent: card.agent,
@@ -467,17 +466,16 @@ export function createLiveSessions({
           })
         }
 
-        if (typeof received === 'object' && received.type === 'input' && [
-          'taken',
-          'refused',
-        ].includes(received.receipt.phase)) {
-          const refused = received.receipt.phase === 'refused'
+        const receipt = typeof received === 'object' && received.type === 'input' ? received.receipt : undefined
+        const refused = receipt?.phase === 'refused'
+
+        if (receipt && (refused || receipt.phase === 'taken')) {
           log({
             operation: refused ? 'message.refused' : 'message.taken',
             hydraId,
             taskId: card.id,
             sessionId: key,
-            correlationId: received.receipt.inputId,
+            correlationId: receipt.inputId,
           })
         }
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { log, type LogLine } from './diagnostics.ts'
 
-export type LogIds = Pick<LogLine, 'hydraId' | 'taskId' | 'sessionId' | 'correlationId' | 'eventSeq'>
+type LogIds = Pick<LogLine, 'hydraId' | 'taskId' | 'sessionId' | 'correlationId' | 'eventSeq'>
 
 export function background({
   name,

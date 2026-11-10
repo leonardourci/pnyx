@@ -73,7 +73,7 @@ function readLine({ text }: { text: string }): Line | undefined {
   }
 }
 
-// The operation and, when it has one, the exact command or tool, so `cli.command task create` and `cli.command task show` stay apart.
+// The operation and its name when it has one, so `command.cli task create` and `command.cli task show` stay apart.
 const label = ({ line }: { line: Line }) => line.name ? `${line.operation} ${line.name}` : line.operation
 
 const megabytes = ({ bytes }: { bytes?: number }) => bytes === undefined

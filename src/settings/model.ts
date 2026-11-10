@@ -44,7 +44,6 @@ export interface Settings extends SharedView {
   oracleRememberFilters: boolean
   // The Hydra list's order as Hydra ids; the Hydra list decides where ids it does not name go.
   hydraOrder: string[]
-  // Diagnostic logs: off, on or detailed, how many days they stay and the most space they take.
   logs: LogMode
   logDays: number
   logMaxMB: number

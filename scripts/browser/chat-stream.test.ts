@@ -500,9 +500,8 @@ test(
       return 'chat-assertion-passed';
     }`,
       })
-      // The page's own logger sends how long the reply took to show, and the server writes it as the page's line.
       const firstText = await until({
-        what: 'the page send-to-first-text line',
+        what: 'the page’s line for the time from the owner’s send to the reply’s first text, written with source web',
         check: () => logLines().find(line => line.source === 'web' && line.operation === 'page.first-text'
           && line.hydraId === s.hydraId),
       })

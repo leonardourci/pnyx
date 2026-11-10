@@ -3,15 +3,17 @@ import { monitorEventLoopDelay, performance, PerformanceObserver } from 'node:pe
 import { log } from '#app/diagnostics.ts'
 import { oneDecimal } from '#app/log-line.ts'
 
-export const PROCESS_LINE_MS = 30_000
+const PROCESS_LINE_MS = 30_000
 // How often the event-loop delay histogram samples; a stall shorter than this is not seen.
 const LOOP_DELAY_RESOLUTION_MS = 20
 const LOOP_DELAY_PERCENTILE = 99
 const NS_PER_MS = 1e6
 const US_PER_MS = 1000
 const PERCENT = 100
+// The loop's share of time keeps two decimals.
+const SHARE_DECIMALS = 100
 
-// One line every 30 seconds with the server's CPU, event-loop delay and use, heap and garbage-collection pauses.
+// One line every 30 seconds by default with the server's CPU, event-loop delay and use, heap and garbage-collection pauses.
 export function startProcessLines({ every = PROCESS_LINE_MS }: { every?: number }) {
   const delay = monitorEventLoopDelay({ resolution: LOOP_DELAY_RESOLUTION_MS })
   const gc = {
@@ -43,14 +45,14 @@ export function startProcessLines({ every = PROCESS_LINE_MS }: { every?: number 
     const used = process.cpuUsage(cpu)
     const memory = process.memoryUsage()
     const large = getHeapSpaceStatistics().find(space => space.space_name === 'large_object_space')
+    const loopShare = performance.eventLoopUtilization(loop).utilization
 
     log({
       operation: 'process',
       ms: span,
-      // Of one core.
+      // Percent of one core, so it can pass 100.
       cpuPercent: oneDecimal({ value: (used.user + used.system) / US_PER_MS / span * PERCENT }),
-      loopUtilization: Math.round(performance.eventLoopUtilization(loop).utilization * PERCENT)
-        / PERCENT,
+      loopUtilization: Math.round(loopShare * SHARE_DECIMALS) / SHARE_DECIMALS,
       loopDelayMs: oneDecimal({ value: delay.mean / NS_PER_MS }),
       loopDelayP99Ms: oneDecimal({ value: delay.percentile(LOOP_DELAY_PERCENTILE) / NS_PER_MS }),
       loopDelayMaxMs: oneDecimal({ value: delay.max / NS_PER_MS }),

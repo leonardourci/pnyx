@@ -114,7 +114,7 @@ export function createServerCommands({
       : undefined
     let answered = false
 
-    // A command's one receipt or error ends its log line.
+    // The command's log line is written when its one receipt or error goes out.
     const send: typeof sendToTab = ({
       ws: tab,
       message: answer,
@@ -150,12 +150,16 @@ export function createServerCommands({
     }) => {
       let saved: boolean | undefined
 
-      if (id && typeof message.name === 'string' && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
+      if (id && argv) {
+        const [
+          name,
+          ...args
+        ] = argv
         const command: SaveCommand = {
           type: 'command',
           id,
-          name: message.name,
-          args: message.args,
+          name,
+          args,
         }
 
         if (saveEventId({ command })) {

@@ -92,7 +92,7 @@ export function createServerClients({
     latest?: Latest
     queue?: Extract<ServerMessage, { type: 'hydraQueue' }>
     timer?: ReturnType<typeof setTimeout>
-    // When the tab's socket filled up, for how long it stayed held.
+    // When the tab's socket filled up, so socket.drained can say how long it stayed held.
     since: number
   }
   const recovery = new Map<HydraClient, Pending>()

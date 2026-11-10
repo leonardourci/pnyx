@@ -1,13 +1,14 @@
 import { MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { logged, PAGE_LINES_MAX, STACK_MAX, TEXT_MAX, type LogLine, type LogMode } from '#app/log-line.ts'
 
-// The page's logger: the server's log() for the page. Lines wait here and go to the server in batches, which writes them marked as the page's.
+// The page's log(): lines queue here and go to the server in batches over the socket, which writes them with source web.
 const FLUSH_MS = 2000
-// Lines kept while the socket is down; the oldest go first.
+// Lines kept while the socket is down; past this many, the oldest are dropped.
 const QUEUE_MAX = 1000
-// A UTF-16 code unit takes at most 3 bytes in UTF-8, so a batch this long fits the server's message limit with room for its frame.
+// A UTF-16 code unit takes at most 3 bytes in UTF-8, so a batch this long fits the server's message limit, with 1 KB left for the JSON around the lines.
 const UTF8_BYTES_PER_UNIT = 3
-const BATCH_LENGTH = Math.floor((MAX_MESSAGE_BYTES - 1024) / UTF8_BYTES_PER_UNIT)
+const MESSAGE_ROOM_BYTES = 1024
+const BATCH_LENGTH = Math.floor((MAX_MESSAGE_BYTES - MESSAGE_ROOM_BYTES) / UTF8_BYTES_PER_UNIT)
 const SLOW_FRAMES = 'long-animation-frame'
 const LONG_TASKS = 'longtask'
 
@@ -115,7 +116,7 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
   mode = next
 }
 
-// One line, as the server writes it: a plain call is an action, detailed lines wait for detailed logging, warnings and errors are always sent.
+// Queues the line for the server when the level allows it: a detailed line only under Detailed, a warning or error always.
 // eslint-disable-next-line pnyx/object-params -- the line passes on whole, so nothing is copied before the level check.
 export function log(line: LogLine): void {
   if (!logged({
@@ -129,11 +130,13 @@ export function log(line: LogLine): void {
     error,
     ...fields
   } = line
+  // A line about no Hydra in particular belongs to the one the page shows.
+  const selectedHydra = output?.hydra()
   queue.push(JSON.stringify({
     ...fields,
     at: new Date().toISOString(),
     tab,
-    hydraId: fields.hydraId ?? output?.hydra(),
+    hydraId: fields.hydraId ?? selectedHydra,
     error: line.level && error !== undefined ? pageError({ error }) : undefined,
   }))
 
@@ -144,7 +147,7 @@ export function log(line: LogLine): void {
   schedule()
 }
 
-// The owner sent a message in Hydra's chat; the first streamed text after it ends the line.
+// Starts timing the owner's send in Hydra's chat; firstTextShown logs the time to the reply's first text.
 export const markSend = ({ hydraId }: { hydraId: string }) => {
   sent = {
     started: performance.now(),
@@ -174,7 +177,7 @@ export function startPageLog({
     send,
     hydra,
   }
-  const frames = PerformanceObserver.supportedEntryTypes.includes(SLOW_FRAMES)
+  const slowFramesSupported = PerformanceObserver.supportedEntryTypes.includes(SLOW_FRAMES)
   // eslint-disable-next-line pnyx/object-params -- PerformanceObserver owns its callback signature.
   const observer = new PerformanceObserver(list => {
     for (const entry of list.getEntries() as SlowFrame[]) {
@@ -183,14 +186,14 @@ export function startPageLog({
         b,
       ) => b.duration - a.duration)[0]
       log({
-        operation: frames ? 'page.slow-frame' : 'page.long-task',
+        operation: slowFramesSupported ? 'page.slow-frame' : 'page.long-task',
         ms: entry.duration,
         blockingMs: entry.blockingDuration,
         script: longest?.invoker === undefined ? undefined : bounded({ text: longest.invoker }),
       })
     }
   })
-  observer.observe({ type: frames ? SLOW_FRAMES : LONG_TASKS })
+  observer.observe({ type: slowFramesSupported ? SLOW_FRAMES : LONG_TASKS })
 
   // eslint-disable-next-line pnyx/object-params -- addEventListener owns the handler signature.
   const failed = (event: ErrorEvent) => log({

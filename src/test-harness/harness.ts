@@ -37,7 +37,7 @@ const BIN = join(
 const TIMEOUT_MS = 30_000
 const POLL_MS = 20
 // The flows' server writes its process line this often instead of every 30 seconds.
-const PROCESS_LINE_MS = 200
+const FLOW_PROCESS_LINE_MS = 200
 // Idle means no such work for this long, several turns of the 500 ms polling a crowded server falls back to.
 export const QUIET_MS = 2500
 // How often the server reads a followed pull request; the real minute would outlast the waits.
@@ -475,7 +475,7 @@ export function scenarioGroup({
       retryDelays,
       followDelay: FOLLOW_MS,
       recoveryPause: RECOVERY_TEST_PAUSE_MS,
-      processLineMs: PROCESS_LINE_MS,
+      processLineMs: FLOW_PROCESS_LINE_MS,
       upgradeRoot: upgradeRoot ?? upgrade.install,
       restart: () => {
         restarts++
