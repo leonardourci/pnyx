@@ -327,6 +327,17 @@ test(
       /^landing: pr\nmerge: hydra\nfrom: task$/m,
     )
 
+    // Owner memory is shared by every flow on this server.
+    t.after(() => s.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'forget',
+        '--reason',
+        'flow finished',
+      ],
+    }))
+
     for (const [
       layer,
       scope,
@@ -360,17 +371,6 @@ test(
         ],
       })
     }
-
-    // Owner memory is shared by every flow on this server.
-    t.after(() => s.owner({
-      args: [
-        'owner',
-        'worker-notes',
-        'forget',
-        '--reason',
-        'flow finished',
-      ],
-    }))
 
     for (const key of [
       'copy-fix',

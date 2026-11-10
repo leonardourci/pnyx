@@ -174,6 +174,16 @@ test(
       '--prompt',
       'Start with the failing input.',
     ]
+    // Owner memory is shared by every flow on this server.
+    t.after(() => s.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'forget',
+        '--reason',
+        'flow finished',
+      ],
+    }))
     await s.owner({
       args: [
         'owner',
@@ -185,16 +195,6 @@ test(
         'every worker needs it',
       ],
     })
-    // Owner memory is shared by every flow on this server.
-    t.after(() => s.owner({
-      args: [
-        'owner',
-        'worker-notes',
-        'forget',
-        '--reason',
-        'flow finished',
-      ],
-    }))
     await s.owner({
       args: [
         'hydra',

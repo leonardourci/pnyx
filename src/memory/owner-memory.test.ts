@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { commands } from '#app/cli.ts'
+import { OWNER_MEMORY_BUDGET } from './budgets.ts'
 import { ownerMemory } from './owner-memory.ts'
 
 const scratch = mkdtempSync(join(
@@ -90,7 +91,7 @@ test(
 )
 
 test(
-  'owner worker notes need a reason, stay within their budget and are saved as owner memory',
+  'owner worker notes need a reason, stay within their budget, count toward owner memory and are saved there',
   async () => {
     home()
 
@@ -145,6 +146,17 @@ test(
     assert.equal(
       ownerMemory().workers?.text,
       'Write commits in English.',
+    )
+    await assert.rejects(
+      async () => commands.owner([
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'x'.repeat(OWNER_MEMORY_BUDGET - 'Write commits in English.'.length + 1),
+      ]),
+      { code: 'MEMORY_FULL' },
     )
 
     await commands.owner([
