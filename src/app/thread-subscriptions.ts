@@ -6,7 +6,7 @@ import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { readThread, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { readThread, threadAction, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { paseoHistory } from '#integrations/paseo/history.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import type { Card } from '#tasks/model.ts'
@@ -62,6 +62,10 @@ export function changesHydraThread({
   state: HydraState
 }): boolean {
   return event.cardId === HYDRA_CARD
+    || threadAction({
+      event,
+      state,
+    })
     || HYDRA_THREAD_PREFIXES.some(prefix => event.type.startsWith(prefix))
     || HYDRA_THREAD_EVENTS.includes(event.type)
     || state.cards[event.cardId]?.title !== sub.titles?.[event.cardId]

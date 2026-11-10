@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 import { LATEST_DELAY_MS } from './latest-feed.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
+import type { HydraEvent } from './model.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -909,7 +910,7 @@ test(
       ],
       now: Date.parse('2026-11-07T00:00:00Z'),
     })
-    const state = reduce({
+    let state = reduce({
       state: emptyHydra(),
       event: {
         v: 1,
@@ -925,6 +926,22 @@ test(
         },
       },
     })
+    state = reduce({
+      state,
+      event: {
+        v: 1,
+        seq: 2,
+        id: 'create-task',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: 'checklist',
+        type: 'task.created',
+        data: {
+          key: 'checklist',
+          title: 'Release checklist',
+        },
+      },
+    })
     const path = join(
       home,
       'native.jsonl',
@@ -937,7 +954,7 @@ test(
       ),
       path,
     )
-    const card = state.cards[HYDRA_CARD]!
+    let card = state.cards[HYDRA_CARD]!
     card.agent = {
       provider: 'claude-code',
       sessionId: 'fixture',
@@ -970,6 +987,27 @@ test(
         return true
       },
     })
+    const tabs = createServerClients({
+      hydraId: 'default',
+      state: () => state,
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting: [],
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: threads.threadSubscriptions,
+      bindThread: threads.bindThread,
+      refreshThread: threads.refreshThread,
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+    tabs.clients.add(ws)
+    t.after(() => tabs.close())
     threads.bindThread({
       ws,
       card,
@@ -1030,6 +1068,64 @@ test(
       [
         'Explain it',
         'First words and more.',
+      ],
+    )
+    const action: HydraEvent = {
+      v: 1,
+      seq: 3,
+      id: 'checklist-done',
+      at: new Date().toISOString(),
+      actor: 'hydra',
+      cardId: 'checklist',
+      type: 'task.declared',
+      data: {
+        state: 'done',
+        note: 'Checks complete',
+      },
+    }
+    const dir = join(
+      home,
+      'hydras',
+      'default',
+    )
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    appendFileSync(
+      join(
+        dir,
+        'events.jsonl',
+      ),
+      JSON.stringify(action) + '\n',
+    )
+    state = reduce({
+      state,
+      event: action,
+    })
+    state.cards[HYDRA_CARD]!.agent = card.agent
+    card = state.cards[HYDRA_CARD]!
+    tabs.broadcast({ event: action })
+    live.update({
+      id: 'answer',
+      text: 'First words and more.',
+      append: false,
+    })
+    threads.refreshLiveThread({
+      ws,
+      card: HYDRA_CARD,
+    })
+    t.mock.timers.tick(LIVE_TEXT_DELAY_MS)
+    assert.deepEqual(
+      pushed.at(-1)!.conversation!.folds['live:answer']?.tasks.map(task => ({
+        title: task.title,
+        states: task.updates.map(update => update.state),
+      })),
+      [
+        {
+          title: 'Release checklist',
+          states: ['done'],
+        },
       ],
     )
     appendFileSync(
@@ -1103,7 +1199,8 @@ test(
       pushed.at(-1)!.conversation!.stream,
     )
     card.agent = {
-      ...card.agent,
+      provider: 'claude-code',
+      transcriptPath: path,
       sessionId: 'replacement',
     }
     writeFileSync(
