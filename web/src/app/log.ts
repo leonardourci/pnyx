@@ -1,5 +1,5 @@
 import { MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
-import { logged, PAGE_LINES_MAX, STACK_MAX, TEXT_MAX, type LogMode, type PageLine } from '#app/log-line.ts'
+import { logged, PAGE_LINES_MAX, SAMPLE_MS, STACK_MAX, TEXT_MAX, type LogMode, type PageLine } from '#app/log-line.ts'
 
 // The page's log(): lines queue here and go to the server in batches over the socket, which writes them with source web.
 const FLUSH_MS = 2000
@@ -11,7 +11,6 @@ const MESSAGE_ROOM_BYTES = 1024
 const BATCH_LENGTH = Math.floor((MAX_MESSAGE_BYTES - MESSAGE_ROOM_BYTES) / UTF8_BYTES_PER_UNIT)
 const SLOW_FRAMES = 'long-animation-frame'
 const LONG_TASKS = 'longtask'
-const MEMORY_MS = 30_000
 // A reply's first text later than this belongs to something else, such as a wake long after the send.
 const FIRST_TEXT_MAX_MS = 5 * 60_000
 // A reveal frame counts as slow past this many of the display's frames; the display's frame is the shortest one seen.
@@ -317,7 +316,7 @@ export function startPageLog({
   observer.observe({ type: slowFramesSupported ? SLOW_FRAMES : LONG_TASKS })
   const memory = setInterval(
     whenIdle,
-    MEMORY_MS,
+    SAMPLE_MS,
   )
 
   // eslint-disable-next-line pnyx/object-params -- addEventListener owns the handler signature.

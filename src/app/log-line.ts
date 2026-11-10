@@ -185,5 +185,8 @@ export const PAGE_LINES_MAX = 100
 export const TEXT_MAX = 200
 export const STACK_MAX = 4000
 
+// The process line, the agent memory line and each page's memory line come this often.
+export const SAMPLE_MS = 30_000
+
 // Durations keep a tenth of a millisecond, and percentages a tenth of a percent.
 export const oneDecimal = ({ value }: { value: number }) => Math.round(value * 10) / 10
