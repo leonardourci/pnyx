@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before } from 'node:test'
@@ -36,6 +36,8 @@ const BIN = join(
 // Waits end as soon as their condition holds; the bound only has to outlast a loaded machine.
 const TIMEOUT_MS = 30_000
 const POLL_MS = 20
+// The flows' server writes its process line this often instead of every 30 seconds.
+const PROCESS_LINE_MS = 200
 // Idle means no such work for this long, several turns of the 500 ms polling a crowded server falls back to.
 export const QUIET_MS = 2500
 // How often the server reads a followed pull request; the real minute would outlast the waits.
@@ -314,8 +316,42 @@ export async function openPage({
 
       return answer as Extract<ServerMessage, { type: 'error' }>
     },
+    // A batch of lines as the page's logger sends them.
+    log: ({ lines }: { lines: Record<string, unknown>[] }) => ws.send(JSON.stringify({
+      type: 'log',
+      lines,
+    })),
     close: () => ws.close(),
   }
+}
+
+// Every line in the server's log files, oldest day first.
+export function logLines(): Record<string, unknown>[] {
+  const dir = join(
+    process.env.PNYX_HOME!,
+    'logs',
+  )
+
+  if (!existsSync(dir)) {
+    return []
+  }
+
+  return readdirSync(dir).toSorted()
+    .flatMap(name => readFileSync(
+      join(
+        dir,
+        name,
+      ),
+      'utf8',
+    ).split('\n')
+      .flatMap(line => {
+        // A line the server is still writing is read on the next look.
+        try {
+          return [JSON.parse(line) as Record<string, unknown>]
+        } catch {
+          return []
+        }
+      }))
 }
 
 // Starts one disposable Pnyx (temporary PNYX_HOME, random port, fake agents); pnyx.ts calls it once
@@ -422,6 +458,7 @@ export function scenarioGroup({
       retryDelays,
       followDelay: FOLLOW_MS,
       recoveryPause: RECOVERY_TEST_PAUSE_MS,
+      processLineMs: PROCESS_LINE_MS,
       upgradeRoot: upgradeRoot ?? upgrade.install,
       restart: () => {
         restarts++

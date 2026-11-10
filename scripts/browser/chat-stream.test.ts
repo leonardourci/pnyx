@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { scenarioGroup, until, openPage } from '#test-harness/harness.ts'
+import { logLines, scenarioGroup, until, openPage } from '#test-harness/harness.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { installChatContract, assertChatContract, PAINT_TIMEOUT_MS } from '#test-harness/chat-contract.ts'
@@ -500,6 +500,16 @@ test(
       return 'chat-assertion-passed';
     }`,
       })
+      // The page's own logger sends how long the reply took to show, and the server writes it as the page's line.
+      const firstText = await until({
+        what: 'the page send-to-first-text line',
+        check: () => logLines().find(line => line.source === 'web' && line.operation === 'page.first-text'
+          && line.hydraId === s.hydraId),
+      })
+      assert.equal(
+        typeof firstText.ms,
+        'number',
+      )
       await pnyx.restart()
       await evaluate({
         script: `async () => {
