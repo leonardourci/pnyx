@@ -15,6 +15,7 @@ import type { HydraEvent, HydraState } from './model.ts'
 import { listHydras } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { background } from './background.ts'
+import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
 
 const shownTraces = ({
@@ -91,6 +92,8 @@ export function createServerClients({
     latest?: Latest
     queue?: Extract<ServerMessage, { type: 'hydraQueue' }>
     timer?: ReturnType<typeof setTimeout>
+    // When the tab's socket filled up, for how long it stayed held.
+    since: number
   }
   const recovery = new Map<HydraClient, Pending>()
   const closedClients = new WeakSet<HydraClient>()
@@ -123,8 +126,20 @@ export function createServerClients({
   }
 
   const clearRecovery = ({ ws }: { ws: HydraClient }) => {
-    clearTimeout(recovery.get(ws)?.timer)
+    const pending = recovery.get(ws)
+
+    if (!pending) {
+      return
+    }
+
+    clearTimeout(pending.timer)
     recovery.delete(ws)
+    log({
+      operation: 'socket.drained',
+      hydraId,
+      backlog: ws.bufferedAmount,
+      ms: performance.now() - pending.since,
+    })
   }
 
   const retry = ({ ws }: { ws: HydraClient }) => {
@@ -149,7 +164,21 @@ export function createServerClients({
     ws: HydraClient
     message: ServerMessage
   }) => {
-    const pending: Pending = recovery.get(ws) ?? { snapshot: false }
+    const held = recovery.get(ws)
+    const pending: Pending = held ?? {
+      snapshot: false,
+      since: performance.now(),
+    }
+
+    if (!held) {
+      log({
+        level: 'warn',
+        operation: 'socket.held',
+        hydraId,
+        name: message.type,
+        backlog: ws.bufferedAmount,
+      })
+    }
 
     if (message.type === 'event' || message.type === 'snapshot' || message.type === 'hydras') {
       pending.snapshot = true

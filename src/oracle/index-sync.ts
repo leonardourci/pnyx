@@ -1,5 +1,6 @@
 import { setImmediate } from 'node:timers/promises'
 import { join } from 'node:path'
+import { log } from '#app/diagnostics.ts'
 import { withWriter } from '#app/writer.ts'
 import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
 import { upgradeUnderway } from '#upgrade/queue.ts'
@@ -71,7 +72,12 @@ export function createIndexSync({
         }),
       })
     } catch (error) {
-      console.error(`pnyx oracle index: transcripts not harvested: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'oracle.harvest',
+        hydraId,
+        error,
+      })
     }
   }
 
@@ -98,7 +104,12 @@ export function createIndexSync({
         await setImmediate()
       }
     } catch (error) {
-      console.error(`pnyx oracle index: conversation recovery failed: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'oracle.backfill',
+        hydraId,
+        error,
+      })
     } finally {
       backfilling = undefined
 
@@ -120,6 +131,7 @@ export function createIndexSync({
           return
         }
 
+        const started = performance.now()
         startWorker({
           file: INDEX_WORKER,
           timeout: INDEX_WORKER_TIMEOUT_MS,
@@ -135,7 +147,20 @@ export function createIndexSync({
                 message: error.message,
                 code: 'UNKNOWN',
               }
-              console.error(`pnyx oracle index: ${failure.message}`)
+              log({
+                level: 'error',
+                operation: 'oracle.index',
+                hydraId,
+                code: failure.code,
+                error: failure.message,
+                ms: performance.now() - started,
+              })
+            } else {
+              log({
+                operation: 'oracle.index',
+                hydraId,
+                ms: performance.now() - started,
+              })
             }
 
             resolve(failure)
