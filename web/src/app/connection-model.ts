@@ -34,6 +34,8 @@ export interface Scope {
   subscriptionTimer?: ReturnType<typeof setTimeout>
   subscriptionAttempt: number
   thread: ThreadPage | null
+  // The length of the frame that brought the thread, for the page's memory line.
+  threadChars: number
   queue: HydraQueue
   spend: Record<string, TaskSpend>
   usage: Record<string, AgentUsage>

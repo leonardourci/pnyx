@@ -104,10 +104,10 @@ export function createCatalogIndex({
               continue
             }
 
-            refresh({ entry }).catch(error => console.error(
-              'pnyx catalog refresh:',
-              error,
-            ))
+            background({
+              name: 'catalog refresh',
+              run: () => refresh({ entry }),
+            })
           }
         },
       }),

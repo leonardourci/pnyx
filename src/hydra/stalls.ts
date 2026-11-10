@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import type { AgentRef } from '#workers/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
@@ -75,7 +76,12 @@ export function createStallChecks({
     try {
       return await wakeOnStall()
     } catch (error) {
-      console.error(`pnyx-axi serve: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'stall check',
+        hydraId,
+        error,
+      })
     }
   }
 

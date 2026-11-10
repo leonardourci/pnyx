@@ -1,6 +1,4 @@
-import { promisify } from 'node:util'
-import { execFile } from 'node:child_process'
-import { runProcess } from '#app/run-process.ts'
+import { runFile, runProcess } from '#app/run-process.ts'
 import type { SourceNote } from '#tasks/model.ts'
 import { failedChecks, pendingChecks, type LinkState } from '#tasks/delivery/model.ts'
 
@@ -169,20 +167,17 @@ function landingFromDetails({ details }: {
 }
 
 export async function githubApi({ args }: { args: string[] }): Promise<unknown> {
-  const { stdout } = await promisify(execFile)(
-    process.env.PNYX_GH_AXI || 'gh-axi',
-    [
+  const { stdout } = await runFile({
+    command: process.env.PNYX_GH_AXI || 'gh-axi',
+    args: [
       'api',
       ...args,
       '--jq',
       '{payload: tojson}',
       '--full',
     ],
-    {
-      encoding: 'utf8',
-      timeout: VIEW_TIMEOUT_MS,
-    },
-  )
+    options: { timeout: VIEW_TIMEOUT_MS },
+  })
   const encoded = /^payload: (.+)$/m.exec(stdout)?.[1]
 
   if (!encoded) {
@@ -298,20 +293,17 @@ export async function pullRequestStatus(
     return undefined
   }
 
-  const { stdout } = await promisify(execFile)(
-    process.env.PNYX_GH_AXI || 'gh-axi',
-    [
+  const { stdout } = await runFile({
+    command: process.env.PNYX_GH_AXI || 'gh-axi',
+    args: [
       'pr',
       'view',
       pr.number,
       '--repo',
       pr.repo,
     ],
-    {
-      encoding: 'utf8',
-      timeout: VIEW_TIMEOUT_MS,
-    },
-  )
+    options: { timeout: VIEW_TIMEOUT_MS },
+  })
   const state = field({
     out: stdout,
     key: 'state',

@@ -1,7 +1,9 @@
 import type { HydraState } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { readFileSync, renameSync } from 'node:fs'
+import { basename } from 'node:path'
 import { snapshotPath, writeDurably } from '#store/storage.ts'
+import { log } from './diagnostics.ts'
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
 const RULES = 22
@@ -40,19 +42,29 @@ export function writeSnapshot({
   state: HydraState
   offset: number
 }): void {
+  const started = performance.now()
   const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
+  const data = Buffer.from(JSON.stringify({
+    v: EVENT_VERSION,
+    rules: RULES,
+    offset,
+    state,
+  } satisfies Snapshot))
   writeDurably({
     path: tmp,
-    data: JSON.stringify({
-      v: EVENT_VERSION,
-      rules: RULES,
-      offset,
-      state,
-    } satisfies Snapshot),
+    data,
     flag: 'w',
   })
   renameSync(
     tmp,
     snapshotPath({ dir }),
   )
+  log({
+    operation: 'snapshot.write',
+    // A Hydra's folder is named by its id.
+    hydraId: basename(dir),
+    eventSeq: state.seq,
+    bytes: data.length,
+    ms: performance.now() - started,
+  })
 }

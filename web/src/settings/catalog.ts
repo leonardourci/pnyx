@@ -20,6 +20,9 @@ export const SETTING_ICONS: Record<string, string> = {
   helper: 'helper',
   hydraAgent: 'agent',
   accounts: 'you',
+  logs: 'logs',
+  logDays: 'log-days',
+  logMaxMB: 'log-size',
 }
 
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
@@ -79,6 +82,12 @@ export const SETTINGS_SECTIONS = [
     label: 'Keyboard',
     icon: 'keyboard',
     note: 'An action can have several keys. Press + on a row to add one, or ✕ on a key to drop it.',
+  },
+  {
+    id: 'logs',
+    label: 'Logs',
+    icon: 'logs',
+    note: 'Timestamped lines on this machine for debugging Pnyx: what each action did, how long it took and how much memory the server used. pnyx-axi debug performance reads them.',
   },
   {
     id: 'about',
@@ -338,6 +347,52 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'keys',
       'hotkeys',
       'bindings',
+    ],
+  },
+  {
+    id: 'logs',
+    section: 'logs',
+    label: 'Logging',
+    description: 'Off keeps only warnings and errors in the logs. On writes one line per action. Detailed adds a line for every live chat update and frame, for debugging streaming.',
+    values: [
+      'Off',
+      'On',
+      'Detailed',
+    ],
+    related: [
+      'debug',
+      'diagnostics',
+      'performance',
+      'metrics',
+      'memory',
+      'timing',
+      'trace',
+    ],
+  },
+  {
+    id: 'logDays',
+    section: 'logs',
+    label: 'Keep logs for',
+    description: 'Days of logs kept, today included; older days are deleted automatically.',
+    related: [
+      'retention',
+      'days',
+      'clean',
+      'delete',
+      'storage',
+    ],
+  },
+  {
+    id: 'logMaxMB',
+    section: 'logs',
+    label: 'Log size limit',
+    description: 'The most space the logs take together. Older days go first; today’s file stays, and past the limit it keeps only warnings and errors.',
+    related: [
+      'disk',
+      'space',
+      'size',
+      'megabytes',
+      'storage',
     ],
   },
   {

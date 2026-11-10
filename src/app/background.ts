@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { logFailure, type DiagnosticContext } from './diagnostics.ts'
+import { log, type LogLine } from './diagnostics.ts'
+
+type LogIds = Pick<LogLine, 'hydraId' | 'taskId' | 'sessionId' | 'correlationId' | 'eventSeq'>
 
 export function background({
   name,
@@ -10,25 +12,27 @@ export function background({
   name: string
   run(): unknown
   retry?(): void
-  context?: DiagnosticContext
+  context?: LogIds
 }): void {
   const failed = ({ error }: { error: unknown }) => {
     const operationId = randomUUID()
-    logFailure({
+    log({
+      level: 'error',
       operation: name,
       error,
-      context,
       operationId,
+      ...context,
     })
 
     try {
       retry?.()
     } catch (error) {
-      logFailure({
+      log({
+        level: 'error',
         operation: `${name} retry`,
         error,
-        context,
         operationId,
+        ...context,
       })
     }
   }

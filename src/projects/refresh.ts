@@ -1,13 +1,12 @@
-import { execFile } from 'node:child_process'
+import { log } from '#app/diagnostics.ts'
+import { runFile } from '#app/run-process.ts'
 import { watchPath } from '#app/watch.ts'
 import { readlink, realpath, stat, symlink, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
-import { promisify } from 'node:util'
 import type { ProjectRefresh } from './refresh-types.ts'
 import { PNYX_ROOT } from '#upgrade/runner.ts'
 
-const runFile = promisify(execFile)
 const GIT_TIMEOUT_MS = 30_000
 const GIT_OUTPUT_BYTES = 1024 * 1024
 const repositoryTurns = new Map<string, Promise<void>>()
@@ -45,9 +44,9 @@ async function git({
   path: string
   args: string[]
 }): Promise<string> {
-  const result = await runFile(
-    'git',
-    [
+  const result = await runFile({
+    command: 'git',
+    args: [
       '--no-optional-locks',
       '-C',
       path,
@@ -61,8 +60,7 @@ async function git({
       'submodule.recurse=false',
       ...args,
     ],
-    {
-      encoding: 'utf8',
+    options: {
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: GIT_OUTPUT_BYTES,
       env: {
@@ -70,7 +68,7 @@ async function git({
         GIT_TERMINAL_PROMPT: '0',
       },
     },
-  )
+  })
 
   return result.stdout.trim()
 }
@@ -549,7 +547,11 @@ export async function refreshProject({
             await unlink(lockPath)
           }
         } catch (error) {
-          console.error(`pnyx-axi project refresh lock: ${String(error)}`)
+          log({
+            level: 'warn',
+            operation: 'project.refresh-lock',
+            error,
+          })
         }
       }
 

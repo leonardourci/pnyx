@@ -11,6 +11,7 @@ import { paseoHistory } from '#integrations/paseo/history.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import type { Card } from '#tasks/model.ts'
 import { background } from './background.ts'
+import { log } from './diagnostics.ts'
 import type { createHost } from './host.ts'
 import { LATEST_DELAY_MS } from './latest-feed.ts'
 import type { EventType, HydraEvent, HydraState } from './model.ts'
@@ -433,6 +434,8 @@ export function createThreadSubscriptions({
       }
 
       try {
+        const building = performance.now()
+        const base = sub.base
         const page = currentThread({
           sub,
           card,
@@ -448,6 +451,21 @@ export function createThreadSubscriptions({
             ws,
             sub,
             prepared,
+          })
+          // A page that kept its base only added live text: one line each while detailed logging is on.
+          const live = sub.base !== undefined && sub.base === base
+          // A rebuilt Hydra page's size comes from its signature, the page apart from its version fields;
+          // a live update's is on its detailed socket.send line, so it is not measured twice.
+          const signature = live ? undefined : prepared.signature
+          log({
+            operation: live ? 'thread.live' : 'thread.page',
+            detailed: live,
+            hydraId,
+            taskId: card.id,
+            count: prepared.thread.entries.length,
+            bytes: signature === undefined ? undefined : Buffer.byteLength(signature),
+            backlog: ws.bufferedAmount,
+            ms: performance.now() - building,
           })
         }
       } catch {

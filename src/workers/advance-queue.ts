@@ -2,10 +2,8 @@ import { sameProjectPath } from '#projects/identity.ts'
 import { taskBranch } from '#projects/git.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
-import { execFile } from 'node:child_process'
-import { runProcess } from '#app/run-process.ts'
+import { runFile, runProcess } from '#app/run-process.ts'
 import { statSync, realpathSync } from 'node:fs'
-import { promisify } from 'node:util'
 import type { HydraState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
@@ -31,7 +29,6 @@ import { pendingPermissions } from './permission-rules.ts'
 import { applyDecision } from '#app/decision.ts'
 
 const GIT_TIMEOUT_MS = 30_000
-const exec = promisify(execFile)
 const meta = () => ({
   actor: 'pnyx',
   at: new Date().toISOString(),
@@ -44,22 +41,21 @@ async function git({
   cwd: string
   args: string[]
 }): Promise<string> {
-  const { stdout } = await exec(
-    'git',
-    [
+  const { stdout } = await runFile({
+    command: 'git',
+    args: [
       '-C',
       cwd,
       ...args,
     ],
-    {
-      encoding: 'utf8',
+    options: {
       timeout: GIT_TIMEOUT_MS,
       env: {
         ...process.env,
         GIT_TERMINAL_PROMPT: '0',
       },
     },
-  )
+  })
 
   return stdout.trim()
 }

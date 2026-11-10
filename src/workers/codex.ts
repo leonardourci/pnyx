@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
 import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
@@ -1487,7 +1488,13 @@ export function codexProvider({
                       },
                     })
                   } catch (error) {
-                    console.error(`pnyx-axi serve: Codex did not take a message into its running turn, so it starts the next turn: ${(error as Error).message}`)
+                    // Codex refused the message mid-turn, so it starts the next turn instead.
+                    log({
+                      level: 'warn',
+                      operation: 'codex.steer',
+                      correlationId: message.id,
+                      error,
+                    })
                     carried.push(message)
                     emit({
                       event: {

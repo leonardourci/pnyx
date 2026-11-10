@@ -1644,7 +1644,8 @@ test(
     })
     await until({
       what: 'the helper to wait on main’s lease',
-      check: () => errors.mock.calls.some(call => (call.arguments[1] as { code?: string })?.code === 'TASK_LEASED'),
+      check: () => errors.mock.calls.map(call => JSON.parse(String(call.arguments[0])))
+        .some(line => line.operation === 'helper.deferred' && line.error.code === 'TASK_LEASED'),
     })
     release()
     await (await run).finished

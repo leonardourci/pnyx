@@ -42,7 +42,13 @@ export function createWorkerStarts({
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
   presence({ session }: { session: AgentSession }): Presence
-  providerOf({ provider }: { provider: string }): Provider
+  providerOf({
+    provider,
+    taskId,
+  }: {
+    provider: string
+    taskId?: string
+  }): Provider
   environment({
     task,
     steeringWorker,
@@ -218,7 +224,10 @@ export function createWorkerStarts({
     let session: HostedSession | undefined
 
     try {
-      const prepared = await providerOf({ provider }).open({
+      const prepared = await providerOf({
+        provider,
+        taskId: target.id,
+      }).open({
         cwd,
         settings,
         allow: WORKER_COMMANDS,

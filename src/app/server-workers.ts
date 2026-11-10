@@ -1,6 +1,7 @@
 import { execFile, type ChildProcess } from 'node:child_process'
 import type { ReplyState } from '#workers/model.ts'
 import { INDEX_WORKER } from '#oracle/index-sync.ts'
+import { log } from './diagnostics.ts'
 import { runPageCommand } from './page-command.ts'
 import { MAX_BODY } from './server-transport.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
@@ -180,7 +181,14 @@ export function createServerWorkers({
 
       return state
     } catch (error) {
-      console.error(`pnyx-axi replies: resend ${retry} failed: ${(error as Error).message}`)
+      log({
+        level: 'error',
+        operation: 'reply.resend',
+        hydraId,
+        taskId: card,
+        correlationId: retry,
+        error,
+      })
 
       return 'delivery_unknown'
     }

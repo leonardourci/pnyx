@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import {
   ORCHESTRATE_SKILL,
   REPORT_PROGRESS_SKILL,
@@ -223,7 +224,13 @@ export function prepareHydraFolder({
   const installed = copySkills({
     folder,
     names: HYDRA_SKILLS,
-    missing: ({ path }) => console.error(`pnyx-axi Hydra: missing shipped skill ${path}; continuing with available skills. Run /upgrade to repair the install.`),
+    missing: ({ path }) => log({
+      level: 'warn',
+      operation: 'skills.missing',
+      // The skill's folder names it; the rest of the path is the install's.
+      name: basename(dirname(path)),
+      error: 'A shipped skill is missing; Hydra continues with the others. Run /upgrade to repair the install.',
+    }),
   })
   const orchestrate = join(
     folder,

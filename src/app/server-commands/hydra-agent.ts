@@ -8,6 +8,7 @@ import { providerIdOf } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
 import { withWriter } from '#app/writer.ts'
 import type { CommandRequest } from './dispatch.ts'
+import { background } from '#app/background.ts'
 
 // `hydra-agent-change <id> inscribe|compact|neither`: settles the message held for a Hydra agent change.
 export function hydraAgentChangeCommand({
@@ -142,13 +143,18 @@ export function hydraAgentCommand({
   // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.
   if (agent.mode && agent.mode !== previous?.mode && running?.host === 'pnyx'
     && running.provider === providerIdOf({ harness: agent.harness })) {
-    void agents.set({
-      card: HYDRA_CARD,
-      setting: 'mode',
-      value: agent.mode,
-      actor: 'web',
+    const mode = agent.mode
+    // A mode the running turn refuses stays for its next turn; the failure is logged, and the receipt still says saved.
+    background({
+      name: 'Hydra mode change',
+      context: { hydraId },
+      run: () => agents.set({
+        card: HYDRA_CARD,
+        setting: 'mode',
+        value: mode,
+        actor: 'web',
+      }),
     })
-      .catch((error: Error) => console.error(`pnyx-axi serve: Hydra kept its mode: ${error.message}`))
   }
 
   send({

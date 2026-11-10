@@ -25,6 +25,8 @@ import { heldHydra, holdHydra, loadHydra } from './store.ts'
 import { saveSnapshot } from './writer.ts'
 import { readEventsFrom } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
+import { background } from './background.ts'
+import { log } from './diagnostics.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -250,10 +252,11 @@ export async function mountOwnedHydra({
       recent.push(event)
 
       if (event.type === 'hydra.project') {
-        void warmCatalog().catch(error => console.error(
-          'pnyx catalog warmup:',
-          error,
-        ))
+        background({
+          name: 'catalog warmup',
+          context: { hydraId },
+          run: warmCatalog,
+        })
       }
 
       broadcast({ event })
@@ -434,10 +437,11 @@ export async function mountOwnedHydra({
 
   setImmediate(() => {
     if (!closed) {
-      void warmCatalog().catch(error => console.error(
-        'pnyx catalog warmup:',
-        error,
-      ))
+      background({
+        name: 'catalog warmup',
+        context: { hydraId },
+        run: warmCatalog,
+      })
     }
   })
 
@@ -594,7 +598,12 @@ export async function mountOwnedHydra({
       try {
         saveSnapshot({ live })
       } catch (error) {
-        console.error(`pnyx-axi snapshot of Hydra ${hydraId} at shutdown: ${(error as Error).message}`)
+        log({
+          level: 'error',
+          operation: 'snapshot',
+          hydraId,
+          error,
+        })
       }
     }
 
@@ -671,7 +680,12 @@ export async function mountOwnedHydra({
   try {
     await agents.recover()
   } catch (error) {
-    console.error(`pnyx-axi serve: ${(error as Error).message}`)
+    log({
+      level: 'error',
+      operation: 'recover',
+      hydraId,
+      error,
+    })
   }
 
   kick()

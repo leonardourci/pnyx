@@ -1,3 +1,4 @@
+import { noteFrame } from '#web-app/log.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { shownImageNames } from '#hydra/images.ts'
 import { Markdown, MarkdownBlocks } from './markdown.tsx'
@@ -375,6 +376,12 @@ function tick({
 }: Loop & { time: number }) {
   const elapsed = st.last ? time - st.last : FRAME
   const before = st.cursor, held = st.shown
+
+  // A reveal's first frame has no interval of its own.
+  if (st.last) {
+    noteFrame({ ms: elapsed })
+  }
+
   st.frame = 0
   st.last = time
   const step = revealStep({
@@ -488,6 +495,7 @@ function StreamedText({
       const st = state.current!
       const now = performance.now()
       const grew = text.length !== st.arrivals.at(-1)!.len
+
       const rewritten = !text.startsWith(st.text.slice(
         0,
         st.shown,

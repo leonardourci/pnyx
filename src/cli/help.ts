@@ -1,3 +1,45 @@
+const bare = ({ line }: { line: string }) => line.replace(
+  /^usage:/,
+  '',
+).trim()
+
+// The words after `pnyx-axi <command>` on a usage line; any other line has none.
+function usageWords({
+  line,
+  command,
+}: {
+  line: string
+  command: string
+}): string[] | undefined {
+  const prefix = `pnyx-axi ${command} `
+  const text = bare({ line })
+
+  return text.startsWith(prefix) ? text.slice(prefix.length).split(/\s/) : undefined
+}
+
+// Whether a usage line spells the word out as its subcommand, as `[clean]` and `hide|unhide` do, rather than taking
+// it for a placeholder such as `<id>`.
+export function namesSubcommand({
+  help,
+  command,
+  sub,
+}: {
+  help: string
+  command: string
+  sub: string
+}): boolean {
+  return !sub.startsWith('-') && help.split('\n').some(line => usageWords({
+    line,
+    command,
+  })?.[0]
+    ?.replace(
+      /^\[(.*)\]$/,
+      '$1',
+    )
+    .split('|')
+    .includes(sub))
+}
+
 // The usage lines and notes for one subcommand, cut from its command's help: `task create --help`
 // shows `task create`, not every task subcommand. Unmatched subcommands keep the whole help.
 export function focusedHelp({
@@ -19,23 +61,17 @@ export function focusedHelp({
     sub,
     ...rest,
   ].filter(word => !word.startsWith('-'))
-  const prefix = `pnyx-axi ${command} `
-  const bare = ({ line }: { line: string }) => line.replace(
-    /^usage:/,
-    '',
-  ).trim()
-  // The subcommand word, or its alternatives: `hide|unhide <id>` names hide and unhide.
-  const names = ({ line }: { line: string }) => bare({ line })
-    .slice(prefix.length)
-    .split(/\s/)
   const kept: string[] = []
   let keep = false
 
   for (const line of help.split('\n')) {
-    const usage = bare({ line }).startsWith(prefix)
+    const syntax = usageWords({
+      line,
+      command,
+    })
 
-    if (usage) {
-      const syntax = names({ line })
+    if (syntax) {
+      // Each word fills a placeholder or is its token, or one of the token's alternatives: `hide|unhide <id>` takes both.
       keep = words.every((
         word,
         index,
@@ -47,7 +83,7 @@ export function focusedHelp({
     }
 
     if (keep) {
-      kept.push(usage ? bare({ line }) : line)
+      kept.push(syntax ? bare({ line }) : line)
     }
   }
 

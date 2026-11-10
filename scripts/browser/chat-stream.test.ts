@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { scenarioGroup, until, openPage } from '#test-harness/harness.ts'
+import { logLines, scenarioGroup, until, openPage } from '#test-harness/harness.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { installChatContract, assertChatContract, PAINT_TIMEOUT_MS } from '#test-harness/chat-contract.ts'
@@ -500,6 +500,15 @@ test(
       return 'chat-assertion-passed';
     }`,
       })
+      const firstText = await until({
+        what: 'the page’s line for the time from the owner’s send to the reply’s first text, written with source web',
+        check: () => logLines().find(line => line.source === 'web' && line.operation === 'page.first-text'
+          && line.hydraId === s.hydraId),
+      })
+      assert.equal(
+        typeof firstText.ms,
+        'number',
+      )
       await pnyx.restart()
       await evaluate({
         script: `async () => {
@@ -523,6 +532,24 @@ test(
       return 'chat-assertion-passed';
     }`,
       })
+      const socketLines = await until({
+        what: 'the page’s socket lines across the restart, sent after it reconnected',
+        check: () => {
+          const lines = logLines().filter(line => line.source === 'web' && line.operation === 'page.socket'
+            && line.hydraId === s.hydraId)
+
+          return lines.some(line => line.status === 'lost') && lines.at(-1)?.status === 'open' ? lines : undefined
+        },
+      })
+      assert.ok(
+        socketLines.filter(line => line.status === 'failed').length <= 1,
+        'an outage logs at most one failed attempt',
+      )
+      assert.ok(
+        logLines().some(line => line.source === 'web' && line.operation === 'page.snapshot' && line.hydraId === s.hydraId
+          && typeof line.ms === 'number'),
+        'each snapshot the page applies has its line',
+      )
       await capture({ name: 'final' })
       const other = await pnyx.scenario()
       await other.owner({

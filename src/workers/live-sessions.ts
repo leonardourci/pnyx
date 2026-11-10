@@ -1,6 +1,8 @@
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
 import { background } from '#app/background.ts'
+import { log } from '#app/diagnostics.ts'
+import { logAgentMemory } from './agent-memory.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -100,7 +102,13 @@ export function createLiveSessions({
     note: string
   }): void
   folderOf({ card }: { card: Card & { agent: AgentRef } }): string
-  providerOf({ provider }: { provider: string }): Provider
+  providerOf({
+    provider,
+    taskId,
+  }: {
+    provider: string
+    taskId?: string
+  }): Provider
   environment({
     hydra,
     task,
@@ -144,7 +152,17 @@ export function createLiveSessions({
     }
 
     entry.input.end()
-    entry.session?.close()
+
+    if (entry.session) {
+      entry.session.close()
+      log({
+        operation: 'session.close',
+        hydraId,
+        taskId: entry.task,
+        sessionId: key,
+      })
+    }
+
     streamed({ session: key })
   }
 
@@ -179,21 +197,27 @@ export function createLiveSessions({
     try {
       const contract = card.id === HYDRA_CARD
         ? turns().hydraSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
-      entry.session ??= await providerOf({ provider: card.agent.provider }).open({
-        cwd: folderOf({ card }),
-        agent: card.agent,
-        settings: card.settings ?? {},
-        ...contract,
-        env: card.agent.loginFolder ? accountEnvironment({
-          account: {
-            provider: harnessOf({ provider: card.agent.provider }),
-            folder: card.agent.loginFolder,
-          },
-          env,
-        }) : env,
-        signal: controller.signal,
-        spawned: children.spawned,
-      })
+
+      if (!entry.session) {
+        entry.session = await providerOf({
+          provider: card.agent.provider,
+          taskId: card.id,
+        }).open({
+          cwd: folderOf({ card }),
+          agent: card.agent,
+          settings: card.settings ?? {},
+          ...contract,
+          env: card.agent.loginFolder ? accountEnvironment({
+            account: {
+              provider: harnessOf({ provider: card.agent.provider }),
+              folder: card.agent.loginFolder,
+            },
+            env,
+          }) : env,
+          signal: controller.signal,
+          spawned: children.spawned,
+        })
+      }
 
       if (closing() || live.get(key) !== entry) {
         entry.session.close()
@@ -417,6 +441,8 @@ export function createLiveSessions({
       }
 
       const compactionIds = new Map<string, string>()
+      // When the running turn began, from the first sign of work after the last turn ended.
+      let turnStarted: number | undefined
 
       for await (const received of entry.session.run({
         input: input(),
@@ -441,6 +467,57 @@ export function createLiveSessions({
         }),
       })) {
         const activity = typeof received === 'object' && received.type === 'turn-ended' ? 'finished' : received
+
+        if (received === 'working' && turnStarted === undefined) {
+          turnStarted = performance.now()
+          log({
+            operation: 'turn.start',
+            hydraId,
+            taskId: card.id,
+            sessionId: key,
+            provider: card.agent.provider,
+          })
+          background({
+            name: 'agent.memory',
+            run: () => logAgentMemory({
+              sessionId: key,
+              name: 'turn.start',
+            }),
+          })
+        }
+
+        const receipt = typeof received === 'object' && received.type === 'input' ? received.receipt : undefined
+        const refused = receipt?.phase === 'refused'
+
+        if (receipt && (refused || receipt.phase === 'taken')) {
+          log({
+            operation: refused ? 'message.refused' : 'message.taken',
+            hydraId,
+            taskId: card.id,
+            sessionId: key,
+            correlationId: receipt.inputId,
+          })
+        }
+
+        if (typeof received === 'object' && received.type === 'turn-ended') {
+          log({
+            operation: 'turn.end',
+            hydraId,
+            taskId: card.id,
+            sessionId: key,
+            provider: card.agent.provider,
+            status: received.outcome.status,
+            ms: turnStarted === undefined ? undefined : performance.now() - turnStarted,
+          })
+          background({
+            name: 'agent.memory',
+            run: () => logAgentMemory({
+              sessionId: key,
+              name: 'turn.end',
+            }),
+          })
+          turnStarted = undefined
+        }
 
         if (typeof activity === 'object' && activity.type === 'input' && entry.pendingDirect.has(activity.receipt.inputId)) {
           settleDirect({

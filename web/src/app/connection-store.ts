@@ -18,6 +18,7 @@ import { reconnectDelay,retainedReadings,withChanges } from './connection-protoc
 import { createConnectionRequests } from './connection-requests.ts'
 import { confirmedState,removeStored,save,stored } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
+import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 
@@ -61,6 +62,8 @@ export function createHydraConnection() {
   let reloadError = ''
   let generation = 0
   let attempt = 0
+  // The socket's attempts that failed since it was last open; an outage logs once, and the open line after it counts them.
+  let failures = 0
   let received = Date.now()
   let reconnect: ReturnType<typeof setTimeout> | undefined
   let upgrade: UpgradeStatus | undefined
@@ -177,6 +180,7 @@ export function createHydraConnection() {
       loadError: '',
       subscriptionAttempt: 0,
       thread: null,
+      threadChars: 0,
       queue: emptyQueue(),
       spend: {},
       usage: {},
@@ -802,6 +806,7 @@ export function createHydraConnection() {
     } else if (message.type === 'upgrade') {
       upgrade = message.upgrade
     } else if (message.type === 'settings') {
+      setLogMode({ mode: message.settings.logs })
       sharedSettings().receive({
         state: {
           settings: message.settings,
@@ -877,6 +882,7 @@ export function createHydraConnection() {
     socket = ws
     received = Date.now()
     const started = received
+    const connecting = performance.now()
 
     const recover = () => {
       if (!active || version !== generation || socket !== ws) {
@@ -887,6 +893,15 @@ export function createHydraConnection() {
       clearInterval(watchdog)
       offline = true
       ws.close()
+      failures += opened ? 0 : 1
+
+      if (opened || failures === 1) {
+        log({
+          operation: 'page.socket',
+          status: opened ? 'lost' : 'failed',
+        })
+      }
+
       disconnected()
       clearTimeout(reconnect)
       reconnect = setTimeout(
@@ -955,6 +970,14 @@ export function createHydraConnection() {
       opened = true
       offline = false
       reloadError = ''
+      log({
+        operation: 'page.socket',
+        status: 'open',
+        ms: performance.now() - connecting,
+        // The attempts that failed before this open, when the socket had been down.
+        count: failures > 0 ? failures : undefined,
+      })
+      failures = 0
       publish()
     }
 
@@ -964,9 +987,31 @@ export function createHydraConnection() {
       }
 
       received = Date.now()
+      const handling = performance.now()
 
       try {
-        receive({ message: JSON.parse(event.data) as ServerMessage })
+        const message = JSON.parse(event.data) as ServerMessage
+        const thread = message.scope ? scopes.get(message.scope)?.thread : undefined
+        receive({ message })
+        const scope = message.scope ? scopes.get(message.scope) : undefined
+
+        // The store keeps one thread page per Hydra, so a new one replaces the size of the last.
+        if (scope?.thread && scope.thread !== thread) {
+          scope.threadChars = String(event.data).length
+        }
+
+        // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. Each carries the
+        // reveal frames drawn since the last; the server's socket.send line has their size.
+        const drawn = takeFrames()
+        log({
+          operation: message.type === 'snapshot' ? 'page.snapshot' : 'page.update',
+          detailed: message.type !== 'snapshot',
+          hydraId: message.scope,
+          name: message.type,
+          ms: performance.now() - handling,
+          frames: drawn.frames,
+          worstFrameMs: drawn.worstFrameMs,
+        })
       } catch (error) {
         const scope = selection()
         scope.loadError = error instanceof Error ? error.message : String(error)
@@ -1118,6 +1163,31 @@ export function createHydraConnection() {
     },
     start() {
       active = true
+      const stopLog = startPageLog({
+        send: ({ lines }) => {
+          if (socket?.readyState !== WebSocket.OPEN) {
+            return false
+          }
+
+          socket.send(`{"type":"log","lines":[${lines.join(',')}]}`)
+
+          return true
+        },
+        hydra: () => selected,
+        chat: () => {
+          let chars = 0, messages = 0
+
+          for (const scope of scopes.values()) {
+            chars += scope.threadChars
+            messages += scope.thread?.entries.length ?? 0
+          }
+
+          return {
+            chars,
+            messages,
+          }
+        },
+      })
       restoreCreations()
       connect()
       addEventListener(
@@ -1142,6 +1212,8 @@ export function createHydraConnection() {
       )
 
       return () => {
+        // First, so what the page queued goes out while its socket is still open.
+        stopLog()
         active = false
         generation++
         clearTimeout(reconnect)

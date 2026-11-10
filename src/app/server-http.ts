@@ -93,6 +93,8 @@ export type ClientMessage = {
   scope?: unknown
   subscription?: unknown
   after?: unknown
+  // A page's batch of log lines.
+  lines?: unknown
 }
 
 export function parseMessage({ text }: { text: string }): ClientMessage | undefined {
