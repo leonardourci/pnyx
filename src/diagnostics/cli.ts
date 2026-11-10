@@ -11,6 +11,8 @@ import { clearLogs, logFiles, MB } from './log-files.ts'
 import { PERFORMANCE_WINDOW_MS, SLOWEST_LIMIT, SLOWEST_MAX, performanceReport } from './performance.ts'
 import { DEBUG_LIMIT, DEBUG_MAX, serviceRows, timeline } from './timeline.ts'
 
+const KB = 1024
+
 function instant({
   value,
   flag,
@@ -249,8 +251,6 @@ export const debug = guard({
   },
 })
 
-const KB = 1024
-
 const fileSize = ({ bytes }: { bytes: number }) => {
   if (bytes < KB) {
     return `${bytes} B`
@@ -259,7 +259,8 @@ const fileSize = ({ bytes }: { bytes: number }) => {
   return bytes < MB ? `${oneDecimal({ value: bytes / KB })} KB` : `${oneDecimal({ value: bytes / MB })} MB`
 }
 
-// The log folder at a glance, and `logs clean` to delete every file now.
+const fileCount = ({ count }: { count: number }) => count === 1 ? '1 file' : `${count} files`
+
 export const logs = guard({
   handler: ({ args }) => {
     const {
@@ -274,7 +275,7 @@ export const logs = guard({
       const cleared = clearLogs()
 
       return {
-        deleted: cleared.files ? `${cleared.files} file${cleared.files === 1 ? '' : 's'}` : 'none: no log files',
+        deleted: cleared.files ? fileCount({ count: cleared.files }) : 'none: no log files',
         freed: fileSize({ bytes: cleared.bytes }),
       }
     }
@@ -292,8 +293,8 @@ export const logs = guard({
     return {
       folder: logsDir(),
       logs: settings.logs,
-      keepDays: settings.logDays,
-      maxMB: settings.logMaxMB,
+      logDays: settings.logDays,
+      logMaxMB: settings.logMaxMB,
       files: files.length ? files.map(file => ({
         day: file.day,
         size: fileSize({ bytes: file.bytes }),

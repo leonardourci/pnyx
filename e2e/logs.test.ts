@@ -304,7 +304,7 @@ test(
     const shown = await s.owner({ args: ['logs'] })
     assert.match(
       shown,
-      /keepDays: 2\nmaxMB: 1\n/,
+      /logDays: 2\nlogMaxMB: 1\n/,
     )
     assert.match(
       shown,
