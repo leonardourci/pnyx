@@ -1,4 +1,4 @@
-import { firstTextShown, log } from '#web-app/log.ts'
+import { log } from '#web-app/log.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { shownImageNames } from '#hydra/images.ts'
 import { Markdown, MarkdownBlocks } from './markdown.tsx'
@@ -499,10 +499,6 @@ function StreamedText({
       const st = state.current!
       const now = performance.now()
       const grew = text.length !== st.arrivals.at(-1)!.len
-
-      if (streaming && text) {
-        firstTextShown()
-      }
 
       const rewritten = !text.startsWith(st.text.slice(
         0,

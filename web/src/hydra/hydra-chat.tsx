@@ -8,7 +8,7 @@ import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import type { Command } from '#web-app/connection.ts'
-import { markSend } from '#web-app/log.ts'
+import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
@@ -179,6 +179,7 @@ export function HydraChat({
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
+  const streamingAtSend = useRef(new Set<string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
@@ -435,6 +436,14 @@ export function HydraChat({
     keys: streamedKeys.current,
   })
   previousEntries.current = entries
+  // Only a reply that starts streaming after the owner's send ends the send's first-text line, not one already running.
+  const newReply = entries.some(entry => entry.streaming && entry.text
+    && !streamingAtSend.current.has(entry.id))
+  useLayoutEffect(() => {
+    if (newReply) {
+      firstTextShown({ hydraId })
+    }
+  })
 
   const threadSession = useRef(card?.agent?.sessionId)
   useLayoutEffect(
@@ -628,6 +637,7 @@ export function HydraChat({
       const at = new Date().toISOString()
 
       const markFailed = ({ reason }: { reason: string }) => {
+        forgetSend()
         setSending(items => withFailure({
           items,
           id,
@@ -650,6 +660,8 @@ export function HydraChat({
       }
 
       follow.current = true; setAway(false)
+      streamingAtSend.current = new Set(previousEntries.current.filter(entry => entry.streaming)
+        .map(entry => entry.id))
       markSend({ hydraId })
       setSending(items => items.some(s => s.id === id) ? withFailure({
         items,

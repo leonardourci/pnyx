@@ -67,24 +67,31 @@ function pageError({ error }: { error: unknown }) {
   return { message: bounded({ text: String(error) }) }
 }
 
+// How many queued lines the next message takes: at least one, and at most PAGE_LINES_MAX or BATCH_LENGTH code units.
+export function batchSize({ lines }: { lines: string[] }): number {
+  let length = 0
+  let count = 0
+
+  for (const line of lines.slice(
+    0,
+    PAGE_LINES_MAX,
+  )) {
+    if (count && length + line.length > BATCH_LENGTH) {
+      break
+    }
+
+    length += line.length + 1
+    count += 1
+  }
+
+  return count
+}
+
 function flush() {
   timer = undefined
 
   while (queue.length && output) {
-    let length = 0
-    let count = 0
-
-    for (const line of queue.slice(
-      0,
-      PAGE_LINES_MAX,
-    )) {
-      if (count && length + line.length > BATCH_LENGTH) {
-        break
-      }
-
-      length += line.length + 1
-      count += 1
-    }
+    const count = batchSize({ lines: queue })
 
     if (!output.send({
       lines: queue.slice(
@@ -98,7 +105,8 @@ function flush() {
     queue = queue.slice(count)
   }
 
-  if (queue.length) {
+  // Lines wait for a socket; without a sender they wait for the next start.
+  if (queue.length && output) {
     schedule()
   }
 }
@@ -155,8 +163,13 @@ export const markSend = ({ hydraId }: { hydraId: string }) => {
   }
 }
 
-export function firstTextShown() {
-  if (!sent) {
+// A refused send has no reply to wait for.
+export const forgetSend = () => {
+  sent = undefined
+}
+
+export function firstTextShown({ hydraId }: { hydraId: string }) {
+  if (sent?.hydraId !== hydraId) {
     return
   }
 
@@ -177,6 +190,7 @@ export function startPageLog({
     send,
     hydra,
   }
+  schedule()
   const slowFramesSupported = PerformanceObserver.supportedEntryTypes.includes(SLOW_FRAMES)
   // eslint-disable-next-line pnyx/object-params -- PerformanceObserver owns its callback signature.
   const observer = new PerformanceObserver(list => {
@@ -229,5 +243,7 @@ export function startPageLog({
     )
     flush()
     output = undefined
+    clearTimeout(timer)
+    timer = undefined
   }
 }
