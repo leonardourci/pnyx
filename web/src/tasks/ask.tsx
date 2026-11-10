@@ -10,6 +10,9 @@ import { RichText } from '#web-shared/ui/rich-text.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { QuestionTiming } from './question-timing.tsx'
 
+// The = form keeps a note that starts with a dash from reading as an option.
+export const textOption = ({ text }: { text: string }) => `--text=${text}`
+
 const RECEIPT: Record<string, string> = {
   delivered: 'Answer sent to the worker.',
   failed: 'Answer saved. Delivery failed; send it again.',
@@ -80,8 +83,7 @@ export function AskPanel({
       }
 
       if (text.trim()) {
-        // The = form keeps a note that starts with a dash from reading as an option.
-        args.push(`--text=${text}`)
+        args.push(textOption({ text }))
       }
 
       args.push(

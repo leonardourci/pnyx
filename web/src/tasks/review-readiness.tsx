@@ -6,6 +6,7 @@ import { hasPendingImage } from '#web-hydra/draft.ts'
 import type { Command } from '#web-app/connection.ts'
 import { reviewState, type ReviewRequest } from './review-requests.ts'
 import { QuestionTiming } from './question-timing.tsx'
+import { textOption } from './ask.tsx'
 
 const NOTICE = {
   Merge: 'Merge approved. Hydra will run the required checks.',
@@ -61,8 +62,7 @@ export function ReviewReadiness({
     ]
 
     if (noted) {
-      // The = form keeps a note that starts with a dash from reading as an option.
-      args.push(`--text=${note}`)
+      args.push(textOption({ text: note }))
     }
 
     args.push(
