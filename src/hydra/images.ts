@@ -27,14 +27,14 @@ export const imageExtension = ({ type }: { type: string }) =>
 export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
 
-// Shown text also renders a bare absolute image path as an image chip; only tokens are sent as images.
+// Recognize image references in written text; only tokens are sent to agents as images.
 // A path with spaces is recognized quoted ("/My Shots/a.png") or shell-escaped (/My\ Shots/a.png),
 // since an unquoted space cannot be told from the sentence around it.
 export const SHOWN_IMAGE = new RegExp(
   `\\[image: (\\/[^\\]\\n]+)\\]|"(\\/[^"\\n]+?\\.(?:${EXTENSIONS}))"|(?<![\\w/.:~-])(\\/(?:\\\\ |[^\\s\\[\\]<>"'\`])+?\\.(?:${EXTENSIONS}))(?![\\w/]|\\.\\w)`,
   'g',
 )
-// Code and link targets render literally, so their paths get no chip and no number.
+// Code and link targets do not contribute image-token numbers.
 const LITERAL = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1|`[^`\n]+`|\]\([^)\n]*\)/gm
 
 export const imagePaths = ({ text }: { text: string }) =>

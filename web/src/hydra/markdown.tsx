@@ -4,15 +4,14 @@ import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import type { Token, Tokens } from 'marked'
 import { decodeEntities, inlineText, markdown } from './markdown-text.ts'
 import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#hydra/images.ts'
-import { ImageChip } from './attached-image.tsx'
+import { attachmentSource, ImageChip, MessageImage } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
-// Tokens become React elements, never HTML. Raw HTML remains visible text;
-// images remain links so transcripts cannot trigger remote tracking requests.
+// Tokens become React elements; raw HTML remains visible text.
 export function markdownHref({ href }: { href: string }): string | undefined {
   try {
     const url = new URL(decodeEntities({ text: href }))
@@ -46,7 +45,6 @@ function Sourced({
   return <span {...{ [CHIP_SOURCE]: markdown }}>{children}</span>
 }
 
-// An image shows as the composer shows it: a chip with its thumbnail, opening full size on click.
 const withImages = ({
   text,
   images,
@@ -60,6 +58,10 @@ const withImages = ({
   for (const match of text.matchAll(SHOWN_IMAGE)) {
     const [source] = match
     const { path } = shownImagePath({ match })
+    const label = shownImageLabel({
+      match,
+      names: images,
+    })
     parts.push(
       <ChatTokenText
         key={end}
@@ -69,13 +71,19 @@ const withImages = ({
         )}
       />,
       <Sourced key={`${match.index}:image`} markdown={source}>
-        <ImageChip
-          path={path}
-          label={shownImageLabel({
-            match,
-            names: images,
-          })}
-        />
+        {attachmentSource({ path })
+          ? (
+            <MessageImage
+              src={path}
+              alt={label}
+            />
+          )
+          : (
+            <ImageChip
+              path={path}
+              label={label}
+            />
+          )}
       </Sourced>,
     )
     end = match.index + source.length
@@ -112,9 +120,28 @@ const inline = ({
       case 'codespan': return <code key={i}><ChatTokenText text={token.text} code /></code>
       case 'html': return <ChatTokenText key={i} text={token.text} />
       case 'br': return <br key={i} />
-      case 'link': case 'image': {
-        const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
-        const skillPointer = token.type === 'link' ? /^pnyx-skill:([\w%~.-]+)$/.exec(token.href) : null
+      case 'image': {
+        const src = decodeEntities({ text: token.href })
+        const alt = decodeEntities({ text: token.text })
+        const href = markdownHref({ href: src })
+
+        return (
+          <Sourced key={i} markdown={token.raw}>
+            {href ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                contentEditable={false}
+              >{alt}
+              </a>
+            ) : <MessageImage src={src} alt={alt} title={token.title ?? undefined} />}
+          </Sourced>
+        )
+      }
+      case 'link': {
+        const task = mentionId({ href: token.href })
+        const skillPointer = /^pnyx-skill:([\w%~.-]+)$/.exec(token.href)
         const skillValue = skillPointer ? decodeValue({ value: skillPointer[1]! }) : undefined
         const skill = skillValue ? readSkillReference({ value: skillValue }) : undefined
 
@@ -122,7 +149,7 @@ const inline = ({
           return <Sourced key={i} markdown={token.raw}><SkillToken skill={skill} /></Sourced>
         }
 
-        const pointer = token.type === 'link' ? /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href) : null
+        const pointer = /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href)
         const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
         const label = inlineText({ tokens: token.tokens ?? [] }).replace(
           /^@/,

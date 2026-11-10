@@ -2044,3 +2044,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .tooltip .tooltip-panel:has(> .shared-usage) { padding: 0; gap: 0; }
 .tooltip .usage-session-details { padding: 0 13px 13px; }
 .plan-refresh[aria-disabled=true] { cursor: wait; opacity: .45; }
+
+.message-image { display: inline-block; max-width: 100%; padding: 0; border: 0; border-radius: 6px; background: transparent; vertical-align: middle; cursor: pointer; }
+.message-image img { display: block; max-width: 100%; height: auto; border-radius: inherit; }
+.message-image-fallback { display: inline; font-size: 12px; color: var(--color-muted); }

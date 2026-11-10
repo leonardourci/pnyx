@@ -7,7 +7,7 @@ import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
 // A Hydra serves its stored attachments and the images inside its task copies; any other path has no source.
-function attachmentSource({ path }: { path: string }) {
+export function attachmentSource({ path }: { path: string }) {
   const served = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
   const route = served?.[2]
@@ -176,6 +176,55 @@ export function ImageChip({
         open={() => setOpen(true)}
       />
       {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}
+    </>
+  )
+}
+
+export function MessageImage({
+  src,
+  alt = 'Image',
+  title,
+}: {
+  src: string
+  alt?: string
+  title?: string
+}) {
+  const [
+    failedSource,
+    setFailedSource,
+  ] = useState<string>()
+  const [
+    open,
+    setOpen,
+  ] = useState(false)
+  const source = attachmentSource({ path: src })
+  const label = alt || 'Image'
+
+  if (!source || failedSource === source) {
+    return <span className="message-image-fallback" title={title}>Image unavailable: {label}</span>
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="message-image"
+        aria-label={`Show image: ${label}`}
+        contentEditable={false}
+        onClick={event => {
+          event.preventDefault()
+          event.stopPropagation()
+          setOpen(true)
+        }}
+      >
+        <img
+          src={source}
+          alt={alt}
+          title={title}
+          onError={() => setFailedSource(source)}
+        />
+      </button>
+      {open && <ImageViewer path={src} label={label} close={() => setOpen(false)} />}
     </>
   )
 }
