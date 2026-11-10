@@ -88,3 +88,65 @@ test(
     )
   },
 )
+
+test(
+  'owner worker notes need a reason, stay within their budget and are saved as owner memory',
+  async () => {
+    home()
+
+    const save = ({ flags }: { flags: string[] }) => commands.owner([
+      'worker-notes',
+      'set',
+      ...flags,
+    ])
+
+    await assert.rejects(
+      async () => save({
+        flags: [
+          '--text',
+          'Write commits in English.',
+        ],
+      }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    await assert.rejects(
+      async () => save({
+        flags: [
+          '--text',
+          'x'.repeat(1501),
+          '--reason',
+          'too long',
+        ],
+      }),
+      { code: 'MEMORY_FULL' },
+    )
+    assert.equal(
+      ownerMemory().workers,
+      undefined,
+    )
+
+    await save({
+      flags: [
+        '--text',
+        'Write commits in English.',
+        '--reason',
+        'workers kept asking',
+      ],
+    })
+    assert.equal(
+      ownerMemory().workers?.text,
+      'Write commits in English.',
+    )
+
+    await commands.owner([
+      'worker-notes',
+      'forget',
+      '--reason',
+      'no longer needed',
+    ])
+    assert.equal(
+      ownerMemory().workers,
+      undefined,
+    )
+  },
+)

@@ -379,7 +379,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
 export const project = guard({ handler: projectCommand })
 export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
-Standing worker instructions (1500 characters) are included verbatim in each new worker header.
+Standing worker instructions (1500 characters) are included verbatim in each new worker header for this project. For every project and Hydra, use owner worker-notes.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.

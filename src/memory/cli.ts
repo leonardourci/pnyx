@@ -98,7 +98,12 @@ export const owner = guard({
       positionals,
       hydraId,
     } = parse({
-      args,
+      args: args[0] === 'worker-notes' ? [
+        'memory',
+        ...args.slice(1),
+        '--key',
+        'workers',
+      ] : args,
       // Owner memory has no events or cards, so it takes only the write flags it honours.
       options: {
         ...COMMON,
@@ -114,7 +119,7 @@ export const owner = guard({
       },
       positionals: 2,
     })
-    const usage = 'use owner memory list|set|forget|confirm|move|save|archive'
+    const usage = 'use owner memory list|set|forget|confirm|move|save|archive or owner worker-notes set|forget'
 
     if (positionals[0] !== 'memory') {
       throw new HydraError({
@@ -208,11 +213,20 @@ export const owner = guard({
       values,
       usage,
     })
+    const m = meta({ values })
+
+    if (key === 'workers') {
+      checkWorkerNotes({
+        text: after,
+        reason: m.reason,
+      })
+    }
+
     const entry = saveOwnerMemory({
       key,
       after,
       learning,
-      meta: meta({ values }),
+      meta: m,
     })
 
     return entry ? {
