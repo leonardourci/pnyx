@@ -464,15 +464,19 @@ export function createHost({
           taskId,
         }
         const spawned = options.spawned
+
+        // Without the caller's hook a provider starts its process itself, and nothing is tracked.
+        const tracked: typeof spawned = spawned === undefined ? undefined : ({ child }) => {
+          spawned({ child })
+          watchAgent({
+            child,
+            ids,
+          })
+        }
+
         const session = await chosen.open({
           ...options,
-          spawned: spawned && (({ child }) => {
-            spawned({ child })
-            watchAgent({
-              child,
-              ids,
-            })
-          }),
+          spawned: tracked,
         })
         ids.sessionId = `${known}:${session.id}`
         log({
