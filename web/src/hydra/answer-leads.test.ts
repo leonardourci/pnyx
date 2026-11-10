@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Ask, Card } from '#tasks/model.ts'
 import type { HydraMessage } from '#hydra/model.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { answerLeads, questionPreview } from './answer-leads.ts'
 
 const at = '2026-11-01T12:00:00.000Z'
@@ -60,7 +61,7 @@ const message = ({ ...fields }: Partial<HydraMessage>): HydraMessage => ({
 })
 
 test(
-  'owner answers and discussions carry their question, choices and pick; other messages carry none',
+  'owner answers and discussions on a task carry their question, choices and pick; other messages carry none',
   () => {
     const leads = answerLeads({
       cards: { [card.id]: card },
@@ -88,6 +89,16 @@ test(
           text: 'An answer to a forgotten question.',
           answers: 'ask-gone',
         }),
+        message({
+          text: 'Merge',
+          answers: merge.id,
+          choice: 'Merge',
+        }),
+        message({
+          text: 'An answer to a Hydra-wide question.',
+          answers: merge.id,
+          task: HYDRA_CARD,
+        }),
       ],
     })
 
@@ -104,6 +115,7 @@ test(
           choice: 'Merge',
           recommended: undefined,
           discussion: false,
+          bare: false,
         },
         'msg-Highlight: this touches the chat.': {
           task: card.id,
@@ -115,6 +127,7 @@ test(
           choice: undefined,
           recommended: undefined,
           discussion: true,
+          bare: false,
         },
         'msg-CSV, with a header row.': {
           task: card.id,
@@ -126,6 +139,19 @@ test(
           choice: undefined,
           recommended: 2,
           discussion: false,
+          bare: false,
+        },
+        'msg-Merge': {
+          task: card.id,
+          question: 'Ready for review: PR #148',
+          options: [
+            'Merge',
+            'Hold',
+          ],
+          choice: 'Merge',
+          recommended: undefined,
+          discussion: false,
+          bare: true,
         },
       },
     )
