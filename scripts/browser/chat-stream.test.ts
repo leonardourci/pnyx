@@ -9,10 +9,9 @@ import { promisify } from 'node:util'
 import { scenarioGroup, until, openPage } from '#test-harness/harness.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { installChatContract, assertChatContract } from '#test-harness/chat-contract.ts'
+import { installChatContract, assertChatContract, PAINT_TIMEOUT_MS } from '#test-harness/chat-contract.ts'
 
 const BROWSER_TIMEOUT_MS = 60_000
-const PAINT_TIMEOUT_MS = 30_000
 const BROWSER_OUTPUT_BYTES = 1024 * 1024
 const execute = promisify(execFile)
 const cli = fileURLToPath(import.meta.resolve('chrome-devtools-axi/dist/bin/chrome-devtools-axi.js'))
