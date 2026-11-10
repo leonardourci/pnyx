@@ -4,21 +4,17 @@ import { logged, PAGE_LINES_MAX, STACK_MAX, TEXT_MAX } from '#app/log-line.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
 
 const PAGE_OPERATION = /^page\.[a-z][a-z-]{0,40}$/
-// A page's own time is kept when its clock agrees with the server's; a line is at most a few seconds old.
+// A page line keeps its own time when that is within 5 minutes of the server's clock; an older one, such as a line queued while the socket was down, takes the time it arrives.
 const PAGE_CLOCK_SKEW_MS = 5 * 60_000
 const PAGE_TEXT_FIELDS = [
   'taskId',
-  'sessionId',
   'name',
   'status',
-  'code',
   'tab',
   'script',
 ] as const
 const PAGE_NUMBER_FIELDS = [
   'ms',
-  'bytes',
-  'count',
   'blockingMs',
 ] as const
 
@@ -32,7 +28,7 @@ const text = ({
 
 const finite = ({ value }: { value: unknown }) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
-// The page's error arrives as plain text; it is rebuilt so the logger records it like a server error.
+// The page sends its error's name, message and stack; an Error rebuilt from them is recorded like a server error.
 function pageError({ value }: { value: unknown }): Error {
   const record = asRecord({ value })
   const error = new Error(text({ value: record?.message }) ?? 'unknown page error')

@@ -454,13 +454,16 @@ export function createThreadSubscriptions({
           })
           // A page that kept its base only added live text: one line each while detailed logging is on.
           const live = sub.base !== undefined && sub.base === base
+          // A rebuilt Hydra page's size comes from its signature, the page apart from its version fields;
+          // a live update's is on its detailed socket.send line, so it is not measured twice.
+          const signature = live ? undefined : prepared.signature
           log({
             operation: live ? 'thread.live' : 'thread.page',
             detailed: live,
             hydraId,
             taskId: card.id,
             count: prepared.thread.entries.length,
-            bytes: prepared.signature?.length,
+            bytes: signature === undefined ? undefined : Buffer.byteLength(signature),
             backlog: ws.bufferedAmount,
             ms: performance.now() - building,
           })

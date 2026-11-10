@@ -44,12 +44,12 @@ export function writeSnapshot({
 }): void {
   const started = performance.now()
   const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
-  const data = JSON.stringify({
+  const data = Buffer.from(JSON.stringify({
     v: EVENT_VERSION,
     rules: RULES,
     offset,
     state,
-  } satisfies Snapshot)
+  } satisfies Snapshot))
   writeDurably({
     path: tmp,
     data,

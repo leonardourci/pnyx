@@ -981,13 +981,12 @@ export function createHydraConnection() {
       try {
         const message = JSON.parse(event.data) as ServerMessage
         receive({ message })
-        // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates.
+        // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. The server's socket.send line has their size.
         log({
           operation: message.type === 'snapshot' ? 'page.snapshot' : 'page.update',
           detailed: message.type !== 'snapshot',
           hydraId: message.scope,
           name: message.type,
-          bytes: String(event.data).length,
           ms: performance.now() - handling,
         })
       } catch (error) {

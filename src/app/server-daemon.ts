@@ -358,15 +358,19 @@ export async function startServer({
             }
 
             const started = performance.now()
-            const text = JSON.stringify(message)
-            ws.send(text)
+            // Encoded here, as ws would, so the line has the bytes sent; it still goes as a text frame.
+            const data = Buffer.from(JSON.stringify(message))
+            ws.send(
+              data,
+              { binary: false },
+            )
             log({
               operation: 'socket.send',
               // A snapshot carries the whole Hydra, so each one gets a line; other messages are live updates.
               detailed: message.type !== 'snapshot',
               hydraId: message.scope ?? primary,
               name: message.type,
-              bytes: text.length,
+              bytes: data.length,
               backlog: ws.bufferedAmount,
               ms: performance.now() - started,
             })

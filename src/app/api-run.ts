@@ -112,7 +112,7 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
         }),
         taskId: env.PNYX_TASK,
         exitCode,
-        bytes: stdout.length,
+        bytes: Buffer.byteLength(stdout),
         ms: performance.now() - started,
       })
 
