@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node -e \"fs.chmodSync('dist/cli/pnyx-axi.js', 0o755)\" && NODE_OPTIONS=--conditions=source vite build --configLoader native --config web/vite.config.ts",
+    "build": "node scripts/build/build.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "lint": "pnpm run typecheck && eslint .",
     "test": "pnpm run build && node scripts/verification/test.ts unit scenarios",
