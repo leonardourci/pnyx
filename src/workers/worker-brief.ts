@@ -111,6 +111,7 @@ export async function taskPrompt({
     id: card.id,
     title: card.title,
   })
+  const ownerNotes = ownerMemory().workers?.text
   const state = loadHydra({ hydraId }).state
   const attachedProject = projectsFor({ state }).find(project => !project.detached
     && matchesProject({
@@ -133,7 +134,7 @@ export async function taskPrompt({
   const header = workerHeader({
     hydraId,
     id: card.id,
-    ownerNotes: ownerMemory().workers?.text,
+    ownerNotes,
     hydraNotes: state.hydraMemory?.workers?.text,
     projectNotes,
     stops: taskStops({

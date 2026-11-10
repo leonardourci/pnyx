@@ -54,7 +54,7 @@ function carriesStandingNotes({ prompt }: { prompt: string }): void {
 
 test(
   'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, the card survives a restart, and Hydra\'s own card refuses task-only commands',
-  async () => {
+  async t => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'mobile' })
     const hydraAgent = await s.chat({ text: 'Fix the login crash on mobile.' })
@@ -185,6 +185,16 @@ test(
         'every worker needs it',
       ],
     })
+    // Owner memory is shared by every flow on this server.
+    t.after(() => s.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'forget',
+        '--reason',
+        'flow finished',
+      ],
+    }))
     await s.owner({
       args: [
         'hydra',
@@ -370,16 +380,6 @@ test(
     )
     followsProject({ prompt: handoff! })
     carriesStandingNotes({ prompt: handoff! })
-    // Owner memory is shared by every flow on this server.
-    await s.owner({
-      args: [
-        'owner',
-        'worker-notes',
-        'forget',
-        '--reason',
-        'flow finished',
-      ],
-    })
     assert.equal(
       s.task({ key: 'next' }).agent?.sessionId,
       agent.id,
