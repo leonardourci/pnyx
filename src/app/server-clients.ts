@@ -125,7 +125,14 @@ export function createServerClients({
     }
   }
 
-  const clearRecovery = ({ ws }: { ws: HydraClient }) => {
+  // drained: everything held went out; closed: the tab or the server went away first.
+  const clearRecovery = ({
+    ws,
+    status,
+  }: {
+    ws: HydraClient
+    status: 'drained' | 'closed'
+  }) => {
     const pending = recovery.get(ws)
 
     if (!pending) {
@@ -137,6 +144,7 @@ export function createServerClients({
     log({
       operation: 'socket.drained',
       hydraId,
+      status,
       backlog: ws.bufferedAmount,
       ms: performance.now() - pending.since,
     })
@@ -170,16 +178,6 @@ export function createServerClients({
       since: performance.now(),
     }
 
-    if (!held) {
-      log({
-        level: 'warn',
-        operation: 'socket.held',
-        hydraId,
-        name: message.type,
-        backlog: ws.bufferedAmount,
-      })
-    }
-
     if (message.type === 'event' || message.type === 'snapshot' || message.type === 'hydras') {
       pending.snapshot = true
     } else if (message.type === 'latest') {
@@ -191,6 +189,17 @@ export function createServerClients({
       pending.queue = message
     } else {
       return
+    }
+
+    // A tab starts being held when the first message it will get later waits.
+    if (!held) {
+      log({
+        level: 'warn',
+        operation: 'socket.held',
+        hydraId,
+        name: message.type,
+        backlog: ws.bufferedAmount,
+      })
     }
 
     recovery.set(
@@ -241,7 +250,10 @@ export function createServerClients({
       }
 
       if (!pending.snapshot && !pending.latest && !pending.queue) {
-        clearRecovery({ ws })
+        clearRecovery({
+          ws,
+          status: 'drained',
+        })
       }
     }
 
@@ -312,7 +324,10 @@ export function createServerClients({
         actions: {},
       },
     })
-    clearRecovery({ ws })
+    clearRecovery({
+      ws,
+      status: 'drained',
+    })
     // Once accepted, the snapshot and its current facts form one recovery batch.
     ws.send({ message: latest })
     ws.send({ message: queue ?? queueMessage() })
@@ -341,7 +356,10 @@ export function createServerClients({
     pending.timer = undefined
 
     if (closedClients.has(ws) || ws.readyState !== ws.OPEN) {
-      clearRecovery({ ws })
+      clearRecovery({
+        ws,
+        status: 'closed',
+      })
 
       return
     }
@@ -547,11 +565,17 @@ export function createServerClients({
     resume,
     closeClient({ ws }: { ws: HydraClient }) {
       closedClients.add(ws)
-      clearRecovery({ ws })
+      clearRecovery({
+        ws,
+        status: 'closed',
+      })
     },
     close() {
       for (const ws of recovery.keys()) {
-        clearRecovery({ ws })
+        clearRecovery({
+          ws,
+          status: 'closed',
+        })
       }
     },
     get spendNow() {
