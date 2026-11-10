@@ -78,7 +78,7 @@ export function ReviewReadiness({
         args,
       })
       setNote(current => current === note ? '' : current)
-      notify({ text: NOTICE[choice ?? 'note'] })
+      notify({ text: choice ? NOTICE[choice] : NOTICE.note })
     } catch (error) {
       notify({ text: error instanceof Error ? error.message : String(error) })
     } finally {
