@@ -191,32 +191,21 @@ export function createLiveSessions({
       const contract = card.id === HYDRA_CARD
         ? turns().hydraSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
 
-      if (!entry.session) {
-        const opening = performance.now()
-        entry.session = await providerOf({ provider: card.agent.provider }).open({
-          cwd: folderOf({ card }),
-          agent: card.agent,
-          settings: card.settings ?? {},
-          ...contract,
-          env: card.agent.loginFolder ? accountEnvironment({
-            account: {
-              provider: harnessOf({ provider: card.agent.provider }),
-              folder: card.agent.loginFolder,
-            },
-            env,
-          }) : env,
-          signal: controller.signal,
-          spawned: children.spawned,
-        })
-        log({
-          operation: 'session.open',
-          hydraId,
-          taskId: card.id,
-          sessionId: key,
-          provider: card.agent.provider,
-          ms: performance.now() - opening,
-        })
-      }
+      entry.session ??= await providerOf({ provider: card.agent.provider }).open({
+        cwd: folderOf({ card }),
+        agent: card.agent,
+        settings: card.settings ?? {},
+        ...contract,
+        env: card.agent.loginFolder ? accountEnvironment({
+          account: {
+            provider: harnessOf({ provider: card.agent.provider }),
+            folder: card.agent.loginFolder,
+          },
+          env,
+        }) : env,
+        signal: controller.signal,
+        spawned: children.spawned,
+      })
 
       if (closing() || live.get(key) !== entry) {
         entry.session.close()

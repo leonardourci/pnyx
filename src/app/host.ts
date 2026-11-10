@@ -14,6 +14,7 @@ import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
+import type { Provider } from '#workers/provider.ts'
 import { createUsageTracker } from '#workers/usage-tracker.ts'
 import { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
@@ -431,7 +432,7 @@ export function createHost({
     } : {}),
   })
 
-  const providerOf = ({ provider }: { provider: string }) => {
+  const providerOf = ({ provider }: { provider: string }): Provider => {
     const known = knownProvider({ name: provider })
 
     if (!known) {
@@ -441,7 +442,26 @@ export function createHost({
       })
     }
 
-    return providers[known]
+    const chosen = providers[known]
+
+    // Every session the server opens, for Hydra, a worker or the helper, logs how long its provider took to start it.
+    return {
+      ...chosen,
+      // eslint-disable-next-line pnyx/object-params -- the provider owns open's options, which pass through whole.
+      open: async options => {
+        const opening = performance.now()
+        const session = await chosen.open(options)
+        log({
+          operation: 'session.open',
+          hydraId,
+          sessionId: `${known}:${session.id}`,
+          provider: known,
+          ms: performance.now() - opening,
+        })
+
+        return session
+      },
+    }
   }
 
   const {
