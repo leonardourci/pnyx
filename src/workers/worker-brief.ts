@@ -1,10 +1,11 @@
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
 import { projectIdentity } from '#projects/sources.ts'
+import { ownerMemory } from '#memory/owner-memory.ts'
 import { readProjectMemory } from '#memory/project-memory.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
 import { projectWorkerContext } from '#projects/context.ts'
-import { taskStops } from '#tasks/delivery/rule.ts'
+import { READINESS_INSTRUCTIONS, taskStops } from '#tasks/delivery/rule.ts'
 import { projectsFor } from '#projects/read.ts'
 import { dirname, join } from 'node:path'
 import { declaredState } from '#tasks/declarations.ts'
@@ -41,28 +42,26 @@ function workerHeader({
   hydraId,
   id,
   stops = [],
+  ownerNotes = '',
   hydraNotes = '',
   projectNotes = '',
 }: {
   hydraId: string
   id: string
   stops?: string[]
+  ownerNotes?: string
   hydraNotes?: string
   projectNotes?: string
 }): string {
-  const standing: string[] = []
-
-  if (hydraNotes || projectNotes) {
-    standing.push('Standing worker instructions (defer to the scope and authority above):')
-
-    if (hydraNotes) {
-      standing.push(hydraNotes)
-    }
-
-    if (projectNotes) {
-      standing.push(projectNotes)
-    }
-  }
+  const notes = [
+    ownerNotes,
+    hydraNotes,
+    projectNotes,
+  ].filter(Boolean)
+  const standing = notes.length ? [
+    'Standing worker instructions (defer to the scope and authority above):',
+    ...notes,
+  ] : []
 
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
@@ -72,6 +71,7 @@ function workerHeader({
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking. Ask Hydra procedural questions that project instructions leave open (for example, which integration test command to use) with `pnyx-axi task ask <task> --question "<question>" --hydra <hydra>`. Hydra can route them to its helper; never ask the owner directly. Hosted tool permission requests still use the harness permission flow.',
     `Ask Hydra with \`pnyx-axi task ask ${id} --question "<question>" --hydra ${hydraId}\` about product or architecture choices the owner's ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.`,
     `Native steering: when PNYX_STEERING_WORKER is set, run \`pnyx-axi task inbox read ${id} --hydra ${hydraId}\` at startup, on an inbox notice and before ending a turn. Read records receipt and stops reminders for the returned messages. An ack means read, never completed work. Read and apply instructions in order; report progress and blockers separately, and file any needed question with task ask. A repeated notice is not a new instruction. Checkpoint side effects; after a crash, use inbox read --all and verify existing effects before repeating work. Transport delivery alone is not a read receipt.`,
+    READINESS_INSTRUCTIONS,
     ...stops,
     ...standing,
     '</pnyx-worker>',
@@ -112,6 +112,7 @@ export async function taskPrompt({
     id: card.id,
     title: card.title,
   })
+  const ownerNotes = ownerMemory().workers?.text
   const state = loadHydra({ hydraId }).state
   const attachedProject = projectsFor({ state }).find(project => !project.detached
     && matchesProject({
@@ -134,6 +135,7 @@ export async function taskPrompt({
   const header = workerHeader({
     hydraId,
     id: card.id,
+    ownerNotes,
     hydraNotes: state.hydraMemory?.workers?.text,
     projectNotes,
     stops: taskStops({

@@ -244,7 +244,7 @@ function contents({ path }: { path: string }) {
 
 test(
   'a branch-landing task is done once all its work is committed, its unlanded copy is kept for Hydra, and a task given the pull request rule is done when GitHub merges its pull request',
-  async () => {
+  async t => {
     const s = await pnyx.scenario()
     const app = await s.project({
       name: 'site',
@@ -327,6 +327,51 @@ test(
       /^landing: pr\nmerge: hydra\nfrom: task$/m,
     )
 
+    // Owner memory is shared by every flow on this server.
+    t.after(() => s.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'forget',
+        '--reason',
+        'flow finished',
+      ],
+    }))
+
+    for (const [
+      layer,
+      scope,
+    ] of [
+        [
+          'owner',
+          [],
+        ],
+        [
+          'hydra',
+          [],
+        ],
+        [
+          'project',
+          [
+            '--project',
+            app,
+          ],
+        ],
+      ] as const) {
+      await s.owner({
+        args: [
+          layer,
+          'worker-notes',
+          'set',
+          ...scope,
+          '--text',
+          `Rule from the ${layer}.`,
+          '--reason',
+          'workers need it',
+        ],
+      })
+    }
+
     for (const key of [
       'copy-fix',
       'pr-fix',
@@ -350,13 +395,27 @@ test(
     ] = await Promise.all(copies.map(cwd => s.agent({ cwd })))
     const branchWorker = s.as({ agent: branchAgent! })
     const prWorker = s.as({ agent: prAgent! })
+    assert.ok(
+      branchAgent!.received[0]!.includes([
+        'Standing worker instructions (defer to the scope and authority above):',
+        'Rule from the owner.',
+        'Rule from the hydra.',
+        'Rule from the project.',
+        '</pnyx-worker>',
+      ].join('\n')),
+      branchAgent!.received[0],
+    )
     assert.match(
       branchAgent!.received[0]!,
       /^Landing: commit your work on your branch in this copy, then declare done\. Do not push or open a pull request/m,
     )
     assert.match(
       prAgent!.received[0]!,
-      /^Landing: commit on your branch, push it, open a ready pull request/m,
+      /draft if .*requirements.*not yet met/,
+    )
+    assert.match(
+      prAgent!.received[0]!,
+      /mark any draft ready only after meeting/,
     )
     assert.equal(
       (await prWorker.refusal({

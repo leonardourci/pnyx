@@ -43,6 +43,7 @@ export function ChatTokenText({
         {CHIP_SPACE}<SkillBadge
           skill={{
             name: part.item.command.slice(1),
+            builtin: part.item.builtin,
             command: part.item.command,
             project: part.item.project,
             projectPath: part.item.projectPath,

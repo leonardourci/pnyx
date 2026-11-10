@@ -1039,3 +1039,256 @@ test(
     }
   },
 )
+
+test(
+  'chat renders every Markdown, token and file image and escapes HTML',
+  async () => {
+    const s = await pnyx.scenario()
+    const {
+      run,
+      evaluate,
+      capture,
+      waitFor,
+    } = await browser({
+      s,
+      session: 'chat-images',
+    })
+
+    try {
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await run({
+        args: [
+          'resize',
+          '1200',
+          '1600',
+        ],
+      })
+      await run({
+        args: ['run'],
+        input: `await page.wait('[aria-label="Reply to Hydra"]', ${PAINT_TIMEOUT_MS});`,
+      })
+      await evaluate({
+        script: `async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200; canvas.height = 360;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#246c83'; ctx.fillRect(0, 0, 1200, 360);
+      ctx.fillStyle = '#c5e8d6'; ctx.font = '48px sans-serif';
+      ctx.fillText('Synthetic image preview', 48, 96);
+      ctx.fillRect(48, 160, 220, 140); ctx.fillRect(304, 200, 220, 100);
+      ctx.fillRect(560, 130, 220, 170); ctx.fillRect(816, 180, 220, 120);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      const token = document.querySelector('meta[name=pnyx-token]').content;
+      const response = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: blob });
+      if (!response.ok) throw new Error('Upload failed');
+      window.imageFixture = await response.json();
+      const small = document.createElement('canvas');
+      small.width = 120; small.height = 36;
+      small.getContext('2d').drawImage(canvas, 0, 0, 120, 36);
+      const smallBlob = await new Promise(resolve => small.toBlob(resolve, 'image/png'));
+      const smallResponse = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: smallBlob });
+      if (!smallResponse.ok) throw new Error('Small upload failed');
+      window.imageFixture.small = (await smallResponse.json()).path;
+      return 'chat-assertion-passed';
+    }`,
+      })
+      await evaluate({
+        script: `
+      () => {
+      const value = (() => {
+        const src = window.imageFixture.path;
+        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))\\n\\nRemote images\\n\\n![HTTPS preview](https://images.invalid/preview.png)\\n\\n![HTTP preview](http://images.invalid/preview.png)\\n\\n![Relative remote preview](//images.invalid/preview.png)';
+      })();
+      document.querySelector('[aria-label="Reply to Hydra"]').focus();
+      document.execCommand('insertText', false, value);
+      document.querySelector('[aria-label="Send reply"]').click();
+      return 'chat-assertion-passed';
+    }
+    `,
+      })
+      await waitFor({
+        what: 'the missing-image fallback and four inline images',
+        condition: `document.querySelectorAll('.hydra-chat .message-image img').length === 4
+          && [...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Missing preview'))`,
+      })
+      await evaluate({
+        script: `async () => {
+      const images = [...document.querySelectorAll('.hydra-chat .message-image img')];
+      if (images.length !== 4) throw new Error('Expected four inline images, got ' + images.length);
+      await Promise.all(images.map(image => image.decode()));
+      const content = document.querySelector('.hydra-chat article.mine .markdown');
+      if (content.querySelector('script, b, img[alt="Literal HTML"]') || window.imageUnsafe || !content.textContent.includes('<img src=')) throw new Error('HTML must stay literal text');
+      if (images.some(image => !image.naturalWidth || image.getBoundingClientRect().width > image.closest('.markdown').getBoundingClientRect().width + 1)) throw new Error('Image exceeds bubble or failed');
+      if (![...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Unsafe preview'))) throw new Error('Unsafe source lacks fallback');
+      if (content.querySelector('a[href="https://images.invalid/preview.png"]')?.textContent !== 'HTTPS preview') throw new Error('HTTPS image must stay a link');
+      if (content.querySelector('a[href="http://images.invalid/preview.png"]')?.textContent !== 'HTTP preview') throw new Error('HTTP image must stay a link');
+      if (document.querySelector('img[src*="images.invalid"]')) throw new Error('Remote images must not load');
+      if (![...content.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Relative remote preview'))) throw new Error('Protocol-relative image must be refused');
+      return 'chat-assertion-passed';
+    }`,
+      })
+      await capture({ name: 'images' })
+      await run({
+        args: ['run'],
+        input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.click('[aria-label="Show image: Markdown preview"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
+      })
+      await evaluate({
+        script: `() => {
+      if (!document.querySelector('.image-viewer img').src.includes('/attachments/')) throw new Error('Viewer lost source');
+      if (!document.querySelector('.image-viewer [aria-label="Copy image"]')) throw new Error('Local viewer lost Copy image');
+      return 'chat-assertion-passed';
+    }`,
+      })
+
+      const uploaded = await run({
+        args: ['run'],
+        input: 'console.log(JSON.stringify(await page.eval(() => window.imageFixture)));',
+      })
+      const fixture: unknown = JSON.parse(uploaded.stdout)
+      assert.ok(fixture && typeof fixture === 'object')
+      assert.ok('path' in fixture && typeof fixture.path === 'string')
+      assert.ok('small' in fixture && typeof fixture.small === 'string')
+      const src = fixture.path
+      const otherSrc = fixture.small
+      const hydraImages = `Hydra image reply
+
+Literal example: \`${src}\`
+
+Existing token:
+[image: ${src}]
+
+Files:
+- ${otherSrc}
+- ${src}
+- /tmp/not-served.png
+
+Again: [image: ${src}]
+
+![Repeated Markdown](${src})
+
+[image: ${otherSrc}]`
+      pnyx.claude.plan({
+        text: 'Show the Hydra images',
+        reply: hydraImages,
+      })
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await s.chat({ text: 'Show the Hydra images' })
+      await waitFor({
+        what: 'automatic token and file images in the Hydra reply',
+        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 6',
+      })
+      await evaluate({
+        script: `async () => {
+        const reply = [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"]')].find(row => row.textContent.includes('Hydra image reply'));
+        await Promise.all([...reply.querySelectorAll('.message-image img')].map(image => image.decode()));
+        if (!reply.querySelector('img[alt="Image 1"]')) throw new Error('Image token did not render inline');
+        if (!reply.querySelector('li:first-child .message-image img')) throw new Error('Files path did not render inline');
+        if (reply.querySelectorAll('.attachment-card').length !== 1) throw new Error('Only the unservable file should stay a chip');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await capture({ name: 'hydra-images' })
+      await evaluate({
+        script: `() => {
+          document.querySelector('.hydra-chat article[aria-label="Hydra"] .message-image').click();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await run({
+        args: ['run'],
+        input: `await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
+      })
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await waitFor({
+        what: 'all automatic image mentions remain inline after reload',
+        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 6',
+      })
+
+      const folder = s.folder({ name: 'image-worker' })
+      const workerImages = `Worker image reply
+
+![Worker Markdown image](${src})
+
+Files:
+- ${otherSrc}
+
+Again: [image: ${src}]`
+      pnyx.claude.plan({
+        text: 'Show the worker images',
+        reply: workerImages,
+      })
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Worker image examples',
+          '--key',
+          'image-worker',
+          '--folder',
+          folder,
+        ],
+      })
+      await s.owner({
+        args: [
+          'task',
+          'start',
+          'image-worker',
+          '--prompt',
+          'Show the worker images',
+        ],
+      })
+      await until({
+        what: 'the worker image reply to finish',
+        check: () => s.task({ key: 'image-worker' }).sessionActivity === 'finished',
+      })
+      const worker = s.as({ agent: await s.agent({ cwd: folder }) })
+      await worker.run({
+        args: [
+          'task',
+          'status',
+          'image-worker',
+          'working',
+          '--note',
+          workerImages,
+        ],
+      })
+      const task = s.task({ key: 'image-worker' })
+      await run({
+        args: ['run'],
+        input: `await page.click('[data-task="${task.id}"]');`,
+      })
+      await waitFor({
+        what: 'every image mention in the task worker message',
+        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img').length === 3`,
+      })
+      await evaluate({
+        script: `async () => {
+        document.querySelector('[data-task="${task.id}"] .card-current-state .show-more')?.click();
+        const images = [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')];
+        await Promise.all(images.map(image => image.decode()));
+        if (!images.some(image => image.alt === 'Worker Markdown image') || images.length !== 3) throw new Error('Worker image syntax lost');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await capture({ name: 'worker-images' })
+    } finally {
+      await run({ args: ['stop'] })
+    }
+  },
+)

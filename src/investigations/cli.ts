@@ -9,7 +9,7 @@ import { declareTask } from '#tasks/declarations.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HydraError } from '#store/errors.ts'
 import type { LandingRule } from '#tasks/delivery/model.ts'
-import { landingLine, taskLanding } from '#tasks/delivery/rule.ts'
+import { READINESS_INSTRUCTIONS, landingLine, taskLanding } from '#tasks/delivery/rule.ts'
 import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { decideBuild, decideReport, decideReportReview, readReport, readReportFile } from './report.ts'
@@ -87,6 +87,7 @@ function buildMessage({
   const lines = [
     `The owner approved building this. Your report stays stored (\`pnyx-axi task report ${id} --hydra ${hydraId}\`).`,
     'Start the build on a fresh branch from the up-to-date default branch, and carry over only the changes the build needs, never investigation scratch.',
+    READINESS_INSTRUCTIONS,
   ]
 
   if (rule) {

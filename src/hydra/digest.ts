@@ -115,7 +115,7 @@ function ownerDigest({
   conditions: LearningConditions
   now: string
 }): string {
-  const others = Object.entries(owner).filter(([key]) => !Object.hasOwn(
+  const others = Object.entries(owner).filter(([key]) => key !== 'workers' && !Object.hasOwn(
     OWNER_DOCUMENTS,
     key,
   ))
@@ -132,6 +132,11 @@ function ownerDigest({
       }) : owner[key]?.text ?? 'none yet',
       '',
     ]),
+    ...(owner.workers ? [
+      'Standing worker instructions for every Hydra (owner memory key workers):',
+      owner.workers.text,
+      '',
+    ] : []),
     ...(others.length ? [
       'Other owner memory:',
       ...others.map(([

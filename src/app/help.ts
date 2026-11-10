@@ -3,6 +3,7 @@ import { HISTORY_BUDGET } from '#hydra/history.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
 import { OWNER_CONTEXT_TOKENS } from '#hydra/context-limits.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '#memory/budgets.ts'
+import { WORKER_NOTES_BUDGET } from '#memory/workers.ts'
 import { POOL_IDLE } from '#projects/copy-pool.ts'
 import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
 import { HISTORY_LIMIT, HISTORY_MAX } from './cli-support.ts'
@@ -132,7 +133,7 @@ pnyx-axi hydra usage refresh [--task <id>] [--force]
 Refresh plan limits from quota-axi; --force bypasses its cache.
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
-Standing worker instructions are included verbatim in every new worker header.
+Standing worker instructions are included verbatim in every new worker header on this Hydra. For every Hydra, use owner worker-notes.
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
@@ -167,6 +168,8 @@ and returns a compact conversations digest of owner instructions and agent repli
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
   owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
+pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <n>]
+Standing worker instructions for every Hydra (${WORKER_NOTES_BUDGET} characters, one rule per line, owner memory key workers) are included verbatim in every new worker header, before the Hydra's and the project's.
 Owner memory is Pnyx-wide. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
 one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
