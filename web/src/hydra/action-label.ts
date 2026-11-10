@@ -720,6 +720,10 @@ const fromEarlierTurn = ({
   action: CurrentAction
   since?: string | null
 }) => {
+  if (action.work) {
+    return false
+  }
+
   if (!since || !action.at) {
     return false
   }

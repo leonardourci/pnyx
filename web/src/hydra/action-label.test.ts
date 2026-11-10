@@ -485,6 +485,51 @@ test(
       }),
       null,
     )
+    const work = {
+      runningTurns: ['current-turn'],
+      runningTools: ['call_1'],
+      unsettledInputs: [],
+      pendingControls: [],
+      queue: {
+        knowledge: 'known' as const,
+        count: 0,
+      },
+      background: {
+        knowledge: 'known' as const,
+        tasks: [],
+      },
+    }
+    assert.deepEqual(
+      currentLabel({
+        action: {
+          ...action({
+            tool: 'Bash',
+            at: '2026-10-22T09:00:00.000Z',
+          }),
+          work,
+        },
+        since,
+        lookup,
+      })?.sentence,
+      ['Running a command'],
+    )
+    assert.deepEqual(
+      currentLabel({
+        action: {
+          calls: [],
+          thinking: true,
+          done: false,
+          at: '2026-10-22T09:00:00.000Z',
+          work: {
+            ...work,
+            runningTools: [],
+          },
+        },
+        since,
+        lookup,
+      })?.sentence,
+      ['Thinking'],
+    )
     assert.deepEqual(
       currentLabel({
         action: action({
