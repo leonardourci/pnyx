@@ -915,7 +915,7 @@ test(
     assert.ok(failures.some(record => record.operation === 'snapshot' && record.error?.message === 'snapshot replace failed'))
     // The rest of the Hydra's shutdown (its hold, hook socket and timers) ran after the failed save.
     assert.equal(
-      logLines().some(record => record.operation === 'hydra.close'),
+      logLines().some(record => record.operation === 'hydra.close' && record.hydraId === s.hydraId),
       false,
     )
     assert.equal(

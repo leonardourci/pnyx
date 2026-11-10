@@ -778,19 +778,31 @@ export async function startServer({
     pendingLogs.forEach(stop => stop())
 
     try {
-      const all = await Promise.allSettled(mounts.values())
-      // Every Hydra finishes its cleanup before the claim goes, even when one of them fails.
-      const closes = await Promise.allSettled(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+      const settled = await Promise.allSettled([...mounts].map(async ([
+        id,
+        mounting,
+      ]) => ({
+        id,
+        mounted: await mounting,
+      })))
+      const open = settled.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
 
-      for (const failed of closes) {
-        if (failed.status === 'rejected') {
+      // Every Hydra finishes its cleanup before the claim goes, even when one of them fails.
+      await Promise.all(open.map(async ({
+        id,
+        mounted,
+      }) => {
+        try {
+          await mounted.close()
+        } catch (error) {
           log({
             level: 'error',
             operation: 'hydra.close',
-            error: failed.reason,
+            hydraId: id,
+            error,
           })
         }
-      }
+      }))
     } finally {
       for (const ws of wss.clients) {
         ws.terminate()
