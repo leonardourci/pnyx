@@ -83,6 +83,27 @@ test(
       'number',
     )
     assert.ok(Number.isFinite(Date.parse(String(pageCommand.at))))
+    assert.equal(
+      mine({ operation: 'socket.send' }).filter(line => line.detailed === true).length,
+      0,
+      'On writes no detailed line for the live updates the page got',
+    )
+    await page.refusal({
+      name: 'task',
+      args: [
+        'show',
+        'no-such-task',
+      ],
+    })
+    const refusedCommand = mine({ operation: 'command.page' }).find(line => line.name === 'task show')
+    assert.equal(
+      refusedCommand?.status,
+      'error',
+    )
+    assert.equal(
+      typeof refusedCommand?.code,
+      'string',
+    )
     const created = mine({ operation: 'events.write' }).find(line => line.name === 'task.created')
     assert.ok(
       created,
@@ -138,6 +159,12 @@ test(
           blockingMs: 70,
           script: 'WebSocket.onmessage',
         },
+        {
+          operation: 'page.long-task',
+          at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          hydraId: s.hydraId,
+          ms: 80,
+        },
         { operation: 'not a page line' },
       ],
     })
@@ -170,6 +197,29 @@ test(
       what: 'the refused page line counted as a warning',
       check: () => refusedLines().some(line => line.level === 'warn' && line.count === 1),
     })
+    const skewed = mine({ operation: 'page.long-task' })[0]
+    assert.ok(
+      Math.abs(Date.parse(String(skewed?.at)) - Date.now()) < 60_000,
+      'a page time an hour off takes the server’s time',
+    )
+    page.log({
+      lines: Array.from(
+        { length: 101 },
+        () => ({
+          operation: 'page.long-task',
+          hydraId: s.hydraId,
+          ms: 51,
+        }),
+      ),
+    })
+    await until({
+      what: 'the lines past one message’s limit counted as refused',
+      check: () => refusedLines().filter(line => line.count === 1).length === 2,
+    })
+    assert.equal(
+      mine({ operation: 'page.long-task' }).filter(line => line.ms === 51).length,
+      100,
+    )
 
     await s.owner({
       args: [
@@ -200,11 +250,52 @@ test(
       'Off writes no line for an action',
     )
     const warningsBefore = refusedLines().length
-    page.log({ lines: [{ operation: 'still not a page line' }] })
+    page.log({
+      lines: [
+        {
+          operation: 'page.slow-frame',
+          hydraId: s.hydraId,
+          ms: 99,
+        },
+        {
+          operation: 'page.error',
+          level: 'error',
+          hydraId: s.hydraId,
+          error: {
+            name: 'TypeError',
+            message: 'synthetic page failure',
+            stack: 'TypeError: synthetic page failure\n    at page',
+          },
+        },
+        { operation: 'still not a page line' },
+      ],
+    })
     await until({
       what: 'a warning written while logging is off',
       check: () => refusedLines().length > warningsBefore,
     })
+    assert.equal(
+      mine({ operation: 'page.slow-frame' }).filter(line => line.ms === 99).length,
+      0,
+      'Off drops a page’s action lines',
+    )
+    const pageError = mine({ operation: 'page.error' })[0]
+    assert.deepEqual(
+      [
+        pageError?.level,
+        pageError?.source,
+        pageError?.error?.name,
+        pageError?.error?.message,
+        pageError?.error?.stack,
+      ],
+      [
+        'error',
+        'web',
+        'TypeError',
+        'synthetic page failure',
+        'TypeError: synthetic page failure\n    at page',
+      ],
+    )
 
     await s.owner({
       args: [
@@ -241,6 +332,28 @@ test(
       mine({ operation: 'command.page' }).length > quietBefore,
       'Detailed keeps the action lines',
     )
+
+    await s.chat({ text: 'Say hello' })
+    const opened = await until({
+      what: 'the line for Hydra’s session opening',
+      check: () => mine({ operation: 'session.open' })[0],
+    })
+    assert.equal(
+      typeof opened.ms,
+      'number',
+    )
+    const turn = await until({
+      what: 'the line for Hydra’s turn ending',
+      check: () => mine({ operation: 'turn.end' })[0],
+    })
+    assert.equal(
+      turn.status,
+      'completed',
+    )
+    assert.equal(
+      typeof turn.ms,
+      'number',
+    )
   },
 )
 
@@ -274,6 +387,8 @@ test(
       ],
     })
     const today = dayFile({ daysAgo: 0 })
+    // Today's file survived when the line written before the cleanups is still in it.
+    const todayKept = () => logLines().some(line => line.operation === 'command.cli' && line.name === 'task create')
     writeFileSync(
       dayFile({ daysAgo: 30 }),
       '{"v":1}\n',
@@ -303,7 +418,10 @@ test(
       existsSync(dayFile({ daysAgo: 1 })),
       'yesterday is within two days',
     )
-    assert.ok(existsSync(today))
+    assert.ok(
+      todayKept(),
+      'today is within two days',
+    )
 
     await s.owner({
       args: [
@@ -318,7 +436,7 @@ test(
       check: () => !existsSync(dayFile({ daysAgo: 1 })),
     })
     assert.ok(
-      existsSync(today),
+      todayKept(),
       'today fits in the cap, so it stays',
     )
 
@@ -364,7 +482,7 @@ test(
       check: () => logLines().some(line => line.level === 'warn' && line.operation === 'logs.full'),
     })
     assert.ok(
-      existsSync(today),
+      todayKept(),
       'today stays past the cap',
     )
     const actionLines = () => logLines().filter(line => line.operation === 'command.cli').length
@@ -409,6 +527,11 @@ test(
       cleaned,
       /deleted: 1 file\n/,
     )
+    assert.equal(
+      todayKept(),
+      false,
+      'logs clean deleted the lines written before it',
+    )
     await s.owner({
       args: [
         'task',
@@ -421,6 +544,16 @@ test(
       [today.slice(-16)],
       'the next line starts a new file',
     )
+
+    writeFileSync(
+      dayFile({ daysAgo: 30 }),
+      '{"v":1}\n',
+    )
+    await pnyx.restart()
+    await until({
+      what: 'a starting server deleting days past the kept ones',
+      check: () => !existsSync(dayFile({ daysAgo: 30 })),
+    })
   },
 )
 
@@ -434,6 +567,24 @@ test(
     })
 
     try {
+      // Another Hydra's command, which --hydra keeps out of this Hydra's report.
+      const other = await pnyx.scenario()
+      const otherPage = await openPage({
+        port: pnyx.port(),
+        hydraId: other.hydraId,
+      })
+      await otherPage.command({
+        name: 'task',
+        args: [
+          'create',
+          '--title',
+          'Elsewhere',
+          '--key',
+          'elsewhere',
+        ],
+      })
+      otherPage.close()
+
       for (const key of [
         'first',
         'second',
@@ -511,17 +662,45 @@ test(
         empty,
         /operations: "none: no log lines in this window"/,
       )
-      assert.equal(
-        (await s.ownerRefusal({
-          args: [
-            'debug',
-            'timeline',
-            '--operation',
-            'command',
-          ],
-        })).code,
-        'VALIDATION_ERROR',
-      )
+
+      for (const refused of [
+        [
+          'debug',
+          'timeline',
+          '--operation',
+          'command',
+        ],
+        [
+          'debug',
+          'performance',
+          '--since',
+          new Date(Date.now() + DAY_MS).toISOString(),
+          '--until',
+          new Date().toISOString(),
+        ],
+        [
+          'debug',
+          'performance',
+          '--limit',
+          '0',
+        ],
+        [
+          'debug',
+          'performance',
+          '--task',
+          'first',
+        ],
+        [
+          'logs',
+          'rotate',
+        ],
+      ]) {
+        assert.equal(
+          await s.ownerRefused({ args: refused }),
+          'VALIDATION_ERROR',
+          refused.join(' '),
+        )
+      }
     } finally {
       page.close()
     }

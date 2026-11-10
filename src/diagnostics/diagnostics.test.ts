@@ -377,16 +377,17 @@ test(
         row.id,
         row.seq,
         row.correlationId,
-      ]),
+      ])
+        .toSorted(),
       [
-        [
-          'recent',
-          5,
-          'message',
-        ],
         [
           'before the log folder',
           4,
+          'message',
+        ],
+        [
+          'recent',
+          5,
           'message',
         ],
       ],

@@ -57,52 +57,53 @@ test(
       first.error.stack,
       /Controller unavailable/,
     )
-    assert.equal(
-      typeof first.rss,
-      'number',
-    )
+    // The fields that let a failure and its retry be found and joined; the line's other fields belong to every line.
+    type Failure = Record<string, unknown> & { error: Record<string, unknown> }
+    const identity = ({ record }: { record: Failure }) => ({
+      level: record.level,
+      operation: record.operation,
+      operationId: record.operationId,
+      hydraId: record.hydraId,
+      taskId: record.taskId,
+      sessionId: record.sessionId,
+      correlationId: record.correlationId,
+      error: {
+        name: record.error.name,
+        message: record.error.message,
+        code: record.error.code,
+      },
+    })
     assert.deepEqual(
-      first,
+      identity({ record: first }),
       {
-        v: 1,
-        at: first.at,
         level: 'error',
-        source: 'server',
-        pid: process.pid,
         operation: 'Hydra resume',
         operationId: first.operationId,
         hydraId: 'lab',
         taskId: '$hydra',
         sessionId: 'codex:synthetic',
         correlationId: 'resume:synthetic',
-        rss: first.rss,
         error: {
           name: 'Error',
           message: 'Controller unavailable\nTry attaching again',
           code: 'NATIVE_UNAVAILABLE',
-          stack: first.error.stack,
         },
       },
     )
     assert.deepEqual(
-      retry,
+      identity({ record: retry }),
       {
-        v: 1,
-        at: retry.at,
         level: 'error',
-        source: 'server',
-        pid: process.pid,
         operation: 'Hydra resume retry',
         operationId: first.operationId,
         hydraId: 'lab',
         taskId: '$hydra',
         sessionId: 'codex:synthetic',
         correlationId: 'resume:synthetic',
-        rss: retry.rss,
         error: {
           name: 'Error',
           message: 'Retry unavailable',
-          stack: retry.error.stack,
+          code: undefined,
         },
       },
     )

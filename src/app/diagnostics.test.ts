@@ -4,6 +4,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { closeLogs, log, logsDir, openLogs, type LogLine } from './diagnostics.ts'
+import { logged } from './log-line.ts'
 
 test(
   'outside the server a warning or an error prints one JSON line on stderr, and a plain or detailed line prints nothing',
@@ -99,14 +100,24 @@ test(
         error: new Error('lost'),
       },
     ]
-    assert.equal(
+    void [
+      missing,
+      normal,
+      warning,
+      failure,
+    ]
+    assert.deepEqual(
+      accepted.map(line => logged({
+        mode: 'on',
+        line,
+      })),
       [
-        missing,
-        normal,
-        warning,
-        failure,
-      ].length,
-      accepted.length,
+        true,
+        false,
+        true,
+        true,
+      ],
+      'On writes action lines, warnings and errors, and drops detailed lines',
     )
   },
 )
