@@ -213,8 +213,24 @@ export function MessageImage({
     open,
     setOpen,
   ] = useState(false)
+  const [
+    natural,
+    setNatural,
+  ] = useState<{
+    source: string
+    ratio: number
+  }>()
   const source = imageSource({ path: src })
   const label = alt || 'Image'
+  let displayWidth = width
+
+  if (height && natural && natural.source === source) {
+    const heightWidth = height * natural.ratio
+    displayWidth = width ? Math.min(
+      width,
+      heightWidth,
+    ) : heightWidth
+  }
 
   if (!source || failedSource === source) {
     return <span className="message-image-fallback" title={title}>Image unavailable: {label}</span>
@@ -228,7 +244,7 @@ export function MessageImage({
         aria-label={`Show image: ${label}`}
         contentEditable={false}
         onClick={() => setOpen(true)}
-        style={{ width }}
+        style={{ width: displayWidth }}
       >
         <img
           src={source}
@@ -237,10 +253,14 @@ export function MessageImage({
           height={height}
           title={title}
           style={{
-            width: width ? '100%' : undefined,
+            width: displayWidth ? '100%' : undefined,
             maxHeight: height,
           }}
           referrerPolicy="no-referrer"
+          onLoad={event => setNatural({
+            source,
+            ratio: event.currentTarget.naturalWidth / event.currentTarget.naturalHeight,
+          })}
           onError={() => setFailedSource(source)}
         />
       </button>

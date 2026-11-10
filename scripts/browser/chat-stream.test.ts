@@ -1037,7 +1037,7 @@ test(
         args: [
           'resize',
           '1200',
-          '1000',
+          '1200',
         ],
       })
       await run({
@@ -1059,6 +1059,13 @@ test(
       const response = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: blob });
       if (!response.ok) throw new Error('Upload failed');
       window.imageFixture = await response.json();
+      const small = document.createElement('canvas');
+      small.width = 120; small.height = 36;
+      small.getContext('2d').drawImage(canvas, 0, 0, 120, 36);
+      const smallBlob = await new Promise(resolve => small.toBlob(resolve, 'image/png'));
+      const smallResponse = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: smallBlob });
+      if (!smallResponse.ok) throw new Error('Small upload failed');
+      window.imageFixture.small = (await smallResponse.json()).path;
       return 'chat-assertion-passed';
     }`,
       })
@@ -1067,7 +1074,7 @@ test(
       () => {
       const value = (() => {
         const src = window.imageFixture.path;
-        return 'Image rendering examples\\n\\nSmall Markdown image\\n\\n![Small preview](' + src + ')\\n\\nSized HTML image\\n\\n<img src="' + src + '" alt="Sized preview" width="240" height="72" title="Image title" onerror="window.imageUnsafe=true" style="display:none">\\n\\nLarge HTML image\\n\\n<img src="' + src + '" alt="Large preview" width="2400" height="720">\\n\\nBroken image\\n\\n<img src="' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + '" alt="Missing preview" width="1000" height="1000">\\n\\n<img src="javascript:alert(1)" alt="Unsafe preview">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>';
+        return 'Image rendering examples\\n\\nSmall Markdown image\\n\\n![Small preview](' + window.imageFixture.small + ')\\n\\nSized HTML image\\n\\n<img src="' + src + '" alt="Sized preview" width="240" height="72" title="Image title" onerror="window.imageUnsafe=true" style="display:none">\\n\\nLarge HTML image\\n\\n<img src="' + src + '" alt="Large preview" width="2400" height="720">\\n\\nHeight-only HTML image\\n\\n<img src="' + window.imageFixture.small + '" alt="Height-only preview" height="72">\\n\\nBroken image\\n\\n<img src="' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + '" alt="Missing preview" width="1000" height="1000">\\n\\n<img src="javascript:alert(1)" alt="Unsafe preview">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>';
       })();
       document.querySelector('[aria-label="Reply to Hydra"]').focus();
       document.execCommand('insertText', false, value);
@@ -1084,13 +1091,15 @@ test(
       await evaluate({
         script: `async () => {
       const images = [...document.querySelectorAll('.hydra-chat .message-image img')];
-      if (images.length !== 3) throw new Error('Expected three inline images, got ' + images.length);
+      if (images.length !== 4) throw new Error('Expected four inline images, got ' + images.length);
       await Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; })));
       const sized = images.find(image => image.alt === 'Sized preview');
       if (sized.getAttribute('width') !== '240' || sized.getAttribute('height') !== '72' || sized.title !== 'Image title') throw new Error('Allowed attributes lost');
       if (sized.hasAttribute('onerror') || sized.hasAttribute('style') && sized.style.display === 'none' || window.imageUnsafe) throw new Error('Unsafe HTML ran');
       if (document.querySelector('.hydra-chat .markdown script, .hydra-chat .markdown b')) throw new Error('Other HTML rendered');
       if (images.some(image => !image.naturalWidth || image.getBoundingClientRect().width > image.closest('.markdown').getBoundingClientRect().width + 1)) throw new Error('Image exceeds bubble or failed');
+      const heightOnly = images.find(image => image.alt === 'Height-only preview');
+      if (Math.abs(heightOnly.getBoundingClientRect().height - 72) > 1 || Math.abs(heightOnly.getBoundingClientRect().width - 240) > 1) throw new Error('Height-only size ignored');
       if (Math.abs(sized.getBoundingClientRect().width - 240) > 1) throw new Error('Width ignored');
       if (![...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Unsafe preview'))) throw new Error('Unsafe source lacks fallback');
       return 'chat-assertion-passed';
