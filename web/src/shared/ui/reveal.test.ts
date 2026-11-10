@@ -341,3 +341,51 @@ test(
     )
   },
 )
+
+test(
+  'a stalled reveal frame resumes without consuming the entire backlog',
+  () => {
+    const text = 'word '.repeat(300)
+    const resumed = revealStep({
+      text,
+      cursor: 20,
+      shown: 20,
+      speed: 1,
+      elapsed: 5000,
+      final: false,
+      fenced: false,
+    })
+    assert.ok(resumed.cursor > 20)
+    assert.ok(
+      resumed.cursor <= 120,
+      'resume releases at most 100 ms of text',
+    )
+    assert.ok(
+      resumed.shown < text.length,
+      'unrevealed text remains paced after resume',
+    )
+    const next = revealStep({
+      text,
+      cursor: resumed.cursor,
+      shown: resumed.shown,
+      speed: 1,
+      elapsed: 16,
+      final: true,
+      fenced: false,
+    })
+    assert.ok(next.cursor > resumed.cursor)
+    const backwards = revealStep({
+      text,
+      cursor: 20,
+      shown: 20,
+      speed: 1,
+      elapsed: -10,
+      final: false,
+      fenced: false,
+    })
+    assert.equal(
+      backwards.cursor,
+      20,
+    )
+  },
+)
