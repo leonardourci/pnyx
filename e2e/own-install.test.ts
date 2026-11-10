@@ -307,7 +307,7 @@ for (const {
       try {
         await pnyx.restart()
         const agent = await s.chat({ text: 'Start without a shipped skill' })
-        assert.ok(logLines().some(record => record.level === 'warn' && record.operation === 'skills.missing' && record.name === missing))
+        assert.ok(logLines().some(record => record.level === 'warn' && record.operation === 'skills.missing' && record.name === name))
         assert.match(
           readFileSync(
             join(

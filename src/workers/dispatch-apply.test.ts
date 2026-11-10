@@ -701,7 +701,7 @@ test(
         [
           'warn',
           'journal.unreadable',
-          changesPath(),
+          'dispatch-changes.jsonl',
           1,
         ],
       ],

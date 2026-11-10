@@ -227,7 +227,8 @@ export function prepareHydraFolder({
     missing: ({ path }) => log({
       level: 'warn',
       operation: 'skills.missing',
-      name: path,
+      // The skill's folder names it; the rest of the path is the install's.
+      name: basename(dirname(path)),
       error: 'A shipped skill is missing; Hydra continues with the others. Run /upgrade to repair the install.',
     }),
   })

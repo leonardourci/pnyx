@@ -1,6 +1,6 @@
 import { log } from '#app/diagnostics.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { privateDir, writeDurably } from './storage.ts'
 
 const cache = new Map<string, {
@@ -51,7 +51,7 @@ export function readJournal<T>({
     log({
       level: 'warn',
       operation: 'journal.unreadable',
-      name: path,
+      name: basename(path),
       count: skipped,
     })
   }

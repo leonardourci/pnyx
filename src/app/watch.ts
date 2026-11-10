@@ -1,5 +1,5 @@
 import { watch, watchFile, unwatchFile, statSync, readdirSync, type FSWatcher } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 
@@ -212,7 +212,7 @@ function follow({
             log({
               level: 'warn',
               operation: 'watch',
-              name: path,
+              name: basename(path),
               error,
             })
             release()
@@ -228,7 +228,7 @@ function follow({
         log({
           level: 'warn',
           operation: 'watch',
-          name: path,
+          name: basename(path),
           error,
         })
       }
