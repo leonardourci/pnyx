@@ -5,8 +5,9 @@ import { logged, PAGE_LINES_MAX, STACK_MAX, TEXT_MAX, type LogLine, type LogMode
 const FLUSH_MS = 2000
 // Lines kept while the socket is down; the oldest go first.
 const QUEUE_MAX = 1000
-// Room in a message for its frame around the lines.
-const BATCH_BYTES = MAX_MESSAGE_BYTES - 1024
+// A UTF-16 code unit takes at most 3 bytes in UTF-8, so a batch this long fits the server's message limit with room for its frame.
+const UTF8_BYTES_PER_UNIT = 3
+const BATCH_LENGTH = Math.floor((MAX_MESSAGE_BYTES - 1024) / UTF8_BYTES_PER_UNIT)
 const SLOW_FRAMES = 'long-animation-frame'
 const LONG_TASKS = 'longtask'
 
@@ -69,18 +70,18 @@ function flush() {
   timer = undefined
 
   while (queue.length && output) {
-    let bytes = 0
+    let length = 0
     let count = 0
 
     for (const line of queue.slice(
       0,
       PAGE_LINES_MAX,
     )) {
-      if (count && bytes + line.length > BATCH_BYTES) {
+      if (count && length + line.length > BATCH_LENGTH) {
         break
       }
 
-      bytes += line.length + 1
+      length += line.length + 1
       count += 1
     }
 
