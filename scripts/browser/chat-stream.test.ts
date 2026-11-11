@@ -1114,7 +1114,7 @@ test(
       () => {
       const value = (() => {
         const src = window.imageFixture.path;
-        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nPhone screenshots\\n\\n[image: ' + window.imageFixture.tall + '] [image: ' + window.imageFixture.tall + '] ![Tall Markdown](' + window.imageFixture.tall + ')\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))\\n\\nRemote images\\n\\n![HTTPS preview](https://images.invalid/preview.png)\\n\\n![HTTP preview](http://images.invalid/preview.png)\\n\\n![Relative remote preview](//images.invalid/preview.png)';
+        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nPhone screenshots\\n\\n[image: ' + window.imageFixture.tall + '] [image: ' + window.imageFixture.tall + '] ![Tall Markdown](' + window.imageFixture.tall + ')\\n\\nWide row: [image: ' + src + '] [image: ' + src + ']\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))\\n\\nRemote images\\n\\n![HTTPS preview](https://images.invalid/preview.png)\\n\\n![HTTP preview](http://images.invalid/preview.png)\\n\\n![Relative remote preview](//images.invalid/preview.png)';
       })();
       document.querySelector('[aria-label="Reply to Hydra"]').focus();
       document.execCommand('insertText', false, value);
@@ -1124,14 +1124,14 @@ test(
     `,
       })
       await waitFor({
-        what: 'the missing-image fallback and seven inline images',
-        condition: `document.querySelectorAll('.hydra-chat .message-image img').length === 7
+        what: 'the missing-image fallback and nine inline images',
+        condition: `document.querySelectorAll('.hydra-chat .message-image img').length === 9
           && [...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Missing preview'))`,
       })
       await evaluate({
         script: `async () => {
       const images = [...document.querySelectorAll('.hydra-chat .message-image img')];
-      if (images.length !== 7) throw new Error('Expected seven inline images, got ' + images.length);
+      if (images.length !== 9) throw new Error('Expected nine inline images, got ' + images.length);
       await Promise.all(images.map(image => image.decode()));
       const content = document.querySelector('.hydra-chat article.mine .markdown');
       if (content.querySelector('script, b, img[alt="Literal HTML"]') || window.imageUnsafe || !content.textContent.includes('<img src=')) throw new Error('HTML must stay literal text');
@@ -1144,6 +1144,9 @@ test(
       const tall = boxes.filter(({ image }) => image.naturalHeight > image.naturalWidth);
       if (tall.length !== 3 || tall.some(({ box }) => box.top !== tall[0].box.top)) throw new Error('Tall thumbnails must sit side by side');
       if (tall[1].box.left < tall[0].box.right || tall[2].box.left < tall[1].box.right) throw new Error('Tall thumbnails overlap');
+      const wideRow = [...content.querySelectorAll('p')].find(paragraph => paragraph.textContent.includes('Wide row'));
+      const wide = [...wideRow.querySelectorAll('.message-image img')].map(image => image.getBoundingClientRect());
+      if (wide.length !== 2 || wide[1].top < wide[0].bottom) throw new Error('Thumbnails wider than the bubble together must wrap');
       if (![...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Unsafe preview'))) throw new Error('Unsafe source lacks fallback');
       if (content.querySelector('a[href="https://images.invalid/preview.png"]')?.textContent !== 'HTTPS preview') throw new Error('HTTPS image must stay a link');
       if (content.querySelector('a[href="http://images.invalid/preview.png"]')?.textContent !== 'HTTP preview') throw new Error('HTTP image must stay a link');
