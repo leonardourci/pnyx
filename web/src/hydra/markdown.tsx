@@ -4,7 +4,7 @@ import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import type { Token, Tokens } from 'marked'
 import { decodeEntities, inlineText, markdown } from './markdown-text.ts'
 import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#hydra/images.ts'
-import { attachmentSource, ImageChip, MessageImage } from './attached-image.tsx'
+import { ImageChip, MessageImage } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { prepareChatTokens } from './chat-tokens.ts'
@@ -71,19 +71,7 @@ const withImages = ({
         )}
       />,
       <Sourced key={`${match.index}:image`} markdown={source}>
-        {attachmentSource({ path })
-          ? (
-            <MessageImage
-              src={path}
-              alt={label}
-            />
-          )
-          : (
-            <ImageChip
-              path={path}
-              label={label}
-            />
-          )}
+        <ImageChip path={path} label={label} />
       </Sourced>,
     )
     end = match.index + source.length

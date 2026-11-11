@@ -180,51 +180,21 @@ export function ImageChip({
   )
 }
 
+// A Markdown image Pnyx can serve shows as the image chip; any other source is named, never loaded.
 export function MessageImage({
   src,
-  alt = 'Image',
+  alt,
   title,
 }: {
   src: string
-  alt?: string
+  alt: string
   title?: string
 }) {
-  const [
-    failedSource,
-    setFailedSource,
-  ] = useState<string>()
-  const [
-    open,
-    setOpen,
-  ] = useState(false)
-  const source = attachmentSource({ path: src })
   const label = alt || 'Image'
 
-  if (!source || failedSource === source) {
+  if (!attachmentSource({ path: src })) {
     return <span className="message-image-fallback" title={title}>Image unavailable: {label}</span>
   }
 
-  return (
-    <>
-      <button
-        type="button"
-        className="message-image"
-        aria-label={`Show image: ${label}`}
-        contentEditable={false}
-        onClick={event => {
-          event.preventDefault()
-          event.stopPropagation()
-          setOpen(true)
-        }}
-      >
-        <img
-          src={source}
-          alt={alt}
-          title={title}
-          onError={() => setFailedSource(source)}
-        />
-      </button>
-      {open && <ImageViewer path={src} label={label} close={() => setOpen(false)} />}
-    </>
-  )
+  return <ImageChip path={src} label={label} />
 }
