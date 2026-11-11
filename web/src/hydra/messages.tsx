@@ -45,7 +45,7 @@ import {
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
-import { AnswerLeadHead } from './answer-lead.tsx'
+import { AnswerLeadHead, openFoldedQuestion } from './answer-lead.tsx'
 import type { AnswerLead } from './answer-leads.ts'
 import { roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
@@ -787,6 +787,13 @@ export function Messages({
               data-pnyx={entry.role === 'Pnyx' || undefined}
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
+              onClick={leadOf({ entry }) ? ({
+                target,
+                currentTarget,
+              }) => openFoldedQuestion({
+                target,
+                bubble: currentTarget,
+              }) : undefined}
             >
               {taskReferences && !inline?.has(entry.id) && (
                 <MessageLead entry={entry} lead={leadOf({ entry })} />

@@ -41,6 +41,23 @@ function FullQuestion({ lead }: { lead: AnswerLead }) {
   )
 }
 
+// A click anywhere on an answer's bubble opens its folded question; only Show less folds it again.
+export function openFoldedQuestion({
+  target,
+  bubble,
+}: {
+  target: EventTarget
+  bubble: Element
+}) {
+  const control = target instanceof Element && target.closest('a, button, [role="button"]')
+  const selecting = !!getSelection()?.toString()
+  const showMore = bubble.querySelector<HTMLButtonElement>('.answer-lead .show-more[aria-expanded="false"]')
+
+  if (showMore && !control && !selecting) {
+    showMore.click()
+  }
+}
+
 export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
   const [
     open,
@@ -56,17 +73,8 @@ export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
     [],
   )
 
-  const expand = ({ target }: { target: EventTarget }) => {
-    const control = target instanceof Element && target.closest('a, button')
-    const selecting = !!getSelection()?.toString()
-
-    if (folded && !open && !control && !selecting) {
-      setOpen(true)
-    }
-  }
-
   const question = (
-    <div className="answer-lead-question" onClick={({ target }) => expand({ target })}>
+    <div className="answer-lead-question">
       <CollapsibleText
         text={lead.question}
         preview={preview}

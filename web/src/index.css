@@ -979,7 +979,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .answer-lead .task-reference-space { display: none; }
 .answer-lead .draft-chip { margin: 0; }
 .answer-lead > .tooltip-anchor { display: block; width: 100%; }
-.answer-lead-question { display: grid; gap: 4px; color: var(--color-muted); cursor: pointer; }
+.answer-lead-question { display: grid; gap: 4px; color: var(--color-muted); }
+.message:has(.answer-lead .show-more[aria-expanded="false"]) { cursor: pointer; }
 .answer-lead-question .text-preview { max-height: 2lh; -webkit-line-clamp: 2; line-clamp: 2; }
 .answer-lead-question :is(.text-preview, .collapsible-text > div, .markdown) { font-size: var(--text-ui); line-height: 1.45; }
 .answer-choices { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
