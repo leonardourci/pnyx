@@ -906,6 +906,18 @@ export function createHost({
 
       return { stopped: 'compaction' }
     },
+    upgrade: ({
+      id,
+      now,
+    }) => {
+      const operation = upgrades.request({ id })
+
+      if (now) {
+        upgrades.sendNow({ id: operation.id })
+      }
+
+      return { operation }
+    },
     // Stops only Hydra's running turn, or the upgrade running in its place; workers keep going.
     stop: async () => {
       const changing = agentChangeAbort()
