@@ -19,6 +19,19 @@ const underway = new Set<string>()
 // While one is, the server starts no index process, which would load the new build into the old server's work.
 export const upgradeUnderway = () => underway.size > 0
 
+// The upgrade this server is pulling, installing or building, for whichever Hydra asked for it.
+let building: {
+  id: string
+  stopping: AbortController
+} | undefined
+
+// Stops it from any Hydra, as \`pnyx-axi upgrade --stop\` does; it goes back as a failed step does.
+export function stopUpgrade(): boolean {
+  building?.stopping.abort()
+
+  return building !== undefined
+}
+
 const shortHome = ({ path }: { path: string }) => path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path
 
 // /upgrade pulls, installs and builds at once; after a passing build it restarts on Restart now,
@@ -53,7 +66,6 @@ export function upgradeQueue({
   pendingMs?: number
 }) {
   const restartNow = new Set<string>()
-  let stopping: AbortController | undefined
 
   const active = () => state().upgrades?.find(operation => [
     'queued',
@@ -125,13 +137,22 @@ export function upgradeQueue({
     }
     record({ operation: running })
     underway.add(running.id)
-    stopping = new AbortController()
+    const mine = {
+      id: running.id,
+      stopping: new AbortController(),
+    }
+
+    // An upgrade asked for while another Hydra's runs is refused at once and leaves that one's stop alone.
+    if (!building) {
+      building = mine
+    }
+
     let result: Awaited<ReturnType<typeof runUpgrade>>
 
     try {
       result = await runUpgrade({
         root: root!,
-        signal: stopping.signal,
+        signal: mine.stopping.signal,
         progress: ({ steps }) => record({
           operation: {
             ...running,
@@ -140,7 +161,9 @@ export function upgradeQueue({
         }),
       })
     } finally {
-      stopping = undefined
+      if (building === mine) {
+        building = undefined
+      }
     }
 
     const {
@@ -227,6 +250,32 @@ export function upgradeQueue({
     },
   })
 
+  const refuse = ({
+    id,
+    folder,
+    reason,
+  }: {
+    id: string
+    folder: string
+    reason: string
+  }) => {
+    const refused: UpgradeOperation = {
+      id,
+      state: 'refused',
+      folder,
+      queuedAt: at(),
+      endedAt: at(),
+      steps: [],
+      reasons: [reason],
+    }
+    record({
+      operation: refused,
+      eventId: `${id}:hosted`,
+    })
+
+    return refused
+  }
+
   return {
     restart({ id }: { id: string }) {
       if (state().upgrades?.some(operation => operation.id === id)) {
@@ -263,27 +312,30 @@ export function upgradeQueue({
       })
     },
 
-    request({ id }: { id: string }) {
-      // One upgrade at a time: a second /upgrade while one waits or runs changes nothing.
-      if (active() || state().upgrades?.some(operation => operation.id === id)) {
-        return
+    // The one entry for /upgrade in Hydra's chat and \`pnyx-axi upgrade\`; answers with the upgrade to watch.
+    request({ id }: { id: string }): UpgradeOperation {
+      // One upgrade at a time: a second request while one waits or runs changes nothing.
+      const existing = state().upgrades?.find(operation => operation.id === id) ?? active()
+
+      if (existing) {
+        return existing
       }
 
       if (!root) {
-        record({
-          operation: {
-            id,
-            state: 'refused',
-            folder: '',
-            queuedAt: at(),
-            endedAt: at(),
-            steps: [],
-            reasons: ['This Pnyx server has no folder to upgrade.'],
-          },
-          eventId: `${id}:hosted`,
+        return refuse({
+          id,
+          folder: '',
+          reason: 'This Pnyx server has no folder to upgrade.',
         })
+      }
 
-        return
+      // Another Hydra's upgrade still builds or waits to restart; a second build in the same folder would be cut by that restart.
+      if (upgradeUnderway()) {
+        return refuse({
+          id,
+          folder: shortHome({ path: root }),
+          reason: 'Another upgrade is already running.',
+        })
       }
 
       const queued: UpgradeOperation = {
@@ -298,6 +350,8 @@ export function upgradeQueue({
         eventId: `${id}:hosted`,
       })
       enqueue({ queued })
+
+      return queued
     },
 
     // Restart now: a built upgrade restarts without waiting for agents between turns.
@@ -319,11 +373,11 @@ export function upgradeQueue({
         return 'restarting'
       }
 
-      if (operation?.state !== 'running' || !stopping) {
+      if (operation?.state !== 'running' || building?.id !== operation.id) {
         return undefined
       }
 
-      stopping.abort()
+      building.stopping.abort()
 
       return 'stopping'
     },

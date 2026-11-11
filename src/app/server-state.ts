@@ -31,10 +31,13 @@ export const socketPath = ({ hydraId }: { hydraId: string }) => join(
   'server.sock',
 )
 
-// The server, with the address of this Hydra on it, or null when none is running. Trusted only when the
-// recorded port answers /health with this pid and Hydra, so a server.json left by a server that died
-// (its pid or port since reused) counts as not running. A dead pid is not asked at all.
-export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
+// The running server and the Hydras it serves. stopped: none is running, which a server.json left by a server
+// that died (its pid or port since reused) also counts as; a dead pid is not asked at all.
+// silent: its process is alive but /health did not answer, so what it is doing is unknown.
+export async function probeServer(): Promise<{
+  info: ServerInfo
+  hydras: string[]
+} | 'stopped' | 'silent'> {
   let info: ServerInfo
 
   try {
@@ -45,39 +48,61 @@ export async function readServer({ hydraId }: { hydraId: string }): Promise<Serv
 
     // Inside the server, the Hydras it runs are known without asking itself.
     if (info.pid === process.pid) {
-      return hosts.has(hydraId) ? {
-        ...info,
-        url: `http://127.0.0.1:${info.port}/hydra/${hydraId}/`,
-        socket: socketPath({ hydraId }),
-      } : null
+      return {
+        info,
+        hydras: [...hosts.keys()],
+      }
     }
 
     process.kill(
       info.pid,
       0,
     )
-    const res = await fetch(
+  } catch {
+    return 'stopped'
+  }
+
+  let res: Response
+
+  try {
+    res = await fetch(
       `http://127.0.0.1:${info.port}/health`,
       {
         headers: { connection: 'close' },
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
       },
     )
+  } catch (error) {
+    const refused = ((error as Error).cause as NodeJS.ErrnoException | undefined)?.code === 'ECONNREFUSED'
+
+    return refused ? 'stopped' : 'silent'
+  }
+
+  try {
     const health = (await res.json()) as {
       hydras?: unknown
       pid?: unknown
     }
 
-    const serves = Array.isArray(health.hydras) && health.hydras.includes(hydraId)
-
-    return health.pid === info.pid && serves ? {
-      ...info,
-      url: `http://127.0.0.1:${info.port}/hydra/${hydraId}/`,
-      socket: socketPath({ hydraId }),
-    } : null
+    return health.pid === info.pid ? {
+      info,
+      hydras: Array.isArray(health.hydras) ? health.hydras.map(String) : [],
+    } : 'stopped'
   } catch {
-    return null
+    // Another program answers on the recorded port.
+    return 'stopped'
   }
+}
+
+// The server, with the address of this Hydra on it, or null when none answers or it does not serve this Hydra.
+export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
+  const server = await probeServer()
+
+  return typeof server !== 'string' && server.hydras.includes(hydraId) ? {
+    ...server.info,
+    url: `http://127.0.0.1:${server.info.port}/hydra/${hydraId}/`,
+    socket: socketPath({ hydraId }),
+  } : null
 }
 
 // Created on first use, readable only by this user. The WebSocket handshake requires it.

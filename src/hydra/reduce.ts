@@ -71,7 +71,8 @@ export function applyHydra({
     } else if (state.hydraOperation?.id === event.data.id) {
       delete state.hydraOperation
 
-      if (event.data.kind === 'compaction') {
+      // A compaction and an upgrade draw their own milestone lines.
+      if (event.data.kind === 'compaction' || event.data.kind === 'upgrade') {
         return true
       }
 

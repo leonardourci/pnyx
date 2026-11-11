@@ -7,8 +7,8 @@ import { WebSocket } from 'ws'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { localToken } from '#app/server-state.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { building } from '#test-harness/upgrade-fixture.ts'
-import { openPage, until } from '#test-harness/harness.ts'
+import { building, git } from '#test-harness/upgrade-fixture.ts'
+import { openPage, pnyxAxi, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 // The flows share one Pnyx folder, so each publishes what it needs on top of the last.
@@ -51,7 +51,17 @@ const send = ({
   ],
 })
 
-const upgrade = ({ s }: { s: Scenario }) => s.state().upgrades?.find(operation => operation.id === 'up')
+// The scenario's latest upgrade: the one /upgrade or `pnyx-axi upgrade` asked for last.
+const upgrade = ({ s }: { s: Scenario }) => s.state().upgrades?.at(-1)
+// The installed commit as git abbreviates it, which the milestone line and the command's answer show.
+const installed = () => git({
+  cwd: repo.install,
+  args: [
+    'rev-parse',
+    '--short=7',
+    'HEAD',
+  ],
+})
 // The chat's dividers, selected as the chat selects its messages: by the Hydra it shows.
 const dividers = ({ s }: { s: Scenario }) => (s.state().hydraMessages ?? [])
   .filter(message => message.hydra === hydraConfig({ state: s.state() }).hydra.id && message.kind === 'divider')
@@ -226,7 +236,7 @@ test(
     )
     assert.deepEqual(
       dividers({ s }),
-      [],
+      ['Upgrade failed'],
     )
   },
 )
@@ -249,6 +259,10 @@ test(
       id: 'up',
     })
     await buildRunning({ s })
+    assert.deepEqual(
+      dividers({ s }),
+      ['Upgrade started'],
+    )
     assert.match(
       await stop({ s }),
       /stopped: upgrade/,
@@ -280,7 +294,7 @@ test(
     )
     assert.deepEqual(
       dividers({ s }),
-      [],
+      ['Upgrade stopped'],
     )
   },
 )
@@ -429,6 +443,19 @@ test(
         state: 'waiting',
       })
       assert.ok(upgrade({ s })!.restartBy)
+      await send({
+        s: other,
+        text: '/upgrade',
+        id: 'second',
+      })
+      assert.deepEqual(
+        upgrade({ s: other })!.reasons,
+        ['Another upgrade is already running.'],
+      )
+      assert.equal(
+        upgrade({ s })!.state,
+        'waiting',
+      )
       const watchedUntil = Date.now() + STILL_WAITING_MS
       await until({
         what: 'the upgrade to keep waiting while the worker is mid-turn',
@@ -484,7 +511,7 @@ test(
       )
       assert.deepEqual(
         dividers({ s }),
-        ['Upgraded'],
+        [`Upgraded to ${installed()}`],
       )
     } finally {
       job.release()
@@ -698,10 +725,230 @@ test(
       )
       assert.deepEqual(
         dividers({ s }),
-        ['Upgraded'],
+        [`Upgraded to ${installed()}`],
       )
     } finally {
       held.release()
     }
+  },
+)
+
+// `pnyx-axi upgrade` as the owner's terminal runs it; it answers once the upgrade ended.
+const fromTerminal = ({
+  s,
+  args = [],
+}: {
+  s: Scenario
+  args?: string[]
+}) => s.owner({
+  args: [
+    'upgrade',
+    ...args,
+  ],
+})
+
+test(
+  'pnyx-axi upgrade hands the upgrade to the server, whose chat shows it, and answers once the server restarted',
+  async () => {
+    const s = await pnyx.scenario()
+    const restarts = pnyx.restarts()
+    const gate = join(
+      process.env.PNYX_HOME!,
+      `build-gate-${s.hydraId}`,
+    )
+    repo.publish({
+      files: {
+        'build.sh': gatedBuild({
+          gate,
+          version: 'handed',
+        }),
+      },
+      message: 'handed',
+    })
+    const answer = fromTerminal({ s })
+
+    try {
+      await buildRunning({ s })
+      assert.deepEqual(
+        dividers({ s }),
+        ['Upgrade started'],
+      )
+      assert.equal(
+        heard({
+          s,
+          text: '/upgrade',
+        }),
+        false,
+      )
+
+      openGate({ gate })
+      await waitFor({
+        s,
+        state: 'restarting',
+      })
+      assert.equal(
+        pnyx.restarts(),
+        restarts + 1,
+      )
+      await pnyx.restart()
+
+      const printed = await answer
+      assert.match(
+        printed,
+        /result: Upgraded/,
+      )
+      assert.match(
+        printed,
+        new RegExp(`commit: "?${installed()}`),
+      )
+      assert.equal(
+        upgrade({ s })!.state,
+        'done',
+      )
+      assert.equal(
+        repo.built(),
+        'handed',
+      )
+      assert.deepEqual(
+        dividers({ s }),
+        [`Upgraded to ${installed()}`],
+      )
+    } finally {
+      openGate({ gate })
+      // A failed assertion above is the failure to report; the command only has to end before the next flow.
+      await answer.catch(() => {})
+    }
+  },
+)
+
+test(
+  'pnyx-axi upgrade --stop stops the server\'s upgrade, the previous build stays, and the next upgrade finishes',
+  async () => {
+    const s = await pnyx.scenario()
+    const from = repo.head()
+    const built = repo.built()
+    const restarts = pnyx.restarts()
+    repo.publish({
+      files: { 'build.sh': HANGING_BUILD },
+      message: 'slow build again',
+    })
+    const stopped = fromTerminal({ s })
+
+    await buildRunning({ s })
+    assert.match(
+      await fromTerminal({
+        s,
+        args: ['--stop'],
+      }),
+      /stopped: upgrade/,
+    )
+    assert.match(
+      await stopped,
+      /Upgrade stopped; nothing changed/,
+    )
+    assert.equal(
+      upgrade({ s })!.rolledBack,
+      true,
+    )
+    assert.equal(
+      repo.head(),
+      from,
+    )
+    assert.equal(
+      repo.built(),
+      built,
+    )
+    assert.equal(
+      pnyx.restarts(),
+      restarts,
+    )
+    assert.deepEqual(
+      dividers({ s }),
+      ['Upgrade stopped'],
+    )
+    assert.match(
+      await fromTerminal({
+        s,
+        args: ['--stop'],
+      }),
+      /stopped: "?none/,
+    )
+
+    const to = repo.publish({
+      files: { 'build.sh': building({ version: 'after-stop' }) },
+      message: 'after stop',
+    })
+    const next = fromTerminal({
+      s,
+      args: ['--now'],
+    })
+
+    try {
+      await waitFor({
+        s,
+        state: 'restarting',
+      })
+      await pnyx.restart()
+      assert.match(
+        await next,
+        /result: Upgraded/,
+      )
+      assert.equal(
+        repo.head(),
+        to,
+      )
+      assert.equal(
+        repo.built(),
+        'after-stop',
+      )
+      assert.deepEqual(
+        dividers({ s }),
+        [
+          'Upgrade stopped',
+          `Upgraded to ${installed()}`,
+        ],
+      )
+    } finally {
+      // A failed assertion above is the failure to report; the command only has to end before the next flow.
+      await next.catch(() => {})
+    }
+  },
+)
+
+test(
+  'pnyx-axi upgrade for a Hydra the server does not run is refused, and nothing is upgraded in the terminal',
+  async () => {
+    const from = repo.head()
+    repo.publish({
+      files: { 'build.sh': building({ version: 'unserved' }) },
+      message: 'unserved',
+    })
+    const env = { ...process.env }
+    delete env.PNYX_ACTOR
+    const run = await pnyxAxi({
+      args: [
+        'upgrade',
+        '--hydra',
+        'no-such-hydra',
+      ],
+      env,
+    })
+
+    assert.match(
+      run.stdout,
+      /code: NOT_FOUND/,
+    )
+    assert.match(
+      run.stdout,
+      /The Pnyx server runs no Hydra no-such-hydra/,
+    )
+    assert.equal(
+      run.status,
+      1,
+    )
+    assert.equal(
+      repo.head(),
+      from,
+    )
   },
 )

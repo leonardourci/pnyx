@@ -1,4 +1,5 @@
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
+import { upgradeMilestoneIcon } from '#upgrade/model.ts'
 import { skillIcon } from './skill-icons.ts'
 import type { TurnActions } from '#hydra/conversation.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
@@ -103,6 +104,19 @@ function ChatMessageText({
       </SavedTaskLabels.Provider>
     </ChatTokensContext.Provider>
   )
+}
+
+// The icon beside a milestone line: the inscribe skill's, or the one of the upgrade's state.
+function MilestoneIcon({ text }: { text: string }) {
+  const inscribe = skillIcon({
+    skill: {
+      name: INSCRIBE_SKILL,
+      builtin: true,
+    },
+  })
+  const name = text === 'Inscribed' ? inscribe : upgradeMilestoneIcon({ text })
+
+  return name ? <Icon name={name} size={14} /> : null
 }
 
 export function Messages({
@@ -747,17 +761,7 @@ export function Messages({
             role="separator"
             aria-label={entry.text}
           >
-            {entry.text === 'Inscribed' && (
-              <Icon
-                name={skillIcon({
-                  skill: {
-                    name: INSCRIBE_SKILL,
-                    builtin: true,
-                  },
-                })}
-                size={14}
-              />
-            )}
+            <MilestoneIcon text={entry.text} />
             <span>{entry.text}</span>
           </div>
         ) : (
