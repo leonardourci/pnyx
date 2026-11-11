@@ -98,3 +98,55 @@ export interface UpgradeStatus {
   available: boolean
   checkedAt: string
 }
+
+// How much of a commit the chat and the CLI show, as `pnyx-axi --version` does.
+export const COMMIT_LENGTH = 7
+
+// The chat's milestone line for an upgrade, by how far it got, and the icon each draws.
+const MILESTONES = {
+  started: {
+    text: 'Upgrade started',
+    icon: 'upgrade',
+  },
+  done: {
+    text: 'Upgraded',
+    icon: 'check',
+  },
+  current: {
+    text: 'Already up to date',
+    icon: 'check',
+  },
+  failed: {
+    text: 'Upgrade failed',
+    icon: 'error',
+  },
+  refused: {
+    text: 'Upgrade not started',
+    icon: 'error',
+  },
+  stopped: {
+    text: 'Upgrade stopped',
+    icon: 'stop',
+  },
+} as const
+
+// One line per upgrade, reworded as it goes; a queued upgrade and a /restart have none.
+export function upgradeMilestone({ operation }: { operation: UpgradeOperation }) {
+  if (operation.state === 'queued' || operation.steps[0]?.step === 'restart') {
+    return undefined
+  }
+
+  if (operation.state === 'done' && operation.to) {
+    return `${MILESTONES.done.text} to ${operation.to.slice(
+      0,
+      COMMIT_LENGTH,
+    )}`
+  }
+
+  return operation.state === 'running' || operation.state === 'waiting' || operation.state === 'restarting'
+    ? MILESTONES.started.text
+    : MILESTONES[operation.state].text
+}
+
+export const upgradeMilestoneIcon = ({ text }: { text: string }) => Object.values(MILESTONES)
+  .find(milestone => text === milestone.text || text.startsWith(`${milestone.text} to `))?.icon
