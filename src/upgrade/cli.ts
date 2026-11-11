@@ -5,7 +5,7 @@ import { AxiError } from 'axi-sdk-js'
 import { flagError } from '#app/cli-support.ts'
 import { DEFAULT_HYDRA } from '#app/home-migration.ts'
 import { requestEnv } from '#app/request-context.ts'
-import { askHost, readServer } from '#app/server-state.ts'
+import { askHost, runningServer } from '#app/server-state.ts'
 import { send } from '#cli/client.ts'
 import { restartPnyx, untilAgentsIdle } from './restart.ts'
 import { RESTART_PENDING_MS, stopUpgrade } from './queue.ts'
@@ -14,7 +14,7 @@ import { COMMIT_LENGTH, STEP_WORDS, type UpgradeOperation, type UpgradeStep } fr
 
 export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check] [--now] [--stop] [--hydra <id>]
 Pulls main into the Pnyx folder, installs and builds, then restarts the server once no agent is mid-turn, or after 15 minutes at most; --now restarts right after the build. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting. An upgrade cut before it ended leaves the previous build working, and the next upgrade finishes it.
-The running server does the upgrade, as it does for /upgrade in Hydra's chat, and this command waits for it, printing each step as it goes; the Hydra's chat (--hydra, else the default one) shows it too. Ctrl-C only stops the waiting. With no server running, or one that does not answer, the upgrade runs here, and Ctrl-C stops it and goes back to the previous version.
+The running server does the upgrade, as it does for /upgrade in Hydra's chat, and this command waits for it, printing each step as it goes; the Hydra's chat (--hydra, else the default one) shows it too. Ctrl-C only stops the waiting. With no server running, or one that refuses the connection, the upgrade runs here, and Ctrl-C stops it and goes back to the previous version. A server that does not run the named Hydra refuses it.
 --stop stops the upgrade the server is pulling, installing or building, whichever Hydra asked for it, and goes back to the previous version; a built upgrade waiting to restart cannot be stopped.
 A folder off main or with local changes is refused. --check only says whether there is something to upgrade: a newer main, or an upgrade cut after its pull.
 `
@@ -32,6 +32,8 @@ const OPTIONS = {
 const WATCH_MS = 500
 // How long the server may stay silent, as it does while it restarts, before the terminal gives up.
 const SILENT_MS = 150_000
+// How long one question to the server may go unanswered; a busy server can hold its event loop for seconds.
+const ANSWER_MS = 60_000
 
 type Outcome = Pick<UpgradeOperation, 'steps' | 'to' | 'failed' | 'error' | 'reasons' | 'rolledBack'> & {
   state: UpgradeOperation['state']
@@ -164,14 +166,24 @@ async function handOver({
   const flags = now ? ['--now'] : []
 
   const ask = async ({ id }: { id: string }) => {
-    const server = await readServer({ hydraId })
+    const server = await runningServer()
 
     if (!server) {
       return undefined
     }
 
+    // Upgrading here instead would run beside the server's own upgrades, and no chat would show it.
+    if (!server.hydras.includes(hydraId)) {
+      throw new AxiError(
+        `The Pnyx server runs no Hydra ${hydraId}`,
+        'NOT_FOUND',
+        [`Name one it runs with --hydra (${server.hydras.join(', ')}), or run \`pnyx-axi stop\`, then \`pnyx-axi upgrade\` to upgrade without the server`],
+      )
+    }
+
     const answer = await send({
-      port: server.port,
+      port: server.info.port,
+      timeout: ANSWER_MS,
       argv: [
         'upgrade',
         '--event-id',
@@ -195,6 +207,10 @@ async function handOver({
   try {
     operation = await ask({ id: randomUUID() })
   } catch (error) {
+    if (error instanceof AxiError) {
+      throw error
+    }
+
     // Only a refused connection is sure to have started nothing; a second upgrade beside the server's would race it.
     if ((error as NodeJS.ErrnoException).code !== 'ECONNREFUSED') {
       throw new AxiError(

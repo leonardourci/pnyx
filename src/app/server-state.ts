@@ -31,25 +31,25 @@ export const socketPath = ({ hydraId }: { hydraId: string }) => join(
   'server.sock',
 )
 
-// The server, with the address of this Hydra on it, or null when none is running. Trusted only when the
-// recorded port answers /health with this pid and Hydra, so a server.json left by a server that died
+// The running server and the Hydras it serves, or null when none is running. Trusted only when the
+// recorded port answers /health with this pid, so a server.json left by a server that died
 // (its pid or port since reused) counts as not running. A dead pid is not asked at all.
-export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
-  let info: ServerInfo
-
+export async function runningServer(): Promise<{
+  info: ServerInfo
+  hydras: string[]
+} | null> {
   try {
-    info = JSON.parse(readFileSync(
+    const info = JSON.parse(readFileSync(
       infoPath(),
       'utf8',
     )) as ServerInfo
 
     // Inside the server, the Hydras it runs are known without asking itself.
     if (info.pid === process.pid) {
-      return hosts.has(hydraId) ? {
-        ...info,
-        url: `http://127.0.0.1:${info.port}/hydra/${hydraId}/`,
-        socket: socketPath({ hydraId }),
-      } : null
+      return {
+        info,
+        hydras: [...hosts.keys()],
+      }
     }
 
     process.kill(
@@ -68,16 +68,24 @@ export async function readServer({ hydraId }: { hydraId: string }): Promise<Serv
       pid?: unknown
     }
 
-    const serves = Array.isArray(health.hydras) && health.hydras.includes(hydraId)
-
-    return health.pid === info.pid && serves ? {
-      ...info,
-      url: `http://127.0.0.1:${info.port}/hydra/${hydraId}/`,
-      socket: socketPath({ hydraId }),
+    return health.pid === info.pid ? {
+      info,
+      hydras: Array.isArray(health.hydras) ? health.hydras.map(String) : [],
     } : null
   } catch {
     return null
   }
+}
+
+// The server, with the address of this Hydra on it, or null when none is running or it does not serve this Hydra.
+export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
+  const server = await runningServer()
+
+  return server?.hydras.includes(hydraId) ? {
+    ...server.info,
+    url: `http://127.0.0.1:${server.info.port}/hydra/${hydraId}/`,
+    socket: socketPath({ hydraId }),
+  } : null
 }
 
 // Created on first use, readable only by this user. The WebSocket handshake requires it.
