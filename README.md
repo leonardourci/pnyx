@@ -139,7 +139,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi` | Show the Hydra summary. |
 | `pnyx-axi serve` | Run the one server for every Hydra until stopped. |
 | `pnyx-axi stop` | Stop the running server. |
-| `pnyx-axi upgrade [--check]` | Pull, install and build the latest `main`, then restart the server. |
+| `pnyx-axi upgrade [--check] [--stop]` | Pull, install and build the latest `main`, then restart the server; `--stop` stops one that is running. |
 | `pnyx-axi hydra create\|list\|show\|set` | Create and configure Hydras. |
 | `pnyx-axi hydra start\|send\|messages\|check` | Start Hydra, queue a message in its chat, read the chat, or wait for changes. |
 | `pnyx-axi project add\|list\|set\|remove` | Attach, list, configure or detach projects. |
