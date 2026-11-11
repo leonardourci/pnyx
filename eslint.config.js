@@ -13,6 +13,8 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      'dist.next.*/**',
+      'dist.old/**',
       'node_modules/**',
     ],
   },

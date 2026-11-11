@@ -47,6 +47,7 @@ One folder per feature. Code for a feature lives in its folder. Inside a feature
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `inscribe`, `pnyx-set-up`) |
 | `src/test-harness/` | the shared test harness: the flow runner, fake agents and their recorded sessions, and fake tools |
+| `scripts/build/` | `pnpm run build`, which builds beside `dist` and replaces it only after the build passed |
 | `scripts/verification/` | the isolated test launcher and `pnpm verify` |
 | `scripts/fixtures/` | `pnpm refresh-agent-fixtures`, which records the agent sessions the fakes replay |
 | `e2e/` | the flows: user journeys across features through the real CLI, server and saved files, sharing one server |
