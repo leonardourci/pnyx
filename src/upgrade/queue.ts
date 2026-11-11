@@ -250,6 +250,32 @@ export function upgradeQueue({
     },
   })
 
+  const refuse = ({
+    id,
+    folder,
+    reason,
+  }: {
+    id: string
+    folder: string
+    reason: string
+  }) => {
+    const refused: UpgradeOperation = {
+      id,
+      state: 'refused',
+      folder,
+      queuedAt: at(),
+      endedAt: at(),
+      steps: [],
+      reasons: [reason],
+    }
+    record({
+      operation: refused,
+      eventId: `${id}:hosted`,
+    })
+
+    return refused
+  }
+
   return {
     restart({ id }: { id: string }) {
       if (state().upgrades?.some(operation => operation.id === id)) {
@@ -296,21 +322,20 @@ export function upgradeQueue({
       }
 
       if (!root) {
-        const refused: UpgradeOperation = {
+        return refuse({
           id,
-          state: 'refused',
           folder: '',
-          queuedAt: at(),
-          endedAt: at(),
-          steps: [],
-          reasons: ['This Pnyx server has no folder to upgrade.'],
-        }
-        record({
-          operation: refused,
-          eventId: `${id}:hosted`,
+          reason: 'This Pnyx server has no folder to upgrade.',
         })
+      }
 
-        return refused
+      // Another Hydra's upgrade still builds or waits to restart; a second build in the same folder would be cut by that restart.
+      if (upgradeUnderway()) {
+        return refuse({
+          id,
+          folder: shortHome({ path: root }),
+          reason: 'Another upgrade is already running.',
+        })
       }
 
       const queued: UpgradeOperation = {
