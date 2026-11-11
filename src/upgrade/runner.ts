@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { log } from '#app/diagnostics.ts'
 import { runFile } from '#app/run-process.ts'
+import { replaceFile } from '#store/storage.ts'
 import type { UpgradeOperation, UpgradeStep, UpgradeStepName } from './model.ts'
 
 // The checkout this pnyx-axi runs from: src/upgrade and dist/upgrade both sit two folders down.
@@ -114,8 +115,17 @@ const remoteMain = async ({ root }: { root: string }) => (await git({
 // Whether origin's main has a commit this checkout lacks; undefined when origin cannot be read.
 export async function upgradeAvailable({ root = PNYX_ROOT }: { root?: string } = {}) {
   try {
-    // A cut upgrade already pulled, so origin has nothing newer, yet the build is still the old one.
-    if (existsSync(await startCommitFile({ root }))) {
+    const head = await git({
+      root,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })
+    const began = cutCommit({ startFile: await startCommitFile({ root }) })
+
+    // A cut upgrade that already pulled leaves origin with nothing newer, yet the build is still the old one.
+    if (began !== undefined && began !== head) {
       return true
     }
 
@@ -124,14 +134,6 @@ export async function upgradeAvailable({ root = PNYX_ROOT }: { root?: string } =
     if (!remote) {
       return undefined
     }
-
-    const head = await git({
-      root,
-      args: [
-        'rev-parse',
-        'HEAD',
-      ],
-    })
 
     if (remote === head) {
       return false
@@ -229,6 +231,12 @@ const startCommitFile = async ({ root }: { root: string }) => resolve(
   }),
 )
 
+// The commit a cut upgrade began on; undefined when none was cut.
+const cutCommit = ({ startFile }: { startFile: string }) => existsSync(startFile) ? readFileSync(
+  startFile,
+  'utf8',
+).trim() : undefined
+
 export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'failed' | 'error' | 'reasons' | 'rolledBack'> & {
   state: 'upgraded' | 'current' | 'failed' | 'refused' | 'stopped'
 }
@@ -317,19 +325,21 @@ async function upgrade({
     }
   }
 
+  if (head === undefined) {
+    throw new Error('The current commit could not be read.')
+  }
+
   const startFile = await startCommitFile({ root })
-  const cut = existsSync(startFile)
+  const began = cutCommit({ startFile })
+  const cut = began !== undefined
   // An upgrade cut before it ended is finished from the commit it began on, or goes back to it.
-  const from = cut ? readFileSync(
-    startFile,
-    'utf8',
-  ).trim() : head
+  const from = cut ? began : head
 
   if (!cut) {
-    writeFileSync(
-      startFile,
-      `${from}\n`,
-    )
+    replaceFile({
+      path: startFile,
+      text: `${from}\n`,
+    })
   }
 
   const ended = ({ result }: { result: UpgradeResult }) => {
@@ -469,7 +479,7 @@ async function upgrade({
     try {
       await rollback({
         root,
-        from: from!,
+        from,
         // The cut upgrade may have installed already, whatever step failed in this one.
         failed: cut ? 'build' : failed,
       })
