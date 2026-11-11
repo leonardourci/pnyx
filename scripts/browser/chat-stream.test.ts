@@ -22,6 +22,9 @@ const CONTRACT_COPIES = 12
 const REPLAY_SCALE = 0.02
 const CONTRACT_START = 'STREAM_CONTRACT_START'
 const CONTRACT_END = 'STREAM_CONTRACT_END'
+// The bounds index.css gives an inline message image.
+const THUMBNAIL_MAX_WIDTH_PX = 240
+const THUMBNAIL_MAX_HEIGHT_PX = 160
 
 const recordedChat = JSON.parse(readFileSync(
   join(
@@ -1094,6 +1097,15 @@ test(
       const smallResponse = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: smallBlob });
       if (!smallResponse.ok) throw new Error('Small upload failed');
       window.imageFixture.small = (await smallResponse.json()).path;
+      const tall = document.createElement('canvas');
+      tall.width = 780; tall.height = 1688;
+      const tallCtx = tall.getContext('2d');
+      tallCtx.fillStyle = '#c5e8d6'; tallCtx.fillRect(0, 0, 780, 1688);
+      tallCtx.fillStyle = '#246c83'; tallCtx.fillRect(48, 96, 684, 240); tallCtx.fillRect(48, 400, 684, 1100);
+      const tallBlob = await new Promise(resolve => tall.toBlob(resolve, 'image/png'));
+      const tallResponse = await fetch('attachments', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'image/png' }, body: tallBlob });
+      if (!tallResponse.ok) throw new Error('Tall upload failed');
+      window.imageFixture.tall = (await tallResponse.json()).path;
       return 'chat-assertion-passed';
     }`,
       })
@@ -1102,7 +1114,7 @@ test(
       () => {
       const value = (() => {
         const src = window.imageFixture.path;
-        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))\\n\\nRemote images\\n\\n![HTTPS preview](https://images.invalid/preview.png)\\n\\n![HTTP preview](http://images.invalid/preview.png)\\n\\n![Relative remote preview](//images.invalid/preview.png)';
+        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nPhone screenshots\\n\\n[image: ' + window.imageFixture.tall + '] [image: ' + window.imageFixture.tall + '] ![Tall Markdown](' + window.imageFixture.tall + ')\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))\\n\\nRemote images\\n\\n![HTTPS preview](https://images.invalid/preview.png)\\n\\n![HTTP preview](http://images.invalid/preview.png)\\n\\n![Relative remote preview](//images.invalid/preview.png)';
       })();
       document.querySelector('[aria-label="Reply to Hydra"]').focus();
       document.execCommand('insertText', false, value);
@@ -1112,18 +1124,26 @@ test(
     `,
       })
       await waitFor({
-        what: 'the missing-image fallback and four inline images',
-        condition: `document.querySelectorAll('.hydra-chat .message-image img').length === 4
+        what: 'the missing-image fallback and seven inline images',
+        condition: `document.querySelectorAll('.hydra-chat .message-image img').length === 7
           && [...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Missing preview'))`,
       })
       await evaluate({
         script: `async () => {
       const images = [...document.querySelectorAll('.hydra-chat .message-image img')];
-      if (images.length !== 4) throw new Error('Expected four inline images, got ' + images.length);
+      if (images.length !== 7) throw new Error('Expected seven inline images, got ' + images.length);
       await Promise.all(images.map(image => image.decode()));
       const content = document.querySelector('.hydra-chat article.mine .markdown');
       if (content.querySelector('script, b, img[alt="Literal HTML"]') || window.imageUnsafe || !content.textContent.includes('<img src=')) throw new Error('HTML must stay literal text');
       if (images.some(image => !image.naturalWidth || image.getBoundingClientRect().width > image.closest('.markdown').getBoundingClientRect().width + 1)) throw new Error('Image exceeds bubble or failed');
+      const boxes = images.map(image => ({ image, box: image.getBoundingClientRect() }));
+      const oversized = boxes.find(({ box }) => box.width > ${THUMBNAIL_MAX_WIDTH_PX} + 1 || box.height > ${THUMBNAIL_MAX_HEIGHT_PX} + 1);
+      if (oversized) throw new Error('Thumbnail exceeds its bounds: ' + oversized.box.width + 'x' + oversized.box.height);
+      const stretched = boxes.find(({ image, box }) => Math.abs(box.width / box.height - image.naturalWidth / image.naturalHeight) > 0.02);
+      if (stretched) throw new Error('Thumbnail lost its aspect ratio: ' + stretched.box.width + 'x' + stretched.box.height);
+      const tall = boxes.filter(({ image }) => image.naturalHeight > image.naturalWidth);
+      if (tall.length !== 3 || tall.some(({ box }) => box.top !== tall[0].box.top)) throw new Error('Tall thumbnails must sit side by side');
+      if (tall[1].box.left < tall[0].box.right || tall[2].box.left < tall[1].box.right) throw new Error('Tall thumbnails overlap');
       if (![...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Unsafe preview'))) throw new Error('Unsafe source lacks fallback');
       if (content.querySelector('a[href="https://images.invalid/preview.png"]')?.textContent !== 'HTTPS preview') throw new Error('HTTPS image must stay a link');
       if (content.querySelector('a[href="http://images.invalid/preview.png"]')?.textContent !== 'HTTP preview') throw new Error('HTTP image must stay a link');
@@ -1135,11 +1155,14 @@ test(
       await capture({ name: 'images' })
       await run({
         args: ['run'],
-        input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.click('[aria-label="Show image: Markdown preview"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
+        input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.click('[aria-label="Show image: Tall Markdown"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
       })
       await evaluate({
-        script: `() => {
-      if (!document.querySelector('.image-viewer img').src.includes('/attachments/')) throw new Error('Viewer lost source');
+        script: `async () => {
+      const viewed = document.querySelector('.image-viewer img');
+      await viewed.decode();
+      if (!viewed.src.includes('/attachments/')) throw new Error('Viewer lost source');
+      if (viewed.getBoundingClientRect().height <= ${THUMBNAIL_MAX_HEIGHT_PX} * 2) throw new Error('Viewer must show the image larger than its thumbnail');
       if (!document.querySelector('.image-viewer [aria-label="Copy image"]')) throw new Error('Local viewer lost Copy image');
       return 'chat-assertion-passed';
     }`,
