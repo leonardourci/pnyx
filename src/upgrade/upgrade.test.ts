@@ -463,12 +463,31 @@ test(
 )
 
 test(
-  'the daily check sees only a newer origin main',
+  'the daily check sees only a newer origin main, not an upgrade cut before its pull',
   async () => {
+    // What an upgrade killed during its fetch leaves: the commit it began on, which is still the current one.
+    const began = join(
+      repo.install,
+      git({
+        cwd: repo.install,
+        args: [
+          'rev-parse',
+          '--git-path',
+          'pnyx-upgrade-from',
+        ],
+      }),
+    )
+    writeFileSync(
+      began,
+      `${repo.head()}\n`,
+    )
+
     assert.equal(
       await upgradeAvailable({ root: repo.install }),
       false,
     )
+
+    rmSync(began)
 
     git({
       cwd: repo.install,

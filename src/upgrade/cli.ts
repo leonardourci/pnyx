@@ -9,7 +9,7 @@ import { requestEnv } from '#app/request-context.ts'
 
 export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check] [--now]
 Pulls main into the Pnyx folder, installs and builds, then restarts the server once no agent is mid-turn, or after 15 minutes at most; --now restarts right after the build. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting. An upgrade cut before it ended leaves the previous build working, and the next upgrade finishes it.
-A folder off main or with local changes is refused. --check only says whether there is something to upgrade: a newer main, or an upgrade cut before it ended.
+A folder off main or with local changes is refused. --check only says whether there is something to upgrade: a newer main, or an upgrade cut after its pull.
 Ctrl-C stops it and goes back to the previous version; \`pnyx-axi hydra stop\` does the same for a /upgrade sent in Hydra's chat.
 `
 

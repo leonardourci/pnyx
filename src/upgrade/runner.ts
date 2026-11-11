@@ -112,7 +112,7 @@ const remoteMain = async ({ root }: { root: string }) => (await git({
   ],
 })).split(/\s/)[0] || undefined
 
-// Whether origin's main has a commit this checkout lacks; undefined when origin cannot be read.
+// Whether there is something to upgrade: a newer origin main, or a cut upgrade that already pulled; undefined when origin cannot be read.
 export async function upgradeAvailable({ root = PNYX_ROOT }: { root?: string } = {}) {
   try {
     const head = await git({
@@ -326,7 +326,11 @@ async function upgrade({
   }
 
   if (head === undefined) {
-    throw new Error('The current commit could not be read.')
+    return {
+      state: 'refused',
+      steps,
+      reasons: ['The current commit could not be read.'],
+    }
   }
 
   const startFile = await startCommitFile({ root })
