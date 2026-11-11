@@ -2471,7 +2471,7 @@ test(
   },
 )
 
-async function heldMerge({ t }: { t: TestContext }) {
+async function openMerge({ t }: { t: TestContext }) {
   const l = await lab({ t })
   const ref = await l.create({ key: 'merge-refusals' })
   const question = 'synthetic-merge-hold'
@@ -2493,6 +2493,20 @@ async function heldMerge({ t }: { t: TestContext }) {
       },
     },
   })
+
+  return {
+    l,
+    ref,
+    question,
+  }
+}
+
+async function heldMerge({ t }: { t: TestContext }) {
+  const {
+    l,
+    ref,
+    question,
+  } = await openMerge({ t })
   await l.task({
     args: [
       'answer',
@@ -2514,6 +2528,110 @@ async function heldMerge({ t }: { t: TestContext }) {
     held,
   }
 }
+
+test(
+  'a review note reaches Hydra alone without deciding, or with Merge or Hold',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+    } = await openMerge({ t })
+
+    const sent = ({ id }: { id: string }) => {
+      const message = l.state().hydraMessages?.find(message => message.id === id)
+
+      return {
+        text: message?.text,
+        choice: message?.choice,
+        answers: message?.answers,
+        discusses: message?.discusses,
+      }
+    }
+
+    await l.task({
+      args: [
+        'discuss-question',
+        ref,
+        question,
+        '--text',
+        'Highlight for the reviewer: this also changes the Hydra chat.',
+        '--event-id',
+        'note-alone',
+      ],
+      actor: 'web',
+    })
+    assert.deepEqual(
+      sent({ id: 'note-alone' }),
+      {
+        text: 'Highlight for the reviewer: this also changes the Hydra chat.',
+        choice: undefined,
+        answers: undefined,
+        discusses: question,
+      },
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--choice',
+        'Hold',
+        '--text',
+        'The caret still jumps; fix that first.',
+        '--event-id',
+        'note-hold',
+      ],
+      actor: 'web',
+    })
+    assert.deepEqual(
+      sent({ id: 'note-hold' }),
+      {
+        text: 'The caret still jumps; fix that first.',
+        choice: 'Hold',
+        answers: question,
+        discusses: undefined,
+      },
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
+
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--choice',
+        'Merge',
+        '--text',
+        'Fixed now. Follow up on paste separately.',
+        '--event-id',
+        'note-merge',
+      ],
+      actor: 'web',
+    })
+    assert.deepEqual(
+      sent({ id: 'note-merge' }),
+      {
+        text: 'Fixed now. Follow up on paste separately.',
+        choice: 'Merge',
+        answers: question,
+        discusses: undefined,
+      },
+    )
+    assert.ok(mergeApproval({
+      card: l.card({ ref }),
+      url: 'https://github.com/synthetic/question-lab/pull/281',
+    }))
+  },
+)
 
 test(
   'the owner can lift Hold explicitly from the review controls without allowing agent or resend bypasses',

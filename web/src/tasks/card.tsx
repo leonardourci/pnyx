@@ -325,8 +325,6 @@ export function HydraCard({
 
   if (deferred) {
     answerLabel = 'View question'
-  } else if (asked?.kind === 'merge') {
-    answerLabel = 'Review'
   }
 
   const deliveryText = delivery?.state === 'failed'

@@ -25,12 +25,14 @@ export function Tooltip({
   children,
   interactive = false,
   label,
+  disabled = false,
 }: {
   content: ReactNode
   delay?: number
   children: ReactNode
   interactive?: boolean
   label?: string
+  disabled?: boolean
 }) {
   const id = useId()
   const anchor = useRef<HTMLSpanElement>(null)
@@ -38,15 +40,26 @@ export function Tooltip({
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [
-    visible,
+    requested,
     setVisible,
   ] = useState(false)
+  const visible = requested && !disabled
 
   const hide = () => {
     clearTimeout(timer.current)
     clearTimeout(closeTimer.current)
     setVisible(false)
   }
+
+  // Disabling drops a tooltip already showing or waiting on its delay, so it needs a new hover or focus to return.
+  useEffect(
+    () => {
+      if (disabled) {
+        hide()
+      }
+    },
+    [disabled],
+  )
 
   const leave = () => {
     clearTimeout(closeTimer.current)
@@ -63,6 +76,10 @@ export function Tooltip({
   }
 
   const show = () => {
+    if (disabled) {
+      return
+    }
+
     clearTimeout(closeTimer.current)
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,
