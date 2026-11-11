@@ -44,7 +44,7 @@ commands:
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the application and the agents it runs
   restart                                    Restart the application; a turn it cut resumes from its saved session
-  upgrade [--check] [--now]                  Pull, install and build the latest main, then restart once no agent is mid-turn
+  upgrade [--check] [--now] [--stop]         Pull, install and build the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
   setup [check|skills|hooks]                 Install login services, list missing setup, or install skills or hooks
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up

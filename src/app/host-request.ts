@@ -65,6 +65,15 @@ export async function hostRequestUnlocked({
     case 'stop':
       return host.stop()
 
+    case 'upgrade':
+      return host.upgrade({
+        id: field({
+          body,
+          name: 'id',
+        })!,
+        now: body.now === true,
+      })
+
     case 'release':
       return host.release({
         task: field({

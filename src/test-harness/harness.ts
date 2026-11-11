@@ -104,7 +104,7 @@ interface Run {
 }
 
 // One `pnyx-axi` process. Async, so the server in this process keeps answering it.
-function pnyxAxi({
+export function pnyxAxi({
   args,
   env,
   input,

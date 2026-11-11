@@ -61,6 +61,14 @@ export interface Host {
     choice: 'inscribe' | 'compact' | 'neither'
   }): Record<string, unknown>
   stop(): Promise<Record<string, unknown>>
+  // Asks for an upgrade as /upgrade does and answers with the one to watch; now restarts a built one at once.
+  upgrade({
+    id,
+    now,
+  }: {
+    id: string
+    now?: boolean
+  }): { operation: import('#upgrade/model.ts').UpgradeOperation }
   compact({
     card,
     sendNow,
