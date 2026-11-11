@@ -21,7 +21,7 @@ after(() => rmSync(
   },
 ))
 
-const BUILDING_MS = 30_000
+const REACHED_MS = 30_000
 
 let repo: ReturnType<typeof upgradeRepo>
 
@@ -210,26 +210,9 @@ test(
   },
 )
 
-// Starts an upgrade to a new commit in its own process and kills it mid-build, as a stopped session would.
-async function cutUpgrade() {
-  const hold = join(
-    repo.install,
-    'hold',
-  )
-  const building = join(
-    repo.install,
-    'building',
-  )
-  const to = repo.publish({
-    // Hangs while the hold file is there; like the real build, it writes nothing before it passes.
-    files: { 'build.sh': 'if [ -f hold ]; then touch building; exec sleep 30; fi\necho two > built.txt\n' },
-    message: 'two',
-  })
-  writeFileSync(
-    hold,
-    '',
-  )
-  const caller = spawn(
+// Runs an upgrade in its own process and kills it once it wrote the given file, as a stopped session would.
+const killedUpgrade = ({ reached }: { reached: string }) => killMidway({
+  child: spawn(
     process.execPath,
     [
       '--conditions=source',
@@ -244,11 +227,31 @@ async function cutUpgrade() {
       detached: true,
       stdio: 'ignore',
     },
+  ),
+  reached,
+  timeoutMs: REACHED_MS,
+})
+
+// Publishes a new commit and cuts the upgrade to it mid-build.
+async function cutUpgrade() {
+  const hold = join(
+    repo.install,
+    'hold',
   )
-  await killMidway({
-    child: caller,
-    reached: building,
-    timeoutMs: BUILDING_MS,
+  const to = repo.publish({
+    // Hangs while the hold file is there; like the real build, it writes nothing before it passes.
+    files: { 'build.sh': 'if [ -f hold ]; then touch building; exec sleep 30; fi\necho two > built.txt\n' },
+    message: 'two',
+  })
+  writeFileSync(
+    hold,
+    '',
+  )
+  await killedUpgrade({
+    reached: join(
+      repo.install,
+      'building',
+    ),
   })
   rmSync(hold)
 
@@ -339,6 +342,105 @@ test(
     assert.equal(
       repo.built(),
       'one',
+    )
+  },
+)
+
+test(
+  'an upgrade killed during its fetch leaves nothing pending',
+  async () => {
+    const fetching = join(
+      root,
+      `fetching-${repo.head()}`,
+    )
+    const slowOrigin = `${fetching}.sh`
+    writeFileSync(
+      slowOrigin,
+      `#!/bin/sh\ntouch ${fetching}\nexec sleep 30\n`,
+      { mode: 0o755 },
+    )
+    git({
+      cwd: repo.install,
+      args: [
+        'config',
+        'remote.origin.uploadpack',
+        slowOrigin,
+      ],
+    })
+    await killedUpgrade({ reached: fetching })
+    git({
+      cwd: repo.install,
+      args: [
+        'config',
+        '--unset',
+        'remote.origin.uploadpack',
+      ],
+    })
+
+    assert.equal(
+      await upgradeAvailable({ root: repo.install }),
+      false,
+    )
+    assert.equal(
+      (await runUpgrade({ root: repo.install })).state,
+      'current',
+    )
+  },
+)
+
+test(
+  'an upgrade that could not go back is still pending, and the next one starts from the same commit',
+  async () => {
+    const from = repo.head()
+    repo.publish({
+      // Edits a file the new commit added, which the reset back to the old commit refuses to discard.
+      files: {
+        'notes.txt': 'two\n',
+        'build.sh': 'echo edited > notes.txt\necho "error TS2322" >&2\nexit 2\n',
+      },
+      message: 'broken build',
+    })
+
+    const failed = await runUpgrade({ root: repo.install })
+
+    assert.equal(
+      failed.state,
+      'failed',
+    )
+    assert.equal(
+      failed.rolledBack,
+      false,
+    )
+    assert.equal(
+      await upgradeAvailable({ root: repo.install }),
+      true,
+    )
+
+    git({
+      cwd: repo.install,
+      args: [
+        'checkout',
+        'notes.txt',
+      ],
+    })
+    repo.publish({
+      files: { 'build.sh': building({ version: 'three' }) },
+      message: 'three',
+    })
+
+    const result = await runUpgrade({ root: repo.install })
+
+    assert.equal(
+      result.state,
+      'upgraded',
+    )
+    assert.equal(
+      result.from,
+      from,
+    )
+    assert.equal(
+      repo.built(),
+      'three',
     )
   },
 )
@@ -463,31 +565,12 @@ test(
 )
 
 test(
-  'the daily check sees only a newer origin main, not an upgrade cut before its pull',
+  'the daily check sees only a newer origin main',
   async () => {
-    // What an upgrade killed during its fetch leaves: the commit it began on, which is still the current one.
-    const began = join(
-      repo.install,
-      git({
-        cwd: repo.install,
-        args: [
-          'rev-parse',
-          '--git-path',
-          'pnyx-upgrade-from',
-        ],
-      }),
-    )
-    writeFileSync(
-      began,
-      `${repo.head()}\n`,
-    )
-
     assert.equal(
       await upgradeAvailable({ root: repo.install }),
       false,
     )
-
-    rmSync(began)
 
     git({
       cwd: repo.install,
