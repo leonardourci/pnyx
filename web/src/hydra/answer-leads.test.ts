@@ -115,7 +115,6 @@ test(
           choice: 'Merge',
           recommended: undefined,
           discussion: false,
-          bare: false,
         },
         'msg-Highlight: this touches the chat.': {
           task: card.id,
@@ -127,7 +126,6 @@ test(
           choice: undefined,
           recommended: undefined,
           discussion: true,
-          bare: false,
         },
         'msg-CSV, with a header row.': {
           task: card.id,
@@ -139,7 +137,6 @@ test(
           choice: undefined,
           recommended: 2,
           discussion: false,
-          bare: false,
         },
         'msg-Merge': {
           task: card.id,
@@ -151,7 +148,6 @@ test(
           choice: 'Merge',
           recommended: undefined,
           discussion: false,
-          bare: true,
         },
       },
     )
