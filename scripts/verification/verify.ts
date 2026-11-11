@@ -69,6 +69,14 @@ const STATIC_CHECKS: Step[] = [
       '.',
     ],
   },
+  {
+    name: 'CSS lint',
+    command: 'pnpm',
+    args: [
+      'run',
+      'lint:css',
+    ],
+  },
 ]
 const BUILD_STEP: Step = {
   name: 'build',
