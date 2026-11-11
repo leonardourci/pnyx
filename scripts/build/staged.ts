@@ -70,6 +70,8 @@ export function stagedBuild({
   }
 
   try {
+    // A folder a killed build left can carry this process's number once the system reuses it.
+    remove({ folder: staged })
     build({ out: staged })
     remove({ folder: previous })
 
