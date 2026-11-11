@@ -10,8 +10,6 @@ export interface AnswerLead {
   choice?: string
   recommended?: number
   discussion: boolean
-  // The message only repeats its choice, which the choices already show.
-  bare: boolean
 }
 
 export function answerLeads({
@@ -43,7 +41,6 @@ export function answerLeads({
       choice: message.choice,
       recommended: ask.recommended,
       discussion,
-      bare: !!message.choice && message.text.trim() === message.choice,
     }
 
     return [

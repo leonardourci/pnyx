@@ -180,7 +180,6 @@ export function Messages({
   const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
   const leadOf = ({ entry }: { entry: ChatEntry }) =>
     entry.reference ? answerLeads?.get(entry.reference) : undefined
-  const choiceOnly = ({ entry }: { entry: ChatEntry }) => !!leadOf({ entry })?.bare
 
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
@@ -798,7 +797,7 @@ export function Messages({
               {taskReferences && !inline?.has(entry.id) && (
                 <MessageLead entry={entry} lead={leadOf({ entry })} />
               )}
-              {inline?.get(entry.id) ?? (!choiceOnly({ entry }) && (
+              {inline?.get(entry.id) ?? (
                 <ChatMessageText
                   catalog={ownMessage({ entry }) ? catalog : undefined}
                   colors={labelColors}
@@ -881,7 +880,7 @@ export function Messages({
                     )
                   }}
                 />
-              ))}
+              )}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([
