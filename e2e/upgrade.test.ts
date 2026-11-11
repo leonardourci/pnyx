@@ -8,7 +8,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { localToken } from '#app/server-state.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { building, git } from '#test-harness/upgrade-fixture.ts'
-import { openPage, until } from '#test-harness/harness.ts'
+import { openPage, pnyxAxi, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 // The flows share one Pnyx folder, so each publishes what it needs on top of the last.
@@ -443,6 +443,19 @@ test(
         state: 'waiting',
       })
       assert.ok(upgrade({ s })!.restartBy)
+      await send({
+        s: other,
+        text: '/upgrade',
+        id: 'second',
+      })
+      assert.deepEqual(
+        upgrade({ s: other })!.reasons,
+        ['Another upgrade is already running.'],
+      )
+      assert.equal(
+        upgrade({ s })!.state,
+        'waiting',
+      )
       const watchedUntil = Date.now() + STILL_WAITING_MS
       await until({
         what: 'the upgrade to keep waiting while the worker is mid-turn',
@@ -899,5 +912,43 @@ test(
       // A failed assertion above is the failure to report; the command only has to end before the next flow.
       await next.catch(() => {})
     }
+  },
+)
+
+test(
+  'pnyx-axi upgrade for a Hydra the server does not run is refused, and nothing is upgraded in the terminal',
+  async () => {
+    const from = repo.head()
+    repo.publish({
+      files: { 'build.sh': building({ version: 'unserved' }) },
+      message: 'unserved',
+    })
+    const env = { ...process.env }
+    delete env.PNYX_ACTOR
+    const run = await pnyxAxi({
+      args: [
+        'upgrade',
+        '--hydra',
+        'no-such-hydra',
+      ],
+      env,
+    })
+
+    assert.match(
+      run.stdout,
+      /code: NOT_FOUND/,
+    )
+    assert.match(
+      run.stdout,
+      /The Pnyx server runs no Hydra no-such-hydra/,
+    )
+    assert.equal(
+      run.status,
+      1,
+    )
+    assert.equal(
+      repo.head(),
+      from,
+    )
   },
 )

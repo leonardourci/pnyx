@@ -88,6 +88,40 @@ const pnyx = scenarioGroup({
 })
 
 test(
+  'with the server stopped, pnyx-axi upgrade and upgrade --stop run in the terminal',
+  async () => {
+    const s = await pnyx.scenario()
+    let upgraded = ''
+    let stopped = ''
+
+    await pnyx.restart({
+      whileStopped: async () => {
+        upgraded = await s.owner({ args: ['upgrade'] })
+        stopped = await s.owner({
+          args: [
+            'upgrade',
+            '--stop',
+          ],
+        })
+      },
+    })
+
+    assert.match(
+      upgraded,
+      /result: "?none: Pnyx is already up to date/,
+    )
+    assert.match(
+      stopped,
+      /stopped: "?none: the Pnyx server is not pulling, installing or building an upgrade/,
+    )
+    assert.equal(
+      s.state().upgrades,
+      undefined,
+    )
+  },
+)
+
+test(
   'a merged skill rename leaves the running install untouched and Hydra responding',
   async () => {
     const s = await pnyx.scenario()
