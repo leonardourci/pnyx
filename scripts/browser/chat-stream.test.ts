@@ -22,9 +22,8 @@ const CONTRACT_COPIES = 12
 const REPLAY_SCALE = 0.02
 const CONTRACT_START = 'STREAM_CONTRACT_START'
 const CONTRACT_END = 'STREAM_CONTRACT_END'
-// The bounds index.css gives an inline message image.
-const THUMBNAIL_MAX_WIDTH_PX = 240
-const THUMBNAIL_MAX_HEIGHT_PX = 160
+// An image chip is one text line tall; anything taller is a picture laid out in the message.
+const CHIP_MAX_HEIGHT_PX = 32
 
 const recordedChat = JSON.parse(readFileSync(
   join(
@@ -1114,7 +1113,7 @@ test(
       () => {
       const value = (() => {
         const src = window.imageFixture.path;
-        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nPhone screenshots\\n\\n[image: ' + window.imageFixture.tall + '] [image: ' + window.imageFixture.tall + '] ![Tall Markdown](' + window.imageFixture.tall + ')\\n\\nWide row: [image: ' + src + '] [image: ' + src + ']\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))\\n\\nRemote images\\n\\n![HTTPS preview](https://images.invalid/preview.png)\\n\\n![HTTP preview](http://images.invalid/preview.png)\\n\\n![Relative remote preview](//images.invalid/preview.png)';
+        return 'Image rendering examples\\n\\nMarkdown image\\n\\n![Markdown preview](' + src + ')\\n\\nImage token\\n\\n[image: ' + src + ']\\n\\nFiles:\\n- ' + src + '\\n- ' + window.imageFixture.small + '\\n\\nPhone screenshots\\n\\n[image: ' + window.imageFixture.tall + '] [image: ' + window.imageFixture.tall + '] ![Tall Markdown](' + window.imageFixture.tall + ')\\n\\nBroken image\\n\\n![Missing preview](' + src.replace(/[^/]+$/, '00000000-0000-4000-8000-000000000000.png') + ')\\n\\n<img src="' + src + '" alt="Literal HTML" onerror="window.imageUnsafe=true">\\n\\n<script>window.imageUnsafe=true</script><b>Escaped HTML</b>\\n\\n![Unsafe preview](javascript:alert(1))\\n\\nRemote images\\n\\n![HTTPS preview](https://images.invalid/preview.png)\\n\\n![HTTP preview](http://images.invalid/preview.png)\\n\\n![Relative remote preview](//images.invalid/preview.png)';
       })();
       document.querySelector('[aria-label="Reply to Hydra"]').focus();
       document.execCommand('insertText', false, value);
@@ -1124,31 +1123,30 @@ test(
     `,
       })
       await waitFor({
-        what: 'the missing-image fallback and nine inline images',
-        condition: `document.querySelectorAll('.hydra-chat .message-image img').length === 9
-          && [...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Missing preview'))`,
+        what: 'seven image chips with their previews and one without',
+        condition: `document.querySelectorAll('.hydra-chat article.mine .attachment-card').length === 8
+          && document.querySelectorAll('.hydra-chat article.mine .card-slot img').length === 7
+          && document.querySelectorAll('.hydra-chat article.mine .card-slot img:not([data-loading])').length === 7`,
       })
       await evaluate({
         script: `async () => {
-      const images = [...document.querySelectorAll('.hydra-chat .message-image img')];
-      if (images.length !== 9) throw new Error('Expected nine inline images, got ' + images.length);
-      await Promise.all(images.map(image => image.decode()));
       const content = document.querySelector('.hydra-chat article.mine .markdown');
+      const chips = [...content.querySelectorAll('.attachment-card')];
+      const images = [...content.querySelectorAll('.card-slot img')];
+      if (chips.length !== 8 || images.length !== 7) throw new Error('Expected eight chips and seven previews, got ' + chips.length + ' and ' + images.length);
+      await Promise.all(images.map(image => image.decode()));
       if (content.querySelector('script, b, img[alt="Literal HTML"]') || window.imageUnsafe || !content.textContent.includes('<img src=')) throw new Error('HTML must stay literal text');
-      if (images.some(image => !image.naturalWidth || image.getBoundingClientRect().width > image.closest('.markdown').getBoundingClientRect().width + 1)) throw new Error('Image exceeds bubble or failed');
-      const boxes = images.map(image => ({ image, box: image.getBoundingClientRect() }));
-      const oversized = boxes.find(({ box }) => box.width > ${THUMBNAIL_MAX_WIDTH_PX} + 1 || box.height > ${THUMBNAIL_MAX_HEIGHT_PX} + 1);
-      if (oversized) throw new Error('Thumbnail exceeds its bounds: ' + oversized.box.width + 'x' + oversized.box.height);
-      const stretched = boxes.find(({ image, box }) => Math.abs(box.width / box.height - image.naturalWidth / image.naturalHeight) > 0.02);
-      if (stretched) throw new Error('Thumbnail lost its aspect ratio: ' + stretched.box.width + 'x' + stretched.box.height);
-      const small = boxes.filter(({ image }) => image.naturalWidth === 120);
-      if (small.length !== 1 || Math.abs(small[0].box.width - 120) > 1 || Math.abs(small[0].box.height - 36) > 1) throw new Error('An image smaller than the bounds must keep its own size');
-      const tall = boxes.filter(({ image }) => image.naturalHeight > image.naturalWidth);
-      if (tall.length !== 3 || tall.some(({ box }) => box.top !== tall[0].box.top)) throw new Error('Tall thumbnails must sit side by side');
-      if (tall[1].box.left < tall[0].box.right || tall[2].box.left < tall[1].box.right) throw new Error('Tall thumbnails overlap');
-      const wideRow = [...content.querySelectorAll('p')].find(paragraph => paragraph.textContent.includes('Wide row'));
-      const wide = [...wideRow.querySelectorAll('.message-image img')].map(image => image.getBoundingClientRect());
-      if (wide.length !== 2 || wide[1].top < wide[0].bottom) throw new Error('Thumbnails wider than the bubble together must wrap');
+      const bubble = content.getBoundingClientRect();
+      const boxes = chips.map(chip => chip.getBoundingClientRect());
+      const oversized = boxes.find(box => box.height > ${CHIP_MAX_HEIGHT_PX} || box.right > bubble.right + 1);
+      if (oversized) throw new Error('Image chip is larger than a chip: ' + oversized.width + 'x' + oversized.height);
+      const labels = chips.map(chip => chip.textContent);
+      if (!labels.includes('Markdown preview') || !labels.includes('Image 1')) throw new Error('Chips lost their labels: ' + labels.join(', '));
+      const row = [...content.querySelectorAll('p')].find(paragraph => paragraph.querySelectorAll('.attachment-card').length === 3);
+      const tall = [...row.querySelectorAll('.attachment-card')].map(chip => chip.getBoundingClientRect());
+      if (tall[1].top !== tall[0].top || tall[2].top !== tall[0].top) throw new Error('Chips written in a row must sit side by side');
+      const missing = chips.find(chip => chip.textContent === 'Missing preview');
+      if (!missing || missing.querySelector('img')) throw new Error('A missing image must keep its chip without a preview');
       if (![...document.querySelectorAll('.message-image-fallback')].some(node => node.textContent.includes('Unsafe preview'))) throw new Error('Unsafe source lacks fallback');
       if (content.querySelector('a[href="https://images.invalid/preview.png"]')?.textContent !== 'HTTPS preview') throw new Error('HTTPS image must stay a link');
       if (content.querySelector('a[href="http://images.invalid/preview.png"]')?.textContent !== 'HTTP preview') throw new Error('HTTP image must stay a link');
@@ -1160,14 +1158,14 @@ test(
       await capture({ name: 'images' })
       await run({
         args: ['run'],
-        input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.click('[aria-label="Show image: Tall Markdown"]'); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
+        input: `await page.wait('.message-image-fallback', ${PAINT_TIMEOUT_MS}); await page.eval(() => [...document.querySelectorAll('.hydra-chat .attachment-card .card-main')].find(chip => chip.textContent === 'Tall Markdown').click()); await page.wait('.image-viewer img', ${PAINT_TIMEOUT_MS});`,
       })
       await evaluate({
         script: `async () => {
       const viewed = document.querySelector('.image-viewer img');
       await viewed.decode();
       if (!viewed.src.includes('/attachments/')) throw new Error('Viewer lost source');
-      if (viewed.getBoundingClientRect().height <= ${THUMBNAIL_MAX_HEIGHT_PX} * 2) throw new Error('Viewer must show the image larger than its thumbnail');
+      if (viewed.getBoundingClientRect().height <= ${CHIP_MAX_HEIGHT_PX} * 4) throw new Error('Viewer must show the image at full size, not as a chip');
       if (!document.querySelector('.image-viewer [aria-label="Copy image"]')) throw new Error('Local viewer lost Copy image');
       return 'chat-assertion-passed';
     }`,
@@ -1212,23 +1210,24 @@ Again: [image: ${src}]
       })
       await s.chat({ text: 'Show the Hydra images' })
       await waitFor({
-        what: 'automatic token and file images in the Hydra reply',
-        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 6',
+        what: 'token and file image chips in the Hydra reply',
+        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .card-slot img:not([data-loading])\').length === 6',
       })
       await evaluate({
         script: `async () => {
         const reply = [...document.querySelectorAll('.hydra-chat article[aria-label="Hydra"]')].find(row => row.textContent.includes('Hydra image reply'));
-        await Promise.all([...reply.querySelectorAll('.message-image img')].map(image => image.decode()));
-        if (!reply.querySelector('img[alt="Image 1"]')) throw new Error('Image token did not render inline');
-        if (!reply.querySelector('li:first-child .message-image img')) throw new Error('Files path did not render inline');
-        if (reply.querySelectorAll('.attachment-card').length !== 1) throw new Error('Only the unservable file should stay a chip');
+        await Promise.all([...reply.querySelectorAll('.card-slot img')].map(image => image.decode()));
+        const labels = [...reply.querySelectorAll('.attachment-card')].map(chip => chip.textContent);
+        if (!labels.includes('Image 1')) throw new Error('Image token did not render as a chip: ' + labels.join(', '));
+        if (!reply.querySelector('li:first-child .card-slot img')) throw new Error('Files path did not render as a chip');
+        if (labels.length !== 7 || reply.querySelectorAll('.card-slot img').length !== 6) throw new Error('Only the unservable file should lack a preview');
         return 'chat-assertion-passed';
       }`,
       })
       await capture({ name: 'hydra-images' })
       await evaluate({
         script: `() => {
-          document.querySelector('.hydra-chat article[aria-label="Hydra"] .message-image').click();
+          document.querySelector('.hydra-chat article[aria-label="Hydra"] .attachment-card .card-main').click();
           return 'chat-assertion-passed';
         }`,
       })
@@ -1243,8 +1242,8 @@ Again: [image: ${src}]
         ],
       })
       await waitFor({
-        what: 'all automatic image mentions remain inline after reload',
-        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .message-image img\').length === 6',
+        what: 'every image chip in the Hydra reply after reload',
+        condition: 'document.querySelectorAll(\'.hydra-chat article[aria-label="Hydra"] .card-slot img:not([data-loading])\').length === 6',
       })
 
       const folder = s.folder({ name: 'image-worker' })
@@ -1303,16 +1302,16 @@ Again: [image: ${src}]`
       })
       await waitFor({
         what: 'every image mention in the task worker message',
-        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img').length === 3`,
+        condition: `document.querySelectorAll('[data-task="${task.id}"] .card-current-state .card-slot img:not([data-loading])').length === 3`,
       })
       await evaluate({
         script: `async () => {
         document.querySelector('[data-task="${task.id}"] .card-current-state .show-more')?.click();
-        const images = [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')];
-        await Promise.all(images.map(image => image.decode()));
-        if (!images.some(image => image.alt === 'Worker Markdown image') || images.length !== 3) throw new Error('Worker image syntax lost');
-        const oversized = images.map(image => image.getBoundingClientRect()).find(box => box.width > ${THUMBNAIL_MAX_WIDTH_PX} + 1 || box.height > ${THUMBNAIL_MAX_HEIGHT_PX} + 1);
-        if (oversized) throw new Error('Current state thumbnail exceeds its bounds: ' + oversized.width + 'x' + oversized.height);
+        const chips = [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .attachment-card')];
+        await Promise.all(chips.map(chip => chip.querySelector('img').decode()));
+        if (!chips.some(chip => chip.textContent === 'Worker Markdown image') || chips.length !== 3) throw new Error('Worker image syntax lost');
+        const oversized = chips.map(chip => chip.getBoundingClientRect()).find(box => box.height > ${CHIP_MAX_HEIGHT_PX});
+        if (oversized) throw new Error('Current state image chip is larger than a chip: ' + oversized.width + 'x' + oversized.height);
         return 'chat-assertion-passed';
       }`,
       })
