@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
-import { setTimeout as delay } from 'node:timers/promises'
 import { upgrade as upgradeCli } from './cli.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
 import { building, git, upgradeRepo } from '#test-harness/upgrade-fixture.ts'
+import { killMidway } from '#test-harness/kill-midway.ts'
 
 const root = mkdtempSync(join(
   tmpdir(),
@@ -245,27 +245,11 @@ async function cutUpgrade() {
       stdio: 'ignore',
     },
   )
-  const closed = new Promise(resolve => caller.once(
-    'close',
-    resolve,
-  ))
-  const deadline = Date.now() + BUILDING_MS
-
-  try {
-    while (!existsSync(building) && Date.now() < deadline) {
-      await delay(20)
-    }
-
-    assert.ok(existsSync(building))
-  } finally {
-    // The whole group, as a stopped session takes the upgrade and its build down with it.
-    process.kill(
-      -caller.pid!,
-      'SIGKILL',
-    )
-    await closed
-  }
-
+  await killMidway({
+    child: caller,
+    reached: building,
+    timeoutMs: BUILDING_MS,
+  })
   rmSync(hold)
 
   return to

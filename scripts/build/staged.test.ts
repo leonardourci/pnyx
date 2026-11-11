@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
-import { setTimeout as delay } from 'node:timers/promises'
 import { stagedBuild } from './staged.ts'
+import { killMidway } from '#test-harness/kill-midway.ts'
 
 const CLI = 'cli/pnyx-axi.js'
 const WRITTEN_MS = 10_000
@@ -163,27 +163,11 @@ test(
         stdio: 'ignore',
       },
     )
-    const closed = new Promise(resolve => child.once(
-      'close',
-      resolve,
-    ))
-    const deadline = Date.now() + WRITTEN_MS
-
-    try {
-      while (!existsSync(written) && Date.now() < deadline) {
-        await delay(20)
-      }
-
-      assert.ok(existsSync(written))
-    } finally {
-      // The whole group, as a stopped session takes its build down with it.
-      process.kill(
-        -child.pid!,
-        'SIGKILL',
-      )
-      await closed
-    }
-
+    await killMidway({
+      child,
+      reached: written,
+      timeoutMs: WRITTEN_MS,
+    })
     rmSync(written)
 
     assert.equal(
