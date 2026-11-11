@@ -31,15 +31,17 @@ export const socketPath = ({ hydraId }: { hydraId: string }) => join(
   'server.sock',
 )
 
-// The running server and the Hydras it serves, or null when none is running. Trusted only when the
-// recorded port answers /health with this pid, so a server.json left by a server that died
-// (its pid or port since reused) counts as not running. A dead pid is not asked at all.
-export async function runningServer(): Promise<{
+// The running server and the Hydras it serves. stopped: none is running, which a server.json left by a server
+// that died (its pid or port since reused) also counts as; a dead pid is not asked at all.
+// silent: its process is alive but /health did not answer, so what it is doing is unknown.
+export async function probeServer(): Promise<{
   info: ServerInfo
   hydras: string[]
-} | null> {
+} | 'stopped' | 'silent'> {
+  let info: ServerInfo
+
   try {
-    const info = JSON.parse(readFileSync(
+    info = JSON.parse(readFileSync(
       infoPath(),
       'utf8',
     )) as ServerInfo
@@ -56,13 +58,27 @@ export async function runningServer(): Promise<{
       info.pid,
       0,
     )
-    const res = await fetch(
+  } catch {
+    return 'stopped'
+  }
+
+  let res: Response
+
+  try {
+    res = await fetch(
       `http://127.0.0.1:${info.port}/health`,
       {
         headers: { connection: 'close' },
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
       },
     )
+  } catch (error) {
+    const refused = ((error as Error).cause as NodeJS.ErrnoException | undefined)?.code === 'ECONNREFUSED'
+
+    return refused ? 'stopped' : 'silent'
+  }
+
+  try {
     const health = (await res.json()) as {
       hydras?: unknown
       pid?: unknown
@@ -71,17 +87,18 @@ export async function runningServer(): Promise<{
     return health.pid === info.pid ? {
       info,
       hydras: Array.isArray(health.hydras) ? health.hydras.map(String) : [],
-    } : null
+    } : 'stopped'
   } catch {
-    return null
+    // Another program answers on the recorded port.
+    return 'stopped'
   }
 }
 
-// The server, with the address of this Hydra on it, or null when none is running or it does not serve this Hydra.
+// The server, with the address of this Hydra on it, or null when none answers or it does not serve this Hydra.
 export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
-  const server = await runningServer()
+  const server = await probeServer()
 
-  return server?.hydras.includes(hydraId) ? {
+  return typeof server !== 'string' && server.hydras.includes(hydraId) ? {
     ...server.info,
     url: `http://127.0.0.1:${server.info.port}/hydra/${hydraId}/`,
     socket: socketPath({ hydraId }),
