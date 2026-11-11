@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 const POLL_MS = 20
 
 // Kills a detached child and its whole group, as a stopped session takes its work down with it,
-// once the child has written the file that marks the point to cut it at.
+// once the child has written the file that marks the point to cut it at. Call it right after the spawn.
 export async function killMidway({
   child,
   reached,
@@ -16,6 +16,10 @@ export async function killMidway({
   reached: string
   timeoutMs: number
 }) {
+  assert.ok(
+    child.pid,
+    'the child did not start',
+  )
   const closed = new Promise(resolve => child.once(
     'close',
     resolve,
@@ -30,7 +34,7 @@ export async function killMidway({
 
   try {
     process.kill(
-      -child.pid!,
+      -child.pid,
       'SIGKILL',
     )
   } catch (error) {
@@ -43,6 +47,6 @@ export async function killMidway({
   await closed
   assert.ok(
     written,
-    `${reached} was not written within ${timeoutMs} ms; the child's exit code was ${child.exitCode}`,
+    `${reached} was not written (waited up to ${timeoutMs} ms; the child's exit code was ${child.exitCode})`,
   )
 }

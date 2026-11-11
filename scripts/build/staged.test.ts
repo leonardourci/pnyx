@@ -96,6 +96,33 @@ test(
 )
 
 test(
+  'a build starts from an empty folder even when a killed build with the same process number left one',
+  () => {
+    writeCli({
+      out: join(
+        root,
+        `dist.next.${process.pid}`,
+        'stale',
+      ),
+      text: '',
+    })
+
+    stagedBuild({
+      root,
+      build: building({ version: 'two' }),
+    })
+
+    assert.deepEqual(
+      readdirSync(join(
+        root,
+        'dist',
+      )),
+      ['cli'],
+    )
+  },
+)
+
+test(
   'a failed build keeps the old dist',
   () => {
     assert.throws(
