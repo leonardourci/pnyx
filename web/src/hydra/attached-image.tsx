@@ -169,7 +169,7 @@ export function ImageChip({
   return (
     <>
       <AttachmentCard
-        slot={<ImageThumb path={path} />}
+        slot={<ImageThumb key={path} path={path} />}
         label={label}
         title="Show image"
         tone={reference ? 'reference' : undefined}
