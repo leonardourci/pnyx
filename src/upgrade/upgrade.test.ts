@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
-import { upgrade as upgradeCli } from './cli.ts'
+import { upgrade as upgradeCli, upgradeIn } from './cli.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
 import { building, git, upgradeRepo } from '#test-harness/upgrade-fixture.ts'
 import { killMidway } from '#test-harness/kill-midway.ts'
@@ -631,4 +631,67 @@ test(
       delete process.env.PNYX_ACTOR
     }
   },
+)
+
+// A Pnyx home with no server in it, so the command finds none to hand the upgrade to.
+const withoutServer = async ({ run }: { run(): Promise<void> }) => {
+  const home = process.env.PNYX_HOME
+  process.env.PNYX_HOME = mkdtempSync(join(
+    root,
+    'home-',
+  ))
+
+  try {
+    await run()
+  } finally {
+    if (home === undefined) {
+      delete process.env.PNYX_HOME
+    } else {
+      process.env.PNYX_HOME = home
+    }
+  }
+}
+
+test(
+  'with no server running, pnyx-axi upgrade runs in the terminal and a failed build goes back',
+  () => withoutServer({
+    run: async () => {
+      const from = repo.head()
+      repo.publish({
+        files: { 'build.sh': 'echo "error TS2322" >&2\nexit 2\n' },
+        message: 'broken',
+      })
+
+      await assert.rejects(
+        upgradeIn({
+          args: [],
+          root: repo.install,
+        }),
+        {
+          code: 'UPGRADE_FAILED',
+          message: /Upgrade failed while building; went back to the previous version\.\n.*TS2322/s,
+        },
+      )
+      assert.equal(
+        repo.head(),
+        from,
+      )
+      assert.equal(
+        repo.built(),
+        'one',
+      )
+    },
+  }),
+)
+
+test(
+  'with no server running, pnyx-axi upgrade --stop finds nothing to stop',
+  () => withoutServer({
+    run: async () => {
+      assert.match(
+        String((await upgradeIn({ args: ['--stop'] }) as { stopped: string }).stopped),
+        /^none: /,
+      )
+    },
+  }),
 )

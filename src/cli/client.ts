@@ -60,7 +60,8 @@ const stdinText = ({ argv }: { argv: string[] }) => argv.some((
   )
   : undefined
 
-async function send({
+// Runs one command line in the server and answers with what it printed and its exit code.
+export async function send({
   port,
   argv,
   stdin,

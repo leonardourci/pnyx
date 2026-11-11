@@ -16,6 +16,8 @@ const LOCAL = new Set([
 const OFFLINE = new Set(['repair'])
 
 const argv = process.argv.slice(2)
+// The upgrade to stop runs in the server; with none up, the command answers here that nothing is running.
+const upgradeStop = argv[0] === 'upgrade' && argv.includes('--stop')
 
 if (!tryFastPath(
   argv,
@@ -27,11 +29,11 @@ if (!tryFastPath(
   },
 )) {
   // `setup hydra` writes Hydra events, so it goes to the server like any other write.
-  const own = LOCAL.has(argv[0] ?? '') && !(argv[0] === 'setup' && argv[1] === 'hydra')
+  const own = LOCAL.has(argv[0] ?? '') && !(argv[0] === 'setup' && argv[1] === 'hydra') && !upgradeStop
   const local = own || argv.includes('--help') || argv[0]?.startsWith('-')
   const client = local ? undefined : await import('./client.ts')
 
-  if (!client || (OFFLINE.has(argv[0] ?? '') && !client.serverRunning())) {
+  if (!client || ((upgradeStop || OFFLINE.has(argv[0] ?? '')) && !client.serverRunning())) {
     await import('./main.ts')
   } else {
     await client.forward({ argv })
