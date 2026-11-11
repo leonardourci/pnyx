@@ -1141,6 +1141,8 @@ test(
       if (oversized) throw new Error('Thumbnail exceeds its bounds: ' + oversized.box.width + 'x' + oversized.box.height);
       const stretched = boxes.find(({ image, box }) => Math.abs(box.width / box.height - image.naturalWidth / image.naturalHeight) > 0.02);
       if (stretched) throw new Error('Thumbnail lost its aspect ratio: ' + stretched.box.width + 'x' + stretched.box.height);
+      const small = boxes.filter(({ image }) => image.naturalWidth === 120);
+      if (small.length !== 1 || Math.abs(small[0].box.width - 120) > 1 || Math.abs(small[0].box.height - 36) > 1) throw new Error('An image smaller than the bounds must keep its own size');
       const tall = boxes.filter(({ image }) => image.naturalHeight > image.naturalWidth);
       if (tall.length !== 3 || tall.some(({ box }) => box.top !== tall[0].box.top)) throw new Error('Tall thumbnails must sit side by side');
       if (tall[1].box.left < tall[0].box.right || tall[2].box.left < tall[1].box.right) throw new Error('Tall thumbnails overlap');
@@ -1309,6 +1311,8 @@ Again: [image: ${src}]`
         const images = [...document.querySelectorAll('[data-task="${task.id}"] .card-current-state .message-image img')];
         await Promise.all(images.map(image => image.decode()));
         if (!images.some(image => image.alt === 'Worker Markdown image') || images.length !== 3) throw new Error('Worker image syntax lost');
+        const oversized = images.map(image => image.getBoundingClientRect()).find(box => box.width > ${THUMBNAIL_MAX_WIDTH_PX} + 1 || box.height > ${THUMBNAIL_MAX_HEIGHT_PX} + 1);
+        if (oversized) throw new Error('Current state thumbnail exceeds its bounds: ' + oversized.width + 'x' + oversized.height);
         return 'chat-assertion-passed';
       }`,
       })
