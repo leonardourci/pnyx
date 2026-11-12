@@ -1,4 +1,7 @@
+import { similarity } from './fuzzy.ts'
 import { synonymGroup } from './synonyms.ts'
+
+const FUZZY_SIMILARITY = 0.4
 
 export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(
@@ -100,4 +103,43 @@ export function queryTerms({ text }: { text: string }): Term[] {
   }
 
   return terms
+}
+
+export const inflection = ({ word }: { word: string }) => word.replace(
+  /(?:ing|ed|es|s)$/u,
+  '',
+)
+
+export function matches({
+  word,
+  term,
+  fuzzy,
+}: {
+  word: string
+  term: Term
+  fuzzy: boolean
+}): boolean {
+  return term.alts.some(alt => {
+    const alternative = fold({ text: alt })
+
+    if (term.prefix) {
+      return word.startsWith(alternative)
+    }
+
+    if (word === alternative || inflection({ word }) === inflection({ word: alternative })) {
+      return true
+    }
+
+    if (!fuzzy || !term.typo || alternative.length < 3) {
+      return false
+    }
+
+    const contains = alternative.length >= 4 && word.includes(alternative)
+    const similar = similarity({
+      a: word,
+      b: alternative,
+    }) >= FUZZY_SIMILARITY
+
+    return contains || similar
+  })
 }

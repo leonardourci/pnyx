@@ -189,7 +189,8 @@ export const oracleCommands = {
 }
 
 export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
-Search tasks, events and recorded transcripts directly when asked. No index or background catch-up.
+Search tasks, events and recorded transcripts through an on-demand incremental SQLite index.
+The first query ingests history once; later queries read only new bytes. No background indexing.
 Search includes saved briefs, intents, owner asks, reports and helper results, including earlier versions.
 Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
 Every word must match somewhere on one card. With --card or --kind every word must match one entry.
