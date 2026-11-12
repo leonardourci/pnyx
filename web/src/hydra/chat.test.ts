@@ -274,7 +274,7 @@ const note = ({
 })
 
 test(
-  'comments that start at the same place keep one numbering whatever order storage returns them in',
+  'comments that start at the same place, and replies with no time, keep one numbering whatever order storage returns them in',
   () => {
     const passage = ({
       id,
@@ -319,6 +319,24 @@ test(
     assert.deepEqual(
       orderedComments({ comments: comments.toReversed() }).map(comment => comment.id),
       order,
+    )
+    const undated = [
+      '10:m0',
+      '9:m0',
+    ].map(messageId => ({
+      ...note({
+        id: messageId,
+        text: messageId,
+      }),
+      messageId,
+      at: undefined,
+    }))
+    assert.deepEqual(
+      orderedComments({ comments: undated }).map(comment => comment.id),
+      [
+        '9:m0',
+        '10:m0',
+      ],
     )
   },
 )

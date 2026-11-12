@@ -245,12 +245,15 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
     at: comments.find(comment => comment.messageId === id && comment.at)?.at || '',
   }))
 
-  if (replies.every(reply => reply.at)) {
-    replies.sort((
-      a,
-      b,
-    ) => a.at.localeCompare(b.at))
-  }
+  // A reply without a time sorts by its id (transcript line numbers, compared as numbers), never by storage order.
+  replies.sort((
+    a,
+    b,
+  ) => a.at.localeCompare(b.at) || a.id.localeCompare(
+    b.id,
+    undefined,
+    { numeric: true },
+  ))
 
   const positions = new Map(replies.map((
     reply,
