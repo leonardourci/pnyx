@@ -1,3 +1,5 @@
+import { needsRecentThread } from '#hydra/thread-history.ts'
+import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -29,12 +31,11 @@ import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { hydraDown,keepStreamedKeys,quoteInto } from './chat.ts'
+import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { receivedThread } from '#hydra/thread-delta.ts'
-import { loadEarlierMessages } from './conversation-history.ts'
+import { loadEarlierMessages, receiveConversation } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
@@ -193,6 +194,59 @@ export function HydraChat({
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
+  const selectionInHistory = useRef(false)
+  const [
+    selectedHistory,
+    setSelectedHistory,
+  ] = useState(false)
+  useEffect(
+    () => {
+      const changed = () => {
+        const selection = window.getSelection()
+        const host = content.current?.querySelector('.messages')
+        const anchorInside = host?.contains(selection?.anchorNode ?? null)
+        const focusInside = host?.contains(selection?.focusNode ?? null)
+        const inside = anchorInside || focusInside
+        const focused = !!host?.contains(document.activeElement)
+        const selected = focused || !!inside && !selection?.isCollapsed
+        selectionInHistory.current = selected
+        setSelectedHistory(selected)
+      }
+
+      document.addEventListener(
+        'selectionchange',
+        changed,
+      )
+      document.addEventListener(
+        'focusin',
+        changed,
+      )
+
+      return () => {
+        document.removeEventListener(
+          'selectionchange',
+          changed,
+        )
+        document.removeEventListener(
+          'focusin',
+          changed,
+        )
+      }
+    },
+    [],
+  )
+  const receivePage = ({
+    before,
+    latest,
+  }: {
+    before: ThreadPage | null
+    latest: ThreadPage
+  }) =>
+    receiveConversation({
+      before,
+      latest,
+      reading: !follow.current || selectionInHistory.current,
+    })
   const retainedPage = useRef(page)
   useLayoutEffect(
     () => {
@@ -225,7 +279,7 @@ export function HydraChat({
         args,
       }).then(result => {
         if (!cancelled) {
-          setPage(before => receivedThread({
+          setPage(before => receivePage({
             before,
             latest: result.thread as ThreadPage,
           }))
@@ -251,7 +305,7 @@ export function HydraChat({
   useEffect(
     () => {
       if (liveThread) {
-        setPage(before => receivedThread({
+        setPage(before => receivePage({
           before,
           latest: liveThread,
         }))
@@ -473,12 +527,131 @@ export function HydraChat({
     [card?.agent?.sessionId],
   )
 
-  const loadEarlier = async ({ until }: { until?: string }) => {
+  const historyRequest = useRef<{
+    id: number
+    mode: 'recent' | 'retain'
+  } | null>(null)
+  const historyGeneration = useRef(0)
+  useEffect(
+    () => {
+      if (!connected || !page || loadingEarlier) {
+        return
+      }
+
+      const reading = away || selectedHistory
+      const trim = !reading && needsRecentThread({ page })
+      const pause = reading && (page.recent === true || liveThread?.recent === true
+        || historyRequest.current?.mode === 'recent')
+
+      if (!trim && !pause) {
+        return
+      }
+
+      const mode = pause ? 'retain' : 'recent'
+
+      if (historyRequest.current?.mode === mode) {
+        return
+      }
+
+      const id = ++historyGeneration.current
+      historyRequest.current = {
+        id,
+        mode,
+      }
+      const session = threadSession.current
+
+      const read = async () => {
+        try {
+          const args = [
+            HYDRA_CARD,
+            '--recent',
+          ]
+
+          if (pause) {
+            const oldest = page.entries[0]?.id
+
+            if (!oldest) {
+              return
+            }
+
+            args[1] = '--retain'
+            args.push(JSON.stringify({
+              session: page.session,
+              oldest,
+            }))
+          }
+
+          const result = await command({
+            name: 'thread',
+            args,
+          })
+
+          const current = historyRequest.current?.id === id
+          const reading = !follow.current || selectionInHistory.current
+
+          if (threadSession.current === session && current && (mode !== 'recent' || !reading)) {
+            const latest = result.thread as ThreadPage
+            setPage(before => receivePage({
+              before,
+              latest,
+            }))
+          }
+        } catch (error) {
+          if (!(error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED')) {
+            notify({ text: (error as Error).message })
+          }
+        } finally {
+          if (historyRequest.current?.id === id) {
+            historyRequest.current = null
+          }
+        }
+      }
+
+      read()
+    },
+    [
+      connected,
+      page,
+      away,
+      selectedHistory,
+      liveThread,
+      loadingEarlier,
+      command,
+    ],
+  )
+
+  const loadEarlier = async ({
+    until,
+    message,
+  }: {
+    until?: string
+    message?: string
+  }) => {
+    follow.current = false
+    setAway(true)
     const session = threadSession.current
+    let current = page
+
+    if (page?.entries[0] && (page.recent || historyRequest.current?.mode === 'recent' || liveThread?.recent)) {
+      const restored = await command({
+        name: 'thread',
+        args: [
+          HYDRA_CARD,
+          '--retain',
+          JSON.stringify({
+            session: page.session,
+            oldest: page.entries[0].id,
+          }),
+        ],
+      })
+      current = restored.thread as ThreadPage
+    }
+
     const earlier = await loadEarlierMessages({
-      past: page,
-      cursor: olderCursor,
+      past: current,
+      cursor: current?.older,
       until,
+      message,
       load: async ({ before }) => {
         const result = await command({
           name: 'thread',
@@ -494,11 +667,32 @@ export function HydraChat({
 
     if (threadSession.current === session) {
       if (earlier) {
-        setPage(before => receivedThread({
+        setPage(before => receivePage({
           before,
           latest: earlier,
         }))
       }
+    }
+  }
+
+  const loadComment = async ({ comment }: { comment: ChatComment }) => {
+    follow.current = false
+    setAway(true)
+    const selector = `[data-comment-id="${CSS.escape(comment.id)}"] textarea`
+
+    if (content.current?.querySelector(selector)) {
+      return
+    }
+
+    setLoadingEarlier(true)
+
+    try {
+      await loadEarlier({
+        until: comment.at,
+        message: comment.messageId,
+      })
+    } finally {
+      setLoadingEarlier(false)
     }
   }
 
@@ -774,8 +968,9 @@ export function HydraChat({
   const previousLeads = useRef<ReturnType<typeof answerLeads> | undefined>(undefined)
   const leads = useMemo(
     () => {
+      const refs = new Set(conversation?.entries.map(entry => entry.reference) ?? [])
       const next = answerLeads({
-        messages: state.hydraMessages,
+        messages: state.hydraMessages?.filter(message => refs.has(message.id)),
         cards: state.cards,
         previous: previousLeads.current,
       })
@@ -786,6 +981,7 @@ export function HydraChat({
     [
       state.hydraMessages,
       state.cards,
+      conversation?.entries,
     ],
   )
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
@@ -1013,6 +1209,7 @@ export function HydraChat({
       />
       <Composer
         hydraId={hydraId}
+        loadComment={loadComment}
         compacting={compactionRunning}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
