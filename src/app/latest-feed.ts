@@ -15,7 +15,6 @@ const EVENT_POLL_MS = 500
 // to every tab. A card is read again when it gets an event or its transcript
 // changes: transcript folders are watched, as a live session writes between hook events.
 // File watches and stat polling cover content writes a native folder watch does not report.
-// ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
 export function createLatestFeed({
   state,
   closed,
@@ -111,8 +110,29 @@ export function createLatestFeed({
     }
   }
 
+  const workingPaths = () => new Set(Object.values(state().cards).flatMap(card => {
+    const working = (card.sessionActivity ?? card.activity) === 'working'
+
+    return working ? threadPath({ card }) ?? [] : []
+  }))
+
   const watchWorkingTranscripts = () => {
-    const working = new Set(Object.values(state().cards).flatMap(c => (c.sessionActivity ?? c.activity) === 'working' ? threadPath({ card: c }) ?? [] : []))
+    const working = workingPaths()
+    const directories = new Set([...working].map(path => dirname(path)))
+
+    for (const [
+      dir,
+      watcher,
+    ] of folders) {
+      if (!directories.has(dir)) {
+        watcher.close()
+        folders.delete(dir)
+      }
+    }
+
+    for (const dir of directories) {
+      watchFolder({ dir })
+    }
 
     for (const path of transcripts.keys()) {
       if (!working.has(path)) {
@@ -165,7 +185,7 @@ export function createLatestFeed({
   }
 
   const pollTranscripts = () => {
-    const wanted = new Set(Object.values(state().cards).flatMap(c => threadPath({ card: c }) ?? []))
+    const wanted = workingPaths()
 
     for (const [
       path,
@@ -226,10 +246,6 @@ export function createLatestFeed({
 
     for (const id of unread) {
       const card = state().cards[id], path = card && threadPath({ card })
-
-      if (path) {
-        watchFolder({ dir: dirname(path) })
-      }
 
       const read = path ? latestMessage({
         path,
