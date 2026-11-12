@@ -386,11 +386,15 @@ export function withTimedRows<Row extends Pick<ThreadEntry, 'at'>>({
   const merged: Row[] = []
 
   for (const row of rows) {
-    while (pending.length && (pending[0]!.at ?? '') < (row.at ?? '')) {
-      merged.push(pending.shift()!)
-    }
-
-    merged.push(row)
+    const later = pending.findIndex(item => (item.at ?? '') >= (row.at ?? ''))
+    const earlier = later === -1 ? pending.length : later
+    merged.push(
+      ...pending.splice(
+        0,
+        earlier,
+      ),
+      row,
+    )
   }
 
   return [
