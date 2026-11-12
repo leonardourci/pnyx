@@ -1446,10 +1446,6 @@ test(
       port: pnyx.port(),
       hydraId: s.hydraId,
     })
-    await page.command({
-      name: 'hydra-agent',
-      args: [JSON.stringify({ harness: 'codex' })],
-    })
     const held = pnyx.codex.plan({
       text: 'Take a long look',
       hold: true,
@@ -1460,6 +1456,10 @@ test(
     })
 
     try {
+      await page.command({
+        name: 'hydra-agent',
+        args: [JSON.stringify({ harness: 'codex' })],
+      })
       await send({
         s,
         text: 'Take a long look',
@@ -1536,11 +1536,24 @@ test(
         agent.received.some(text => text.includes('Pnyx wake two')),
         false,
       )
+      const requests = ({ method }: { method: string }) => agent.requests
+        ?.filter(request => request === method).length
+      const started = requests({ method: 'turn/start' })
+      const steered = requests({ method: 'turn/steer' })
       firstWake.release()
       await until({
         what: 'the second Pnyx wake last',
         check: () => agent.received.at(-1)?.includes('Pnyx wake two'),
       })
+      // It opened a turn of its own after the first wake's turn ended, rather than joining it.
+      assert.equal(
+        requests({ method: 'turn/start' }),
+        (started ?? 0) + 1,
+      )
+      assert.equal(
+        requests({ method: 'turn/steer' }),
+        steered,
+      )
     } finally {
       held.release()
       firstWake.release()
