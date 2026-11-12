@@ -243,9 +243,11 @@ export function withWriter<T>({
   }
 }
 
+// A dirty Hydra saves its snapshot at most once per interval; the log already holds every change.
 const SNAPSHOT_INTERVAL_MS = 60_000
 const snapshotTimers = new WeakMap<Held, ReturnType<typeof setTimeout>>()
 
+// Saves a held Hydra's snapshot now; the server calls it when it lets the Hydra go.
 export async function saveSnapshot({ live }: { live: Held }): Promise<void> {
   clearTimeout(snapshotTimers.get(live))
   snapshotTimers.delete(live)
@@ -382,6 +384,7 @@ function heldWrite<T>({
           live,
           setTimeout(
             async () => {
+              // The log holds the change; a snapshot that cannot be written is only a slower next start.
               try {
                 await saveSnapshot({ live })
               } catch (error) {
