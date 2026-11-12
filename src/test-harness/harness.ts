@@ -845,6 +845,10 @@ function hydraScenario({
     agent,
     // The owner says this in Hydra's chat, which starts Hydra when it is not running; resolves with Hydra's session once it heard it.
     chat: async ({ text }: { text: string }) => {
+      const seen = new Map(sessions().map(session => [
+        session,
+        session.received.length,
+      ]))
       await mustSucceed({
         args: [
           'hydra',
@@ -854,13 +858,13 @@ function hydraScenario({
         ],
         env: ownerEnv(),
       })
-      const session = await agent({ hydra: true })
-      await until({
-        what: 'Hydra to hear the owner',
-        check: () => session.received.some(t => t.includes(text)),
-      })
 
-      return session
+      return until({
+        what: 'Hydra to hear the owner',
+        check: () => sessions().findLast(session => session.env.PNYX_HYDRA === hydraId
+          && session.env.PNYX_ACTOR === 'hydra'
+          && session.received.slice(seen.get(session) ?? 0).some(heard => heard.includes(text))),
+      })
     },
     // Every message the agents in this folder received, across restarts and resumed sessions.
     received: ({ cwd }: { cwd: string }) => sessions().filter(s => s.cwd === cwd)
