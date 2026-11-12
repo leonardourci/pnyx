@@ -3,6 +3,11 @@ export const COMMENT_REVEAL = 'pnyx-comment-reveal'
 // The owner asked for the passage, so a chat that follows new messages counts this scroll as theirs.
 export const MESSAGE_SCROLL = 'pnyx-message-scroll'
 const pending = new WeakMap<Element, () => void>()
+const OWNER_SCROLL_EVENTS = [
+  'wheel',
+  'touchstart',
+  'keydown',
+]
 
 export function scrollMessage({
   host,
@@ -127,5 +132,77 @@ export function scrollMessage({
   scroller.scrollTo({
     top,
     behavior: 'smooth',
+  })
+}
+
+// Rows not rendered yet count at their estimated height, so a smooth scroll lands off its target as they render on
+// the way. Once it stops, the element is centered again without animation, unless the owner scrolled meanwhile.
+export function centerMessage({ element }: { element: HTMLElement }) {
+  const scroller = element.closest('.thread')
+
+  if (!scroller) {
+    return
+  }
+
+  pending.get(scroller)?.()
+  const viewport = scroller.getBoundingClientRect()
+  const bounds = element.getBoundingClientRect()
+  const offset = bounds.top + bounds.height / 2 - viewport.top - viewport.height / 2
+  const top = Math.max(
+    0,
+    Math.min(
+      scroller.scrollTop + offset,
+      scroller.scrollHeight - scroller.clientHeight,
+    ),
+  )
+
+  if (Math.abs(top - scroller.scrollTop) < 1) {
+    return
+  }
+
+  const cancel = () => {
+    scroller.removeEventListener(
+      'scrollend',
+      arrived,
+    )
+
+    for (const type of OWNER_SCROLL_EVENTS) {
+      scroller.removeEventListener(
+        type,
+        cancel,
+      )
+    }
+
+    pending.delete(scroller)
+  }
+
+  const arrived = () => {
+    cancel()
+    element.scrollIntoView({
+      behavior: 'instant',
+      block: 'center',
+    })
+  }
+
+  pending.set(
+    scroller,
+    cancel,
+  )
+  scroller.addEventListener(
+    'scrollend',
+    arrived,
+  )
+
+  for (const type of OWNER_SCROLL_EVENTS) {
+    scroller.addEventListener(
+      type,
+      cancel,
+      { passive: true },
+    )
+  }
+
+  element.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
   })
 }

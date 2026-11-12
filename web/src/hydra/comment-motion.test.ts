@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { MESSAGE_SCROLL, scrollMessage } from './comment-motion.ts'
+import { MESSAGE_SCROLL, centerMessage, scrollMessage } from './comment-motion.ts'
 
 const VIEWPORT_PX = 500
 
@@ -55,5 +55,65 @@ test(
       [1000],
     )
     assert.ok(scroller.scrollTop > 1000)
+  },
+)
+
+test(
+  'a question jump centers again once its smooth scroll stops, unless the owner scrolled or it was centered',
+  () => {
+    const scroller = Object.assign(
+      new EventTarget(),
+      {
+        scrollTop: 3000,
+        scrollHeight: 4000,
+        clientHeight: VIEWPORT_PX,
+        getBoundingClientRect: () => ({
+          top: 0,
+          height: VIEWPORT_PX,
+        }),
+      },
+    )
+    let questionTop = -2000
+    const scrolls: string[] = []
+    const question = {
+      closest: () => scroller,
+      getBoundingClientRect: () => ({
+        top: questionTop,
+        height: 40,
+      }),
+      scrollIntoView({ behavior }: ScrollIntoViewOptions) {
+        scrolls.push(String(behavior))
+      },
+    } as unknown as HTMLElement
+
+    centerMessage({ element: question })
+    assert.deepEqual(
+      scrolls,
+      ['smooth'],
+    )
+    scroller.dispatchEvent(new Event('scrollend'))
+    assert.deepEqual(
+      scrolls,
+      [
+        'smooth',
+        'instant',
+      ],
+    )
+    scrolls.length = 0
+    centerMessage({ element: question })
+    scroller.dispatchEvent(new Event('wheel'))
+    scroller.dispatchEvent(new Event('scrollend'))
+    assert.deepEqual(
+      scrolls,
+      ['smooth'],
+    )
+    scrolls.length = 0
+    questionTop = (VIEWPORT_PX - 40) / 2
+    centerMessage({ element: question })
+    scroller.dispatchEvent(new Event('scrollend'))
+    assert.deepEqual(
+      scrolls,
+      [],
+    )
   },
 )

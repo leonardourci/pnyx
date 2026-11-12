@@ -33,7 +33,7 @@ import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
 import { createChatFollow } from './chat-follow.ts'
-import { MESSAGE_SCROLL } from './comment-motion.ts'
+import { MESSAGE_SCROLL, centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
 import { historyRead, loadEarlierMessages, receiveConversation, retainArgs, type HistoryMode } from './conversation-history.ts'
@@ -689,11 +689,11 @@ export function HydraChat({
 
       requestAnimationFrame(() => {
         const question = target()
-        question?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        })
-        question?.querySelector<HTMLElement>('.ask button:not(:disabled), .ask textarea')?.focus()
+
+        if (question) {
+          centerMessage({ element: question })
+          question.querySelector<HTMLElement>('.ask button:not(:disabled), .ask textarea')?.focus({ preventScroll: true })
+        }
       })
     } catch (error) {
       notify({ text: (error as Error).message })
