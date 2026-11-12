@@ -35,6 +35,8 @@ The conversation-delivery regression exercises the real socket-budget guard with
 
 Thread-delta tests cover entry additions, updates and removals, retained object identity, native ordering, fold and timing changes, duplicate delivery and recovery from a version gap. The connection-store regression keeps the last valid conversation while requesting resync, then accepts the replacement snapshot. Explicit read receipts remain full pages; the scenario harness applies pushed deltas with the same receiver as the page.
 
+Page-projection checks cover omitted histories and event IDs, explicit hidden-card interests, closing an interest, hidden-origin worker activity, session attachment changes, and resume matching a fresh projection. Request tests hold confirmation ahead of the page sequence so a task edit and Hydra agent selection keep their previews. The focused streaming browser flow also opens a hidden task from a chat chip and restores its expanded detail after reload.
+
 Historical recovery tests check that Oracle readiness finishes before backfill, that batches yield and resume after stopping, and that a write between batches is retained once. Compaction history checks exclude tool and thinking records even when their role names start with `assistant`.
 
 For an archived home, run the read-only replay against an evidence copy:
