@@ -880,6 +880,7 @@ export function createHost({
       task,
       harness,
       account: selectedAccount,
+      folder,
     }) => {
       const state = loadHydra({ hydraId }).state
       const card = state.cards[task]
@@ -893,12 +894,12 @@ export function createHost({
         })
       }
 
+      const sameHarness = !harness || harness === savedHarness
       const { account } = accountFor({
         effective: effectiveDispatch(),
         harness: selected,
-        prefer: selectedAccount ?? card.agent?.account,
+        prefer: selectedAccount ?? (sameHarness ? card.agent?.account : undefined),
       })
-      const sameHarness = !harness || harness === savedHarness
       const sameAccount = !selectedAccount || selectedAccount === card.agent?.account
       const sameLogin = sameHarness && sameAccount
       const login = sameLogin && card.agent?.loginFolder
@@ -913,7 +914,7 @@ export function createHost({
       const catalog = providers[providerIdOf({ harness: selected })].toolCatalog
 
       return catalog ? catalog({
-        cwd: card.agent?.cwd ?? card.folder ?? hydraDir({ hydraId }),
+        cwd: folder ?? card.agent?.cwd ?? card.folder ?? hydraDir({ hydraId }),
         env,
       }) : ['browser']
     },
