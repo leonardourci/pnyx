@@ -44,6 +44,7 @@ export function createLiveSessions({
   controller,
   children,
   streamed,
+  beginTools,
   deferTools,
   usageTracker,
   compaction,
@@ -70,7 +71,14 @@ export function createLiveSessions({
   closing(): boolean
   controller: AbortController
   children: ReturnType<typeof trackChildren>
-  deferTools({ task }: { task: string }): void
+  beginTools({ task }: { task: string }): boolean
+  deferTools({
+    task,
+    failed,
+  }: {
+    task: string
+    failed?: boolean
+  }): void
   streamed({
     session,
     text,
@@ -145,10 +153,12 @@ export function createLiveSessions({
     key,
     entry,
     permanent = false,
+    failed = false,
   }: {
     key: string
     entry: Live
     permanent?: boolean
+    failed?: boolean
   }) => {
     clearTimeout(entry.idle)
     expireEntry({ entry })
@@ -160,7 +170,10 @@ export function createLiveSessions({
     entry.input.end()
 
     if (permanent || entry.toolResume) {
-      deferTools({ task: entry.task })
+      deferTools({
+        task: entry.task,
+        failed,
+      })
     }
 
     if (entry.session) {
@@ -554,6 +567,11 @@ export function createLiveSessions({
                     },
                   }),
                 })
+              }
+
+              if (entry.toolsRevision === toolsRevision
+                && writer.state.cards[card.id]?.toolsApplied === toolsRevision) {
+                entry.toolResume = undefined
               }
             },
           })
@@ -979,9 +997,12 @@ export function createLiveSessions({
       return
     }
 
+    const pendingTools = loadHydra({ hydraId }).state.cards[card.id]
+    const unapplied = pendingTools?.toolsRevision !== pendingTools?.toolsApplied
     retire({
       key,
       entry,
+      failed: Boolean(entry.toolResume) && unapplied,
     })
 
     if (card.id === HYDRA_CARD) {
@@ -1029,9 +1050,11 @@ export function createLiveSessions({
   const open = ({
     card,
     session,
+    toolResume,
   }: {
     card: Card & { agent: AgentRef }
     session?: HostedSession
+    toolResume?: string
   }): Live => {
     requireCopyAvailable({
       hydraId,
@@ -1066,6 +1089,7 @@ export function createLiveSessions({
       replies: liveReplies(),
       activity: 'finished',
       toolsRevision: session ? session.toolsRevision : card.toolsRevision,
+      toolResume,
       steering: new Set(),
       delivered: new Map(),
       pendingDirect: new Map(),
@@ -1115,19 +1139,34 @@ export function createLiveSessions({
       return
     }
 
-    const resumed = open({
-      card: {
-        ...card,
-        agent: {
-          ...card.agent,
-          resume: true,
+    if (!beginTools({ task })) {
+      deferTools({ task })
+
+      return
+    }
+
+    try {
+      const resumed = open({
+        toolResume: text,
+        card: {
+          ...card,
+          agent: {
+            ...card.agent,
+            resume: true,
+          },
         },
-      },
-    })
-    resumed.input.push({
-      id: randomUUID(),
-      text,
-    })
+      })
+      resumed.input.push({
+        id: randomUUID(),
+        text,
+      })
+    } catch (error) {
+      deferTools({
+        task,
+        failed: true,
+      })
+      throw error
+    }
   }
 
   const action: Host['action'] = ({

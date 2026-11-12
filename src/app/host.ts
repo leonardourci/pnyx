@@ -128,7 +128,46 @@ export function createHost({
   const children = trackChildren({ hydraId })
   const controller = new AbortController()
   const live = new Map<string, Live>()
-  const toolApplications = new Map<string, string>()
+  const toolApplications = new Map<string, {
+    revision: string
+    attempted: boolean
+    attempts: number
+    retryAt: number
+  }>()
+
+  const toolApplication = ({
+    task,
+    revision,
+  }: {
+    task: string
+    revision: string
+  }) => {
+    let application = toolApplications.get(task)
+
+    if (application?.revision !== revision) {
+      application = {
+        revision,
+        attempted: false,
+        attempts: 0,
+        retryAt: 0,
+      }
+      toolApplications.set(
+        task,
+        application,
+      )
+    }
+
+    return application
+  }
+
+  const canRetryTools = ({
+    attempts,
+    retryAt,
+  }: {
+    attempts: number
+    retryAt: number
+  }) =>
+    attempts < retryDelays.length && retryAt <= Date.now()
   const midTurn = () => [...live.values()].some(entry => entry.activity === 'working')
   midTurnChecks.add(midTurn)
   const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
@@ -571,8 +610,45 @@ export function createHost({
     controller,
     children,
     streamed,
-    deferTools: ({ task }) => {
-      toolApplications.delete(task)
+    beginTools: ({ task }) => {
+      const revision = loadHydra({ hydraId }).state.cards[task]?.toolsRevision
+
+      if (!revision) {
+        return false
+      }
+
+      const application = toolApplication({
+        task,
+        revision,
+      })
+
+      if (!canRetryTools(application)) {
+        return false
+      }
+
+      application.attempted = true
+      application.attempts++
+
+      return true
+    },
+    deferTools: ({
+      task,
+      failed,
+    }) => {
+      const application = toolApplications.get(task)
+
+      if (!application) {
+        return
+      }
+
+      application.attempted = false
+
+      if (failed && application.attempts) {
+        application.retryAt = Date.now() + retryDelays[Math.min(
+          application.attempts - 1,
+          retryDelays.length - 1,
+        )]!
+      }
     },
     usageTracker,
     compaction,
@@ -943,10 +1019,16 @@ export function createHost({
       }
 
       if (card.toolsRevision) {
-        toolApplications.set(
-          card.id,
-          card.toolsRevision,
-        )
+        const application = toolApplication({
+          task: card.id,
+          revision: card.toolsRevision,
+        })
+
+        if (application.attempted || !canRetryTools(application)) {
+          return
+        }
+
+        application.attempted = true
       }
 
       const text = toolInstructions({ tools: card.tools ?? [] })
@@ -1199,17 +1281,15 @@ export function createHost({
 
       for (const card of Object.values(state.cards)) {
         const pending = card.toolsRevision && card.toolsRevision !== card.toolsApplied
-        const attempted = toolApplications.get(card.id) === card.toolsRevision
+        const application = toolApplications.get(card.id)
+        const attempted = application !== undefined && application.revision === card.toolsRevision
+          && (application.attempted || !canRetryTools(application))
         const closed = card.id !== HYDRA_CARD && closedTask({
           state,
           card,
         })
 
         if (fenced() && pending && !attempted && !closed && !steeringHeld({ card }) && card.agent?.host === 'pnyx') {
-          toolApplications.set(
-            card.id,
-            card.toolsRevision!,
-          )
           background({
             name: 'tool grant application',
             run: () => host.toolsChanged({ task: card.id }),
