@@ -21,7 +21,7 @@ type SpawnCall = (
 let guardInstalled = false
 
 // Every asynchronous spawn, execFile, exec and fork goes through ChildProcess.prototype.spawn, whose args
-// start with argv0. Chrome reads switches anywhere before `--`, so appended flags win over earlier ones.
+// start with argv0. Chrome reads every argument after `--` as a URL, so the flags go right after argv0.
 // spawnSync and shell command strings bypass it, so a test starts Chrome with spawn or execFile.
 export function keepChromeOffKeychain() {
   if (guardInstalled) {
@@ -36,8 +36,9 @@ export function keepChromeOffKeychain() {
   prototype.spawn = function (options) {
     if (CHROME_BINARY.test(basename(options.file))) {
       options.args = [
-        ...options.args,
+        options.args[0],
         ...KEYCHAIN_FLAGS,
+        ...options.args.slice(1),
       ]
     }
 

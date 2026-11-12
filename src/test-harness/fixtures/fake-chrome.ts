@@ -25,11 +25,17 @@ export async function assertChromeOffKeychain() {
     binary,
     [
       '--headless=new',
+      '--',
       'about:blank',
     ],
   )
   const args = stdout.trim().split('\n')
-  const missing = KEYCHAIN_FLAGS.filter(flag => !args.includes(flag))
+  // Chrome reads every argument after `--` as a URL, so the flags count only before it.
+  const switches = args.slice(
+    0,
+    args.indexOf('--'),
+  )
+  const missing = KEYCHAIN_FLAGS.filter(flag => !switches.includes(flag))
   assert.deepEqual(
     missing,
     [],
