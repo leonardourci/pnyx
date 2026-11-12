@@ -83,7 +83,7 @@ export function operationRecap({
   operation: NonNullable<HydraState['hydraOperation']>
   error?: string
   now: number
-}): string {
+}): ReturnType<typeof recapText> {
   const minutes = outageMinutes({
     since: operation.since,
     now,
@@ -265,7 +265,10 @@ export function createHydraOperations({
         })) {
           const pendingSwitch = state.hydraAgentChange
           const recap = error && pendingSwitch
-            ? `<pnyx-wake>Compaction failed: ${error}. The agent switch is still waiting for the owner to retry; its queued messages remain held.</pnyx-wake>`
+            ? {
+              text: `<pnyx-wake>Compaction failed: ${error}. The agent switch is still waiting for the owner to retry; its queued messages remain held.</pnyx-wake>`,
+              carried: [],
+            }
             : operationRecap({
               state,
               operation: since,
@@ -275,7 +278,7 @@ export function createHydraOperations({
           await host().hydra({
             id: `operation:${id}`,
             actor: 'pnyx',
-            text: recap,
+            ...recap,
           })
         }
 
@@ -332,7 +335,7 @@ export function createHydraOutage({
     run: () => host().hydra({
       id: `back:${down.seq}`,
       actor: 'pnyx',
-      text: recapText({
+      ...recapText({
         state: loadHydra({ hydraId }).state,
         since: down.since,
         after: down.after ?? down.seq,

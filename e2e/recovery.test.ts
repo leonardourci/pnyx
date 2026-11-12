@@ -59,6 +59,28 @@ test(
       pnyx.codex.control.refuse = undefined
     }
 
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export notes',
+        '--key',
+        'export',
+      ],
+    })
+    await s.owner({
+      args: [
+        'reply',
+        'export',
+        '--text',
+        'Note the export while Hydra is down',
+        '--idempotency-key',
+        'export-note',
+        '--task-message',
+      ],
+    })
+    const exportTask = s.task({ key: 'export' }).id
     await say({ text: 'back yet?' })
     // The resumed session only exists once a start works.
     await until({
@@ -83,6 +105,19 @@ test(
     assert.equal(
       hydra.received.filter(text => text.includes('back after outage')).length,
       1,
+    )
+    // The recap lists the owner's words no turn took, so taking the recap receives them, the task message among them.
+    assert.ok(recap.includes('Note the export while Hydra is down'))
+    const receivedAt = ({ id }: { id: string }) =>
+      s.state().hydraMessages?.find(message => message.id === id)?.received
+    const backYet = s.state().hydraMessages?.find(message => message.text === 'back yet?')
+    const missed = s.state().hydraMessages?.find(message => message.text === unanswered)
+    assert.ok(backYet?.received && missed)
+    const recapTaken = receivedAt({ id: missed.id })
+    assert.ok(recapTaken && recapTaken >= backYet.received)
+    assert.equal(
+      receivedAt({ id: `task-context:${exportTask}:export-note` }),
+      recapTaken,
     )
     page.close()
   },

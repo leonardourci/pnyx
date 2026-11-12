@@ -534,7 +534,6 @@ export function createHost({
   } = createLiveSessions({
     hydraId,
     live,
-    queuedHydra,
     closing: () => closing,
     controller,
     children,

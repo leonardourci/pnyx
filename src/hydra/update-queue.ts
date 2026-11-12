@@ -10,6 +10,8 @@ export function inbox() {
     // A steering item that carries its messages' words, not only their IDs.
     inline?: boolean
     agent?: AgentConfig
+    // The owner's messages a Hydra input lists, which Hydra takes with it.
+    carried?: string[]
   }[] = []
   let wake: (() => void) | undefined, done = false
 
@@ -21,6 +23,7 @@ export function inbox() {
       steeringIds,
       inline,
       agent,
+      carried,
     }: {
       original?: string
       text: string
@@ -28,6 +31,7 @@ export function inbox() {
       steeringIds?: string[]
       inline?: boolean
       agent?: AgentConfig
+      carried?: string[]
     }) {
       items.push({
         text,
@@ -36,6 +40,7 @@ export function inbox() {
         steeringIds,
         ...(inline ? { inline } : {}),
         agent,
+        carried,
       })
       wake?.()
     },
@@ -55,6 +60,7 @@ export function inbox() {
       steeringIds?: string[]
       inline?: boolean
       agent?: AgentConfig
+      carried?: string[]
     }> {
       for (;;) {
         if (items.length) {

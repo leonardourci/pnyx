@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { emptyHydra } from '#app/reducer.ts'
 import type { HydraMessage } from './model.ts'
 import { receivedWith } from './received.ts'
+import { recapText } from './wakes.ts'
 
 const owner = ({ id }: { id: string }): HydraMessage => ({
   id,
@@ -14,47 +15,61 @@ const owner = ({ id }: { id: string }): HydraMessage => ({
 })
 
 test(
-  'Hydra takes with an input the owner messages that never get one of their own, but not those still on their way',
+  'Hydra takes with an input only that input and the owner messages it lists, never an older or a task message it does not carry',
   () => {
     const state = emptyHydra()
     state.eventIds = {
-      'sent-while-down': 1,
-      'own-input': 2,
-      'own-input:hosted': 3,
-      'still-waiting': 4,
-      'wake:5': 5,
-      'wake:5:hosted': 6,
-      'after-wake': 7,
+      'from-last-week': 1,
+      'task-context:task-1:reply': 2,
+      'sent-while-down': 3,
+      'answered-already': 4,
+      'answered-already:hosted': 5,
+      'joins-turn': 6,
+      'joins-turn:hosted': 7,
     }
     state.hydraMessages = [
+      owner({ id: 'from-last-week' }),
+      {
+        ...owner({ id: 'task-context:task-1:reply' }),
+        task: 'task-1',
+      },
       owner({ id: 'sent-while-down' }),
-      owner({ id: 'own-input' }),
-      owner({ id: 'still-waiting' }),
       {
         ...owner({ id: 'worker-report' }),
         actor: 'worker:task-1',
       },
-      owner({ id: 'after-wake' }),
+      owner({ id: 'answered-already' }),
+      owner({ id: 'joins-turn' }),
     ]
-    state.eventIds['worker-report'] = 4
+    state.eventIds['worker-report'] = 3
+    // A message that joins a running turn is pushed alone, so it carries none of the earlier ones.
     assert.deepEqual(
       receivedWith({
         state,
-        input: 'wake:5',
-        pending: new Set(['still-waiting']),
+        input: 'joins-turn',
+        carried: [],
       }),
+      ['joins-turn'],
+    )
+    // The recap lists the owner's unread words after the outage began, and Hydra takes exactly those with it.
+    const recap = recapText({
+      state,
+      since: '2026-11-12T11:00:00Z',
+      after: 2,
+      now: Date.parse('2026-11-12T12:00:00Z'),
+    })
+    assert.deepEqual(
+      recap.carried,
       ['sent-while-down'],
     )
+    assert.ok(recap.text.includes('sent-while-down'))
     assert.deepEqual(
       receivedWith({
         state,
-        input: 'own-input',
-        pending: new Set(),
+        input: 'back:2',
+        carried: recap.carried,
       }),
-      [
-        'sent-while-down',
-        'own-input',
-      ],
+      ['sent-while-down'],
     )
   },
 )

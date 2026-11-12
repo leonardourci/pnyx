@@ -51,6 +51,8 @@ export interface Host {
     selected?: AgentConfig
     // False opens a new session with memory only, for an agent that reads the log itself.
     history?: boolean
+    // The owner's messages the text lists, which Hydra takes with this input.
+    carried?: string[]
   }): Promise<Record<string, unknown>>
   agentExhausted({ agent }: { agent: AgentConfig }): Promise<boolean>
   changeAgent({
@@ -230,6 +232,8 @@ export interface Live {
   steering: Set<string>
   // Steering inputs sent with their words, by input id; the agent taking one marks those messages read.
   delivered: Map<string, string[]>
+  // Hydra inputs that list the owner's messages, by input id; Hydra taking one receives those messages.
+  carried: Map<string, string[]>
   // Direct inputs whose reply waits for the provider's confirmation, by input id, and whether the agent took them.
   pendingDirect: Map<string, {
     card: string

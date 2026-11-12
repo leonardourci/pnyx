@@ -1320,6 +1320,28 @@ test(
         what: 'the page’s queue to show Hydra working',
         check: () => page.queues.at(-1)?.chat?.working,
       })
+      // A task message's Hydra part reaches no input that joins the turn, so taking one must not receive it.
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Notes for later',
+          '--key',
+          'notes',
+        ],
+      })
+      await s.owner({
+        args: [
+          'reply',
+          'notes',
+          '--text',
+          'Keep this for later',
+          '--idempotency-key',
+          'notes-message',
+          '--task-message',
+        ],
+      })
       await send({
         s,
         text: 'Also check the docs',
@@ -1336,6 +1358,12 @@ test(
       })
       const steerSent = s.state().hydraMessages?.find(message => message.id === 'steer')?.at
       assert.ok(steerSent && received >= steerSent)
+      const taskMessage = s.state().hydraMessages?.find(message => message.task === s.task({ key: 'notes' }).id)
+      assert.ok(taskMessage)
+      assert.equal(
+        taskMessage.received,
+        undefined,
+      )
       assert.equal(
         s.state().cards[HYDRA_CARD]?.sessionActivity,
         'working',
@@ -1354,6 +1382,12 @@ test(
           [
             'Take a long look',
             'delivered',
+            false,
+          ],
+          // Sent before a received message, it shows no line rather than a receipt Hydra never gave.
+          [
+            'Keep this for later',
+            undefined,
             false,
           ],
           [
