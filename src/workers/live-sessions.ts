@@ -1,5 +1,5 @@
 import { hydraEvent } from '#hydra/hydra.ts'
-import { requireCopyAvailable } from '#projects/copy-lease.ts'
+import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
 import { background } from '#app/background.ts'
@@ -1099,7 +1099,10 @@ export function createLiveSessions({
       return
     }
 
-    if (steeringHeld({ card }) || card.id !== HYDRA_CARD && closedTask({
+    if (steeringHeld({ card }) || copySettling({
+      hydraId,
+      task,
+    }) || card.id !== HYDRA_CARD && closedTask({
       state,
       card,
     })) {
