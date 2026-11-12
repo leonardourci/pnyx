@@ -14,6 +14,7 @@ import { readSnapshot } from './snapshot.ts'
 import { repairHydra } from './repair.ts'
 import { settle } from '#test-harness/child-fixture.ts'
 import { once } from 'node:events'
+import { setImmediate } from 'node:timers/promises'
 import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
 import { hydraDir } from './home-migration.ts'
 
@@ -347,8 +348,14 @@ test(
     })
     await saveSnapshot({ live })
     t.mock.timers.enable({ apis: ['setTimeout'] })
+    const timedAt = starts.length
     append({ id: 'first' })
     t.mock.timers.tick(59_999)
+    await setImmediate()
+    assert.deepEqual(
+      starts.slice(timedAt),
+      [],
+    )
     assert.equal(
       readSnapshot({ dir: live.dir })?.state.cards.first,
       undefined,
@@ -359,6 +366,10 @@ test(
       what: 'the timed snapshot',
       check: () => readSnapshot({ dir: live.dir })?.state.cards.second,
     })
+    assert.deepEqual(
+      starts.slice(timedAt),
+      [live.dir],
+    )
     t.mock.timers.reset()
     await saveSnapshot({ live })
     const cache = join(
@@ -443,6 +454,7 @@ test(
 
     plans.push({ holdExit: true })
     t.mock.timers.enable({ apis: ['setTimeout'] })
+    const heldAt = starts.length
     append({ id: 'in-flight' })
     t.mock.timers.tick(60_000)
     await settle({
@@ -450,6 +462,9 @@ test(
       check: () => exited,
     })
     assert.ok(readSnapshot({ dir: live.dir })?.state.cards['in-flight'])
+    plans.push({})
+    append({ id: 'during-save' })
+    t.mock.timers.tick(60_000)
     append({ id: 'shutdown-final' })
     t.mock.timers.reset()
     const finalGate = gate({ key: 'final-ready' })
@@ -478,5 +493,14 @@ test(
       close(),
       finish(),
     ])
+    assert.deepEqual(
+      starts.slice(heldAt),
+      [
+        live.dir,
+        live.dir,
+        live.dir,
+      ],
+      'a write during a save schedules the next save',
+    )
   },
 )
