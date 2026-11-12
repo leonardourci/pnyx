@@ -181,6 +181,8 @@ export async function openPage({
   const queues: HydraQueue[] = []
   const threads: ThreadPage[] = []
   const threadReceiver = createThreadReceiver()
+  // Pushed deltas the page could not apply. This socket never backs up, so each one is a server fault.
+  const gaps: string[] = []
   const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
   const actions: Record<string, CurrentAction | null> = {}
   const upgrades: UpgradeStatus[] = []
@@ -188,9 +190,15 @@ export async function openPage({
   ws.on(
     'message',
     (data: unknown) => {
-      const message = threadReceiver.receive({ message: JSON.parse(String(data)) as ServerMessage })
+      const received = JSON.parse(String(data)) as ServerMessage
+      const message = threadReceiver.receive({ message: received })
 
       if (!message) {
+        if (received.type === 'thread.delta') {
+          const held = threadReceiver.read({ card: received.delta.page.card })
+          gaps.push(`${received.delta.page.card} delta ${received.delta.base} to ${received.delta.page.version} on version ${held?.version}`)
+        }
+
         ws.send(JSON.stringify({ type: 'resync' }))
 
         return
@@ -342,7 +350,16 @@ export async function openPage({
       type: 'log',
       lines,
     })),
-    close: () => ws.close(),
+    // Fails the flow when the server pushed a delta the page could not apply.
+    close: () => {
+      ws.close()
+      const following = threads.at(-1)
+      assert.equal(
+        gaps.length,
+        0,
+        `thread deltas the page could not apply: ${gaps.join(', ')}; the page that followed: ${following?.card} version ${following?.version}`,
+      )
+    },
   }
 }
 
