@@ -1,3 +1,5 @@
+import { realpathSync, symlinkSync } from 'node:fs'
+import { join } from 'node:path'
 import { hydraEvent } from '#hydra/hydra.ts'
 import type { QueryFn } from '#workers/claude.ts'
 import { planTaskChange } from '#tasks/plans.ts'
@@ -251,10 +253,19 @@ for (const ending of [
 
   try {
     if (ending === 'starting') {
+      const alias = join(
+        process.env.HOME!,
+        'start-alias',
+      )
+      symlinkSync(
+        process.env.HOME!,
+        alias,
+        'dir',
+      )
       const start = taskHost.start({
         task: task.id,
         prompt: 'Work',
-        folder: process.env.HOME,
+        folder: `${alias}/./`,
         settings: { provider: 'claude-code' },
         actor: 'cli',
         id: 'pending-start',
@@ -268,6 +279,10 @@ for (const ending of [
         'a permanent release refuses cleanup before a pending start settles',
       )
       await start
+      assert.equal(
+        loadHydra({ hydraId }).state.cards[task.id]?.agent?.cwd,
+        realpathSync(process.env.HOME!),
+      )
     } else {
       taskHost.send({
         card: task.id,
@@ -416,6 +431,73 @@ for (const ending of [
         }
       },
     })
+
+    if (ending === 'release') {
+      const folder = realpathSync(process.env.HOME!)
+      const alias = join(
+        folder,
+        'released-alias',
+      )
+      symlinkSync(
+        folder,
+        alias,
+        'dir',
+      )
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          const card = writer.state.cards[task.id]!
+          const attached = decidePush({
+            state: writer.state,
+            key: card.key,
+            input: {
+              agent: {
+                ...card.agent!,
+                cwd: `${alias}/./`,
+              },
+            },
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in attached)
+          writer.append({ event: attached.event })
+          const removed = hydraEvent({
+            state: writer.state,
+            cardId: task.id,
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+            change: {
+              type: 'task.copy',
+              data: {
+                before: card.copy ?? null,
+                after: {
+                  path: folder,
+                  project: folder,
+                  via: 'command',
+                  state: 'removed',
+                  reason: 'released while its folder stays available',
+                },
+              },
+            },
+          })
+          assert.ok('event' in removed)
+          writer.append({ event: removed.event })
+        },
+      })
+      assert.throws(
+        () => taskHost.send({
+          card: task.id,
+          text: 'Reply to a released alias',
+          actor: 'cli',
+          direct: true,
+        }),
+        { code: 'FOLDER_MISSING' },
+      )
+    }
   } finally {
     if (childPid) {
       try {
