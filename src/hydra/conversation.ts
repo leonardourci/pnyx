@@ -99,8 +99,9 @@ function conversationOrder({
     const before = late.get(first)
     const after = late.get(second)
     const time = (shownAt({ entry: first }) ?? '').localeCompare(shownAt({ entry: second }) ?? '')
+    const oneLate = Boolean(before) !== Boolean(after)
 
-    if (time || !before !== !after) {
+    if (time || oneLate) {
       return time || (before ? 1 : -1)
     }
 
