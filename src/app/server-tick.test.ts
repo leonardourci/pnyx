@@ -11,7 +11,7 @@ import { spoolWrite } from './spool.ts'
 import { spoolDir, privateDir } from '#store/storage.ts'
 import { loadHydra } from './store.ts'
 import { withWriter } from './writer.ts'
-import { createServerTick } from './server-tick.ts'
+import { createServerTick, SPOOL_RETRY_MS } from './server-tick.ts'
 import { openDecisions } from '#tasks/decisions.ts'
 
 test(
@@ -274,18 +274,46 @@ test(
     )
     const afterFailure = spoolReads
     failSpool = false
-    tick.kick()
+    // The tick's own expiry timer retries the drain; nothing else kicks it.
+    t.mock.timers.tick(SPOOL_RETRY_MS - 1)
     await new Promise<void>(resolve => setImmediate(resolve))
     assert.equal(
       spoolReads,
       afterFailure,
     )
-    // The tick's own expiry timer retries the drain; nothing else kicks it.
-    t.mock.timers.tick(1000)
+    t.mock.timers.tick(1)
     await new Promise<void>(resolve => setImmediate(resolve))
     assert.equal(
       state().cards[state().keys.retry!]?.title,
       'Retried observation',
+    )
+    spoolWrite({
+      hydraId: 'lab',
+      entry: {
+        id: 'early-kick-observation',
+        key: 'early-kick',
+        at: new Date().toISOString(),
+        actor: 'fixture',
+        card: { title: 'Kicked early' },
+      },
+    })
+    failSpool = true
+    tick.spooled()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    const afterSecondFailure = spoolReads
+    failSpool = false
+    tick.kick()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      spoolReads,
+      afterSecondFailure,
+      'an unrelated tick during the backoff does not drain the spool',
+    )
+    t.mock.timers.tick(SPOOL_RETRY_MS)
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      state().cards[state().keys['early-kick']!]?.title,
+      'Kicked early',
     )
     t.mock.timers.reset()
     closed = true

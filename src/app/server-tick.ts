@@ -24,7 +24,7 @@ import type { createServerWorkers } from './server-workers.ts'
 
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
-const SPOOL_RETRY_MS = 1000
+export const SPOOL_RETRY_MS = 1000
 
 type ServerWorkers = ReturnType<typeof createServerWorkers>
 
