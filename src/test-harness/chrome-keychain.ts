@@ -18,17 +18,17 @@ type SpawnCall = (
   },
 ) => unknown
 
-let kept = false
+let guardInstalled = false
 
 // Every asynchronous spawn, execFile, exec and fork goes through ChildProcess.prototype.spawn, whose args
 // start with argv0. Chrome reads switches anywhere before `--`, so appended flags win over earlier ones.
 // spawnSync and shell command strings bypass it, so a test starts Chrome with spawn or execFile.
 export function keepChromeOffKeychain() {
-  if (kept) {
+  if (guardInstalled) {
     return
   }
 
-  kept = true
+  guardInstalled = true
   const prototype = ChildProcess.prototype as unknown as { spawn: SpawnCall }
   const spawn = prototype.spawn
 
