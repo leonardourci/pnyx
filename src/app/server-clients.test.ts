@@ -4,11 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
+import type { HydraEvent } from './model.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { usageFor } from '#workers/usage.ts'
+import { hydraConfig } from '#hydra/config.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 
 test(
@@ -707,6 +709,153 @@ test(
           'drained',
         ],
       ],
+    )
+  },
+)
+
+test(
+  'a card another event brings back reaches the page with its last reply, and a column change sends a snapshot',
+  t => {
+    const base = {
+      v: 1 as const,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+    }
+    let state = emptyHydra()
+
+    for (const [
+      seq,
+      id,
+    ] of [
+        'returning',
+        'kept',
+      ].entries()) {
+      state = reduce({
+        state,
+        event: {
+          ...base,
+          id,
+          seq: seq + 1,
+          cardId: id,
+          type: 'task.created',
+          data: {
+            key: id,
+            title: id,
+            column: 'done',
+          },
+        },
+      })
+      state.cards[id]!.hidden = true
+      state.cards[id]!.expired = true
+    }
+
+    const recent: HydraEvent[] = []
+    const tabs = createServerClients({
+      hydraId: 'default',
+      state: () => state,
+      recent: () => recent,
+      agents: () => ({
+        queue: () => ({
+          waiting: [],
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {
+          returning: {
+            role: 'assistant',
+            text: 'Last reply before hiding',
+          },
+        },
+        actions: {},
+      }),
+    })
+    t.after(() => tabs.close())
+    const received: ServerMessage[] = []
+    const client: HydraClient = {
+      OPEN: 1,
+      readyState: 1,
+      bufferedAmount: 0,
+      send({ message }) {
+        received.push(message)
+      },
+      terminate() {},
+    }
+    tabs.clients.add(client)
+    const moved: HydraEvent = {
+      ...base,
+      id: 'moved',
+      seq: 3,
+      cardId: 'returning',
+      type: 'card.moved',
+      data: {
+        before: 'done',
+        after: 'queued',
+      },
+    }
+    state = reduce({
+      state,
+      event: moved,
+    })
+    assert.equal(
+      state.cards.returning!.hidden,
+      undefined,
+    )
+    recent.push(moved)
+    tabs.broadcast({ event: moved })
+    const update = received.find(message => message.type === 'page.event')
+    assert.ok(update?.type === 'page.event')
+    assert.ok(update.update.cards.returning)
+    const latest = received.find(message => message.type === 'latest')
+    assert.ok(latest?.type === 'latest')
+    assert.equal(
+      latest.messages.returning?.text,
+      'Last reply before hiding',
+    )
+    received.length = 0
+    const columns: HydraEvent = {
+      ...base,
+      id: 'columns',
+      seq: 4,
+      cardId: '$board',
+      type: 'board.columns',
+      data: {
+        columns: hydraConfig({ state }).columns.map(column => ({
+          ...column,
+          role: undefined,
+        })),
+      },
+    }
+    state = reduce({
+      state,
+      event: columns,
+    })
+    assert.equal(
+      state.cards.kept!.hidden,
+      undefined,
+    )
+    recent.push(columns)
+    tabs.broadcast({ event: columns })
+    const snapshot = received.find(message => message.type === 'snapshot')
+    assert.ok(snapshot?.type === 'snapshot')
+    assert.ok(snapshot.state.cards.kept)
+    assert.equal(
+      received.some(message => message.type === 'page.event'),
+      false,
+    )
+    received.length = 0
+    tabs.resume({
+      ws: client,
+      after: String(moved.seq),
+    })
+    assert.equal(
+      received[0]?.type,
+      'snapshot',
+      'a resume across a column change starts from a snapshot',
     )
   },
 )

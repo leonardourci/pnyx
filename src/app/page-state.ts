@@ -24,7 +24,8 @@ export type PageState = Omit<HydraState, 'eventIds' | 'contextNotes' | 'question
 
 // Which tabs replay an event: every tab, a tab that shows its card (and then also
 // gets that card's sessions), or none, so a tab only gets the cards it changed.
-type PageReach = 'every tab' | 'shown card' | 'shown card and sessions' | 'cards only'
+// A column or Hydra change can show or hide any card, so every tab gets a snapshot instead.
+type PageReach = 'every tab' | 'shown card' | 'shown card and sessions' | 'cards only' | 'snapshot'
 
 const PAGE_REACH = {
   'task.wait-resumed': 'cards only',
@@ -53,9 +54,9 @@ const PAGE_REACH = {
   'card.noted': 'shown card and sessions',
   'board.view': 'every tab',
   'task.session': 'shown card and sessions',
-  'board.configured': 'every tab',
-  'board.columns': 'every tab',
-  'board.agents': 'every tab',
+  'board.configured': 'snapshot',
+  'board.columns': 'snapshot',
+  'board.agents': 'snapshot',
   'task.created': 'shown card',
   'task.brief': 'shown card',
   'task.owner-ask': 'shown card',
@@ -121,6 +122,8 @@ function pageReference({ card }: { card: Card }): Card {
 
   return reference
 }
+
+export const pageSnapshotEvent = ({ event }: { event: HydraEvent }) => PAGE_REACH[event.type] === 'snapshot'
 
 export function pageShows({
   card,
@@ -219,7 +222,7 @@ export function pageEvent({
     card,
     interest,
   }))
-  const forwarded = reach === 'every tab' || (reach !== 'cards only' && shown)
+  const forwarded = reach === 'every tab' || reach === 'snapshot' || (reach !== 'cards only' && shown)
   const movedSessions = event.type === 'task.moved-in' || event.type === 'task.moved-out'
     ? event.data.sessions.filter(session => {
       const current = state.sessions?.[session.id]

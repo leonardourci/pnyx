@@ -1,4 +1,4 @@
-import { pageEvent, pageState, pageShows, type PageInterest } from './page-state.ts'
+import { pageEvent, pageShows, pageSnapshotEvent, pageState, type PageInterest } from './page-state.ts'
 import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -7,6 +7,7 @@ import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
 import { effectiveView, readSettings } from '#settings/store.ts'
 import type { Card } from '#tasks/model.ts'
+import { liveTask } from '#tasks/select.ts'
 import type { AgentUsage } from '#workers/provider.ts'
 import { spendCounter } from '#workers/spend-counter.ts'
 import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
@@ -79,6 +80,10 @@ export function createServerClients({
     hidden: false,
   }
   const hydraSubscribers = new WeakSet<HydraClient>()
+  const liveCardIds = () => new Set(Object.values(state().cards).filter(card => liveTask({ card }))
+    .map(card => card.id))
+  // The cards a tab shows without interests, so a card an event brings back gets its cached latest.
+  let liveCards = liveCardIds()
 
   let derivedThrough = -1
   let derivedHistory: HydraEvent[] = []
@@ -465,9 +470,19 @@ export function createServerClients({
 
   const broadcast = ({ event }: { event: HydraEvent }) => {
     const queue = queueMessage()
+    const live = liveCardIds()
+    const returned = [...live].filter(id => !liveCards.has(id))
+    liveCards = live
 
     for (const ws of clients) {
-      if (!recovery.get(ws)?.snapshot) {
+      if (recovery.get(ws)?.snapshot) {
+        flush({ ws })
+      } else if (pageSnapshotEvent({ event })) {
+        sendSnapshot({
+          ws,
+          queue,
+        })
+      } else {
         send({
           ws,
           message: {
@@ -480,7 +495,7 @@ export function createServerClients({
           },
         })
 
-        if (event.type === 'task.visibility' && !event.data.after) {
+        if (returned.length) {
           send({
             ws,
             message: {
@@ -490,8 +505,14 @@ export function createServerClients({
                 spend: spendNow.spend,
                 readings: readingsNow,
               }),
-              messages: { [event.cardId]: feed().latest[event.cardId] ?? null },
-              actions: { [event.cardId]: feed().actions[event.cardId] ?? null },
+              messages: Object.fromEntries(returned.map(id => [
+                id,
+                feed().latest[id] ?? null,
+              ])),
+              actions: Object.fromEntries(returned.map(id => [
+                id,
+                feed().actions[id] ?? null,
+              ])),
             },
           })
         }
@@ -500,8 +521,6 @@ export function createServerClients({
           ws,
           queue,
         })
-      } else {
-        flush({ ws })
       }
 
       // Hydra taking a task message is filed under Hydra's card but changes that task's thread.
@@ -611,7 +630,8 @@ export function createServerClients({
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
     const first = recent()[0]?.seq ?? state().seq + 1
 
-    if (seq === undefined || seq > state().seq || seq < first - 1) {
+    if (seq === undefined || seq > state().seq || seq < first - 1
+      || recent().some(event => event.seq > seq && pageSnapshotEvent({ event }))) {
       return sendSnapshot({ ws })
     }
 
