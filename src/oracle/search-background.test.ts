@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
-import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
-import workerThreads, { Worker } from 'node:worker_threads'
 import { withWriter } from '#app/writer.ts'
 import { searchInBackground } from './search-background.ts'
+import { observeSearchWorkers } from '#oracle/fixtures/search-workers.ts'
 
 const query = {
   text: 'saffron',
@@ -14,76 +13,28 @@ test(
   'Oracle runs one scan per Hydra and cancels queued and active requests',
   async t => {
     const hydraId = 'default'
-    withWriter({
+    const folder = withWriter({
       hydraId,
-      fn: () => undefined,
+      fn: ({ writer }) => writer.dir,
     })
-    let stopped = () => {}
-    const exited = new Promise<void>(resolve => {
-      stopped = resolve
-    })
-    let constructed = 0
-    const exits: number[] = []
-    let release = () => {}
     let cancel: AbortController | undefined
-    const OriginalWorker = Worker
-
-    class ObservedWorker extends OriginalWorker {
-      // eslint-disable-next-line pnyx/object-params -- Node Worker constructor contract.
-      constructor(...args: ConstructorParameters<typeof Worker>) {
-        super(...args)
-        constructed += 1
-        this.on(
-          'exit',
-          (code: number) => {
-            exits.push(code)
-          },
-        )
-        this.once(
+    const observer = observeSearchWorkers({
+      hydraId,
+      folder,
+      started: ({ worker }) => {
+        worker.once(
           'online',
           () => cancel?.abort(),
         )
-      }
-
-      // eslint-disable-next-line pnyx/object-params -- Node EventEmitter listener contract.
-      override once(...parameters: Parameters<Worker['once']>): this {
-        const [
-          event,
-          listener,
-        ] = parameters
-
-        if (event === 'exit' && constructed === 1) {
-          return super.once(
-            event,
-            (...args: unknown[]) => {
-              release = () => {
-                listener(...args)
-                release = () => {}
-              }
-
-              stopped()
-            },
-          )
-        }
-
-        return super.once(
-          event,
-          listener,
-        )
-      }
-    }
-
-    workerThreads.Worker = ObservedWorker
-    syncBuiltinESMExports()
-    t.after(() => {
-      release()
-      workerThreads.Worker = OriginalWorker
-      syncBuiltinESMExports()
+      },
     })
+    t.after(() => observer.close())
+    const gate = observer.gateNext()
     const first = searchInBackground({
       hydraId,
       query,
     })
+    await gate.ready()
     const cancelled = new AbortController()
     const queued = searchInBackground({
       hydraId,
@@ -99,24 +50,22 @@ test(
       query,
     })
     cancelled.abort()
-    await exited
-    assert.equal(
-      constructed,
-      1,
-      'a second scan cannot start before the first worker exits',
-    )
-    release()
+    gate.release()
     await Promise.all([
       first,
       refused,
       next,
     ])
     assert.equal(
-      constructed,
-      2,
-      'the cancelled queued search never opens a worker',
+      observer.observed.maximum,
+      1,
+      'only one native search worker runs at a time',
     )
-
+    assert.equal(
+      observer.observed.created,
+      2,
+      'the cancelled queued request opens no worker',
+    )
     cancel = new AbortController()
     await assert.rejects(
       searchInBackground({
@@ -127,7 +76,7 @@ test(
       { code: 'CANCELLED' },
     )
     assert.deepEqual(
-      exits,
+      observer.observed.exits,
       [
         0,
         0,

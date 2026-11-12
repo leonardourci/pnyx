@@ -4,6 +4,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Hit } from '#oracle/model.ts'
+import { observeSearchWorkers } from '#oracle/fixtures/search-workers.ts'
 import { openPage } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
@@ -108,7 +109,14 @@ test(
       })).map(hit => hit.card),
       [s.task({ key: 'audit' }).id],
     )
+    const observer = observeSearchWorkers({
+      hydraId: s.hydraId,
+      folder: hydraDir({ hydraId: s.hydraId }),
+    })
+    t.after(() => observer.close())
+    const gate = observer.gateNext()
     const superseded = page.refusal(oracle({ words: 'billing' }))
+    await gate.ready()
     const latest = page.command(oracle({ words: 'audit' }))
     const [
       cancelled,
@@ -123,6 +131,32 @@ test(
     )
     assert.deepEqual(
       (found.hits as Hit[]).map(hit => hit.card),
+      [s.task({ key: 'audit' }).id],
+    )
+
+    const otherPage = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => otherPage.close())
+    const clearGate = observer.gateNext()
+    const clearing = page.refusal(oracle({ words: 'billing' }))
+    await clearGate.ready()
+    const otherSearch = otherPage.command(oracle({ words: 'audit' }))
+    const cleared = await page.command({
+      name: 'oracle',
+      args: [],
+    })
+    assert.equal(
+      cleared.cancelled,
+      true,
+    )
+    assert.equal(
+      (await clearing).code,
+      'CANCELLED',
+    )
+    assert.deepEqual(
+      ((await otherSearch).hits as Hit[]).map(hit => hit.card),
       [s.task({ key: 'audit' }).id],
     )
 
