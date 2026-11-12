@@ -504,6 +504,11 @@ export function createServerClients({
         flush({ ws })
       }
 
+      // Hydra taking a task message is filed under Hydra's card but changes that task's thread.
+      const receivedTask = event.type === 'hydra.received'
+        ? state().hydraMessages?.find(message => message.id === event.data.message)?.task
+        : undefined
+
       for (const map of threadSubscriptions) {
         const sub = map.get(ws)
 
@@ -512,7 +517,7 @@ export function createServerClients({
           event,
           sub,
           state: state(),
-        })) || sub.card === event.cardId
+        })) || sub.card === event.cardId || sub.card === receivedTask
         || (event.type === 'task.session' && sub.card === event.data.before)
         || (event.type === 'board.view' &&
           shownTraces({

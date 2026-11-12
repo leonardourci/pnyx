@@ -81,6 +81,11 @@ test(
       ],
     })
     const exportTask = s.task({ key: 'export' }).id
+    // The task's own thread, open on the page, follows its Hydra part.
+    await page.command({
+      name: 'thread',
+      args: [exportTask],
+    })
     await say({ text: 'back yet?' })
     // The resumed session only exists once a start works.
     await until({
@@ -119,6 +124,11 @@ test(
       receivedAt({ id: `task-context:${exportTask}:export-note` }),
       recapTaken,
     )
+    await until({
+      what: 'the task thread to show Hydra received the task message',
+      check: () => page.threads.findLast(thread => thread.card === exportTask)?.entries
+        .find(entry => entry.replyId === 'export-note')?.delivery?.hydra?.received === recapTaken,
+    })
     page.close()
   },
 )
