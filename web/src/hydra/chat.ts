@@ -264,7 +264,12 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
       0,
       comment.paragraph?.indexOf(comment.quote) ?? 0,
     )
+  const end = ({ comment }: { comment: ChatComment }) => comment.end ?? {
+    offset: comment.offset,
+    position: start({ comment }) + comment.quote.length,
+  }
 
+  // Ties end on the id, so storage order never renumbers comments between reloads or tabs.
   return [...comments].sort((
     a,
     b,
@@ -274,6 +279,9 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
     }
 
     return a.offset - b.offset || start({ comment: a }) - start({ comment: b })
+      || end({ comment: a }).offset - end({ comment: b }).offset
+      || end({ comment: a }).position - end({ comment: b }).position
+      || a.id.localeCompare(b.id)
   })
 }
 
