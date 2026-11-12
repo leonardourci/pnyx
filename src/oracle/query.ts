@@ -2,6 +2,7 @@ import { similarity } from './fuzzy.ts'
 import { synonymGroup } from './synonyms.ts'
 
 const FUZZY_SIMILARITY = 0.4
+const MIN_STEM = 3
 
 export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(
@@ -105,10 +106,14 @@ export function queryTerms({ text }: { text: string }): Term[] {
   return terms
 }
 
-export const inflection = ({ word }: { word: string }) => word.replace(
-  /(?:ing|ed|es|s)$/u,
-  '',
-)
+export const inflection = ({ word }: { word: string }) => {
+  const stem = word.replace(
+    /(?:ing|ed|es|s)$/u,
+    '',
+  )
+
+  return stem.length >= MIN_STEM ? stem : word
+}
 
 export function matches({
   word,
