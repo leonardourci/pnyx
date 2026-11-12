@@ -16,7 +16,7 @@ export const bare = ({ token }: { token: string }) => token.replace(
 )
 
 // One query word, or a synonym phrase, and what it may match: its synonym group,
-// or the word itself. A trailing * matches the word as a prefix, and words starting with it, and skips synonyms and typos.
+// or the word itself. A trailing * matches words starting with it and skips synonyms and typos.
 export interface Term {
   alts: readonly string[]
   prefix: boolean

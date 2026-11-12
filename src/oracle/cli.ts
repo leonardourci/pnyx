@@ -189,15 +189,16 @@ export const oracleCommands = {
 }
 
 export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
-Search tasks, events and recorded transcripts through an on-demand incremental SQLite index.
-The first query ingests history once; later queries read only new bytes. No background indexing.
+Search tasks, events and recorded transcripts. The first query reads history into a derived SQLite cache;
+later queries read only what is new.
 Search includes saved briefs, intents, owner asks, reports and helper results, including earlier versions.
 Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
 Every word must match somewhere on one card. With --card or --kind every word must match one entry.
-Words ignore case and accents and use simple English inflection normalization, synonyms and prefixes (*).
+Words ignore case and accents and match word forms (plurals, -ed, -ing), synonyms and prefixes (*).
 Synonyms: ${SYNONYMS.map(group => group.join(' / ')).join(', ')}.
 When nothing matches, similar words are tried (mode: fuzzy).
-Results rank by weighted word matches, with notes counting double, then by card order.
+Results rank by the query words in a card's title, project and link titles, then by its best entry
+(notes count double), then by latest activity.
 Each card shows its ${SNIPPETS} best entries; --card shows matching entries up to --limit.
 The default limit is ${LIMIT}, capped at ${MAX}. Tool output, thinking and injected text are excluded;
 secret-shaped strings are redacted. \`task report <task>\` reads the latest stored report.

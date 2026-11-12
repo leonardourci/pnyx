@@ -38,7 +38,7 @@ commands:
   debug cpu-profile --out <file>             Capture a CPU profile of the server's main thread
   logs [clean]                               Show the diagnostic log files, or delete them all now
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
-  oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
+  oracle "<words>"                           Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   settings show|schema|set                   Pnyx-wide settings: theme, text sizes, Hide Done, review cadence, helper, Oracle filters, Hydra order, logs
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths

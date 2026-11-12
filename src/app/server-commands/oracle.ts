@@ -5,7 +5,7 @@ import type { CommandRequest } from './dispatch.ts'
 
 const ORACLE_LIMIT = 100
 
-// `oracle <text> [<workspace>] [hydra]`: searches tasks, events and transcripts on demand.
+// `oracle <text> [<workspace>] [hydra] [<filters>]` searches on demand; with no arguments it cancels this socket's search.
 export function oracleCommand({
   ws,
   id,
