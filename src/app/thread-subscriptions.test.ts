@@ -67,6 +67,7 @@ test(
     const received: ServerMessage[] = []
     const wire: ServerMessage[] = []
     const receiver = createThreadReceiver()
+    let resyncs = 0
     const client: HydraClient = {
       OPEN: 1,
       get readyState() {
@@ -82,6 +83,7 @@ test(
         if (normalized) {
           received.push(normalized)
         } else {
+          resyncs += 1
           threads.refreshThread({
             ws: client,
             resync: true,
@@ -299,16 +301,16 @@ test(
     threads.refreshThread({ ws: client })
     t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
-    await threads.threadPage({
-      sub,
-      card: state.cards[HYDRA_CARD]!,
-    })
     buffered = 0
-    tabs.sendSnapshot({ ws: client })
     t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
     t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
+    assert.equal(
+      resyncs,
+      0,
+      'replacing an undelivered page must not require receiver recovery',
+    )
     assert.deepEqual(
       received.filter(message => message.type === 'thread')
         .flatMap(message => message.thread.conversation!.entries.map(entry => entry.text)),

@@ -137,7 +137,7 @@ export function createThreadSubscriptions({
     key: sub,
     ws,
     thread: prepared.thread,
-    delta: prepared.delta,
+    delta: threadDelivery.has({ key: sub }) ? undefined : prepared.delta,
     receipt,
     current: () => subscriptionMap({ card: sub.card }).get(ws) === sub,
     accepted: () => {
