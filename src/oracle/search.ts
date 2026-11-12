@@ -338,9 +338,16 @@ export function search({
         ) => entryWeight(b) - entryWeight(a))
       const bestEntry = snippets[0] ? entryWeight(snippets[0]) : 0
       const score = count({ found: contextFound }) * CONTEXT_WEIGHT + bestEntry
-      const latest = Math.max(
+      // A spread of every entry would exceed the argument limit on a long history.
+      const latest = snippets.reduce(
+        (
+          newest,
+          { entry },
+        ) => Math.max(
+          newest,
+          Date.parse(entry.at) || 0,
+        ),
         Date.parse(card.updatedAt) || 0,
-        ...snippets.map(({ entry }) => Date.parse(entry.at) || 0),
       )
       const hit: Hit = {
         card: card.id,

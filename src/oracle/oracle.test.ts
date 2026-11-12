@@ -27,6 +27,7 @@ after(() => rmSync(
 ))
 
 const MENTIONS = 20
+const LONG_HISTORY = 130_000
 const TRANSCRIPT = join(
   import.meta.dirname,
   '..',
@@ -1026,6 +1027,84 @@ test(
         },
       }).hits[0]?.card,
       'task-named',
+    )
+  },
+)
+
+test(
+  'a word in more entries than a function call takes arguments still finds its card',
+  () => {
+    const home = mkdtempSync(join(
+      scratch,
+      'pnyx-oracle-long-',
+    ))
+    process.env.PNYX_HOME = home
+    const transcriptPath = join(
+      home,
+      'long.jsonl',
+    )
+    writeFileSync(
+      transcriptPath,
+      Array.from(
+        { length: LONG_HISTORY },
+        () => JSON.stringify({
+          type: 'user',
+          timestamp: '2026-10-15T10:00:00Z',
+          message: {
+            role: 'user',
+            content: 'zeppelin',
+          },
+        }),
+      ).join('\n'),
+    )
+    const card = withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'long-created',
+            at: '2026-10-15T10:00:00Z',
+            actor: 'fixture',
+            cardId: 'long',
+            type: 'task.created',
+            data: {
+              key: 'long',
+              title: 'Long conversation',
+            },
+          },
+        })
+        const pushed = decidePush({
+          state: writer.state,
+          key: 'long',
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'long-session',
+              transcriptPath,
+            },
+          },
+          meta: {
+            at: '2026-10-15T10:00:00Z',
+            actor: 'fixture',
+          },
+        })
+        assert.ok('event' in pushed)
+        writer.append({ event: pushed.event })
+
+        return pushed.event.cardId
+      },
+    })
+    assert.deepEqual(
+      search({
+        hydraId: 'default',
+        query: {
+          text: 'zeppelin',
+          limit: 20,
+        },
+      }).hits.map(hit => hit.card),
+      [card],
     )
   },
 )
