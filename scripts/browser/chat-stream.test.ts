@@ -1381,6 +1381,29 @@ test(
         what: 'the composer after invalid saved data',
         condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')',
       })
+      await evaluate({
+        script: `async () => {
+          const input = document.querySelector('[aria-label="Reply to Hydra"]');
+          const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+          const edit = (text, caret) => {
+            set.call(input, text); input.setSelectionRange(caret, caret);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          edit('[@Fixture](pnyx-task:synthetic-task) tail', 43);
+          await new Promise(requestAnimationFrame);
+          window.draftChip = document.querySelector('.composer .draft-token');
+          if (!window.draftChip) throw new Error('Missing task chip');
+          edit('Before ' + input.value, 7);
+          const chip = document.querySelector('.composer .draft-token');
+          const gap = document.querySelector('.composer [data-draft-gap="0"]');
+          if (chip !== window.draftChip || Number(chip.dataset.from) !== 7 || gap.textContent !== 'Before ') throw new Error('Typing did not move the existing chip and mirror together');
+          const from = Number(chip.dataset.from), to = Number(chip.dataset.to);
+          edit(input.value.slice(0, from) + input.value.slice(to), from);
+          await new Promise(requestAnimationFrame);
+          if (document.querySelector('.composer .draft-token') || input.value !== 'Before  tail') throw new Error('Chip deletion used stale offsets');
+          return 'chat-assertion-passed';
+        }`,
+      })
       await run({
         args: ['run'],
         input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Keep this draft\');',
@@ -1397,6 +1420,7 @@ test(
       })
       await evaluate({
         script: `() => {
+      window.selectDraftPassage = () => {
       const block = [...document.querySelectorAll('[data-message-block]')].find(el => el.dataset.quote?.includes('A passage to comment on'));
       if (!block) throw new Error('Missing passage');
       const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
@@ -1408,12 +1432,24 @@ test(
       getSelection().removeAllRanges(); getSelection().addRange(range);
       document.activeElement?.blur();
       document.dispatchEvent(new Event('selectionchange'));
+      };
+      window.selectDraftPassage();
       return 'chat-assertion-passed';
     }`,
       })
       await waitFor({
         what: 'the selected passage ready for a comment',
         condition: 'document.querySelector(\'[aria-label="Comment on selection"]\')',
+      })
+      await evaluate({
+        script: `async () => {
+          document.querySelector('[aria-label="Quote selection"]').click();
+          const draft = document.querySelector('[aria-label="Reply to Hydra"]').value;
+          if (!draft.includes('Keep this draft') || !draft.includes('> A passage')) throw new Error('Quote did not reach the browser-owned draft immediately');
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          window.selectDraftPassage();
+          return 'chat-assertion-passed';
+        }`,
       })
       await evaluate({
         script: `() => {
