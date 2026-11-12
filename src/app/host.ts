@@ -812,6 +812,7 @@ export function createHost({
     closing: () => closing,
     at,
     write,
+    changed,
     presence,
     providerOf,
     environment,
@@ -919,12 +920,12 @@ export function createHost({
       }) : ['browser']
     },
     toolsChanged: ({ task }) => {
-      const state = loadHydra({ hydraId }).state
-      const card = state.cards[task]
       if (!fenced()) {
         return
       }
 
+      const state = loadHydra({ hydraId }).state
+      const card = state.cards[task]
       const entry = card?.agent && live.get(sessionId({ agent: card.agent }))
 
       if (!card?.agent || card.agent.host !== 'pnyx') {

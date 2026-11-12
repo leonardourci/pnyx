@@ -1,4 +1,4 @@
-import { recordTools } from './tools.ts'
+import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -11,7 +11,7 @@ import { openPaseo } from '#integrations/paseo/client.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { findCard } from '#tasks/push-rules.ts'
+import { checkRevision, findCard } from '#tasks/push-rules.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -250,6 +250,18 @@ export async function startTask({
       }
     }
 
+    if (tools?.length) {
+      requireToolAuthority({ meta })
+      checkRevision({
+        card,
+        ifRevision: meta.ifRevision,
+      })
+      meta = {
+        ...meta,
+        ifRevision: undefined,
+      }
+    }
+
     let dispatch: DispatchChoice | undefined
 
     if (how !== 'command') {
@@ -379,6 +391,7 @@ export async function startTask({
             task: card.id,
             harness: dispatch!.provider,
             account: dispatch!.account,
+            folder: folder ?? currentCard.folder,
             actor: meta.actor,
           },
         })
@@ -390,13 +403,6 @@ export async function startTask({
             code: 'TOOL_UNAVAILABLE',
           })
         }
-
-        recordTools({
-          hydraId,
-          task: card.id,
-          grant: tools,
-          meta,
-        })
       }
 
       return await askHost({
@@ -404,6 +410,7 @@ export async function startTask({
         body: {
           action: 'start',
           dispatch,
+          tools,
           task: card.id,
           ...(replacement ? { replacement } : {}),
           prompt: await taskPrompt({

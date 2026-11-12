@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs'
+import { requireToolAuthority, toolNames, writeTools } from './tools.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { transcriptPath } from './claude.ts'
 import type { trackChildren } from './children.ts'
@@ -24,7 +25,8 @@ import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
 import { applyDecision } from '#app/decision.ts'
 import type { Host, Live } from '#app/host-types.ts'
-import type { Writer } from '#app/writer.ts'
+import { withWriter, type Writer } from '#app/writer.ts'
+import { base } from '#app/command-meta.ts'
 
 // Starting a worker in Pnyx, and continuing an outside Claude Code or Codex session in Pnyx.
 export function createWorkerStarts({
@@ -32,6 +34,7 @@ export function createWorkerStarts({
   closing,
   at,
   write,
+  changed,
   presence,
   providerOf,
   environment,
@@ -45,6 +48,7 @@ export function createWorkerStarts({
   closing(): boolean
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  changed(): void
   presence({ session }: { session: AgentSession }): Presence
   providerOf({
     provider,
@@ -175,6 +179,7 @@ export function createWorkerStarts({
     reason,
     replacement,
     dispatch,
+    tools,
   }) => {
     const {
       target,
@@ -210,6 +215,15 @@ export function createWorkerStarts({
       }
     }
 
+    if (tools) {
+      requireToolAuthority({
+        meta: {
+          actor,
+          at: at(),
+        },
+      })
+    }
+
     if (starting.has(target.id)) {
       throw new HydraError({
         message: `task ${target.id} is already starting`,
@@ -228,6 +242,7 @@ export function createWorkerStarts({
     }
 
     const cwd = realpathSync(requestedFolder)
+    const toolsRevision = target.toolsRevision
 
     const {
       provider: requested,
@@ -244,6 +259,12 @@ export function createWorkerStarts({
         taskId: target.id,
       }).open({
         cwd,
+        capabilities: tools ? toolNames({
+          names: [
+            ...target.tools ?? [],
+            ...tools,
+          ],
+        }) : undefined,
         settings,
         allow: WORKER_COMMANDS,
         env: dispatch ? accountEnvironment({
@@ -268,164 +289,219 @@ export function createWorkerStarts({
         throw new Error('Pnyx is stopping')
       }
 
-      const claimed = write({
-        fn: ({ writer }) => {
-          const card = findCard({
-            state: writer.state,
-            ref: task,
+      const transaction = tools ? {
+        id: `${id}:claim`,
+        digest: JSON.stringify({
+          task,
+          tools,
+          actor,
+        }),
+      } : undefined
+
+      const claim = ({ writer }: { writer: Writer }) => {
+        const card = findCard({
+          state: writer.state,
+          ref: task,
+        })
+
+        if (`${id}:attach` in writer.state.eventIds) {
+          return {
+            card,
+            duplicate: true as const,
+          }
+        }
+
+        if (tools && card.toolsRevision !== toolsRevision) {
+          throw new HydraError({
+            message: 'the task tools changed while its agent was starting; retry the start',
+            code: 'CONFLICT',
           })
+        }
 
-          if (`${id}:attach` in writer.state.eventIds) {
-            return {
-              card,
-              duplicate: true as const,
-            }
-          }
+        startTarget({
+          writer,
+          ref: task,
+          replacement,
+        })
 
-          startTarget({
-            writer,
-            ref: task,
-            replacement,
+        if ((folder ?? card.folder) !== requestedFolder) {
+          throw new HydraError({
+            message: 'the task folder changed while its agent was starting; retry the start',
+            code: 'CONFLICT',
           })
+        }
 
-          if ((folder ?? card.folder) !== requestedFolder) {
-            throw new HydraError({
-              message: 'the task folder changed while its agent was starting; retry the start',
-              code: 'CONFLICT',
-            })
-          }
-
-          if (!isFolder({ path: cwd })) {
-            throw new HydraError({
-              message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in',
-              code: 'VALIDATION_ERROR',
-              help: ['Pass --folder <absolute path>'],
-            })
-          }
-
-          const meta = {
-            at: at(),
-            actor,
-            ...(reason ? { reason } : {}),
-          }
-
-          if (replacement) {
-            applyDecision({
-              writer,
-              decision: decideSession({
-                state: writer.state,
-                ref: replacement,
-                task: null,
-                meta: {
-                  ...meta,
-                  id: `${id}:detach`,
-                },
-              }),
-            })
-          }
-
-          // A marker left by an earlier agent belongs to it, not to the one starting now.
-          const attention = withoutInterrupted({ attention: card.attention })
-          const input = {
-            ...(cwd !== card.folder ? { folder: cwd } : {}),
-            ...(attention.length !== card.attention.length ? { attention } : {}),
-          }
-
-          if (Object.keys(input).length) {
-            applyDecision({
-              writer,
-              decision: decidePush({
-                state: writer.state,
-                key: card.key,
-                input,
-                meta: {
-                  ...meta,
-                  id: `${id}:folder`,
-                },
-              }),
-            })
-          }
-
-          const agent: AgentRef = {
-            provider,
-            sessionId: prepared.id,
-            cwd,
-            ...(prepared.path ? { transcriptPath: prepared.path } : {}),
-            host: 'pnyx',
-            ...(dispatch ? {
-              account: dispatch.account,
-              loginFolder: dispatch.folder,
-            } : {}),
-          }
-          applyDecision({
-            writer,
-            decision: decidePush({
-              state: writer.state,
-              key: sessionKey({ agent }),
-              input: {
-                title: card.title,
-                agent,
-                ...(Object.keys(settings).length ? { settings } : {}),
-                activity: 'working',
-                source: {
-                  adapter: 'pnyx',
-                  objectId: agent.sessionId,
-                  observedAt: at(),
-                },
-              },
-              meta: {
-                ...meta,
-                id: `${id}:session`,
-              },
-            }),
+        if (!isFolder({ path: cwd })) {
+          throw new HydraError({
+            message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in',
+            code: 'VALIDATION_ERROR',
+            help: ['Pass --folder <absolute path>'],
           })
+        }
+
+        const meta = {
+          at: at(),
+          actor,
+          ...(reason ? { reason } : {}),
+        }
+
+        if (replacement) {
           applyDecision({
             writer,
             decision: decideSession({
               state: writer.state,
-              ref: sessionId({ agent }),
-              task: card.id,
-              working: true,
+              ref: replacement,
+              task: null,
               meta: {
                 ...meta,
-                id: `${id}:attach`,
+                id: `${id}:detach`,
               },
             }),
           })
+        }
 
-          if (dispatch) {
-            applyDecision({
-              writer,
-              decision: hydraEvent({
+        // A marker left by an earlier agent belongs to it, not to the one starting now.
+        const attention = withoutInterrupted({ attention: card.attention })
+        const input = {
+          ...(cwd !== card.folder ? { folder: cwd } : {}),
+          ...(attention.length !== card.attention.length ? { attention } : {}),
+        }
+
+        if (Object.keys(input).length) {
+          applyDecision({
+            writer,
+            decision: decidePush({
+              state: writer.state,
+              key: card.key,
+              input,
+              meta: {
+                ...meta,
+                id: `${id}:folder`,
+              },
+            }),
+          })
+        }
+
+        const agent: AgentRef = {
+          provider,
+          sessionId: prepared.id,
+          cwd,
+          ...(prepared.path ? { transcriptPath: prepared.path } : {}),
+          host: 'pnyx',
+          ...(dispatch ? {
+            account: dispatch.account,
+            loginFolder: dispatch.folder,
+          } : {}),
+        }
+        applyDecision({
+          writer,
+          decision: decidePush({
+            state: writer.state,
+            key: sessionKey({ agent }),
+            input: {
+              title: card.title,
+              agent,
+              ...(Object.keys(settings).length ? { settings } : {}),
+              activity: 'working',
+              source: {
+                adapter: 'pnyx',
+                objectId: agent.sessionId,
+                observedAt: at(),
+              },
+            },
+            meta: {
+              ...meta,
+              id: `${id}:session`,
+            },
+          }),
+        })
+        applyDecision({
+          writer,
+          decision: decideSession({
+            state: writer.state,
+            ref: sessionId({ agent }),
+            task: card.id,
+            working: true,
+            meta: {
+              ...meta,
+              id: `${id}:attach`,
+            },
+          }),
+        })
+
+        if (tools) {
+          writeTools({
+            writer,
+            task: card.id,
+            grant: tools,
+            meta: {
+              ...meta,
+              id: `${id}:tools`,
+            },
+          })
+          prepared.toolsRevision = writer.state.cards[card.id]?.toolsRevision
+        }
+
+        if (dispatch) {
+          applyDecision({
+            writer,
+            decision: hydraEvent({
+              state: writer.state,
+              meta: {
+                ...meta,
+                id: `${id}:dispatch`,
+              },
+              cardId: card.id,
+              change: {
+                type: 'task.launched',
+                data: {
+                  via: 'pnyx',
+                  at: meta.at,
+                  folder: cwd,
+                  harness: dispatch.provider,
+                  dispatch: dispatch.reason,
+                  ...(dispatch.override ? { override: dispatch.override } : {}),
+                },
+              },
+            }),
+          })
+        }
+
+        if (transaction) {
+          writer.append({
+            event: {
+              ...base({
                 state: writer.state,
                 meta: {
                   ...meta,
-                  id: `${id}:dispatch`,
+                  id: transaction.id,
                 },
-                cardId: card.id,
-                change: {
-                  type: 'task.launched',
-                  data: {
-                    via: 'pnyx',
-                    at: meta.at,
-                    folder: cwd,
-                    harness: dispatch.provider,
-                    dispatch: dispatch.reason,
-                    ...(dispatch.override ? { override: dispatch.override } : {}),
-                  },
-                },
+                cardId: '$board',
               }),
-            })
-          }
+              type: 'apply.recorded',
+              data: { digest: transaction.digest },
+            },
+            effects: false,
+          })
+        }
 
-          const started = writer.state.cards[card.id] as Card & { agent: AgentRef }
+        const started = writer.state.cards[card.id] as Card & { agent: AgentRef }
 
-          return {
-            card: started,
-            duplicate: false as const,
-          }
-        },
-      })
+        return {
+          card: started,
+          duplicate: false as const,
+        }
+      }
+
+      const claimed = transaction ? withWriter({
+        hydraId,
+        transaction,
+        fn: claim,
+      }) as ReturnType<typeof claim> : write({ fn: claim })
+
+      if (tools) {
+        changed()
+      }
 
       if (claimed.duplicate) {
         session.close()
