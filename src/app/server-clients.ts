@@ -203,7 +203,7 @@ export function createServerClients({
       since: performance.now(),
     }
 
-    if (message.type === 'event' || message.type === 'page.event' || message.type === 'snapshot' || message.type === 'hydras') {
+    if (message.type === 'page.event' || message.type === 'snapshot' || message.type === 'hydras') {
       pending.snapshot = true
     } else if (message.type === 'latest') {
       pending.latest = mergeLatest({

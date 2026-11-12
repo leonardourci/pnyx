@@ -8,6 +8,15 @@ import type { ServerMessage } from '#app/server-transport.ts'
 import { loadUpdates, updatesOf } from '#web-tasks/updates-cache.ts'
 import { createHydraConnection } from './connection-store.ts'
 
+const forwarded = ({ event }: { event: HydraEvent }) => ({
+  type: 'page.event' as const,
+  update: {
+    seq: event.seq,
+    event,
+    cards: {},
+  },
+})
+
 class BrowserSocket {
   static OPEN = 1
   static instances: BrowserSocket[] = []
@@ -139,8 +148,7 @@ test(
     )
     t.mock.timers.tick(3 * 60 * 60_000)
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...created,
           seq: 3,
@@ -151,7 +159,7 @@ test(
             title: 'Other work',
           },
         },
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
@@ -176,8 +184,7 @@ test(
       '2099-10-16T13:00:00.000Z',
     )
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           v: 1,
           seq: 4,
@@ -191,7 +198,7 @@ test(
             until: '2099-10-16T13:00:00.000Z',
           },
         },
-      },
+      }),
     })
     socket.receive({
       message: {
@@ -235,8 +242,7 @@ test(
     )
     const clearRequest = socket.sent.find(message => message.args?.includes('clear-attempt'))!
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...created,
           seq: 5,
@@ -247,15 +253,14 @@ test(
             title: 'Another update',
           },
         },
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
       undefined,
     )
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           v: 1,
           seq: 6,
@@ -269,7 +274,7 @@ test(
             until: null,
           },
         },
-      },
+      }),
     })
     socket.receive({
       message: {
@@ -720,8 +725,7 @@ test(
     const beforeEvent = connection.snapshot().state
     const previousValue = structuredClone(beforeEvent)
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...event,
           seq: 2,
@@ -732,7 +736,7 @@ test(
             title: 'Other',
           },
         },
-      },
+      }),
     })
     assert.deepEqual(
       connection.snapshot().state.cards.task!.spend,
@@ -797,10 +801,9 @@ test(
       },
     }
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: messageEvent,
-      },
+      }),
     })
     const afterMessage = connection.snapshot().state
     assert.equal(
@@ -826,10 +829,9 @@ test(
     )
     assert.doesNotThrow(() => structuredClone(afterMessage))
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: messageEvent,
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state,
@@ -838,8 +840,7 @@ test(
     )
     const beforeReopen = connection.snapshot().state
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...event,
           id: 'reopened',
@@ -850,7 +851,7 @@ test(
             answer: 'answer',
           },
         },
-      },
+      }),
     })
     const reopened = connection.snapshot().state.cards.task!
     assert.deepEqual(
@@ -889,8 +890,7 @@ test(
     const beforeConfig = connection.snapshot().state
     const previousConfig = structuredClone(beforeConfig.config)
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...event,
           id: 'agents',
@@ -901,7 +901,7 @@ test(
             before: {},
           },
         },
-      },
+      }),
     })
     const configured = connection.snapshot().state
     assert.deepEqual(
@@ -965,10 +965,9 @@ test(
       },
     }
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: replacementEvent,
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state.cards.task!.spend,
@@ -1278,8 +1277,7 @@ for (const when of [
       )
       t.mock.timers.tick(3 * 60 * 60_000)
       socket.receive({
-        message: {
-          type: 'event',
+        message: forwarded({
           event: {
             ...created,
             id: 'other',
@@ -1290,7 +1288,7 @@ for (const when of [
               title: 'Other work',
             },
           },
-        },
+        }),
       })
       assert.equal(
         connection.snapshot().state.cards.task?.reminder?.at,

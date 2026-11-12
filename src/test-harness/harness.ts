@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { after, before } from 'node:test'
 import { WebSocket } from 'ws'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { emptyHydra, reduce } from '#app/reducer.ts'
+import { emptyHydra } from '#app/reducer.ts'
 import { startServer } from '#app/server-daemon.ts'
 import type { RunningServer, ServerMessage } from '#app/server-transport.ts'
 import { localToken } from '#app/server-state.ts'
@@ -237,11 +237,6 @@ export async function openPage({
         applyPageUpdate({
           state,
           update: message.update,
-        })
-      } else if (message.type === 'event') {
-        state = reduce({
-          state: state ?? emptyHydra(),
-          event: message.event,
         })
       } else if ((message.type === 'receipt' || message.type === 'error') && message.id) {
         answers.set(

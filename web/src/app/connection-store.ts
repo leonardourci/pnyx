@@ -737,8 +737,8 @@ export function createHydraConnection() {
       }
 
       persistSoon({ scope })
-    } else if (message.type === 'event' || message.type === 'page.event') {
-      const seq = message.type === 'event' ? message.event.seq : message.update.seq
+    } else if (message.type === 'page.event') {
+      const seq = message.update.seq
       const state = scope.resource.snapshot().confirmed
 
       if (seq <= state.seq) {
@@ -765,33 +765,22 @@ export function createHydraConnection() {
           state,
           // eslint-disable-next-line pnyx/object-params -- Immer owns the recipe callback signature.
           draft => {
-            if (message.type === 'page.event') {
-              applyPageUpdate({
-                state: draft,
-                update: message.update,
-              })
-            } else {
-              applyPageUpdate({
-                state: draft,
-                update: {
-                  seq: message.event.seq,
-                  event: message.event,
-                  cards: {},
-                },
-              })
-            }
+            applyPageUpdate({
+              state: draft,
+              update: message.update,
+            })
           },
         ),
       })
 
       confirmSaves({ scope })
 
-      const changed = message.type === 'event' ? message.event : message.update.event
+      const changed = message.update.event
 
       if (selected === scope.id) {
         if (changed) {
           noteUpdate({ event: changed })
-        } else if (message.type === 'page.event') {
+        } else {
           staleUpdates({ ids: Object.keys(message.update.cards) })
         }
       }

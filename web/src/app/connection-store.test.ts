@@ -210,20 +210,24 @@ test(
 
     socket.receive({
       message: {
-        type: 'event',
+        type: 'page.event',
         subscription: 'fixture',
-        event: {
-          v: 1,
-          id: 'after-gap',
+        update: {
           seq: 2,
-          at: '2026-10-22T10:00:00Z',
-          actor: 'web',
-          cardId: 'synthetic-task',
-          type: 'task.created',
-          data: {
-            key: 'synthetic-task',
-            title: 'Synthetic task',
+          event: {
+            v: 1,
+            id: 'after-gap',
+            seq: 2,
+            at: '2026-10-22T10:00:00Z',
+            actor: 'web',
+            cardId: 'synthetic-task',
+            type: 'task.created',
+            data: {
+              key: 'synthetic-task',
+              title: 'Synthetic task',
+            },
           },
+          cards: {},
         },
       },
     })
