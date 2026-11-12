@@ -18,6 +18,18 @@ export type UsageInputs = {
 export interface Host {
   diagnostics(): Pick<RuntimeHealth, 'sessions' | 'helper'>
   hydraId: string
+  toolsChanged({ task }: { task: string }): void
+  toolCatalog({
+    task,
+    harness,
+    account,
+    folder,
+  }: {
+    task: string
+    harness?: string
+    account?: string
+    folder?: string
+  }): Promise<string[]>
   catalogCommands({
     card,
     provider,
@@ -102,11 +114,13 @@ export interface Host {
     reason,
     replacement,
     dispatch,
+    tools,
   }: {
     task: string
     prompt: string
     folder?: string
     dispatch?: DispatchChoice
+    tools?: string[]
     replacement?: string
     settings: AgentSettings
     id: string
@@ -248,6 +262,8 @@ export interface Live {
   sentAt?: number
   // A setting this process could not take: it is replaced once its turn is over.
   stale?: boolean
+  toolResume?: string
+  toolsRevision?: string
   // The owner stopped the running turn, so a new message waits for it to end.
   stopping?: boolean
   idle?: ReturnType<typeof setTimeout>

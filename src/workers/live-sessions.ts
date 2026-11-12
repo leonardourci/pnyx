@@ -1,4 +1,5 @@
-import { requireCopyAvailable } from '#projects/copy-lease.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
 import { background } from '#app/background.ts'
@@ -20,7 +21,7 @@ import type { trackChildren } from './children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { accountEnvironment } from './dispatch.ts'
-import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS } from './host.ts'
+import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS, closedTask } from './host.ts'
 import type { createHostedDelivery } from './hosted-delivery.ts'
 import { steeringMessages } from './inbox-notice.ts'
 import type { AgentRef } from './model.ts'
@@ -30,7 +31,7 @@ import { permissionEvent } from './permission-rules.ts'
 import type { HostedSession, Provider } from './provider.ts'
 import { harnessOf, providerLabel } from './providers.ts'
 import { sessionId } from './session-attachments.ts'
-import { steeringWorkerIdentity } from './steering.ts'
+import { steeringHeld, steeringWorkerIdentity } from './steering.ts'
 import type { createSteeringDelivery } from './steering-delivery.ts'
 import { liveReplies } from './streaming.ts'
 import type { createUsageTracker } from './usage-tracker.ts'
@@ -43,6 +44,8 @@ export function createLiveSessions({
   controller,
   children,
   streamed,
+  beginTools,
+  deferTools,
   usageTracker,
   compaction,
   at,
@@ -68,6 +71,14 @@ export function createLiveSessions({
   closing(): boolean
   controller: AbortController
   children: ReturnType<typeof trackChildren>
+  beginTools({ task }: { task: string }): boolean
+  deferTools({
+    task,
+    failed,
+  }: {
+    task: string
+    failed?: boolean
+  }): void
   streamed({
     session,
     text,
@@ -142,10 +153,12 @@ export function createLiveSessions({
     key,
     entry,
     permanent = false,
+    failed = false,
   }: {
     key: string
     entry: Live
     permanent?: boolean
+    failed?: boolean
   }) => {
     clearTimeout(entry.idle)
     expireEntry({ entry })
@@ -155,6 +168,13 @@ export function createLiveSessions({
     }
 
     entry.input.end()
+
+    if (permanent || entry.toolResume) {
+      deferTools({
+        task: entry.task,
+        failed,
+      })
+    }
 
     if (entry.session) {
       entry.session.close()
@@ -433,11 +453,19 @@ export function createLiveSessions({
           return
         }
 
-        if (entry.stale && nativeIdle({ work: entry.session.snapshot().work })) {
+        if (entry.stale && !entry.input.pending({ includes: () => true })
+          && nativeIdle({ work: entry.session.snapshot().work })) {
           retire({
             key,
             entry,
           })
+
+          if (entry.toolResume && !closing()) {
+            resumeTools({
+              task: card.id,
+              text: entry.toolResume,
+            })
+          }
 
           return
         }
@@ -446,6 +474,12 @@ export function createLiveSessions({
           () => background({
             name: 'idle agent cleanup',
             run: () => {
+              if (entry.toolResume) {
+                armIdle()
+
+                return
+              }
+
               if (entry.session && entry.activity === 'finished' && nativeIdle({ work: entry.session.snapshot().work })) {
                 retire({
                   key,
@@ -507,6 +541,42 @@ export function createLiveSessions({
         }
 
         const receipt = typeof received === 'object' && received.type === 'input' ? received.receipt : undefined
+        const toolsRevision = entry.session.toolsRevision
+
+        if (toolsRevision && receipt?.phase === 'taken') {
+          note({
+            fn: ({ writer }) => {
+              const current = writer.state.cards[card.id]
+
+              const selected = current?.toolsRevision === toolsRevision
+              const pending = current?.toolsApplied !== toolsRevision
+
+              if (selected && pending) {
+                applyDecision({
+                  writer,
+                  decision: hydraEvent({
+                    state: writer.state,
+                    cardId: card.id,
+                    meta: {
+                      at: at(),
+                      actor: 'pnyx',
+                    },
+                    change: {
+                      type: 'task.tools-applied',
+                      data: { revision: toolsRevision },
+                    },
+                  }),
+                })
+              }
+
+              if (entry.toolsRevision === toolsRevision
+                && writer.state.cards[card.id]?.toolsApplied === toolsRevision) {
+                entry.toolResume = undefined
+              }
+            },
+          })
+        }
+
         const refused = receipt?.phase === 'refused'
 
         if (receipt && (refused || receipt.phase === 'taken')) {
@@ -927,9 +997,12 @@ export function createLiveSessions({
       return
     }
 
+    const pendingTools = loadHydra({ hydraId }).state.cards[card.id]
+    const unapplied = pendingTools?.toolsRevision !== pendingTools?.toolsApplied
     retire({
       key,
       entry,
+      failed: Boolean(entry.toolResume) && unapplied,
     })
 
     if (card.id === HYDRA_CARD) {
@@ -977,9 +1050,11 @@ export function createLiveSessions({
   const open = ({
     card,
     session,
+    toolResume,
   }: {
     card: Card & { agent: AgentRef }
     session?: HostedSession
+    toolResume?: string
   }): Live => {
     requireCopyAvailable({
       hydraId,
@@ -1013,6 +1088,8 @@ export function createLiveSessions({
       input: inbox(),
       replies: liveReplies(),
       activity: 'finished',
+      toolsRevision: session ? session.toolsRevision : card.toolsRevision,
+      toolResume,
       steering: new Set(),
       delivered: new Map(),
       pendingDirect: new Map(),
@@ -1034,6 +1111,62 @@ export function createLiveSessions({
     })
 
     return entry
+  }
+
+  const resumeTools = ({
+    task,
+    text,
+  }: {
+    task: string
+    text: string
+  }) => {
+    const state = loadHydra({ hydraId }).state
+    const card = state.cards[task]
+
+    if (!card?.agent || closing()) {
+      return
+    }
+
+    if (steeringHeld({ card }) || copySettling({
+      hydraId,
+      task,
+    }) || card.id !== HYDRA_CARD && closedTask({
+      state,
+      card,
+    })) {
+      deferTools({ task })
+
+      return
+    }
+
+    if (!beginTools({ task })) {
+      deferTools({ task })
+
+      return
+    }
+
+    try {
+      const resumed = open({
+        toolResume: text,
+        card: {
+          ...card,
+          agent: {
+            ...card.agent,
+            resume: true,
+          },
+        },
+      })
+      resumed.input.push({
+        id: randomUUID(),
+        text,
+      })
+    } catch (error) {
+      deferTools({
+        task,
+        failed: true,
+      })
+      throw error
+    }
   }
 
   const action: Host['action'] = ({
@@ -1089,6 +1222,7 @@ export function createLiveSessions({
   return {
     retire,
     open,
+    resumeTools,
     action,
     thread,
     close,

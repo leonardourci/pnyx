@@ -186,6 +186,8 @@ export function decideUndo({
     'task.owner-ask',
     'task.intent',
     'task.declared',
+    'task.tools',
+    'task.tools-applied',
     'task.kind',
     'task.report',
     'task.report-reviewed',

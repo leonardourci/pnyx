@@ -59,6 +59,7 @@ export const COMMAND_REGISTRY = {
     page: true,
     worker: [
       'show',
+      'tools',
       'history',
       'status',
       'chat',

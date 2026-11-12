@@ -21,6 +21,7 @@ import type { Writer } from '#app/writer.ts'
 // A message reaching a hosted agent: persisted steering or a direct input, and the direct reply settled on the provider's receipt.
 export function createHostedDelivery({
   hydraId,
+  fenced,
   live,
   at,
   write,
@@ -34,6 +35,7 @@ export function createHostedDelivery({
   unnotifiedSteering,
 }: {
   hydraId: string
+  fenced(): boolean
   live: Map<string, Live>
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
@@ -177,6 +179,7 @@ export function createHostedDelivery({
       })
     }
 
+    const unfenced = !fenced()
     direct ||= compactCommand({ text })
     const card = deliveringMessage.run(
       true,
@@ -222,7 +225,7 @@ export function createHostedDelivery({
               })
             }
 
-            if (steeringHeld({ card }) || settling) {
+            if (steeringHeld({ card }) || settling || unfenced) {
               return writer.state.cards[card.id] as Card & { agent: AgentRef }
             }
 
@@ -280,7 +283,7 @@ export function createHostedDelivery({
       return
     }
 
-    if (!direct && steeringHeld({ card })) {
+    if (!direct && (steeringHeld({ card }) || unfenced)) {
       return { deferred: true }
     }
 

@@ -1,3 +1,4 @@
+import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -10,7 +11,7 @@ import { openPaseo } from '#integrations/paseo/client.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { findCard } from '#tasks/push-rules.ts'
+import { checkRevision, findCard } from '#tasks/push-rules.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -143,6 +144,7 @@ export async function startTask({
   rule,
   harness,
   override,
+  tools,
   prompt,
   folder: given,
   inPlace,
@@ -160,6 +162,7 @@ export async function startTask({
   rule?: string
   harness?: string
   override?: Override
+  tools?: string[]
   prompt?: string
   folder?: string
   inPlace?: boolean
@@ -224,6 +227,13 @@ export async function startTask({
       })
     }
 
+    if (tools?.length && how !== 'pnyx') {
+      throw new HydraError({
+        message: 'Tool grants require the pnyx launch route',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
     if (how === 'firstmate') {
       return await askFirstmate({
         hydraId,
@@ -237,6 +247,18 @@ export async function startTask({
       return {
         task: card.id,
         event: 'none: duplicate',
+      }
+    }
+
+    if (tools?.length) {
+      requireToolAuthority({ meta })
+      checkRevision({
+        card,
+        ifRevision: meta.ifRevision,
+      })
+      meta = {
+        ...meta,
+        ifRevision: undefined,
       }
     }
 
@@ -361,11 +383,34 @@ export async function startTask({
     }
 
     if (how === 'pnyx') {
+      if (tools?.length) {
+        const catalog = await askHost({
+          hydraId,
+          body: {
+            action: 'tool-catalog',
+            task: card.id,
+            harness: dispatch!.provider,
+            account: dispatch!.account,
+            folder: folder ?? currentCard.folder,
+            actor: meta.actor,
+          },
+        })
+        const missing = tools.find(name => !(catalog.tools as string[]).includes(name))
+
+        if (missing) {
+          throw new HydraError({
+            message: `Tool capability is not configured: ${missing}`,
+            code: 'TOOL_UNAVAILABLE',
+          })
+        }
+      }
+
       return await askHost({
         hydraId,
         body: {
           action: 'start',
           dispatch,
+          tools,
           task: card.id,
           ...(replacement ? { replacement } : {}),
           prompt: await taskPrompt({

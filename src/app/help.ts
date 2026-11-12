@@ -211,6 +211,9 @@ pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [-
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
+pnyx-axi task tools <task> [--available] [--harness claude|codex] [--account <name>]
+pnyx-axi task tools <task> [--grant <capability>]... [--revoke <capability>]...
+Capabilities: browser, mcp:<configured-name>, plugin:<installed-id>. Hydra grants tools itself; workers ask with task ask. Pnyx resumes the same conversation when native work settles. Grants survive restart. Hosted sessions start with no external MCP/plugins; browser selects one isolated headless chrome-devtools-axi session.
 pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
@@ -282,7 +285,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear> [--every "4 hours" --until worker-started|question-answered|task-done] [--question <id>]
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
+pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>] [--tool <capability>]...
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
