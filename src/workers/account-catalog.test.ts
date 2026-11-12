@@ -335,7 +335,7 @@ if (existsSync(${JSON.stringify(quotaGate)})) {
     assert.deepEqual(
       maxAges,
       [
-        '5m',
+        '0',
         '0',
       ],
     )

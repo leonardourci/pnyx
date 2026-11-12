@@ -165,6 +165,8 @@ interface PlanUsage {
 }
 
 const USAGE_CACHE_MS = 5 * 60_000
+// The composer's plan windows: one quota-axi read per login every USAGE_CACHE_MS, shared by every
+// tab and Hydra, so a hover never waits on the vendor. A failed read is not kept.
 const usageCache = new Map<string, {
   at: number
   result: Promise<PlanUsage | undefined>
@@ -188,10 +190,7 @@ export async function readUsage({
     return cached.result
   }
 
-  const result = usageReading({
-    account,
-    refresh,
-  })
+  const result = usageReading({ account })
   const entry = {
     at: Date.now(),
     result,
@@ -214,17 +213,7 @@ export async function readUsage({
   }
 }
 
-async function usageReading({
-  account,
-  refresh,
-}: {
-  account: Account
-  refresh: boolean
-}): Promise<PlanUsage | undefined> {
-  if (!existsSync(loginFolder({ account }))) {
-    return undefined
-  }
-
+async function usageReading({ account }: { account: Account }): Promise<PlanUsage | undefined> {
   const env = accountEnvironment({ account })
 
   try {
@@ -237,8 +226,9 @@ async function usageReading({
         ...(env[loginVariable({ provider: account.provider })] && !env.QUOTA_AXI_SNAPSHOT
           ? ['--profile-only'] : []),
         '--no-credential-refresh',
+        // The server cache above is the only one, so a reading is never older than it.
         '--max-age',
-        refresh ? '0' : '5m',
+        '0',
         '--json',
       ],
       options: {
