@@ -75,6 +75,19 @@ export function validateLocalTaskFlags({
   values: Record<string, unknown>
   positionals: string[]
 }): void {
+  const toolsOnly = [
+    'grant',
+    'revoke',
+    'available',
+  ].find(flag => values[flag] !== undefined)
+
+  if (action !== 'tools' && toolsOnly) {
+    throw new HydraError({
+      message: `--${toolsOnly} is only valid for task tools`,
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
   if (action !== 'start' && Array.isArray(values.tool) && values.tool.length) {
     throw new HydraError({
       message: '--tool is only valid for task start',
