@@ -51,7 +51,7 @@ export function writeDurably({
 }: {
   path: string
   data: string | Buffer
-  flag: 'a' | 'w' | 'wx'
+  flag: 'a' | 'w'
 }): void {
   const fd = openSync(
     path,
@@ -60,32 +60,49 @@ export function writeDurably({
   )
 
   try {
-    fchmodSync(
+    writeOpenFile({
       fd,
-      0o600,
-    )
-    const buffer = typeof data === 'string' ? Buffer.from(data) : data
-    let written = 0
-
-    while (written < buffer.length) {
-      const bytes = writeSync(
-        fd,
-        buffer,
-        written,
-        buffer.length - written,
-      )
-
-      if (bytes === 0) {
-        throw new Error(`write made no progress: ${path}`)
-      }
-
-      written += bytes
-    }
-
-    fsyncSync(fd)
+      path,
+      data,
+    })
   } finally {
     closeSync(fd)
   }
+}
+
+// Writes all of data to an open file and syncs it; the caller closes the file.
+export function writeOpenFile({
+  fd,
+  path,
+  data,
+}: {
+  fd: number
+  path: string
+  data: string | Buffer
+}): void {
+  fchmodSync(
+    fd,
+    0o600,
+  )
+  const buffer = typeof data === 'string' ? Buffer.from(data) : data
+  let written = 0
+
+  while (written < buffer.length) {
+    const bytes = writeSync(
+      fd,
+      buffer,
+      written,
+      buffer.length - written,
+    )
+
+    if (bytes === 0) {
+      throw new Error(`write made no progress: ${path}`)
+    }
+
+    written += bytes
+  }
+
+  fsyncSync(fd)
 }
 
 // Writes the whole file beside the old one and renames it into place, so a reader sees one or the other.

@@ -466,7 +466,7 @@ test(
 )
 
 test(
-  'debug history and health preserve events, and CPU profiles save privately and cancel on shutdown',
+  'debug queries page correlated events without message bodies or writes, report runtime health, and save private CPU profiles that shutdown cancels',
   async () => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -557,6 +557,10 @@ test(
       profile,
       'utf8',
     )).nodes.length > 0)
+    assert.equal(
+      fs.statSync(profile).mode & 0o777,
+      0o600,
+    )
     const rejected = await s.ownerRefusal({
       args: [
         'debug',
@@ -590,11 +594,27 @@ test(
       check: () => logLines().some(record => record.operation === 'cpu.profile' && record.status === 'started' && record.name === cancelled),
     })
     await pnyx.restart()
-    await running
+    assert.equal(
+      (await running).code,
+      'CANCELLED',
+    )
     assert.equal(
       fs.existsSync(cancelled),
       false,
     )
+    await s.owner({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '1',
+        '--out',
+        join(
+          s.folder({ name: 'cpu-profiles' }),
+          'after-restart.cpuprofile',
+        ),
+      ],
+    })
     const invalid = await s.ownerRefusal({
       args: [
         'debug',

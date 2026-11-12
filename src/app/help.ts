@@ -68,8 +68,8 @@ and errors in the last ${LOG_BYTES / 1024 / 1024} MiB of the log files, newest d
 serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
 pnyx-axi debug cpu-profile [--seconds <1..60>] --out <file> [--hydra <id>]
 Capture the running server's CPU samples (10 seconds by default), save a private .cpuprofile,
-and show the top functions. Existing output files are refused.
-Only one profile runs at a time; shutdown cancels it.
+and show the top functions. Existing output files and missing or unwritable folders are refused
+before sampling. Only one profile runs at a time; shutdown cancels it with CANCELLED.
 pnyx-axi debug health [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read unfinished helper batches and their observed native ownership/deadline, unsettled inputs,
 sessions retained during settings retirement, pending helper completions, eligible spool age,

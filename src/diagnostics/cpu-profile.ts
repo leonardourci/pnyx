@@ -1,8 +1,9 @@
-import { existsSync } from 'node:fs'
+import { closeSync, openSync, rmSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { Session } from 'node:inspector/promises'
 import type { Profiler, Runtime } from 'node:inspector'
 import { setTimeout as delay } from 'node:timers/promises'
-import { writeDurably } from '#store/storage.ts'
+import { writeOpenFile } from '#store/storage.ts'
 import { log } from '#app/diagnostics.ts'
 import { oneDecimal } from '#app/log-line.ts'
 import { HydraError } from '#store/errors.ts'
@@ -92,13 +93,6 @@ export async function captureCpuProfile({
     })
   }
 
-  if (existsSync(path)) {
-    throw new HydraError({
-      code: 'ALREADY_EXISTS',
-      message: `CPU profile output already exists: ${path}`,
-    })
-  }
-
   if (profiling) {
     throw new HydraError({
       code: 'BUSY',
@@ -106,8 +100,10 @@ export async function captureCpuProfile({
     })
   }
 
+  const fd = reserveOutput({ path })
   profiling = true
   const session = new Session()
+  let saved = false
 
   try {
     session.connect()
@@ -126,24 +122,73 @@ export async function captureCpuProfile({
         undefined,
         { signal },
       )
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new HydraError({
+          code: 'CANCELLED',
+          message: 'CPU profile cancelled: its Hydra stopped',
+        })
+      }
+
+      throw error
     } finally {
       profile = (await session.post('Profiler.stop')).profile
     }
 
-    writeDurably({
+    writeOpenFile({
+      fd,
       path,
       data: JSON.stringify(profile),
-      flag: 'wx',
     })
+    saved = true
 
     return {
       path,
       seconds,
       samples: profile.samples?.length ?? 0,
       functions: profileFunctions({ profile }),
+      help: [`Open \`${path}\` in Chrome DevTools > Performance (Load profile)`],
     }
   } finally {
+    closeSync(fd)
+
+    if (!saved) {
+      rmSync(
+        path,
+        { force: true },
+      )
+    }
+
     session.disconnect()
     profiling = false
+  }
+}
+
+// Claims the output before sampling, so a bad path fails at once instead of after the capture.
+function reserveOutput({ path }: { path: string }): number {
+  try {
+    return openSync(
+      path,
+      'wx',
+      0o600,
+    )
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+
+    if (code === 'EEXIST') {
+      throw new HydraError({
+        code: 'ALREADY_EXISTS',
+        message: `CPU profile output already exists: ${path}`,
+      })
+    }
+
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES') {
+      throw new HydraError({
+        code: 'VALIDATION_ERROR',
+        message: `CPU profile folder is missing or not writable: ${dirname(path)}`,
+      })
+    }
+
+    throw error
   }
 }

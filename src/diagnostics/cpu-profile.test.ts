@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { captureCpuProfile, profileFunctions } from './cpu-profile.ts'
 
 test(
-  'CPU capture saves a private usable profile, rejects overlap and invalid durations, and cancels cleanly',
+  'CPU capture saves a private usable profile, refuses overlap, invalid durations and unusable output paths before sampling, and cancels cleanly',
   async t => {
     const root = mkdtempSync(join(
       tmpdir(),
@@ -91,14 +91,15 @@ test(
     )
     syncBuiltinESMExports()
     t.after(() => {
-      t.mock.restoreAll(); syncBuiltinESMExports()
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
     })
     await assert.rejects(
       captureCpuProfile({
         seconds: 1,
         path: race,
       }),
-      { code: 'EEXIST' },
+      { code: 'ALREADY_EXISTS' },
     )
     assert.equal(
       readFileSync(
@@ -122,7 +123,7 @@ test(
     abort.abort()
     await assert.rejects(
       pending,
-      {name: 'AbortError'},
+      { code: 'CANCELLED' },
     )
     assert.equal(
       existsSync(cancelled),
@@ -135,6 +136,19 @@ test(
         'after-cancel.cpuprofile',
       ),
     })).samples > 0)
+    const started = performance.now()
+    await assert.rejects(
+      captureCpuProfile({
+        seconds: 1,
+        path: join(
+          root,
+          'missing',
+          'idle.cpuprofile',
+        ),
+      }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.ok(performance.now() - started < 1000)
   },
 )
 
