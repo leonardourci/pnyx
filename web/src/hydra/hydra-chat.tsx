@@ -26,6 +26,7 @@ import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState } from 'react'
+import { flushSync } from 'react-dom'
 import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
@@ -667,10 +668,11 @@ export function HydraChat({
 
     if (threadSession.current === session) {
       if (earlier) {
-        setPage(before => receivePage({
+        // The source row must be committed before its caller reads the note and passage from the DOM.
+        flushSync(() => setPage(before => receivePage({
           before,
           latest: earlier,
-        }))
+        })))
       }
     }
   }
