@@ -4,13 +4,18 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { DatabaseSync } from 'node:sqlite'
+import { spawnSync } from 'node:child_process'
 import { withWriter } from '#app/writer.ts'
 import { loadHydra } from '#app/store.ts'
 import { decidePush } from '#tasks/push.ts'
 import { search } from './search.ts'
+import { searchPath } from './index.ts'
 
 const CHECKPOINT_WORDS = 20_000
 const TAIL_WORDS = 100_000
+const EVENT_BATCH_WORDS = 6000
+const PEER_SEARCH_TIMEOUT_MS = 10_000
 
 const nativeLine = ({ text }: { text: string }) => `${JSON.stringify({
   type: 'user',
@@ -51,9 +56,19 @@ test(
       root,
       'session.jsonl',
     )
+    assert.deepEqual(
+      search({
+        hydraId: 'default',
+        query: {
+          text: 'emptyneedle',
+          limit: 20,
+        },
+      }).hits,
+      [],
+    )
     fs.writeFileSync(
       native,
-      nativeLine({text: 'initialneedle'}),
+      nativeLine({text: 'initialneedle'}) + nativeLine({text: 'ephemeralneedle'}),
     )
     const created = withWriter({
       hydraId: 'default',
@@ -86,6 +101,26 @@ test(
           ),
         }
       },
+    })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'archived-original',
+          actor: 'fixture',
+          at: '2026-11-12T10:00:01Z',
+          cardId: created.card,
+          type: 'chat.message',
+          data: {
+            session: 'claude-code:delta',
+            nativeId: '0:m0',
+            role: 'user',
+            text: 'initialneedle',
+          },
+        },
+      }),
     })
     const find = ({ text }: { text: string }) => search({
       hydraId: 'default',
@@ -167,9 +202,73 @@ test(
     let appendWhileReading = false
     let failNativeRead = false
     let failFromPosition = 0
+    let failEventRead = false
+    let eventBatchStart = 0
+    let failedEventPosition = 0
+    let overlapEvents = false
+    let overlapNative = false
+
+    const peerSearch = ({ text }: { text: string }) => {
+      const source = new URL(
+        './search.ts',
+        import.meta.url,
+      ).href
+      const input = JSON.stringify({
+        hydraId: 'default',
+        query: {
+          text,
+          limit: 20,
+        },
+      })
+      const answer = spawnSync(
+        process.execPath,
+        [
+          '--conditions=source',
+          '--input-type=module',
+          '-e',
+          `import { search } from ${JSON.stringify(source)}; process.stdout.write(JSON.stringify(search(${input})));`,
+        ],
+        {
+          encoding: 'utf8',
+          timeout: PEER_SEARCH_TIMEOUT_MS,
+        },
+      )
+      assert.equal(
+        answer.status,
+        0,
+        answer.stderr,
+      )
+      assert.equal(
+        JSON.parse(answer.stdout).hits[0]?.card,
+        created.card,
+      )
+    }
+
     const open = fs.openSync
     const read = fs.readSync
     const close = fs.closeSync
+    const stat = fs.statSync
+    t.mock.method(
+      fs,
+      'statSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.statSync's signature.
+      (
+        path: fs.PathLike,
+        options?: fs.StatOptions,
+      ) => {
+        const found = stat(
+          path,
+          options,
+        )
+
+        if (overlapNative && String(path) === native) {
+          overlapNative = false
+          peerSearch({ text: 'overlapnative' })
+        }
+
+        return found
+      },
+    )
     t.mock.method(
       fs,
       'openSync',
@@ -217,6 +316,19 @@ test(
 
         const nativeRead = path === native && length > 0
         const pastFailure = position !== null && position >= failFromPosition
+
+        const eventRead = path === created.log && length > 0
+        const laterEventBatch = position !== null && position > eventBatchStart
+
+        if (overlapEvents && eventRead) {
+          overlapEvents = false
+          peerSearch({ text: 'overlapevent' })
+        }
+
+        if (failEventRead && eventRead && laterEventBatch) {
+          failedEventPosition = position
+          throw new Error('Synthetic event batch read failure')
+        }
 
         if (appendWhileReading && nativeRead) {
           appendWhileReading = false
@@ -267,6 +379,20 @@ test(
       0,
       'an unchanged query reads no historical event or transcript bytes',
     )
+    const locked = new DatabaseSync(searchPath({ hydraId: 'default' }))
+    locked.exec('BEGIN IMMEDIATE')
+
+    try {
+      assert.equal(
+        find({ text: 'initialneedle' }).hits[0]?.card,
+        created.card,
+        'an unchanged query needs no cache write lock',
+      )
+    } finally {
+      locked.exec('ROLLBACK')
+      locked.close()
+    }
+
     const checkpoint = nativeLine({ text: 'checkpoint '.repeat(CHECKPOINT_WORDS) })
     const throughCheckpoint = nativeSize + Buffer.byteLength(checkpoint)
     fs.appendFileSync(
@@ -333,7 +459,7 @@ test(
         root,
         'replacement.jsonl',
       ),
-      nativeLine({text: 'replacementneedle'}),
+      nativeLine({text: 'replacementneedle'}) + nativeLine({text: 'initialneedle'}),
     )
     fs.renameSync(
       join(
@@ -356,9 +482,15 @@ test(
     assert.equal(
       find({text: 'replacementneedle'}).hits[0]?.card,
       created.card,
+      'a replacement line at an archived numeric offset remains searchable',
     )
     assert.equal(
-      find({text: 'initialneedle'}).hits.length,
+      find({text: 'initialneedle'}).hits[0]?.snippets.length,
+      1,
+      'a reset retains the archive without indexing an unchanged native copy twice',
+    )
+    assert.equal(
+      find({text: 'ephemeralneedle'}).hits.length,
       0,
     )
     assert.equal(
@@ -383,6 +515,111 @@ test(
     assert.equal(
       find({ text: 'truncatedmarker*' }).hits[0]?.card,
       created.card,
+    )
+    eventBatchStart = fs.statSync(created.log).size
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        for (const id of [
+          'batch-one',
+          'batch-two',
+          'batch-three',
+          'batch-four',
+          'batch-five',
+        ]) {
+          writer.append({
+            event: {
+              v: 1,
+              seq: writer.state.seq + 1,
+              id,
+              type: 'card.noted',
+              cardId: created.card,
+              actor: 'fixture',
+              at: '2026-11-12T10:03:00Z',
+              data: {
+                text: `${id} ${'eventcheckpoint '.repeat(EVENT_BATCH_WORDS)}`,
+                kind: 'context',
+                source: 'fixture',
+              },
+            },
+          })
+        }
+      },
+    })
+    failEventRead = true
+
+    try {
+      assert.throws(
+        () => find({ text: 'eventcheckpoint*' }),
+        /Synthetic event batch read failure/,
+      )
+    } finally {
+      failEventRead = false
+    }
+
+    const beforeEventRetry = reads.length
+    assert.equal(
+      find({ text: 'eventcheckpoint*' }).hits[0]?.card,
+      created.card,
+    )
+    assert.ok(failedEventPosition > eventBatchStart)
+    assert.equal(
+      find({ text: 'batch-one' }).hits[0]?.card,
+      created.card,
+      'the first committed event batch remains searchable after a later read fails',
+    )
+    assert.equal(
+      reads.slice(beforeEventRetry).find(entry => entry.path === created.log)?.position,
+      failedEventPosition,
+      'event retry resumes after committed batches',
+    )
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'overlap-event',
+          type: 'card.noted',
+          cardId: created.card,
+          actor: 'fixture',
+          at: '2026-11-12T10:04:00Z',
+          data: {
+            text: 'overlapevent',
+            kind: 'context',
+            source: 'fixture',
+          },
+        },
+      }),
+    })
+    overlapEvents = true
+    assert.equal(
+      find({ text: 'overlapevent' }).hits[0]?.snippets.length,
+      1,
+      'another process advancing the event cursor does not duplicate its batch',
+    )
+    fs.appendFileSync(
+      native,
+      nativeLine({ text: 'overlapnative' }),
+    )
+    overlapNative = true
+    assert.equal(
+      find({ text: 'overlapnative' }).hits[0]?.snippets.length,
+      1,
+      'another process advancing the native cursor does not duplicate its batch',
+    )
+    const stale = new DatabaseSync(searchPath({ hydraId: 'default' }))
+
+    try {
+      stale.exec("PRAGMA user_version=0; UPDATE docs SET text='obsoletecachedtext';")
+    } finally {
+      stale.close()
+    }
+
+    assert.equal(
+      find({ text: 'eventcheckpoint*' }).hits[0]?.card,
+      created.card,
+      'an incompatible cache version rebuilds stored text and postings from durable sources',
     )
     const before = fs.readFileSync(created.log)
     assert.equal(

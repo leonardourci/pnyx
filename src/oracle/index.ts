@@ -1,4 +1,5 @@
-import { chmodSync, statSync } from 'node:fs'
+import { chmodSync, existsSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
@@ -7,12 +8,13 @@ import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
-import { privateDir } from '#store/storage.ts'
+import { logPath, privateDir } from '#store/storage.ts'
 import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
-import { transcriptMessages } from '#workers/transcripts.ts'
+import { recordEntries } from '#hydra/transcripts-read.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
 import { documentChunks, eventDocuments, type Document } from './documents.ts'
 import { fold, inflection, matches, tokens, type Term } from './query.ts'
+import { visibleText } from './text.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -28,14 +30,16 @@ function sqlite(): typeof import('node:sqlite') {
   }
 }
 
-const TRANSCRIPT_BATCH_BYTES = 256 * 1024
+// Bump when stored text, visibility or tokenization changes.
+const INDEX_VERSION = 1
+const CATCH_UP_BATCH_BYTES = 256 * 1024
 const EVENTS = 'events'
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS cursors (
   source TEXT PRIMARY KEY, card TEXT NOT NULL, session TEXT NOT NULL,
   identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL, event TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS archived (session TEXT NOT NULL, line TEXT NOT NULL, PRIMARY KEY(session, line));
+CREATE TABLE IF NOT EXISTS archived (session TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(session, digest));
 CREATE TABLE IF NOT EXISTS docs (
   id INTEGER PRIMARY KEY, card TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL,
   text TEXT NOT NULL,
@@ -86,7 +90,25 @@ export function openIndex({
       0o600,
     )
     db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;')
-    db.exec(SCHEMA)
+    const version = db.prepare('PRAGMA user_version').get() as { user_version: number }
+
+    if (version.user_version !== INDEX_VERSION) {
+      transaction({
+        db,
+        fn: () => {
+          const current = db.prepare('PRAGMA user_version').get() as { user_version: number }
+
+          if (current.user_version === INDEX_VERSION) {
+            return
+          }
+
+          db.exec('DROP TABLE IF EXISTS vocabulary; DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS archived; DROP TABLE IF EXISTS cursors;')
+          db.exec(SCHEMA)
+          db.exec(`PRAGMA user_version=${INDEX_VERSION}`)
+        },
+      })
+    }
+
     catchUp({
       db,
       hydraId,
@@ -182,6 +204,10 @@ function catchUp({
   const track = db.prepare("INSERT OR IGNORE INTO cursors VALUES(?, ?, ?, '', 0, 0, '')")
   const insert = db.prepare('INSERT INTO docs(card, kind, at, text, source, pos, part, session, line) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)')
   const putWords = db.prepare('INSERT INTO words(rowid, terms, stems) VALUES(?, ?, ?)')
+  const archive = db.prepare('INSERT OR IGNORE INTO archived VALUES(?, ?)')
+  const archived = db.prepare('SELECT 1 FROM archived WHERE session=? AND digest=?')
+  const removeNative = db.prepare('DELETE FROM docs WHERE session=? AND line=? AND source<>?')
+  const removeEvent = db.prepare('DELETE FROM docs WHERE source=? AND pos=?')
 
   const add = ({
     entry,
@@ -217,104 +243,131 @@ function catchUp({
     )
   }
 
-  transaction({
-    db,
-    fn: () => {
-      const cursor = (getCursor.get(EVENTS) as unknown as Cursor | undefined) ?? {
-        source: EVENTS,
-        card: '',
-        session: '',
-        identity: '',
-        pos: 0,
-        seq: 0,
-        event: '',
-      }
-      const read = readEventsFrom({
-        hydraId,
-        offset: cursor.pos,
+  const eventLog = logPath({ dir: hydraDir({ hydraId }) })
+  const throughEvents = existsSync(eventLog) ? statSync(eventLog).size : 0
+  const newerMessages = new Map<string, number>()
+  let pendingEvents = true
+
+  while (pendingEvents) {
+    const cursor = (getCursor.get(EVENTS) as unknown as Cursor | undefined) ?? {
+      source: EVENTS,
+      card: '',
+      session: '',
+      identity: '',
+      pos: 0,
+      seq: 0,
+      event: '',
+    }
+    const read = readEventsFrom({
+      hydraId,
+      offset: cursor.pos,
+      maxBytes: CATCH_UP_BATCH_BYTES,
+      through: throughEvents,
+    })
+    const captured = !cursor.event || state.eventIds[cursor.event] === cursor.seq
+    const belongs = captured || cursor.seq > state.seq
+
+    if (!read || !belongs || (read.events.length && read.events[0]!.seq !== cursor.seq + 1)) {
+      throw new HydraError({
+        code: 'LOG_CORRUPT',
+        message: 'Oracle cache cursor does not belong to this event log',
+        help: [`Remove the derived cache ${searchPath({ hydraId })} and query again`],
       })
-      const belongs = !cursor.event || state.eventIds[cursor.event] === cursor.seq
+    }
 
-      if (!read || !belongs || (read.events.length && read.events[0]!.seq !== cursor.seq + 1)) {
-        throw new HydraError({
-          code: 'LOG_CORRUPT',
-          message: 'Oracle cache cursor does not belong to this event log',
-          help: [`Remove the derived cache ${searchPath({ hydraId })} and query again`],
-        })
-      }
+    if (read.end === cursor.pos) {
+      break
+    }
 
-      const newerMessages = new Map<string, number>()
+    let superseded = false
+    transaction({
+      db,
+      fn: () => {
+        const current = getCursor.get(EVENTS) as unknown as Cursor | undefined
 
-      for (const event of read.events) {
-        let session = ''
-        let line = ''
+        if (current && current.pos !== cursor.pos) {
+          superseded = true
 
-        if (event.type === 'chat.message') {
-          if (state.eventIds[event.id] === undefined) {
-            newerMessages.set(
-              event.id,
-              event.seq,
-            )
-          }
+          return
+        }
 
-          session = event.data.session
-          const position = /^(\d+)(?::[mt]\d+(?:\.\d+)?)?$/.exec(event.data.nativeId)
-          line = position ? position[1]! : event.data.nativeId
-          db.prepare('INSERT OR IGNORE INTO archived VALUES(?, ?)').run(
-            session,
-            line,
-          )
-          db.prepare('DELETE FROM docs WHERE session=? AND line=? AND source<>?').run(
-            session,
-            line,
-            EVENTS,
-          )
-          const replaced = event.data.replaces
-            ? state.eventIds[event.data.replaces] ?? newerMessages.get(event.data.replaces)
-            : undefined
+        for (const event of read.events) {
+          let session = ''
+          let line = ''
 
-          if (replaced !== undefined) {
-            db.prepare('DELETE FROM docs WHERE source=? AND pos=?').run(
+          if (event.type === 'chat.message') {
+            if (state.eventIds[event.id] === undefined) {
+              newerMessages.set(
+                event.id,
+                event.seq,
+              )
+            }
+
+            session = event.data.session
+            const position = /^(\d+)(?::[mt]\d+(?:\.\d+)?)?$/.exec(event.data.nativeId)
+            line = position ? position[1]! : event.data.nativeId
+
+            if ((event.data.kind ?? 'message') === 'message') {
+              archive.run(
+                session,
+                textDigest({ text: event.data.text }),
+              )
+            }
+
+            removeNative.run(
+              session,
+              line,
               EVENTS,
-              replaced,
+            )
+            const replaced = event.data.replaces
+              ? state.eventIds[event.data.replaces] ?? newerMessages.get(event.data.replaces)
+              : undefined
+
+            if (replaced !== undefined) {
+              removeEvent.run(
+                EVENTS,
+                replaced,
+              )
+            }
+          }
+
+          let part = 0
+
+          for (const entry of eventDocuments({ event })) {
+            add({
+              entry,
+              source: EVENTS,
+              pos: event.seq,
+              part,
+              session,
+              line,
+            })
+            part++
+          }
+
+          const agent = event.type === 'card.pushed' ? event.data.agent : undefined
+          const path = agent?.transcriptPath
+
+          if (agent && path && isAbsolute(path) && path.endsWith('.jsonl')) {
+            track.run(
+              path,
+              event.cardId,
+              sessionId({ agent }),
             )
           }
         }
 
-        let part = 0
+        putCursor.run({
+          ...cursor,
+          pos: read.end,
+          seq: read.events.at(-1)?.seq ?? cursor.seq,
+          event: read.events.at(-1)?.id ?? cursor.event,
+        })
+      },
+    })
+    pendingEvents = superseded || read.end < throughEvents
+  }
 
-        for (const entry of eventDocuments({ event })) {
-          add({
-            entry,
-            source: EVENTS,
-            pos: event.seq,
-            part,
-            session,
-            line,
-          })
-          part++
-        }
-
-        const agent = event.type === 'card.pushed' ? event.data.agent : undefined
-        const path = agent?.transcriptPath
-
-        if (agent && path && isAbsolute(path) && path.endsWith('.jsonl')) {
-          track.run(
-            path,
-            event.cardId,
-            sessionId({ agent }),
-          )
-        }
-      }
-
-      putCursor.run({
-        ...cursor,
-        pos: read.end,
-        seq: read.events.at(-1)?.seq ?? cursor.seq,
-        event: read.events.at(-1)?.id ?? cursor.event,
-      })
-    },
-  })
   const hydra = state.cards[HYDRA_CARD]
   const hydraSession = hydra && cardSessionId({ card: hydra })
 
@@ -339,11 +392,20 @@ function catchUp({
     }
 
     let through: number
+    let identity: string
 
     try {
-      through = statSync(cursor.source).size
+      const stat = statSync(cursor.source)
+      through = stat.size
+      identity = `${stat.dev}:${stat.ino}`
     } catch {
       // Native files may disappear; archived messages remain indexed.
+      continue
+    }
+
+    const sameSource = cursor.identity === '' || cursor.identity === identity
+
+    if (cursor.pos === through && sameSource) {
       continue
     }
 
@@ -358,9 +420,21 @@ function catchUp({
       pending = transaction({
         db,
         fn: () => {
+          const committed = getCursor.get(next.source) as unknown as Cursor
+
+          if (committed.pos !== next.pos || committed.identity !== next.identity) {
+            next = {
+              ...committed,
+              card,
+            }
+            firstBatch = false
+
+            return true
+          }
+
           const tail = readTranscript({
             cursor: next,
-            maxBytes: TRANSCRIPT_BATCH_BYTES,
+            maxBytes: CATCH_UP_BATCH_BYTES,
             through,
           })
 
@@ -379,21 +453,26 @@ function catchUp({
           }
 
           for (const line of tail.lines) {
-            if (db.prepare('SELECT 1 FROM archived WHERE session=? AND line=?').get(
-              cursor.session,
-              String(line.pos),
-            )) {
-              continue
-            }
-
             let part = 0
 
-            for (const message of transcriptMessages({ record: line.record })) {
+            for (const message of recordEntries({
+              record: line.record,
+              offset: line.pos,
+              tools: false,
+              thinking: false,
+            })) {
+              if (message.kind !== 'message' || message.hidden || archived.get(
+                cursor.session,
+                textDigest({ text: message.text }),
+              )) {
+                continue
+              }
+
               for (const entry of documentChunks({
                 card,
                 kind: 'transcript',
                 at: message.at ?? '',
-                text: message.text,
+                text: visibleText({ text: message.text }),
               })) {
                 add({
                   entry,
@@ -415,11 +494,16 @@ function catchUp({
           }
           putCursor.run(next)
 
-          return tail.end > 0
+          return tail.end < through
         },
       })
     }
   }
+}
+
+function textDigest({ text }: { text: string }) {
+  return createHash('sha256').update(text)
+    .digest('hex')
 }
 
 function transaction<T>({
