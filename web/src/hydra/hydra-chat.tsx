@@ -677,7 +677,6 @@ export function HydraChat({
 
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && inFlight.length > 0)
-  // A send counts from the owner's message until the server says the turn began.
   const lookupState = useRef(state)
   lookupState.current = state
   const lookup = useMemo(
@@ -687,6 +686,7 @@ export function HydraChat({
       state.view?.customColumns,
     ],
   )
+  // A send counts from the owner's message until the server says the turn began.
   const since = (working ? card?.workingSince : undefined)
     ?? inFlight.at(-1)?.at ?? null
 
