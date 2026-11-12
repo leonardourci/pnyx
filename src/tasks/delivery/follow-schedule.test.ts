@@ -144,7 +144,10 @@ test(
       }),
       false,
     )
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     assert.equal(
       schedule.due({
         card,
@@ -155,7 +158,10 @@ test(
     )
     const detached = schedule.generation({ task: card.id })
     schedule.prune({ links: [] })
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     const reattached = schedule.generation({ task: card.id })
     assert.notEqual(
       reattached,
@@ -239,6 +245,61 @@ test(
         true,
         false,
       ],
+    )
+  },
+)
+
+test(
+  'an event touch keeps the read in flight and only a restart discards it',
+  () => {
+    const card = replay({
+      state: emptyHydra(),
+      events: readStream({ name: 'lifecycle' }),
+    }).cards.c1!
+    card.sessionActivity = 'working'
+    const link: Link = {
+      kind: 'github_pr',
+      url: 'https://github.com/synthetic/repo/pull/1',
+    }
+    const schedule = followSchedule({ interval: 60_000 })
+    const inFlight = schedule.generation({ task: card.id })
+    schedule.touch({ task: card.id })
+    schedule.read({
+      card,
+      link,
+      result: 'found',
+      started: inFlight,
+      now: 0,
+    })
+    assert.equal(
+      schedule.due({
+        card,
+        link,
+        now: 1_000,
+      }),
+      false,
+      'the read that was in flight when an event touched the task still counts',
+    )
+    const restarted = schedule.generation({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
+    schedule.read({
+      card,
+      link,
+      result: 'found',
+      started: restarted,
+      now: 1_000,
+    })
+    assert.equal(
+      schedule.due({
+        card,
+        link,
+        now: 1_000,
+      }),
+      true,
+      'a restart discards the read in flight',
     )
   },
 )
@@ -354,7 +415,10 @@ test(
       reads,
       1,
     )
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     release()
     await initial
     pause = undefined
@@ -372,7 +436,10 @@ test(
       3,
     )
     comments = 1
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     await follow()
     assert.equal(
       reads,
@@ -382,7 +449,10 @@ test(
       loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.comments,
       1,
     )
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     failure = true
     pause = new Promise<void>(resolve => {
       release = resolve
@@ -392,7 +462,10 @@ test(
       reads,
       5,
     )
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     failure = false
     comments = 2
     release()
@@ -409,12 +482,18 @@ test(
     )
     reportedState = 'closed'
     comments = 99
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     pause = new Promise<void>(resolve => {
       release = resolve
     })
     const staleStatus = follow()
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     release()
     await staleStatus
     pause = undefined
@@ -430,7 +509,10 @@ test(
 
     schedule = followSchedule({ interval: 60_000 })
     reportedState = 'closed'
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     pause = new Promise<void>(resolve => {
       release = resolve
     })
@@ -447,12 +529,18 @@ test(
     })
 
     reportedState = 'merged'
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     pause = new Promise<void>(resolve => {
       release = resolve
     })
     const staleMergedStatus = follow()
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     release()
     await staleMergedStatus
     pause = undefined
@@ -464,7 +552,10 @@ test(
 
     reportedState = 'merged'
     comments = 3
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     outcomePause = new Promise<void>(resolve => {
       outcomeRelease = resolve
     })
@@ -473,7 +564,10 @@ test(
       what: 'merge evidence request',
       check: () => outcomeStarted,
     })
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     outcomeRelease()
     await staleOutcome
     outcomePause = undefined
@@ -483,7 +577,10 @@ test(
       'a refresh during merge evidence also discards the old status',
     )
 
-    schedule.touch({ task: card.id })
+    schedule.touch({
+      task: card.id,
+      restart: true,
+    })
     outcomeFailure = true
     await assert.rejects(
       follow(),

@@ -46,11 +46,21 @@ export function followSchedule({ interval }: { interval: number }) {
 
   return {
     generation,
-    touch({ task }: { task: string }) {
-      generations.set(
-        task,
-        ++nextGeneration,
-      )
+    // Makes the task's links due now. A restart also discards a read in flight, which may predate
+    // the change the owner asked to see; an event's touch keeps it, as that read is already fresh.
+    touch({
+      task,
+      restart = false,
+    }: {
+      task: string
+      restart?: boolean
+    }) {
+      if (restart) {
+        generations.set(
+          task,
+          ++nextGeneration,
+        )
+      }
 
       for (const [
         id,

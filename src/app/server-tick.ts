@@ -347,8 +347,17 @@ export function createServerTick({
       spoolRetryAt = 0
       kick()
     },
-    refreshLinks({ task }: { task: string }) {
-      followChecks.touch({ task })
+    refreshLinks({
+      task,
+      restart,
+    }: {
+      task: string
+      restart?: boolean
+    }) {
+      followChecks.touch({
+        task,
+        restart,
+      })
       followCheckedAt = 0
       kick()
     },

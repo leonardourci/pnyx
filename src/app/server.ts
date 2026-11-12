@@ -226,6 +226,23 @@ export async function mountOwnedHydra({
     streamed,
   } = feed
 
+  // Each task's declared working state as the pump last saw it; a held Hydra's writer has already
+  // changed the state before the pump reads the event, so the state alone cannot tell a change.
+  // ponytail: one entry per task touched since the server started; prune if Hydras get huge.
+  const declaredWork = new Map<string, boolean>()
+
+  const workChanged = ({ task }: { task: string }) => {
+    const working = state.cards[task]?.status?.state === 'working'
+    const changed = declaredWork.get(task) !== working
+    declaredWork.set(
+      task,
+      working,
+    )
+
+    return changed
+  }
+
+  // Only events that change what GitHub reports or how often it is read make a task's links due.
   const pump = () => {
     const read = readEventsFrom({
       hydraId,
@@ -255,10 +272,10 @@ export async function mountOwnedHydra({
         })
       }
 
-      const observedLink = event.type === 'card.linked' && event.actor === 'pnyx'
-      const observation = event.type === 'card.observed' || event.actor === 'harvest'
+      const linkedByOthers = event.type === 'card.linked' && event.actor !== 'pnyx'
+      const declaredChange = workChanged({ task: event.cardId })
 
-      if (!observedLink && !observation && event.type !== 'chat.message') {
+      if (linkedByOthers || declaredChange || event.type === 'task.copy') {
         tick.refreshLinks({ task: event.cardId })
       }
 
@@ -417,7 +434,10 @@ export async function mountOwnedHydra({
           state,
           ref: body.task,
         })
-        tick.refreshLinks({ task: card.id })
+        tick.refreshLinks({
+          task: card.id,
+          restart: true,
+        })
 
         return {
           refreshing: 'pull requests',
