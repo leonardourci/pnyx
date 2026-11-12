@@ -1,5 +1,6 @@
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
+import { taskDone } from '#tasks/select.ts'
 import { steeringHeld } from './steering.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -120,4 +121,17 @@ export function findWorkerTurnToResume({
   }
 
   return resumeAttemptId
+}
+
+export function closedTask({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}): boolean {
+  return card.hidden === true || taskDone({
+    state,
+    card,
+  }) || card.copy?.state === 'removed'
 }

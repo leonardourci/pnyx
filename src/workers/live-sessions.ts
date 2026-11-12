@@ -140,9 +140,11 @@ export function createLiveSessions({
   const retire = ({
     key,
     entry,
+    permanent = false,
   }: {
     key: string
     entry: Live
+    permanent?: boolean
   }) => {
     clearTimeout(entry.idle)
     expireEntry({ entry })
@@ -161,6 +163,21 @@ export function createLiveSessions({
         taskId: entry.task,
         sessionId: key,
       })
+    }
+
+    if (permanent && entry.activity === 'working') {
+      const agent = loadHydra({ hydraId }).state.sessions?.[key]?.agent
+
+      if (agent) {
+        note({
+          fn: ({ writer }) => record({
+            writer,
+            agent,
+            input: { activity: 'interrupted' },
+            actor: 'pnyx',
+          }),
+        })
+      }
     }
 
     streamed({ session: key })
@@ -411,11 +428,11 @@ export function createLiveSessions({
       const armIdle = () => {
         clearTimeout(entry.idle)
 
-        if (!entry.session || entry.activity !== 'finished' || !nativeIdle({ work: entry.session.snapshot().work })) {
+        if (!entry.session || entry.activity !== 'finished') {
           return
         }
 
-        if (entry.stale) {
+        if (entry.stale && nativeIdle({ work: entry.session.snapshot().work })) {
           retire({
             key,
             entry,
@@ -428,11 +445,13 @@ export function createLiveSessions({
           () => background({
             name: 'idle agent cleanup',
             run: () => {
-              if (entry.session && nativeIdle({ work: entry.session.snapshot().work })) {
+              if (entry.session && entry.activity === 'finished' && nativeIdle({ work: entry.session.snapshot().work })) {
                 retire({
                   key,
                   entry,
                 })
+              } else {
+                armIdle()
               }
             },
           }),

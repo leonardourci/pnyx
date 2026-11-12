@@ -145,7 +145,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     id: string
     type: string
   }>()
-  let unknownWork: string | undefined
+  const unknownItems = new Map<string, string>()
 
   const observeWork = ({
     params,
@@ -159,6 +159,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     }
 
     const item = object({ value: params.item })
+    const unknownId = String(item.id ?? item.type)
+    let unknownWork: string | undefined
+
+    if (completed) {
+      unknownItems.delete(unknownId)
+    }
 
     if (item.type === 'collabAgentToolCall') {
       const receivers = Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds : []
@@ -215,23 +221,30 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
       } else if (item.status !== 'completed') {
         unknownWork = 'Codex did not report whether a command stopped'
       }
-    } else if (typeof item.type !== 'string' || ![
+    } else if (!completed && (typeof item.type !== 'string' || ![
       ...VIEW_ITEMS,
       ...TOOL_ITEMS,
       'fileChange',
       'imageGeneration',
       'sleep',
-    ].includes(item.type)) {
+    ].includes(item.type))) {
       unknownWork = `Codex reported an unrecognized native item: ${String(item.type)}`
     }
 
     if (unknownWork) {
+      unknownItems.set(
+        unknownId,
+        unknownWork,
+      )
+    }
+
+    if (unknownItems.size) {
       emit({
         event: {
           type: 'background',
           background: {
             knowledge: 'unknown',
-            reason: unknownWork,
+            reason: [...unknownItems.values()].join('; '),
           },
         },
       })

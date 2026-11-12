@@ -1,6 +1,6 @@
 import { log } from '#app/diagnostics.ts'
 import type { ChildProcess } from 'node:child_process'
-import { readFileSync, rmSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { join } from 'node:path'
 import { hydraDir } from '#app/home-migration.ts'
@@ -11,6 +11,7 @@ const OLD_HOST_STOP_MS = 30_000
 // How long the start waits for an earlier server's agents and their tools to be gone.
 const SWEEP_WAIT_MS = 10_000
 const SWEEP_POLL_MS = 50
+const STOP_GRACE_MS = 2000
 
 // Agents run in a process group of their own, so the tools they start go with them.
 const signalTree = ({
@@ -63,6 +64,8 @@ const treeAlive = ({ pid }: { pid: number }) => [
 type Recorded = {
   pid: number
   start: string
+  task?: string
+  preserveTools?: true
 }
 
 const childrenPath = ({ hydraId }: { hydraId: string }) => join(
@@ -98,22 +101,122 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
     text: JSON.stringify([...live.values()]),
   })
 
+  const retained = ({ child }: { child: Recorded }) => {
+    const start = processStart({ pid: child.pid })
+
+    return (start === null || start === child.start) && treeAlive({ pid: child.pid })
+  }
+
+  const stopping = new Map<string, Promise<void>>()
+
+  const stop = async ({ task }: { task: string }) => {
+    const recorded = [...live.values()].filter(child => child.task === task)
+
+    if (!recorded.length) {
+      return
+    }
+
+    const owned = recorded.filter(child => retained({ child }))
+
+    for (const child of owned) {
+      signalTree({
+        pid: child.pid,
+        signal: 'SIGTERM',
+      })
+    }
+
+    const grace = Date.now() + STOP_GRACE_MS
+    const end = Date.now() + SWEEP_WAIT_MS
+
+    while (owned.some(child => retained({ child }))) {
+      if (Date.now() >= grace) {
+        for (const child of owned.filter(child => retained({ child }))) {
+          signalTree({
+            pid: child.pid,
+            signal: 'SIGKILL',
+          })
+        }
+      }
+
+      if (Date.now() >= end) {
+        throw new Error(`Agent process groups for ${task} did not stop`)
+      }
+
+      await delay(SWEEP_POLL_MS)
+    }
+
+    for (const child of recorded) {
+      live.delete(child.pid)
+    }
+
+    save()
+  }
+
   return {
-    // Stops what an earlier server left running, with every tool it started, and waits until they are gone.
-    // Resolves false when one would not stop: its sessions must not resume while it may still be working.
+    tasks() {
+      return new Set([...live.values()].flatMap(child => child.task ? [child.task] : []))
+    },
+    associate({
+      pid,
+      task,
+    }: {
+      pid: number
+      task: string
+    }) {
+      const child = live.get(pid)
+
+      if (child) {
+        child.task = task
+        save()
+      }
+    },
+    async stop({ task }: { task: string }) {
+      let pending = stopping.get(task)
+
+      if (!pending) {
+        pending = stop({ task })
+        stopping.set(
+          task,
+          pending,
+        )
+      }
+
+      try {
+        await pending
+      } finally {
+        stopping.delete(task)
+      }
+    },
+    // Restart stops agent leaders while their background tools keep running until permanent close.
     async sweep() {
-      const left = read({ path }).filter(child => verified(child))
+      const left = read({ path }).filter(child =>
+        verified(child) || !child.preserveTools && retained({ child }))
 
       for (const child of left) {
-        signalTree({
-          pid: child.pid,
-          signal: 'SIGKILL',
-        })
+        if (!child.preserveTools) {
+          signalTree({
+            pid: child.pid,
+            signal: 'SIGKILL',
+          })
+          continue
+        }
+
+        try {
+          process.kill(
+            child.pid,
+            'SIGKILL',
+          )
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+            throw error
+          }
+        }
       }
 
       const end = Date.now() + SWEEP_WAIT_MS
 
-      while (left.some(child => treeAlive({ pid: child.pid }))) {
+      while (left.some(child =>
+        child.preserveTools ? verified(child) : treeAlive({ pid: child.pid }))) {
         if (Date.now() > end) {
           const alive = left.filter(child => treeAlive({ pid: child.pid }))
           log({
@@ -129,10 +232,14 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
         await delay(SWEEP_POLL_MS)
       }
 
-      rmSync(
-        path,
-        { force: true },
-      )
+      for (const child of read({ path }).filter(child => retained({ child }))) {
+        live.set(
+          child.pid,
+          child,
+        )
+      }
+
+      save()
 
       return true
     },
@@ -149,14 +256,17 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
         {
           pid,
           start,
+          preserveTools: true,
         },
       )
       save()
       child.once(
         'exit',
         () => {
-          live.delete(pid)
-          save()
+          if (!treeAlive({ pid })) {
+            live.delete(pid)
+            save()
+          }
         },
       )
     },

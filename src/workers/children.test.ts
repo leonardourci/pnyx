@@ -1,3 +1,4 @@
+import { until } from '#test-harness/harness.ts'
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -5,7 +6,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { once } from 'node:events'
-import { setTimeout as delay } from 'node:timers/promises'
 import { hydraDir } from '#app/home-migration.ts'
 import { processStart } from '#app/server-state.ts'
 import { stopOldHost, trackChildren } from './children.ts'
@@ -175,7 +175,7 @@ test(
 )
 
 test(
-  'a start stops a leftover agent together with a tool it was running, before any session resumes',
+  'restart preserves tools after their leader exits and permanent close reaps their group',
   async t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -192,7 +192,11 @@ test(
       'written-after-recovery',
     )
     // The tool waits for the gate, then writes; the agent started it and keeps running.
-    const tool = `const fs = require('node:fs'); setInterval(() => { if (fs.existsSync(${JSON.stringify(gate)})) { fs.writeFileSync(${JSON.stringify(marker)}, 'old tool'); process.exit(0) } }, 20)`
+    const ready = join(
+      home,
+      'ready',
+    )
+    const tool = `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(ready)}, 'ready'); setInterval(() => { if (fs.existsSync(${JSON.stringify(gate)})) { fs.writeFileSync(${JSON.stringify(marker)}, 'old tool') } }, 20)`
     const agent = spawn(
       process.execPath,
       [
@@ -228,23 +232,55 @@ test(
       hydraDir({ hydraId: 'default' }),
       { recursive: true },
     )
-    trackChildren({ hydraId: 'default' }).spawned({ child: agent })
-    await delay(300)
+    const tracker = trackChildren({ hydraId: 'default' })
+    tracker.spawned({ child: agent })
+    tracker.associate({
+      pid: agent.pid!,
+      task: 'worker',
+    })
+    await until({
+      what: 'tool ready',
+      check: () => existsSync(ready),
+    })
 
     assert.equal(
       await trackChildren({ hydraId: 'default' }).sweep(),
       true,
     )
+    await ended({ child: agent })
     writeFileSync(
       gate,
       '',
     )
-    await delay(300)
+    await until({
+      what: 'background tool writes after restart',
+      check: () => existsSync(marker),
+    })
 
     assert.equal(
       existsSync(marker),
-      false,
-      'the old tool wrote after recovery',
+      true,
+      'background work survives restart',
+    )
+    const recovered = trackChildren({ hydraId: 'default' })
+    await recovered.sweep()
+    await recovered.stop({ task: 'worker' })
+    assert.throws(
+      () => process.kill(
+        -agent.pid!,
+        0,
+      ),
+      { code: 'ESRCH' },
+    )
+    assert.deepEqual(
+      JSON.parse(readFileSync(
+        join(
+          hydraDir({ hydraId: 'default' }),
+          'children.json',
+        ),
+        'utf8',
+      )),
+      [],
     )
   },
 )
