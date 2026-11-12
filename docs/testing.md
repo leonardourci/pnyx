@@ -49,7 +49,7 @@ An `undated` count identifies records whose timestamps are absent. Their identit
 
 ## Native clipboard regression
 
-With `playwright-axi` installed and its Chromium browser available, run `pnpm build` followed by `node --conditions=source --test scripts/browser/composer-paste.ts`. This opt-in check uses the existing scenario harness, a temporary home and a random port, and closes its own browser session. It covers the task brief, the task-card answer note and the chat Merge/Hold answer through the shared composer: native multiline clipboard paste, text/image preference, image upload, selection/copy, keyboard edits, browser text insertion, IME composition and persisted submission. It uses Chromium's native editing command because headless macOS keyboard shortcuts alone do not reliably trigger paste. The real OS dictation service and other browser engines need a manual trial.
+With `playwright-axi` installed and its Chromium browser available, run `pnpm build` followed by `node --conditions=source --test scripts/browser/composer-paste.ts`. This opt-in check uses the existing scenario harness, a temporary home and a random port, and closes its own browser session. It covers the task brief, the task-card answer note and the Hydra reply through the shared composer: native multiline clipboard paste, text/image preference, image upload, selection/copy, keyboard edits, browser text insertion, IME composition and persisted submission. It uses Chromium's native editing command because headless macOS keyboard shortcuts alone do not reliably trigger paste. The real OS dictation service and other browser engines need a manual trial.
 
 ## Writing a flow
 
