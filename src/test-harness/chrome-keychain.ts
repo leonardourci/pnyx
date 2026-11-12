@@ -59,11 +59,12 @@ function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
       )
     }
 
-    // Without an argument list, the second argument is the options.
+    const argsAreOptions = args !== undefined && args !== null
+
     return launch(
       file,
       [...KEYCHAIN_FLAGS],
-      args ?? options,
+      argsAreOptions ? args : options,
     )
   }
 }
