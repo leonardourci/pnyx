@@ -1,3 +1,4 @@
+import { recordTools } from './tools.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
@@ -141,6 +142,7 @@ export async function startTask({
   rule,
   harness,
   override,
+  tools,
   prompt,
   folder: given,
   inPlace,
@@ -158,6 +160,7 @@ export async function startTask({
   rule?: string
   harness?: string
   override?: Override
+  tools?: string[]
   prompt?: string
   folder?: string
   inPlace?: boolean
@@ -208,6 +211,13 @@ export async function startTask({
       message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
       code: 'VALIDATION_ERROR',
       help: ['Use --via pnyx or --via paseo'],
+    })
+  }
+
+  if (tools?.length && how !== 'pnyx') {
+    throw new HydraError({
+      message: 'Tool grants require the pnyx launch route',
+      code: 'VALIDATION_ERROR',
     })
   }
 
@@ -348,6 +358,34 @@ export async function startTask({
   }
 
   if (how === 'pnyx') {
+    if (tools?.length) {
+      const catalog = await askHost({
+        hydraId,
+        body: {
+          action: 'tool-catalog',
+          task: card.id,
+          harness: dispatch!.provider,
+          account: dispatch!.account,
+          actor: meta.actor,
+        },
+      })
+      const missing = tools.find(name => !(catalog.tools as string[]).includes(name))
+
+      if (missing) {
+        throw new HydraError({
+          message: `Tool capability is not configured: ${missing}`,
+          code: 'TOOL_UNAVAILABLE',
+        })
+      }
+
+      recordTools({
+        hydraId,
+        task: card.id,
+        grant: tools,
+        meta,
+      })
+    }
+
     return askHost({
       hydraId,
       body: {

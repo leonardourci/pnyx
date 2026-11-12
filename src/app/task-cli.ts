@@ -1,3 +1,4 @@
+import { toolsCommand } from '#workers/tools-cli.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
 import { randomUUID } from 'node:crypto'
@@ -44,6 +45,19 @@ const TASK_DETAIL_LIMIT = 5
 export const TASK_OPTIONS: Options = {
   ...WRITE,
   ...MESSAGE_LOOKUP_OPTIONS,
+  available: { type: 'boolean' },
+  grant: {
+    type: 'string',
+    multiple: true,
+  },
+  revoke: {
+    type: 'string',
+    multiple: true,
+  },
+  tool: {
+    type: 'string',
+    multiple: true,
+  },
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
@@ -152,6 +166,15 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (local) {
     return local
+  }
+
+  if (action === 'tools') {
+    return toolsCommand({
+      hydraId,
+      ref: positionals[1],
+      values,
+      meta: m,
+    })
   }
 
   if (action === 'report-review') {
@@ -378,6 +401,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       rule: values.rule as string | undefined,
       harness: values.harness as string | undefined,
       override: startOverride({ values }),
+      tools: values.tool as string[] | undefined,
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
       inPlace: Boolean(values['in-place']),
