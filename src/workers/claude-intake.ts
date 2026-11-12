@@ -1,4 +1,5 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs'
+import { log } from '#app/diagnostics.ts'
 
 export interface Intake {
   uuid: string
@@ -10,11 +11,23 @@ export interface Intake {
 function fileSize({ path }: { path: string }) {
   try {
     return statSync(path).size
-  } catch {
+  } catch (error) {
     // Claude Code creates the transcript with its first line.
-    return 0
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return 0
+    }
+
+    throw error
   }
 }
+
+// The intake only times a receipt and the SDK still confirms the message, so a transcript Pnyx cannot read is logged,
+// never thrown into the agent's turn.
+const unreadable = ({ error }: { error: unknown }) => log({
+  level: 'warn',
+  operation: 'claude.intake',
+  error,
+})
 
 function readFrom({
   path,
@@ -101,44 +114,66 @@ export function watchIntake({ path }: { path: string }) {
   let offset: number | undefined
   let partial = ''
 
+  const read = (): Intake[] => {
+    if (!pending.size || offset === undefined) {
+      return []
+    }
+
+    const end = fileSize({ path })
+
+    if (end <= offset) {
+      return []
+    }
+
+    const lines = (partial + readFrom({
+      path,
+      start: offset,
+      end,
+    })).split('\n')
+    offset = end
+    partial = lines.pop() ?? ''
+    const found = lines.flatMap(line => {
+      const intake = intakeOf({
+        line,
+        pending,
+      })
+
+      return intake ? [intake] : []
+    })
+
+    for (const intake of found) {
+      pending.delete(intake.uuid)
+    }
+
+    return found
+  }
+
   return {
     expect: ({ uuid }: { uuid: string }) => {
       // Nothing earlier can be its intake, so the scan starts where the transcript ends now.
       if (!pending.size) {
-        offset = fileSize({ path })
         partial = ''
+
+        try {
+          offset = fileSize({ path })
+        } catch (error) {
+          offset = undefined
+          unreadable({ error })
+        }
       }
 
       pending.add(uuid)
     },
     taken: (): Intake[] => {
-      const end = fileSize({ path })
+      try {
+        return read()
+      } catch (error) {
+        // These messages are confirmed by the SDK alone, so a failing transcript is not read again on every frame.
+        pending.clear()
+        unreadable({ error })
 
-      if (!pending.size || offset === undefined || end <= offset) {
         return []
       }
-
-      const lines = (partial + readFrom({
-        path,
-        start: offset,
-        end,
-      })).split('\n')
-      offset = end
-      partial = lines.pop() ?? ''
-      const found = lines.flatMap(line => {
-        const intake = intakeOf({
-          line,
-          pending,
-        })
-
-        return intake ? [intake] : []
-      })
-
-      for (const intake of found) {
-        pending.delete(intake.uuid)
-      }
-
-      return found
     },
   }
 }
