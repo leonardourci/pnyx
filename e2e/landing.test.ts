@@ -591,6 +591,14 @@ test(
       ],
     )
 
+    await until({
+      what: 'the merged task copy decision to be saved',
+      check: () => {
+        const state = s.task({ key: 'pr-fix' }).copy?.state
+
+        return state === 'flagged' || state === 'removed'
+      },
+    })
     await s.owner({
       args: [
         'task',
