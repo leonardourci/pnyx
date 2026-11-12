@@ -1008,7 +1008,12 @@ export function createHost({
       })
 
       return providers[providerIdOf({ harness: selected })].toolCatalog({
-        cwd: folder ?? card.agent?.cwd ?? card.folder ?? card.project ?? hydraDir({ hydraId }),
+        // An earlier agent's folder may be a removed copy, whose project scopes are gone.
+        cwd: folder ?? [
+          card.agent?.cwd,
+          card.folder,
+          card.project,
+        ].find(path => path !== undefined && isFolder({ path })) ?? hydraDir({ hydraId }),
         env,
       })
     },
@@ -1413,15 +1418,15 @@ export function createHost({
       helper.close()
       stopWake()
       stopRetry()
-      stalls.close()
-      controller.abort()
-
-      compaction.close()
-
 
       for (const timer of toolRetries.values()) {
         clearTimeout(timer)
       }
+
+      stalls.close()
+      controller.abort()
+
+      compaction.close()
 
       closeSessions()
     },
