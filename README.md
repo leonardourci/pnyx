@@ -128,7 +128,7 @@ Work lands through a ready pull request by default, with you deciding when to me
 
 Owner memory is shared across Hydras, project memory follows a project, and Hydra memory keeps that Hydra's local context. **inscribe** curates and saves those layers before a reset.
 
-The **Oracle** searches tasks and recorded conversations with simple inflection normalization, synonyms and typo tolerance. Its derived SQLite cache catches up only new event and transcript lines when queried, with no background indexing.
+The **Oracle** searches tasks and recorded conversations by keyword, matching word forms, synonyms and near spellings. It reads new history into a derived SQLite cache when you search.
 
 ## CLI reference
 

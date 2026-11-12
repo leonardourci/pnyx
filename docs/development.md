@@ -108,4 +108,3 @@ The scheduler drains the spool at startup, in the tick a hook socket line starts
 ## Review
 
 Review the whole branch diff against its PR base, including documentation and shipped skills. Complete the checklists `pnpm verify` requires, in order: [review-code](../.agents/skills/review-code/SKILL.md), [audit-tests](../.agents/skills/audit-tests/SKILL.md), then [deslop](../.agents/skills/deslop/SKILL.md). Apply [AGENTS.md](../AGENTS.md) and the [front-end conventions](../.agents/skills/write-front-end/SKILL.md) where they apply. Record findings, fixes and pending checks in the PR description, then tick the matching required review boxes.
-

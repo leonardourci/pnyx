@@ -70,4 +70,4 @@ CodeRabbit is the on-request challenger before merge, replacing a separate agent
 
 ## Runtime data
 
-Hydras live in `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock a process without the server takes, the spool, `oracle.db`, the derived Oracle cache, the `harvest.json` transcript cursors, and `agent/`, the hosted Hydra's folder, whose contract and skills Pnyx rewrites before each Hydra turn. Nothing at runtime writes inside the repository.
+Hydras live in `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock a process without the server takes, the spool, `oracle.db` (the derived Oracle cache), the `harvest.json` transcript cursors, and `agent/`, the hosted Hydra's folder, whose contract and skills Pnyx rewrites before each Hydra turn. Nothing at runtime writes inside the repository.
