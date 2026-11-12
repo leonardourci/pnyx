@@ -1,3 +1,4 @@
+import { sessionId } from '#workers/session-attachments.ts'
 import { dirname, join } from 'node:path'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { latestMessage, threadPath, type LatestMessage, type LatestRead } from '#hydra/transcripts-read.ts'
@@ -327,7 +328,8 @@ export function createLatestFeed({
     text?: boolean
   }) => {
     touchLatest({
-      ids: Object.values(state().cards).filter(card => card.agent && `${card.agent.provider}:${card.agent.sessionId}` === session)
+      ids: Object.values(state().cards).filter(card =>
+        card.agent && sessionId({ agent: card.agent }) === session)
         .map(card => card.id),
     })
 
@@ -338,7 +340,7 @@ export function createLatestFeed({
       ] of map) {
         const agent = state().cards[sub.card]?.agent
 
-        if (agent && `${agent.provider}:${agent.sessionId}` === session) {
+        if (agent && sessionId({ agent }) === session) {
           if (text) {
             refreshLiveThread({
               ws,

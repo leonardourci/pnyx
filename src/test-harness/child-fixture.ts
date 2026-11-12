@@ -75,11 +75,12 @@ export async function settle({
   check(): unknown
   tick?: number
 }) {
-  const until = Date.now() + SETTLE_MS
+  const now = () => tick ? Date.now() : performance.now()
+  const until = now() + SETTLE_MS
 
   while (!check()) {
     assert.ok(
-      Date.now() < until,
+      now() < until,
       what,
     )
 

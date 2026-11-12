@@ -220,7 +220,7 @@ test(
       state: loadHydra({ hydraId: 'default' }).state,
       ref: 'ship',
     })
-    const schedule = followSchedule({ interval: 60_000 })
+    let schedule = followSchedule({ interval: 60_000 })
     let reads = 0
     let comments = 0
     let pause: Promise<void> | undefined
@@ -364,6 +364,24 @@ test(
       loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.comments,
       2,
     )
+
+    schedule = followSchedule({ interval: 60_000 })
+    reportedState = 'closed'
+    schedule.touch({ task: card.id })
+    pause = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const detachedRead = follow()
+    schedule.prune({ links: [] })
+    schedule.touch({ task: card.id })
+    release()
+    await detachedRead
+    pause = undefined
+    await settle({
+      what: 'reattached link keeps its current persisted state',
+      check: () =>
+        loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.state === 'open',
+    })
 
     reportedState = 'merged'
     schedule.touch({ task: card.id })
