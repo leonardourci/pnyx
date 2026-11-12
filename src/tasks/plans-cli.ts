@@ -75,6 +75,13 @@ export function validateLocalTaskFlags({
   values: Record<string, unknown>
   positionals: string[]
 }): void {
+  if (action !== 'start' && Array.isArray(values.tool) && values.tool.length) {
+    throw new HydraError({
+      message: '--tool is only valid for task start',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
   if (!action || !Object.hasOwn(
     ACTION_FLAGS,
     action,
