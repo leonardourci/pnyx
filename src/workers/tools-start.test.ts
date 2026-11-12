@@ -594,6 +594,20 @@ test(
         () => readEvents({ hydraId: 'tools-start' }),
         'a duplicate tool start leaves the log readable',
       )
+      create({ key: 'unstarted' })
+      await commands.task([
+        'tools',
+        card({ key: 'unstarted' }).id,
+        '--grant',
+        'browser',
+        '--hydra',
+        'tools-start',
+      ])
+      assert.deepEqual(
+        card({ key: 'unstarted' }).tools,
+        ['browser'],
+        'granting only browser to a task with no agent needs no harness',
+      )
     } finally {
       unoffer()
       host.close()

@@ -43,7 +43,18 @@ export async function toolsCommand({
     })
   }
 
-  if (values.available || values.grant) {
+  const grants = values.grant as string[] | undefined
+  // browser is in every login's catalog, so granting only it needs no harness.
+  const configured = grants?.some(name => name !== BROWSER_TOOL)
+
+  if (configured && !card.agent && !values.harness) {
+    throw new HydraError({
+      message: 'Name --harness claude|codex to grant a configured tool to a task with no agent',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (values.available || configured) {
     const catalog = await askHost({
       hydraId,
       body: {
