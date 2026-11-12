@@ -1,4 +1,5 @@
 import { ownMessage } from './chat-messages.ts'
+import { lateOwnerMessages } from './conversation.ts'
 import type { HydraMessage } from './model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
 
@@ -143,7 +144,7 @@ export function checkConversation({
 }
 
 // The checkers' own statement of the order rule, apart from the chat's sorting: entries follow time, except that an owner
-// message the agent read later than one sent after it is checked only against the order the owner sent them in.
+// message the agent read late is checked only against the order the owner sent them in.
 export function ownerSendOrder({
   messages,
   expected,
@@ -173,19 +174,12 @@ export function ownerSendOrder({
       b,
     ) => a.index - b.index)
     .map(({ entry }) => entry)
-  const late = new Set<ThreadEntry>()
-  let latest = ''
-
-  for (const entry of sent) {
-    if (entry.at && entry.at < latest) {
-      late.add(entry)
-    } else if (entry.at) {
-      latest = entry.at
-    }
-  }
 
   return {
-    late,
+    late: lateOwnerMessages({
+      messages,
+      entries: expected,
+    }),
     sent,
   }
 }

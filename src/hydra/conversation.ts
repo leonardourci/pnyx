@@ -21,7 +21,7 @@ const spoken = ({ entry }: { entry: ThreadEntry }) => entry.text.trim() !== '' &
 
 // Claude Code records a message that joins a running turn as an attachment, not a user message, so it keeps its send time.
 // An owner message no later than one sent before it is late, so a tie still shows in send order.
-function lateOwnerMessages({
+export function lateOwnerMessages({
   messages,
   entries,
 }: {
