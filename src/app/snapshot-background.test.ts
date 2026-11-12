@@ -13,6 +13,41 @@ import { withWriter, saveSnapshot } from './writer.ts'
 import { readSnapshot } from './snapshot.ts'
 import { repairHydra } from './repair.ts'
 import { settle } from '#test-harness/child-fixture.ts'
+import { once } from 'node:events'
+
+const WORKER_EXIT_MS = 20_000
+
+test(
+  'a worker thread of another feature imports the writer without starting a snapshot',
+  async () => {
+    const worker = new Worker(
+      new URL(
+        './writer.ts',
+        import.meta.url,
+      ),
+      {
+        workerData: {
+          hydraId: 'default',
+          query: 'snapshot',
+        },
+      },
+    )
+
+    try {
+      const [code] = await once(
+        worker,
+        'exit',
+        { signal: AbortSignal.timeout(WORKER_EXIT_MS) },
+      )
+      assert.equal(
+        code,
+        0,
+      )
+    } finally {
+      await worker.terminate()
+    }
+  },
+)
 
 test(
   'snapshots keep their timer, recover failures, serialize Hydras and flush at shutdown',

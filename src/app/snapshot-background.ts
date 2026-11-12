@@ -1,22 +1,13 @@
-import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads'
-import { loadHydraDirectory } from './store.ts'
-import { writeSnapshot } from './snapshot.ts'
+import { Worker } from 'node:worker_threads'
+import type { writeSnapshot } from './snapshot.ts'
 import { basename } from 'node:path'
 import { log } from './diagnostics.ts'
 
-if (!isMainThread) {
-  if (typeof workerData !== 'string') {
-    throw new Error('Snapshot worker requires a Hydra directory')
-  }
-
-  const loaded = loadHydraDirectory({ dir: workerData })
-
-  if (loaded.tornBytes > 0) {
-    throw new Error('Cannot snapshot a torn event log')
-  }
-
-  parentPort?.postMessage(writeSnapshot(loaded))
-}
+// Its own entry file, so a worker thread of another feature that imports this module does not run a snapshot.
+const WORKER_ENTRY = new URL(
+  import.meta.url.endsWith('.ts') ? './snapshot-worker.ts' : './snapshot-worker.js',
+  import.meta.url,
+)
 
 let snapshotRun: Promise<void> | undefined
 
@@ -51,7 +42,7 @@ function writeInBackground({ dir }: { dir: string }): Promise<void> {
     reject,
   ) => {
     const worker = new Worker(
-      new URL(import.meta.url),
+      WORKER_ENTRY,
       { workerData: dir },
     )
     let failure: Error | undefined
