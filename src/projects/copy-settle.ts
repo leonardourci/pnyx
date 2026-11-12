@@ -63,18 +63,22 @@ export async function settleCopy({
     return { copy: copy ?? null }
   }
 
-  const check = await checkCopy({
+  let check = await checkCopy({
     card,
     copy,
   })
 
-  if (mode === 'safe' && copy.via === 'worktree' && (!check.clean || !check.landed)) {
-    throw new HydraError({
-      message: `the copy of ${card.id} has uncommitted changes or unproved work, so it is not safe to remove`,
-      code: 'CONFLICT',
-      help: ['Land the current work first; discarding it needs the owner'],
-    })
+  const requireSafe = () => {
+    if (mode === 'safe' && copy.via === 'worktree' && (!check.clean || !check.landed)) {
+      throw new HydraError({
+        message: `the copy of ${card.id} has uncommitted changes or unproved work, so it is not safe to remove`,
+        code: 'CONFLICT',
+        help: ['Land the current work first; discarding it needs the owner'],
+      })
+    }
   }
+
+  requireSafe()
 
   if (check.gone || mode === 'discard' || mode === 'safe' || !('reason' in check)) {
     try {
@@ -99,6 +103,12 @@ export async function settleCopy({
         throw error
       }
     }
+
+    check = await checkCopy({
+      card,
+      copy,
+    })
+    requireSafe()
   }
 
   let after: TaskCopy
