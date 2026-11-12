@@ -1321,3 +1321,199 @@ Again: [image: ${src}]`
     }
   },
 )
+
+test(
+  'chat drafts survive reload and send comment text before its save pause',
+  async t => {
+    const s = await pnyx.scenario()
+    pnyx.claude.plan({
+      text: 'Show a passage',
+      reply: 'A passage to comment on before sending the latest draft.',
+    })
+    const wire = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => wire.close())
+    const {
+      run,
+      evaluate,
+      waitFor,
+    } = await browser({
+      s,
+      session: 'chat-drafts',
+    })
+    const url = `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`
+
+    try {
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the composer for the first turn',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Show a passage\'); await page.click(\'[aria-label="Send reply"]\');',
+      })
+      const agent = await s.agent({ hydra: true })
+      await waitFor({
+        what: 'the passage in the chat',
+        condition: 'document.querySelector(\'.messages\')?.textContent.includes(\'A passage to comment on\')',
+      })
+      await evaluate({
+        script: `() => {
+        localStorage.setItem('pnyx:${s.hydraId}:comments', 'invalid-json');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the composer after invalid saved data',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Keep this draft\');',
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the draft restored after navigation',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Keep this draft\'',
+      })
+      await evaluate({
+        script: `() => {
+      const block = [...document.querySelectorAll('[data-message-block]')].find(el => el.dataset.quote?.includes('A passage to comment on'));
+      if (!block) throw new Error('Missing passage');
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      let text;
+      while ((text = walker.nextNode()) && !text.textContent.includes('A passage to comment on')) {}
+      if (!text) throw new Error('Missing passage text');
+      const range = document.createRange();
+      range.setStart(text, 0); range.setEnd(text, 9);
+      getSelection().removeAllRanges(); getSelection().addRange(range);
+      document.activeElement?.blur();
+      document.dispatchEvent(new Event('selectionchange'));
+      return 'chat-assertion-passed';
+    }`,
+      })
+      await waitFor({
+        what: 'the selected passage ready for a comment',
+        condition: 'document.querySelector(\'[aria-label="Comment on selection"]\')',
+      })
+      await evaluate({
+        script: `() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+      const note = document.querySelector('.comment-card textarea');
+      if (!note) throw new Error('Comment field did not open');
+      const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+      set.call(note, 'Latest unpaused comment');
+      note.dispatchEvent(new Event('input', { bubbles: true }));
+      const button = document.querySelector('[aria-label="Send reply"]');
+      if (button.disabled) throw new Error('Send disabled: ' + document.querySelector('[aria-label="Reply to Hydra"]').value);
+      button.click();
+      return 'chat-assertion-passed';
+    }`,
+      })
+      await until({
+        what: 'the draft delivered',
+        check: () => s.received({ cwd: agent.cwd }).some(message => message.includes('Keep this draft')),
+      })
+      const delivered = s.received({ cwd: agent.cwd }).findLast(message => message.includes('Keep this draft'))
+      assert.ok(
+        delivered?.includes('Latest unpaused comment'),
+        delivered?.slice(-1500),
+      )
+      await waitFor({
+        what: 'the sent draft and comments cleared',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'\' && !document.querySelector(\'.comment-card\')',
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the sent draft stays cleared after reload',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'\' && !document.querySelector(\'.comment-card\')',
+      })
+      await evaluate({
+        script: `() => {
+        const saved = JSON.parse(localStorage.getItem('pnyx:${s.hydraId}:comments'));
+        if (!Array.isArray(saved?.$hydra)) throw new Error('Invalid saved comments did not recover');
+        const send = WebSocket.prototype.send;
+        window.pendingCreations = [];
+        WebSocket.prototype.send = function(frame) {
+          const request = typeof frame === 'string' ? JSON.parse(frame) : {};
+          if (request.name === 'hydras' && request.args?.[0] === 'create') {
+            window.pendingCreations.push([this, frame]); return;
+          }
+          return send.call(this, frame);
+        };
+        window.releaseCreation = () => {
+          WebSocket.prototype.send = send;
+          window.pendingCreations.forEach(([socket, frame]) => send.call(socket, frame));
+        };
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await run({
+        args: ['run'],
+        input: `
+        await page.click('[aria-label="Create Hydra"]');
+        await page.fill('[aria-label="Hydra name"]', 'Draft promotion fixture');
+        await page.eval(() => document.querySelector('.hydra-name-editor').requestSubmit());
+      `,
+      })
+      await waitFor({
+        what: 'the pending Hydra composer',
+        condition: 'document.querySelector(\'base\')?.getAttribute(\'href\')?.includes(\'/pending-\') && document.querySelector(\'[aria-label="Reply to Hydra"]\') && window.pendingCreations.length > 0',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Pending draft\');',
+      })
+      await evaluate({ script: '() => { window.releaseCreation(); return \'chat-assertion-passed\'; }' })
+      await waitFor({
+        what: 'the Hydra promoted without replacing its draft',
+        condition: '!document.querySelector(\'base\')?.getAttribute(\'href\')?.includes(\'/pending-\') && document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Pending draft\'',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Canonical draft\');',
+      })
+      await waitFor({
+        what: 'the promoted draft saved under the canonical identity',
+        condition: `(() => {
+          const identity = document.querySelector('meta[name="pnyx-hydra"]').content;
+          return JSON.parse(sessionStorage.getItem('pnyx:' + identity + ':restore') ?? '{}').drafts?.$hydra === 'Canonical draft';
+        })()`,
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.open(await page.eval(() => location.href));',
+      })
+      await waitFor({
+        what: 'the promoted draft restored under the canonical identity',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Canonical draft\'',
+      })
+    } finally {
+      await run({ args: ['stop'] })
+    }
+  },
+)
