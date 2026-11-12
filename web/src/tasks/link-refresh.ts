@@ -5,11 +5,11 @@ import { log } from '#web-app/log.ts'
 export function useLinkRefresh({
   task,
   command,
-  connected = true,
+  connected,
 }: {
   task: string
   command: Command
-  connected?: boolean
+  connected: boolean
 }) {
   useEffect(
     () => {
