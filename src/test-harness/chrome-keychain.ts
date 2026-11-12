@@ -32,7 +32,8 @@ function isChrome({ file }: { file: string }) {
   return CHROME_BINARY.test(basename(file))
 }
 
-// Chrome reads every argument after `--` as a URL, so the flags go first.
+// Chrome reads every argument after `--` as a URL, so the flags go first. With `shell` set, `file` is the whole
+// command line and Node appends args to its end, so a shell launch is left as it came.
 function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
   // eslint-disable-next-line pnyx/object-params -- Node owns spawnSync's and execFileSync's signatures.
   return function (
@@ -40,7 +41,10 @@ function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
     args,
     options,
   ) {
-    if (!isChrome({ file })) {
+    const argsGiven = Array.isArray(args)
+    const resolvedOptions = argsGiven || args === undefined || args === null ? options : args
+
+    if (!isChrome({ file }) || (resolvedOptions as { shell?: unknown } | undefined)?.shell) {
       return launch(
         file,
         args,
@@ -48,30 +52,21 @@ function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
       )
     }
 
-    if (Array.isArray(args)) {
-      return launch(
-        file,
-        [
-          ...KEYCHAIN_FLAGS,
-          ...args,
-        ],
-        options,
-      )
-    }
-
-    const argsAreOptions = args !== undefined && args !== null
-
     return launch(
       file,
-      [...KEYCHAIN_FLAGS],
-      argsAreOptions ? args : options,
+      [
+        ...KEYCHAIN_FLAGS,
+        ...(argsGiven ? args : []),
+      ],
+      resolvedOptions,
     )
   }
 }
 
 // The guard covers Chrome started with spawn or execFile, which go through ChildProcess.prototype.spawn
-// with args starting at argv0, and with spawnSync or execFileSync. It cannot see a Chrome started through
-// a shell: exec, execSync or `shell: true` pass the command to /bin/sh, so those callers add KEYCHAIN_FLAGS.
+// with args starting at argv0, and with spawnSync or execFileSync. It leaves a Chrome started through a
+// shell untouched: exec, execSync and `shell: true` hand the command line to /bin/sh, so those callers add
+// KEYCHAIN_FLAGS.
 export function keepChromeOffKeychain() {
   if (guardInstalled) {
     return

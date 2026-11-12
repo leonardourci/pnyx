@@ -53,6 +53,21 @@ const LAUNCHES = {
   ).stdout,
 }
 
+// Through a shell the command line reaches Chrome as written, so the guard adds nothing.
+const SHELL_LAUNCHES = {
+  'execFile(command, { shell: true })': async ({ command }: { command: string }) => (await promisify(execFile)(
+    command,
+    { shell: true },
+  )).stdout,
+  'spawnSync(command, { shell: true })': async ({ command }: { command: string }) => spawnSync(
+    command,
+    {
+      shell: true,
+      encoding: 'utf8',
+    },
+  ).stdout,
+}
+
 // Registers one test per way a test starts the real browser.
 export function testChromeOffKeychain({ where }: { where: string }) {
   for (const [
@@ -73,6 +88,25 @@ export function testChromeOffKeychain({ where }: { where: string }) {
           missing,
           [],
           `${name} started Chrome without ${missing.join(' ')}: ${args.join(' ')}`,
+        )
+      },
+    )
+  }
+
+  for (const [
+    name,
+    launch,
+  ] of Object.entries(SHELL_LAUNCHES)) {
+    test(
+      `a Chrome started with ${name} ${where} gets only its own arguments`,
+      async () => {
+        const command = [
+          `'${fakeChrome()}'`,
+          ...CHROME_ARGS,
+        ].join(' ')
+        assert.deepEqual(
+          (await launch({ command })).trim().split('\n'),
+          CHROME_ARGS,
         )
       },
     )
