@@ -1093,6 +1093,7 @@ export function createHost({
 
     close: () => {
       closing = true
+      usageTracker.close()
       midTurnChecks.delete(midTurn)
       helper.close()
       stopWake()
