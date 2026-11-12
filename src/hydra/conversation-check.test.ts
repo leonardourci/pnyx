@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { checkConversation } from './conversation-check.ts'
+import { checkConversation, ownerSendOrder } from './conversation-check.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 
 test(
@@ -264,6 +264,94 @@ test(
         },
       }),
       [],
+    )
+  },
+)
+
+test(
+  'the conversation contract holds owner messages to the order they were sent, even one the agent read late',
+  () => {
+    const owner = ({
+      id,
+      at,
+    }: {
+      id: string
+      at: string
+    }): ThreadEntry => ({
+      id,
+      reference: id,
+      kind: 'message',
+      role: 'user',
+      text: id,
+      at,
+    })
+    const comments = owner({
+      id: 'comments',
+      at: '2026-11-11T15:54:58.074Z',
+    })
+    // Taken mid-turn, so it kept its earlier send time.
+    const inscribe = owner({
+      id: 'inscribe',
+      at: '2026-11-11T15:54:55.249Z',
+    })
+    const messages = [
+      comments,
+      inscribe,
+    ].map(entry => ({
+      id: entry.id,
+      action: 'send' as const,
+      actor: 'web',
+      hydra: 'hydra',
+      text: entry.text,
+      at: '2026-11-11T15:54:00.000Z',
+    }))
+    const {
+      late,
+      sent,
+    } = ownerSendOrder({
+      messages,
+      expected: [
+        inscribe,
+        comments,
+      ],
+    })
+    const check = ({ shown }: { shown: ThreadEntry[] }) => checkConversation({
+      expected: shown,
+      conversation: {
+        through: 0,
+        entries: shown,
+        folds: {},
+        timings: {},
+        trailing: {},
+      },
+      ordered: [
+        inscribe,
+        comments,
+      ].filter(entry => !late.has(entry)),
+      sent,
+    })
+    assert.deepEqual(
+      check({
+        shown: [
+          comments,
+          inscribe,
+        ],
+      }),
+      [],
+    )
+    assert.deepEqual(
+      check({
+        shown: [
+          inscribe,
+          comments,
+        ],
+      }),
+      [
+        {
+          kind: 'order',
+          reference: 'inscribe',
+        },
+      ],
     )
   },
 )

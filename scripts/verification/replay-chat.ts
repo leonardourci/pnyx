@@ -9,9 +9,8 @@ import { replayOwned } from '#app/reducer.ts'
 import { withWriter } from '#app/writer.ts'
 import { writeSnapshot } from '#app/snapshot.ts'
 import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
-import { checkConversation } from '#hydra/conversation-check.ts'
+import { checkConversation, ownerSendOrder } from '#hydra/conversation-check.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
-import { conversationOrder } from '#hydra/conversation.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { messageReference } from '#hydra/message-reference.ts'
@@ -351,30 +350,31 @@ export function replayChat({
         provider: card.agent?.provider,
         boundaries: true,
       })
-      const { order } = conversationOrder({
+      const {
+        late,
+        sent,
+      } = ownerSendOrder({
         messages: repaired.hydraMessages ?? [],
-        entries: shown,
+        expected: shown,
       })
       const expected = shown
         .filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY')
         .sort((
-          first,
-          second,
-        ) => order({
-          first,
-          second,
-        }))
+          a,
+          b,
+        ) => (a.at ?? '').localeCompare(b.at ?? ''))
       const conversation = hydraThreadView({
         state: repaired,
         page,
         tools: true,
         thinking: true,
       }).conversation
-      const ordered = expected.filter(entry => entry.at !== undefined)
+      const ordered = expected.filter(entry => entry.at !== undefined && !late.has(entry))
       const mismatches = checkConversation({
         expected,
         conversation,
         ordered,
+        sent: sent.filter(entry => expected.includes(entry)),
       })
       const counts = {
         missing: 0,

@@ -1,3 +1,5 @@
+import { ownMessage } from './chat-messages.ts'
+import type { HydraMessage } from './model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
 
 export interface ConversationMismatch {
@@ -21,10 +23,13 @@ export function checkConversation({
   expected,
   conversation,
   ordered = expected,
+  sent = [],
 }: {
   expected: ThreadEntry[]
   conversation: NonNullable<ThreadPage['conversation']>
   ordered?: ThreadEntry[]
+  // The owner's messages in the order they were sent.
+  sent?: ThreadEntry[]
 }): ConversationMismatch[] {
   const actual = conversationEntries({ conversation })
   const positions = new Map<string, {
@@ -106,28 +111,81 @@ export function checkConversation({
     }
   }
 
-  let previous = -1
+  for (const list of [
+    ordered,
+    sent,
+  ]) {
+    let previous = -1
 
-  for (const entry of ordered) {
-    const key = reference({ entry })
-    const found = positions.get(key)?.[0]
+    for (const entry of list) {
+      const key = reference({ entry })
+      const found = positions.get(key)?.[0]
 
-    if (!found) {
-      continue
+      if (!found) {
+        continue
+      }
+
+      if (found.index < previous) {
+        mismatches.push({
+          kind: 'order',
+          reference: key,
+        })
+      }
+
+      previous = Math.max(
+        previous,
+        found.index,
+      )
     }
-
-    if (found.index < previous) {
-      mismatches.push({
-        kind: 'order',
-        reference: key,
-      })
-    }
-
-    previous = Math.max(
-      previous,
-      found.index,
-    )
   }
 
   return mismatches
+}
+
+// The checkers' own statement of the order rule, apart from the chat's sorting: entries follow time, except that an owner
+// message the agent read later than one sent after it is checked only against the order the owner sent them in.
+export function ownerSendOrder({
+  messages,
+  expected,
+}: {
+  messages: HydraMessage[]
+  expected: ThreadEntry[]
+}) {
+  const sentAt = new Map(messages.map((
+    message,
+    index,
+  ) => [
+    message.id,
+    index,
+  ]))
+  const sent = expected.flatMap(entry => {
+    const index = sentAt.get(entry.reference ?? '')
+
+    return ownMessage({ entry }) && index !== undefined ? [
+      {
+        entry,
+        index,
+      },
+    ] : []
+  })
+    .toSorted((
+      a,
+      b,
+    ) => a.index - b.index)
+    .map(({ entry }) => entry)
+  const late = new Set<ThreadEntry>()
+  let latest = ''
+
+  for (const entry of sent) {
+    if (entry.at && entry.at < latest) {
+      late.add(entry)
+    } else if (entry.at) {
+      latest = entry.at
+    }
+  }
+
+  return {
+    late,
+    sent,
+  }
 }

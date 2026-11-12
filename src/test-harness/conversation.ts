@@ -4,10 +4,10 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
-import { checkConversation } from '#hydra/conversation-check.ts'
+import { checkConversation, ownerSendOrder } from '#hydra/conversation-check.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { conversationOrder } from '#hydra/conversation.ts'
+import { threadEntryOrder } from '#hydra/thread-order.ts'
 
 export function assertConversation({
   state,
@@ -31,22 +31,18 @@ export function assertConversation({
     boundaries: true,
   })
   const {
-    shownAt,
-    order,
-  } = conversationOrder({
+    late,
+    sent,
+  } = ownerSendOrder({
     messages,
-    entries: shown,
+    expected: shown,
   })
-  const expected = shown.filter(entry => {
-    const at = shownAt({ entry })
-
-    return (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY'
-      && (oldest === undefined || at === undefined || at >= oldest)
-  })
+  const expected = shown.filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY'
+    && (oldest === undefined || entry.at === undefined || entry.at >= oldest || late.has(entry)))
     .sort((
       first,
       second,
-    ) => order({
+    ) => threadEntryOrder({
       first,
       second,
     }))
@@ -54,7 +50,8 @@ export function assertConversation({
     checkConversation({
       expected,
       conversation,
-      ordered: expected.filter(entry => entry.at !== undefined),
+      ordered: expected.filter(entry => entry.at !== undefined && !late.has(entry)),
+      sent: sent.filter(entry => expected.includes(entry)),
     }),
     [],
   )
