@@ -59,6 +59,13 @@ const SHELL_LAUNCHES = {
     command,
     { shell: true },
   )).stdout,
+  'execFileSync(command, { shell: true })': async ({ command }: { command: string }) => execFileSync(
+    command,
+    {
+      shell: true,
+      encoding: 'utf8',
+    },
+  ),
   'spawnSync(command, { shell: true })': async ({ command }: { command: string }) => spawnSync(
     command,
     {
