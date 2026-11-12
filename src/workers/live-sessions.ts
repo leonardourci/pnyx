@@ -21,7 +21,7 @@ import type { trackChildren } from './children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { accountEnvironment } from './dispatch.ts'
-import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS, closedTask } from './host.ts'
+import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS, closedTask, toolApplicationReady } from './host.ts'
 import type { createHostedDelivery } from './hosted-delivery.ts'
 import { steeringMessages } from './inbox-notice.ts'
 import type { AgentRef } from './model.ts'
@@ -31,7 +31,7 @@ import { permissionEvent } from './permission-rules.ts'
 import type { HostedSession, Provider } from './provider.ts'
 import { harnessOf, providerLabel } from './providers.ts'
 import { sessionId } from './session-attachments.ts'
-import { steeringHeld, steeringWorkerIdentity } from './steering.ts'
+import { steeringWorkerIdentity } from './steering.ts'
 import type { createSteeringDelivery } from './steering-delivery.ts'
 import { liveReplies } from './streaming.ts'
 import type { createUsageTracker } from './usage-tracker.ts'
@@ -1147,12 +1147,12 @@ export function createLiveSessions({
       return
     }
 
-    if (steeringHeld({ card }) || copySettling({
-      hydraId,
-      task,
-    }) || card.id !== HYDRA_CARD && closedTask({
+    if (!toolApplicationReady({
       state,
       card,
+    }) || copySettling({
+      hydraId,
+      task,
     })) {
       deferTools({ task })
 

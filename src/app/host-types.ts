@@ -18,7 +18,8 @@ export type UsageInputs = {
 export interface Host {
   diagnostics(): Pick<RuntimeHealth, 'sessions' | 'helper'>
   hydraId: string
-  toolsChanged({ task }: { task: string }): void
+  // The reopen failure, when the grant could not reach its agent now.
+  toolsChanged({ task }: { task: string }): Error | undefined
   toolCatalog({
     task,
     harness,

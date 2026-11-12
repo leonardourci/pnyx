@@ -276,3 +276,136 @@ test(
     }
   },
 )
+
+test(
+  'recovery applies the remaining pending grants when one task folder is gone',
+  async () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-tool-recovery-',
+    ))
+    const previousHome = process.env.PNYX_HOME
+    const previousPath = process.env.PATH
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx',
+    )
+    fakeDispatch({ root })
+    await commands.hydra([
+      'create',
+      'gone',
+    ])
+    const tasks = [
+      'removed',
+      'present',
+    ].map(key => {
+      const cwd = join(
+        root,
+        key,
+      )
+      mkdirSync(cwd)
+      const task = withWriter({
+        hydraId: 'gone',
+        fn: ({ writer }) => {
+          const meta = {
+            actor: 'cli',
+            at: new Date().toISOString(),
+          }
+          const created = planTaskChange({
+            hydraId: 'gone',
+            state: writer.state,
+            landing: new Map(),
+            operation: {
+              op: 'task.create',
+              key,
+              title: key,
+            },
+            meta,
+          })
+          assert.ok('event' in created)
+          writer.append({ event: created.event })
+          const attached = decidePush({
+            state: writer.state,
+            key,
+            input: {
+              activity: 'finished',
+              agent: {
+                provider: 'claude-code',
+                sessionId: key,
+                resume: true,
+                host: 'pnyx',
+                cwd,
+              },
+            },
+            meta,
+          })
+          assert.ok('event' in attached)
+          writer.append({ event: attached.event })
+
+          return created.event.cardId
+        },
+      })
+      recordTools({
+        hydraId: 'gone',
+        task,
+        grant: ['browser'],
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+
+      return {
+        task,
+        cwd,
+      }
+    })
+    rmSync(
+      tasks[0]!.cwd,
+      { recursive: true },
+    )
+    const sessions = new Map<string, ReturnType<typeof claudeNative>>()
+    const host = createHost({
+      hydraId: 'gone',
+      changed: () => {},
+      query: ({ ...request }) => {
+        const native = claudeNative()
+        sessions.set(
+          String(request.options?.resume),
+          native,
+        )
+
+        return native.query(request)
+      },
+    })
+
+    try {
+      await host.recover()
+      await until({
+        what: 'the later pending grant resumes its worker',
+        check: () => sessions.get('present')?.incoming.length === 1,
+      })
+      assert.equal(
+        sessions.has('removed'),
+        false,
+      )
+    } finally {
+      host.close()
+
+      if (previousHome === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previousHome
+      }
+
+      process.env.PATH = previousPath
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)

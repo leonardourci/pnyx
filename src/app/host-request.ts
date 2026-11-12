@@ -111,15 +111,19 @@ export async function hostRequestUnlocked({
       }
     }
 
-    case 'tools-changed':
-      host.toolsChanged({
+    case 'tools-changed': {
+      const failed = host.toolsChanged({
         task: field({
           body,
           name: 'task',
         })!,
       })
 
-      return { applied: 'at the next safe turn boundary' }
+      return failed ? {
+        applied: `deferred: ${failed.message}`,
+        help: failed instanceof HydraError ? failed.help : [],
+      } : { applied: 'at the next safe turn boundary' }
+    }
 
     case 'release':
       return host.release({

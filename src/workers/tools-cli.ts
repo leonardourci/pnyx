@@ -93,19 +93,18 @@ export async function toolsCommand({
     meta,
   })
 
-  if (result.changed && card.agent?.host === 'pnyx') {
-    await askHost({
-      hydraId,
-      body: {
-        action: 'tools-changed',
-        task: card.id,
-        actor: meta.actor,
-      },
-    })
-  }
+  const delivery = result.changed && card.agent?.host === 'pnyx' ? await askHost({
+    hydraId,
+    body: {
+      action: 'tools-changed',
+      task: card.id,
+      actor: meta.actor,
+    },
+  }) : {}
 
   return {
     task: card.id,
     ...result,
+    ...delivery,
   }
 }

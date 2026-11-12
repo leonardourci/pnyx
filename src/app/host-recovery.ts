@@ -18,7 +18,7 @@ import type { upgradeQueue } from '#upgrade/queue.ts'
 import type { trackChildren } from '#workers/children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
-import { WORKER_RESUME, findWorkerTurnToResume, closedTask } from '#workers/host.ts'
+import { WORKER_RESUME, findWorkerTurnToResume, closedTask, toolApplicationReady } from '#workers/host.ts'
 import type { createHostedDelivery } from '#workers/hosted-delivery.ts'
 import type { AgentRef } from '#workers/model.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
@@ -361,14 +361,13 @@ export function createHostRecovery({
       }
     }
 
-    for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
-      const current = loadHydra({ hydraId }).state
+    const pendingTools = loadHydra({ hydraId }).state
 
-      if (fenced && card.toolsRevision && card.toolsRevision !== card.toolsApplied
-        && card.agent?.host === 'pnyx' && !steeringHeld({ card }) && (card.id === HYDRA_CARD || !closedTask({
-        state: current,
+    for (const card of Object.values(pendingTools.cards)) {
+      if (fenced && toolApplicationReady({
+        state: pendingTools,
         card,
-      }))) {
+      })) {
         host().toolsChanged({ task: card.id })
       }
     }

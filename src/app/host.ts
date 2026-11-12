@@ -42,7 +42,7 @@ import { loadHydra } from './store.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment, closedTask, closedByWorker } from '#workers/host.ts'
+import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment, closedTask, closedByWorker, toolApplicationReady } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
@@ -1005,13 +1005,8 @@ export function createHost({
 
       const state = loadHydra({ hydraId }).state
       const card = state.cards[task]
-      const entry = card?.agent && live.get(sessionId({ agent: card.agent }))
 
-      if (!card?.agent || card.agent.host !== 'pnyx') {
-        return
-      }
-
-      if (steeringHeld({ card }) || card.id !== HYDRA_CARD && closedTask({
+      if (!card?.agent || !card.toolsRevision || !toolApplicationReady({
         state,
         card,
       })) {
@@ -1020,51 +1015,59 @@ export function createHost({
         return
       }
 
-      if (card.toolsRevision) {
-        const application = toolApplication({
-          task: card.id,
-          revision: card.toolsRevision,
-        })
+      const application = toolApplication({
+        task: card.id,
+        revision: card.toolsRevision,
+      })
 
-        if (application.attempted || !canRetryTools(application)) {
+      if (application.attempted || !canRetryTools(application)) {
+        return
+      }
+
+      application.attempted = true
+      const entry = live.get(sessionId({ agent: card.agent }))
+      const text = toolInstructions({ tools: card.tools ?? [] })
+
+      if (entry) {
+        const scheduled = entry.toolsRevision === card.toolsRevision
+        const loaded = entry.session?.toolsRevision === card.toolsRevision
+
+        if (scheduled || loaded) {
           return
         }
 
-        application.attempted = true
-      }
+        entry.toolsRevision = card.toolsRevision
+        entry.stale = true
+        entry.toolResume = text
+        const settled = entry.activity === 'finished' && !entry.input.pending({ includes: () => true })
+          && entry.session && nativeIdle({ work: entry.session.snapshot().work })
 
-      const text = toolInstructions({ tools: card.tools ?? [] })
+        if (!settled) {
+          return
+        }
 
-      if (!entry) {
-        resumeTools({
-          task,
-          text,
-        })
-
-        return
-      }
-
-      const scheduled = entry.toolsRevision === card.toolsRevision
-      const loaded = entry.session?.toolsRevision === card.toolsRevision
-
-      if (scheduled || loaded) {
-        return
-      }
-
-      entry.toolsRevision = card.toolsRevision
-      entry.stale = true
-      entry.toolResume = text
-
-      if (entry.activity === 'finished' && !entry.input.pending({ includes: () => true })
-        && entry.session && nativeIdle({ work: entry.session.snapshot().work })) {
         retire({
           key: sessionId({ agent: card.agent }),
           entry,
         })
+      }
+
+      // The grant stays pending and retries on the host's delays, so a failed reopen is reported, not thrown.
+      try {
         resumeTools({
           task,
           text,
         })
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'tools.apply',
+          hydraId,
+          taskId: task,
+          error,
+        })
+
+        return error as Error
       }
     },
     models: catalogs.models,
@@ -1282,16 +1285,14 @@ export function createHost({
       reconcilePermissions({ state })
 
       for (const card of Object.values(state.cards)) {
-        const pending = card.toolsRevision && card.toolsRevision !== card.toolsApplied
         const application = toolApplications.get(card.id)
         const attempted = application !== undefined && application.revision === card.toolsRevision
           && (application.attempted || !canRetryTools(application))
-        const closed = card.id !== HYDRA_CARD && closedTask({
+
+        if (fenced() && !attempted && toolApplicationReady({
           state,
           card,
-        })
-
-        if (fenced() && pending && !attempted && !closed && !steeringHeld({ card }) && card.agent?.host === 'pnyx') {
+        })) {
           background({
             name: 'tool grant application',
             run: () => host.toolsChanged({ task: card.id }),

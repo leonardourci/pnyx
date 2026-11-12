@@ -19,6 +19,10 @@ import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { recordTools } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { COPY_LEASE_PREFIX } from '#projects/copy-lease.ts'
+import type { HydraError } from '#store/errors.ts'
+import { offerHost } from '#app/server-state.ts'
+import { hostRequest } from '#app/host-request.ts'
+import { runForClient } from '#app/request-context.ts'
 
 test(
   'failed tool reopening retries within the host bound and a new revision resets it',
@@ -147,9 +151,9 @@ test(
         retry.cwd,
         { recursive: true },
       )
-      assert.throws(
-        () => host.toolsChanged({ task: retry.task }),
-        { code: 'FOLDER_MISSING' },
+      assert.equal(
+        (host.toolsChanged({ task: retry.task }) as HydraError | undefined)?.code,
+        'FOLDER_MISSING',
       )
       mkdirSync(retry.cwd)
       host.reconcile({ state: loadHydra({ hydraId: 'retry' }).state })
@@ -206,15 +210,19 @@ test(
         capped.cwd,
         { recursive: true },
       )
-      assert.throws(
-        () => host.toolsChanged({ task: capped.task }),
-        { code: 'FOLDER_MISSING' },
+      assert.equal(
+        (host.toolsChanged({ task: capped.task }) as HydraError | undefined)?.code,
+        'FOLDER_MISSING',
       )
-      assert.throws(
-        () => host.toolsChanged({ task: capped.task }),
-        { code: 'FOLDER_MISSING' },
+      assert.equal(
+        (host.toolsChanged({ task: capped.task }) as HydraError | undefined)?.code,
+        'FOLDER_MISSING',
       )
-      assert.doesNotThrow(() => host.toolsChanged({ task: capped.task }))
+      assert.equal(
+        host.toolsChanged({ task: capped.task }),
+        undefined,
+        'the retry bound stops further reopens',
+      )
       mkdirSync(capped.cwd)
       host.reconcile({ state: loadHydra({ hydraId: 'retry' }).state })
       assert.equal(
@@ -328,9 +336,9 @@ test(
         delayed.cwd,
         { recursive: true },
       )
-      assert.throws(
-        () => delayedHost!.toolsChanged({ task: delayed.task }),
-        { code: 'FOLDER_MISSING' },
+      assert.equal(
+        (delayedHost.toolsChanged({ task: delayed.task }) as HydraError | undefined)?.code,
+        'FOLDER_MISSING',
       )
       mkdirSync(delayed.cwd)
       delayedHost.reconcile({ state: loadHydra({ hydraId: 'delayed' }).state })
@@ -380,6 +388,47 @@ test(
 
       if (previousHome === undefined) {
         delete process.env.PNYX_HOME
+
+      const unoffer = offerHost({
+        hydraId: 'retry',
+        ask: ({ body }) => hostRequest({
+          host,
+          body,
+        }),
+      })
+
+      try {
+        const cli = attach({ key: 'cli-deferred' })
+        rmSync(
+          cli.cwd,
+          { recursive: true },
+        )
+        const revoked = await runForClient({
+          identity: { PNYX_ACTOR: 'hydra' },
+          cwd: root,
+          run: () => commands.task([
+            'tools',
+            cli.task,
+            '--revoke',
+            'browser',
+            '--actor',
+            'hydra',
+            '--hydra',
+            'retry',
+          ]),
+        })
+        assert.match(
+          JSON.stringify(revoked),
+          /deferred: the agent's folder [^"]+ is gone/,
+          'a saved revoke whose reopen failed reports the deferral, not a failure',
+        )
+        assert.deepEqual(
+          card({ task: cli.task }).tools,
+          [],
+        )
+      } finally {
+        unoffer()
+      }
       } else {
         process.env.PNYX_HOME = previousHome
       }
