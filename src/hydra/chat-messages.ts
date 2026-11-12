@@ -5,6 +5,7 @@ import type { HydraMessage } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { withoutInjected } from '#oracle/text.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 
 export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
   if (!entry.task || entry.task === HYDRA_CARD) {
@@ -189,6 +190,13 @@ export function hydraMessages({
     copied,
   } of receipts ? owned.toReversed() : []) {
     entry.sent = message.at
+    // Pnyx runs /restart and /upgrade itself, so they never reach the harness.
+    const pnyxCommand = restartCommand({ text: message.text })
+      || upgradeCommand({ text: message.text })
+
+    if (pnyxCommand) {
+      continue
+    }
 
     // A transcript copy found by its text counts only when it comes after the send; an older message with the same words cannot take it.
     const copyTime = copied && entry.at && entry.at >= message.at ? entry.at : undefined

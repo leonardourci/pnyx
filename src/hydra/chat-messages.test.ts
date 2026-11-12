@@ -815,6 +815,14 @@ test(
           }),
           at: '2026-10-20T10:02:00Z',
         },
+        // Pnyx runs /upgrade itself, so it never waits for Hydra.
+        {
+          ...message({
+            id: 'upgrade',
+            text: '/upgrade',
+          }),
+          at: '2026-10-20T10:03:00Z',
+        },
       ],
       transcript: [],
       waiting: 'Hydra is in the middle of a step',
@@ -844,6 +852,12 @@ test(
           'queued',
           undefined,
           'Hydra is in the middle of a step',
+        ],
+        [
+          'upgrade',
+          undefined,
+          undefined,
+          undefined,
         ],
       ],
     )
