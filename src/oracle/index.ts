@@ -30,8 +30,8 @@ function sqlite(): typeof import('node:sqlite') {
   }
 }
 
-// Bump when stored text, visibility or tokenization changes.
-const INDEX_VERSION = 1
+// Bump when the schema, stored text, visibility or tokenization changes.
+const INDEX_VERSION = 2
 const CATCH_UP_BATCH_BYTES = 256 * 1024
 const EVENTS = 'events'
 const SCHEMA = `
@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS cursors (
   source TEXT PRIMARY KEY, card TEXT NOT NULL, session TEXT NOT NULL,
   identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL, event TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS archived (session TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(session, digest));
+CREATE TABLE IF NOT EXISTS archived (id TEXT PRIMARY KEY, seq INTEGER NOT NULL, session TEXT NOT NULL, digest TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS archived_text ON archived(session, digest);
 CREATE TABLE IF NOT EXISTS docs (
   id INTEGER PRIMARY KEY, card TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL,
   text TEXT NOT NULL,
@@ -204,8 +205,9 @@ function catchUp({
   const track = db.prepare("INSERT OR IGNORE INTO cursors VALUES(?, ?, ?, '', 0, 0, '')")
   const insert = db.prepare('INSERT INTO docs(card, kind, at, text, source, pos, part, session, line) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)')
   const putWords = db.prepare('INSERT INTO words(rowid, terms, stems) VALUES(?, ?, ?)')
-  const archive = db.prepare('INSERT OR IGNORE INTO archived VALUES(?, ?)')
+  const archive = db.prepare('INSERT OR IGNORE INTO archived VALUES(?, ?, ?, ?)')
   const archived = db.prepare('SELECT 1 FROM archived WHERE session=? AND digest=?')
+  const predecessor = db.prepare('SELECT seq FROM archived WHERE id=?')
   const removeNative = db.prepare('DELETE FROM docs WHERE session=? AND line=? AND source<>?')
   const removeEvent = db.prepare('DELETE FROM docs WHERE source=? AND pos=?')
 
@@ -245,7 +247,6 @@ function catchUp({
 
   const eventLog = logPath({ dir: hydraDir({ hydraId }) })
   const throughEvents = existsSync(eventLog) ? statSync(eventLog).size : 0
-  const newerMessages = new Map<string, number>()
   let pendingEvents = true
 
   while (pendingEvents) {
@@ -296,19 +297,14 @@ function catchUp({
           let line = ''
 
           if (event.type === 'chat.message') {
-            if (state.eventIds[event.id] === undefined) {
-              newerMessages.set(
-                event.id,
-                event.seq,
-              )
-            }
-
             session = event.data.session
             const position = /^(\d+)(?::[mt]\d+(?:\.\d+)?)?$/.exec(event.data.nativeId)
             line = position ? position[1]! : event.data.nativeId
 
             if ((event.data.kind ?? 'message') === 'message') {
               archive.run(
+                event.id,
+                event.seq,
                 session,
                 textDigest({ text: event.data.text }),
               )
@@ -319,9 +315,16 @@ function catchUp({
               line,
               EVENTS,
             )
-            const replaced = event.data.replaces
-              ? state.eventIds[event.data.replaces] ?? newerMessages.get(event.data.replaces)
-              : undefined
+            let replaced: number | undefined
+
+            if (event.data.replaces) {
+              replaced = state.eventIds[event.data.replaces]
+
+              if (replaced === undefined) {
+                const known = predecessor.get(event.data.replaces) as { seq: number } | undefined
+                replaced = known?.seq
+              }
+            }
 
             if (replaced !== undefined) {
               removeEvent.run(
