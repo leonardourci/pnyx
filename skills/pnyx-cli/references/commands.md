@@ -34,4 +34,4 @@ Owner questions persist across completed investigations, worker exits and unrela
 
 `task refresh-links <task>` asks the server to read its linked pull requests immediately. Active workers and pending checks poll once per minute; idle links back off to 15 minutes, and links that fail three reads wait for a task or link change.
 
-`debug cpu-profile --seconds 10 --out ./idle.cpuprofile --hydra <id>` captures the running server CPU and returns the hottest functions. Only one capture runs at a time; the output file is private, and server shutdown cancels the capture. The server must have been upgraded to a version providing that command.
+`debug cpu-profile --seconds 10 --out ./idle.cpuprofile --hydra <id>` captures the CPU of the server's main thread and returns the hottest functions. Only one capture runs at a time; the output file is private, and server shutdown cancels the capture.
