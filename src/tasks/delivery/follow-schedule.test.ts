@@ -76,6 +76,38 @@ test(
       true,
     )
     card.sessionActivity = 'finished'
+    link.mergeAttempt = {
+      outcome: 'queued',
+      head: 'fixture',
+      requestedAt: '2026-11-12T00:00:00Z',
+    }
+    assert.equal(
+      schedule.due({
+        card,
+        link,
+        now: 60_000,
+      }),
+      true,
+    )
+    link.mergeAttempt.outcome = 'unknown'
+    assert.equal(
+      schedule.due({
+        card,
+        link,
+        now: 60_000,
+      }),
+      true,
+    )
+    link.mergeAttempt.outcome = 'merged'
+    assert.equal(
+      schedule.due({
+        card,
+        link,
+        now: 60_000,
+      }),
+      false,
+    )
+    delete link.mergeAttempt
     link.checks = '1 pending, 1 total'
     assert.equal(
       schedule.due({
@@ -166,14 +198,24 @@ test(
     const schedule = followSchedule({ interval: 60_000 })
     let reads = 0
     let comments = 0
+    let pause: Promise<void> | undefined
+    let release = () => {}
+    let failure = false
 
     const readStatus = async () => {
       reads++
+      const observed = comments
+      const failed = failure
+      await pause
+
+      if (failed) {
+        throw new Error('Synthetic GitHub refusal')
+      }
 
       return {
         state: 'open' as const,
         draft: false,
-        comments,
+        comments: observed,
         checks: {
           passed: 1,
           failed: 0,
@@ -195,29 +237,66 @@ test(
       apis: ['Date'],
       now: Date.now(),
     })
+    pause = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const initial = follow()
+    assert.equal(
+      reads,
+      1,
+    )
+    schedule.touch({ task: card.id })
+    release()
+    await initial
+    pause = undefined
     await follow()
     t.mock.timers.tick(60_000)
     await follow()
     assert.equal(
       reads,
-      1,
+      2,
     )
     t.mock.timers.tick(840_000)
     await follow()
     assert.equal(
       reads,
-      2,
+      3,
     )
     comments = 1
     schedule.touch({ task: card.id })
     await follow()
     assert.equal(
       reads,
-      3,
+      4,
     )
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.comments,
       1,
+    )
+    schedule.touch({ task: card.id })
+    failure = true
+    pause = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const refused = follow()
+    assert.equal(
+      reads,
+      5,
+    )
+    schedule.touch({ task: card.id })
+    failure = false
+    comments = 2
+    release()
+    await refused
+    pause = undefined
+    await follow()
+    assert.equal(
+      reads,
+      6,
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.comments,
+      2,
     )
   },
 )

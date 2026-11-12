@@ -17,6 +17,8 @@ type Check = {
 
 export function followSchedule({ interval }: { interval: number }) {
   const checks = new Map<string, Check>()
+  const generations = new Map<string, number>()
+  const generation = ({ task }: { task: string }) => generations.get(task) ?? 0
   const key = ({
     card,
     link,
@@ -26,7 +28,13 @@ export function followSchedule({ interval }: { interval: number }) {
   }) => `${card.id}\n${link.url}`
 
   return {
+    generation,
     touch({ task }: { task: string }) {
+      generations.set(
+        task,
+        generation({ task }) + 1,
+      )
+
       for (const [
         id,
         check,
@@ -59,7 +67,8 @@ export function followSchedule({ interval }: { interval: number }) {
       }
 
       const working = workingTask({ card })
-      const active = working || pendingChecks({ checks: link.checks }) > 0
+      const merging = link.mergeAttempt && link.mergeAttempt.outcome !== 'merged'
+      const active = working || merging || pendingChecks({ checks: link.checks }) > 0
       const delay = active ? interval : interval * IDLE_FOLLOW_MULTIPLIER
 
       return now - check.at >= delay
@@ -69,12 +78,18 @@ export function followSchedule({ interval }: { interval: number }) {
       link,
       found,
       now = Date.now(),
+      started = generation({ task: card.id }),
     }: {
       card: Card
       link: Link
       found: boolean
       now?: number
+      started?: number
     }) {
+      if (started !== generation({ task: card.id })) {
+        return
+      }
+
       const id = key({
         card,
         link,
@@ -96,6 +111,13 @@ export function followSchedule({ interval }: { interval: number }) {
       }[]
     }) {
       const wanted = new Set(links.map(key))
+      const tasks = new Set(links.map(({ card }) => card.id))
+
+      for (const task of generations.keys()) {
+        if (!tasks.has(task)) {
+          generations.delete(task)
+        }
+      }
 
       for (const id of checks.keys()) {
         if (!wanted.has(id)) {
