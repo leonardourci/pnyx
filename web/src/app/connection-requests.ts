@@ -377,9 +377,9 @@ export function createConnectionRequests({
       request.reject({ error })
     } else {
       if (request.optimistic) {
-        scope.resource.accept({
+        scope.resource.acknowledge({
           id: request.id,
-          complete: message.event === 'none: unchanged',
+          receipt: message,
         })
       }
 

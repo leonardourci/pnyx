@@ -10,7 +10,8 @@ function createHydraResource({
   scope: string
   confirmed: HydraState
 }) {
-  return createPendingResource<HydraState, Edit>({
+  const receipts = new Map<string, number>()
+  const resource = createPendingResource<HydraState, Edit>({
     scope,
     confirmed,
     adapter: {
@@ -36,17 +37,47 @@ function createHydraResource({
         state,
         intent,
       }) => {
-        const event = argument({
-          args: intent.patch.args,
-          flag: '--event-id',
-        })
+        const seq = receipts.get(intent.id)
 
-        const saved = intent.patch.name === 'hydra-agent' ? intent.id : event
+        if (seq === undefined || state.seq < seq) {
+          return false
+        }
 
-        return !!saved && state.eventIds[saved] !== undefined
+        receipts.delete(intent.id)
+
+        return true
       },
     },
   })
+
+  return {
+    ...resource,
+    acknowledge({
+      id,
+      receipt,
+    }: {
+      id: string
+      receipt: Record<string, unknown>
+    }) {
+      const event = receipt.event
+
+      const eventSeq = event && typeof event === 'object' && 'seq' in event ? event.seq : undefined
+      const seq = typeof receipt.through === 'number' ? receipt.through : eventSeq
+
+      if (typeof seq === 'number') {
+        receipts.set(
+          id,
+          seq,
+        )
+        resource.accept({ id })
+      } else {
+        resource.accept({
+          id,
+          complete: event === 'none: unchanged',
+        })
+      }
+    },
+  }
 }
 
 export type HydraResource = ReturnType<typeof createHydraResource>

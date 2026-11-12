@@ -1,3 +1,4 @@
+import { pageInterest } from '#app/page-cli.ts'
 import { AxiError } from 'axi-sdk-js'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
@@ -54,6 +55,7 @@ export function createServerCommands({
   catalogCommand,
   historyIndex,
   hydraSubscribers,
+  showPage,
   subscriptionMap,
   bindThread,
   threadPage,
@@ -77,6 +79,7 @@ export function createServerCommands({
   }: CommandRequest): void
   historyIndex: ReturnType<typeof createIndexSync>
   hydraSubscribers: WeakSet<HydraClient>
+  showPage: ReturnType<typeof createServerClients>['show']
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
   bindThread: ThreadSubscriptions['bindThread']
   threadPage: ThreadSubscriptions['threadPage']
@@ -214,6 +217,7 @@ export function createServerCommands({
     }
 
     if ([
+      'page',
       'thread',
       'oracle',
       'reply',
@@ -302,6 +306,23 @@ export function createServerCommands({
             url,
             open,
             hydraSubscribers,
+          })
+        } else if (name === 'page') {
+          const interest = pageInterest({
+            state: state(),
+            args,
+          })
+          showPage({
+            ws,
+            interest,
+          })
+          send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              unavailable: interest.unavailable ?? [],
+            },
           })
         } else if (name === 'thread') {
           threadCommand({

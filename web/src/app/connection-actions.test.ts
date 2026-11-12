@@ -158,6 +158,24 @@ test(
     )
     socket.receive({
       message: {
+        type: 'receipt',
+        id: request.id,
+        event: {
+          id: 'later-attempt',
+          seq: 4,
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === request.id)?.stage,
+      'accepted',
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      '2099-10-16T13:00:00.000Z',
+    )
+    socket.receive({
+      message: {
         type: 'event',
         event: {
           v: 1,
@@ -180,6 +198,14 @@ test(
         id: request.id,
       },
     })
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === request.id)?.stage,
+      'confirmed',
+    )
+    assert.deepEqual(
+      connection.snapshot().state.eventIds,
+      {},
+    )
     const outcome = await result
     assert.ok(!(outcome instanceof Error))
     assert.equal(
@@ -248,6 +274,7 @@ test(
       message: {
         type: 'receipt',
         id: clearRequest.id,
+        through: 6,
       },
     })
     assert.ok(!((await clear) instanceof Error))
@@ -258,6 +285,51 @@ test(
     assert.equal(
       connection.snapshot().state.cards.task?.asks?.[0]?.answered,
       undefined,
+    )
+    const agentSave = connection.commandFor({ id: 'default' })({
+      name: 'hydra-agent',
+      args: [
+        JSON.stringify({
+          harness: 'claude',
+          model: 'next-model',
+        }),
+      ],
+    })
+    const agentRequest = socket.sent.find(message => message.name === 'hydra-agent')!
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: agentRequest.id,
+        saved: true,
+        through: 7,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.config?.hydra.agent?.model,
+      'next-model',
+    )
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
+      'accepted',
+    )
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: 7,
+        state: {
+          ...connection.snapshot().state,
+          seq: 7,
+        },
+      },
+    })
+    await agentSave
+    assert.equal(
+      connection.snapshot().state.config?.hydra.agent?.model,
+      'next-model',
+    )
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
+      'confirmed',
     )
   },
 )

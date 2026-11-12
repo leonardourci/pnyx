@@ -1,6 +1,7 @@
+import { applyPageUpdate } from '#app/page-state.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import type { HydraState } from '#app/model.ts'
-import { emptyHydra,replayOwned } from '#app/reducer.ts'
+import { emptyHydra } from '#app/reducer.ts'
 import { Immer } from 'immer'
 import { saveEventId,savedReceipt,type SaveCommand } from '#app/save-receipts.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
@@ -12,7 +13,6 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { readSettingsSaves,saveSettingsSaves } from '#web-hydra/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
-import { argument } from '#web-tasks/optimistic.ts'
 import { noteUpdate,staleUpdates } from '#web-tasks/updates-cache.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
@@ -478,27 +478,10 @@ export function createHydraConnection() {
       }
 
       const state = scope.resource.snapshot().confirmed
-      let receipt = savedReceipt({
+      const receipt = savedReceipt({
         command: saveCommand({ request }),
         state,
       })
-      const eventId = request.optimistic ? argument({
-        args: request.args,
-        flag: '--event-id',
-      }) : undefined
-      const seq = eventId && state.eventIds[eventId]
-
-      if (!receipt && typeof seq === 'number') {
-        receipt = {
-          type: 'receipt',
-          id: request.id,
-          saved: true,
-          event: {
-            id: eventId,
-            seq,
-          },
-        }
-      }
 
       if (receipt) {
         clearTimeout(request.timer)
@@ -751,14 +734,15 @@ export function createHydraConnection() {
       }
 
       persistSoon({ scope })
-    } else if (message.type === 'event') {
+    } else if (message.type === 'event' || message.type === 'page.event') {
+      const seq = message.type === 'event' ? message.event.seq : message.update.seq
       const state = scope.resource.snapshot().confirmed
 
-      if (message.event.seq <= state.seq) {
+      if (seq <= state.seq) {
         return
       }
 
-      if (message.event.seq !== state.seq + 1) {
+      if (seq !== state.seq + 1) {
         scope.ready = false
         watchSubscription({ scope })
         send({
@@ -778,18 +762,31 @@ export function createHydraConnection() {
           state,
           // eslint-disable-next-line pnyx/object-params -- Immer owns the recipe callback signature.
           draft => {
-            replayOwned({
-              state: draft,
-              events: [message.event],
-            })
+            if (message.type === 'page.event') {
+              applyPageUpdate({
+                state: draft,
+                update: message.update,
+              })
+            } else {
+              applyPageUpdate({
+                state: draft,
+                update: {
+                  seq: message.event.seq,
+                  event: message.event,
+                  cards: {},
+                },
+              })
+            }
           },
         ),
       })
 
       confirmSaves({ scope })
 
-      if (selected === scope.id) {
-        noteUpdate({ event: message.event })
+      const changed = message.type === 'event' ? message.event : message.update.event
+
+      if (selected === scope.id && changed) {
+        noteUpdate({ event: changed })
       }
 
       persistSoon({ scope })

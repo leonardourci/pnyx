@@ -1,3 +1,4 @@
+import { pageEvent, pageState, pageShows, type PageInterest } from './page-state.ts'
 import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -72,6 +73,11 @@ export function createServerClients({
   }
 }) {
   const clients = new Set<HydraClient>()
+  const interests = new WeakMap<HydraClient, PageInterest>()
+  const interestFor = ({ ws }: { ws: HydraClient }) => interests.get(ws) ?? {
+    cards: [],
+    hidden: false,
+  }
   const hydraSubscribers = new WeakSet<HydraClient>()
 
   let derivedThrough = -1
@@ -180,7 +186,7 @@ export function createServerClients({
       since: performance.now(),
     }
 
-    if (message.type === 'event' || message.type === 'snapshot' || message.type === 'hydras') {
+    if (message.type === 'event' || message.type === 'page.event' || message.type === 'snapshot' || message.type === 'hydras') {
       pending.snapshot = true
     } else if (message.type === 'latest') {
       pending.latest = mergeLatest({
@@ -222,6 +228,36 @@ export function createServerClients({
     retry({ ws })
   }
 
+  const visibleLatest = ({
+    ws,
+    message,
+  }: {
+    ws: HydraClient
+    message: Latest
+  }): Latest => {
+    const interest = interestFor({ ws })
+    const visible = <Value>({ values }: { values: Record<string, Value> }) =>
+      Object.fromEntries(Object.entries(values).filter(([
+        id,
+        value,
+      ]) => {
+        const card = state().cards[id]
+
+        return value === null || card !== undefined && pageShows({
+          card,
+          interest,
+        })
+      }))
+
+    return {
+      ...message,
+      messages: visible({ values: message.messages }),
+      actions: visible({ values: message.actions }),
+      spend: visible({ values: message.spend ?? {} }),
+      usage: visible({ values: message.usage ?? {} }),
+    }
+  }
+
   const send = ({
     ws,
     message,
@@ -248,6 +284,13 @@ export function createServerClients({
       message = mergeLatest({
         before: pending.latest,
         latest: message,
+      })
+    }
+
+    if (message.type === 'latest') {
+      message = visibleLatest({
+        ws,
+        message,
       })
     }
 
@@ -313,7 +356,10 @@ export function createServerClients({
       message: {
         type: 'snapshot',
         seq: state().seq,
-        state: state(),
+        state: pageState({
+          state: state(),
+          interest: interestFor({ ws }),
+        }),
       },
     })
 
@@ -343,7 +389,12 @@ export function createServerClients({
       status: 'drained',
     })
     // Once accepted, the snapshot and its current facts form one recovery batch.
-    ws.send({ message: latest })
+    ws.send({
+      message: visibleLatest({
+        ws,
+        message: latest,
+      }),
+    })
     ws.send({ message: queue ?? queueMessage() })
 
     if (hydraSubscribers.has(ws)) {
@@ -420,8 +471,12 @@ export function createServerClients({
         send({
           ws,
           message: {
-            type: 'event',
-            event,
+            type: 'page.event',
+            update: pageEvent({
+              event,
+              state: state(),
+              interest: interestFor({ ws }),
+            }),
           },
         })
         sendQueue({
@@ -543,8 +598,12 @@ export function createServerClients({
         send({
           ws,
           message: {
-            type: 'event',
-            event,
+            type: 'page.event',
+            update: pageEvent({
+              event,
+              state: state(),
+              interest: interestFor({ ws }),
+            }),
           },
         })
       }
@@ -573,6 +632,19 @@ export function createServerClients({
     queueMessage,
     sendQueue,
     sendSnapshot,
+    show({
+      ws,
+      interest,
+    }: {
+      ws: HydraClient
+      interest: PageInterest
+    }) {
+      interests.set(
+        ws,
+        interest,
+      )
+      sendSnapshot({ ws })
+    },
     broadcast,
     spend,
     sendSettings,

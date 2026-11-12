@@ -52,6 +52,20 @@ test(
       },
     })
     state.cards.$hydra!.activity = 'working'
+    state.cards.other = {
+      ...state.cards.$hydra!,
+      id: 'other',
+      key: 'other',
+      automaticTask: false,
+      hidden: false,
+    }
+    state.cards.removed = {
+      ...state.cards.$hydra!,
+      id: 'removed',
+      key: 'removed',
+      automaticTask: false,
+      hidden: false,
+    }
     const action: CurrentAction = {
       calls: [
         {
@@ -362,6 +376,99 @@ test(
         },
       ],
       'recovery must read the current list instead of sending the stale payload',
+    )
+    state.cards.hidden = {
+      ...state.cards.other!,
+      id: 'hidden',
+      key: 'hidden',
+      hidden: true,
+      steering: [
+        {
+          id: 'history',
+          order: 1,
+          text: 'Private history',
+          source: 'fixture',
+          at: '2026-11-12T00:00:00Z',
+          actor: 'owner',
+          attempts: [],
+        },
+      ],
+    }
+    state.keys.hidden = 'hidden'
+    buffered = 0
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: ['hidden'],
+        hidden: false,
+      },
+    })
+    const opened = received.findLast(message => message.type === 'snapshot')
+    assert.ok(opened?.type === 'snapshot')
+    assert.equal(
+      opened.state.cards.hidden?.title,
+      state.cards.hidden.title,
+    )
+    assert.equal(
+      opened.state.cards.hidden?.steering,
+      undefined,
+    )
+    assert.equal(
+      'eventIds' in opened.state,
+      false,
+    )
+    buffered = 0
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: [],
+        hidden: false,
+      },
+    })
+    const closed = received.findLast(message => message.type === 'snapshot')
+    assert.ok(closed?.type === 'snapshot')
+    assert.equal(
+      closed.state.cards.hidden,
+      undefined,
+    )
+    buffered = 0
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: [],
+        hidden: true,
+      },
+    })
+    const all = received.findLast(message => message.type === 'snapshot')
+    assert.ok(all?.type === 'snapshot')
+    assert.ok(all.state.cards.hidden)
+    assert.equal(
+      state.cards.hidden.steering?.[0]?.text,
+      'Private history',
+    )
+    buffered = 0
+    tabs.send({
+      ws: client,
+      message: {
+        type: 'latest',
+        messages: {
+          absent: {
+            role: 'assistant',
+            text: 'Stale text',
+          },
+        },
+        actions: { absent: null },
+      },
+    })
+    const scopedLatest = received.at(-1)
+    assert.ok(scopedLatest?.type === 'latest')
+    assert.equal(
+      scopedLatest.messages.absent,
+      undefined,
+    )
+    assert.equal(
+      scopedLatest.actions.absent,
+      null,
     )
   },
 )

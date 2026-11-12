@@ -1,3 +1,4 @@
+import type { PageState, PageUpdate } from './page-state.ts'
 import type { ThreadDelta } from '#hydra/thread-delta.ts'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -6,7 +7,7 @@ import { approval } from './confirmations.ts'
 import { project } from '#projects/cli.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
 import type { ThreadPage, LatestMessage } from '#hydra/transcripts-read.ts'
-import type { HydraState, HydraEvent } from './model.ts'
+import type { HydraEvent } from './model.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { Settings } from '#settings/model.ts'
@@ -76,7 +77,11 @@ type ServerPayload =
   | {
     type: 'snapshot'
     seq: number
-    state: HydraState
+    state: PageState
+  }
+  | {
+    type: 'page.event'
+    update: PageUpdate
   }
   | {
     type: 'event'
