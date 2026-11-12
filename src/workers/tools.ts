@@ -103,9 +103,14 @@ export function recordTools({
         },
       })
 
-      if ('event' in decision) {
-        writer.append({ event: decision.event })
+      if (!('event' in decision)) {
+        return {
+          changed: false,
+          tools: before,
+        }
       }
+
+      writer.append({ event: decision.event })
 
       return {
         changed: true,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -255,6 +256,7 @@ test(
         return created.event.cardId
       },
     })
+    const grantId = randomUUID()
     const grant = () => recordTools({
       hydraId: 'tools',
       task,
@@ -263,6 +265,7 @@ test(
         'mcp:company',
       ],
       meta: {
+        id: grantId,
         actor: 'hydra',
         at: new Date().toISOString(),
       },
@@ -305,6 +308,19 @@ test(
     assert.deepEqual(
       loadHydra({ hydraId: 'tools' }).state.cards[task]?.tools,
       ['browser'],
+    )
+    const repeated = runForClient({
+      identity: { PNYX_ACTOR: 'hydra' },
+      cwd: lab.cwd,
+      run: grant,
+    })
+    assert.deepEqual(
+      repeated,
+      {
+        changed: false,
+        tools: ['browser'],
+      },
+      'an old request cannot report a revoked grant as applied',
     )
     assert.throws(
       () => runForClient({
