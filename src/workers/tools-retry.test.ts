@@ -74,6 +74,7 @@ test(
     })
     const card = ({ task }: { task: string }) => loadHydra({ hydraId: 'retry' }).state.cards[task]!
     let delayedHost: ReturnType<typeof createHost> | undefined
+    let timedHost: ReturnType<typeof createHost> | undefined
     let releaseCopy: (() => void) | undefined
 
     const attach = ({
@@ -247,8 +248,8 @@ test(
       const asynchronous = attach({ key: 'async-retry' })
       host.toolsChanged({ task: asynchronous.task })
       await until({
-        what: 'first asynchronous failure retires',
-        check: () => failedQueries === 1
+        what: 'both bounded asynchronous failures retire',
+        check: () => failedQueries === 2
           && !host.diagnostics().sessions.some(session => session.taskId === asynchronous.task),
       })
       await until({
@@ -259,12 +260,6 @@ test(
         card({ task: asynchronous.task }).status!.note,
         /Fixture provider failed before accepting input/,
       )
-      host.reconcile({ state: loadHydra({ hydraId: 'retry' }).state })
-      await until({
-        what: 'second asynchronous failure retires',
-        check: () => failedQueries === 2
-          && !host.diagnostics().sessions.some(session => session.taskId === asynchronous.task),
-      })
       host.reconcile({ state: loadHydra({ hydraId: 'retry' }).state })
       assert.equal(
         host.diagnostics().sessions.some(session => session.taskId === asynchronous.task),
@@ -389,6 +384,45 @@ test(
         check: () => sessions.get('delayed')?.incoming.length === 1,
       })
 
+      await commands.hydra([
+        'create',
+        'timed',
+      ])
+      timedHost = createHost({
+        hydraId: 'timed',
+        changed: () => {},
+        retryDelays: [
+          50,
+          50,
+        ],
+        query: ({ ...request }) => {
+          const native = claudeNative()
+          sessions.set(
+            'timed',
+            native,
+          )
+
+          return native.query(request)
+        },
+      })
+      const timed = attach({
+        key: 'timed',
+        hydraId: 'timed',
+      })
+      rmSync(
+        timed.cwd,
+        { recursive: true },
+      )
+      assert.equal(
+        (timedHost.toolsChanged({ task: timed.task }) as HydraError | undefined)?.code,
+        'FOLDER_MISSING',
+      )
+      mkdirSync(timed.cwd)
+      await until({
+        what: 'a failed reopen retries at its delay with no other event',
+        check: () => sessions.get('timed')?.incoming.length === 1,
+      })
+
       const unoffer = offerHost({
         hydraId: 'retry',
         ask: ({ body }) => hostRequest({
@@ -432,6 +466,7 @@ test(
     } finally {
       releaseCopy?.()
       delayedHost?.close()
+      timedHost?.close()
       host.close()
       release()
 

@@ -69,6 +69,8 @@ const RETRY_MS = [
 ]
 
 // Every Hydra this server runs answers whether one of its agents is mid-turn, so an upgrade restarts between turns.
+// Node fires a longer timer at once, so a longer delay waits this long and finds its retry not yet due.
+const MAX_TIMER_MS = 2 ** 31 - 1
 const midTurnChecks = new Set<() => boolean>()
 
 export const agentsMidTurn = () => [...midTurnChecks].some(check => check())
@@ -646,10 +648,20 @@ export function createHost({
       application.attempted = false
 
       if (failed && application.attempts) {
-        application.retryAt = Date.now() + retryDelays[Math.min(
-          application.attempts - 1,
-          retryDelays.length - 1,
-        )]!
+        // beginTools counts an attempt only below the bound, so every attempt has its delay.
+        const delay = retryDelays[application.attempts - 1]!
+        application.retryAt = Date.now() + delay
+        // A quiet Hydra may see no event before then, so the retry has its own timer.
+        setTimeout(
+          () => background({
+            name: 'tool grant retry',
+            run: () => host.toolsChanged({ task }),
+          }),
+          Math.min(
+            delay,
+            MAX_TIMER_MS,
+          ),
+        ).unref()
       }
     },
     usageTracker,
