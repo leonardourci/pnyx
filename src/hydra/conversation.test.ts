@@ -931,7 +931,7 @@ test(
           minute: 2,
         }),
       ],
-      // Claude Code records only the first as a user message, when its turn starts; the second joins that turn unrecorded.
+      // Claude Code records the second, which joins the first one's turn, as an attachment rather than a user message.
       transcript: [
         {
           ...entry({
@@ -981,6 +981,22 @@ test(
     assert.equal(
       result.timings.get('reply')?.start,
       at({ minute: 3 }),
+    )
+    // Hydra's work before the first message was read belongs to the earlier turn, not the late message's.
+    assert.deepEqual(
+      [...result.folds].map(([
+        id,
+        fold,
+      ]) => [
+        id,
+        fold.tasks.map(task => task.task),
+      ]),
+      [
+        [
+          'reply',
+          ['task-during'],
+        ],
+      ],
     )
   },
 )
