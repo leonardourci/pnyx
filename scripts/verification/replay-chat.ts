@@ -11,6 +11,7 @@ import { writeSnapshot } from '#app/snapshot.ts'
 import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
 import { checkConversation } from '#hydra/conversation-check.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
+import { conversationOrder } from '#hydra/conversation.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { messageReference } from '#hydra/message-reference.ts'
@@ -344,17 +345,25 @@ export function replayChat({
         pages++
       }
 
-      const expected = hydraMessages({
+      const shown = hydraMessages({
         messages: repaired.hydraMessages ?? [],
         transcript: joinMessageParts({ entries: expectedNative }),
         provider: card.agent?.provider,
         boundaries: true,
       })
+      const { order } = conversationOrder({
+        messages: repaired.hydraMessages ?? [],
+        entries: shown,
+      })
+      const expected = shown
         .filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY')
         .sort((
-          a,
-          b,
-        ) => (a.at ?? '').localeCompare(b.at ?? ''))
+          first,
+          second,
+        ) => order({
+          first,
+          second,
+        }))
       const conversation = hydraThreadView({
         state: repaired,
         page,
