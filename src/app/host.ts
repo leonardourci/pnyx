@@ -583,6 +583,7 @@ export function createHost({
     settleDirect,
     send,
   } = createHostedDelivery({
+    hydraId,
     live,
     at,
     write,
@@ -780,6 +781,7 @@ export function createHost({
     continueInPnyx,
     starting,
   } = createWorkerStarts({
+    hydraId,
     closing: () => closing,
     at,
     write,

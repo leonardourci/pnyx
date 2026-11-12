@@ -1,3 +1,4 @@
+import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import type { Host, UsageInputs } from './host-types.ts'
 import { isHelper, taskLease } from '#routine-helper/leases.ts'
 import { HydraError } from '#store/errors.ts'
@@ -452,6 +453,11 @@ export async function hostRequest({
         code: 'MAIN_ONLY',
       })
     }
+
+    requireCopyAvailable({
+      hydraId: host.hydraId,
+      task: card.id,
+    })
 
     release = taskLease({
       hydraId: host.hydraId,
