@@ -207,7 +207,8 @@ export function withWriter<T>({
 
       const result = fn({ writer })
 
-      if (transaction) {
+      // A transaction that staged nothing, as a duplicate start, leaves no line: the log reads none without events.
+      if (transaction && pending.length) {
         const line = `${JSON.stringify({
           v: EVENT_VERSION,
           type: 'log.transaction',
@@ -360,7 +361,8 @@ function heldWrite<T>({
 
     const result = fn({ writer })
 
-    if (transaction) {
+    // A transaction that staged nothing, as a duplicate start, leaves no line: the log reads none without events.
+    if (transaction && pending.length) {
       const line = `${JSON.stringify({
         v: EVENT_VERSION,
         type: 'log.transaction',

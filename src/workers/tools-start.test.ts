@@ -528,6 +528,38 @@ test(
         sessions[5]!.options()?.env?.CHROME_DEVTOOLS_AXI_SESSION,
         undefined,
       )
+      create({ key: 'same-id-plain' })
+      create({ key: 'same-id-tools' })
+      const sameId = await Promise.allSettled([
+        host.start({
+          task: card({ key: 'same-id-plain' }).id,
+          folder: fresh,
+          id: 'same-event',
+          actor: 'cli',
+          prompt: 'Work',
+          settings: { provider: 'claude-code' },
+        }),
+        host.start({
+          task: card({ key: 'same-id-tools' }).id,
+          folder: fresh,
+          tools: ['browser'],
+          id: 'same-event',
+          actor: 'cli',
+          prompt: 'Work',
+          settings: { provider: 'claude-code' },
+        }),
+      ])
+      assert.deepEqual(
+        sameId.map(outcome => outcome.status),
+        [
+          'fulfilled',
+          'fulfilled',
+        ],
+      )
+      assert.doesNotThrow(
+        () => readEvents({ hydraId: 'tools-start' }),
+        'a duplicate tool start leaves the log readable',
+      )
     } finally {
       unoffer()
       host.close()
