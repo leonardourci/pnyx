@@ -358,7 +358,6 @@ export function HydraChat({
     <ChatDecisionCard
       key={decision.id}
       decision={decision}
-      connected={connected}
       command={command}
       notify={notify}
     />,

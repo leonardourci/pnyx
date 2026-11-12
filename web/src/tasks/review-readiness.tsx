@@ -1,4 +1,3 @@
-import { useLinkRefresh } from './link-refresh.ts'
 import { useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
@@ -17,12 +16,10 @@ const NOTICE = {
 
 export function ReviewReadiness({
   request,
-  connected,
   command,
   notify,
 }: {
   request: ReviewRequest
-  connected: boolean
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -31,11 +28,6 @@ export function ReviewReadiness({
     ask,
     link,
   } = request
-  useLinkRefresh({
-    task: card.id,
-    connected,
-    command,
-  })
   const [
     busy,
     setBusy,

@@ -8,12 +8,10 @@ import type { ChatDecision } from './chat-questions.ts'
 
 export function ChatDecisionCard({
   decision,
-  connected,
   command,
   notify,
 }: {
   decision: ChatDecision
-  connected: boolean
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -34,7 +32,6 @@ export function ChatDecisionCard({
     content = (
       <ReviewReadiness
         request={decision.review}
-        connected={connected}
         command={command}
         notify={notify}
       />
