@@ -15,3 +15,17 @@ test(
     )
   },
 )
+
+test(
+  'copy release rechecks work committed while its worker closes',
+  async t => {
+    const stdout = await runFixture({
+      t,
+      name: 'copy-release',
+    })
+    assert.match(
+      stdout,
+      /Copy release rechecked final background work before removal/,
+    )
+  },
+)
