@@ -37,8 +37,13 @@ export function assertConversation({
     messages,
     expected: shown,
   })
-  const expected = shown.filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY'
-    && (oldest === undefined || entry.at === undefined || entry.at >= oldest || late.has(entry)))
+  const expected = shown.filter(entry => {
+    // A late owner message is on the page when the place it takes is.
+    const shownAt = late.get(entry)?.at ?? entry.at
+
+    return (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY'
+      && (oldest === undefined || shownAt === undefined || shownAt >= oldest)
+  })
     .sort((
       first,
       second,
