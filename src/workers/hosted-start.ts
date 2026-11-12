@@ -1,3 +1,4 @@
+import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { transcriptPath } from './claude.ts'
 import type { trackChildren } from './children.ts'
 import { accountEnvironment } from './dispatch.ts'
@@ -26,6 +27,7 @@ import type { Writer } from '#app/writer.ts'
 
 // Starting a worker in Pnyx, and continuing an outside Claude Code or Codex session in Pnyx.
 export function createWorkerStarts({
+  hydraId,
   closing,
   at,
   write,
@@ -38,6 +40,7 @@ export function createWorkerStarts({
   folderOf,
   sessionKey,
 }: {
+  hydraId: string
   closing(): boolean
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
@@ -118,6 +121,15 @@ export function createWorkerStarts({
     ref: string
     replacement?: string
   }): Card => {
+    const target = findCard({
+      state: writer.state,
+      ref,
+    })
+    requireCopyAvailable({
+      hydraId,
+      task: target.id,
+    })
+
     if (!replacement) {
       return freeTask({
         state: writer.state,

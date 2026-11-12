@@ -1,3 +1,4 @@
+import { copySettling } from '#projects/copy-lease.ts'
 import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { replyRoute } from './reply-route.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
@@ -34,6 +35,16 @@ export async function notifySteering({
     return {
       result: 'deferred',
       detail: 'instruction already handled or removed',
+    }
+  }
+
+  if (copySettling({
+    hydraId,
+    task: cardId,
+  })) {
+    return {
+      result: 'deferred',
+      detail: 'task copy cleanup is still in progress',
     }
   }
 

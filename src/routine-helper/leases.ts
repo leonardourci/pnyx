@@ -32,9 +32,11 @@ const leasePath = ({
 export function taskLeasePresent({
   hydraId,
   task,
+  actorPrefix,
 }: {
   hydraId: string
   task: string
+  actorPrefix?: string
 }): boolean {
   const path = leasePath({
     dir: hydraDir({ hydraId }),
@@ -55,10 +57,12 @@ export function taskLeasePresent({
       return true
     }
 
-    return readLease({
+    const lease = readLease({
       path,
       cleanup: false,
-    }) !== undefined
+    })
+
+    return lease !== undefined && (actorPrefix === undefined || lease.actor.startsWith(actorPrefix))
   } catch {
     // Unknown ownership must never authorize an automatic resend.
     return true

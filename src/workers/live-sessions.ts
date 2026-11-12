@@ -1,4 +1,5 @@
 import { hydraEvent } from '#hydra/hydra.ts'
+import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
 import { background } from '#app/background.ts'
@@ -1028,6 +1029,11 @@ export function createLiveSessions({
     card: Card & { agent: AgentRef }
     session?: HostedSession
   }): Live => {
+    requireCopyAvailable({
+      hydraId,
+      task: card.id,
+    })
+
     const key = sessionId({ agent: card.agent })
     const running = live.get(key)
 

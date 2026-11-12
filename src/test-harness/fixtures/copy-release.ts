@@ -4,6 +4,7 @@ import { hostRequest } from '#app/host-request.ts'
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { commands } from '#app/cli.ts'
+import { reply } from '#workers/reply-cli.ts'
 import { createHost } from '#app/host.ts'
 import { offerHost } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
@@ -24,17 +25,19 @@ commands.hydra([
 ])
 assert.ok(process.env.HOME)
 
-for (const mode of [
+for (const ending of [
   'check',
   'safe',
+  'removed',
 ] as const) {
+  const mode = ending === 'removed' ? 'check' : ending
   const project = join(
     process.env.HOME,
-    `project-${mode}`,
+    `project-${ending}`,
   )
   const folder = join(
     process.env.HOME,
-    `copy-${mode}`,
+    `copy-${ending}`,
   )
   mkdirSync(project)
   git({
@@ -75,13 +78,14 @@ for (const mode of [
     ],
   })
   const worker = claudeNative()
+  const workers: ReturnType<typeof claudeNative>[] = []
   const ready = join(
     process.env.HOME,
-    `${mode}-ready`,
+    `${ending}-ready`,
   )
   const committed = join(
     process.env.HOME,
-    `${mode}-committed`,
+    `${ending}-committed`,
   )
   let child: ChildProcess | undefined
   git({
@@ -104,7 +108,23 @@ for (const mode of [
   const query: QueryFn = ({ ...request }) => {
     assert.ok(request.options)
 
-    if (request.options.persistSession !== false) {
+    if (request.options.persistSession === false) {
+      return worker.query(request)
+    }
+
+    const current = workers.length ? claudeNative() : worker
+    workers.push(current)
+
+    if (workers.length > 1) {
+      const state = loadHydra({ hydraId }).state
+      const saved = state.cards[state.keys[ending]!]
+      assert.equal(
+        saved?.copy?.state,
+        mode === 'safe' ? 'active' : 'flagged',
+      )
+    }
+
+    if (workers.length === 1) {
       assert.ok(request.options.spawnClaudeCodeProcess)
       const spawned = request.options.spawnClaudeCodeProcess({
         command: process.execPath,
@@ -115,6 +135,9 @@ for (const mode of [
           const { execFileSync } = require('node:child_process');
           process.on('SIGTERM', () => {
             execFileSync('git', ['-C', ${JSON.stringify(folder)}, 'commit', '-q', '--allow-empty', '-m', 'Final background work']);
+            if (${ending === 'removed'}) {
+              execFileSync('git', ['-C', ${JSON.stringify(project)}, 'merge', '--ff-only', 'worker']);
+            }
             writeFileSync(${JSON.stringify(committed)}, '');
           });
           process.stdin.once('data', () => process.exit(0));
@@ -129,7 +152,7 @@ for (const mode of [
       child = spawned
     }
 
-    return worker.query(request)
+    return current.query(request)
   }
 
   const host = createHost({
@@ -156,7 +179,7 @@ for (const mode of [
           state: writer.state,
           operation: {
             op: 'task.create',
-            key: mode,
+            key: ending,
             title: 'Copy release',
           },
           meta: {
@@ -166,14 +189,14 @@ for (const mode of [
         })
         assert.ok('event' in created)
         writer.append({ event: created.event })
-        const task = writer.state.keys[mode]!
+        const task = writer.state.keys[ending]!
         const attached = decidePush({
           state: writer.state,
-          key: mode,
+          key: ending,
           input: {
             agent: {
               provider: 'claude-code',
-              sessionId: mode,
+              sessionId: ending,
               host: 'pnyx',
               cwd: folder,
             },
@@ -218,7 +241,7 @@ for (const mode of [
       text: 'Work',
       actor: 'cli',
       direct: true,
-      inputId: mode,
+      inputId: ending,
     })
     await settle({
       what: 'copy worker input',
@@ -240,7 +263,7 @@ for (const mode of [
     })
     assert.ok(child)
 
-    if (mode === 'check') {
+    if (ending === 'check') {
       stopOffering()
       await assert.rejects(
         release,
@@ -310,6 +333,78 @@ for (const mode of [
       loadHydra({ hydraId }).state.cards[task]?.copy?.state,
       'active',
     )
+
+    const instructions = [
+      'First owner instruction',
+      'Second owner instruction',
+    ]
+
+    for (const text of instructions) {
+      const output = await reply([
+        task,
+        '--text',
+        text,
+        '--hydra',
+        hydraId,
+      ])
+      const receipt = output.reply
+      assert.ok(receipt && typeof receipt === 'object' && 'state' in receipt)
+      assert.equal(
+        receipt.state,
+        'queued',
+      )
+    }
+
+    assert.equal(
+      workers.length,
+      1,
+      'owner replies cannot reopen the session during settlement',
+    )
+    assert.equal(
+      loadHydra({ hydraId }).state.cards[task]?.steering?.filter(message => !message.ack).length,
+      2,
+    )
+    await assert.rejects(
+      async () => commands.task([
+        'start',
+        task,
+        '--harness',
+        'claude',
+        '--hydra',
+        hydraId,
+      ]),
+      { code: 'CONFLICT' },
+    )
+    const controlOutput = await reply([
+      task,
+      '--text',
+      '/compact',
+      '--hydra',
+      hydraId,
+    ])
+    const control = controlOutput.reply
+    assert.ok(control && typeof control === 'object' && 'state' in control && 'detail' in control)
+    assert.equal(
+      control.state,
+      'failed',
+    )
+    assert.match(
+      String(control.detail),
+      /copy.*try again/i,
+    )
+    await assert.rejects(
+      () => hostRequest({
+        host,
+        body: {
+          action: 'send',
+          card: task,
+          direct: true,
+          text: '/compact',
+          actor: 'cli',
+        },
+      }),
+      { code: 'CONFLICT' },
+    )
     assert.ok(child.stdin)
     child.stdin.end('finish')
     const outcome = await observed
@@ -328,12 +423,53 @@ for (const mode of [
       assert.ok(outcome.result)
       assert.equal(
         outcome.result.copy?.state,
-        'flagged',
+        ending === 'removed' ? 'removed' : 'flagged',
       )
       assert.equal(
         outcome.result.check?.landed,
-        false,
+        ending === 'removed',
       )
+    }
+
+    if (ending === 'removed') {
+      await settle({
+        what: 'queued messages use the missing-copy path after removal',
+        check: () => {
+          const pending = loadHydra({ hydraId }).state.cards[task]?.steering
+
+          return pending?.every(message => message.attempts.length > 0)
+        },
+      })
+      assert.equal(
+        workers.length,
+        1,
+        'a removed copy cannot start another session',
+      )
+      assert.equal(
+        loadHydra({ hydraId }).state.cards[task]?.steering?.filter(message => !message.ack).length,
+        2,
+      )
+    } else {
+      await settle({
+        what: 'queued replies resume after saved copy state',
+        check: () => workers.length === 2 && (workers[1]?.incoming.length ?? 0) > 0,
+      })
+      await settle({
+        what: 'both queued replies are taken once',
+        check: () => instructions.every(text => workers[1]?.incoming.some(message => {
+          return JSON.stringify(message.message.content).includes(text)
+        })),
+      })
+      const resumed = workers[1]
+      assert.ok(resumed)
+      const received = resumed.incoming.map(message => JSON.stringify(message.message.content)).join('\n')
+
+      for (const text of instructions) {
+        assert.equal(
+          received.split(text).length - 1,
+          1,
+        )
+      }
     }
 
     assert.equal(
@@ -346,12 +482,12 @@ for (const mode of [
     )
     assert.equal(
       existsSync(folder),
-      true,
-      'the final unlanded commit keeps its copy',
+      ending !== 'removed',
+      'only the landed final commit can release its copy',
     )
     assert.notEqual(
       git({
-        cwd: folder,
+        cwd: ending === 'removed' ? project : folder,
         args: [
           'rev-parse',
           'HEAD',

@@ -105,4 +105,6 @@ Review the whole branch diff against its PR base, including documentation and sh
 
 Hosted agent processes lead their own process groups. Completing or archiving a task, or releasing its copy, stops its recorded groups with SIGTERM, escalates to SIGKILL if necessary and waits for exit. Idle closure and server restart close the agent leader while leaving background tools running, so detached verification can finish. Group ownership remains recorded after the leader exits and across restart until permanent cleanup. Copy release keeps its folder if its host is unavailable or its worker is still starting; retry once the host is ready. Tools that start a separate process group are outside this cleanup.
 
+Copy settlement holds the task lease until its folder decision is saved. Ordinary replies stay in the existing inbox until then; new starts and native controls can be retried after cleanup. A released pool slot cannot resume the old session.
+
 Older child records without the background-preservation marker retain the earlier startup group cleanup behavior. New records preserve background tools across restart.

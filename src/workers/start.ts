@@ -1,4 +1,5 @@
 import { recordTools } from './tools.ts'
+import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
@@ -174,6 +175,10 @@ export async function startTask({
     ref: task,
   })
 
+  requireCopyAvailable({
+    hydraId,
+    task: card.id,
+  })
   requireUnheld({ card })
   requireReady({
     state,

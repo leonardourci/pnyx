@@ -171,6 +171,7 @@ for (const ending of [
   'release',
   'idle-release',
   'starting',
+  'opening',
 ]) {
   const worker = claudeNative()
   let childPid: number | undefined
@@ -275,6 +276,17 @@ for (const ending of [
         direct: true,
         inputId: `input-${ending}`,
       })
+
+      if (ending === 'opening') {
+        assert.deepEqual(
+          await taskHost.release({
+            task: task.id,
+            permanent: true,
+          }),
+          { busy: 'starting' },
+          'a permanent release refuses cleanup before a lazy opening settles',
+        )
+      }
     }
 
     await settle({
@@ -320,7 +332,7 @@ for (const ending of [
         task: task.id,
         permanent: true,
       })
-    } else if (ending === 'release' || ending === 'starting') {
+    } else if (ending === 'release' || ending === 'starting' || ending === 'opening') {
       assert.deepEqual(
         await taskHost.release({ task: task.id }),
         { busy: 'mid-turn' },
