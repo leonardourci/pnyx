@@ -243,11 +243,20 @@ function catchUp({
         })
       }
 
+      const newerMessages = new Map<string, number>()
+
       for (const event of read.events) {
         let session = ''
         let line = ''
 
         if (event.type === 'chat.message') {
+          if (state.eventIds[event.id] === undefined) {
+            newerMessages.set(
+              event.id,
+              event.seq,
+            )
+          }
+
           session = event.data.session
           const position = /^(\d+)(?::[mt]\d+(?:\.\d+)?)?$/.exec(event.data.nativeId)
           line = position ? position[1]! : event.data.nativeId
@@ -260,7 +269,9 @@ function catchUp({
             line,
             EVENTS,
           )
-          const replaced = event.data.replaces ? state.eventIds[event.data.replaces] : undefined
+          const replaced = event.data.replaces
+            ? state.eventIds[event.data.replaces] ?? newerMessages.get(event.data.replaces)
+            : undefined
 
           if (replaced !== undefined) {
             db.prepare('DELETE FROM docs WHERE source=? AND pos=?').run(
@@ -341,6 +352,7 @@ function catchUp({
       card,
     }
     let pending = true
+    let firstBatch = true
 
     while (pending) {
       pending = transaction({
@@ -355,6 +367,12 @@ function catchUp({
           if (!tail || (!tail.reset && tail.end === next.pos)) {
             return false
           }
+
+          if (tail.reset && !firstBatch) {
+            return false
+          }
+
+          firstBatch = false
 
           if (tail.reset) {
             db.prepare('DELETE FROM docs WHERE source=?').run(next.source)

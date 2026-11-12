@@ -98,6 +98,63 @@ test(
       find({text: 'initialneedle'}).hits[0]?.card,
       created.card,
     )
+    const captured = structuredClone(loadHydra({ hydraId: 'default' }).state)
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'earlier-record',
+            actor: 'fixture',
+            at: '2026-11-12T10:01:00Z',
+            cardId: created.card,
+            type: 'chat.message',
+            data: {
+              session: 'claude-code:delta',
+              nativeId: 'earlier',
+              role: 'user',
+              text: 'zinnia',
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'newer-record',
+            actor: 'fixture',
+            at: '2026-11-12T10:02:00Z',
+            cardId: created.card,
+            type: 'chat.message',
+            data: {
+              session: 'claude-code:delta',
+              nativeId: 'newer',
+              role: 'user',
+              text: 'quartz',
+              replaces: 'earlier-record',
+            },
+          },
+        })
+      },
+    })
+    assert.equal(
+      search({
+        hydraId: 'default',
+        state: captured,
+        query: {
+          text: 'quartz*',
+          limit: 20,
+        },
+      }).hits[0]?.card,
+      created.card,
+    )
+    assert.equal(
+      find({ text: 'zinnia*' }).total,
+      0,
+      'a correction beyond the captured state removes its older indexed entry',
+    )
     const logSize = fs.statSync(created.log).size
     const nativeSize = fs.statSync(native).size
     const descriptors = new Map<number, string>()
@@ -106,6 +163,7 @@ test(
       position: number | null
       length: number
     }[] = []
+    let truncateAfterRead = false
     let appendWhileReading = false
     let failNativeRead = false
     let failFromPosition = 0
@@ -180,13 +238,23 @@ test(
           })
         }
 
-        return read(
+        const bytes = read(
           fd,
           buffer,
           offset,
           length,
           position,
         )
+
+        if (truncateAfterRead && nativeRead) {
+          truncateAfterRead = false
+          fs.writeFileSync(
+            native,
+            nativeLine({ text: 'truncatedmarker' }),
+          )
+        }
+
+        return bytes
       },
     )
     syncBuiltinESMExports()
@@ -301,6 +369,20 @@ test(
     assert.ok(
       reads.every(entry => entry.path === native),
       'resetting one native source does not reread the event log',
+    )
+    fs.appendFileSync(
+      native,
+      nativeLine({ text: 'checkpoint '.repeat(CHECKPOINT_WORDS) }),
+    )
+    truncateAfterRead = true
+    assert.deepEqual(
+      find({ text: 'truncatedmarker*' }).hits,
+      [],
+      'a second source reset waits for the next query instead of restarting the current catch-up',
+    )
+    assert.equal(
+      find({ text: 'truncatedmarker*' }).hits[0]?.card,
+      created.card,
     )
     const before = fs.readFileSync(created.log)
     assert.equal(
