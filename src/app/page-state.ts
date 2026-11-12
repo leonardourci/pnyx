@@ -15,7 +15,7 @@ export interface PageUpdate {
   cards: Record<string, Card | null>
   references?: Record<string, Card>
   sessions?: Record<string, NonNullable<HydraState['sessions']>[string] | null>
-  movedOut?: HydraState['movedOut']
+  movedOut?: Record<string, NonNullable<HydraState['movedOut']>[string] | null>
   undone?: HydraState['undone']
   labelColors?: HydraState['labelColors']
 }
@@ -344,6 +344,10 @@ export function pageEvent({
     update.movedOut = { [event.cardId]: moved }
   }
 
+  if (event.type === 'task.moved-in') {
+    update.movedOut = { [event.cardId]: null }
+  }
+
   if (event.undoes) {
     update.undone = { [event.undoes]: event.id }
   }
@@ -443,9 +447,19 @@ export function applyPageUpdate({
   }
 
   if (update.movedOut) {
-    state.movedOut = {
-      ...state.movedOut,
-      ...update.movedOut,
+    const movedOut = { ...state.movedOut }
+
+    for (const [
+      id,
+      moved,
+    ] of Object.entries(update.movedOut)) {
+      if (moved) {
+        movedOut[id] = moved
+      } else {
+        delete movedOut[id]
+      }
     }
+
+    state.movedOut = movedOut
   }
 }

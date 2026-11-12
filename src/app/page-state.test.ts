@@ -727,6 +727,35 @@ test(
       resumedLeaving.movedOut,
       leaving.movedOut,
     )
+    const back: HydraEvent = {
+      ...create,
+      id: 'moved-back',
+      seq: 4,
+      type: 'task.moved-in',
+      data: {
+        card: structuredClone(moved.data.card),
+        sessions: [],
+        from: 'other-hydra',
+        column: 'queued',
+      },
+    }
+    replayOwned({
+      state: leaving,
+      events: [back],
+    })
+    applyPageUpdate({
+      state: resumedLeaving,
+      update: pageEvent({
+        state: leaving,
+        event: back,
+        interest,
+      }),
+    })
+    assert.deepEqual(
+      resumedLeaving.movedOut ?? {},
+      leaving.movedOut ?? {},
+      'a hidden card that moves back clears its moved-out record on the page too',
+    )
   },
 )
 
