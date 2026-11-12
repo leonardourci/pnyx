@@ -174,7 +174,17 @@ export function createUsageTracker({
       account.key,
       plan,
     )
-    streamed({ session: sessionId({ agent: card.agent }) })
+    const sessions = new Set(Object.values(state.cards).flatMap(task => {
+      if (!task.agent || usageAccount({ agent: task.agent }).key !== account.key) {
+        return []
+      }
+
+      return [sessionId({ agent: task.agent })]
+    }))
+
+    for (const session of sessions) {
+      streamed({ session })
+    }
 
     return { refreshed: 'plan limits' }
   }
