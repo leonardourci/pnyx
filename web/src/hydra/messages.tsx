@@ -1,3 +1,4 @@
+import type { ChatDrafts } from './chat-drafts.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { upgradeMilestoneIcon } from '#upgrade/model.ts'
 import { skillIcon } from './skill-icons.ts'
@@ -124,6 +125,7 @@ export function Messages({
   lookup,
   comments,
   setComments,
+  drafts,
   quote,
   toolDetails = true,
   thinkingDetails = true,
@@ -169,6 +171,7 @@ export function Messages({
   lookup: PnyxLookup
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
+  drafts: ChatDrafts
   quote({ text }: { text: string }): void
 }) {
   const root = useRef<HTMLDivElement>(null)
@@ -215,12 +218,10 @@ export function Messages({
     paste,
     remove,
     release,
-    update,
-    latest,
   } = useCommentDrafts({
     root,
-    comments,
     setComments,
+    drafts,
     notify,
     clearSelection: () => setSelection(null),
     blocks,
@@ -845,14 +846,9 @@ export function Messages({
                           <MessageComment
                             key={comment.id}
                             comment={comment}
+                            drafts={drafts}
                             number={numbers.get(comment.id)!}
                             inline
-                            change={({ text }) => update({
-                              items: latest.current.map(c => c.id === comment.id ? {
-                                ...c,
-                                text,
-                              } : c),
-                            })}
                             remove={() => {
                               remove({ id: comment.id })
                               focusBlock({ element: blockFor({ key }) })

@@ -1,3 +1,4 @@
+import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraChatQueue } from '#hydra/chat-queue.ts'
@@ -28,7 +29,7 @@ import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
+import { hydraDown,keepStreamedKeys,quoteInto } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
@@ -95,10 +96,7 @@ export function HydraChat({
   notify,
   view,
   save,
-  draft,
-  setDraft,
-  comments,
-  setComments,
+  drafts,
   liveThread,
   queue,
   identity,
@@ -137,11 +135,19 @@ export function HydraChat({
   notify({ text }: { text: string }): void
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
-  draft: string
-  setDraft({ text }: { text: string }): void
-  comments: ChatComment[]
-  setComments({ items }: { items: ChatComment[] }): void
+  drafts: ChatDrafts
 }) {
+  const {
+    text: draft,
+    comments,
+  } = useDraftSnapshot({
+    drafts,
+    settled: true,
+  })
+  const {
+    setDraft,
+    setComments,
+  } = drafts
   const waitingButton = useRef<HTMLButtonElement>(null)
 
   useEffect(
@@ -874,9 +880,10 @@ export function HydraChat({
               answerLeads={leads}
               comments={comments}
               setComments={setComments}
+              drafts={drafts}
               quote={({ text }) => setDraft({
                 text: quoteInto({
-                  draft,
+                  draft: drafts.read().text,
                   text,
                 }),
               })}
@@ -1004,10 +1011,7 @@ export function HydraChat({
         }}
         card={HYDRA_CARD}
         title="Hydra"
-        draft={draft}
-        setDraft={setDraft}
-        comments={comments}
-        setComments={setComments}
+        drafts={drafts}
         thread={route}
         command={deliver}
         notify={notify}

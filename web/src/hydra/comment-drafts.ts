@@ -1,8 +1,8 @@
+import type { ChatDrafts } from './chat-drafts.ts'
 import { imageLine } from '#hydra/images.ts'
 import { isEditing } from '#web-preferences/keyboard-registry.tsx'
 import {
   useEffect,
-  useRef,
   type ClipboardEvent as PasteEvent,
 } from 'react'
 import { flushSync } from 'react-dom'
@@ -22,36 +22,31 @@ import type { RefObject } from 'react'
 
 export function useCommentDrafts({
   root,
-  comments,
+  drafts,
   setComments,
   notify,
   clearSelection,
   blocks,
 }: {
+  drafts: ChatDrafts
   root: RefObject<HTMLDivElement | null>
-  comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
   notify({ text }: { text: string }): void
   clearSelection(): void
   blocks(): HTMLElement[]
 }) {
-  // Writes between renders build on each other, as do uploads that finish after them.
-  const latest = useRef(comments)
-  latest.current = comments
-
-  const update = ({ items }: { items: ChatComment[] }) => {
-    latest.current = items; setComments({ items })
-  }
+  const read = () => drafts.read().comments
+  const update = setComments
 
   const updates = commentUpdates({
-    read: () => latest.current,
+    read,
     write: update,
   })
   const remove = updates.remove
 
   // An image still uploading holds its placeholder in the note, which keeps the note alive.
   const release = ({ id }: { id: string }) => {
-    const comment = latest.current.find(c => c.id === id)
+    const comment = read().find(c => c.id === id)
 
     if (comment && !sendableComment({ comment })) {
       remove({ id })
@@ -66,7 +61,7 @@ export function useCommentDrafts({
     quote: CommentPassage
     text?: string
   }) => {
-    const same = latest.current.find(c => samePassage({
+    const same = read().find(c => samePassage({
       before: c,
       after: quote,
     }))
@@ -81,8 +76,8 @@ export function useCommentDrafts({
     }
     flushSync(() => {
       update({
-        items: same ? latest.current.map(c => c.id === same.id ? comment : c) : [
-          ...latest.current,
+        items: same ? read().map(c => c.id === same.id ? comment : c) : [
+          ...read(),
           comment,
         ],
       }); clearSelection()
@@ -201,7 +196,7 @@ export function useCommentDrafts({
   useEffect(() => {
     const rendered = blocks(), present = new Set(rendered.map(b => b.dataset.messageId))
     let moved = false
-    const items = comments.map(comment => {
+    const items = read().map(comment => {
       const settled = !comment.messageId.startsWith('live:') || present.has(comment.messageId)
       const block = settled ? undefined : rendered
         .filter(b => Number(b.dataset.blockOffset) === comment.offset
@@ -232,7 +227,5 @@ export function useCommentDrafts({
     paste,
     remove,
     release,
-    update,
-    latest,
   }
 }

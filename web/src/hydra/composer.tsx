@@ -1,7 +1,8 @@
+import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { COMPOSER_ICON } from '#web-workers/agent-pickers.tsx'
 import { sendableRequest } from './project-request.ts'
@@ -9,7 +10,7 @@ import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
-import { commentReply, sendableComment, type ChatComment } from './chat.ts'
+import { commentReply, sendableComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
@@ -24,10 +25,7 @@ export function Composer({
   hydraId,
   card,
   title,
-  draft,
-  setDraft,
-  comments,
-  setComments,
+  drafts,
   thread,
   command,
   notify,
@@ -42,10 +40,7 @@ export function Composer({
   hydraId: string
   card: string
   title: string
-  draft: string
-  setDraft({ text }: { text: string }): void
-  comments: ChatComment[]
-  setComments({ items }: { items: ChatComment[] }): void
+  drafts: ChatDrafts
   thread: ThreadPage | null
   command: Command
   notify({ text }: { text: string }): void
@@ -59,6 +54,14 @@ export function Composer({
   projectRequest?: boolean
   projectRequested?(): void
 }) {
+  const {
+    text: draft,
+    comments,
+  } = useDraftSnapshot({ drafts })
+  const {
+    setDraft,
+    setComments,
+  } = drafts
   const [
     sending,
     setSending,
@@ -105,20 +108,27 @@ export function Composer({
     setListing,
   ] = useState<string[] | null>(null)
 
-  const showComment = ({ id }: { id: string }) => {
-    setListing(null)
-    requestAnimationFrame(() => {
-      const host = form.current && conversationMessages({ from: form.current })
-      const comment = comments.find(item => item.id === id)
+  const closeListing = useCallback(
+    () => setListing(null),
+    [],
+  )
+  const showComment = useCallback(
+    ({ id }: { id: string }) => {
+      setListing(null)
+      requestAnimationFrame(() => {
+        const host = form.current && conversationMessages({ from: form.current })
+        const comment = drafts.read().comments.find(item => item.id === id)
 
-      if (host && comment) {
-        revealComment({
-          host,
-          comment,
-        })
-      }
-    })
-  }
+        if (host && comment) {
+          revealComment({
+            host,
+            comment,
+          })
+        }
+      })
+    },
+    [drafts],
+  )
 
   const current = useRef({
     draft,
@@ -132,6 +142,17 @@ export function Composer({
   const insertBlock = ({ block }: { block: string }) => field.current!.insertBlock({ block })
 
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
+    const {
+      text: draft,
+      comments,
+    } = drafts.read()
+    const sendable = comments.filter(comment => sendableComment({ comment }))
+    const outgoing = commentReply({
+      draft,
+      comments,
+      hydraId,
+      card,
+    })
     const request = sendableRequest({
       text: restore && attempt.current ? attempt.current.text : outgoing,
     })
@@ -290,11 +311,11 @@ export function Composer({
         )}
         {listing && (
           <CommentsDialog
-            comments={comments}
+            drafts={drafts}
             shown={listing}
             setComments={setComments}
             show={showComment}
-            close={() => setListing(null)}
+            close={closeListing}
           />
         )}
         <ComposerField

@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react'
+import type { ChatDrafts } from './chat-drafts.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { ComposerField } from './composer-field.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -63,16 +65,16 @@ function CommentQuote({
 export function MessageComment({
   comment,
   number,
-  change,
+  drafts,
   remove,
   inline = false,
   leave,
   release,
   show,
 }: {
+  drafts: ChatDrafts
   comment: ChatComment
   number: number
-  change({ text }: { text: string }): void
   remove(): void
   inline?: boolean
   leave?({
@@ -85,6 +87,11 @@ export function MessageComment({
   release?(): void
   show?(): void
 }) {
+  const text = useSyncExternalStore(
+    drafts.subscribe,
+    () => drafts.read().comments.find(item => item.id === comment.id)?.text ?? comment.text,
+  )
+
   return (
     <div
       className="comment-card"
@@ -108,8 +115,11 @@ export function MessageComment({
           className="comment-note"
           placeholder="Comment…"
           label="Comment on selected text"
-          value={comment.text}
-          change={change}
+          value={text}
+          change={({ text }) => drafts.editComment({
+            id: comment.id,
+            text,
+          })}
           // Switching apps, say to grab a screenshot, blurs the note too; keep it for the return.
           onBlur={() => {
             if (document.hasFocus()) {

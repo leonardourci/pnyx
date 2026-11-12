@@ -6,7 +6,7 @@ import { pickView } from '#settings/settings.ts'
 import { lockedColumn } from '#tasks/column-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { useStoredComments } from '#web-hydra/comments-store.ts'
+import { useChatDrafts } from '#web-hydra/chat-drafts.ts'
 import { HydraComposerSources } from '#web-hydra/composer-sources.tsx'
 import { HydraChat } from '#web-hydra/hydra-chat.tsx'
 import { HydraLabel } from '#web-hydra/hydra-title.tsx'
@@ -98,10 +98,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
       selectedRef,
       setActive,
-    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? restored.expanded?.at(-1) ?? null), [
-      drafts,
-      setDrafts,
-    ] = useState<Record<string,string>>(restored.drafts ?? {}), [
+    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? restored.expanded?.at(-1) ?? null), [drafts] = useState<Record<string,string>>(restored.drafts ?? {}), [
       notice,
       setNotice,
     ] = useState<{ text: string } | null>(null), [
@@ -135,10 +132,24 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     scope: '',
     ids: [],
   })
-  const {
-    comments,
-    setComments,
-  } = useStoredComments({ commentsKey })
+  const chatDrafts = useChatDrafts({
+    text: drafts[HYDRA_CARD] ?? '',
+    commentsKey,
+    saveText: ({ text }) => {
+      drafts[HYDRA_CARD] = text
+
+      try {
+        const saved = restoreView({ key: restoreKey })
+        sessionStorage.setItem(
+          restoreKey,
+          JSON.stringify({
+            ...saved,
+            drafts,
+          }),
+        )
+      } catch { /* The mounted chat retains the draft when storage is blocked. */ }
+    },
+  })
   const [
     creatingTask,
     setCreatingTask,
@@ -438,13 +449,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
   const answerTask = ({ card }: { card: Card }) => {
     setPanel(true)
-    setDrafts(drafts => ({
-      ...drafts,
-      [HYDRA_CARD]: `${drafts[HYDRA_CARD] || ''}\nFor ${taskMention({
+    chatDrafts.setDraft({
+      text: `${chatDrafts.read().text}\nFor ${taskMention({
         id: card.id,
         title: card.title,
       })}: `.trimStart(),
-    }))
+    })
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
 
@@ -705,17 +715,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                     notify={notify}
                     view={view}
                     save={save}
-                    draft={drafts[HYDRA_CARD] ?? ''}
-                    setDraft={({ text }) => setDrafts(d => ({
-                      ...d,
-                      [HYDRA_CARD]: text,
-                    }))}
-                    comments={comments[HYDRA_CARD] ?? []}
-                    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-                    setComments={({ items }) => setComments(c => ({
-                      ...c,
-                      [HYDRA_CARD]: items,
-                    }))}
+                    drafts={chatDrafts}
                   />
                   <TaskReferencesProvider references={references} openTask={revealTask}>
                     <div className="hydra-main">
