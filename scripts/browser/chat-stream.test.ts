@@ -1551,38 +1551,101 @@ test(
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           const peer = window.draftPeer;
           const key = 'pnyx:${s.hydraId}:comments';
-          const input = document.querySelector('.comments-dialog [data-comment-ref="first"] textarea');
-          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Local edit before the storage event');
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          const stored = JSON.parse(peer.localStorage.getItem(key));
-          stored.$hydra.push({ ...stored.$hydra[0], id: 'third', text: 'Independent remote addition' });
+          window.editDraftComment = (target, id, text) => {
+            const input = target.document.querySelector('.comments-dialog [data-comment-ref="' + id + '"] textarea');
+            if (!input) throw new Error('Missing editable comment ' + id);
+            Object.getOwnPropertyDescriptor(target.HTMLTextAreaElement.prototype, 'value').set.call(input, text);
+            input.dispatchEvent(new target.Event('input', { bubbles: true }));
+          };
+          const read = target => {
+            const legacy = JSON.parse(target.localStorage.getItem(key) || '{}').$hydra;
+            if (legacy) return legacy;
+            return Object.keys(target.localStorage).filter(name => name.startsWith(key + ':')).map(name => JSON.parse(target.localStorage.getItem(name)));
+          };
+          const before = JSON.stringify({ $hydra: read(window) });
+          const restore = [window, peer].map(target => {
+            const get = target.Storage.prototype.getItem;
+            target.Storage.prototype.getItem = function(name) { return name === key ? before : get.call(this, name); };
+            return () => { target.Storage.prototype.getItem = get; };
+          });
+          try {
+            window.editDraftComment(window, 'first', 'Concurrent first');
+            window.editDraftComment(peer, 'second', 'Concurrent second');
+            window.dispatchEvent(new Event('pagehide'));
+            peer.dispatchEvent(new peer.Event('pagehide'));
+          } finally {
+            restore.forEach(reset => reset());
+          }
+          const saved = read(window);
+          if (saved.find(comment => comment.id === 'first')?.text !== 'Concurrent first' || saved.find(comment => comment.id === 'second')?.text !== 'Concurrent second') throw new Error('Simultaneous tab saves lost an independent comment edit');
+          if (localStorage.getItem(key) !== null) throw new Error('Legacy comments were not migrated');
           window.draftAdditionReceived = false;
           const added = event => {
-            if (event.key === key && event.newValue?.includes('Independent remote addition')) {
+            if (event.key === key + ':%24hydra:third') {
               window.draftAdditionReceived = true;
               removeEventListener('storage', added);
             }
           };
           addEventListener('storage', added);
-          peer.localStorage.setItem(key, JSON.stringify(stored));
+          peer.localStorage.setItem(key + ':%24hydra:third', JSON.stringify({ ...saved[0], id: 'third', text: 'Independent remote addition' }));
           window.dispatchEvent(new Event('pagehide'));
-          const merged = JSON.parse(localStorage.getItem(key)).$hydra;
-          if (merged.length !== 3 || merged.find(comment => comment.id === 'first')?.text !== 'Local edit before the storage event') throw new Error('Dirty tab overwrote the remote addition before its storage event');
           return 'chat-assertion-passed';
         }`,
       })
       await waitFor({
-        what: 'the delayed storage event preserving the newer local save',
-        condition: 'window.draftAdditionReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Local edit before the storage event\'',
+        what: 'both concurrent edits and the independent addition reaching the first tab',
+        condition: 'window.draftAdditionReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Concurrent first\' && document.querySelector(\'.comments-dialog [data-comment-ref="second"] textarea\')?.value === \'Concurrent second\'',
       })
+      await evaluate({
+        script: `async () => {
+          const peer = window.draftPeer;
+          document.querySelector('.comments-dialog footer button').click();
+          peer.document.querySelector('.comments-dialog footer button').click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          document.querySelector('.composer-comments .card-main').click();
+          peer.document.querySelector('.composer-comments .card-main').click();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'both dialogs showing the newly added comment',
+        condition: 'document.querySelector(\'.comments-dialog [data-comment-ref="third"]\') && window.draftPeer.document.querySelector(\'.comments-dialog [data-comment-ref="third"]\')',
+      })
+      await evaluate({
+        script: `() => {
+          const key = 'pnyx:${s.hydraId}:comments:%24hydra:first';
+          const saved = localStorage.getItem(key);
+          window.malformedDraftReceived = false;
+          const received = event => {
+            if (event.key === key && event.newValue === 'invalid-json') {
+              window.malformedDraftReceived = true;
+              removeEventListener('storage', received);
+            }
+          };
+          addEventListener('storage', received);
+          window.draftPeer.localStorage.setItem(key, 'invalid-json');
+          window.restoreMalformedDraft = () => window.draftPeer.localStorage.setItem(key, saved);
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'a malformed record leaving the mounted comment intact',
+        condition: 'window.malformedDraftReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Concurrent first\'',
+      })
+      await evaluate({ script: "() => { window.restoreMalformedDraft(); return 'chat-assertion-passed'; }" })
       await evaluate({
         script: `() => {
           const peer = window.draftPeer;
           const key = 'pnyx:${s.hydraId}:comments';
           const set = Storage.prototype.setItem;
-          window.restoreDraftStorage = () => { Storage.prototype.setItem = set; };
+          const remove = Storage.prototype.removeItem;
+          window.restoreDraftStorage = () => { Storage.prototype.setItem = set; Storage.prototype.removeItem = remove; };
+          Storage.prototype.removeItem = function(name) {
+            if (name.startsWith(key)) throw new DOMException('Fixture storage failure', 'QuotaExceededError');
+            return remove.call(this, name);
+          };
           Storage.prototype.setItem = function(name, value) {
-            if (name === key) throw new DOMException('Fixture storage failure', 'QuotaExceededError');
+            if (name.startsWith(key)) throw new DOMException('Fixture storage failure', 'QuotaExceededError');
             return set.call(this, name, value);
           };
           const edit = (target, id, text) => {
@@ -1596,7 +1659,7 @@ test(
           window.dispatchEvent(new Event('pagehide'));
           window.draftStorageReceived = false;
           const received = event => {
-            if (event.key === key && event.newValue?.includes('Remote first')) {
+            if (event.key?.startsWith(key) && event.newValue?.includes('Remote first')) {
               window.draftStorageReceived = true;
               removeEventListener('storage', received);
             }
@@ -1616,6 +1679,8 @@ test(
         script: `() => {
           window.restoreDraftStorage();
           window.dispatchEvent(new Event('pagehide'));
+          window.editDraftComment(window.draftPeer, 'third', 'Another independent edit');
+          window.draftPeer.dispatchEvent(new window.draftPeer.Event('pagehide'));
           return 'chat-assertion-passed';
         }`,
       })
@@ -1633,7 +1698,7 @@ test(
           const peer = window.draftPeer;
           peer.document.querySelector('.composer-comments .card-main').click();
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          if (peer.document.querySelector('.comments-dialog textarea')?.value !== 'Unsaved local edit') throw new Error('Second tab reload lost the merged comment');
+          if (peer.document.querySelector('.comments-dialog [data-comment-ref="first"] textarea')?.value !== 'Unsaved local edit') throw new Error('Second tab reload lost the merged comment');
           peer.close();
           return 'chat-assertion-passed';
         }`,
@@ -1652,7 +1717,7 @@ test(
         script: `async () => {
           document.querySelector('.composer-comments .card-main').click();
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          if (document.querySelector('.comments-dialog textarea')?.value !== 'Unsaved local edit') throw new Error('First tab reload lost the merged comment');
+          if (document.querySelector('.comments-dialog [data-comment-ref="first"] textarea')?.value !== 'Unsaved local edit') throw new Error('First tab reload lost the merged comment');
           document.querySelectorAll('.comments-dialog [aria-label="Remove comment"]').forEach(button => button.click());
           document.querySelector('.comments-dialog footer button').click();
           return 'chat-assertion-passed';
