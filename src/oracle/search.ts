@@ -90,7 +90,7 @@ function snippet({
     /\s+/g,
     ' ',
   )
-  const words = [...text.matchAll(/[\p{L}\p{N}]+/gu)]
+  const words = [...text.matchAll(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu)]
   const marked = new Set<number>()
 
   for (const [

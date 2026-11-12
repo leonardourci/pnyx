@@ -59,9 +59,13 @@ export function* documents({
 
   for (const event of events) {
     if (event.type === 'chat.message') {
-      archived.add(`${event.data.session}:${event.data.nativeId}`)
+      const position = /^(\d+)(?::[mt]\d+(?:\.\d+)?)?$/.exec(event.data.nativeId)
+      const line = position ? position[1] : event.data.nativeId
+      archived.add(`${event.data.session}:${line}`)
 
-      if (!replaced.has(event.id)) {
+      const message = (event.data.kind ?? 'message') === 'message' && !event.data.hidden
+
+      if (message && !replaced.has(event.id)) {
         yield* entries({
           card: event.cardId,
           kind: 'transcript',
@@ -120,7 +124,7 @@ export function* documents({
     for (let tail = readTranscript({
       cursor,
       maxBytes: TRANSCRIPT_BATCH_BYTES,
-    }); tail?.lines.length; tail = readTranscript({
+    }); tail && (tail.reset || tail.end > cursor.pos); tail = readTranscript({
         cursor,
         maxBytes: TRANSCRIPT_BATCH_BYTES,
       })) {
