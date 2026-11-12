@@ -270,7 +270,15 @@ test(
       f.cancellations(),
       1,
     )
-    f.answers[1]!.fail()
+    f.schedule.query({ search: { text: 'second' } })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.answers[1]!.reply({ hits: [hit({ card: 'cancelled-result' })] })
+    await f.settle()
+    assert.deepEqual(
+      f.shown,
+      [],
+    )
+    f.answers[2]!.reply({ hits: [hit({ card: 'replacement-result' })] })
     await f.settle()
     f.schedule.query({ search: { text: 'third' } })
     t.mock.timers.tick(SEARCH_DELAY)
@@ -279,11 +287,11 @@ test(
       f.cancellations(),
       2,
     )
-    f.answers[2]!.fail()
+    f.answers[3]!.fail()
     await f.settle()
     assert.deepEqual(
       f.shown,
-      [],
+      ['second'],
     )
   },
 )
