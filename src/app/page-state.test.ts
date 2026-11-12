@@ -86,6 +86,30 @@ test(
       key: 'automatic',
       automaticTask: true,
     }
+    state.sessions = {
+      'codex:visible': {
+        id: 'codex:visible',
+        agent: {
+          provider: 'codex',
+          sessionId: 'visible',
+        },
+        originCardId: 'task',
+        taskId: 'task',
+        attention: [],
+        sourceRefs: [],
+      },
+      'codex:hidden': {
+        id: 'codex:hidden',
+        agent: {
+          provider: 'codex',
+          sessionId: 'hidden',
+        },
+        originCardId: 'hidden',
+        taskId: 'hidden',
+        attention: [],
+        sourceRefs: [],
+      },
+    }
     state.keys.hidden = 'hidden'
     state.keys.automatic = 'automatic'
     const interest = {
@@ -99,6 +123,10 @@ test(
     assert.deepEqual(
       Object.keys(snapshot.cards),
       ['task'],
+    )
+    assert.deepEqual(
+      Object.keys(snapshot.sessions!),
+      ['codex:visible'],
     )
     assert.deepEqual(
       snapshot.keys,
@@ -248,6 +276,10 @@ test(
       browser.keys.task,
       undefined,
     )
+    assert.equal(
+      browser.sessions?.['codex:visible'],
+      undefined,
+    )
     const show: HydraEvent = {
       ...hide,
       id: 'show',
@@ -283,6 +315,52 @@ test(
       shownAgain.steering,
       undefined,
     )
+    assert.ok(browser.sessions?.['codex:visible'])
+    const compact: HydraEvent = {
+      ...create,
+      cardId: 'hidden',
+      type: 'session.compaction',
+      data: {
+        kind: 'held',
+        input: {
+          id: 'held',
+          text: 'Private compact input',
+          actor: 'owner',
+          route: 'steering',
+          at: create.at,
+        },
+      },
+    }
+    assert.equal(
+      pageEvent({
+        state,
+        event: compact,
+        interest,
+      }).event,
+      undefined,
+    )
+    assert.equal(
+      pageEvent({
+        state,
+        event: compact,
+        interest: {
+          cards: ['hidden'],
+          hidden: false,
+        },
+      }).event?.type,
+      'session.compaction',
+    )
+    assert.equal(
+      pageEvent({
+        state,
+        event: {
+          ...compact,
+          cardId: '$hydra',
+        },
+        interest,
+      }).event?.type,
+      'session.compaction',
+    )
     const beforeSession = structuredClone(state)
     const origin: HydraEvent = {
       ...create,
@@ -317,6 +395,13 @@ test(
         attached,
       ],
     })
+    assert.equal(
+      pageState({
+        state,
+        interest,
+      }).sessions?.['codex:session']?.taskId,
+      'task',
+    )
     const active = {
       ...pageState({
         state,
@@ -438,8 +523,8 @@ test(
       undefined,
     )
     assert.equal(
-      active.sessions?.['codex:session']?.taskId,
-      'hidden',
+      active.sessions?.['codex:session'],
+      undefined,
     )
     const resumed = {
       ...pageState({
@@ -513,6 +598,32 @@ test(
         unavailable: ['missing'],
         hidden: false,
       },
+    )
+    const detachedSession = {
+      ...state.sessions!['codex:hidden']!,
+      taskId: null,
+    }
+    const movedVisible = pageEvent({
+      state: {
+        ...state,
+        sessions: { [detachedSession.id]: detachedSession },
+      },
+      interest,
+      event: {
+        ...create,
+        type: 'task.moved-in',
+        data: {
+          card: state.cards.task!,
+          sessions: [detachedSession],
+          from: 'other',
+          column: 'queued',
+        },
+      },
+    })
+    assert.ok(movedVisible.event?.type === 'task.moved-in')
+    assert.deepEqual(
+      movedVisible.event.data.sessions,
+      [],
     )
     const leaving = emptyHydra()
     const leavingCreate: HydraEvent = {

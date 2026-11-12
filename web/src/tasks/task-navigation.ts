@@ -138,9 +138,8 @@ export function useTaskNavigation({
             // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
             setExpanded(ids => ids.filter(id => !unavailable.includes(id)))
 
-            if (selectedRef && unavailable.includes(selectedRef)) {
-              setActive(null)
-            }
+            // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+            setActive(current => current && unavailable.includes(current) ? null : current)
           }
         } catch (error) {
           if (active && !pendingOpen.current) {

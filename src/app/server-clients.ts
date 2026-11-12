@@ -479,6 +479,23 @@ export function createServerClients({
             }),
           },
         })
+
+        if (event.type === 'task.visibility' && !event.data.after) {
+          send({
+            ws,
+            message: {
+              type: 'latest',
+              ...spendNow,
+              usage: agents().usageViews({
+                spend: spendNow.spend,
+                readings: readingsNow,
+              }),
+              messages: { [event.cardId]: feed().latest[event.cardId] ?? null },
+              actions: { [event.cardId]: feed().actions[event.cardId] ?? null },
+            },
+          })
+        }
+
         sendQueue({
           ws,
           queue,

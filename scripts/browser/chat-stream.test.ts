@@ -695,6 +695,11 @@ test(
         what: 'the moved card leaving the source',
         condition: `!document.querySelector('.card[data-task="${hiddenTask}"]')`,
       })
+      await evaluate({ script: `() => { document.querySelector('.messages [data-task-ref="${hiddenTask}"]').click(); return 'chat-assertion-passed'; }` })
+      await waitFor({
+        what: 'the unavailable moved task notice',
+        condition: 'document.querySelector(\'.notice\')?.textContent.includes(\'Task unavailable in this Hydra\')',
+      })
       await s.owner({
         args: [
           'task',

@@ -1,6 +1,7 @@
 import type { HydraEvent, HydraState } from './model.ts'
 import { replayOwned } from './reducer.ts'
 import type { Card } from '#tasks/model.ts'
+import type { AgentSession } from '#workers/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { liveTask } from '#tasks/select.ts'
 
@@ -39,6 +40,23 @@ export function pageShows({
     || liveTask({ card })
 }
 
+function pageSession({
+  session,
+  state,
+  interest,
+}: {
+  session: AgentSession
+  state: HydraState
+  interest: PageInterest
+}): boolean {
+  const card = session.taskId && state.cards[session.taskId]
+
+  return Boolean(card && pageShows({
+    card,
+    interest,
+  }))
+}
+
 export function pageState({
   state,
   interest,
@@ -63,6 +81,13 @@ export function pageState({
   return {
     ...page,
     cards,
+    sessions: Object.fromEntries(Object.entries(state.sessions ?? {}).filter(([
+      , session,
+    ]) => pageSession({
+      session,
+      state,
+      interest,
+    }))),
     keys: Object.fromEntries(Object.entries(state.keys).filter(([
       , id,
     ]) => Object.hasOwn(
@@ -86,7 +111,8 @@ export function pageEvent({
   const global = event.type.startsWith('hydra.') || event.type.startsWith('board.')
     || event.type === 'chat.message' || event.type === 'task.reminder-due'
     || event.type === 'project.refreshed' || event.type === 'diagnostic.retry'
-    || event.type === 'pnyx.upgrade' || event.type === 'session.compaction'
+    || event.type === 'pnyx.upgrade'
+    || (event.type === 'session.compaction' && event.cardId === HYDRA_CARD)
   const shown = card && pageShows({
     card,
     interest,
@@ -94,6 +120,16 @@ export function pageEvent({
   const hidden = !shown && !global
   const omitted = hidden || event.type.startsWith('task.steering.') || event.type.startsWith('task.source.')
     || event.type === 'task.wait-resumed'
+  const movedSessions = event.type === 'task.moved-in' || event.type === 'task.moved-out'
+    ? event.data.sessions.filter(session => {
+      const current = state.sessions?.[session.id]
+
+      return current && pageSession({
+        session: current,
+        state,
+        interest,
+      })
+    }) : []
   let projected: HydraEvent | undefined = event
 
   if (omitted) {
@@ -104,6 +140,7 @@ export function pageEvent({
       data: {
         ...event.data,
         card: pageCard({ card: event.data.card }),
+        sessions: movedSessions,
       },
     }
   } else if (event.type === 'task.moved-out') {
@@ -112,6 +149,7 @@ export function pageEvent({
       data: {
         ...event.data,
         card: pageCard({ card: event.data.card }),
+        sessions: movedSessions,
       },
     }
   }
@@ -135,11 +173,17 @@ export function pageEvent({
     ids.add(sessionChange.after)
   }
 
-  if (event.type.startsWith('card.') || event.type.startsWith('task.moved-') || sessionChange) {
+  if (event.type.startsWith('card.') || event.type.startsWith('task.moved-')
+    || event.type === 'task.visibility' || sessionChange) {
     for (const session of Object.values(state.sessions ?? {})) {
-      if (session.originCardId === event.cardId || session.id === sessionChange?.session
+      if (session.originCardId === event.cardId || session.taskId === event.cardId
+        || session.id === sessionChange?.session
         || card?.sessionIds?.includes(session.id)) {
-        sessions[session.id] = session
+        sessions[session.id] = pageSession({
+          session,
+          state,
+          interest,
+        }) ? session : null
 
         if (session.taskId) {
           ids.add(session.taskId)
@@ -150,7 +194,12 @@ export function pageEvent({
 
   if (event.type === 'task.moved-out' || event.type === 'task.moved-in') {
     for (const session of event.data.sessions) {
-      sessions[session.id] = state.sessions?.[session.id] ?? null
+      const current = state.sessions?.[session.id]
+      sessions[session.id] = current && pageSession({
+        session: current,
+        state,
+        interest,
+      }) ? current : null
     }
   }
 

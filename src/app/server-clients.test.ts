@@ -8,6 +8,7 @@ import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
+import { usageFor } from '#workers/usage.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 
 test(
@@ -77,6 +78,19 @@ test(
       done: false,
     }
     const actions: Record<string, CurrentAction> = { $hydra: action }
+    const cachedLatest = {
+      hidden: {
+        role: 'assistant' as const,
+        text: 'Cached hidden reply',
+      },
+    }
+    const cachedUsage = usageFor({
+      spend: {
+        total: 42,
+        unavailable: 0,
+        sharedHydra: false,
+      },
+    })
     const tabs = createServerClients({
       hydraId: 'default',
       state: () => state,
@@ -86,13 +100,13 @@ test(
           waiting: [],
           reading: [],
         }),
-        usageViews: () => ({}),
+        usageViews: () => ({ hidden: cachedUsage }),
       }),
       threadSubscriptions: [],
       bindThread() {},
       refreshThread() {},
       feed: () => ({
-        latest: {},
+        latest: cachedLatest,
         actions,
       }),
     })
@@ -469,6 +483,54 @@ test(
     assert.equal(
       scopedLatest.actions.absent,
       null,
+    )
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: [],
+        hidden: false,
+      },
+    })
+    buffered = 0
+    received.length = 0
+    const unhide = {
+      v: 1 as const,
+      id: 'unhide',
+      seq: state.seq + 1,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+      cardId: 'hidden',
+      type: 'task.visibility' as const,
+      data: {
+        before: true,
+        after: false,
+      },
+    }
+    state = reduce({
+      state,
+      event: unhide,
+    })
+    tabs.spendNow.spend = {
+      hidden: {
+        total: 42,
+        unavailable: 0,
+        sharedHydra: false,
+      },
+    }
+    tabs.broadcast({ event: unhide })
+    const restoredLatest = received.find(message => message.type === 'latest')
+    assert.ok(restoredLatest?.type === 'latest')
+    assert.equal(
+      restoredLatest.messages.hidden?.text,
+      'Cached hidden reply',
+    )
+    assert.equal(
+      restoredLatest.spend?.hidden?.total,
+      42,
+    )
+    assert.equal(
+      restoredLatest.usage?.hidden?.recorded.tokens,
+      42,
     )
   },
 )
