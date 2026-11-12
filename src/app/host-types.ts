@@ -174,7 +174,13 @@ export interface Host {
   }): Record<string, unknown>
   reconcile({ state }: { state: HydraState }): void
   // Ends a task's idle live session before the task moves to another Hydra; reports busy while it starts or is mid-turn.
-  release({ task }: { task: string }): Record<string, unknown>
+  release({
+    task,
+    permanent,
+  }: {
+    task: string
+    permanent?: boolean
+  }): Promise<Record<string, unknown>>
   // Queues a check turn for a hosted Hydra once a change it tracks lands at seq on that card.
   wake({
     seq,

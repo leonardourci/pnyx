@@ -1,3 +1,4 @@
+import { background } from './background.ts'
 import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
@@ -37,7 +38,7 @@ import { loadHydra } from './store.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment } from '#workers/host.ts'
+import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment, closedTask } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
@@ -468,6 +469,14 @@ export function createHost({
         // Without the caller's hook a provider starts its process itself, and nothing is tracked.
         const tracked: typeof spawned = spawned === undefined ? undefined : ({ child }) => {
           spawned({ child })
+
+          if (child.pid !== undefined && taskId) {
+            children.associate({
+              pid: child.pid,
+              task: taskId,
+            })
+          }
+
           watchAgent({
             child,
             ids,
@@ -996,7 +1005,10 @@ export function createHost({
 
     thread,
 
-    release: ({ task }) => {
+    release: async ({
+      task,
+      permanent,
+    }) => {
       const entries = [...live].filter(([
         , entry,
       ]) => entry.task === task)
@@ -1005,7 +1017,7 @@ export function createHost({
         return { busy: 'starting' }
       }
 
-      if (entries.some(([
+      if (!permanent && entries.some(([
         , entry,
       ]) => entry.activity === 'working')) {
         return { busy: 'mid-turn' }
@@ -1015,7 +1027,7 @@ export function createHost({
       const waiting = ({ entry }: { entry: Live }) => entry.pendingDirect.size > 0
         || (entry.session?.snapshot().work.unsettledInputs.length ?? 0) > 0
 
-      if (entries.some(([
+      if (!permanent && entries.some(([
         , entry,
       ]) => waiting({ entry }))) {
         return { busy: 'taking a message' }
@@ -1028,8 +1040,11 @@ export function createHost({
         retire({
           key,
           entry,
+          permanent,
         })
       }
+
+      await children.stop({ task })
 
       return { released: entries.length }
     },
@@ -1038,6 +1053,39 @@ export function createHost({
       syncCompactions({ state })
 
       reconcilePermissions({ state })
+
+      const owned = children.tasks()
+
+      for (const entry of live.values()) {
+        owned.add(entry.task)
+      }
+
+      for (const task of owned) {
+        const card = state.cards[task]
+
+        if (card && card.id !== HYDRA_CARD && closedTask({
+          state,
+          card,
+        })) {
+          for (const [
+            key,
+            entry,
+          ] of live) {
+            if (entry.task === task) {
+              retire({
+                key,
+                entry,
+                permanent: true,
+              })
+            }
+          }
+
+          background({
+            name: 'closed agent cleanup',
+            run: () => children.stop({ task }),
+          })
+        }
+      }
 
       for (const card of Object.values(state.cards)) {
         const assignment = steeringAssignment({ card })

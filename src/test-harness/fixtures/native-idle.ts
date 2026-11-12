@@ -1,3 +1,8 @@
+import { planTaskChange } from '#tasks/plans.ts'
+import { declareTask } from '#tasks/declarations.ts'
+import { readEvents } from '#app/event-log.ts'
+import { withWriter } from '#app/writer.ts'
+import { decidePush } from '#tasks/push.ts'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { mock } from 'node:test'
@@ -155,4 +160,193 @@ try {
 } finally {
   host.close()
   mock.timers.reset()
+}
+
+for (const ending of [
+  'done',
+  'archive',
+  'release',
+]) {
+  const worker = claudeNative()
+  const taskHost = createHost({
+    hydraId,
+    query: worker.query,
+    changed: () => {},
+    wakeDelay: QUIET_HOST_MS,
+  })
+  const task = withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const created = planTaskChange({
+        hydraId,
+        landing: new Map(),
+        state: writer.state,
+        operation: {
+          op: 'task.create',
+          key: `worker-${ending}`,
+          title: 'Worker fixture',
+        },
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in created)
+      writer.append({ event: created.event })
+      const decision = decidePush({
+        state: writer.state,
+        key: `worker-${ending}`,
+        input: {
+          agent: {
+            provider: 'claude-code',
+            sessionId: `worker-${ending}`,
+            host: 'pnyx',
+            cwd: process.env.HOME,
+          },
+        },
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in decision)
+      writer.append({ event: decision.event })
+
+      return Object.values(writer.state.cards).find(card => card.key === `worker-${ending}`)!
+    },
+  })
+
+  try {
+    taskHost.send({
+      card: task.id,
+      text: 'Work',
+      actor: 'cli',
+      direct: true,
+      inputId: `input-${ending}`,
+    })
+    await settle({
+      what: 'worker input',
+      check: () => worker.incoming.length === 1,
+    })
+    worker.send({
+      message: {
+        ...recordedResult,
+        uuid: randomUUID(),
+        user_message_uuid: worker.incoming[0]!.uuid,
+        queued_turn_count: 0,
+      },
+    })
+    await settle({
+      what: 'worker completion',
+      check: () => worker.delivered() === 1,
+    })
+    assert.equal(
+      worker.closed(),
+      false,
+    )
+
+    if (ending === 'release') {
+      await taskHost.release({ task: task.id })
+    } else {
+      const state = structuredClone(loadHydra({ hydraId }).state)
+      const card = state.cards[task.id]!
+
+      if (ending === 'archive') {
+        card.hidden = true
+      } else {
+        card.status = {
+          id: 'done',
+          at: new Date().toISOString(),
+          actor: 'cli',
+          state: 'done',
+          note: 'Complete',
+        }
+      }
+
+      taskHost.reconcile({ state })
+    }
+
+    await settle({
+      what: `${ending} closes worker`,
+      check: () => worker.closed(),
+    })
+  } finally {
+    taskHost.close()
+  }
+}
+
+console.log('Task completion, archive and release close their hosted sessions')
+
+const recoveryWorker = claudeNative()
+const recoveryHost = createHost({
+  hydraId,
+  query: recoveryWorker.query,
+  changed: () => {},
+  wakeDelay: QUIET_HOST_MS,
+})
+
+try {
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const created = planTaskChange({
+        hydraId,
+        landing: new Map(),
+        state: writer.state,
+        operation: {
+          op: 'task.create',
+          key: 'completed-before-restart',
+          title: 'Completed worker fixture',
+        },
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in created)
+      writer.append({ event: created.event })
+      const started = decidePush({
+        state: writer.state,
+        key: 'completed-before-restart',
+        input: {
+          activity: 'working',
+          agent: {
+            provider: 'claude-code',
+            sessionId: 'completed-before-restart',
+            host: 'pnyx',
+            cwd: process.env.HOME,
+          },
+        },
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in started)
+      writer.append({ event: started.event })
+      const task = writer.state.keys['completed-before-restart']!
+      const completed = declareTask({
+        state: writer.state,
+        ref: task,
+        status: 'done',
+        note: 'Complete',
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in completed)
+      writer.append({ event: completed.event })
+    },
+  })
+  const turn = readEvents({ hydraId }).findLast(event => event.type === 'card.pushed' && event.data.agent?.sessionId === 'completed-before-restart' && event.data.activity === 'working')!
+  assert.ok(turn)
+  await recoveryHost.recover()
+  assert.equal(
+    `resume:${turn.seq}` in loadHydra({ hydraId }).state.eventIds,
+    false,
+    'restart must not resume a completed worker',
+  )
+} finally {
+  recoveryHost.close()
 }

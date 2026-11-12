@@ -18,7 +18,7 @@ import type { upgradeQueue } from '#upgrade/queue.ts'
 import type { trackChildren } from '#workers/children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
-import { WORKER_RESUME, findWorkerTurnToResume } from '#workers/host.ts'
+import { WORKER_RESUME, findWorkerTurnToResume, closedTask } from '#workers/host.ts'
 import type { createHostedDelivery } from '#workers/hosted-delivery.ts'
 import type { AgentRef } from '#workers/model.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
@@ -194,6 +194,10 @@ export function createHostRecovery({
               resumeAttemptId = cutHydraTurn.resumeAttemptId
             }
           } else if (resumable && task && liveTask({ card: task })
+            && !closedTask({
+              state: writer.state,
+              card: task,
+            })
             && !steeringHeld({ card: task })
             && session.id !== writer.state.config?.hydra.session) {
             resumeAttemptId = findWorkerTurnToResume({

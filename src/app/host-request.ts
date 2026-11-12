@@ -76,6 +76,7 @@ export async function hostRequestUnlocked({
 
     case 'release':
       return host.release({
+        permanent: body.permanent === true,
         task: field({
           body,
           name: 'task',
