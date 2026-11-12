@@ -33,6 +33,7 @@ import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
+import { createChatFollow } from './chat-follow.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
@@ -46,8 +47,6 @@ import { readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
 import { REDUCED_MOTION } from './streaming.tsx'
 
-// How long after the owner's own input a scroll up still counts as theirs.
-const OWNER_SCROLL_MS = 1000
 // The share of the distance to the bottom that following covers per frame.
 const GLIDE = 0.3
 
@@ -182,8 +181,8 @@ export function HydraChat({
     setAway,
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const follow = useRef(true), lastTop = useRef(0)
-  const scrolledAt = useRef(-Infinity), glide = useRef(0)
+  const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
+  const glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
@@ -231,6 +230,9 @@ export function HydraChat({
     },
     [],
   )
+  // The owner is reading while the chat is away or the messages hold their focus or selection.
+  // Effects read the same two values from away and selectedHistory.
+  const readingNow = () => !chatFollow.following() || selectionInHistory.current
   const receivePage = ({
     before,
     latest,
@@ -241,7 +243,7 @@ export function HydraChat({
     receiveConversation({
       before,
       latest,
-      reading: !follow.current || selectionInHistory.current,
+      reading: readingNow(),
     })
   const retainedPage = useRef(page)
   useLayoutEffect(
@@ -583,7 +585,7 @@ export function HydraChat({
           })
 
           const current = historyRequest.current?.id === id
-          const reading = !follow.current || selectionInHistory.current
+          const reading = readingNow()
 
           if (threadSession.current === session && current && (mode !== 'recent' || !reading)) {
             const latest = result.thread as ThreadPage
@@ -746,7 +748,7 @@ export function HydraChat({
     const element = stream.current
     glide.current = 0
 
-    if (!element || !follow.current) {
+    if (!element || !chatFollow.following()) {
       return
     }
 
@@ -758,18 +760,26 @@ export function HydraChat({
     }
   }
 
-  const ownerScroll = () => {
-    scrolledAt.current = performance.now()
+  const stopGlide = () => {
     cancelAnimationFrame(glide.current)
     glide.current = 0
   }
 
+  const ownerScroll = () => {
+    chatFollow.input({ at: performance.now() })
+    stopGlide()
+  }
+
   const stopFollowing = () => {
-    follow.current = false
-    setAway(true)
-    scrolledAt.current = -Infinity
-    cancelAnimationFrame(glide.current)
-    glide.current = 0
+    chatFollow.stop()
+    stopGlide()
+  }
+
+  const expandRow = ({ target }: { target: EventTarget }) => {
+    if (target instanceof Element && target.closest('summary')) {
+      chatFollow.expand({ at: performance.now() })
+      stopGlide()
+    }
   }
 
   useLayoutEffect(
@@ -788,7 +798,7 @@ export function HydraChat({
           `${(scroller.offsetWidth - scroller.clientWidth) / 2}px`,
         )
 
-        if (!follow.current || glide.current) {
+        if (!chatFollow.following() || glide.current) {
           return
         }
 
@@ -882,7 +892,7 @@ export function HydraChat({
         })
       }
 
-      follow.current = true; setAway(false)
+      chatFollow.resume()
       streamingAtSend.current = new Set(previousEntries.current.filter(entry => entry.streaming)
         .map(entry => entry.id))
       lastSend.current = id
@@ -1021,16 +1031,10 @@ export function HydraChat({
           onTouchMove={ownerScroll}
           onKeyDown={event => {
             ownerScroll()
-
-            if (event.target instanceof Element && event.target.closest('summary')) {
-              follow.current = false
-            }
+            expandRow({ target: event.target })
           }}
           onPointerDown={event => {
-            if (event.target instanceof Element && event.target.closest('summary')) {
-              follow.current = false
-              ownerScroll()
-            }
+            expandRow({ target: event.target })
 
             if (event.target === event.currentTarget) {
               ownerScroll()
@@ -1043,20 +1047,11 @@ export function HydraChat({
           }}
           onScroll={e => {
             const el = e.currentTarget
-
-            // Paging emits layout scrolls near the bottom; only owner input may resume following.
-            const owner = performance.now() - scrolledAt.current < OWNER_SCROLL_MS
-            const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
-            const movedAway = remaining > 0 && el.scrollTop < lastTop.current
-
-            if (owner && movedAway) {
-              follow.current = false
-            } else if (owner && remaining < 40) {
-              follow.current = true
-            }
-
-            lastTop.current = el.scrollTop
-            setAway(!follow.current)
+            chatFollow.scrolled({
+              at: performance.now(),
+              top: el.scrollTop,
+              remaining: el.scrollHeight - el.scrollTop - el.clientHeight,
+            })
           }}
         >
           <div className="hydra-stream" ref={content}>
@@ -1159,7 +1154,7 @@ export function HydraChat({
               aria-label="Jump to latest"
               title="Jump to latest"
               onClick={() => {
-                follow.current = true; setAway(false)
+                chatFollow.resume()
                 stream.current?.scrollTo({
                   top: stream.current.scrollHeight,
                   behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
