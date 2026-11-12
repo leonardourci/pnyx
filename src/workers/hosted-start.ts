@@ -26,6 +26,7 @@ import { HydraError } from '#store/errors.ts'
 import { applyDecision } from '#app/decision.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
+import { loadHydra } from '#app/store.ts'
 import { base } from '#app/command-meta.ts'
 
 // Starting a worker in Pnyx, and continuing an outside Claude Code or Codex session in Pnyx.
@@ -306,8 +307,8 @@ export function createWorkerStarts({
 
         if (`${id}:attach` in writer.state.eventIds) {
           return {
-            card,
-            duplicate: true as const,
+            task: card.id,
+            duplicate: true,
           }
         }
 
@@ -485,11 +486,10 @@ export function createWorkerStarts({
           })
         }
 
-        const started = writer.state.cards[card.id] as Card & { agent: AgentRef }
-
+        // The receipt is saved in the log, so it names the card rather than copying it.
         return {
-          card: started,
-          duplicate: false as const,
+          task: card.id,
+          duplicate: false,
         }
       }
 
@@ -507,14 +507,15 @@ export function createWorkerStarts({
         session.close()
 
         return {
-          task: claimed.card.id,
+          task: claimed.task,
           event: 'none: duplicate',
           help: ['This start was already recorded; nothing was started again'],
         }
       }
 
+      const started = loadHydra({ hydraId }).state.cards[claimed.task] as Card & { agent: AgentRef }
       const entry = open({
-        card: claimed.card,
+        card: started,
         session,
       })
       entry.activity = 'working'
@@ -525,14 +526,14 @@ export function createWorkerStarts({
       })
 
       return {
-        task: claimed.card.id,
+        task: started.id,
         agent: {
           harness: harnessOf({ provider }),
-          session: claimed.card.agent.sessionId,
-          folder: claimed.card.agent.cwd,
+          session: started.agent.sessionId,
+          folder: started.agent.cwd,
           host: 'pnyx',
         },
-        help: [`Run \`pnyx-axi reply ${claimed.card.id} --text <text>\` to continue; the Pnyx server runs the agent`],
+        help: [`Run \`pnyx-axi reply ${started.id} --text <text>\` to continue; the Pnyx server runs the agent`],
       }
     } catch (error) {
       session?.close()

@@ -148,6 +148,7 @@ export function withWriter<T>({
         hydraId,
         ...transaction,
         migrate,
+        eventIds: state.eventIds,
       })
 
       if (previous) {
@@ -312,6 +313,7 @@ function heldWrite<T>({
       hydraId,
       ...transaction,
       migrate,
+      eventIds: live.state.eventIds,
     })
 
     if (previous) {

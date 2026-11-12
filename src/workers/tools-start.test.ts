@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -516,6 +516,26 @@ test(
           'browser',
           'mcp:fresh',
         ],
+      )
+      const claim = readFileSync(
+        join(
+          process.env.PNYX_HOME!,
+          'hydras',
+          'tools-start',
+          'events.jsonl',
+        ),
+        'utf8',
+      ).split('\n')
+        .filter(Boolean)
+        .map(line => JSON.parse(line))
+        .find(line => line.type === 'log.transaction' && line.id === 'concurrent-start:claim')
+      assert.deepEqual(
+        claim?.receipt,
+        {
+          task: card({ key: 'concurrent' }).id,
+          duplicate: false,
+        },
+        'the saved receipt names the card instead of copying it',
       )
       create({ key: 'no-flags' })
       recordTools({
