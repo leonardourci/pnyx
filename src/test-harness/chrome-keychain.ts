@@ -28,6 +28,10 @@ type SyncLaunch = (
 
 let guardInstalled = false
 
+function shellLaunch({ options }: { options: unknown }) {
+  return typeof options === 'object' && options !== null && 'shell' in options && Boolean(options.shell)
+}
+
 function isChrome({ file }: { file: string }) {
   return CHROME_BINARY.test(basename(file))
 }
@@ -43,9 +47,10 @@ function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
   ) {
     const argsGiven = Array.isArray(args)
     const chromeArgs = argsGiven ? args : []
-    const resolvedOptions = argsGiven || args === undefined || args === null ? options : args
+    const optionsSecond = !argsGiven && args !== undefined && args !== null
+    const resolvedOptions = optionsSecond ? args : options
 
-    if (!isChrome({ file }) || (resolvedOptions as { shell?: unknown } | null | undefined)?.shell) {
+    if (!isChrome({ file }) || shellLaunch({ options: resolvedOptions })) {
       return launch(
         file,
         args,
