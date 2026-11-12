@@ -1,6 +1,48 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { queryTerms, tokens } from './query.ts'
+import { matches, queryTerms, tokens } from './query.ts'
+
+test(
+  'inflection keeps short words distinct while matching longer suffixes',
+  () => {
+    assert.equal(
+      matches({
+        word: 'ring',
+        term: {
+          alts: ['red'],
+          prefix: false,
+          typo: false,
+        },
+        fuzzy: false,
+      }),
+      false,
+    )
+    assert.equal(
+      matches({
+        word: 'bed',
+        term: {
+          alts: ['bing'],
+          prefix: false,
+          typo: false,
+        },
+        fuzzy: false,
+      }),
+      false,
+    )
+    assert.equal(
+      matches({
+        word: 'deploying',
+        term: {
+          alts: ['deployed'],
+          prefix: false,
+          typo: false,
+        },
+        fuzzy: false,
+      }),
+      true,
+    )
+  },
+)
 
 test(
   'search words split at punctuation the same way in every search box',
