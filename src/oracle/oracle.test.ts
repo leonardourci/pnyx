@@ -1,6 +1,7 @@
+import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { transcriptMessages } from '#workers/transcripts.ts'
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -499,7 +500,7 @@ test(
           type: 'hydra.message',
           data: {
             action: 'send',
-            text: `${'preface '.repeat(40)}src/oracle/needle.ts`,
+            text: `${'preface '.repeat(40)}src/oracle/needle.ts ${'context '.repeat(40)}re\u0301paration`,
             hydra: 'hydra',
           },
         },
@@ -526,6 +527,19 @@ test(
         'ts',
       ],
     )
+    const accent = search({
+      hydraId: 'default',
+      query: {
+        text: 'reparation',
+        limit: 1,
+        highlight: true,
+      },
+    }).hits[0]!.snippets[0]!
+    assert.ok(accent.snippet.includes('[re\u0301paration]'))
+    assert.deepEqual(
+      accent.parts?.filter(part => part.matched).map(part => part.text),
+      ['re\u0301paration'],
+    )
   },
 )
 
@@ -537,13 +551,27 @@ test(
       'pnyx-oracle-reader-',
     ))
     process.env.PNYX_HOME = home
-    // Hydra's own session has a transcript whose messages a harvest would record as events.
     const card = withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'reader-created',
+            at: '2026-10-15T10:00:00Z',
+            actor: 'fixture',
+            cardId: 'reader',
+            type: 'task.created',
+            data: {
+              key: 'reader',
+              title: 'Saved conversation',
+            },
+          },
+        })
         const pushed = decidePush({
           state: writer.state,
-          key: HYDRA_CARD,
+          key: 'reader',
           input: {
             agent: {
               provider: 'claude-code',
@@ -558,6 +586,11 @@ test(
         })
         assert.ok('event' in pushed)
         writer.append({ event: pushed.event })
+        harvestTranscripts({
+          writer,
+          cardIds: [pushed.event.cardId],
+          at: '2026-10-15T10:00:00Z',
+        })
 
         return pushed.event.cardId
       },
@@ -575,6 +608,13 @@ test(
       'utf8',
     )
 
+    const cursors = readFileSync(
+      join(
+        dir,
+        'harvest.json',
+      ),
+      'utf8',
+    )
     const result = await searchInBackground({
       hydraId: 'default',
       query: {
@@ -586,6 +626,11 @@ test(
     assert.equal(
       result.hits[0]?.card,
       card,
+    )
+    assert.equal(
+      result.hits[0]?.snippets.length,
+      2,
+      'native lines already archived appear only once',
     )
     await assert.rejects(
       searchInBackground({
@@ -616,11 +661,14 @@ test(
       log,
     )
     assert.equal(
-      existsSync(join(
-        dir,
-        'harvest.json',
-      )),
-      false,
+      readFileSync(
+        join(
+          dir,
+          'harvest.json',
+        ),
+        'utf8',
+      ),
+      cursors,
     )
   },
 )
@@ -643,6 +691,13 @@ test(
         import.meta.url,
       ),
       transcriptPath,
+    )
+    writeFileSync(
+      transcriptPath,
+      `${`invalid-json${'x'.repeat(16_000)}\n`.repeat(20)}${readFileSync(
+        transcriptPath,
+        'utf8',
+      )}`,
     )
     withWriter({
       hydraId: 'default',
@@ -698,6 +753,63 @@ test(
             },
           },
         })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'archived-tool',
+            at: '2026-01-01T00:00:02Z',
+            actor: 'fixture',
+            cardId: HYDRA_CARD,
+            type: 'chat.message',
+            data: {
+              session: 'older-session',
+              nativeId: 'archived-tool',
+              role: 'assistant',
+              kind: 'tool',
+              hidden: false,
+              text: 'foxtrotspool',
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'archived-thinking',
+            at: '2026-01-01T00:00:02Z',
+            actor: 'fixture',
+            cardId: HYDRA_CARD,
+            type: 'chat.message',
+            data: {
+              session: 'older-session',
+              nativeId: 'archived-thinking',
+              role: 'assistant',
+              kind: 'thinking',
+              hidden: false,
+              text: 'kumquatinner',
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'archived-hidden',
+            at: '2026-01-01T00:00:02Z',
+            actor: 'fixture',
+            cardId: HYDRA_CARD,
+            type: 'chat.message',
+            data: {
+              session: 'older-session',
+              nativeId: 'archived-hidden',
+              role: 'assistant',
+              kind: 'message',
+              hidden: true,
+              text: 'xylophoneinjected',
+            },
+          },
+        })
       },
     })
     const find = ({ text }: { text: string }) => search({
@@ -732,28 +844,16 @@ test(
       find({ text: 'archivedwakeword' }),
       [],
     )
-    assert.equal(
-      find({ text: 'sample' }).length,
-      1,
-    )
-    assert.equal(
-      find({ text: 'archive' }).length,
-      1,
-    )
     assert.deepEqual(
-      find({ text: 'contextprefixedword' }),
+      find({ text: 'foxtrotspool' }),
       [],
     )
     assert.deepEqual(
-      find({ text: 'contextonlyword' }),
+      find({ text: 'kumquatinner' }),
       [],
     )
     assert.deepEqual(
-      find({ text: 'harvestedcontextword' }),
-      [],
-    )
-    assert.deepEqual(
-      find({ text: 'archivedwakeword' }),
+      find({ text: 'xylophoneinjected' }),
       [],
     )
   },

@@ -18,9 +18,13 @@ function fixture({ t }: { t: TestContext }) {
     reply({ hits }: { hits: Hit[] }): void
     fail(): void
   }[] = []
+  let cancelled = 0
   const shown: string[] = []
   const failed: string[] = []
   const schedule = searchSchedule({
+    cancel: () => {
+      cancelled += 1
+    },
     find: ({ search }) => {
       asked.push(search)
 
@@ -47,6 +51,7 @@ function fixture({ t }: { t: TestContext }) {
     shown,
     failed,
     settle,
+    cancellations: () => cancelled,
   }
 }
 
@@ -237,6 +242,48 @@ test(
     assert.deepEqual(
       hits,
       [hit({ card: 'task-1' })],
+    )
+  },
+)
+
+test(
+  'clearing or closing Oracle cancels its scan and older answers do not restart a pending query',
+  async t => {
+    const f = fixture({ t })
+    f.schedule.query({ search: { text: 'first' } })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.schedule.query({ search: { text: 'second' } })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.answers[0]!.fail()
+    await f.settle()
+    f.schedule.changed()
+    t.mock.timers.tick(REFRESH_DELAY)
+    assert.deepEqual(
+      f.asked.map(search => search.text),
+      [
+        'first',
+        'second',
+      ],
+    )
+    f.schedule.query({ search: null })
+    assert.equal(
+      f.cancellations(),
+      1,
+    )
+    f.answers[1]!.fail()
+    await f.settle()
+    f.schedule.query({ search: { text: 'third' } })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.schedule.stop()
+    assert.equal(
+      f.cancellations(),
+      2,
+    )
+    f.answers[2]!.fail()
+    await f.settle()
+    assert.deepEqual(
+      f.shown,
+      [],
     )
   },
 )

@@ -18,6 +18,22 @@ export function oracleCommand({
   hydraId: string
   searches: WeakMap<CommandRequest['ws'], AbortController>
 }) {
+  if (!args.length) {
+    const controller = searches.get(ws)
+    controller?.abort()
+    searches.delete(ws)
+    send({
+      ws,
+      message: {
+        type: 'receipt',
+        id,
+        cancelled: Boolean(controller),
+      },
+    })
+
+    return
+  }
+
   if (args.length > 4 || (args[2] !== undefined && args[2] !== 'hydra' && args[2] !== '')) {
     throw new HydraError({
       message: 'oracle expects text, optional workspace, Hydra scope and filters',
