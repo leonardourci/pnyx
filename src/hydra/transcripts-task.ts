@@ -29,7 +29,12 @@ function waitingReason({ card }: { card: Card }) {
     return 'The agent is waiting for a permission answer'
   }
 
-  if (card.agent?.host !== 'pnyx') {
+  // A task with no worker yet names none.
+  if (!card.agent) {
+    return undefined
+  }
+
+  if (card.agent.host !== 'pnyx') {
     return 'Waiting for the worker to read its inbox'
   }
 
@@ -60,7 +65,7 @@ function hydraDelivery({
 
   if (!hydra) {
     return {
-      state: 'failed' as const,
+      state: 'delivery_unknown' as const,
       detail: 'Hydra queue was not confirmed',
     }
   }

@@ -190,7 +190,9 @@ export function hydraMessages({
   } of receipts ? owned.toReversed() : []) {
     entry.sent = message.at
 
-    const received = message.received ?? (copied ? entry.at : undefined)
+    // A transcript copy found by its text counts only when it comes after the send; an older message with the same words cannot take it.
+    const copyTime = copied && entry.at && entry.at >= message.at ? entry.at : undefined
+    const received = message.received ?? copyTime
 
     if (received) {
       entry.receipt = 'delivered'

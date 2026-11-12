@@ -183,3 +183,25 @@ test(
     )
   },
 )
+
+test(
+  'a message to a task with no worker yet waits without naming a worker',
+  () => {
+    const card = worker({
+      replies: [
+        {
+          id: 'r1',
+          state: 'queued',
+        },
+      ],
+    })
+    delete card.agent
+    assert.deepEqual(
+      taskReceipt({
+        card,
+        reply: 'r1',
+      }),
+      { receipt: 'queued' },
+    )
+  },
+)
