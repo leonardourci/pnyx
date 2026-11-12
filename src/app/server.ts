@@ -318,7 +318,6 @@ export async function mountOwnedHydra({
 
   const tick = createServerTick({
     hydraId,
-    dir,
     state: () => state,
     closed: () => closed,
     pump,
@@ -698,7 +697,7 @@ export async function mountOwnedHydra({
       }),
       watchPath({
         path: spoolDir({ dir }),
-        changed: kick,
+        changed: tick.spooled,
       }),
     )
     followHome()
