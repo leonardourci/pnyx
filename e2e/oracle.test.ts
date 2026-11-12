@@ -108,6 +108,24 @@ test(
       })).map(hit => hit.card),
       [s.task({ key: 'audit' }).id],
     )
+    const superseded = page.refusal(oracle({ words: 'billing' }))
+    const latest = page.command(oracle({ words: 'audit' }))
+    const [
+      cancelled,
+      found,
+    ] = await Promise.all([
+      superseded,
+      latest,
+    ])
+    assert.equal(
+      cancelled.code,
+      'CANCELLED',
+    )
+    assert.deepEqual(
+      (found.hits as Hit[]).map(hit => hit.card),
+      [s.task({ key: 'audit' }).id],
+    )
+
     const invalid = await page.refusal(oracle({ words: '!!!' }))
     assert.equal(
       invalid.code,

@@ -90,11 +90,56 @@ function snippet({
     /\s+/g,
     ' ',
   )
-  const ranges = [...text.matchAll(/[\p{L}\p{N}]+/gu)].filter(found => terms.some(term => matches({
-    word: fold({ text: found[0] }),
-    term,
-    fuzzy,
-  })))
+  const words = [...text.matchAll(/[\p{L}\p{N}]+/gu)]
+  const marked = new Set<number>()
+
+  for (const [
+    index,
+    found,
+  ] of words.entries()) {
+    if (terms.some(term => matches({
+      word: fold({ text: found[0] }),
+      term,
+      fuzzy,
+    }))) {
+      marked.add(index)
+    }
+
+    for (const term of terms) {
+      for (const alternative of term.alts) {
+        const phrase = tokens({ text: fold({ text: alternative }) })
+
+        if (phrase.length < 2 || index + phrase.length > words.length) {
+          continue
+        }
+
+        const found = phrase.every((
+          word,
+          offset,
+        ) => {
+          const candidate = fold({ text: words[index + offset]![0] })
+
+          if (term.prefix && offset === phrase.length - 1) {
+            return candidate.startsWith(word)
+          }
+
+          return candidate === word
+        })
+
+        if (found) {
+          phrase.forEach((
+            _,
+            offset,
+          ) => marked.add(index + offset))
+        }
+      }
+    }
+  }
+
+  const ranges = words.filter((
+    _,
+    index,
+  ) => marked.has(index))
   const first = ranges[0]?.index ?? 0
   const start = Math.max(
     0,

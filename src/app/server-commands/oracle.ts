@@ -13,8 +13,10 @@ export function oracleCommand({
   fail,
   send,
   hydraId,
+  searches,
 }: CommandRequest & {
   hydraId: string
+  searches: WeakMap<CommandRequest['ws'], AbortController>
 }) {
   if (args.length > 4 || (args[2] !== undefined && args[2] !== 'hydra' && args[2] !== '')) {
     throw new HydraError({
@@ -33,6 +35,13 @@ export function oracleCommand({
     highlight: true,
   }
 
+  searches.get(ws)?.abort()
+  const controller = new AbortController()
+  searches.set(
+    ws,
+    controller,
+  )
+
   // Never rejects, so nothing is lost by not awaiting it.
   const answer = async () => {
     try {
@@ -44,6 +53,7 @@ export function oracleCommand({
           ...await searchInBackground({
             hydraId,
             query,
+            signal: controller.signal,
           }),
         },
       })
@@ -52,6 +62,10 @@ export function oracleCommand({
         error: (error as Error).message,
         code: error instanceof HydraError ? error.code : 'UNKNOWN',
       })
+    } finally {
+      if (searches.get(ws) === controller) {
+        searches.delete(ws)
+      }
     }
   }
 
