@@ -165,6 +165,11 @@ export function createUsageTracker({
         folder: account.folder,
       },
     })
+
+    if (plans.has(account.key) && plans.get(account.key) === plan) {
+      return { refreshed: 'cached plan limits' }
+    }
+
     plans.set(
       account.key,
       plan,

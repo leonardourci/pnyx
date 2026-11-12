@@ -213,6 +213,19 @@ process.exit(result.status ?? 1);
 `,
       { mode: 0o755 },
     )
+    await Promise.all([
+      host.refreshUsage({}),
+      host.refreshUsage({}),
+      host.refreshUsage({}),
+    ])
+    assert.equal(
+      readFileSync(
+        quotaReads,
+        'utf8',
+      ).trim()
+        .split('\n').length,
+      1,
+    )
     await host.refreshUsage({})
     const usage = await host.usage()
     assert.ok('who' in usage)
@@ -242,6 +255,21 @@ process.exit(result.status ?? 1);
         '0',
       ],
     )
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.now(),
+    })
+    t.mock.timers.tick(5 * 60_000)
+    await host.refreshUsage({})
+    assert.equal(
+      readFileSync(
+        quotaReads,
+        'utf8',
+      ).trim()
+        .split('\n').length,
+      3,
+    )
+    t.mock.timers.reset()
     writeDocument({
       document: {
         ...document,
@@ -273,7 +301,7 @@ process.exit(result.status ?? 1);
       homes.work,
       'quota.json',
     ))
-    await host.refreshUsage({})
+    await host.refreshUsage({ force: true })
     const unavailable = await host.usage()
     assert.ok('who' in unavailable)
     assert.equal(
