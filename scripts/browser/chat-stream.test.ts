@@ -12,6 +12,7 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { installChatContract, assertChatContract, PAINT_TIMEOUT_MS } from '#test-harness/chat-contract.ts'
 
 const BROWSER_TIMEOUT_MS = 60_000
+const BROWSER_POLL_MS = 50
 const BROWSER_OUTPUT_BYTES = 1024 * 1024
 const execute = promisify(execFile)
 const cli = fileURLToPath(import.meta.resolve('chrome-devtools-axi/dist/bin/chrome-devtools-axi.js'))
@@ -145,7 +146,6 @@ async function browser({
     }
   }
 
-  // Resolves once the page's condition holds, checking on every DOM change.
   const waitFor = async ({
     what,
     condition,
@@ -155,12 +155,11 @@ async function browser({
   }) => evaluate({
     script: `async () => {
       await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => { observer.disconnect(); reject(new Error(${JSON.stringify(`Never saw ${what}`)})); }, ${PAINT_TIMEOUT_MS});
-        const check = () => {
-          if (${condition}) { clearTimeout(timer); observer.disconnect(); resolve(); }
-        };
-        const observer = new MutationObserver(check);
-        observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+        const interval = setInterval(check, ${BROWSER_POLL_MS});
+        const timer = setTimeout(() => { clearInterval(interval); reject(new Error(${JSON.stringify(`Never saw ${what}`)})); }, ${PAINT_TIMEOUT_MS});
+        function check() {
+          if (${condition}) { clearTimeout(timer); clearInterval(interval); resolve(); }
+        }
         check();
       });
       return 'chat-assertion-passed';
@@ -1396,11 +1395,27 @@ test(
           edit('Before ' + input.value, 7);
           const chip = document.querySelector('.composer .draft-token');
           const gap = document.querySelector('.composer [data-draft-gap="0"]');
-          if (chip !== window.draftChip || Number(chip.dataset.from) !== 7 || gap.textContent !== 'Before ') throw new Error('Typing did not move the existing chip and mirror together');
-          const from = Number(chip.dataset.from), to = Number(chip.dataset.to);
-          edit(input.value.slice(0, from) + input.value.slice(to), from);
-          await new Promise(requestAnimationFrame);
-          if (document.querySelector('.composer .draft-token') || input.value !== 'Before  tail') throw new Error('Chip deletion used stale offsets');
+          if (chip !== window.draftChip || gap.textContent !== 'Before ') throw new Error('Typing did not move the existing chip and mirror together');
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await run({
+        args: ['run'],
+        input: `
+          await page.eval(() => {
+            const input = document.querySelector('[aria-label="Reply to Hydra"]');
+            input.focus();
+            const caret = input.value.indexOf(' tail');
+            if (caret < 0) throw new Error('Missing text after the chip');
+            input.setSelectionRange(caret, caret);
+          });
+          await page.press('Backspace');
+        `,
+      })
+      await evaluate({
+        script: `() => {
+          const input = document.querySelector('[aria-label="Reply to Hydra"]');
+          if (document.querySelector('.composer .draft-token') || input.value !== 'Before  tail') throw new Error('Backspace did not remove the moved chip');
           return 'chat-assertion-passed';
         }`,
       })
@@ -1490,8 +1505,149 @@ test(
       })
       await evaluate({
         script: `() => {
-        const saved = JSON.parse(localStorage.getItem('pnyx:${s.hydraId}:comments'));
-        if (!Array.isArray(saved?.$hydra)) throw new Error('Invalid saved comments did not recover');
+          window.draftPeer = window.open(${JSON.stringify(url)}, 'draft-peer');
+          if (!window.draftPeer) throw new Error('Second draft tab did not open');
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the second tab composer',
+        condition: 'window.draftPeer.document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
+      await evaluate({
+        script: `() => {
+          const key = 'pnyx:${s.hydraId}:comments';
+          const messageId = document.querySelector('article.message[aria-label="Hydra"][data-entry-id]')?.dataset.entryId;
+          if (!messageId) throw new Error('Missing reply for the saved comments');
+          const comment = { messageId, block: 0, offset: 0, quote: 'A passage', text: 'Saved first' };
+          const comments = [{ ...comment, id: 'first' }, { ...comment, id: 'second', text: 'Saved second' }];
+          window.draftPeer.localStorage.setItem(key, JSON.stringify({ $hydra: comments }));
+          window.dispatchEvent(new Event('pagehide'));
+          if (JSON.parse(localStorage.getItem(key)).$hydra.length !== 2) throw new Error('Clean tab overwrote the other tab’s first save');
+          window.draftPeer.location.reload();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'comments in both tabs after the first save',
+        condition: 'document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\') && window.draftPeer.document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\')',
+      })
+      await evaluate({
+        script: `async () => {
+          document.querySelector('.composer-comments .card-main').click();
+          window.draftPeer.document.querySelector('.composer-comments .card-main').click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const peer = window.draftPeer;
+          const key = 'pnyx:${s.hydraId}:comments';
+          const input = document.querySelector('.comments-dialog [data-comment-ref="first"] textarea');
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Local edit before the storage event');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          const stored = JSON.parse(peer.localStorage.getItem(key));
+          stored.$hydra.push({ ...stored.$hydra[0], id: 'third', text: 'Independent remote addition' });
+          window.draftAdditionReceived = false;
+          const added = event => {
+            if (event.key === key && event.newValue?.includes('Independent remote addition')) {
+              window.draftAdditionReceived = true;
+              removeEventListener('storage', added);
+            }
+          };
+          addEventListener('storage', added);
+          peer.localStorage.setItem(key, JSON.stringify(stored));
+          window.dispatchEvent(new Event('pagehide'));
+          const merged = JSON.parse(localStorage.getItem(key)).$hydra;
+          if (merged.length !== 3 || merged.find(comment => comment.id === 'first')?.text !== 'Local edit before the storage event') throw new Error('Dirty tab overwrote the remote addition before its storage event');
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the delayed storage event preserving the newer local save',
+        condition: 'window.draftAdditionReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Local edit before the storage event\'',
+      })
+      await evaluate({
+        script: `() => {
+          const peer = window.draftPeer;
+          const key = 'pnyx:${s.hydraId}:comments';
+          const set = Storage.prototype.setItem;
+          window.restoreDraftStorage = () => { Storage.prototype.setItem = set; };
+          Storage.prototype.setItem = function(name, value) {
+            if (name === key) throw new DOMException('Fixture storage failure', 'QuotaExceededError');
+            return set.call(this, name, value);
+          };
+          const edit = (target, id, text) => {
+            const input = target.document.querySelector('.comments-dialog [data-comment-ref="' + id + '"] textarea');
+            if (!input) throw new Error('Missing editable comment ' + id);
+            Object.getOwnPropertyDescriptor(target.HTMLTextAreaElement.prototype, 'value').set.call(input, text);
+            input.dispatchEvent(new target.Event('input', { bubbles: true }));
+          };
+          edit(window, 'first', 'Unsaved local edit');
+          document.querySelector('.comments-dialog [data-comment-ref="second"] [aria-label="Remove comment"]').click();
+          window.dispatchEvent(new Event('pagehide'));
+          window.draftStorageReceived = false;
+          const received = event => {
+            if (event.key === key && event.newValue?.includes('Remote first')) {
+              window.draftStorageReceived = true;
+              removeEventListener('storage', received);
+            }
+          };
+          addEventListener('storage', received);
+          edit(peer, 'first', 'Remote first');
+          edit(peer, 'second', 'Remote second');
+          peer.dispatchEvent(new peer.Event('pagehide'));
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the local edit and removal surviving the other tab’s storage event',
+        condition: 'window.draftStorageReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Unsaved local edit\' && !document.querySelector(\'.comments-dialog [data-comment-ref="second"]\')',
+      })
+      await evaluate({
+        script: `() => {
+          window.restoreDraftStorage();
+          window.dispatchEvent(new Event('pagehide'));
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the merged comments reaching the second tab',
+        condition: 'window.draftPeer.document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Unsaved local edit\' && !window.draftPeer.document.querySelector(\'.comments-dialog [data-comment-ref="second"]\')',
+      })
+      await evaluate({ script: '() => { window.draftPeer.document.documentElement.dataset.draftReload = \'old\'; window.draftPeer.location.reload(); return \'chat-assertion-passed\'; }' })
+      await waitFor({
+        what: 'the second tab restoring its merged comment',
+        condition: '!window.draftPeer.document.documentElement.dataset.draftReload && window.draftPeer.document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\')',
+      })
+      await evaluate({
+        script: `async () => {
+          const peer = window.draftPeer;
+          peer.document.querySelector('.composer-comments .card-main').click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          if (peer.document.querySelector('.comments-dialog textarea')?.value !== 'Unsaved local edit') throw new Error('Second tab reload lost the merged comment');
+          peer.close();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the first tab restoring its merged comment',
+        condition: 'document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\')',
+      })
+      await evaluate({
+        script: `async () => {
+          document.querySelector('.composer-comments .card-main').click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          if (document.querySelector('.comments-dialog textarea')?.value !== 'Unsaved local edit') throw new Error('First tab reload lost the merged comment');
+          document.querySelectorAll('.comments-dialog [aria-label="Remove comment"]').forEach(button => button.click());
+          document.querySelector('.comments-dialog footer button').click();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await evaluate({
+        script: `() => {
         const send = WebSocket.prototype.send;
         window.pendingCreations = [];
         WebSocket.prototype.send = function(frame) {
