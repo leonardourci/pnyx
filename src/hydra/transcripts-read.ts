@@ -44,14 +44,22 @@ export interface ThreadEntry {
   session?: string
   streaming?: boolean
   receipt?: ReplyState
+  // When the owner sent it; a transcript copy's at is when the agent read it.
+  sent?: string
+  // When the agent's harness confirmed it took this message.
+  received?: string
+  // Why a queued message still waits, when Pnyx knows.
+  waiting?: string
   delivery?: {
     agent?: {
       state: ReplyState
       detail?: string
+      received?: string
     }
     hydra: {
       state: ReplyState
       detail?: string
+      received?: string
     }
   }
   task?: string
@@ -809,6 +817,7 @@ function readThreadPage(
     const receipt = taskReceipt({
       card: state.cards[card.id] ?? card,
       reply: e.data.reply,
+      hydraReceived: state.hydraMessages?.find(message => message.id === `task-context:${card.id}:${e.data.reply}`)?.received,
     })
     splitEntry({
       entry: {

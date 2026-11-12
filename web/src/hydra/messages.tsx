@@ -7,7 +7,6 @@ import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
-import { receiptLabel } from '#web-app/view.ts'
 import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
@@ -41,6 +40,7 @@ import { useCommentDrafts } from './comment-drafts.ts'
 import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,paintComments } from './comment-highlight.ts'
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
+import { MessageReceipt } from './message-receipt.tsx'
 import {
   MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
   type CommentPassage,
@@ -323,16 +323,6 @@ const MessageRow = memo(function MessageRow({
             }}
           />
         )}
-        {entry.delivery ? (
-          <span className="receipt" role="status">
-            {Object.entries(entry.delivery).map(([
-              route,
-              delivery,
-            ]) => (
-              <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
-            ))}
-          </span>
-        ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
         {canResend && (
           <Button
             className="send-again"
@@ -347,6 +337,7 @@ const MessageRow = memo(function MessageRow({
       </article>
       {ownMessage({ entry }) && !entry.continued && (
         <div className="message-meta" contentEditable={false}>
+          <MessageReceipt entry={entry} />
           {entry.unsent !== undefined && (
             <span className="unsent" role="alert">
               <Icon name="error" size={14} />Not sent · {entry.unsent}

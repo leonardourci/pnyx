@@ -7,6 +7,7 @@ import { joinMessageParts } from './history.ts'
 import { hydraConversation } from './conversation.ts'
 import { injectedInstructions, quietReply } from './chat-messages.ts'
 import { hydraChatQueue } from './chat-queue.ts'
+import { pnyxRunsHydra } from './hydra.ts'
 
 export function hydraThreadView({
   state,
@@ -50,6 +51,7 @@ export function hydraThreadView({
     ])),
     oldest: page.older ? transcript[0]?.at : undefined,
     currentTurn: page.currentTurn,
+    receipts: pnyxRunsHydra({ state }),
   })
 
   return {

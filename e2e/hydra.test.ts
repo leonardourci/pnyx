@@ -1268,7 +1268,7 @@ test(
 )
 
 test(
-  'mid-turn owner chat steers Codex immediately while worker reports wait as one visible batch',
+  'mid-turn owner chat steers Codex immediately, shows Received at that moment, while worker reports wait as one visible batch',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'worker' })
@@ -1329,6 +1329,40 @@ test(
         what: 'the owner message inside the running turn',
         check: () => agent.received.includes('Also check the docs'),
       })
+      // Received is the moment Codex took the message into the running turn, not the turn's end.
+      const received = await until({
+        what: 'Hydra’s receipt for the message that joined its turn',
+        check: () => s.state().hydraMessages?.find(message => message.id === 'steer')?.received,
+      })
+      const steerSent = s.state().hydraMessages?.find(message => message.id === 'steer')?.at
+      assert.ok(steerSent && received >= steerSent)
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.sessionActivity,
+        'working',
+      )
+      const thread = (await page.command({
+        name: 'thread',
+        args: [HYDRA_CARD],
+      })).thread as ThreadPage
+      assert.deepEqual(
+        thread.conversation!.entries.filter(entry => entry.role === 'user').map(entry => [
+          entry.text,
+          entry.receipt,
+          entry.received === received,
+        ]),
+        [
+          [
+            'Take a long look',
+            'delivered',
+            false,
+          ],
+          [
+            'Also check the docs',
+            'delivered',
+            true,
+          ],
+        ],
+      )
 
       for (const text of [
         'Report one',

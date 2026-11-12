@@ -54,6 +54,8 @@ export interface HydraMessage {
   at: string
   actor: string
   hydra: string
+  // When Hydra's harness confirmed it took the message.
+  received?: string
 }
 
 export const isRoutineMessage = ({ message }: { message: HydraMessage }) => message.kind === 'routine'

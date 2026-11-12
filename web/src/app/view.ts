@@ -24,13 +24,6 @@ export function pageTitle({
   return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
 }
 
-export const receiptLabel = ({ state }: { state: string }) => ({
-  queued: 'Queued',
-  delivered: 'Delivered',
-  delivery_unknown: 'Delivery unknown',
-  failed: 'Delivery failed',
-}[state] ?? state)
-
 export const shouldReload = ({
   loaded,
   server,

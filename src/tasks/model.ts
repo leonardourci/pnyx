@@ -351,6 +351,8 @@ export type RepliedEvent = EventBase & {
     control?: boolean
     taskMessage?: boolean
     resumes?: boolean
+    // When the agent's harness took the message, not only when Pnyx handed it over.
+    received?: string
   }
 }
 
