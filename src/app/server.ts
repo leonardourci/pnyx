@@ -610,12 +610,12 @@ export async function mountOwnedHydra({
             hydraId,
             entry: entry as { id: string },
           })
+          // The server knows it just spooled a file, so the drain need not wait for the folder watcher.
+          tick.spooled()
         }
       } catch {
       // Not JSON: dropped, as a hook never waits for an answer.
       }
-
-      kick()
     },
   })
 
