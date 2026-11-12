@@ -1003,12 +1003,11 @@ export function createHost({
         account: login,
         env: environment({ task }),
       })
-      const catalog = providers[providerIdOf({ harness: selected })].toolCatalog
 
-      return catalog ? catalog({
+      return providers[providerIdOf({ harness: selected })].toolCatalog({
         cwd: folder ?? card.agent?.cwd ?? card.folder ?? card.project ?? hydraDir({ hydraId }),
         env,
-      }) : ['browser']
+      })
     },
     toolsChanged: ({ task }) => {
       if (!fenced()) {

@@ -25,6 +25,7 @@ export async function projectFolders({ cwd }: { cwd: string }): Promise<string[]
     here = parent
   }
 
+  // Outside a repository, unrelated ancestor folders are not project scopes.
   return [cwd]
 }
 
@@ -36,10 +37,14 @@ export function pluginInstallation({
   folders: string[]
 }): string | undefined {
   const configured = Array.isArray(value) ? value : []
-  const entries = configured.map(value => object({ value })).filter(entry =>
-    typeof entry.installPath === 'string' && isAbsolute(entry.installPath)
-    && (entry.scope === 'user' || ((entry.scope === 'project' || entry.scope === 'local')
-      && typeof entry.projectPath === 'string' && folders.includes(resolve(entry.projectPath)))))
+  const entries = configured.map(value => object({ value })).filter(entry => {
+    const absoluteInstall = typeof entry.installPath === 'string' && isAbsolute(entry.installPath)
+    const projectScoped = entry.scope === 'project' || entry.scope === 'local'
+    const applicableScope = entry.scope === 'user'
+      || projectScoped && typeof entry.projectPath === 'string' && folders.includes(resolve(entry.projectPath))
+
+    return absoluteInstall && applicableScope
+  })
   const installation = entries.find(entry => entry.scope === 'local')
     ?? entries.find(entry => entry.scope === 'project') ?? entries[0]
 

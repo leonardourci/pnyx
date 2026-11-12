@@ -24,6 +24,7 @@ import { createHostedHelper } from './hosted-helper.ts'
 import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from './runner.ts'
 import { until } from '#test-harness/harness.ts'
 import type { Provider } from '#workers/provider.ts'
+import { BROWSER_TOOL } from '#workers/tools.ts'
 import { loadHydra } from '#app/store.ts'
 import { reduce } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -505,6 +506,7 @@ function helperLab({
   let ownerWakes = 0
   const harnesses: string[] = []
   const provider: Provider = {
+    toolCatalog: async () => [BROWSER_TOOL],
     models: async () => [],
     defaults: async ({ models }) => models,
     // eslint-disable-next-line pnyx/object-params -- The provider owns this callback signature.
@@ -1744,6 +1746,7 @@ test(
       loginFolder?: string
     }[] = []
     const fixture: Provider = {
+      toolCatalog: async () => [BROWSER_TOOL],
       models: async () => [],
       defaults: async ({ models }) => models,
       open: async () => {

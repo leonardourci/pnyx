@@ -306,7 +306,7 @@ export async function hydraFastReaches({
 }
 
 export interface Provider {
-  toolCatalog?({
+  toolCatalog({
     cwd,
     env,
   }: {
