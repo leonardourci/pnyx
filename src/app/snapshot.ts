@@ -2,6 +2,7 @@ import type { HydraState } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { readFileSync, renameSync } from 'node:fs'
 import { basename } from 'node:path'
+import { threadId } from 'node:worker_threads'
 import { snapshotPath, writeDurably } from '#store/storage.ts'
 import { log } from './diagnostics.ts'
 
@@ -47,7 +48,7 @@ export function writeSnapshot({
   eventSeq: number
 } {
   const started = performance.now()
-  const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
+  const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}-${threadId}`
   const data = Buffer.from(JSON.stringify({
     v: EVENT_VERSION,
     rules: RULES,

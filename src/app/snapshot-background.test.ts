@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { heldHydra, loadHydra } from './store.ts'
 import { withWriter, saveSnapshot } from './writer.ts'
 import { readSnapshot } from './snapshot.ts'
+import { repairHydra } from './repair.ts'
 import { settle } from '#test-harness/child-fixture.ts'
 
 test(
@@ -32,6 +33,7 @@ test(
     type Gate = {
       buffer: SharedArrayBuffer
       ready: string
+      beforePublish: boolean
     }
     const plans: {
       gate?: Gate
@@ -57,8 +59,15 @@ test(
       )
     }
 
-    const gate = ({ key }: { key: string }): Gate => {
+    const gate = ({
+      key,
+      beforePublish = false,
+    }: {
+      key: string
+      beforePublish?: boolean
+    }): Gate => {
       const held = {
+        beforePublish,
         buffer: new SharedArrayBuffer(4),
         ready: join(
           home,
@@ -274,6 +283,24 @@ test(
         live.dir,
       ],
     )
+    assert.deepEqual(
+      readSnapshot({ dir: live.dir })?.state,
+      live.state,
+    )
+
+    const repairGate = gate({
+      key: 'repair-ready',
+      beforePublish: true,
+    })
+    plans.push({ gate: repairGate })
+    const overlapping = saveSnapshot({ live })
+    await settle({
+      what: 'the worker snapshot staging file before publication',
+      check: () => existsSync(repairGate.ready),
+    })
+    repairHydra({ hydraId: 'default' })
+    releaseGate(repairGate)
+    await overlapping
     assert.deepEqual(
       readSnapshot({ dir: live.dir })?.state,
       live.state,
