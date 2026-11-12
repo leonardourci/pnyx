@@ -1044,7 +1044,9 @@ export function createHost({
         })
       }
 
-      await children.stop({ task })
+      if (permanent) {
+        await children.stop({ task })
+      }
 
       return { released: entries.length }
     },
