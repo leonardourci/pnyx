@@ -1536,23 +1536,21 @@ test(
         agent.received.some(text => text.includes('Pnyx wake two')),
         false,
       )
-      const requests = ({ method }: { method: string }) => agent.requests
-        ?.filter(request => request === method).length
-      const started = requests({ method: 'turn/start' })
-      const steered = requests({ method: 'turn/steer' })
       firstWake.release()
       await until({
         what: 'the second Pnyx wake last',
         check: () => agent.received.at(-1)?.includes('Pnyx wake two'),
       })
-      // It opened a turn of its own after the first wake's turn ended, rather than joining it.
-      assert.equal(
-        requests({ method: 'turn/start' }),
-        (started ?? 0) + 1,
-      )
-      assert.equal(
-        requests({ method: 'turn/steer' }),
-        steered,
+      // Each wake opened a turn of its own once the one before it ended; each owner message joined a running turn.
+      assert.deepEqual(
+        agent.requests?.filter(request => request === 'turn/start' || request === 'turn/steer'),
+        [
+          'turn/start',
+          'turn/steer',
+          'turn/start',
+          'turn/steer',
+          'turn/start',
+        ],
       )
     } finally {
       held.release()
