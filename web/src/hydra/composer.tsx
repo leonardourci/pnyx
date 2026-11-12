@@ -10,7 +10,7 @@ import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
-import { commentReply, sendableComment } from './chat.ts'
+import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
@@ -27,6 +27,7 @@ export function Composer({
   title,
   drafts,
   thread,
+  loadComment,
   command,
   notify,
   settings,
@@ -42,6 +43,7 @@ export function Composer({
   title: string
   drafts: ChatDrafts
   thread: ThreadPage | null
+  loadComment({ comment }: { comment: ChatComment }): Promise<void>
   command: Command
   notify({ text }: { text: string }): void
   settings?: ReactNode
@@ -134,21 +136,35 @@ export function Composer({
     [],
   )
   const showComment = useCallback(
-    ({ id }: { id: string }) => {
+    async ({ id }: { id: string }) => {
       setListing(null)
-      requestAnimationFrame(() => {
-        const host = form.current && conversationMessages({ from: form.current })
-        const comment = drafts.read().comments.find(item => item.id === id)
+      const comment = drafts.read().comments.find(item => item.id === id)
 
-        if (host && comment) {
-          revealComment({
+      if (!comment) {
+        return
+      }
+
+      try {
+        await loadComment({ comment })
+        requestAnimationFrame(() => {
+          const host = form.current && conversationMessages({ from: form.current })
+
+          if (host && !revealComment({
             host,
             comment,
-          })
-        }
-      })
+          })) {
+            notify({ text: 'This comment’s message is unavailable' })
+          }
+        })
+      } catch (error) {
+        notify({ text: (error as Error).message })
+      }
     },
-    [drafts],
+    [
+      drafts,
+      loadComment,
+      notify,
+    ],
   )
 
   const { label } = useKeyboard()

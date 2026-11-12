@@ -787,3 +787,152 @@ test(
     )
   },
 )
+
+test(
+  'the owner’s Hydra messages show queued until Hydra takes them, then when it did',
+  () => {
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'taken-earlier',
+            text: 'Folded in mid-turn',
+          }),
+          at: '2026-10-20T10:00:00Z',
+        },
+        {
+          ...message({
+            id: 'read',
+            text: 'Read by Hydra',
+          }),
+          at: '2026-10-20T10:01:00Z',
+          received: '2026-10-20T10:01:30Z',
+        },
+        {
+          ...message({
+            id: 'waiting',
+            text: 'Still waiting',
+          }),
+          at: '2026-10-20T10:02:00Z',
+        },
+      ],
+      transcript: [],
+      waiting: 'Hydra is in the middle of a step',
+    })
+    assert.deepEqual(
+      entries.map(entry => [
+        entry.id,
+        entry.receipt,
+        entry.received,
+        entry.waiting,
+      ]),
+      [
+        [
+          'taken-earlier',
+          undefined,
+          undefined,
+          undefined,
+        ],
+        [
+          'read',
+          'delivered',
+          '2026-10-20T10:01:30Z',
+          undefined,
+        ],
+        [
+          'waiting',
+          'queued',
+          undefined,
+          'Hydra is in the middle of a step',
+        ],
+      ],
+    )
+  },
+)
+
+test(
+  'Hydra’s transcript copy of the owner’s message shows it received, timed from its receipt when Pnyx has one',
+  () => {
+    const copy = ({
+      id,
+      text,
+      at,
+    }: {
+      id: string
+      text: string
+      at: string
+    }): ThreadEntry => ({
+      id,
+      kind: 'message',
+      role: 'user',
+      text,
+      at,
+    })
+    const messages: HydraMessage[] = [
+      {
+        ...message({
+          id: 'opened',
+          text: 'Opened a turn',
+        }),
+        at: '2026-10-20T10:00:00Z',
+      },
+      {
+        ...message({
+          id: 'folded',
+          text: 'Folded in',
+        }),
+        at: '2026-10-20T10:01:00Z',
+        received: '2026-10-20T10:03:00Z',
+      },
+    ]
+    const transcript = [
+      copy({
+        id: 'native-opened',
+        text: 'Opened a turn',
+        at: '2026-10-20T10:00:02Z',
+      }),
+      copy({
+        id: 'native-folded',
+        text: 'Folded in',
+        at: '2026-10-20T10:04:00Z',
+      }),
+    ]
+    assert.deepEqual(
+      hydraMessages({
+        messages,
+        transcript,
+      }).map(entry => [
+        entry.reference,
+        entry.receipt,
+        entry.received,
+        entry.sent,
+      ]),
+      [
+        [
+          'opened',
+          'delivered',
+          '2026-10-20T10:00:02Z',
+          '2026-10-20T10:00:00Z',
+        ],
+        [
+          'folded',
+          'delivered',
+          '2026-10-20T10:03:00Z',
+          '2026-10-20T10:01:00Z',
+        ],
+      ],
+    )
+    // A Hydra Pnyx does not run never reports taking a message, so none shows a receipt.
+    assert.deepEqual(
+      hydraMessages({
+        messages,
+        transcript: [],
+        receipts: false,
+      }).map(entry => entry.receipt),
+      [
+        undefined,
+        undefined,
+      ],
+    )
+  },
+)

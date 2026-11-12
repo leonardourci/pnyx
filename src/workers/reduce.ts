@@ -154,6 +154,11 @@ export function applyReplyReceipt({
     ...(taskMessage && event.data.detail ? { detail: event.data.detail } : {}),
   }
   const decision = event.data.decision ?? previous?.decision
+  const received = event.data.received ?? previous?.received
+
+  if (received) {
+    reply.received = received
+  }
 
   if (event.data.accepted || previous?.accepted) {
     reply.accepted = true

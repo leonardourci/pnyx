@@ -1,3 +1,4 @@
+import { receivedThread } from '#hydra/thread-delta.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { threadEntryOrder } from '#hydra/thread-order.ts'
 
@@ -5,11 +6,13 @@ export async function loadEarlierMessages({
   past,
   cursor,
   until,
+  message,
   load,
 }: {
   past: ThreadPage | null
   cursor?: string
   until?: string
+  message?: string
   load({ before }: { before: string }): Promise<ThreadPage>
 }): Promise<ThreadPage | null> {
   const found = new Map((past?.entries ?? []).map(entry => [
@@ -48,7 +51,14 @@ export async function loadEarlierMessages({
 
     cursor = previous.older
     const earliestAt = previous.entries[0]?.at
-    const reached = until === undefined || (earliestAt !== undefined && earliestAt <= until)
+    const visible = previous.conversation?.entries ?? []
+    const foundMessage = message && [
+      ...found.values(),
+      ...visible,
+    ].some(entry =>
+      entry.id === message || entry.messageId === message || entry.reference === message)
+    const reachedTime = until === undefined || (earliestAt !== undefined && earliestAt <= until)
+    const reached = message ? foundMessage : reachedTime
 
     if (reached) {
       break
@@ -74,16 +84,24 @@ export async function loadEarlierMessages({
   }
 }
 
-export function receivedThread({
+export function receiveConversation({
   before,
   latest,
+  reading,
 }: {
   before: ThreadPage | null
   latest: ThreadPage
+  reading: boolean
 }): ThreadPage {
-  const sameSession = before?.session === latest.session
-  const sameStream = sameSession && before?.conversation?.stream === latest.conversation?.stream
-  const newer = (before?.conversation?.version ?? 0) > (latest.conversation?.version ?? 0)
+  const oldest = before?.entries.find(entry => !entry.id.startsWith('live:'))
+  const losesRange = oldest && !latest.entries.some(entry => entry.id === oldest.id)
 
-  return sameStream && newer ? before! : latest
+  if (before && reading && latest.recent && before.session === latest.session && losesRange) {
+    return before
+  }
+
+  return receivedThread({
+    before,
+    latest,
+  })
 }

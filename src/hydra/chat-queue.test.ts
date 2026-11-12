@@ -136,10 +136,75 @@ test(
         'upgrade',
       ],
     )
-    // The queue goes to every tab after every event, so it carries nothing per recorded message.
+    assert.deepEqual(
+      wire.started,
+      ['taken'],
+    )
     assert.equal(
       'received' in wire,
       false,
+    )
+    const hosted = Array.from(
+      { length: 34 },
+      (
+        _,
+        index,
+      ) => ({
+        id: `owner-${index}`,
+        action: 'send' as const,
+        actor: 'web',
+        hydra: 'hydra',
+        text: 'A received owner message',
+        at,
+      }),
+    )
+    hosted.push({
+      ...hosted[0]!,
+      id: 'non-owner',
+      actor: 'worker',
+    })
+    state.hydraMessages.push(...hosted)
+
+    for (const message of hosted) {
+      state.eventIds[`${message.id}:hosted`] = 10
+    }
+
+    assert.deepEqual(
+      hydraChatQueue({ state }).started,
+      [
+        'owner-2',
+        'owner-3',
+        'owner-4',
+        'owner-5',
+        'owner-6',
+        'owner-7',
+        'owner-8',
+        'owner-9',
+        'owner-10',
+        'owner-11',
+        'owner-12',
+        'owner-13',
+        'owner-14',
+        'owner-15',
+        'owner-16',
+        'owner-17',
+        'owner-18',
+        'owner-19',
+        'owner-20',
+        'owner-21',
+        'owner-22',
+        'owner-23',
+        'owner-24',
+        'owner-25',
+        'owner-26',
+        'owner-27',
+        'owner-28',
+        'owner-29',
+        'owner-30',
+        'owner-31',
+        'owner-32',
+        'owner-33',
+      ],
     )
     card.compaction = {
       operations: [],

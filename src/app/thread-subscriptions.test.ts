@@ -1,3 +1,5 @@
+import { recentThreadPages } from '#hydra/thread-history.ts'
+import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -64,6 +66,9 @@ test(
     let buffered = MAX_BUFFERED + 1
     let readyState = 1
     const received: ServerMessage[] = []
+    const wire: ServerMessage[] = []
+    const receiver = createThreadReceiver()
+    let resyncs = 0
     const client: HydraClient = {
       OPEN: 1,
       get readyState() {
@@ -73,7 +78,18 @@ test(
         return buffered
       },
       send({ message }) {
-        received.push(message)
+        wire.push(message)
+        const normalized = receiver.receive({ message })
+
+        if (normalized) {
+          received.push(normalized)
+        } else {
+          resyncs += 1
+          threads.refreshThread({
+            ws: client,
+            resync: true,
+          })
+        }
       },
       terminate() {},
     }
@@ -253,6 +269,9 @@ test(
     buffered = 0
     t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
+    assert.ok(wire.some(message => message.type === 'thread.delta'))
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
     assert.deepEqual(
       received.filter(message => message.type === 'thread')
         .flatMap(message => message.thread.conversation!.entries.map(entry => entry.text)),
@@ -283,14 +302,16 @@ test(
     threads.refreshThread({ ws: client })
     t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
-    await threads.threadPage({
-      sub,
-      card: state.cards[HYDRA_CARD]!,
-    })
     buffered = 0
-    tabs.sendSnapshot({ ws: client })
     t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
+    assert.equal(
+      resyncs,
+      0,
+      'replacing an undelivered page must not require receiver recovery',
+    )
     assert.deepEqual(
       received.filter(message => message.type === 'thread')
         .flatMap(message => message.thread.conversation!.entries.map(entry => entry.text)),
@@ -340,8 +361,8 @@ test(
       'A reply after reconnect.',
     )
     assert.notEqual(
-      delivered.at(-1)!.thread.conversation!.stream,
-      delivered[0]!.thread.conversation!.stream,
+      delivered.at(-1)!.thread.stream,
+      delivered[0]!.thread.stream,
     )
     received.length = 0
     buffered = MAX_BUFFERED + 1
@@ -598,8 +619,8 @@ test(
       'The complete saved reply.',
     )
     assert.notEqual(
-      restored.conversation!.stream,
-      initial.conversation!.stream,
+      restored.stream,
+      initial.stream,
     )
     buffered = MAX_BUFFERED + 1
     reconnected.receive({
@@ -777,10 +798,10 @@ test(
       ],
     )
     assert.equal(
-      refreshed.conversation!.stream,
-      first.conversation!.stream,
+      refreshed.stream,
+      first.stream,
     )
-    assert.ok(refreshed.conversation!.version! > older.conversation!.version!)
+    assert.ok(refreshed.version! > older.version!)
     const restored = await threads.threadPage({
       sub: {
         card: HYDRA_CARD,
@@ -800,8 +821,8 @@ test(
       ],
     )
     assert.notEqual(
-      restored.conversation!.stream,
-      first.conversation!.stream,
+      restored.stream,
+      first.stream,
     )
     assert.equal(
       restored.older,
@@ -875,6 +896,231 @@ test(
         'Check it',
         'Updated answer',
       ],
+    )
+    const pageFor = ({
+      index,
+      older,
+    }: {
+      index: number
+      older?: string
+    }): ThreadPage => ({
+      ...latest,
+      older,
+      entries: [
+        {
+          id: `entry-${index}`,
+          kind: 'message',
+          role: 'assistant',
+          text: `Reply ${index}`,
+          final: true,
+          at: `2026-11-06T00:00:0${index}Z`,
+        },
+      ],
+    })
+    const pages: Record<string, ThreadPage> = {
+      latest: pageFor({
+        index: 4,
+        older: 'p3',
+      }),
+      p3: pageFor({
+        index: 3,
+        older: 'p2',
+      }),
+      p2: pageFor({
+        index: 2,
+        older: 'p1',
+      }),
+      p1: pageFor({ index: 1 }),
+    }
+    let blocked = false
+    const recentRequested = deferred<void>()
+    const recentRelease = deferred<ThreadPage>()
+    const archive: Subscription = {
+      card: HYDRA_CARD,
+      client,
+      native: Promise.resolve({
+        read: async ({ before }) => {
+          if (blocked && before === 'p5') {
+            recentRequested.resolve()
+
+            return recentRelease.promise
+          }
+
+          return pages[before ?? 'latest']!
+        },
+        close() {},
+      }),
+    }
+    threads.subscriptionMap({ card: HYDRA_CARD }).set(
+      client,
+      archive,
+    )
+    const archiveFirst = await threads.threadPage({
+      sub: archive,
+      card,
+    })
+    const archiveSecond = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveFirst.older,
+    })
+    const archiveThird = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveSecond.older,
+    })
+    const expanded = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveThird.older,
+    })
+    assert.equal(
+      expanded.pages,
+      4,
+    )
+    assert.deepEqual(
+      expanded.entries.map(entry => entry.id),
+      [
+        'entry-1',
+        'entry-2',
+        'entry-3',
+        'entry-4',
+      ],
+    )
+    const recent = await threads.threadPage({
+      sub: archive,
+      card,
+      recent: true,
+    })
+    assert.equal(
+      recent.pages,
+      3,
+    )
+    assert.equal(
+      recent.recent,
+      true,
+    )
+    assert.deepEqual(
+      recent.entries.map(entry => entry.id),
+      [
+        'entry-2',
+        'entry-3',
+        'entry-4',
+      ],
+    )
+    assert.equal(
+      recent.older,
+      archiveThird.older,
+    )
+    assert.equal(
+      archive.history?.entries.some(entry => entry.id === 'entry-1'),
+      false,
+    )
+    pages.p4 = pages.latest!
+    pages.latest = pageFor({
+      index: 5,
+      older: 'p4',
+    })
+    threads.refreshThread({ ws: client })
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
+    assert.deepEqual(
+      archive.history?.entries.map(entry => entry.id),
+      [
+        'entry-3',
+        'entry-4',
+        'entry-5',
+      ],
+    )
+    const earlierAgain = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveSecond.older,
+    })
+    assert.equal(
+      earlierAgain.recent,
+      false,
+    )
+    assert.deepEqual(
+      earlierAgain.entries.map(entry => entry.id),
+      [
+        'entry-2',
+        'entry-3',
+        'entry-4',
+        'entry-5',
+      ],
+    )
+    pages.p5 = pages.latest
+    pages.latest = pageFor({
+      index: 6,
+      older: 'p5',
+    })
+    threads.refreshThread({ ws: client })
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
+    assert.deepEqual(
+      archive.history?.entries.map(entry => entry.id),
+      [
+        'entry-2',
+        'entry-3',
+        'entry-4',
+        'entry-5',
+        'entry-6',
+      ],
+    )
+    const recentered = await threads.threadPage({
+      sub: archive,
+      card,
+      recent: true,
+    })
+    assert.deepEqual(
+      recentered.entries.map(entry => entry.id),
+      [
+        'entry-4',
+        'entry-5',
+        'entry-6',
+      ],
+    )
+    blocked = true
+    const superseded = assert.rejects(
+      threads.threadPage({
+        sub: archive,
+        card,
+        recent: true,
+      }),
+      { code: 'THREAD_SUPERSEDED' },
+    )
+    await recentRequested.promise
+    const chosenOlder = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveFirst.older,
+    })
+    recentRelease.resolve(pages.p5!)
+    await superseded
+    assert.equal(
+      chosenOlder.recent,
+      false,
+    )
+    assert.deepEqual(
+      archive.history?.entries.map(entry => entry.id),
+      [
+        'entry-3',
+        'entry-4',
+        'entry-5',
+        'entry-6',
+      ],
+    )
+    const stalled = {
+      ...latest,
+      older: 'same-cursor',
+    }
+    await assert.rejects(
+      recentThreadPages({
+        page: stalled,
+        read: async () => stalled,
+      }),
+      { code: 'THREAD_HISTORY_STALLED' },
     )
   },
 )
@@ -973,6 +1219,7 @@ test(
       terminate() {},
     }
     const pushed: ThreadPage[] = []
+    const receiver = createThreadReceiver()
     const threads = createThreadSubscriptions({
       hydraId: 'default',
       state: () => state,
@@ -980,8 +1227,15 @@ test(
       closed: () => false,
       agents: () => ({ thread: ({ page }) => live.page({ page }) }),
       send: ({ message }) => {
-        if (message.type === 'thread') {
-          pushed.push(message.thread)
+        const normalized = receiver.receive({ message })
+
+        if (normalized?.type === 'thread') {
+          pushed.push(normalized.thread)
+        } else if (!normalized) {
+          threads.refreshThread({
+            ws,
+            resync: true,
+          })
         }
 
         return true
@@ -1203,8 +1457,8 @@ test(
       card,
     })
     assert.equal(
-      receipt.conversation!.stream,
-      pushed.at(-1)!.conversation!.stream,
+      receipt.stream,
+      pushed.at(-1)!.stream,
     )
     assert.ok(receipt.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
     assert.ok(receipt.conversation!.entries.some(entry => entry.text === 'Notice from an explicit read'))

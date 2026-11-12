@@ -82,9 +82,10 @@ export function threadCommand({
     ref: args[0],
   })
 
+  const recent = args[1] === '--recent'
   const restoring = args[1] === '--retain'
   const retain = restoring ? retainedBoundary({ value: args[2] }) : undefined
-  const before = restoring ? undefined : args[1]
+  const before = restoring || recent ? undefined : args[1]
   const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
   const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
 
@@ -115,6 +116,7 @@ export function threadCommand({
           card,
           before,
           retain,
+          recent,
           receipt: id,
         })
       } catch (error) {

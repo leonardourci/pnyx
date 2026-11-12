@@ -112,7 +112,7 @@ export function TurnFooter({
   taskTitle,
 }: {
   turn: TurnTiming
-  taskTitle({ id }: { id?: string }): string | undefined
+  taskTitle?: string
 }) {
   const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
   const started = clock({
@@ -128,7 +128,7 @@ export function TurnFooter({
           text={() => copiedText({
             text: turn.reply,
             task: turn.task,
-            title: taskTitle({ id: turn.task }),
+            title: taskTitle,
           })}
         />
       )}

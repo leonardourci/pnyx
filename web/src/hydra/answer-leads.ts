@@ -15,9 +15,11 @@ export interface AnswerLead {
 export function answerLeads({
   messages = [],
   cards,
+  previous,
 }: {
   messages?: HydraState['hydraMessages']
   cards: HydraState['cards']
+  previous?: ReadonlyMap<string, AnswerLead>
 }): Map<string, AnswerLead> {
   return new Map(messages.flatMap(message => {
     const discussion = !message.answers
@@ -43,10 +45,19 @@ export function answerLeads({
       discussion,
     }
 
+    const before = previous?.get(message.id)
+    const unchanged = before && before.task === lead.task && before.question === lead.question
+      && before.choice === lead.choice && before.recommended === lead.recommended
+      && before.discussion === lead.discussion && before.options.length === lead.options.length
+      && lead.options.every((
+        option,
+        index,
+      ) => option === before.options[index])
+
     return [
       [
         message.id,
-        lead,
+        unchanged ? before : lead,
       ],
     ]
   }))
