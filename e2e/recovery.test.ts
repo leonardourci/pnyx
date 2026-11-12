@@ -89,7 +89,7 @@ test(
 )
 
 test(
-  'a failed snapshot save during a helper grant is logged without killing the daemon or losing the batch',
+  'a failed background snapshot is logged without killing the daemon or losing a completed helper batch',
   async t => {
     const s = await pnyx.scenario()
     await s.owner({

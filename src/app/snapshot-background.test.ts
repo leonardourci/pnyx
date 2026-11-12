@@ -24,16 +24,26 @@ test(
     const live = heldHydra({ hydraId: 'default' })!
     t.after(async () => {
       t.mock.timers.reset()
-      await saveSnapshot({ live })
-      release()
-      process.env.PNYX_HOME = previous
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
+
+      try {
+        await saveSnapshot({ live })
+      } finally {
+        release()
+
+        if (previous === undefined) {
+          delete process.env.PNYX_HOME
+        } else {
+          process.env.PNYX_HOME = previous
+        }
+
+        rmSync(
+          home,
+          {
+            recursive: true,
+            force: true,
+          },
+        )
+      }
     })
     mkdirSync(
       live.dir,
