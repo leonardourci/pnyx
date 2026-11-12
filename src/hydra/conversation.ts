@@ -19,9 +19,8 @@ export interface TurnActions {
 
 const spoken = ({ entry }: { entry: ThreadEntry }) => entry.text.trim() !== '' && !quietReply({ entry })
 
-// Claude Code records a message that joins a running turn as an attachment, not a user message, so it keeps its send time.
-// An owner message no later than one sent before it is late, so a tie still shows in send order.
-export function lateOwnerMessages({
+// The owner's messages among the entries, in the order they were sent.
+export function ownerMessagesInSendOrder({
   messages,
   entries,
 }: {
@@ -35,7 +34,8 @@ export function lateOwnerMessages({
     message.id,
     index,
   ]))
-  const owner = entries.flatMap(entry => {
+
+  return entries.flatMap(entry => {
     const index = sent.get(entry.reference ?? '')
 
     return ownMessage({ entry }) && index !== undefined ? [
@@ -49,6 +49,21 @@ export function lateOwnerMessages({
       a,
       b,
     ) => a.index - b.index)
+}
+
+// Claude Code records a message that joins a running turn as an attachment, not a user message, so it keeps its send time.
+// An owner message no later than one sent before it is late, so a tie still shows in send order.
+export function lateOwnerMessages({
+  messages,
+  entries,
+}: {
+  messages: HydraMessage[]
+  entries: ThreadEntry[]
+}) {
+  const owner = ownerMessagesInSendOrder({
+    messages,
+    entries,
+  })
   const late = new Map<ThreadEntry, {
     at: string
     index: number
