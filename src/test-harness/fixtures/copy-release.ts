@@ -25,12 +25,35 @@ commands.hydra([
 ])
 assert.ok(process.env.HOME)
 
-for (const ending of [
-  'check',
-  'safe',
-  'removed',
-] as const) {
-  const mode = ending === 'removed' ? 'check' : ending
+for (const {
+  ending,
+  mode,
+  expectedState,
+  expectedLanded,
+  kept,
+} of [
+    {
+      ending: 'check',
+      mode: 'check',
+      expectedState: 'flagged',
+      expectedLanded: false,
+      kept: true,
+    },
+    {
+      ending: 'safe',
+      mode: 'safe',
+      expectedState: 'active',
+      expectedLanded: false,
+      kept: true,
+    },
+    {
+      ending: 'removed',
+      mode: 'check',
+      expectedState: 'removed',
+      expectedLanded: true,
+      kept: false,
+    },
+  ] as const) {
   const project = join(
     process.env.HOME,
     `project-${ending}`,
@@ -120,7 +143,7 @@ for (const ending of [
       const saved = state.cards[state.keys[ending]!]
       assert.equal(
         saved?.copy?.state,
-        mode === 'safe' ? 'active' : 'flagged',
+        expectedState,
       )
     }
 
@@ -423,11 +446,11 @@ for (const ending of [
       assert.ok(outcome.result)
       assert.equal(
         outcome.result.copy?.state,
-        ending === 'removed' ? 'removed' : 'flagged',
+        expectedState,
       )
       assert.equal(
         outcome.result.check?.landed,
-        ending === 'removed',
+        expectedLanded,
       )
     }
 
@@ -482,7 +505,7 @@ for (const ending of [
     )
     assert.equal(
       existsSync(folder),
-      ending !== 'removed',
+      kept,
       'only the landed final commit can release its copy',
     )
     assert.notEqual(

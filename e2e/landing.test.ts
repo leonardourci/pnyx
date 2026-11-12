@@ -437,12 +437,14 @@ test(
       'done',
     ]
 
-    for (const copy of copies) {
-      change({
-        copy,
-        file: 'fix.txt',
-      })
-    }
+    change({
+      copy: copies[0]!,
+      file: 'branch-fix.txt',
+    })
+    change({
+      copy: copies[1]!,
+      file: 'pull-request-fix.txt',
+    })
 
     assert.equal(
       (await branchWorker.refusal({
@@ -593,12 +595,16 @@ test(
 
     await until({
       what: 'the merged task copy decision to be saved',
-      check: () => {
-        const state = s.task({ key: 'pr-fix' }).copy?.state
-
-        return state === 'flagged' || state === 'removed'
-      },
+      check: () => s.task({ key: 'pr-fix' }).copy?.state === 'flagged',
     })
+    assert.equal(
+      s.task({ key: 'pr-fix' }).copy?.reason,
+      'its work has not landed on origin/main',
+    )
+    assert.equal(
+      existsSync(copies[1]!),
+      true,
+    )
     await s.owner({
       args: [
         'task',
