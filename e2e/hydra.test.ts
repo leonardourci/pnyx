@@ -1439,6 +1439,78 @@ test(
 )
 
 test(
+  'an owner message that joins Hydra’s running turn shows Received at the moment Hydra took it',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    await page.command({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    const held = pnyx.codex.plan({
+      text: 'Take a long look',
+      hold: true,
+    })
+
+    try {
+      await send({
+        s,
+        text: 'Take a long look',
+        id: 'long',
+      })
+      const agent = await s.agent({ hydra: true })
+      await until({
+        what: 'Codex to start the held turn',
+        check: () => agent.received.length === 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
+      })
+      await send({
+        s,
+        text: 'Also check the docs',
+        id: 'steer',
+      })
+      const received = await until({
+        what: 'Hydra’s receipt for the message that joined its turn',
+        check: () => s.state().hydraMessages?.find(message => message.id === 'steer')?.received,
+      })
+      assert.ok(agent.received.includes('Also check the docs'))
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.sessionActivity,
+        'working',
+      )
+      const thread = (await page.command({
+        name: 'thread',
+        args: [HYDRA_CARD],
+      })).thread as ThreadPage
+      assert.deepEqual(
+        thread.conversation!.entries.filter(entry => entry.role === 'user').map(entry => [
+          entry.text,
+          entry.receipt,
+          entry.received === undefined ? undefined : entry.received === received,
+        ]),
+        [
+          [
+            'Take a long look',
+            'delivered',
+            false,
+          ],
+          [
+            'Also check the docs',
+            'delivered',
+            true,
+          ],
+        ],
+      )
+    } finally {
+      held.release()
+      page.close()
+    }
+  },
+)
+
+test(
   'a Hydra with no projects offers built-ins before a session and delivers the selected shipped skill',
   async () => {
     const s = await pnyx.scenario()
