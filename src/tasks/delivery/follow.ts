@@ -234,14 +234,19 @@ export async function followPullRequests({
       continue
     }
 
-    schedule?.read({
-      card,
-      link,
-      found: status !== undefined,
-      started,
-    })
+    const currentGeneration = () => !schedule || started === schedule.generation({ task: card.id })
+
+    if (!currentGeneration()) {
+      continue
+    }
 
     if (!status) {
+      schedule?.read({
+        card,
+        link,
+        found: false,
+        started,
+      })
       continue
     }
 
@@ -257,6 +262,19 @@ export async function followPullRequests({
 
     if (!active()) {
       return
+    }
+
+    if (!currentGeneration()) {
+      continue
+    }
+
+    if (status.state !== 'merged' || outcome?.outcome === 'merged') {
+      schedule?.read({
+        card,
+        link,
+        found: true,
+        started,
+      })
     }
 
     let observedState = status.state

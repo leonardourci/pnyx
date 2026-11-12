@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util'
+import type { HydraState } from '#app/model.ts'
 import { harnessAccount } from './account-choice.ts'
 import { readUsage } from './dispatch.ts'
 import { defaultLogin, effectiveDispatch } from './dispatch-config.ts'
@@ -41,6 +43,21 @@ export function createUsageTracker({
       key: `${harness}:${folder}`,
     }
   }
+
+  const accountSessions = ({
+    state,
+    account,
+  }: {
+    state: HydraState
+    account: string
+  }) =>
+    new Set(Object.values(state.cards).flatMap(task => {
+      if (!task.agent || usageAccount({ agent: task.agent }).key !== account) {
+        return []
+      }
+
+      return [sessionId({ agent: task.agent })]
+    }))
 
   const mergeUsage = ({
     key,
@@ -158,6 +175,10 @@ export function createUsageTracker({
     }
 
     const account = usageAccount({ agent: card.agent })
+    const before = accountSessions({
+      state,
+      account: account.key,
+    })
     const plan = await readUsage({
       refresh: force,
       account: {
@@ -166,27 +187,30 @@ export function createUsageTracker({
       },
     })
 
-    if (plans.has(account.key) && plans.get(account.key) === plan) {
-      return { refreshed: 'cached plan limits' }
-    }
-
-    plans.set(
-      account.key,
+    const changed = !plans.has(account.key) || !isDeepStrictEqual(
+      plans.get(account.key),
       plan,
     )
-    const sessions = new Set(Object.values(state.cards).flatMap(task => {
-      if (!task.agent || usageAccount({ agent: task.agent }).key !== account.key) {
-        return []
-      }
 
-      return [sessionId({ agent: task.agent })]
-    }))
-
-    for (const session of sessions) {
-      streamed({ session })
+    if (changed) {
+      plans.set(
+        account.key,
+        plan,
+      )
     }
 
-    return { refreshed: 'plan limits' }
+    const sessions = accountSessions({
+      state: loadHydra({ hydraId }).state,
+      account: account.key,
+    })
+
+    for (const session of sessions) {
+      if (changed || !before.has(session)) {
+        streamed({ session })
+      }
+    }
+
+    return { refreshed: changed ? 'plan limits' : 'cached plan limits' }
   }
 
   return {

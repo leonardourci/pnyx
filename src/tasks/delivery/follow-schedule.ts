@@ -18,7 +18,22 @@ type Check = {
 export function followSchedule({ interval }: { interval: number }) {
   const checks = new Map<string, Check>()
   const generations = new Map<string, number>()
-  const generation = ({ task }: { task: string }) => generations.get(task) ?? 0
+  let nextGeneration = 0
+
+  const generation = ({ task }: { task: string }) => {
+    let token = generations.get(task)
+
+    if (token === undefined) {
+      token = ++nextGeneration
+      generations.set(
+        task,
+        token,
+      )
+    }
+
+    return token
+  }
+
   const key = ({
     card,
     link,
@@ -32,7 +47,7 @@ export function followSchedule({ interval }: { interval: number }) {
     touch({ task }: { task: string }) {
       generations.set(
         task,
-        generation({ task }) + 1,
+        ++nextGeneration,
       )
 
       for (const [

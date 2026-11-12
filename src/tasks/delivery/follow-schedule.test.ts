@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { readStream } from '#test-harness/streams.ts'
+import { settle } from '#test-harness/child-fixture.ts'
 import { followSchedule } from './follow-schedule.ts'
 import type { Link } from './model.ts'
 
@@ -152,6 +153,30 @@ test(
       }),
       true,
     )
+    const detached = schedule.generation({ task: card.id })
+    schedule.prune({ links: [] })
+    schedule.touch({ task: card.id })
+    const reattached = schedule.generation({ task: card.id })
+    assert.notEqual(
+      reattached,
+      detached,
+      'reattached tasks receive a new generation',
+    )
+    schedule.read({
+      card,
+      link,
+      found: true,
+      started: detached,
+      now: 3_600_000,
+    })
+    assert.equal(
+      schedule.due({
+        card,
+        link,
+        now: 3_600_000,
+      }),
+      true,
+    )
   },
 )
 
@@ -201,10 +226,17 @@ test(
     let pause: Promise<void> | undefined
     let release = () => {}
     let failure = false
+    let reportedState: 'open' | 'closed' | 'merged' = 'open'
+    let outcomePause: Promise<void> | undefined
+    let outcomeRelease = () => {}
+    let outcomeStarted = false
+    let outcomeReads = 0
+    let outcomeFailure = false
 
     const readStatus = async () => {
       reads++
       const observed = comments
+      const observedState = reportedState
       const failed = failure
       await pause
 
@@ -213,7 +245,7 @@ test(
       }
 
       return {
-        state: 'open' as const,
+        state: observedState,
         draft: false,
         comments: observed,
         checks: {
@@ -231,6 +263,20 @@ test(
       hydraId: 'default',
       schedule,
       readStatus,
+      readOutcome: async () => {
+        outcomeStarted = true
+        outcomeReads++
+        await outcomePause
+
+        if (outcomeFailure) {
+          throw new Error('Synthetic merge evidence refusal')
+        }
+
+        return {
+          outcome: 'unknown' as const,
+          detail: 'Synthetic unreadable merge evidence',
+        }
+      },
       tell: async () => {},
     })
     t.mock.timers.enable({
@@ -297,6 +343,84 @@ test(
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.comments,
       2,
+    )
+    reportedState = 'closed'
+    comments = 99
+    schedule.touch({ task: card.id })
+    pause = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const staleStatus = follow()
+    schedule.touch({ task: card.id })
+    release()
+    await staleStatus
+    pause = undefined
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.state,
+      'open',
+      'a refresh discards the stale closed status',
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.comments,
+      2,
+    )
+
+    reportedState = 'merged'
+    schedule.touch({ task: card.id })
+    pause = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const staleMergedStatus = follow()
+    schedule.touch({ task: card.id })
+    release()
+    await staleMergedStatus
+    pause = undefined
+    assert.equal(
+      outcomeReads,
+      0,
+      'discarded merged status starts no merge evidence process',
+    )
+
+    reportedState = 'merged'
+    comments = 3
+    schedule.touch({ task: card.id })
+    outcomePause = new Promise<void>(resolve => {
+      outcomeRelease = resolve
+    })
+    const staleOutcome = follow()
+    await settle({
+      what: 'merge evidence request',
+      check: () => outcomeStarted,
+    })
+    schedule.touch({ task: card.id })
+    outcomeRelease()
+    await staleOutcome
+    outcomePause = undefined
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.cards[card.id]?.links[0]?.comments,
+      2,
+      'a refresh during merge evidence also discards the old status',
+    )
+
+    schedule.touch({ task: card.id })
+    outcomeFailure = true
+    await assert.rejects(
+      follow(),
+      /Synthetic merge evidence refusal/,
+    )
+    outcomeFailure = false
+    const beforeRetry = reads
+    await follow()
+    assert.equal(
+      reads,
+      beforeRetry + 1,
+      'failed merge evidence leaves the existing deadline due',
+    )
+    await follow()
+    assert.equal(
+      reads,
+      beforeRetry + 2,
+      'unconfirmed merged status remains due until its proof is available',
     )
   },
 )

@@ -108,6 +108,17 @@ test(
         root,
       ],
     )
+    const remote = join(
+      root,
+      '.git',
+      'refs',
+      'remotes',
+      'origin',
+    )
+    mkdirSync(
+      remote,
+      { recursive: true },
+    )
     await watching.reconcile({ state })
     assert.equal(
       opened.length,
@@ -133,16 +144,10 @@ test(
       2,
       'a failed installed watcher is retried',
     )
-    const remote = join(
-      root,
-      '.git',
-      'refs',
-      'remotes',
-      'origin',
-    )
-    mkdirSync(
-      remote,
-      { recursive: true },
+    assert.equal(
+      changed,
+      undefined,
+      'installing the watcher reports no ref change',
     )
     writeFileSync(
       join(
