@@ -10,7 +10,7 @@ import { promisify } from 'node:util'
 
 const run = promisify(execFile)
 const FIXTURE_TIMEOUT_MS = 20_000
-const SETTLE_MS = 5000
+export const SETTLE_MS = 5000
 
 // Runs the named fixture with its own homes and resolves with what it printed.
 export async function runFixture({

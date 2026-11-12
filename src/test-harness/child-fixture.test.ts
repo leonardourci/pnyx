@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { mock, test } from 'node:test'
-import { settle } from './child-fixture.ts'
+import { SETTLE_MS, settle } from './child-fixture.ts'
 
 const TEST_TIMEOUT_MS = 15_000
 const FALLBACK_MS = 10_000
@@ -48,7 +48,8 @@ test(
     )
     assert.equal(
       Date.now(),
-      5000,
+      SETTLE_MS,
+      'each pass moved the mocked clock until the settle bound',
     )
   },
 )
