@@ -42,9 +42,10 @@ function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
     options,
   ) {
     const argsGiven = Array.isArray(args)
+    const chromeArgs = argsGiven ? args : []
     const resolvedOptions = argsGiven || args === undefined || args === null ? options : args
 
-    if (!isChrome({ file }) || (resolvedOptions as { shell?: unknown } | undefined)?.shell) {
+    if (!isChrome({ file }) || (resolvedOptions as { shell?: unknown } | null | undefined)?.shell) {
       return launch(
         file,
         args,
@@ -56,7 +57,7 @@ function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
       file,
       [
         ...KEYCHAIN_FLAGS,
-        ...(argsGiven ? args : []),
+        ...chromeArgs,
       ],
       resolvedOptions,
     )
