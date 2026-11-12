@@ -143,7 +143,8 @@ test(
     )
     syncBuiltinESMExports()
     t.after(() => {
-      t.mock.restoreAll(); syncBuiltinESMExports()
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
     })
     const tick = createServerTick({
       hydraId: 'lab',
@@ -247,7 +248,10 @@ test(
       undefined,
     )
     t.mock.timers.enable({
-      apis: ['Date'],
+      apis: [
+        'Date',
+        'setTimeout',
+      ],
       now: Date.now(),
     })
     spoolWrite({
@@ -276,8 +280,8 @@ test(
       spoolReads,
       afterFailure,
     )
+    // The tick's own expiry timer retries the drain; nothing else kicks it.
     t.mock.timers.tick(1000)
-    tick.kick()
     await new Promise<void>(resolve => setImmediate(resolve))
     assert.equal(
       state().cards[state().keys.retry!]?.title,
