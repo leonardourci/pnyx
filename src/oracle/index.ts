@@ -8,6 +8,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
+import { log } from '#app/diagnostics.ts'
 import { logPath, privateDir } from '#store/storage.ts'
 import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
 import { recordEntries } from '#hydra/transcripts-read.ts'
@@ -102,9 +103,7 @@ export function openIndex({
             return
           }
 
-          db.exec('DROP TABLE IF EXISTS vocabulary; DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS archived; DROP TABLE IF EXISTS cursors;')
-          db.exec(SCHEMA)
-          db.exec(`PRAGMA user_version=${INDEX_VERSION}`)
+          recreate({ db })
         },
       })
     }
@@ -262,12 +261,34 @@ function catchUp({
     const captured = !cursor.event || state.eventIds[cursor.event] === cursor.seq
     const belongs = captured || cursor.seq > state.seq
 
-    if (!read || !belongs || (read.events.length && read.events[0]!.seq !== cursor.seq + 1)) {
-      throw new HydraError({
-        code: 'LOG_CORRUPT',
-        message: 'Oracle cache cursor does not belong to this event log',
-        help: [`Remove the derived cache ${searchPath({ hydraId })} and query again`],
+    const continues = !read?.events.length || read.events[0]!.seq === cursor.seq + 1
+
+    if (!read || !belongs || !continues) {
+      if (cursor.pos === 0) {
+        throw new HydraError({
+          code: 'LOG_CORRUPT',
+          message: 'Event log does not start at its first event',
+        })
+      }
+
+      // A restored or replaced events.jsonl leaves the derived cache behind; rebuild it from the log.
+      transaction({
+        db,
+        fn: () => {
+          const current = getCursor.get(EVENTS) as unknown as Cursor | undefined
+
+          if (current?.pos === cursor.pos && current.event === cursor.event) {
+            recreate({ db })
+          }
+        },
       })
+      log({
+        level: 'warn',
+        operation: 'oracle.rebuild',
+        hydraId,
+        status: 'cursor does not belong to the event log',
+      })
+      continue
     }
 
     if (read.end === cursor.pos) {
@@ -496,6 +517,12 @@ function catchUp({
       })
     }
   }
+}
+
+function recreate({ db }: { db: DatabaseSync }) {
+  db.exec('DROP TABLE IF EXISTS vocabulary; DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS archived; DROP TABLE IF EXISTS cursors;')
+  db.exec(SCHEMA)
+  db.exec(`PRAGMA user_version=${INDEX_VERSION}`)
 }
 
 function textDigest({ text }: { text: string }) {

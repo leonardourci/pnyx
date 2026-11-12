@@ -10,6 +10,8 @@ import { withWriter } from '#app/writer.ts'
 import { loadHydra } from '#app/store.ts'
 import { decidePush } from '#tasks/push.ts'
 import { search } from './search.ts'
+import { hydraDir } from '#app/home-migration.ts'
+import { logPath, snapshotPath } from '#store/storage.ts'
 import { searchPath } from './index.ts'
 
 const CHECKPOINT_WORDS = 20_000
@@ -24,6 +26,123 @@ const nativeLine = ({ text }: { text: string }) => `${JSON.stringify({
     content: text,
   },
 })}\n`
+
+const noteEvent = ({
+  id,
+  text,
+}: {
+  id: string
+  text: string
+}) => withWriter({
+  hydraId: 'default',
+  fn: ({ writer }) => {
+    const base = {
+      v: 1 as const,
+      cardId: 'task-noted',
+      actor: 'fixture',
+      at: '2026-11-12T10:00:00Z',
+    }
+
+    if (!writer.state.cards['task-noted']) {
+      writer.append({
+        event: {
+          ...base,
+          seq: writer.state.seq + 1,
+          id: `create-${id}`,
+          type: 'task.created',
+          data: {
+            key: 'noted',
+            title: 'Noted task',
+          },
+        },
+      })
+    }
+
+    writer.append({
+      event: {
+        ...base,
+        seq: writer.state.seq + 1,
+        id,
+        type: 'card.noted',
+        data: {
+          text,
+          kind: 'context',
+          source: 'fixture',
+        },
+      },
+    })
+  },
+})
+
+test(
+  'Oracle rebuilds its cache when the event log under it was replaced',
+  t => {
+    const root = fs.mkdtempSync(join(
+      tmpdir(),
+      'oracle-replaced-log-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = root
+    t.after(() => {
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const find = ({ text }: { text: string }) => search({
+      hydraId: 'default',
+      query: {
+        text,
+        limit: 20,
+      },
+    }).total
+    noteEvent({
+      id: 'old-note',
+      text: 'formerlogword',
+    })
+    noteEvent({
+      id: 'old-second',
+      text: 'formersecondword',
+    })
+    assert.equal(
+      find({ text: 'formerlogword' }),
+      1,
+    )
+    const dir = hydraDir({ hydraId: 'default' })
+
+    for (const file of [
+      logPath({ dir }),
+      snapshotPath({ dir }),
+    ]) {
+      fs.rmSync(
+        file,
+        { force: true },
+      )
+    }
+
+    noteEvent({
+      id: 'new-note',
+      text: 'replacedlogword',
+    })
+    assert.equal(
+      find({ text: 'replacedlogword' }),
+      1,
+    )
+    assert.equal(
+      find({ text: 'formerlogword' }),
+      0,
+    )
+  },
+)
 
 test(
   'Oracle persists deltas, reads only new bytes and resets only a replaced transcript',
