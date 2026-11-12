@@ -755,6 +755,10 @@ test(
       },
     })
     const held = connection.snapshot().hydraThread
+    assert.deepEqual(
+      held,
+      latest,
+    )
     socket.receive({
       message: {
         type: 'thread.delta',
