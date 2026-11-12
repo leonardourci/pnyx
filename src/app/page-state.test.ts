@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { HydraEvent } from './model.ts'
 import { emptyHydra, replayOwned } from './reducer.ts'
-import { applyPageUpdate, pageEvent, pageState } from './page-state.ts'
+import { applyPageUpdate, pageCard, pageEvent, pageState } from './page-state.ts'
 import { pageInterest } from './page-cli.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraConfig } from '#hydra/config.ts'
 
 test(
   'page views exclude history and hidden cards, load explicit interests and retain durable state',
@@ -702,6 +704,151 @@ test(
     assert.deepEqual(
       resumedLeaving.movedOut,
       leaving.movedOut,
+    )
+  },
+)
+
+test(
+  'the page keeps Hydra\'s own session on its hidden hook card, so Hydra keeps its agent',
+  () => {
+    const state = emptyHydra()
+    const base = {
+      v: 1 as const,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base,
+          id: 'hydra',
+          seq: 1,
+          cardId: HYDRA_CARD,
+          type: 'task.created',
+          data: {
+            key: 'hydra',
+            title: 'Hydra',
+          },
+        },
+        {
+          ...base,
+          id: 'task',
+          seq: 2,
+          cardId: 'task',
+          type: 'task.created',
+          data: {
+            key: 'task',
+            title: 'Visible',
+          },
+        },
+        {
+          ...base,
+          id: 'hook',
+          seq: 3,
+          cardId: 'hook',
+          type: 'card.pushed',
+          data: {
+            key: 'hook',
+            agent: {
+              provider: 'claude',
+              sessionId: 'hydra',
+              host: 'pnyx',
+            },
+            activity: 'working',
+          },
+        },
+      ],
+    })
+    state.cards.hook!.automaticTask = true
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base,
+          id: 'configured',
+          seq: 4,
+          cardId: HYDRA_CARD,
+          type: 'board.configured',
+          data: {
+            ...hydraConfig({ state }),
+            hydra: {
+              ...hydraConfig({ state }).hydra,
+              session: 'claude:hydra',
+            },
+          },
+        },
+      ],
+    })
+    assert.equal(
+      state.cards[HYDRA_CARD]!.agent?.host,
+      'pnyx',
+    )
+    const interest = {
+      cards: [],
+      hidden: false,
+    }
+    const page = {
+      ...pageState({
+        state,
+        interest,
+      }),
+      eventIds: {},
+    }
+    const moved: HydraEvent = {
+      ...base,
+      id: 'moved',
+      seq: 5,
+      cardId: 'task',
+      type: 'card.moved',
+      data: {
+        before: 'queued',
+        after: 'parked',
+      },
+    }
+    const idle: HydraEvent = {
+      ...base,
+      id: 'idle',
+      seq: 6,
+      cardId: 'hook',
+      type: 'card.pushed',
+      data: {
+        key: 'hook',
+        agent: {
+          provider: 'claude',
+          sessionId: 'hydra',
+          host: 'pnyx',
+        },
+        activity: 'idle',
+      },
+    }
+
+    for (const event of [
+      moved,
+      idle,
+    ]) {
+      replayOwned({
+        state,
+        events: [event],
+      })
+      applyPageUpdate({
+        state: page,
+        update: pageEvent({
+          state,
+          event,
+          interest,
+        }),
+      })
+      assert.deepEqual(
+        page.cards[HYDRA_CARD],
+        pageCard({ card: state.cards[HYDRA_CARD]! }),
+        event.id,
+      )
+    }
+
+    assert.equal(
+      page.cards[HYDRA_CARD]!.activity,
+      'idle',
     )
   },
 )
