@@ -40,6 +40,8 @@ Hydra chooses task additions with repeated `task start <task> --tool <capability
 
 Start-only additions configure the provider without changing the saved selection first. The attachment and grant commit together through the existing event transaction. A failure or crash before that commit leaves earlier grants intact; a retry uses the current recorded selection.
 
+Failed tool reopening uses the host's existing delays and stops after as many attempts as there are delays. A new grant revision resets that bound; waiting for a hold or copy cleanup does not spend an attempt.
+
 `task tools <task> --available [--harness claude|codex] [--account <name>]` lists configured capability names without their commands or credentials. An unstarted task needs a harness. `task tools <task>` lists its grants. Names are `browser`, `mcp:<configured-name>` and `plugin:<installed-id>`. Plugin grants include that plugin's configured MCP servers; other plugins and servers remain excluded. Claude selects the applicable installed plugin scope and loads its MCP definitions explicitly while suppressing automatic plugin MCP discovery.
 
 A worker asks Hydra with `task ask <task> --question "I need <capability> to <action>"`. Hydra grants or revokes it with `task tools <task> --grant <capability>` or `--revoke <capability>`; flags may repeat. Hydra makes this decision itself, with no new owner approval step. A grant enables a tool; it does not authorize writes by that tool. Pnyx refuses grants from requests identified as workers, including a worker overriding the command actor. Any agent running as the same user can set `PNYX_ACTOR`; these are cooperative roles.
