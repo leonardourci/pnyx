@@ -23,10 +23,12 @@ export interface Host {
     task,
     harness,
     account,
+    folder,
   }: {
     task: string
     harness?: string
     account?: string
+    folder?: string
   }): Promise<string[]>
   catalogCommands({
     card,
@@ -112,11 +114,13 @@ export interface Host {
     reason,
     replacement,
     dispatch,
+    tools,
   }: {
     task: string
     prompt: string
     folder?: string
     dispatch?: DispatchChoice
+    tools?: string[]
     replacement?: string
     settings: AgentSettings
     id: string
