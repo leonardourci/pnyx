@@ -140,15 +140,17 @@ export function createHydraTurns({
   let hydraTurn = Promise.resolve()
   let wakeTurn = Promise.resolve()
   let waitingWakes = 0
+  // Inputs in the chain: one may still be opening Hydra's session before its turn counts as working.
+  let entering = 0
 
-  const hydraWorking = () => {
+  const hydraBusy = () => {
     const agent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
 
-    return Boolean(agent && live.get(sessionId({ agent }))?.activity === 'working')
+    return entering > 0 || Boolean(agent && live.get(sessionId({ agent }))?.activity === 'working')
   }
 
   const turnEnd = async () => {
-    while (!closing() && hydraWorking()) {
+    while (!closing() && hydraBusy()) {
       await new Promise(resolve => setTimeout(
         resolve,
         HYDRA_TURN_POLL_MS,
@@ -765,15 +767,29 @@ export function createHydraTurns({
     }
 
     const enter = () => {
-      hydraTurn = hydraTurn.then(run).then(
-        () => {},
-        () => {},
-      )
-        .finally(() => queuedHydra.delete(id))
+      const previous = hydraTurn
+      entering += 1
+      hydraTurn = (async () => {
+        try {
+          await previous
+          await run()
+        } catch (error) {
+          log({
+            level: 'error',
+            operation: 'hydra.turn',
+            hydraId,
+            correlationId: id,
+            error,
+          })
+        } finally {
+          entering -= 1
+          queuedHydra.delete(id)
+        }
+      })()
     }
 
     // A Pnyx wake waits for the running turn outside the chain, so owner messages sent meanwhile still join that turn.
-    if (actor === 'pnyx' && (waitingWakes || hydraWorking())) {
+    if (actor === 'pnyx' && (waitingWakes || hydraBusy())) {
       waitingWakes += 1
       const previous = wakeTurn
       wakeTurn = (async () => {
@@ -936,7 +952,10 @@ export function createHydraTurns({
   }
 
   return {
-    hydraTurn: () => wakeTurn.then(() => hydraTurn),
+    hydraTurn: async () => {
+      await wakeTurn
+      await hydraTurn
+    },
     digest,
     hydraSession,
     hydra,

@@ -1439,7 +1439,7 @@ test(
 )
 
 test(
-  'an owner message joins the running turn while a Pnyx wake waits for it to end',
+  'owner messages join the running turn while Pnyx wakes wait for it to end, and the wakes keep their order',
   async () => {
     const s = await pnyx.scenario()
     const page = await openPage({
@@ -1454,6 +1454,10 @@ test(
       text: 'Take a long look',
       hold: true,
     })
+    const firstWake = pnyx.codex.plan({
+      text: 'Pnyx wake one',
+      hold: true,
+    })
 
     try {
       await send({
@@ -1466,8 +1470,7 @@ test(
         what: 'Codex to start the held turn',
         check: () => agent.received.length === 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
       })
-      // Pnyx's own messages wait for the running turn to end.
-      await s.as({
+      const pnyxActor = s.as({
         agent: {
           ...agent,
           env: {
@@ -1475,16 +1478,33 @@ test(
             PNYX_ACTOR: 'pnyx',
           },
         },
-      }).run({
-        args: [
-          'hydra',
-          'send',
-          '--text',
-          'Pnyx wake',
-          '--event-id',
-          'wake',
-        ],
       })
+
+      for (const [
+        text,
+        id,
+      ] of [
+          [
+            'Pnyx wake one',
+            'wake-one',
+          ],
+          [
+            'Pnyx wake two',
+            'wake-two',
+          ],
+        ]) {
+        await pnyxActor.run({
+          args: [
+            'hydra',
+            'send',
+            '--text',
+            text,
+            '--event-id',
+            id,
+          ],
+        })
+      }
+
       await send({
         s,
         text: 'Also check the docs',
@@ -1500,11 +1520,30 @@ test(
       )
       held.release()
       await until({
-        what: 'the Pnyx wake after the turn ends',
-        check: () => agent.received.at(-1)?.includes('Pnyx wake'),
+        what: 'the first Pnyx wake after the turn ends',
+        check: () => agent.received.at(-1)?.includes('Pnyx wake one'),
+      })
+      await send({
+        s,
+        text: 'And the changelog',
+        id: 'steer-wake',
+      })
+      await until({
+        what: 'the owner message inside the first wake’s turn',
+        check: () => agent.received.includes('And the changelog'),
+      })
+      assert.equal(
+        agent.received.some(text => text.includes('Pnyx wake two')),
+        false,
+      )
+      firstWake.release()
+      await until({
+        what: 'the second Pnyx wake last',
+        check: () => agent.received.at(-1)?.includes('Pnyx wake two'),
       })
     } finally {
       held.release()
+      firstWake.release()
       page.close()
     }
   },
