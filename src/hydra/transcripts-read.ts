@@ -64,6 +64,8 @@ export interface ThreadEntry {
 export interface ThreadPage {
   card: string
   session?: string
+  stream?: string
+  version?: number
   entries: ThreadEntry[]
   conversation?: {
     through: number

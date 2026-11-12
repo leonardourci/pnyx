@@ -1,3 +1,4 @@
+import type { ThreadDelta } from '#hydra/thread-delta.ts'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { commands as cliCommands } from './cli.ts'
@@ -69,6 +70,10 @@ type ServerPayload =
     thread: ThreadPage
   }
   | {
+    type: 'thread.delta'
+    delta: ThreadDelta
+  }
+  | {
     type: 'snapshot'
     seq: number
     state: HydraState
@@ -109,6 +114,7 @@ type ServerPayload =
   | {
     type: 'receipt'
     id: string
+    thread?: ThreadPage
     [field: string]: unknown
   }
   | {
