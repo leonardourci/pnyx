@@ -51,7 +51,7 @@ test(
       fs,
       'watch',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
-      (...parameters: Parameters<typeof fs.watch>) => {
+      (...parameters: [fs.PathLike, fs.WatchOptionsWithStringEncoding, fs.WatchListener<string>?]) => {
         const options = parameters[1]
         const recursive = typeof options === 'object' && options?.recursive
 
