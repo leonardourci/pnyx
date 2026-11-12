@@ -22,6 +22,8 @@ The Oracle, thread reader, latest-message feed, reply confirmation and hook harv
 
 Hydra chat retains assistant commentary, tool calls and results across quiet endings, session changes and history paging. Progress folds precede the reply they led to. Equal timestamps use native record positions to keep a tool result before its reply. Hidden inputs remain turn boundaries and never appear as owner text. Historical harvesting appends missing traces and boundaries for recorded Hydra sessions without rewriting prior events.
 
+An explicit thread read returns a full page, including initial load, Older messages and reconnect. Unsolicited Hydra and worker chat updates carry entry-ID additions, replacements and removals, plus changed fold and timing records. Each page has a stream and version; a missing version causes the page to request a fresh snapshot. Unchanged entries retain their browser objects so existing message rows can skip rendering.
+
 Redaction happens before transport offsets are assigned, so a later read cannot shorten a chunk and break its rejoining. Streaming plain text includes the last received word while incomplete Markdown stays held until it can render. The saved transcript replaces live text without a second message.
 
 ## Usage
