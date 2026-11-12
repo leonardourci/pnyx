@@ -1000,3 +1000,64 @@ test(
     )
   },
 )
+
+test(
+  'owner messages read later than ones sent after them keep the order they were sent in',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    // The first message's transcript copy is at 10:05; the two sent after it were taken mid-turn and keep their send times.
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 4,
+        }),
+        sent({
+          id: 'third',
+          minute: 3,
+        }),
+      ],
+      transcript: [
+        {
+          ...entry({
+            id: 'native-first',
+            minute: 5,
+            role: 'user',
+            text: 'first',
+          }),
+          session: 'hydra-session',
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'second',
+        'third',
+      ],
+    )
+  },
+)

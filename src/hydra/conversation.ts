@@ -48,14 +48,23 @@ function lateOwnerMessages({
       a,
       b,
     ) => a.index - b.index)
-  const late = new Map<ThreadEntry, string>()
+  const late = new Map<ThreadEntry, {
+    at: string
+    index: number
+  }>()
   let floor = ''
 
-  for (const { entry } of owner) {
+  for (const {
+    entry,
+    index,
+  } of owner) {
     if (entry.at && entry.at < floor) {
       late.set(
         entry,
-        floor,
+        {
+          at: floor,
+          index,
+        },
       )
     } else if (entry.at) {
       floor = entry.at
@@ -66,7 +75,7 @@ function lateOwnerMessages({
 }
 
 // Time order, except that an owner message shows no earlier than the owner messages sent before it.
-export function conversationOrder({
+function conversationOrder({
   messages,
   entries,
 }: {
@@ -77,19 +86,33 @@ export function conversationOrder({
     messages,
     entries,
   })
-  const shownAt = ({ entry }: { entry: ThreadEntry }) => late.get(entry) ?? entry.at
+  const shownAt = ({ entry }: { entry: ThreadEntry }) => late.get(entry)?.at ?? entry.at
+
   const order = ({
     first,
     second,
   }: {
     first: ThreadEntry
     second: ThreadEntry
-  }) => (shownAt({ entry: first }) ?? '').localeCompare(shownAt({ entry: second }) ?? '')
-    || Number(late.has(first)) - Number(late.has(second))
-    || threadEntryOrder({
+  }) => {
+    const before = late.get(first)
+    const after = late.get(second)
+    const time = (shownAt({ entry: first }) ?? '').localeCompare(shownAt({ entry: second }) ?? '')
+
+    if (time || !before !== !after) {
+      return time || (before ? 1 : -1)
+    }
+
+    // Late messages that share a place keep the order they were sent in.
+    if (before && after) {
+      return before.index - after.index
+    }
+
+    return threadEntryOrder({
       first,
       second,
     })
+  }
 
   return {
     shownAt,
