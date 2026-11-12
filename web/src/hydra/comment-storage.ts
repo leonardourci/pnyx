@@ -64,19 +64,20 @@ function migrateComments({
     return
   }
 
-  let cards: Record<string, unknown>
+  let value: unknown
 
   try {
-    const value: unknown = JSON.parse(raw)
+    value = JSON.parse(raw)
+  } catch { /* Unreadable JSON is handled with the other lists that hold no cards. */ }
 
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return
-    }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    // Nothing can be recovered from it, and leaving it would parse it again on every save.
+    storage.removeItem(key)
 
-    cards = value as Record<string, unknown>
-  } catch {
     return
   }
+
+  const cards = value as Record<string, unknown>
 
   const entries = Object.entries(cards).flatMap(([
     card,
