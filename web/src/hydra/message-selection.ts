@@ -6,6 +6,8 @@ export const MESSAGE_DECORATIONS = '.comment-card, .comment-pill, .comment-annot
 // bring the chip back.
 export const CHIP_SOURCE = 'data-chip-source'
 
+const messageBlockPrefix = ({ messageId }: { messageId: string }) => `${messageId}/block-`
+
 export const messageBlockKey = ({
   messageId,
   offset,
@@ -13,7 +15,15 @@ export const messageBlockKey = ({
   messageId: string
   offset: number
 }) =>
-  `${messageId}/block-${offset}`
+  `${messageBlockPrefix({ messageId })}${offset}`
+
+export const isMessageBlockKey = ({
+  key,
+  messageId,
+}: {
+  key: string | null | undefined
+  messageId: string
+}) => key?.startsWith(messageBlockPrefix({ messageId })) === true
 
 export const messageBlock = ({ node }: { node?: Node | null }) =>
   (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-message-block]')

@@ -14,7 +14,7 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
 import {
-  Fragment,memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,
+  memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,
   type ComponentProps,type RefObject,type ReactNode,
   type KeyboardEvent as KeyEvent,
 } from 'react'
@@ -42,8 +42,8 @@ import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
 import { MessageReceipt } from './message-receipt.tsx'
 import {
-  MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
-  type CommentPassage,
+  MESSAGE_DECORATIONS,blockPassage,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
+  selectedPassage,type CommentPassage,
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
@@ -199,7 +199,6 @@ const MessageRow = memo(function MessageRow({
 
   return entry.kind === 'divider' ? (
     <div
-      key={entry.renderKey ?? entry.id}
       className="chat-divider"
       role="separator"
       aria-label={entry.text}
@@ -208,7 +207,7 @@ const MessageRow = memo(function MessageRow({
       <span>{entry.text}</span>
     </div>
   ) : (
-    <Fragment key={entry.renderKey ?? entry.id}>
+    <>
       {fold?.notes.length ? (
         <TurnActionsFold
           fold={{
@@ -393,7 +392,7 @@ const MessageRow = memo(function MessageRow({
       {timing !== undefined && (
         <TurnFooter turn={timing} taskTitle={timingTitle} />
       )}
-    </Fragment>
+    </>
   )
 })
 
@@ -1086,7 +1085,10 @@ export function Messages({
       >
         {entries.map(entry => {
           const messageId = entry.messageId ?? entry.id
-          const activeHere = active?.startsWith(`${messageId}/block-`) ? active : null
+          const activeHere = isMessageBlockKey({
+            key: active,
+            messageId,
+          }) ? active : null
           const task = leadingTask({ entry })
           const timedTask = timings.get(entry.id)?.task
 
