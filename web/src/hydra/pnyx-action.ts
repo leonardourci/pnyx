@@ -25,20 +25,23 @@ export interface PnyxLookup {
   column({ ref }: { ref: string }): HydraColumn | undefined
 }
 
-export function pnyxLookup({ state }: { state: HydraState }): PnyxLookup {
-  const columns = hydraConfig({ state }).columns
-
+export function pnyxLookup({ state }: { state(): HydraState }): PnyxLookup {
   return {
     task: ({ ref }) => {
-      const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
+      const current = state()
+      const card = current.cards[ref] ?? current.cards[current.keys[ref] ?? '']
 
       return card ? {
         id: card.id,
         title: card.title,
       } : undefined
     },
-    column: ({ ref }) => columns.find(column => column.id === ref || column.role === ref
-      || column.title.toLowerCase() === ref.toLowerCase()),
+    column: ({ ref }) => {
+      const columns = hydraConfig({ state: state() }).columns
+
+      return columns.find(column => column.id === ref || column.role === ref
+        || column.title.toLowerCase() === ref.toLowerCase())
+    },
   }
 }
 

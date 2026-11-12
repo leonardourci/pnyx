@@ -81,6 +81,7 @@ export function hydraAgentCommand({
   const {
     previous,
     running,
+    stateSeq,
   } = withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -96,6 +97,7 @@ export function hydraAgentCommand({
         return {
           previous: config.hydra.agent,
           running: undefined,
+          stateSeq: writer.state.seq,
         }
       }
 
@@ -135,6 +137,7 @@ export function hydraAgentCommand({
       return {
         previous: config.hydra.agent,
         running,
+        stateSeq: writer.state.seq,
       }
     },
   })
@@ -163,6 +166,7 @@ export function hydraAgentCommand({
       type: 'receipt',
       id,
       saved: true,
+      stateSeq,
     },
   })
 }

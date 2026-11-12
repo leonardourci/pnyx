@@ -7,6 +7,8 @@ import { activeCompaction } from '#workers/compaction/state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 
+const STARTED_RECEIPTS = 32
+
 function hydraQueueView({
   state,
   messages,
@@ -116,6 +118,9 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
     held: [...view.held],
     working,
     through: state.seq,
+    started: messages.filter(message => ownerActor({ actor: message.actor })
+      && `${message.id}:hosted` in state.eventIds).slice(-STARTED_RECEIPTS)
+      .map(message => message.id),
   }
 }
 

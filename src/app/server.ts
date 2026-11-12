@@ -456,6 +456,7 @@ export async function mountOwnedHydra({
     kick,
     agents,
     catalogCommand,
+    showPage: tabs.show,
     historyIndex,
     hydraSubscribers,
     subscriptionMap,

@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import { InlineButton } from '#web-shared/ui/controls.tsx'
 import { ReferenceBadge } from '#web-hydra/reference-badge.tsx'
 import { CHIP_SPACE } from '#web-hydra/draft.ts'
@@ -38,15 +38,32 @@ export function TaskReferencesProvider({
   openTask?: OpenTask
   children: ReactNode
 }) {
-  return (
-    <TaskReferences.Provider
-      value={references ? {
-        references,
-        openTask,
-      } : undefined}
-    >{children}
-    </TaskReferences.Provider>
+  const current = useRef(openTask)
+  useLayoutEffect(
+    () => {
+      current.current = openTask
+    },
+    [openTask],
   )
+  const canOpen = openTask !== undefined
+  const value = useMemo(
+    () => {
+      if (!references) {
+        return undefined
+      }
+
+      return {
+        references,
+        openTask: canOpen ? ({ id }: { id: string }) => current.current?.({ id }) : undefined,
+      }
+    },
+    [
+      references,
+      canOpen,
+    ],
+  )
+
+  return <TaskReferences.Provider value={value}>{children}</TaskReferences.Provider>
 }
 
 export function TaskReference({
@@ -68,7 +85,7 @@ export function TaskReference({
     context.references,
     id,
   ) ? context.references[id] : undefined
-  const open = context ? reference ? context.openTask : undefined : openTask
+  const open = context ? context.openTask : openTask
   const savedTitle = savedLabels ? savedLabel : undefined
   const label = savedTitle ?? reference?.title ?? children ?? 'Unavailable task'
   const state = reference?.state ?? 'Unavailable'
@@ -78,7 +95,7 @@ export function TaskReference({
   }
 
   return (
-    <Tooltip content={context && !reference ? 'Task unavailable in this Hydra' : reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
+    <Tooltip content={reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
       <InlineButton
         className={`button task-mention task-reference column-${reference?.column ?? 'custom'} ${className}`}
         contentEditable={false}

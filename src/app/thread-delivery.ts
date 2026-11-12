@@ -1,3 +1,4 @@
+import type { ThreadDelta } from '#hydra/thread-delta.ts'
 import { background } from './background.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
@@ -5,6 +6,7 @@ import { SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-
 interface Delivery {
   ws: HydraClient
   thread?: ThreadPage
+  delta?: ThreadDelta
   current(): boolean
   accepted(): void
   receipts: Set<string>
@@ -87,12 +89,18 @@ export function createThreadDelivery({
         delivery.receipts.delete(id)
       }
     } else if (delivery.thread) {
-      accepted = send({
-        ws: delivery.ws,
-        message: {
+      const message: ServerMessage = delivery.delta
+        ? {
+          type: 'thread.delta',
+          delta: delivery.delta,
+        }
+        : {
           type: 'thread',
           thread: delivery.thread,
-        },
+        }
+      accepted = send({
+        ws: delivery.ws,
+        message,
       })
     }
 

@@ -272,6 +272,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     openHydra,
   } = useTaskNavigation({
     state,
+    command,
+    connected,
+    notify,
     selectedRef,
     setActive,
     expanded,

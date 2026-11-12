@@ -104,6 +104,8 @@ export interface Reply {
   resumes?: boolean
   route?: string
   detail?: string
+  // When the agent's harness confirmed it took the message.
+  received?: string
 }
 
 export interface SteeringClaim {

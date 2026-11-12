@@ -28,6 +28,10 @@ const flag = ({
 }: Args & { name: string }) => args.some(arg => arg === name || arg.startsWith(`${name}=`))
 
 export const COMMAND_REGISTRY = {
+  page: {
+    page: true,
+    repeatable: true,
+  },
   debug: {
     helper: {
       reads: [
