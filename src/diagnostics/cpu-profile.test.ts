@@ -136,6 +136,45 @@ test(
         'after-cancel.cpuprofile',
       ),
     })).samples > 0)
+    t.mock.method(
+      fs,
+      'rmSync',
+      () => {
+        throw Object.assign(
+          new Error('Permission denied'),
+          { code: 'EACCES' },
+        )
+      },
+      { times: 1 },
+    )
+    syncBuiltinESMExports()
+    const unwritable = new AbortController()
+    const stuck = captureCpuProfile({
+      seconds: 60,
+      path: join(
+        root,
+        'unwritable.cpuprofile',
+      ),
+      signal: unwritable.signal,
+    })
+    unwritable.abort()
+    await assert.rejects(
+      stuck,
+      { code: 'CANCELLED' },
+      'a failed cleanup keeps the cancellation',
+    )
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
+    assert.ok(
+      (await captureCpuProfile({
+        seconds: 1,
+        path: join(
+          root,
+          'after-failed-cleanup.cpuprofile',
+        ),
+      })).samples > 0,
+      'a failed cleanup does not leave the profiler busy',
+    )
     const started = performance.now()
     await assert.rejects(
       captureCpuProfile({

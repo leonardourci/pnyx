@@ -150,17 +150,27 @@ export async function captureCpuProfile({
       help: [`Open \`${path}\` in Chrome DevTools > Performance (Load profile)`],
     }
   } finally {
-    closeSync(fd)
-
-    if (!saved) {
-      rmSync(
-        path,
-        { force: true },
-      )
-    }
-
     session.disconnect()
     profiling = false
+
+    // A failed cleanup is logged so it never replaces the capture's own result or error.
+    try {
+      closeSync(fd)
+
+      if (!saved) {
+        rmSync(
+          path,
+          { force: true },
+        )
+      }
+    } catch (error) {
+      log({
+        level: 'error',
+        operation: 'cpu.profile',
+        name: path,
+        error,
+      })
+    }
   }
 }
 
