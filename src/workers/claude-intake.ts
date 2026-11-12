@@ -75,7 +75,7 @@ function intakeOf({
   try {
     record = JSON.parse(line) as Record<string, unknown>
   } catch {
-    // A line Claude Code is still writing is read again once complete.
+    // A complete line that is not JSON is not an intake; an unfinished one waits in partial.
     return undefined
   }
 
