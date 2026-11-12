@@ -64,8 +64,8 @@ export function useLinkRefresh({
         return
       }
 
-      // Its failure is logged inside, and the scheduled poll still reads the links.
-      void refreshLinks({
+      // It never rejects: a failure is logged inside, and the scheduled poll still reads the links.
+      refreshLinks({
         task,
         command,
       })
