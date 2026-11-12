@@ -1537,19 +1537,21 @@ test(
           return 'chat-assertion-passed';
         }`,
       })
-      await run({
-        args: ['run'],
-        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Keep this draft\');',
-      })
-      await run({
-        args: [
-          'open',
-          url,
-        ],
+      // One task types and reloads, so only the pagehide flush can save the draft before its pause ends.
+      await evaluate({
+        script: `() => {
+          const field = document.querySelector('[aria-label="Reply to Hydra"]');
+          if (!field) throw new Error('Missing reply field');
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, 'Keep this draft');
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+          window.beforeReload = true;
+          location.reload();
+          return 'chat-assertion-passed';
+        }`,
       })
       await waitFor({
-        what: 'the draft restored after navigation',
-        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Keep this draft\'',
+        what: 'the draft restored after reload',
+        condition: '!window.beforeReload && document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Keep this draft\'',
       })
       await evaluate({
         script: `() => {
@@ -1886,17 +1888,9 @@ test(
         args: ['run'],
         input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Canonical draft\');',
       })
-      await evaluate({
-        script: `async () => {
-          const deadline = performance.now() + ${PAINT_TIMEOUT_MS};
-          while (performance.now() < deadline) {
-            const identity = document.querySelector('meta[name="pnyx-hydra"]').content;
-            const saved = JSON.parse(sessionStorage.getItem('pnyx:' + identity + ':restore') ?? '{}');
-            if (saved.drafts?.$hydra === 'Canonical draft') return 'chat-assertion-passed';
-            await new Promise(requestAnimationFrame);
-          }
-          throw new Error('Promoted draft was not saved under the canonical identity');
-        }`,
+      await waitFor({
+        what: 'the promoted draft saved under the canonical identity',
+        condition: 'JSON.parse(sessionStorage.getItem(\'pnyx:\' + document.querySelector(\'meta[name="pnyx-hydra"]\')?.content + \':restore\') ?? \'{}\').drafts?.$hydra === \'Canonical draft\'',
       })
       await run({
         args: ['run'],
