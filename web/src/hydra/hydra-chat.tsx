@@ -803,9 +803,16 @@ export function HydraChat({
       })
       observer.observe(element)
       observer.observe(scroller)
+
+      const reveal = () => {
+        follow.current = false
+        setAway(true)
+        ownerScroll()
+      }
+
       scroller.addEventListener(
         MESSAGE_SCROLL,
-        ownerScroll,
+        reveal,
       )
 
       return () => {
@@ -813,7 +820,7 @@ export function HydraChat({
         cancelAnimationFrame(glide.current)
         scroller.removeEventListener(
           MESSAGE_SCROLL,
-          ownerScroll,
+          reveal,
         )
       }
     },
@@ -1043,13 +1050,13 @@ export function HydraChat({
           onScroll={e => {
             const el = e.currentTarget
 
-            // Any way to the bottom pins; only the owner's own upward scroll unpins, never one the browser makes.
+            // Upward input unpins even inside the bottom tolerance; arriving at the bottom pins again.
             const owner = performance.now() - scrolledAt.current < OWNER_SCROLL_MS
 
-            if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
-              follow.current = true
-            } else if (owner && el.scrollTop < lastTop.current) {
+            if (owner && el.scrollTop < lastTop.current) {
               follow.current = false
+            } else if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+              follow.current = true
             }
 
             lastTop.current = el.scrollTop
