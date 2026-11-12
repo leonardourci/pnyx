@@ -431,7 +431,7 @@ test(
 )
 
 test(
-  'unhighlighted snippets preserve Markdown URLs, brackets and line breaks',
+  'Oracle snippets preserve Markdown and center highlighted path matches',
   () => {
     process.env.PNYX_HOME = mkdtempSync(join(
       scratch,
@@ -484,6 +484,47 @@ test(
         },
       }).hits[0]!.snippets[0]!.snippet,
       /example\/\[project\]\/pull/,
+    )
+
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'late-path',
+          at: '2026-10-15T10:00:01Z',
+          actor: 'fixture',
+          cardId: '$board',
+          type: 'hydra.message',
+          data: {
+            action: 'send',
+            text: `${'preface '.repeat(40)}src/oracle/needle.ts`,
+            hydra: 'hydra',
+          },
+        },
+      }),
+    })
+    const path = search({
+      hydraId: 'default',
+      query: {
+        text: 'src/oracle/needle.ts',
+        limit: 1,
+        highlight: true,
+      },
+    }).hits[0]!.snippets[0]!
+    assert.match(
+      path.snippet,
+      /\[src\]\/\[oracle\]\/\[needle\]\.\[ts\]/,
+    )
+    assert.deepEqual(
+      path.parts?.filter(part => part.matched).map(part => part.text),
+      [
+        'src',
+        'oracle',
+        'needle',
+        'ts',
+      ],
     )
   },
 )

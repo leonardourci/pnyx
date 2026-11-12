@@ -79,6 +79,7 @@ export function createServerCommands({
   threadPage: ThreadSubscriptions['threadPage']
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
 }) {
+  const oracleSearches = new WeakMap<HydraClient, AbortController>()
   const runCommand = ({
     ws,
     message,
@@ -266,6 +267,7 @@ export function createServerCommands({
             fail,
             send,
             hydraId,
+            searches: oracleSearches,
           })
         } else if (name === 'hydra-agent-change') {
           hydraAgentChangeCommand({
@@ -349,5 +351,11 @@ export function createServerCommands({
     })
   }
 
-  return { runCommand }
+  return {
+    runCommand,
+    closeClient({ ws }: { ws: HydraClient }) {
+      oracleSearches.get(ws)?.abort()
+      oracleSearches.delete(ws)
+    },
+  }
 }
