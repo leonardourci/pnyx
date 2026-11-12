@@ -265,6 +265,7 @@ export async function claudeTools({
 
   for (const grant of grants.filter(name => name.startsWith('plugin:'))) {
     const id = grant.slice('plugin:'.length)
+    // The catalog check above admits only plugins with an applicable installation.
     const root = pluginInstallation({
       value: installedPlugins[id],
       folders,

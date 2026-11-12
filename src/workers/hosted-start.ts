@@ -334,7 +334,7 @@ export function createWorkerStarts({
 
         if (!isFolder({ path: cwd })) {
           throw new HydraError({
-            message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in',
+            message: `folder not found: ${cwd}`,
             code: 'VALIDATION_ERROR',
             help: ['Pass --folder <absolute path>'],
           })

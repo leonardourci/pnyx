@@ -108,9 +108,19 @@ export async function toolsCommand({
     },
   }) : {}
 
-  return {
+  const output = {
     task: card.id,
     ...result,
     ...delivery,
   }
+
+  // Another launch route cannot enforce the selection, so it waits for a Pnyx-hosted start.
+  if (result.changed && card.agent && card.agent.host !== 'pnyx') {
+    return {
+      ...output,
+      help: ['This agent runs outside Pnyx, so the selection applies from its next Pnyx-hosted start'],
+    }
+  }
+
+  return output
 }
