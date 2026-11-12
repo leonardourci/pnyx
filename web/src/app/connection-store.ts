@@ -3,7 +3,7 @@ import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { Immer } from 'immer'
-import { saveEventId,savedReceipt,type SaveCommand } from '#app/save-receipts.ts'
+import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -481,7 +481,8 @@ export function createHydraConnection() {
       }
 
       const state = scope.resource.snapshot().confirmed
-      const receipt = savedReceipt({
+      // The page keeps no event ids, so a Hydra message or agent change confirms only from its receipt.
+      const receipt = savedReply({
         command: saveCommand({ request }),
         state,
       })

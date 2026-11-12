@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra, replay } from './reducer.ts'
-import { savedReceipt } from './save-receipts.ts'
+import { savedReply } from './save-receipts.ts'
 import { readStream } from '#test-harness/streams.ts'
 
 for (const name of [
@@ -44,7 +44,7 @@ for (const name of [
         args,
       }
       assert.deepEqual(
-        savedReceipt({
+        savedReply({
           command,
           state,
         }),
@@ -66,7 +66,7 @@ for (const name of [
         },
       ]
       assert.equal(
-        savedReceipt({
+        savedReply({
           command,
           state,
         }),
@@ -74,7 +74,7 @@ for (const name of [
       )
       card.replies = []
       assert.equal(
-        savedReceipt({
+        savedReply({
           command,
           state,
         }),

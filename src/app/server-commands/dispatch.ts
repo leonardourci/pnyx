@@ -7,7 +7,7 @@ import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import type { createHost } from '#app/host.ts'
 import type { HydraState } from '#app/model.ts'
-import { saveEventId, savedReceipt, type SaveCommand } from '#app/save-receipts.ts'
+import { saveEventId, savedEvent, type SaveCommand } from '#app/save-receipts.ts'
 import type { createServerClients } from '#app/server-clients.ts'
 import type { HydraClient } from '#app/server-transport.ts'
 import type { createServerWorkers } from '#app/server-workers.ts'
@@ -167,7 +167,7 @@ export function createServerCommands({
 
         if (saveEventId({ command })) {
           try {
-            const receipt = savedReceipt({
+            const receipt = savedEvent({
               command,
               state: loadHydra({ hydraId }).state,
             })
