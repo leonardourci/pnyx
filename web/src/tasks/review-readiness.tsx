@@ -1,3 +1,4 @@
+import { useLinkRefresh } from './link-refresh.ts'
 import { useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
@@ -28,6 +29,10 @@ export function ReviewReadiness({
     ask,
     link,
   } = request
+  useLinkRefresh({
+    task: card.id,
+    command,
+  })
   const [
     busy,
     setBusy,
