@@ -82,12 +82,13 @@ test(
           ...sent,
           receipt: 'queued',
           waiting: 'Waiting for the worker to read its inbox',
+          // Built Hydra first, as the server does; the agent's part still leads.
           delivery: {
-            agent: { state: 'queued' },
             hydra: {
               state: 'delivery_unknown',
               detail: 'Hydra queue was not confirmed',
             },
+            agent: { state: 'queued' },
           },
         },
       }).map(line => [

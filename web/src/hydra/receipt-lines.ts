@@ -13,10 +13,16 @@ const ICONS: Partial<Record<ReplyState, string>> = {
   delivery_unknown: 'error',
   failed: 'error',
 }
-const ROUTES: Record<string, string> = {
-  hydra: 'Hydra',
+type Route = 'agent' | 'hydra'
+const ROUTES: Record<Route, string> = {
   agent: 'Agent',
+  hydra: 'Hydra',
 }
+// The agent's part leads, as it did before Hydra's part had its own receipt.
+const ROUTE_ORDER: Route[] = [
+  'agent',
+  'hydra',
+]
 
 export interface ReceiptLine {
   key: string
@@ -40,9 +46,9 @@ function line({
   received?: string
   sent?: string
   why?: string
-  route?: string
+  route?: Route
 }): ReceiptLine {
-  const prefix = route ? `${ROUTES[route] ?? route}: ` : ''
+  const prefix = route ? `${ROUTES[route]}: ` : ''
   const failed = state === 'failed' || state === 'delivery_unknown'
 
   if (received) {
@@ -75,19 +81,24 @@ function line({
 export function receiptLines({ entry }: { entry: ThreadEntry }): ReceiptLine[] {
   const sent = entry.sent ?? entry.at
 
-  if (entry.delivery) {
-    return Object.entries(entry.delivery).map(([
-      route,
-      delivery,
-    ]) => line({
-      key: route,
-      route,
-      state: delivery.state,
-      received: delivery.received,
-      sent,
-      // The agent's wait is the task's own; Hydra's part has only its delivery detail.
-      why: delivery.detail ?? (route === 'agent' ? entry.waiting : undefined),
-    }))
+  const { delivery } = entry
+
+  if (delivery) {
+    return ROUTE_ORDER.flatMap(route => {
+      const part = delivery[route]
+
+      return part ? [
+        line({
+          key: route,
+          route,
+          state: part.state,
+          received: part.received,
+          sent,
+          // The agent's wait is the task's own; Hydra's part has only its delivery detail.
+          why: part.detail ?? (route === 'agent' ? entry.waiting : undefined),
+        }),
+      ] : []
+    })
   }
 
   if (!entry.receipt) {
