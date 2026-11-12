@@ -202,14 +202,12 @@ test(
         added,
       ],
     })
-    drafts.syncComments({
-      items: [
-        first,
-        {
-          ...second,
-          text: 'Other tab edit',
-        },
-      ],
+    drafts.syncComment({
+      id: 'second',
+      comment: {
+        ...second,
+        text: 'Other tab edit',
+      },
     })
     assert.deepEqual(
       drafts.read().comments,
@@ -234,11 +232,9 @@ test(
         added,
       ],
     })
-    drafts.syncComments({
-      items: [
-        first,
-        second,
-      ],
+    drafts.syncComment({
+      id: 'second',
+      comment: second,
     })
     assert.deepEqual(
       drafts.read().comments,
@@ -261,14 +257,12 @@ test(
         added,
       ],
     )
-    drafts.syncComments({
-      items: [
-        {
-          ...first,
-          text: 'Later remote edit',
-        },
-        added,
-      ],
+    drafts.syncComment({
+      id: 'first',
+      comment: {
+        ...first,
+        text: 'Later remote edit',
+      },
     })
     assert.deepEqual(
       drafts.read().comments,
@@ -354,12 +348,17 @@ test(
         ],
       ],
     )
-    drafts.syncComments({
-      items: [
-        first,
-        second,
-        added,
-      ],
+    drafts.syncComment({
+      id: 'first',
+      comment: first,
+    })
+    drafts.syncComment({
+      id: 'second',
+      comment: second,
+    })
+    drafts.syncComment({
+      id: 'added',
+      comment: added,
     })
     assert.deepEqual(
       drafts.read().comments,
@@ -373,14 +372,12 @@ test(
     )
     succeeds = true
     drafts.flush()
-    drafts.syncComments({
-      items: [
-        {
-          ...first,
-          text: 'Later remote edit',
-        },
-        added,
-      ],
+    drafts.syncComment({
+      id: 'first',
+      comment: {
+        ...first,
+        text: 'Later remote edit',
+      },
     })
     assert.deepEqual(
       drafts.read().comments,

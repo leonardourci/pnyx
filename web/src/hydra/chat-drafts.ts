@@ -1,6 +1,7 @@
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { sendableComment, type ChatComment } from './chat.ts'
+import type { ChatComment } from './chat.ts'
+import { commentPrefix, loadCommentRecords, readCommentRecord, saveCommentRecords } from './comment-storage.ts'
 
 const SAVE_PAUSE_MS = 500
 
@@ -144,13 +145,30 @@ export function createChatDrafts({
       comments: items,
       structural: true,
     }),
-    syncComments: ({ items }: { items: ChatComment[] }) => {
+    syncComment: ({
+      id,
+      comment,
+    }: {
+      id: string
+      comment: ChatComment | null
+    }) => {
+      const incoming = persistedComments.filter(saved => saved.id !== id)
+
+      if (comment) {
+        const index = persistedComments.findIndex(saved => saved.id === id)
+        incoming.splice(
+          index < 0 ? incoming.length : index,
+          0,
+          comment,
+        )
+      }
+
       const comments = mergeComments({
         current: current.comments,
         previous: persistedComments,
-        incoming: items,
+        incoming,
       })
-      persistedComments = items
+      persistedComments = incoming
       write({
         text: current.text,
         comments,
@@ -188,30 +206,6 @@ export function useDraftSnapshot({
   )
 }
 
-function storedCards({ value }: { value: string | null }): Record<string, ChatComment[]> {
-  try {
-    const cards = JSON.parse(value ?? '{}') as Record<string, ChatComment[]>
-
-    if (!cards || typeof cards !== 'object' || Array.isArray(cards)) {
-      return {}
-    }
-
-    return cards
-  } catch {
-    return {}
-  }
-}
-
-function storedComments({ value }: { value: string | null }): ChatComment[] {
-  try {
-    const comments: ChatComment[] = storedCards({ value })[HYDRA_CARD] ?? []
-
-    return comments.filter(comment => sendableComment({ comment }))
-  } catch {
-    return []
-  }
-}
-
 export function useChatDrafts({
   text,
   commentsKey,
@@ -233,7 +227,10 @@ export function useChatDrafts({
     let comments: ChatComment[] = []
 
     try {
-      comments = storedComments({ value: localStorage.getItem(commentsKey) })
+      comments = loadCommentRecords({
+        storage: localStorage,
+        key: commentsKey,
+      })
     } catch { /* Blocked storage starts with an empty draft. */ }
 
     return createChatDrafts({
@@ -250,31 +247,13 @@ export function useChatDrafts({
         } = persistence.current
         saveText({ text })
 
-        const current = comments.filter(comment => sendableComment({ comment }))
-
-        if (JSON.stringify(current) === JSON.stringify(previous)) {
-          return previous
-        }
-
         try {
-          const stored = localStorage.getItem(commentsKey)
-          const saved = storedCards({ value: stored })
-          const merged = mergeComments({
-            current,
+          return saveCommentRecords({
+            storage: localStorage,
+            key: commentsKey,
+            comments,
             previous,
-            incoming: storedComments({ value: stored }),
           })
-          saved[HYDRA_CARD] = merged
-          const encoded = JSON.stringify(saved)
-
-          if (encoded !== stored) {
-            localStorage.setItem(
-              commentsKey,
-              encoded,
-            )
-          }
-
-          return merged
         } catch {
           // Keep unsaved edits dirty when storage is full or blocked.
           return false
@@ -284,15 +263,25 @@ export function useChatDrafts({
   })
   useEffect(
     () => {
+      const prefix = commentPrefix({
+        key: commentsKey,
+        card: HYDRA_CARD,
+      })
+
       const sync = ({ key }: StorageEvent) => {
-        if (key !== commentsKey) {
+        if (key === null || !key.startsWith(prefix)) {
           return
         }
 
-        try {
-          const incoming = storedComments({ value: localStorage.getItem(commentsKey) })
-          drafts.syncComments({ items: incoming })
-        } catch { /* Invalid storage events leave the current comments intact. */ }
+        const record = readCommentRecord({
+          storage: localStorage,
+          key,
+          prefix,
+        })
+
+        if (record) {
+          drafts.syncComment(record)
+        }
       }
 
       addEventListener(
