@@ -1,4 +1,4 @@
-import { workerError } from '#oracle/index-sync.ts'
+import { workerError } from '#app/worker-error.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { replyRoute } from '#workers/reply-route.ts'
