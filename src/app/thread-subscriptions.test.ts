@@ -1,3 +1,4 @@
+import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -64,6 +65,8 @@ test(
     let buffered = MAX_BUFFERED + 1
     let readyState = 1
     const received: ServerMessage[] = []
+    const wire: ServerMessage[] = []
+    const receiver = createThreadReceiver()
     const client: HydraClient = {
       OPEN: 1,
       get readyState() {
@@ -73,7 +76,17 @@ test(
         return buffered
       },
       send({ message }) {
-        received.push(message)
+        wire.push(message)
+        const normalized = receiver.receive({ message })
+
+        if (normalized) {
+          received.push(normalized)
+        } else {
+          threads.refreshThread({
+            ws: client,
+            resync: true,
+          })
+        }
       },
       terminate() {},
     }
@@ -253,6 +266,9 @@ test(
     buffered = 0
     t.mock.timers.tick(SOCKET_RETRY_MS)
     await setImmediate()
+    assert.ok(wire.some(message => message.type === 'thread.delta'))
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
     assert.deepEqual(
       received.filter(message => message.type === 'thread')
         .flatMap(message => message.thread.conversation!.entries.map(entry => entry.text)),
@@ -290,6 +306,8 @@ test(
     buffered = 0
     tabs.sendSnapshot({ ws: client })
     t.mock.timers.tick(SOCKET_RETRY_MS)
+    await setImmediate()
+    t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
     assert.deepEqual(
       received.filter(message => message.type === 'thread')
@@ -340,8 +358,8 @@ test(
       'A reply after reconnect.',
     )
     assert.notEqual(
-      delivered.at(-1)!.thread.conversation!.stream,
-      delivered[0]!.thread.conversation!.stream,
+      delivered.at(-1)!.thread.stream,
+      delivered[0]!.thread.stream,
     )
     received.length = 0
     buffered = MAX_BUFFERED + 1
@@ -598,8 +616,8 @@ test(
       'The complete saved reply.',
     )
     assert.notEqual(
-      restored.conversation!.stream,
-      initial.conversation!.stream,
+      restored.stream,
+      initial.stream,
     )
     buffered = MAX_BUFFERED + 1
     reconnected.receive({
@@ -777,10 +795,10 @@ test(
       ],
     )
     assert.equal(
-      refreshed.conversation!.stream,
-      first.conversation!.stream,
+      refreshed.stream,
+      first.stream,
     )
-    assert.ok(refreshed.conversation!.version! > older.conversation!.version!)
+    assert.ok(refreshed.version! > older.version!)
     const restored = await threads.threadPage({
       sub: {
         card: HYDRA_CARD,
@@ -800,8 +818,8 @@ test(
       ],
     )
     assert.notEqual(
-      restored.conversation!.stream,
-      first.conversation!.stream,
+      restored.stream,
+      first.stream,
     )
     assert.equal(
       restored.older,
@@ -973,6 +991,7 @@ test(
       terminate() {},
     }
     const pushed: ThreadPage[] = []
+    const receiver = createThreadReceiver()
     const threads = createThreadSubscriptions({
       hydraId: 'default',
       state: () => state,
@@ -980,8 +999,15 @@ test(
       closed: () => false,
       agents: () => ({ thread: ({ page }) => live.page({ page }) }),
       send: ({ message }) => {
-        if (message.type === 'thread') {
-          pushed.push(message.thread)
+        const normalized = receiver.receive({ message })
+
+        if (normalized?.type === 'thread') {
+          pushed.push(normalized.thread)
+        } else if (!normalized) {
+          threads.refreshThread({
+            ws,
+            resync: true,
+          })
         }
 
         return true
@@ -1203,8 +1229,8 @@ test(
       card,
     })
     assert.equal(
-      receipt.conversation!.stream,
-      pushed.at(-1)!.conversation!.stream,
+      receipt.stream,
+      pushed.at(-1)!.stream,
     )
     assert.ok(receipt.conversation!.entries.some(entry => entry.text === 'A new saved notice'))
     assert.ok(receipt.conversation!.entries.some(entry => entry.text === 'Notice from an explicit read'))

@@ -1,3 +1,4 @@
+import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra,replayOwned } from '#app/reducer.ts'
 import { Immer } from 'immer'
@@ -165,6 +166,7 @@ export function createHydraConnection() {
     })
     const usable = restored?.v === 1 && restored.cards
     const confirmed = usable ? confirmedState({ state: restored }) : emptyHydra()
+    const threads = createThreadReceiver()
     const scope: Scope = {
       id,
       identity,
@@ -182,8 +184,10 @@ export function createHydraConnection() {
       error: '',
       loadError: '',
       subscriptionAttempt: 0,
-      thread: null,
-      threadChars: 0,
+      threads,
+      get thread() {
+        return threads.read({ card: HYDRA_CARD })
+      },
       queue: emptyQueue(),
       spend: {},
       usage: {},
@@ -644,6 +648,27 @@ export function createHydraConnection() {
       return
     }
 
+    const normalized = scope.threads.receive({ message })
+
+    if (!normalized) {
+      send({
+        message: {
+          type: 'resync',
+          scope: scope.id,
+        },
+      })
+
+      return
+    }
+
+    message = normalized
+
+    if (message.type === 'thread') {
+      publish(); flush()
+
+      return
+    }
+
     if (message.type === 'hello') {
       // A restarted server sends its own answer once its check has one.
       upgrade = undefined
@@ -661,7 +686,7 @@ export function createHydraConnection() {
       }
 
       if (!physicalHydra) {
-        physicalHydra = message.scope
+        physicalHydra = scope.id
         scope.subscribed = true
         scope.subscription = message.subscription ?? null
         watchSubscription({ scope })
@@ -811,10 +836,6 @@ export function createHydraConnection() {
             scope.error = error.message; publish()
           })
         }
-      }
-    } else if (message.type === 'thread') {
-      if (message.thread.card === HYDRA_CARD) {
-        scope.thread = message.thread
       }
     } else if (message.type === 'hydraQueue') {
       scope.queue = message.queue
@@ -1008,15 +1029,7 @@ export function createHydraConnection() {
 
       try {
         const message = JSON.parse(event.data) as ServerMessage
-        const thread = message.scope ? scopes.get(message.scope)?.thread : undefined
         receive({ message })
-        const scope = message.scope ? scopes.get(message.scope) : undefined
-
-        // The store keeps one thread page per Hydra, so a new one replaces the size of the last.
-        if (scope?.thread && scope.thread !== thread) {
-          scope.threadChars = String(event.data).length
-        }
-
         // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. Each carries the
         // reveal frames drawn since the last; the server's socket.send line has their size.
         const drawn = takeFrames()
@@ -1195,8 +1208,10 @@ export function createHydraConnection() {
           let chars = 0, messages = 0
 
           for (const scope of scopes.values()) {
-            chars += scope.threadChars
-            messages += scope.thread?.entries.length ?? 0
+            if (scope.thread) {
+              chars += JSON.stringify(scope.thread).length
+              messages += scope.thread.entries.length
+            }
           }
 
           return {

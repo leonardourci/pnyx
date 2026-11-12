@@ -1731,12 +1731,12 @@ test(
       conversation({ page: older }),
     )
     assert.equal(
-      renewed.conversation!.stream,
-      older.conversation!.stream,
+      renewed.stream,
+      older.stream,
     )
 
-    const newer = () => page.threads.filter(thread => thread.conversation!.version!
-      > older.conversation!.version!)
+    const newer = () => page.threads.filter(thread => thread.version!
+      > older.version!)
 
     // A card Hydra's conversation does not show leaves the thread as it was.
     await s.owner({
@@ -1768,8 +1768,8 @@ test(
         .some(entry => entry.text === 'Ship it')),
     })
     assert.equal(
-      pushed.conversation!.stream,
-      older.conversation!.stream,
+      pushed.stream,
+      older.stream,
     )
     assert.deepEqual(
       conversation({ page: pushed }).slice(
@@ -1813,8 +1813,8 @@ test(
       page: restored,
     })
     assert.notEqual(
-      restored.conversation!.stream,
-      older.conversation!.stream,
+      restored.stream,
+      older.stream,
     )
     const refusal = await reconnected.refusal({
       name: 'thread',

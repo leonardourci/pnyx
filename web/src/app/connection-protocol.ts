@@ -41,6 +41,10 @@ export function withChanges<Value>({
   current: Record<string, Value>
   changes: Record<string, Value | null>
 }): Record<string, Value> {
+  if (!Object.keys(changes).length) {
+    return current
+  }
+
   const next = { ...current }
 
   for (const [

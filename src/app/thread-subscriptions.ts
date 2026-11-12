@@ -1,3 +1,4 @@
+import { threadDelta, type ThreadDelta } from '#hydra/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
@@ -24,6 +25,7 @@ export const LIVE_TEXT_DELAY_MS = 80
 interface PreparedThread {
   thread: ThreadPage
   signature?: string
+  delta?: ThreadDelta
 }
 
 export type Subscription = {
@@ -48,6 +50,7 @@ export type Subscription = {
   // The Hydra thread last sent: its card titles, and the page apart from the seq it was read at.
   titles?: Record<string, string>
   sent?: string
+  page?: ThreadPage
 }
 
 // The events that can change what hydraThreadView shows: anything on Hydra's own card, its messages,
@@ -134,10 +137,11 @@ export function createThreadSubscriptions({
     key: sub,
     ws,
     thread: prepared.thread,
+    delta: prepared.delta,
     receipt,
     current: () => subscriptionMap({ card: sub.card }).get(ws) === sub,
     accepted: () => {
-      if (prepared.signature !== undefined) {
+      if (prepared.signature !== undefined && sub.page === prepared.thread) {
         sub.sent = prepared.signature
       }
     },
@@ -158,7 +162,11 @@ export function createThreadSubscriptions({
     push?: boolean
   }): PreparedThread | undefined => {
     if (page.card !== HYDRA_CARD) {
-      return { thread: page }
+      return versionThread({
+        sub,
+        prepared: page,
+        push,
+      })
     }
 
     const current = state()
@@ -211,18 +219,14 @@ export function createThreadSubscriptions({
     prepared: ThreadPage
     push?: boolean
   }): PreparedThread | undefined => {
-    if (!prepared.conversation) {
-      return { thread: prepared }
-    }
-
     const current = state()
-    const sent = JSON.stringify({
+    const sent = JSON.stringify(prepared.conversation ? {
       ...prepared,
       conversation: {
         ...prepared.conversation,
         through: 0,
       },
-    })
+    } : prepared)
 
     if (push && sent === sub.sent && !threadDelivery.has({ key: sub })) {
       return undefined
@@ -240,17 +244,29 @@ export function createThreadSubscriptions({
       }
     }
 
+    const thread: ThreadPage = {
+      ...prepared,
+      stream: sub.view.id,
+      version: ++sub.view.version,
+    }
+
+    if (thread.conversation) {
+      thread.conversation = {
+        ...thread.conversation,
+        through: current.seq,
+      }
+    }
+
+    const delta = sub.sent === undefined ? undefined : threadDelta({
+      before: sub.page,
+      after: thread,
+    })
+    sub.page = thread
+
     return {
       signature: sent,
-      thread: {
-        ...prepared,
-        conversation: {
-          ...prepared.conversation,
-          through: current.seq,
-          stream: sub.view.id,
-          version: ++sub.view.version,
-        },
-      },
+      thread,
+      delta,
     }
   }
 
@@ -334,6 +350,7 @@ export function createThreadSubscriptions({
 
           if (resync) {
             sub.sent = undefined
+            sub.page = undefined
           }
         }
       }

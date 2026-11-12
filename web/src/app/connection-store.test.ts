@@ -1,3 +1,5 @@
+import { threadDelta } from '#hydra/thread-delta.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import assert from 'node:assert/strict'
 import { setImmediate } from 'node:timers/promises'
 import { test, type TestContext } from 'node:test'
@@ -678,9 +680,12 @@ test(
 )
 
 test(
-  'every 30 seconds the page logs the size of the chat it holds as the frame that brought it, its messages and elements',
+  'conversation gaps resync and the memory line counts the retained chat after deltas',
   t => {
-    const { stop } = recoveryPage({ t })
+    const {
+      stop,
+      connection,
+    } = recoveryPage({ t })
     t.mock.timers.tick(2000)
     const sends = t.mock.method(
       TestSocket.prototype,
@@ -698,40 +703,109 @@ test(
         },
       },
     })
-    let frame = ''
-    const deliver = socket.onmessage
-
-    socket.onmessage = event => {
-      frame = event.data
-      deliver?.(event)
+    const initial: ThreadPage = {
+      card: '$hydra',
+      stream: 'memory',
+      version: 1,
+      entries: [
+        {
+          id: 'first',
+          role: 'You',
+          kind: 'message',
+          text: 'Hello',
+        },
+        {
+          id: 'second',
+          role: 'Hydra',
+          kind: 'message',
+          text: 'Hi',
+        },
+      ],
+      route: false,
+      watching: 'unknown',
     }
-
     socket.receive({
       message: {
         type: 'thread',
         subscription: 'fixture',
-        thread: {
-          card: '$hydra',
-          entries: [
-            {
-              id: 'first',
-              role: 'You',
-              kind: 'message',
-              text: 'Hello',
-            },
-            {
-              id: 'second',
-              role: 'Hydra',
-              kind: 'message',
-              text: 'Hi',
-            },
-          ],
-          route: false,
-          watching: 'unknown',
+        thread: initial,
+      },
+    })
+    const latest: ThreadPage = {
+      ...initial,
+      version: 2,
+      entries: [
+        initial.entries[0]!,
+        {
+          ...initial.entries[1]!,
+          text: 'The longer reply has arrived.',
+        },
+      ],
+    }
+    const delta = threadDelta({
+      before: initial,
+      after: latest,
+    })
+    assert.ok(delta)
+    socket.receive({
+      message: {
+        type: 'thread.delta',
+        subscription: 'fixture',
+        delta,
+      },
+    })
+    const held = connection.snapshot().hydraThread
+    socket.receive({
+      message: {
+        type: 'thread.delta',
+        subscription: 'fixture',
+        delta: {
+          ...delta,
+          base: 3,
+          page: {
+            ...delta.page,
+            version: 4,
+          },
         },
       },
     })
-    const threadFrame = frame
+    assert.equal(
+      connection.snapshot().hydraThread,
+      held,
+    )
+    assert.deepEqual(
+      socket.sent.filter(message => message.type === 'resync'),
+      [
+        {
+          type: 'resync',
+          scope: 'default',
+        },
+      ],
+    )
+    const recovered: ThreadPage = {
+      ...latest,
+      version: 5,
+      entries: [
+        ...latest.entries,
+        {
+          id: 'third',
+          role: 'Hydra',
+          kind: 'message',
+          text: 'After reset',
+        },
+      ],
+    }
+    socket.receive({
+      message: {
+        type: 'thread',
+        subscription: 'fixture',
+        thread: recovered,
+      },
+    })
+    assert.deepEqual(
+      connection.snapshot().hydraThread,
+      recovered,
+    )
     // A pong on the way keeps the socket from looking stalled.
     t.mock.timers.tick(20_000)
     socket.receive({ message: { type: 'pong' } })
@@ -755,8 +829,8 @@ test(
       ]),
       [
         [
-          threadFrame.length,
-          2,
+          JSON.stringify(recovered).length,
+          3,
           0,
           false,
         ],

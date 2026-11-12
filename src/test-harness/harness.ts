@@ -1,3 +1,4 @@
+import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { randomUUID } from 'node:crypto'
 // The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
@@ -178,6 +179,7 @@ export async function openPage({
   const answers = new Map<string, ServerMessage>()
   const queues: HydraQueue[] = []
   const threads: ThreadPage[] = []
+  const threadReceiver = createThreadReceiver()
   const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
   const actions: Record<string, CurrentAction | null> = {}
   const upgrades: UpgradeStatus[] = []
@@ -185,7 +187,13 @@ export async function openPage({
   ws.on(
     'message',
     (data: unknown) => {
-      const message = JSON.parse(String(data)) as ServerMessage
+      const message = threadReceiver.receive({ message: JSON.parse(String(data)) as ServerMessage })
+
+      if (!message) {
+        ws.send(JSON.stringify({ type: 'resync' }))
+
+        return
+      }
 
       if (message.type === 'latest') {
         Object.assign(
