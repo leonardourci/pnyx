@@ -453,6 +453,26 @@ export function createLiveSessions({
           return
         }
 
+        const state = loadHydra({ hydraId }).state
+        const current = state.cards[entry.task]
+
+        if (entry.task !== HYDRA_CARD && current && closedTask({
+          state,
+          card: current,
+        })) {
+          retire({
+            key,
+            entry,
+            permanent: true,
+          })
+          background({
+            name: 'closed agent cleanup',
+            run: () => children.stop({ task: entry.task }),
+          })
+
+          return
+        }
+
         if (entry.stale && !entry.input.pending({ includes: () => true })
           && nativeIdle({ work: entry.session.snapshot().work })) {
           retire({

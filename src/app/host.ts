@@ -42,7 +42,7 @@ import { loadHydra } from './store.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment, closedTask } from '#workers/host.ts'
+import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment, closedTask, closedByWorker } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
@@ -170,6 +170,8 @@ export function createHost({
     attempts < retryDelays.length && retryAt <= Date.now()
   const midTurn = () => [...live.values()].some(entry => entry.activity === 'working')
   midTurnChecks.add(midTurn)
+  // Closed tasks whose agents were already stopped; their failed stops wait for a permanent release.
+  const reaped = new Set<string>()
   const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
     .map(card => [
       card.id,
@@ -1299,33 +1301,48 @@ export function createHost({
 
       const owned = children.tasks()
 
-      for (const entry of live.values()) {
-        owned.add(entry.task)
-      }
-
-      for (const task of owned) {
-        const card = state.cards[task]
-
-        if (card && card.id !== HYDRA_CARD && closedTask({
+      for (const card of Object.values(state.cards)) {
+        if (card.id === HYDRA_CARD || !closedTask({
           state,
           card,
         })) {
-          for (const [
+          reaped.delete(card.id)
+          continue
+        }
+
+        // A later reply reopens a closed task's worker; the end of that turn reaps it again.
+        if (reaped.has(card.id)) {
+          continue
+        }
+
+        const entries = [...live].filter(([
+          , entry,
+        ]) => entry.task === card.id)
+
+        // A worker that declares its own task done finishes that turn; its end reaps the worker.
+        if (closedByWorker({ card }) && entries.some(([
+          , entry,
+        ]) => entry.activity === 'working')) {
+          continue
+        }
+
+        for (const [
+          key,
+          entry,
+        ] of entries) {
+          retire({
             key,
             entry,
-          ] of live) {
-            if (entry.task === task) {
-              retire({
-                key,
-                entry,
-                permanent: true,
-              })
-            }
-          }
+            permanent: true,
+          })
+        }
 
+        reaped.add(card.id)
+
+        if (owned.has(card.id)) {
           background({
             name: 'closed agent cleanup',
-            run: () => children.stop({ task }),
+            run: () => children.stop({ task: card.id }),
           })
         }
       }

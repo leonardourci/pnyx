@@ -123,6 +123,10 @@ export function findWorkerTurnToResume({
   return resumeAttemptId
 }
 
+// Done by the task's own worker, which is still finishing the turn that declared it.
+export const closedByWorker = ({ card }: { card: Card }) => card.status?.state === 'done'
+  && card.status.actor === `worker:${card.id}` && !card.hidden && card.copy?.state !== 'removed'
+
 export function closedTask({
   state,
   card,
