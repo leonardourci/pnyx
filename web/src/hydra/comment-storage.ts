@@ -209,6 +209,20 @@ export function loadCommentRecords({
   return [...comments.values()]
 }
 
+export function commentChanges({
+  comments,
+  previous,
+}: {
+  comments: ChatComment[]
+  previous: ChatComment[]
+}) {
+  return {
+    changed: comments.filter(comment => JSON.stringify(comment)
+      !== JSON.stringify(previous.find(saved => saved.id === comment.id))),
+    removed: previous.filter(saved => !comments.some(comment => comment.id === saved.id)),
+  }
+}
+
 export function saveCommentRecords({
   storage,
   key,
@@ -220,10 +234,13 @@ export function saveCommentRecords({
   comments: ChatComment[]
   previous: ChatComment[]
 }) {
-  const current = comments.filter(comment => sendableComment({ comment }))
-  const changed = current.filter(comment => JSON.stringify(comment)
-    !== JSON.stringify(previous.find(saved => saved.id === comment.id)))
-  const removed = previous.filter(saved => !current.some(comment => comment.id === saved.id))
+  const {
+    changed,
+    removed,
+  } = commentChanges({
+    comments: comments.filter(comment => sendableComment({ comment })),
+    previous,
+  })
 
   if (!changed.length && !removed.length) {
     return previous
