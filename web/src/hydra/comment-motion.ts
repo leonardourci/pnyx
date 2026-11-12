@@ -24,7 +24,6 @@ export function scrollMessage({
   }
 
   pending.get(scroller)?.()
-  scroller.dispatchEvent(new Event(MESSAGE_SCROLL))
   const viewport = scroller.getBoundingClientRect()
   const padding = Math.min(
     3 * bounds.height,
@@ -53,8 +52,13 @@ export function scrollMessage({
     ),
   )
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const moves = Math.abs(top - scroller.scrollTop) >= 1
 
-  if (reduced || Math.abs(top - scroller.scrollTop) < 1) {
+  if (moves) {
+    scroller.dispatchEvent(new Event(MESSAGE_SCROLL))
+  }
+
+  if (reduced || !moves) {
     scroller.scrollTo({
       top,
       behavior: 'instant',
