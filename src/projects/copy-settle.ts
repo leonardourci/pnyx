@@ -1,3 +1,4 @@
+import { askHost } from '#app/server-state.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -73,6 +74,31 @@ export async function settleCopy({
       code: 'CONFLICT',
       help: ['Land the current work first; discarding it needs the owner'],
     })
+  }
+
+  if (check.gone || mode === 'discard' || mode === 'safe' || !('reason' in check)) {
+    try {
+      const released = await askHost({
+        hydraId,
+        body: {
+          action: 'release',
+          task: card.id,
+          permanent: true,
+          actor: meta.actor,
+        },
+      })
+
+      if (released.busy) {
+        throw new HydraError({
+          message: `Cannot release a copy while its worker is ${String(released.busy)}`,
+          code: 'CONFLICT',
+        })
+      }
+    } catch (error) {
+      if (!(error instanceof HydraError && error.code === 'NOT_RUNNING')) {
+        throw error
+      }
+    }
   }
 
   let after: TaskCopy
