@@ -280,6 +280,17 @@ test(
         start({
           key: 'revision',
           flags: [
+            '--if-revision',
+            String(revision - 1),
+          ],
+        }),
+        { code: 'REVISION_CONFLICT' },
+        'a stale start without tools is refused too',
+      )
+      await assert.rejects(
+        start({
+          key: 'revision',
+          flags: [
             '--tool',
             'mcp:local',
             '--if-revision',

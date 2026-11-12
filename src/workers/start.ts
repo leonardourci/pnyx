@@ -252,15 +252,12 @@ export async function startTask({
 
     if (tools?.length) {
       requireToolAuthority({ meta })
-      checkRevision({
-        card,
-        ifRevision: meta.ifRevision,
-      })
-      meta = {
-        ...meta,
-        ifRevision: undefined,
-      }
     }
+
+    checkRevision({
+      card,
+      ifRevision: meta.ifRevision,
+    })
 
     let dispatch: DispatchChoice | undefined
 
