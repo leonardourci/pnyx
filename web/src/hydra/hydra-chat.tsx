@@ -32,7 +32,7 @@ import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
-import { createChatFollow } from './chat-follow.ts'
+import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
 import { MESSAGE_SCROLL, centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
@@ -194,40 +194,13 @@ export function HydraChat({
     setSelectedHistory,
   ] = useState(false)
   useEffect(
-    () => {
-      const changed = () => {
-        const selection = window.getSelection()
-        const host = content.current?.querySelector('.messages')
-        const anchorInside = host?.contains(selection?.anchorNode ?? null)
-        const focusInside = host?.contains(selection?.focusNode ?? null)
-        const inside = anchorInside || focusInside
-        const focused = !!host?.contains(document.activeElement)
-        const selecting = !!inside && !selection?.isCollapsed
-        const selected = focused || selecting
+    () => watchHistoryFocus({
+      host: () => content.current?.querySelector('.messages'),
+      changed: ({ selected }) => {
         selectionInHistory.current = selected
         setSelectedHistory(selected)
-      }
-
-      document.addEventListener(
-        'selectionchange',
-        changed,
-      )
-      document.addEventListener(
-        'focusin',
-        changed,
-      )
-
-      return () => {
-        document.removeEventListener(
-          'selectionchange',
-          changed,
-        )
-        document.removeEventListener(
-          'focusin',
-          changed,
-        )
-      }
-    },
+      },
+    }),
     [],
   )
   // The owner is reading while the chat is away or the messages hold their focus or selection.

@@ -2,6 +2,13 @@
 export const OWNER_SCROLL_MS = 1000
 // How near the bottom an owner's scroll resumes following.
 const RESUME_DISTANCE_PX = 40
+// The events after which the messages may have gained or lost the owner's focus or selection. Chrome reports a
+// focused control that is removed with focusout alone.
+const HISTORY_FOCUS_EVENTS = [
+  'selectionchange',
+  'focusin',
+  'focusout',
+]
 
 // Whether Hydra's chat follows new messages. Paging emits layout scrolls near the bottom, so only the owner's
 // scrolls, an explicit stop or a resume change it, and each change reports whether the chat is away.
@@ -58,5 +65,41 @@ export function createChatFollow({ changed }: { changed({ away }: { away: boolea
 
       report()
     },
+  }
+}
+
+// Whether the owner holds focus or a selection inside the messages, reported after each event that may change it.
+export function watchHistoryFocus({
+  host,
+  changed,
+}: {
+  host(): Element | null | undefined
+  changed({ selected }: { selected: boolean }): void
+}): () => void {
+  const update = () => {
+    const messages = host()
+    const selection = document.getSelection()
+    const anchorInside = messages?.contains(selection?.anchorNode ?? null)
+    const focusInside = messages?.contains(selection?.focusNode ?? null)
+    const inside = anchorInside || focusInside
+    const focused = !!messages?.contains(document.activeElement)
+    const selecting = !!inside && !selection?.isCollapsed
+    changed({ selected: focused || selecting })
+  }
+
+  for (const type of HISTORY_FOCUS_EVENTS) {
+    document.addEventListener(
+      type,
+      update,
+    )
+  }
+
+  return () => {
+    for (const type of HISTORY_FOCUS_EVENTS) {
+      document.removeEventListener(
+        type,
+        update,
+      )
+    }
   }
 }

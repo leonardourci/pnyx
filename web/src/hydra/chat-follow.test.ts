@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createChatFollow, OWNER_SCROLL_MS } from './chat-follow.ts'
+import { createChatFollow, OWNER_SCROLL_MS, watchHistoryFocus } from './chat-follow.ts'
 
 const tracked = () => {
   const reports: boolean[] = []
@@ -83,6 +83,46 @@ test(
     assert.equal(
       follow.following(),
       false,
+    )
+  },
+)
+
+test(
+  'removing a focused control inside the messages ends the reading it held',
+  t => {
+    const previous = globalThis.document
+    const control = { tagName: 'BUTTON' }
+    const fake = Object.assign(
+      new EventTarget(),
+      {
+        activeElement: control as unknown,
+        getSelection: () => ({
+          anchorNode: null,
+          focusNode: null,
+          isCollapsed: true,
+        }),
+      },
+    )
+    globalThis.document = fake as unknown as Document
+    t.after(() => {
+      globalThis.document = previous
+    })
+    const reports: boolean[] = []
+    const stop = watchHistoryFocus({
+      // eslint-disable-next-line pnyx/object-params -- Node.contains contract.
+      host: () => ({ contains: (node: unknown) => node === control }) as unknown as Element,
+      changed: ({ selected }) => reports.push(selected),
+    })
+    fake.dispatchEvent(new Event('focusin'))
+    fake.activeElement = { tagName: 'BODY' }
+    fake.dispatchEvent(new Event('focusout'))
+    stop()
+    assert.deepEqual(
+      reports,
+      [
+        true,
+        false,
+      ],
     )
   },
 )
