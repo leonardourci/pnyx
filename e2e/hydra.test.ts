@@ -1734,7 +1734,7 @@ test(
 )
 
 test(
-  'the Hydra thread keeps what it loaded when an older page arrives, skips unrelated card events, and pushes a newer version when its conversation changes',
+  'the Hydra thread keeps what it loaded when an older page arrives, skips unrelated card events, pushes a newer version when its conversation changes, and reads its recent pages',
   async t => {
     const s = await pnyx.scenario()
     // Long enough to split into more parts than one page holds.
@@ -1896,6 +1896,25 @@ test(
       refusal.code,
       'VALIDATION_ERROR',
     )
+    const recent = (await reconnected.command({
+      name: 'thread',
+      args: [
+        HYDRA_CARD,
+        '--recent',
+      ],
+    })).thread as ThreadPage
+    assert.equal(
+      recent.recent,
+      true,
+    )
+    assert.deepEqual(
+      conversation({ page: recent }).slice(
+        0,
+        2,
+      ),
+      conversation({ page: older }),
+    )
+    assert.ok(recent.conversation!.entries.some(entry => entry.text === 'Ship it'))
   },
 )
 
