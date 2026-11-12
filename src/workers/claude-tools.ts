@@ -5,8 +5,17 @@ import { join } from 'node:path'
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { object } from './transcript-usage.ts'
 import { HydraError } from '#store/errors.ts'
+import { log } from '#app/diagnostics.ts'
+import { BROWSER_TOOL } from './tools.ts'
 
-async function json({ path }: { path: string }): Promise<Record<string, unknown>> {
+// A file no grant needs is skipped when unreadable, so one broken settings file cannot block every session.
+async function json({
+  path,
+  required = true,
+}: {
+  path: string
+  required?: boolean
+}): Promise<Record<string, unknown>> {
   try {
     return object({
       value: JSON.parse(await readFile(
@@ -19,8 +28,20 @@ async function json({ path }: { path: string }): Promise<Record<string, unknown>
       return {}
     }
 
+    const message = `Cannot read tool configuration: ${path}: ${(error as Error).message}`
+
+    if (!required) {
+      log({
+        level: 'warn',
+        operation: 'tools.config',
+        error: message,
+      })
+
+      return {}
+    }
+
     throw new HydraError({
-      message: `Cannot read tool configuration: ${path}`,
+      message,
       code: 'TOOL_CONFIG_UNAVAILABLE',
     })
   }
@@ -147,24 +168,30 @@ export async function claudeTools({
     '.claude.json',
   )
   const folders = await projectFolders({ cwd })
+  const serversNeeded = grants.some(name => name.startsWith('mcp:'))
   const [
     global,
     installed,
     ...settings
   ] = await Promise.all([
-    json({ path: globalPath }),
+    json({
+      path: globalPath,
+      required: serversNeeded,
+    }),
     json({
       path: join(
         folder,
         'plugins',
         'installed_plugins.json',
       ),
+      required: grants.some(name => name.startsWith('plugin:')),
     }),
     json({
       path: join(
         folder,
         'settings.json',
       ),
+      required: false,
     }),
     ...[...folders].reverse().flatMap(folder => [
       'settings.json',
@@ -175,12 +202,21 @@ export async function claudeTools({
         '.claude',
         file,
       ),
+      required: false,
     }))),
   ])
   const servers = { ...object({ value: global.mcpServers }) }
+  const projects = object({ value: global.projects })
+  const sources = [
+    ...settings,
+    ...folders.map(folder => object({ value: projects[folder] })),
+  ]
+  // Project servers the owner rejected in Claude Code stay off the catalog.
+  const rejected = new Set(sources.flatMap(source =>
+    Array.isArray(source.disabledMcpjsonServers) ? source.disabledMcpjsonServers : []))
 
   for (const folder of [...folders].reverse()) {
-    const projectConfig = object({ value: object({ value: global.projects })[folder] })
+    const projectConfig = object({ value: projects[folder] })
     Object.assign(
       servers,
       object({ value: projectConfig.mcpServers }),
@@ -190,10 +226,13 @@ export async function claudeTools({
         folder,
         '.mcp.json',
       ),
+      required: serversNeeded,
     })
+    const accepted = Object.entries(object({ value: project.mcpServers }))
+      .filter(([name]) => !rejected.has(name))
     Object.assign(
       servers,
-      object({ value: project.mcpServers }),
+      Object.fromEntries(accepted),
     )
   }
 
@@ -203,7 +242,7 @@ export async function claudeTools({
     ...settings.flatMap(setting => Object.keys(object({ value: setting.enabledPlugins }))),
   ])
   const catalog = [
-    'browser',
+    BROWSER_TOOL,
     ...Object.keys(servers).map(name => `mcp:${name}`),
     ...Object.keys(installedPlugins).filter(name => pluginInstallation({
       value: installedPlugins[name],

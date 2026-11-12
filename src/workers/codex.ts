@@ -1,4 +1,5 @@
 import { HydraError } from '#store/errors.ts'
+import { BROWSER_TOOL } from './tools.ts'
 import { log } from '#app/diagnostics.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
@@ -881,18 +882,12 @@ export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsag
   }
 }
 
-async function scopedConfig({
+async function readConfig({
   rpc,
   cwd,
-  grants = [],
-  routine = false,
-  catalogOnly = false,
 }: {
   rpc: ReturnType<typeof connection>
   cwd: string
-  grants?: string[]
-  routine?: boolean
-  catalogOnly?: boolean
 }): Promise<Record<string, unknown>> {
   const settings = await rpc.request({
     method: 'config/read',
@@ -906,7 +901,36 @@ async function scopedConfig({
     throw new Error('Codex tool configuration could not be read')
   }
 
-  const config = object({ value: settings.config })
+  return object({ value: settings.config })
+}
+
+// Servers and plugins the owner turned off stay off the catalog, so a grant cannot turn them on.
+function codexCatalog({ config }: { config: Record<string, unknown> }): string[] {
+  const enabled = ({ entries }: { entries: Record<string, unknown> }) => Object.keys(entries)
+    .filter(name => name !== '_default' && object({ value: entries[name] }).enabled !== false)
+
+  return [
+    BROWSER_TOOL,
+    ...enabled({ entries: object({ value: config.mcp_servers }) }).map(name => `mcp:${name}`),
+    ...enabled({ entries: object({ value: config.plugins }) }).map(name => `plugin:${name}`),
+  ].sort()
+}
+
+async function scopedConfig({
+  rpc,
+  cwd,
+  grants = [],
+  routine = false,
+}: {
+  rpc: ReturnType<typeof connection>
+  cwd: string
+  grants?: string[]
+  routine?: boolean
+}): Promise<Record<string, unknown>> {
+  const config = await readConfig({
+    rpc,
+    cwd,
+  })
   const disabledSkills: {
     path: string
     enabled: false
@@ -946,12 +970,7 @@ async function scopedConfig({
 
   const servers = object({ value: config.mcp_servers })
   const plugins = object({ value: config.plugins })
-  const catalog = [
-    'browser',
-    ...Object.keys(servers).map(name => `mcp:${name}`),
-    ...Object.keys(plugins).filter(name => name !== '_default')
-      .map(name => `plugin:${name}`),
-  ].sort()
+  const catalog = codexCatalog({ config })
 
   for (const name of grants) {
     if (!catalog.includes(name)) {
@@ -960,10 +979,6 @@ async function scopedConfig({
         code: 'TOOL_UNAVAILABLE',
       })
     }
-  }
-
-  if (catalogOnly) {
-    return { catalog }
   }
 
   const overrides: Record<string, unknown> = {
@@ -1038,13 +1053,13 @@ export function codexProvider({
 
       try {
         await initialize({ rpc })
-        const result = await scopedConfig({
-          rpc,
-          cwd,
-          catalogOnly: true,
-        })
 
-        return result.catalog as string[]
+        return codexCatalog({
+          config: await readConfig({
+            rpc,
+            cwd,
+          }),
+        })
       } finally {
         rpc.close()
       }

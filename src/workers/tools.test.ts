@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { claudeTools } from './claude-tools.ts'
+import { codexProvider } from './codex.ts'
+import { replayCodex } from '#test-harness/fake-agents.ts'
 import { toolNames, recordTools } from './tools.ts'
 import { runForClient } from '#app/request-context.ts'
 import { commands } from '#app/cli.ts'
@@ -201,6 +203,108 @@ test(
     assert.throws(
       () => toolNames({ names: ['mcp:line\nbreak'] }),
       { code: 'VALIDATION_ERROR' },
+    )
+  },
+)
+
+test(
+  'an unreadable settings file blocks only grants that need it, and servers the owner turned off are not offered',
+  async t => {
+    const lab = fixture()
+    t.after(() => rmSync(
+      lab.root,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    lab.json({
+      path: join(
+        lab.cwd,
+        '.mcp.json',
+      ),
+      value: {
+        mcpServers: {
+          kept: { command: 'kept-server' },
+          rejected: { command: 'rejected-server' },
+        },
+      },
+    })
+    lab.json({
+      path: join(
+        lab.cwd,
+        '.claude',
+        'settings.json',
+      ),
+      value: { disabledMcpjsonServers: ['rejected'] },
+    })
+    writeFileSync(
+      join(
+        lab.cwd,
+        '.claude',
+        'settings.local.json',
+      ),
+      '{ "enabledPlugins": {}, }',
+    )
+    const offered = await claudeTools(lab)
+    assert.deepEqual(
+      offered.catalog,
+      [
+        'browser',
+        'mcp:kept',
+      ],
+    )
+    await assert.rejects(
+      claudeTools({
+        ...lab,
+        grants: ['mcp:rejected'],
+      }),
+      { code: 'TOOL_UNAVAILABLE' },
+    )
+    writeFileSync(
+      join(
+        lab.home,
+        '.claude.json',
+      ),
+      '{',
+    )
+    assert.deepEqual(
+      (await claudeTools(lab)).mcpServers,
+      {},
+    )
+    await assert.rejects(
+      claudeTools({
+        ...lab,
+        grants: ['mcp:kept'],
+      }),
+      {
+        code: 'TOOL_CONFIG_UNAVAILABLE',
+        message: /\.claude\.json: .*JSON/,
+      },
+    )
+
+    const codex = replayCodex({
+      hydra: () => 'tools',
+      configuration: {
+        mcp_servers: {
+          on: { command: 'on-server' },
+          off: {
+            command: 'off-server',
+            enabled: false,
+          },
+        },
+        plugins: { 'muted@fixture': { enabled: false } },
+      },
+    })
+    assert.deepEqual(
+      await codexProvider({ spawnCodex: codex.spawnCodex }).toolCatalog({
+        cwd: lab.cwd,
+        env: lab.env,
+      }),
+      [
+        'browser',
+        'mcp:on',
+      ],
     )
   },
 )
