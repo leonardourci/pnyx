@@ -47,7 +47,7 @@ const createTask = ({
 })
 
 test(
-  'Oracle reads new tasks directly and creates no index',
+  'Oracle catches up new tasks on query without background indexing',
   async t => {
     const s = await pnyx.scenario()
     await createTask({
@@ -67,7 +67,7 @@ test(
         words: 'billing',
       })).map(hit => hit.card),
       [s.task({ key: 'billing' }).id],
-      'the first query reads the task directly',
+      'the first query builds its derived cache',
     )
 
     await createTask({
@@ -168,9 +168,9 @@ test(
     assert.equal(
       existsSync(join(
         hydraDir({ hydraId: s.hydraId }),
-        'search.db',
+        'oracle.db',
       )),
-      false,
+      true,
     )
   },
 )
