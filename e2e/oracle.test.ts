@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Hit } from '#oracle/model.ts'
 import { observeSearchWorkers } from '#oracle/fixtures/search-workers.ts'
-import { openPage } from '#test-harness/harness.ts'
+import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 type Page = Awaited<ReturnType<typeof openPage>>
@@ -286,6 +286,53 @@ test(
         ],
       }),
       /results: "none: no matches for \\"billing\\""/,
+    )
+  },
+)
+
+test(
+  'a hosted worker that finishes a turn archives its transcript messages in the log',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'archive' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Archive the turn',
+        '--key',
+        'archive',
+        '--folder',
+        folder,
+        '--brief',
+        'Polish the quillwort ledger.',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'archive',
+      ],
+    })
+    await s.agent({ cwd: folder })
+    const task = s.task({ key: 'archive' })
+    const archived = () => s.events().filter(event => event.type === 'chat.message'
+      && event.cardId === task.id)
+    const messages = await until({
+      what: 'the finished turn to be archived',
+      check: () => {
+        const found = archived()
+
+        return s.task({ key: 'archive' }).sessionActivity === 'finished' && found.length ? found : undefined
+      },
+    })
+    assert.ok(messages.some(event => event.type === 'chat.message' && event.data.text.includes('quillwort')))
+    assert.equal(
+      new Set(messages.map(event => event.type === 'chat.message' && event.data.nativeId)).size,
+      messages.length,
+      'each transcript line is archived once',
     )
   },
 )
