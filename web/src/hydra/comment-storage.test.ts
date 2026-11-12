@@ -323,6 +323,69 @@ test(
       }),
       undefined,
     )
+    storage.setItem(
+      `${prefix}first`,
+      JSON.stringify({
+        ...first,
+        end: {
+          position: 0,
+          offset: 'x',
+        },
+      }),
+    )
+    assert.equal(
+      readCommentRecord({
+        storage,
+        prefix,
+        key: `${prefix}first`,
+      }),
+      undefined,
+    )
+    storage.setItem(
+      `${prefix}first`,
+      JSON.stringify({
+        ...first,
+        end: { offset: 0 },
+      }),
+    )
+    assert.equal(
+      readCommentRecord({
+        storage,
+        prefix,
+        key: `${prefix}first`,
+      }),
+      undefined,
+    )
+    storage.setItem(
+      `${prefix}first`,
+      JSON.stringify({
+        ...first,
+        offset: -1,
+      }),
+    )
+    assert.equal(
+      readCommentRecord({
+        storage,
+        prefix,
+        key: `${prefix}first`,
+      }),
+      undefined,
+    )
+    storage.setItem(
+      `${prefix}first`,
+      JSON.stringify({
+        ...first,
+        images: [1],
+      }),
+    )
+    assert.equal(
+      readCommentRecord({
+        storage,
+        prefix,
+        key: `${prefix}first`,
+      }),
+      undefined,
+    )
     storage.removeItem(`${prefix}first`)
     assert.deepEqual(
       readCommentRecord({
