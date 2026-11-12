@@ -69,7 +69,8 @@ export function useTaskNavigation({
     selectedRef,
     revealing,
   ].filter((id): id is string => id !== null)
-  const interested = JSON.stringify(page === 'hydra' ? [...new Set(interestRefs)] : [])
+  const interestIds = page === 'hydra' ? [...new Set(interestRefs)] : []
+  const interestKey = JSON.stringify(interestIds)
   const hadInterest = useRef(false)
   const [
     loadedInterest,
@@ -85,8 +86,13 @@ export function useTaskNavigation({
     request: ReturnType<Command>
   } | null>(null)
 
-  const readInterest = async ({ ids }: { ids: string[] }) => {
-    const key = JSON.stringify(ids)
+  const readInterest = async ({
+    ids,
+    key,
+  }: {
+    ids: string[]
+    key: string
+  }) => {
     const pending = pendingInterest.current
 
     if (pending?.key === key && pending.command === command) {
@@ -119,15 +125,18 @@ export function useTaskNavigation({
 
   useEffect(
     () => {
-      if (!connected || (!hadInterest.current && interested === '[]')) {
+      if (!connected || (!hadInterest.current && !interestIds.length)) {
         return
       }
 
       let active = true
 
       const read = async () => {
-        const ids: string[] = JSON.parse(interested)
-        const request = readInterest({ ids })
+        const ids = interestIds
+        const request = readInterest({
+          ids,
+          key: interestKey,
+        })
         const generation = interestGeneration.current
 
         try {
@@ -148,7 +157,7 @@ export function useTaskNavigation({
         } finally {
           if (active) {
             setLoadedInterest({
-              key: interested,
+              key: interestKey,
               generation,
             })
           }
@@ -164,7 +173,7 @@ export function useTaskNavigation({
     [
       connected,
       command,
-      interested,
+      interestKey,
     ],
   )
 
@@ -199,7 +208,7 @@ export function useTaskNavigation({
         return
       }
 
-      if (loadedInterest?.key !== interested
+      if (loadedInterest?.key !== interestKey
         || loadedInterest.generation !== interestGeneration.current) {
         return
       }
@@ -221,7 +230,7 @@ export function useTaskNavigation({
     [
       state.cards,
       loadedInterest,
-      interested,
+      interestKey,
       connected,
       page,
     ],
@@ -385,13 +394,15 @@ export function useTaskNavigation({
 
     try {
       if (!currentCards.current[id]) {
+        const ids = [
+          ...new Set([
+            ...interestRefs,
+            id,
+          ]),
+        ]
         const receipt = await readInterest({
-          ids: [
-            ...new Set([
-              ...interestRefs,
-              id,
-            ]),
-          ],
+          ids,
+          key: JSON.stringify(ids),
         })
 
         const unavailable = Array.isArray(receipt.unavailable) && receipt.unavailable.includes(id)
