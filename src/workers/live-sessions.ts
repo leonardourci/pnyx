@@ -159,7 +159,7 @@ export function createLiveSessions({
 
     entry.input.end()
 
-    if (permanent) {
+    if (permanent || entry.toolResume) {
       deferTools({ task: entry.task })
     }
 
