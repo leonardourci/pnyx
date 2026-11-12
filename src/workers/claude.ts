@@ -12,10 +12,11 @@ import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo
 import type { AgentSettings } from './model.ts'
 import { questions } from './native-prompts.ts'
 import { object, count, usageNumber, taskContext, textContent } from './transcript-usage.ts'
-import type { TranscriptUsageReader, HostedImage, ModelOption, Provider } from './provider.ts'
+import type { TranscriptUsageReader, HostedImage, InputReceipt, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
 import { compactCommand } from './compact-command.ts'
+import { claudeIntake } from './claude-intake.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
@@ -594,14 +595,28 @@ export function claudeProvider({
               message,
               nativeInputs,
             })) {
+              const native = [...nativeInputs].find(([
+                ,
+                input,
+              ]) => input === inputId)?.[0]
+              const taken = native ? claudeIntake({
+                path,
+                uuid: native,
+              }) : undefined
+              const receipt: InputReceipt = {
+                inputId,
+                phase: 'confirmed',
+                turn: turnId,
+              }
+
+              if (taken) {
+                receipt.at = taken
+              }
+
               emit({
                 event: {
                   type: 'input',
-                  receipt: {
-                    inputId,
-                    phase: 'confirmed',
-                    turn: turnId,
-                  },
+                  receipt,
                 },
               })
             }

@@ -5,6 +5,7 @@ import { log } from '#app/diagnostics.ts'
 import { logAgentMemory } from './agent-memory.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { inbox } from '#hydra/update-queue.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { createHydraTurns } from '#hydra/turns.ts'
 import { loadHydra } from '#app/store.ts'
@@ -524,6 +525,42 @@ export function createLiveSessions({
             entry,
             inputId: activity.receipt.inputId,
             phase: activity.receipt.phase,
+            taken: activity.receipt.at,
+          })
+        }
+
+        if (card.id === HYDRA_CARD && typeof activity === 'object' && activity.type === 'input'
+          && activity.receipt.phase === 'confirmed') {
+          const message = activity.receipt.inputId
+          const taken = activity.receipt.at ?? at()
+          note({
+            fn: ({ writer }) => {
+              const known = writer.state.hydraMessages?.find(item => item.id === message)
+
+              if (!known || known.received) {
+                return
+              }
+
+              applyDecision({
+                writer,
+                decision: hydraEvent({
+                  state: writer.state,
+                  cardId: HYDRA_CARD,
+                  meta: {
+                    id: `${message}:received`,
+                    at: at(),
+                    actor: 'pnyx',
+                  },
+                  change: {
+                    type: 'hydra.received',
+                    data: {
+                      message,
+                      at: taken,
+                    },
+                  },
+                }),
+              })
+            },
           })
         }
 
@@ -534,6 +571,7 @@ export function createLiveSessions({
           markRead({
             card: card.id,
             ids,
+            taken: activity.receipt.at,
           })
           continue
         }
