@@ -172,6 +172,15 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
   }
 
   // A key whose live entry is back on the page stays with it, so keys never collide.
+  for (const [
+    id,
+    key,
+  ] of keys) {
+    if (!ids.has(id) && !ids.has(key)) {
+      keys.delete(id)
+    }
+  }
+
   return entries.map(entry => {
     const mapped = keys.get(entry.id)
     const renderKey = mapped !== undefined && !ids.has(mapped) ? mapped : undefined

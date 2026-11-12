@@ -112,6 +112,10 @@ test(
       settled[0]!.renderKey,
       undefined,
     )
+    keys.set(
+      'evicted',
+      'live:evicted',
+    )
     assert.equal(
       keepStreamedKeys({
         entries: settled,
@@ -121,6 +125,15 @@ test(
       'live:msg_1',
       'the key holds on later pages',
     )
+    assert.equal(
+      keys.has('evicted'),
+      false,
+    )
+    assert.equal(
+      keys.get(settled[1]!.id),
+      'live:msg_1',
+    )
+
     assert.equal(
       keepStreamedKeys<ThreadEntry>({
         entries: [

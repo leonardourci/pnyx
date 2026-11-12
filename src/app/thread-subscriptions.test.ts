@@ -1,3 +1,4 @@
+import { recentThreadPages } from '#hydra/thread-history.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -895,6 +896,231 @@ test(
         'Check it',
         'Updated answer',
       ],
+    )
+    const pageFor = ({
+      index,
+      older,
+    }: {
+      index: number
+      older?: string
+    }): ThreadPage => ({
+      ...latest,
+      older,
+      entries: [
+        {
+          id: `entry-${index}`,
+          kind: 'message',
+          role: 'assistant',
+          text: `Reply ${index}`,
+          final: true,
+          at: `2026-11-06T00:00:0${index}Z`,
+        },
+      ],
+    })
+    const pages: Record<string, ThreadPage> = {
+      latest: pageFor({
+        index: 4,
+        older: 'p3',
+      }),
+      p3: pageFor({
+        index: 3,
+        older: 'p2',
+      }),
+      p2: pageFor({
+        index: 2,
+        older: 'p1',
+      }),
+      p1: pageFor({ index: 1 }),
+    }
+    let blocked = false
+    const recentRequested = deferred<void>()
+    const recentRelease = deferred<ThreadPage>()
+    const archive: Subscription = {
+      card: HYDRA_CARD,
+      client,
+      native: Promise.resolve({
+        read: async ({ before }) => {
+          if (blocked && before === 'p5') {
+            recentRequested.resolve()
+
+            return recentRelease.promise
+          }
+
+          return pages[before ?? 'latest']!
+        },
+        close() {},
+      }),
+    }
+    threads.subscriptionMap({ card: HYDRA_CARD }).set(
+      client,
+      archive,
+    )
+    const archiveFirst = await threads.threadPage({
+      sub: archive,
+      card,
+    })
+    const archiveSecond = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveFirst.older,
+    })
+    const archiveThird = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveSecond.older,
+    })
+    const expanded = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveThird.older,
+    })
+    assert.equal(
+      expanded.pages,
+      4,
+    )
+    assert.deepEqual(
+      expanded.entries.map(entry => entry.id),
+      [
+        'entry-1',
+        'entry-2',
+        'entry-3',
+        'entry-4',
+      ],
+    )
+    const recent = await threads.threadPage({
+      sub: archive,
+      card,
+      recent: true,
+    })
+    assert.equal(
+      recent.pages,
+      3,
+    )
+    assert.equal(
+      recent.recent,
+      true,
+    )
+    assert.deepEqual(
+      recent.entries.map(entry => entry.id),
+      [
+        'entry-2',
+        'entry-3',
+        'entry-4',
+      ],
+    )
+    assert.equal(
+      recent.older,
+      archiveThird.older,
+    )
+    assert.equal(
+      archive.history?.entries.some(entry => entry.id === 'entry-1'),
+      false,
+    )
+    pages.p4 = pages.latest!
+    pages.latest = pageFor({
+      index: 5,
+      older: 'p4',
+    })
+    threads.refreshThread({ ws: client })
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
+    assert.deepEqual(
+      archive.history?.entries.map(entry => entry.id),
+      [
+        'entry-3',
+        'entry-4',
+        'entry-5',
+      ],
+    )
+    const earlierAgain = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveSecond.older,
+    })
+    assert.equal(
+      earlierAgain.recent,
+      false,
+    )
+    assert.deepEqual(
+      earlierAgain.entries.map(entry => entry.id),
+      [
+        'entry-2',
+        'entry-3',
+        'entry-4',
+        'entry-5',
+      ],
+    )
+    pages.p5 = pages.latest
+    pages.latest = pageFor({
+      index: 6,
+      older: 'p5',
+    })
+    threads.refreshThread({ ws: client })
+    t.mock.timers.tick(LATEST_DELAY_MS)
+    await setImmediate()
+    assert.deepEqual(
+      archive.history?.entries.map(entry => entry.id),
+      [
+        'entry-2',
+        'entry-3',
+        'entry-4',
+        'entry-5',
+        'entry-6',
+      ],
+    )
+    const recentered = await threads.threadPage({
+      sub: archive,
+      card,
+      recent: true,
+    })
+    assert.deepEqual(
+      recentered.entries.map(entry => entry.id),
+      [
+        'entry-4',
+        'entry-5',
+        'entry-6',
+      ],
+    )
+    blocked = true
+    const superseded = assert.rejects(
+      threads.threadPage({
+        sub: archive,
+        card,
+        recent: true,
+      }),
+      { code: 'THREAD_SUPERSEDED' },
+    )
+    await recentRequested.promise
+    const chosenOlder = await threads.threadPage({
+      sub: archive,
+      card,
+      before: archiveFirst.older,
+    })
+    recentRelease.resolve(pages.p5!)
+    await superseded
+    assert.equal(
+      chosenOlder.recent,
+      false,
+    )
+    assert.deepEqual(
+      archive.history?.entries.map(entry => entry.id),
+      [
+        'entry-3',
+        'entry-4',
+        'entry-5',
+        'entry-6',
+      ],
+    )
+    const stalled = {
+      ...latest,
+      older: 'same-cursor',
+    }
+    await assert.rejects(
+      recentThreadPages({
+        page: stalled,
+        read: async () => stalled,
+      }),
+      { code: 'THREAD_HISTORY_STALLED' },
     )
   },
 )
