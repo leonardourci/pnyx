@@ -1503,10 +1503,10 @@ test(
         },
       })
 
-      assert.equal(
-        connecting,
-        true,
-      )
+      await until({
+        what: 'outside connect to begin',
+        check: () => connecting,
+      })
       await assert.rejects(
         settle,
         { code: 'TASK_LEASED' },
