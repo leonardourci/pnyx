@@ -1497,12 +1497,17 @@ test(
         args: ['run'],
         input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Canonical draft\');',
       })
-      await waitFor({
-        what: 'the promoted draft saved under the canonical identity',
-        condition: `(() => {
-          const identity = document.querySelector('meta[name="pnyx-hydra"]').content;
-          return JSON.parse(sessionStorage.getItem('pnyx:' + identity + ':restore') ?? '{}').drafts?.$hydra === 'Canonical draft';
-        })()`,
+      await evaluate({
+        script: `async () => {
+          const deadline = performance.now() + ${PAINT_TIMEOUT_MS};
+          while (performance.now() < deadline) {
+            const identity = document.querySelector('meta[name="pnyx-hydra"]').content;
+            const saved = JSON.parse(sessionStorage.getItem('pnyx:' + identity + ':restore') ?? '{}');
+            if (saved.drafts?.$hydra === 'Canonical draft') return 'chat-assertion-passed';
+            await new Promise(requestAnimationFrame);
+          }
+          throw new Error('Promoted draft was not saved under the canonical identity');
+        }`,
       })
       await run({
         args: ['run'],
