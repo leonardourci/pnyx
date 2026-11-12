@@ -110,15 +110,16 @@ export function createLatestFeed({
     }
   }
 
-  const workingPaths = () => new Set(Object.values(state().cards).flatMap(card => {
-    const working = (card.sessionActivity ?? card.activity) === 'working'
+  const watchedPaths = () => new Set(Object.values(state().cards).flatMap(card => {
+    const activity = card.sessionActivity ?? card.activity
+    const finished = activity === 'finished' || activity === 'ended'
 
-    return working ? threadPath({ card }) ?? [] : []
+    return finished ? [] : threadPath({ card }) ?? []
   }))
 
-  const watchWorkingTranscripts = () => {
-    const working = workingPaths()
-    const directories = new Set([...working].map(path => dirname(path)))
+  const watchTranscripts = () => {
+    const wanted = watchedPaths()
+    const directories = new Set([...wanted].map(path => dirname(path)))
 
     for (const [
       dir,
@@ -135,12 +136,12 @@ export function createLatestFeed({
     }
 
     for (const path of transcripts.keys()) {
-      if (!working.has(path)) {
+      if (!wanted.has(path)) {
         unwatchTranscript({ path })
       }
     }
 
-    for (const path of working) {
+    for (const path of wanted) {
       watchTranscript({ path })
     }
   }
@@ -185,7 +186,7 @@ export function createLatestFeed({
   }
 
   const pollTranscripts = () => {
-    const wanted = workingPaths()
+    const wanted = watchedPaths()
 
     for (const [
       path,
@@ -279,7 +280,7 @@ export function createLatestFeed({
     }
 
     unread.clear()
-    watchWorkingTranscripts()
+    watchTranscripts()
     pollTranscripts()
     spend.count()
 
