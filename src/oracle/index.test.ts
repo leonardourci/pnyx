@@ -75,7 +75,7 @@ const noteEvent = ({
 })
 
 test(
-  'Oracle rebuilds its cache when the event log under it was replaced',
+  'Oracle removes the retired index and rebuilds its cache when the event log under it was replaced',
   t => {
     const root = fs.mkdtempSync(join(
       tmpdir(),
@@ -118,6 +118,20 @@ test(
       1,
     )
     const dir = hydraDir({ hydraId: 'default' })
+    const retired = join(
+      dir,
+      'search.db',
+    )
+    fs.writeFileSync(
+      retired,
+      'old index',
+    )
+    find({ text: 'formerlogword' })
+    assert.equal(
+      fs.existsSync(retired),
+      false,
+      'a query removes the retired full-text index',
+    )
 
     for (const file of [
       logPath({ dir }),

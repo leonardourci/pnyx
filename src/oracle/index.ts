@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, statSync } from 'node:fs'
+import { chmodSync, existsSync, rmSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -35,6 +35,12 @@ function sqlite(): typeof import('node:sqlite') {
 const INDEX_VERSION = 3
 const CATCH_UP_BATCH_BYTES = 256 * 1024
 const EVENTS = 'events'
+// The full-text index an earlier version kept beside each Hydra.
+const RETIRED_INDEX_FILES = [
+  'search.db',
+  'search.db-wal',
+  'search.db-shm',
+]
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS cursors (
   source TEXT PRIMARY KEY, card TEXT NOT NULL, session TEXT NOT NULL,
@@ -81,6 +87,17 @@ export function openIndex({
   state: HydraState
 }) {
   privateDir({ dir: hydraDir({ hydraId }) })
+
+  for (const leftover of RETIRED_INDEX_FILES) {
+    rmSync(
+      join(
+        hydraDir({ hydraId }),
+        leftover,
+      ),
+      { force: true },
+    )
+  }
+
   const path = searchPath({ hydraId })
   const { DatabaseSync } = sqlite()
   const db = new DatabaseSync(path)
