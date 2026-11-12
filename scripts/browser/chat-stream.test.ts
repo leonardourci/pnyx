@@ -1503,8 +1503,20 @@ test(
         what: 'the sent draft stays cleared after reload',
         condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'\' && !document.querySelector(\'.comment-card\')',
       })
+      await evaluate({ script: `() => { localStorage.removeItem('pnyx:${s.hydraId}:comments'); return 'chat-assertion-passed'; }` })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the clean composer with no saved comments entry',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
       await evaluate({
         script: `() => {
+          if (localStorage.getItem('pnyx:${s.hydraId}:comments') !== null) throw new Error('Clean tab wrote comments without an edit');
           window.draftPeer = window.open(${JSON.stringify(url)}, 'draft-peer');
           if (!window.draftPeer) throw new Error('Second draft tab did not open');
           return 'chat-assertion-passed';
