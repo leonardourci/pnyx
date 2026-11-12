@@ -122,6 +122,26 @@ test(
         waiting: 'Waiting for the worker to read its inbox',
       },
     )
+    card.steering = [
+      message({
+        ack: {
+          at: '2026-11-12T12:05:00.000Z',
+          actor: 'worker:task-1',
+          claim,
+          outcome: 'read',
+        },
+      }),
+    ]
+    assert.deepEqual(
+      taskReceipt({
+        card,
+        reply: 'r1',
+      }),
+      {
+        receipt: 'delivered',
+        received: '2026-11-12T12:05:00.000Z',
+      },
+    )
   },
 )
 

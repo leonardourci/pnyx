@@ -51,6 +51,7 @@ export function hydraMessages({
   provider,
   boundaries = false,
   waiting,
+  receipts = true,
 }: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
@@ -58,6 +59,8 @@ export function hydraMessages({
   boundaries?: boolean
   // Why the owner's queued messages wait, when Pnyx knows.
   waiting?: string
+  // Only a Hydra Pnyx runs reports when it took a message.
+  receipts?: boolean
 }): ThreadEntry[] {
   transcript = transcript.filter(entry => {
     const visible = boundaries || !quietReply({ entry })
@@ -177,14 +180,16 @@ export function hydraMessages({
     }
   }
 
-  // Hydra takes the owner's messages in order, so one sent before a received message was received too, at a time Pnyx did not record.
+  // Hydra takes the owner's messages in order, so one sent before a received message no longer waits; with no recorded time, it shows no receipt.
   let laterReceived = false
 
   for (const {
     message,
     entry,
     copied,
-  } of owned.toReversed()) {
+  } of receipts ? owned.toReversed() : []) {
+    entry.sent = message.at
+
     const received = message.received ?? (copied ? entry.at : undefined)
 
     if (received) {

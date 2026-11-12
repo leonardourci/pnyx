@@ -40,12 +40,46 @@ function waitingReason({ card }: { card: Card }) {
   return undefined
 }
 
-export function taskReceipt({
+function hydraDelivery({
   card,
   reply,
+  received,
 }: {
   card: Card
   reply: string
+  received?: string
+}) {
+  const hydra = card.replies?.find(r => r.id === `hydra:${reply}`)
+
+  if (received) {
+    return {
+      state: 'delivered' as const,
+      received,
+    }
+  }
+
+  if (!hydra) {
+    return {
+      state: 'failed' as const,
+      detail: 'Hydra queue was not confirmed',
+    }
+  }
+
+  return {
+    state: hydra.state,
+    detail: hydra.detail,
+  }
+}
+
+export function taskReceipt({
+  card,
+  reply,
+  hydraReceived,
+}: {
+  card: Card
+  reply: string
+  // When Hydra took the copy of a task message sent to it.
+  hydraReceived?: string
 }): Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery'> | undefined {
   const receipt = card.replies?.find(r => r.id === reply)
 
@@ -66,21 +100,6 @@ export function taskReceipt({
 
   const waiting = state === 'queued' ? waitingReason({ card }) : undefined
 
-  const hydra = card.replies?.find(r => r.id === `hydra:${reply}`)
-  const delivery: ThreadEntry['delivery'] = receipt.route ? {
-    ...(receipt.route !== 'hydra' ? {
-      agent: {
-        state,
-        detail: receipt.detail,
-        received,
-      },
-    } : {}),
-    hydra: {
-      state: hydra?.state ?? 'failed',
-      detail: hydra?.detail ?? (!hydra ? 'Hydra queue was not confirmed' : undefined),
-    },
-  } : undefined
-
   const entry: Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery'> = { receipt: state }
 
   if (received) {
@@ -91,8 +110,22 @@ export function taskReceipt({
     entry.waiting = waiting
   }
 
-  if (delivery) {
-    entry.delivery = delivery
+  if (receipt.route) {
+    entry.delivery = {
+      hydra: hydraDelivery({
+        card,
+        reply,
+        received: hydraReceived,
+      }),
+    }
+
+    if (receipt.route !== 'hydra') {
+      entry.delivery.agent = {
+        state,
+        detail: receipt.detail,
+        received,
+      }
+    }
   }
 
   return entry

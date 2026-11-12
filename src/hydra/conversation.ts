@@ -31,10 +31,13 @@ export function hydraConversation({
   titles = {},
   oldest,
   currentTurn,
+  receipts = true,
 }: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
   provider?: string
+  // Only a Hydra Pnyx runs reports when it took a message.
+  receipts?: boolean
   actions: HydraEvent[]
   columns: HydraColumn[]
   working: boolean
@@ -63,6 +66,7 @@ export function hydraConversation({
     provider,
     boundaries: true,
     waiting: working ? 'Hydra is in the middle of a step' : undefined,
+    receipts,
   })
     .filter(entry => oldest === undefined || entry.at === undefined || entry.at >= oldest)
     .sort((
