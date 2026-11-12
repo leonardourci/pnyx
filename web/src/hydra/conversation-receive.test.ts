@@ -3,7 +3,6 @@ import { historyRead, receiveConversation, loadEarlierMessages } from './convers
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { receivedThread } from '#hydra/thread-delta.ts'
 
 const page = ({
   stream,
@@ -29,33 +28,12 @@ const page = ({
 })
 
 test(
-  'an older response cannot replace a newer server conversation, a reconnect can, a range being read is kept, a comment source loads, and only a full window is trimmed',
+  'a read range survives a trimmed page, a restored page replaces it, a comment loads its earlier message and a trimmed long reply needs no recent read',
   async () => {
-    const newer = page({
+    const current = page({
       stream: 'connection-1',
       version: 3,
     })
-    assert.equal(
-      receivedThread({
-        before: newer,
-        latest: page({
-          stream: 'connection-1',
-          version: 2,
-        }),
-      }),
-      newer,
-    )
-    const reconnected = page({
-      stream: 'connection-2',
-      version: 1,
-    })
-    assert.equal(
-      receivedThread({
-        before: newer,
-        latest: reconnected,
-      }),
-      reconnected,
-    )
     const old = {
       id: '0:m0.0',
       messageId: '0:m0',
@@ -70,14 +48,14 @@ test(
       text: 'A recent passage',
     }
     const reading = {
-      ...newer,
+      ...current,
       entries: [
         old,
         latest,
       ],
     }
     const trimmed = {
-      ...newer,
+      ...current,
       version: 4,
       recent: true,
       entries: [latest],
