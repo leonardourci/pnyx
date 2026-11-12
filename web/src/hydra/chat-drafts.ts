@@ -203,16 +203,10 @@ export function createChatDrafts({
 
 export type ChatDrafts = ReturnType<typeof createChatDrafts>
 
-export function useDraftSnapshot({
-  drafts,
-  settled = false,
-}: {
-  drafts: ChatDrafts
-  settled?: boolean
-}) {
+export function useDraftSnapshot({ drafts }: { drafts: ChatDrafts }) {
   return useSyncExternalStore(
-    settled ? drafts.subscribeSettled : drafts.subscribe,
-    settled ? drafts.readSettled : drafts.read,
+    drafts.subscribeSettled,
+    drafts.readSettled,
   )
 }
 

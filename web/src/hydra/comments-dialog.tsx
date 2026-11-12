@@ -61,10 +61,7 @@ export const CommentsDialog = memo(function CommentsDialog({
   show({ id }: { id: string }): void
   close(): void
 }) {
-  const { comments } = useDraftSnapshot({
-    drafts,
-    settled: true,
-  })
+  const { comments } = useDraftSnapshot({ drafts })
   const read = () => drafts.read().comments
   const write = setComments
 

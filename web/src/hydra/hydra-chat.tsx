@@ -144,10 +144,7 @@ export function HydraChat({
   const {
     text: draft,
     comments,
-  } = useDraftSnapshot({
-    drafts,
-    settled: true,
-  })
+  } = useDraftSnapshot({ drafts })
   const {
     setDraft,
     setComments,
