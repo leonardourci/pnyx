@@ -1178,3 +1178,73 @@ test(
     )
   },
 )
+
+test(
+  'owner messages the agent read in order keep their own times between the replies',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    const reply = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      ...entry({
+        id,
+        minute,
+      }),
+      session: 'hydra-session',
+      final: true,
+    })
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 3,
+        }),
+      ],
+      transcript: [
+        reply({
+          id: 'reply one',
+          minute: 2,
+        }),
+        reply({
+          id: 'reply two',
+          minute: 4,
+        }),
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'reply one',
+        'second',
+        'reply two',
+      ],
+    )
+  },
+)
