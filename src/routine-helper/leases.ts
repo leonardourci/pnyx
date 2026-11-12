@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
-import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
@@ -30,6 +30,38 @@ const leasePath = ({
   dir,
   `helper-lease-${encodeURIComponent(task)}.json`,
 )
+
+// Only the server settles copies, so a settlement lease it finds when it mounts a Hydra was left by a server that stopped mid-settlement.
+export function dropCopyLeases({ hydraId }: { hydraId: string }): void {
+  const dir = hydraDir({ hydraId })
+  const unlock = acquireLock({ dir })
+
+  try {
+    for (const name of readdirSync(dir).filter(name => name.startsWith('helper-lease-') && name.endsWith('.json'))) {
+      const path = join(
+        dir,
+        name,
+      )
+      let lease: Lease | undefined
+
+      try {
+        lease = readLease({
+          path,
+          cleanup: false,
+        })
+      } catch {
+        // An unreadable lease is not provably a settlement's, so it stays.
+        continue
+      }
+
+      if (lease?.actor.startsWith(COPY_LEASE_PREFIX)) {
+        rmSync(path)
+      }
+    }
+  } finally {
+    unlock()
+  }
+}
 
 export function taskLeasePresent({
   hydraId,

@@ -41,6 +41,7 @@ import { listenIngest } from '#integrations/hooks/socket.ts'
 import { healthFacts } from '#diagnostics/health.ts'
 import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
 import { HydraError } from '#store/errors.ts'
+import { dropCopyLeases } from '#routine-helper/leases.ts'
 
 export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
@@ -104,6 +105,7 @@ export async function mountOwnedHydra({
     hydraId,
     changed: () => kick(),
   })
+  dropCopyLeases({ hydraId })
   let {
     state,
     offset,
