@@ -95,6 +95,8 @@ export async function mountOwnedHydra({
   let homes = (given ?? []).map(path => resolveHome({ path }))
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
+  // Until recovery has stopped the previous server's agents, nothing may reopen a session.
+  let recovered = false
 
   const dir = hydraDir({ hydraId })
   privateDir({ dir: spoolDir({ dir }) })
@@ -191,7 +193,11 @@ export async function mountOwnedHydra({
       offset,
     } = loadHydra({ hydraId }))
     recent = []
-    agents.reconcile({ state })
+
+    if (recovered) {
+      agents.reconcile({ state })
+    }
+
     followHome()
 
     for (const ws of clients) {
@@ -288,7 +294,11 @@ export async function mountOwnedHydra({
     }
 
     hydrasChanged()
-    agents.reconcile({ state })
+
+    if (recovered) {
+      agents.reconcile({ state })
+    }
+
     followHome()
 
     if (recent.length > RESUME_LIMIT) {
@@ -688,6 +698,8 @@ export async function mountOwnedHydra({
       hydraId,
       error,
     })
+  } finally {
+    recovered = true
   }
 
   kick()
