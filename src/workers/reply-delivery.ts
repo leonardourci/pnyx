@@ -185,7 +185,7 @@ async function hostReply({
     if (accepted.deferred) {
       return {
         state: 'delivery_unknown',
-        detail: 'instruction persisted; notification deferred while the worker is held',
+        detail: 'instruction persisted; notification deferred until the worker can resume',
       }
     }
 

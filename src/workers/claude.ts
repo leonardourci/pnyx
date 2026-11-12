@@ -440,7 +440,6 @@ export function claudeProvider({
           if (toolScope === 'routine') {
             tools = ['Bash']
             capabilities.skills = []
-            capabilities.strictMcpConfig = true
             capabilities.mcpServers = {}
             capabilities.agents = {}
           }

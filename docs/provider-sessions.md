@@ -34,7 +34,7 @@ The server owns transcript readings and task totals and passes them to the host 
 
 ## Task tool grants
 
-Hosted Hydra sessions, builders, investigations, summaries and model probes start with no external MCP servers or plugins. Ordinary harness shell/file tools and repository skills remain available. The routine helper keeps its bounded tool and skill set. Pnyx applies these defaults when starting or resuming either harness; it does not edit login or project configuration.
+Hosted Hydra sessions, workers, investigations, summaries and model probes start with no external MCP servers or plugins. Ordinary harness shell/file tools and repository skills remain available. The routine helper keeps its bounded tool and skill set. Pnyx applies these defaults when starting or resuming either harness; it does not edit login or project configuration.
 
 Hydra chooses task additions with repeated `task start <task> --tool <capability>` flags. For UI work, select `browser`: Pnyx gives the worker a named, isolated, headless `chrome-devtools-axi` session and instructions to stop it afterward. It clears inherited browser URLs, profiles and connection settings for this capability. No second browser server starts automatically.
 

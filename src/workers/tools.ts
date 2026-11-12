@@ -9,10 +9,15 @@ import { requestEnv } from '#app/request-context.ts'
 import type { Meta } from '#app/command-meta.ts'
 
 export const BROWSER_TOOL = 'browser'
+const MAX_TOOL_NAME_LENGTH = 200
+const CONFIGURED_TOOL = new RegExp(
+  `^(mcp|plugin):[^\\s\\p{Cc}]{1,${MAX_TOOL_NAME_LENGTH}}$`,
+  'u',
+)
 
 export function toolNames({ names }: { names: string[] }): string[] {
   for (const name of names) {
-    if (name !== BROWSER_TOOL && !/^(mcp|plugin):[^\s\p{Cc}]{1,200}$/u.test(name)) {
+    if (name !== BROWSER_TOOL && !CONFIGURED_TOOL.test(name)) {
       throw new HydraError({
         message: `Invalid tool capability: ${name}`,
         code: 'VALIDATION_ERROR',
@@ -69,8 +74,11 @@ export function recordTools({
 
 export function requireToolAuthority({ meta }: { meta: Meta }): void {
   const identity = requestEnv()
+  const workerTask = Boolean(identity.PNYX_TASK)
+  const workerSession = Boolean(identity.PNYX_STEERING_WORKER)
+  const workerActor = Boolean(identity.PNYX_ACTOR?.startsWith('worker:')) || meta.actor.startsWith('worker:')
 
-  if (identity.PNYX_TASK || identity.PNYX_STEERING_WORKER || identity.PNYX_ACTOR?.startsWith('worker:') || meta.actor.startsWith('worker:')) {
+  if (workerTask || workerSession || workerActor) {
     throw new HydraError({
       message: 'Ask Hydra with task ask for a tool grant',
       code: 'HYDRA_ONLY',
