@@ -6,6 +6,7 @@ import { applyPageUpdate, pageCard, pageEvent, pageState } from './page-state.ts
 import { pageInterest } from './page-cli.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import { unmetPrerequisites } from '#tasks/dependencies.ts'
 
 test(
   'page views exclude history and hidden cards, load explicit interests and retain durable state',
@@ -132,7 +133,18 @@ test(
     )
     assert.deepEqual(
       snapshot.keys,
-      { task: 'task' },
+      {
+        task: 'task',
+        hidden: 'hidden',
+      },
+    )
+    assert.deepEqual(
+      Object.keys(snapshot.references!),
+      ['hidden'],
+    )
+    assert.equal(
+      'statusLog' in snapshot.references!.hidden!,
+      false,
     )
     assert.equal(
       'eventIds' in snapshot,
@@ -275,8 +287,12 @@ test(
       undefined,
     )
     assert.equal(
+      browser.references?.task?.title,
+      'Visible',
+    )
+    assert.equal(
       browser.keys.task,
-      undefined,
+      'task',
     )
     assert.equal(
       browser.sessions?.['codex:visible'],
@@ -849,6 +865,87 @@ test(
     assert.equal(
       page.cards[HYDRA_CARD]!.activity,
       'idle',
+    )
+  },
+)
+
+test(
+  'a shown task whose finished prerequisite was hidden stays ready on the page',
+  () => {
+    const state = emptyHydra()
+    const base = {
+      v: 1 as const,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base,
+          id: 'first',
+          seq: 1,
+          cardId: 'first',
+          type: 'task.created',
+          data: {
+            key: 'first',
+            title: 'First step',
+          },
+        },
+        {
+          ...base,
+          id: 'next',
+          seq: 2,
+          cardId: 'next',
+          type: 'task.created',
+          data: {
+            key: 'next',
+            title: 'Next step',
+          },
+        },
+      ],
+    })
+    state.cards.first!.status = {
+      id: 'done',
+      at: base.at,
+      actor: 'worker',
+      state: 'done',
+      note: 'Finished',
+    }
+    state.cards.first!.hidden = true
+    state.cards.first!.expired = true
+    state.cards.next!.prerequisites = ['first']
+    const page = pageState({
+      state,
+      interest: {
+        cards: [],
+        hidden: false,
+      },
+    })
+    assert.equal(
+      page.cards.first,
+      undefined,
+    )
+    assert.deepEqual(
+      unmetPrerequisites({
+        state,
+        card: state.cards.next!,
+      }),
+      [],
+    )
+    assert.deepEqual(
+      unmetPrerequisites({
+        state: {
+          ...page,
+          eventIds: {},
+        },
+        card: page.cards.next!,
+      }),
+      [],
+    )
+    assert.equal(
+      page.keys.first,
+      'first',
     )
   },
 )

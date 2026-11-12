@@ -3,7 +3,7 @@ import { replayOwned } from './reducer.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { liveTask } from '#tasks/select.ts'
+import { isManagedTask, knownCards, liveTask } from '#tasks/select.ts'
 
 export interface PageInterest {
   cards: string[]
@@ -14,6 +14,7 @@ export interface PageUpdate {
   seq: number
   event?: HydraEvent
   cards: Record<string, Card | null>
+  references?: Record<string, Card>
   sessions?: Record<string, NonNullable<HydraState['sessions']>[string] | null>
   movedOut?: HydraState['movedOut']
   undone?: HydraState['undone']
@@ -110,6 +111,17 @@ export function pageCard({ card }: { card: Card }): Card {
   return visible
 }
 
+// A hidden task keeps what chips, prerequisites, waits and answer heads read, without its histories.
+function pageReference({ card }: { card: Card }): Card {
+  const reference = pageCard({ card })
+  delete reference.statusLog
+  delete reference.replies
+  delete reference.brief
+  delete reference.initialPrompt
+
+  return reference
+}
+
 export function pageShows({
   card,
   interest,
@@ -154,19 +166,24 @@ export function pageState({
   delete page.eventIds
   delete page.contextNotes
   delete page.questionReminders
-  const cards = Object.fromEntries(Object.values(state.cards)
-    .filter(card => pageShows({
+  const cards: Record<string, Card> = {}
+  const references: Record<string, Card> = {}
+
+  for (const card of Object.values(knownCards({ state }))) {
+    if (pageShows({
       card,
       interest,
-    }))
-    .map(card => [
-      card.id,
-      pageCard({ card }),
-    ]))
+    })) {
+      cards[card.id] = pageCard({ card })
+    } else if (!isManagedTask({ card })) {
+      references[card.id] = pageReference({ card })
+    }
+  }
 
   return {
     ...page,
     cards,
+    references,
     sessions: Object.fromEntries(Object.entries(state.sessions ?? {}).filter(([
       , session,
     ]) => pageSession({
@@ -178,6 +195,9 @@ export function pageState({
       , id,
     ]) => Object.hasOwn(
       cards,
+      id,
+    ) || Object.hasOwn(
+      references,
       id,
     ))),
   }
@@ -286,28 +306,22 @@ export function pageEvent({
     }
   }
 
-  const cards = Object.fromEntries([...ids].flatMap(id => {
+  const cards: PageUpdate['cards'] = {}
+  const references: NonNullable<PageUpdate['references']> = {}
+
+  for (const id of ids) {
     const current = state.cards[id]
+    const visible = current && pageShows({
+      card: current,
+      interest,
+    })
+    cards[id] = visible ? pageCard({ card: current }) : null
 
-    if (!current) {
-      return [
-        [
-          id,
-          null,
-        ],
-      ]
+    if (current && !visible && !isManagedTask({ card: current })) {
+      references[id] = pageReference({ card: current })
     }
+  }
 
-    return [
-      [
-        id,
-        pageShows({
-          card: current,
-          interest,
-        }) ? pageCard({ card: current }) : null,
-      ],
-    ]
-  }))
   const update: PageUpdate = {
     seq: event.seq,
     event: projected,
@@ -316,6 +330,10 @@ export function pageEvent({
 
   if (Object.keys(sessions).length) {
     update.sessions = sessions
+  }
+
+  if (Object.keys(references).length) {
+    update.references = references
   }
 
   const moved = state.movedOut?.[event.cardId]
@@ -364,6 +382,8 @@ export function applyPageUpdate({
     cardId,
     card,
   ] of Object.entries(update.cards)) {
+    delete state.references?.[cardId]
+
     if (card === null) {
       delete state.cards[cardId]
 
@@ -378,6 +398,17 @@ export function applyPageUpdate({
     } else {
       state.cards[cardId] = card
       state.keys[card.key] = cardId
+    }
+  }
+
+  if (update.references) {
+    state.references = {
+      ...state.references,
+      ...update.references,
+    }
+
+    for (const reference of Object.values(update.references)) {
+      state.keys[reference.key] = reference.id
     }
   }
 

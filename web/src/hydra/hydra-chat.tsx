@@ -9,6 +9,7 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import { knownCards } from '#tasks/select.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
@@ -932,12 +933,13 @@ export function HydraChat({
     connected,
   })
   const previousLeads = useRef<ReturnType<typeof answerLeads> | undefined>(undefined)
+  const leadCards = knownCards({ state })
   const leads = useMemo(
     () => {
       const refs = new Set(conversation?.entries.map(entry => entry.reference) ?? [])
       const next = answerLeads({
         messages: state.hydraMessages?.filter(message => refs.has(message.id)),
-        cards: state.cards,
+        cards: leadCards,
         previous: previousLeads.current,
       })
       previousLeads.current = next
@@ -946,7 +948,7 @@ export function HydraChat({
     },
     [
       state.hydraMessages,
-      state.cards,
+      leadCards,
       conversation?.entries,
     ],
   )

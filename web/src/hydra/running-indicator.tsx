@@ -1,4 +1,5 @@
 import type { HydraState } from '#app/model.ts'
+import { knownCards } from '#tasks/select.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { QueuedUpdate } from '#hydra/wakes.ts'
 import { LiveLabel } from '#web-shared/ui/live-label.tsx'
@@ -84,7 +85,7 @@ export function Running({
                     <strong>{group.label} {group.updates.length} {group.updates.length === 1 ? 'update' : 'updates'}</strong>
                     {group.updates.map(update => (
                       <span key={update.seq}>
-                        {state.cards[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
+                        {knownCards({ state })[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
                       </span>
                     ))}
                   </TooltipSection>
