@@ -89,7 +89,7 @@ export function cliCommand({
           ws,
           message: {
             ...result,
-            through: loadHydra({ hydraId }).state.seq,
+            stateSeq: loadHydra({ hydraId }).state.seq,
             type: 'receipt',
             id,
           },
