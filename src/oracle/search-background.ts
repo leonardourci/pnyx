@@ -1,38 +1,27 @@
-import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads'
+import { Worker } from 'node:worker_threads'
 import { log } from '#app/diagnostics.ts'
 import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
 import type { Query } from './model.ts'
-import { search } from './search.ts'
+import type { search } from './search.ts'
 import { HydraError } from '#store/errors.ts'
+
+const WORKER = new URL(
+  import.meta.url.endsWith('.ts') ? './search-worker.ts' : './search-worker.js',
+  import.meta.url,
+)
 
 const searches = new Map<string, Promise<ReturnType<typeof search>>>()
 
-interface SearchInput {
+export interface SearchInput {
   hydraId: string
   query: Query
 }
 
-type SearchAnswer = { result: ReturnType<typeof search> } | {
+export type SearchAnswer = { result: ReturnType<typeof search> } | {
   error: {
     message: string
     code: string
     help?: string[]
-  }
-}
-
-if (!isMainThread) {
-  const input: SearchInput = workerData
-
-  try {
-    parentPort?.postMessage({ result: search(input) } satisfies SearchAnswer)
-  } catch (error) {
-    parentPort?.postMessage({
-      error: {
-        message: error instanceof Error ? error.message : String(error),
-        code: error instanceof HydraError ? error.code : 'UNKNOWN',
-        help: error instanceof HydraError ? error.help : undefined,
-      },
-    } satisfies SearchAnswer)
   }
 }
 
@@ -89,7 +78,7 @@ function runSearch({
     reject,
   ) => {
     const worker = new Worker(
-      new URL(import.meta.url),
+      WORKER,
       {
         execArgv: SOURCE_CONDITIONS,
         workerData: {

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { once } from 'node:events'
 import { test } from 'node:test'
+import { Worker } from 'node:worker_threads'
 import { withWriter } from '#app/writer.ts'
 import { searchInBackground } from './search-background.ts'
 import { observeSearchWorkers } from '#oracle/fixtures/search-workers.ts'
@@ -91,6 +93,44 @@ test(
         query,
       })).hits.length,
       0,
+    )
+  },
+)
+
+test(
+  'Oracle modules load inside another worker thread without running a search',
+  async () => {
+    const modules = [
+      './search.ts',
+      './search-background.ts',
+    ].map(path => new URL(
+      path,
+      import.meta.url,
+    ).href)
+    const worker = new Worker(
+      `await Promise.all(${JSON.stringify(modules)}.map(module => import(module)))`,
+      {
+        eval: true,
+        workerData: { task: 'another worker entry' },
+      },
+    )
+    const messages: unknown[] = []
+    worker.on(
+      'message',
+      (message: unknown) => messages.push(message),
+    )
+    const [code] = await once(
+      worker,
+      'exit',
+    )
+    assert.equal(
+      code,
+      0,
+    )
+    assert.deepEqual(
+      messages,
+      [],
+      'importing the Oracle starts no search',
     )
   },
 )
