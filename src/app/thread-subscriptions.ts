@@ -3,7 +3,7 @@ import { threadDelta, type ThreadDelta } from '#hydra/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
-import { mergeThreadPages, nextRecentCursor, pageCount, retainThreadPages, recentThreadPages, threadSize, RECENT_THREAD_ENTRIES, type ThreadBoundary } from '#hydra/thread-history.ts'
+import { mergeThreadPages, nextRecentCursor, pageCount, retainThreadPages, recentThreadPages, threadSize, RECENT_THREAD_ENTRIES, THREAD_PAGE_LIMIT, type ThreadBoundary } from '#hydra/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
@@ -59,7 +59,8 @@ export type Subscription = {
   readVersion?: number
 }
 
-// A recent window resets once arrivals have grown it past what its last reset kept.
+// A recent window resets once arrivals have grown it a page past what its last reset kept,
+// so each reset rereads the recent pages once per page of arrivals, not on every one.
 function overRecentLimit({
   sub,
   page,
@@ -67,7 +68,7 @@ function overRecentLimit({
   sub: Subscription
   page: ThreadPage
 }): boolean {
-  const limit = sub.recentLimit ?? RECENT_THREAD_ENTRIES
+  const limit = (sub.recentLimit ?? RECENT_THREAD_ENTRIES) + THREAD_PAGE_LIMIT
 
   return sub.recent === true && threadSize({ page }) > limit
 }
