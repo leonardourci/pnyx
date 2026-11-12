@@ -1551,32 +1551,32 @@ test(
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           const peer = window.draftPeer;
           const key = 'pnyx:${s.hydraId}:comments';
-          window.editDraftComment = (target, id, text) => {
+          window.editDraftComment = ({ target, id, text }) => {
             const input = target.document.querySelector('.comments-dialog [data-comment-ref="' + id + '"] textarea');
             if (!input) throw new Error('Missing editable comment ' + id);
             Object.getOwnPropertyDescriptor(target.HTMLTextAreaElement.prototype, 'value').set.call(input, text);
             input.dispatchEvent(new target.Event('input', { bubbles: true }));
           };
-          const read = target => {
+          const read = ({ target }) => {
             const legacy = JSON.parse(target.localStorage.getItem(key) || '{}').$hydra;
             if (legacy) return legacy;
             return Object.keys(target.localStorage).filter(name => name.startsWith(key + ':')).map(name => JSON.parse(target.localStorage.getItem(name)));
           };
-          const before = JSON.stringify({ $hydra: read(window) });
+          const before = JSON.stringify({ $hydra: read({ target: window }) });
           const restore = [window, peer].map(target => {
             const get = target.Storage.prototype.getItem;
             target.Storage.prototype.getItem = function(name) { return name === key ? before : get.call(this, name); };
             return () => { target.Storage.prototype.getItem = get; };
           });
           try {
-            window.editDraftComment(window, 'first', 'Concurrent first');
-            window.editDraftComment(peer, 'second', 'Concurrent second');
+            window.editDraftComment({ target: window, id: 'first', text: 'Concurrent first' });
+            window.editDraftComment({ target: peer, id: 'second', text: 'Concurrent second' });
             window.dispatchEvent(new Event('pagehide'));
             peer.dispatchEvent(new peer.Event('pagehide'));
           } finally {
             restore.forEach(reset => reset());
           }
-          const saved = read(window);
+          const saved = read({ target: window });
           if (saved.find(comment => comment.id === 'first')?.text !== 'Concurrent first' || saved.find(comment => comment.id === 'second')?.text !== 'Concurrent second') throw new Error('Simultaneous tab saves lost an independent comment edit');
           if (localStorage.getItem(key) !== null) throw new Error('Legacy comments were not migrated');
           window.draftAdditionReceived = false;
@@ -1652,13 +1652,7 @@ test(
             if (name.startsWith(key)) throw new DOMException('Fixture storage failure', 'QuotaExceededError');
             return set.call(this, name, value);
           };
-          const edit = (target, id, text) => {
-            const input = target.document.querySelector('.comments-dialog [data-comment-ref="' + id + '"] textarea');
-            if (!input) throw new Error('Missing editable comment ' + id);
-            Object.getOwnPropertyDescriptor(target.HTMLTextAreaElement.prototype, 'value').set.call(input, text);
-            input.dispatchEvent(new target.Event('input', { bubbles: true }));
-          };
-          edit(window, 'first', 'Unsaved local edit');
+          window.editDraftComment({ target: window, id: 'first', text: 'Unsaved local edit' });
           document.querySelector('.comments-dialog [data-comment-ref="second"] [aria-label="Remove comment"]').click();
           window.dispatchEvent(new Event('pagehide'));
           window.draftStorageReceived = false;
@@ -1669,8 +1663,8 @@ test(
             }
           };
           addEventListener('storage', received);
-          edit(peer, 'first', 'Remote first');
-          edit(peer, 'second', 'Remote second');
+          window.editDraftComment({ target: peer, id: 'first', text: 'Remote first' });
+          window.editDraftComment({ target: peer, id: 'second', text: 'Remote second' });
           peer.dispatchEvent(new peer.Event('pagehide'));
           return 'chat-assertion-passed';
         }`,
@@ -1683,7 +1677,7 @@ test(
         script: `() => {
           window.restoreDraftStorage();
           window.dispatchEvent(new Event('pagehide'));
-          window.editDraftComment(window.draftPeer, 'third', 'Another independent edit');
+          window.editDraftComment({ target: window.draftPeer, id: 'third', text: 'Another independent edit' });
           window.draftPeer.dispatchEvent(new window.draftPeer.Event('pagehide'));
           return 'chat-assertion-passed';
         }`,
@@ -1703,6 +1697,8 @@ test(
           peer.document.querySelector('.composer-comments .card-main').click();
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           if (peer.document.querySelector('.comments-dialog [data-comment-ref="first"] textarea')?.value !== 'Unsaved local edit') throw new Error('Second tab reload lost the merged comment');
+          if (peer.document.querySelector('.comments-dialog [data-comment-ref="second"]')) throw new Error('Second tab reload restored a deleted comment');
+          if (peer.document.querySelector('.comments-dialog [data-comment-ref="third"] textarea')?.value !== 'Another independent edit') throw new Error('Second tab reload lost the independent edit');
           peer.close();
           return 'chat-assertion-passed';
         }`,
@@ -1722,6 +1718,8 @@ test(
           document.querySelector('.composer-comments .card-main').click();
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           if (document.querySelector('.comments-dialog [data-comment-ref="first"] textarea')?.value !== 'Unsaved local edit') throw new Error('First tab reload lost the merged comment');
+          if (document.querySelector('.comments-dialog [data-comment-ref="second"]')) throw new Error('First tab reload restored a deleted comment');
+          if (document.querySelector('.comments-dialog [data-comment-ref="third"] textarea')?.value !== 'Another independent edit') throw new Error('First tab reload lost the independent edit');
           document.querySelectorAll('.comments-dialog [aria-label="Remove comment"]').forEach(button => button.click());
           document.querySelector('.comments-dialog footer button').click();
           return 'chat-assertion-passed';
