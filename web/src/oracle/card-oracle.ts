@@ -74,11 +74,14 @@ export function searchSchedule({
   let refreshing: ReturnType<typeof setTimeout> | undefined
   let running = 0
   let shown = ''
+  let identity = {}
 
   // Never rejects: a failed refresh keeps the shown results, and the next query or event tries again.
   const send = async ({ search }: { search: Search }) => {
     const key = keyOf({ search })
-    const stillCurrent = () => !!current && keyOf({ search: current }) === key
+    const request = identity
+    const stillCurrent = () => request === identity && !!current
+      && keyOf({ search: current }) === key
     running += 1
 
     try {
@@ -141,6 +144,7 @@ export function searchSchedule({
       }
 
       current = search
+      identity = {}
       clearTimeout(waiting); clearTimeout(refreshing)
       waiting = undefined; refreshing = undefined
 
@@ -163,6 +167,7 @@ export function searchSchedule({
     changed,
     stop() {
       current = null
+      identity = {}
       clearTimeout(waiting); clearTimeout(refreshing)
 
       if (running) {

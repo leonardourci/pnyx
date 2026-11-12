@@ -1,7 +1,7 @@
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { transcriptMessages } from '#workers/transcripts.ts'
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -544,13 +544,21 @@ test(
 )
 
 test(
-  'searching writes nothing to the Hydra, so the server stays its only writer',
+  'searches leave sources untouched, deduplicate archives and follow moved sessions',
   async () => {
     const home = mkdtempSync(join(
       scratch,
       'pnyx-oracle-reader-',
     ))
     process.env.PNYX_HOME = home
+    const transcriptPath = join(
+      home,
+      'reader.jsonl',
+    )
+    cpSync(
+      TRANSCRIPT,
+      transcriptPath,
+    )
     const card = withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
@@ -576,7 +584,7 @@ test(
             agent: {
               provider: 'claude-code',
               sessionId: 'reader-session',
-              transcriptPath: TRANSCRIPT,
+              transcriptPath,
             },
           },
           meta: {
@@ -669,6 +677,86 @@ test(
         'utf8',
       ),
       cursors,
+    )
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'receiver-created',
+            cardId: 'receiver',
+            at: '2026-10-15T10:01:00Z',
+            actor: 'fixture',
+            type: 'task.created',
+            data: {
+              key: 'receiver',
+              title: 'Moved conversation',
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'reader-moved',
+            cardId: 'receiver',
+            at: '2026-10-15T10:01:00Z',
+            actor: 'fixture',
+            type: 'task.session',
+            data: {
+              session: 'claude-code:reader-session',
+              before: card,
+              after: 'receiver',
+            },
+          },
+        })
+      },
+    })
+    appendFileSync(
+      transcriptPath,
+      `\n${JSON.stringify({
+        type: 'user',
+        timestamp: '2026-10-15T10:02:00Z',
+        message: {
+          role: 'user',
+          content: 'unarchived relocationneedle',
+        },
+      })}\n`,
+    )
+    assert.deepEqual(
+      search({
+        hydraId: 'default',
+        query: {
+          text: 'relocationneedle',
+          limit: 20,
+        },
+      }).hits.map(hit => hit.card),
+      ['receiver'],
+    )
+    assert.deepEqual(
+      search({
+        hydraId: 'default',
+        query: {
+          text: 'relocationneedle',
+          card,
+          limit: 20,
+        },
+      }).hits,
+      [],
+    )
+    assert.equal(
+      search({
+        hydraId: 'default',
+        query: {
+          text: 'migration',
+          card,
+          limit: 20,
+        },
+      }).hits[0]?.snippets.length,
+      2,
+      'archived conversation remains on its recorded task after the move',
     )
   },
 )
