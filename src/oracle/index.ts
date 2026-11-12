@@ -31,7 +31,7 @@ function sqlite(): typeof import('node:sqlite') {
 }
 
 // Bump when the schema, stored text, visibility or tokenization changes.
-const INDEX_VERSION = 2
+const INDEX_VERSION = 3
 const CATCH_UP_BATCH_BYTES = 256 * 1024
 const EVENTS = 'events'
 const SCHEMA = `

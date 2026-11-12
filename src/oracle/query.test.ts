@@ -2,45 +2,105 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { matches, queryTerms, tokens } from './query.ts'
 
+const SAME_WORD = [
+  [
+    'update',
+    'updates',
+    'updated',
+    'updating',
+  ],
+  [
+    'release',
+    'releases',
+    'released',
+  ],
+  [
+    'file',
+    'files',
+  ],
+  [
+    'issue',
+    'issues',
+  ],
+  [
+    'change',
+    'changed',
+  ],
+  [
+    'status',
+    'statuses',
+  ],
+  [
+    'run',
+    'running',
+  ],
+  [
+    'deploying',
+    'deployed',
+  ],
+]
+const DIFFERENT_WORDS = [
+  [
+    'not',
+    'notes',
+  ],
+  [
+    'ring',
+    'red',
+  ],
+  [
+    'bed',
+    'bing',
+  ],
+]
+
+const exactly = ({
+  word,
+  alt,
+}: {
+  word: string
+  alt: string
+}) => matches({
+  word,
+  term: {
+    alts: [alt],
+    prefix: false,
+    typo: false,
+  },
+  fuzzy: false,
+})
+
 test(
-  'inflection keeps short words distinct while matching longer suffixes',
+  'inflections of one word match each other and unrelated short words stay distinct',
   () => {
-    assert.equal(
-      matches({
-        word: 'ring',
-        term: {
-          alts: ['red'],
-          prefix: false,
-          typo: false,
-        },
-        fuzzy: false,
-      }),
-      false,
-    )
-    assert.equal(
-      matches({
-        word: 'bed',
-        term: {
-          alts: ['bing'],
-          prefix: false,
-          typo: false,
-        },
-        fuzzy: false,
-      }),
-      false,
-    )
-    assert.equal(
-      matches({
-        word: 'deploying',
-        term: {
-          alts: ['deployed'],
-          prefix: false,
-          typo: false,
-        },
-        fuzzy: false,
-      }),
-      true,
-    )
+    for (const forms of SAME_WORD) {
+      for (const word of forms) {
+        for (const alt of forms) {
+          assert.equal(
+            exactly({
+              word,
+              alt,
+            }),
+            true,
+            `${word} matches ${alt}`,
+          )
+        }
+      }
+    }
+
+    for (const [
+      word,
+      alt,
+    ] of DIFFERENT_WORDS) {
+      assert.equal(
+        exactly({
+          word: word!,
+          alt: alt!,
+        }),
+        false,
+        `${word} does not match ${alt}`,
+      )
+    }
   },
 )
 
