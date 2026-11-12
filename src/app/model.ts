@@ -292,6 +292,15 @@ export type HydraChange = EventBase & (
     data: HydraStatus
   }
   | {
+    // Hydra's harness confirmed it took this message.
+    type: 'hydra.received'
+    data: {
+      message: string
+      // When Hydra's harness took it, by its own record.
+      at: string
+    }
+  }
+  | {
     type: 'hydra.agent-used'
     data: import('#workers/model.ts').AgentConfig
   }
@@ -397,6 +406,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.mirrored',
   'hydra.message',
   'hydra.status',
+  'hydra.received',
   'hydra.operation',
   'hydra.agent-used',
   'hydra.agent-change',
