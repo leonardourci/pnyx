@@ -31,3 +31,15 @@ Each provider's adapter reads usage from its own transcript format and emits neu
 Current context is the latest request's reading, not the sum of earlier requests. Recorded task tokens retain their worker and attributed Hydra breakdown. Only reported counts are shown. Claude transcripts provide used tokens but no window or session cost; those details can come from live readings. Synthetic assistant records do not change usage, and a transcript compaction boundary clears current context. Transcript fragments and task totals never substitute for current context.
 
 The server owns transcript readings and task totals and passes them to the host for reads and views. `hydra usage` returns that shape once. `hydra usage refresh` refreshes plan windows separately; `--force` bypasses the quota cache.
+
+## Task tool grants
+
+Hosted Hydra sessions, builders, investigations, summaries and model probes start with no external MCP servers or plugins. Ordinary harness shell/file tools and repository skills remain available. The routine helper keeps its bounded tool and skill set. Pnyx applies these defaults when starting or resuming either harness; it does not edit login or project configuration.
+
+Hydra chooses task additions with repeated `task start <task> --tool <capability>` flags. For UI work, select `browser`: Pnyx gives the worker a named, isolated, headless `chrome-devtools-axi` session and instructions to stop it afterward. It clears inherited browser URLs, profiles and connection settings for this capability. No second browser server starts automatically.
+
+`task tools <task> --available [--harness claude|codex] [--account <name>]` lists configured capability names without their commands or credentials. An unstarted task needs a harness. `task tools <task>` lists its grants. Names are `browser`, `mcp:<configured-name>` and `plugin:<installed-id>`. Plugin grants include that plugin's configured MCP servers; other plugins and servers remain excluded. Claude selects the applicable installed plugin scope and loads its MCP definitions explicitly while suppressing automatic plugin MCP discovery.
+
+A worker asks Hydra with `task ask <task> --question "I need <capability> to <action>"`. Hydra grants or revokes it with `task tools <task> --grant <capability>` or `--revoke <capability>`; flags may repeat. Hydra makes this decision itself, with no new owner approval step. A grant enables a tool; it does not authorize writes by that tool. Workers cannot grant themselves capabilities, including by overriding the command actor.
+
+Pnyx records each selection in the event log, waits for native turns, tools, background work, queues, pending controls and accepted inputs to settle, then reopens the same saved conversation with the selection. It confirms application after the replacement accepts input. Pending grants recover after restart. Discussion holds block tool changes; a previously pending grant waits for release. An unavailable capability fails visibly without restoring inherited defaults. Grants belong to the task; another task starts empty. Outside launch routes retain their own configuration and refuse dispatch tool flags.

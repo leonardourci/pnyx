@@ -141,6 +141,12 @@ For folders created by a project's copy command, follow that project's preparati
 its folder cannot safely serve the next task, start a fresh worker instead. Copy retention and pooling
 are separate from session attachment.
 
+## Tool capabilities
+
+Hosted agents start with no external MCP servers or plugins. For a UI worker, pass `task start --tool browser` for one isolated headless `chrome-devtools-axi` session. Select other known needs with repeated `--tool mcp:<name>` or `--tool plugin:<installed-id>` flags. Read the configured names with `task tools <task> --available --harness claude|codex [--account <name>]`; never grant an unconfigured name.
+
+When a worker asks for a missing capability through `task ask`, decide it yourself within the task, then run `task tools <task> --grant <capability>` and answer the worker's question. Use `--revoke` for removal. Pnyx records the selection and resumes the same conversation after its native work settles, including after restart. No new owner question or approval is needed for the grant. A tool's shared-system writes still need their existing authorization. Outside launch routes cannot enforce these hosted selections.
+
 ## Task copies
 
 A task with an attached project starts in its own copy (a git worktree on branch `pnyx/<hydra>-<task>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. When the task reaches Done, Pnyx releases a clean copy whose work landed to the project's pool, where the next task's start takes it on a fresh branch; a copy a worker still runs in stays its own. Otherwise it keeps the copy, flags it and messages you: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`. Automatic folder handoff belongs to the worker queue; manual `task attach` keeps the branch preparation contract above.
