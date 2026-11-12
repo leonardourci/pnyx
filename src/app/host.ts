@@ -21,6 +21,7 @@ import { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
 import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
+import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { clip } from '#hydra/digest.ts'
@@ -297,6 +298,7 @@ export function createHost({
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
     const card = session && writer.state.cards[session.taskId ?? session.originCardId]
+    const finished = input.activity === 'finished' && card?.sessionActivity !== 'finished'
 
     applyDecision({
       writer,
@@ -319,6 +321,14 @@ export function createHost({
         },
       }),
     })
+
+    if (finished && card) {
+      harvestTranscripts({
+        writer,
+        cardIds: [card.id],
+        at: at(),
+      })
+    }
   }
 
   const hosted = ({
