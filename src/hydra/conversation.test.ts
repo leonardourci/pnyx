@@ -1122,3 +1122,59 @@ test(
     )
   },
 )
+
+test(
+  'a page that starts at the place a late owner message takes keeps that message',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 4,
+        }),
+      ],
+      transcript: [
+        {
+          ...entry({
+            id: 'native-first',
+            minute: 5,
+            role: 'user',
+            text: 'first',
+          }),
+          session: 'hydra-session',
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+      oldest: at({ minute: 5 }),
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'second',
+      ],
+    )
+  },
+)
