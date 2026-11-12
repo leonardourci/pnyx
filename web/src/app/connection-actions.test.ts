@@ -363,6 +363,7 @@ test(
         update: {
           seq: 8,
           cards: {
+            origin: null,
             task: {
               ...connection.snapshot().state.cards.task!,
               revision: 8,
@@ -370,6 +371,38 @@ test(
           },
         },
       },
+    })
+    assert.equal(
+      updatesOf({ id: 'task' }).stale,
+      false,
+      'activity from a hidden origin card leaves the task\'s Updates current',
+    )
+    socket.receive({
+      message: forwarded({
+        event: {
+          v: 1,
+          id: 'outcome',
+          seq: 9,
+          at: '2099-10-16T15:00:00Z',
+          actor: 'owner',
+          cardId: 'task',
+          type: 'card.outcome',
+          data: {
+            before: null,
+            after: {
+              state: 'done',
+              source: 'owner',
+              note: 'Shipped',
+            },
+            card: {
+              title: 'Task',
+              workspace: '',
+              tags: [],
+              links: [],
+            },
+          },
+        },
+      }),
     })
     assert.equal(
       updatesOf({ id: 'task' }).stale,

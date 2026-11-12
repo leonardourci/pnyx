@@ -777,12 +777,9 @@ export function createHydraConnection() {
 
       const changed = message.update.event
 
-      if (selected === scope.id) {
-        if (changed) {
-          noteUpdate({ event: changed })
-        } else {
-          staleUpdates({ ids: Object.keys(message.update.cards) })
-        }
+      // An update without its event is a hidden card's or a private one, and adds no row to a shown task's Updates.
+      if (selected === scope.id && changed) {
+        noteUpdate({ event: changed })
       }
 
       persistSoon({ scope })
