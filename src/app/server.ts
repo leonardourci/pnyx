@@ -2,7 +2,7 @@ import { captureCpuProfile } from '#diagnostics/cpu-profile.ts'
 import { followGit } from '#tasks/delivery/follow-git.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { FOLLOW_POLL_MS } from '#tasks/delivery/follow.ts'
+import { FOLLOW_POLL_MS, followedLinks } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
 import { systemReminderScheduler, type ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { createLatestFeed } from './latest-feed.ts'
@@ -435,6 +435,15 @@ export async function mountOwnedHydra({
           state,
           ref: body.task,
         })
+        const followed = followedLinks({ state }).some(({ card: linked }) => linked.id === card.id)
+
+        if (!followed) {
+          return {
+            refreshing: 'none: task has no open pull request links',
+            task: card.id,
+          }
+        }
+
         tick.refreshLinks({
           task: card.id,
           restart: true,
@@ -443,6 +452,7 @@ export async function mountOwnedHydra({
         return {
           refreshing: 'pull requests',
           task: card.id,
+          help: [`Run \`pnyx-axi task show ${card.id} --hydra ${hydraId}\` for the links once read`],
         }
       }
 

@@ -641,6 +641,16 @@ test(
       what: 'a commit on the task branch to read the pull request',
       check: () => comments() === 3,
     })
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'copy-fix',
+        ],
+      }),
+      /refreshing: "none: task has no open pull request links"/,
+    )
     // Merged on GitHub, not through task merge.
     s.pullRequest({
       number: 3,
