@@ -187,7 +187,8 @@ export function HydraChat({
     setAway,
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
+  const follow = useRef(true), lastTop = useRef(0)
+  const scrolledAt = useRef(-Infinity), glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
@@ -627,8 +628,7 @@ export function HydraChat({
     until?: string
     message?: string
   }) => {
-    follow.current = false
-    setAway(true)
+    stopFollowing()
     const session = threadSession.current
     let current = page
 
@@ -676,8 +676,7 @@ export function HydraChat({
   }
 
   const loadComment = async ({ comment }: { comment: ChatComment }) => {
-    follow.current = false
-    setAway(true)
+    stopFollowing()
     const selector = `[data-comment-id="${CSS.escape(comment.id)}"] textarea`
 
     if (content.current?.querySelector(selector)) {
@@ -697,10 +696,7 @@ export function HydraChat({
   }
 
   const jumpDecision = async ({ decision }: { decision: ChatDecision }) => {
-    // The owner asked for this scroll: a glide still easing a reply to the bottom must not undo it.
-    ownerScroll()
-    follow.current = false
-    setAway(true)
+    stopFollowing()
     setLoadingEarlier(true)
 
     try {
@@ -772,6 +768,14 @@ export function HydraChat({
     glide.current = 0
   }
 
+  const stopFollowing = () => {
+    follow.current = false
+    setAway(true)
+    scrolledAt.current = -Infinity
+    cancelAnimationFrame(glide.current)
+    glide.current = 0
+  }
+
   useLayoutEffect(
     () => {
       const element = content.current
@@ -804,15 +808,9 @@ export function HydraChat({
       observer.observe(element)
       observer.observe(scroller)
 
-      const reveal = () => {
-        follow.current = false
-        setAway(true)
-        ownerScroll()
-      }
-
       scroller.addEventListener(
         MESSAGE_SCROLL,
-        reveal,
+        stopFollowing,
       )
 
       return () => {
@@ -820,7 +818,7 @@ export function HydraChat({
         cancelAnimationFrame(glide.current)
         scroller.removeEventListener(
           MESSAGE_SCROLL,
-          reveal,
+          stopFollowing,
         )
       }
     },
@@ -1050,12 +1048,12 @@ export function HydraChat({
           onScroll={e => {
             const el = e.currentTarget
 
-            // Upward input unpins even inside the bottom tolerance; arriving at the bottom pins again.
+            // Paging emits layout scrolls near the bottom; only owner input may resume following.
             const owner = performance.now() - scrolledAt.current < OWNER_SCROLL_MS
 
             if (owner && el.scrollTop < lastTop.current) {
               follow.current = false
-            } else if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+            } else if (owner && el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
               follow.current = true
             }
 
