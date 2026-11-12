@@ -343,7 +343,6 @@ export function Composer({
           <CommentsDialog
             drafts={drafts}
             shown={listing}
-            setComments={setComments}
             show={showComment}
             close={closeListing}
           />

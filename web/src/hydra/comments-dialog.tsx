@@ -3,7 +3,7 @@ import { memo, useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { commentUpdates, groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
+import { commentUpdates, groupComments, orderedComments, sendableComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
 
@@ -51,23 +51,20 @@ const replyLabel = ({ at }: { at?: string }) => at
 export const CommentsDialog = memo(function CommentsDialog({
   drafts,
   shown,
-  setComments,
   show,
   close,
 }: {
   drafts: ChatDrafts
   shown: string[]
-  setComments({ items }: { items: ChatComment[] }): void
   show({ id }: { id: string }): void
   close(): void
 }) {
   const { comments } = useDraftSnapshot({ drafts })
   const read = () => drafts.read().comments
-  const write = setComments
 
   const updates = commentUpdates({
     read,
-    write,
+    write: drafts.setComments,
   })
   const listed = comments.filter(comment => shown.includes(comment.id))
   const replies = groupComments({ comments: listed })
@@ -80,7 +77,7 @@ export const CommentsDialog = memo(function CommentsDialog({
   ]))
 
   const finish = () => {
-    write({
+    drafts.setComments({
       items: read().filter(comment => !shown.includes(comment.id)
         || sendableComment({ comment })),
     })

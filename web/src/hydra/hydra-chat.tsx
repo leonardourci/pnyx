@@ -145,10 +145,7 @@ export function HydraChat({
     text: draft,
     comments,
   } = useDraftSnapshot({ drafts })
-  const {
-    setDraft,
-    setComments,
-  } = drafts
+  const { setDraft } = drafts
   const waitingButton = useRef<HTMLButtonElement>(null)
 
   useEffect(
@@ -1095,7 +1092,6 @@ export function HydraChat({
               taskReferences={references}
               answerLeads={leads}
               comments={comments}
-              setComments={setComments}
               drafts={drafts}
               quote={({ text }) => setDraft({
                 text: quoteInto({

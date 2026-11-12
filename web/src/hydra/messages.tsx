@@ -399,7 +399,6 @@ export function Messages({
   entries,
   lookup,
   comments,
-  setComments,
   drafts,
   quote,
   toolDetails = true,
@@ -445,7 +444,6 @@ export function Messages({
   entries: ChatEntry[]
   lookup: PnyxLookup
   comments: ChatComment[]
-  setComments({ items }: { items: ChatComment[] }): void
   drafts: ChatDrafts
   quote({ text }: { text: string }): void
 }) {
@@ -540,7 +538,6 @@ export function Messages({
     release,
   } = useCommentDrafts({
     root,
-    setComments,
     drafts,
     notify,
     clearSelection: () => setSelection(null),
