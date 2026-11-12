@@ -339,7 +339,8 @@ export function hydraConversation({
       continue
     }
 
-    const nextAt = turns[index + 1]?.input?.at
+    const next = turns[index + 1]?.input
+    const nextAt = next && shownAt({ entry: next })
     const tasks = new Map<string, TaskUpdate[]>()
 
     for (const event of orderedActions) {
