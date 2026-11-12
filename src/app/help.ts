@@ -9,6 +9,7 @@ import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
 import { HISTORY_LIMIT, HISTORY_MAX } from './cli-support.ts'
 import { DEBUG_LIMIT, DEBUG_MAX, LOG_BYTES } from '#diagnostics/timeline.ts'
 import { SLOWEST_LIMIT, SLOWEST_MAX } from '#diagnostics/performance.ts'
+import { PROFILE_MAX_SECONDS, PROFILE_SECONDS } from '#diagnostics/cpu-profile.ts'
 import { MAX_LOG_DAYS, MAX_LOG_MB } from '#settings/settings.ts'
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
@@ -33,7 +34,8 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
-  debug timeline|health|performance|cpu-profile          Read correlated history, runtime health facts, or action durations and memory from the logs
+  debug timeline|health|performance          Read correlated history, runtime health facts, or action durations and memory from the logs
+  debug cpu-profile --out <file>             Capture a CPU profile of the server's main thread
   logs [clean]                               Show the diagnostic log files, or delete them all now
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
@@ -66,8 +68,8 @@ Filters intersect. Times include their timezone and endpoints are inclusive. Def
 Pass the returned cursor with the same filters for older matches. Service records are the warnings
 and errors in the last ${LOG_BYTES / 1024 / 1024} MiB of the log files, newest day first, then service.log;
 serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
-pnyx-axi debug cpu-profile [--seconds <1..60>] --out <file> [--hydra <id>]
-Capture the running server's CPU samples (10 seconds by default), save a private .cpuprofile,
+pnyx-axi debug cpu-profile [--seconds <1..${PROFILE_MAX_SECONDS}>] --out <file> [--hydra <id>]
+Capture CPU samples of the server's main thread (${PROFILE_SECONDS} seconds by default), save a private .cpuprofile,
 and show the top functions. Existing output files and missing or unwritable folders are refused
 before sampling. Only one profile runs at a time; shutdown cancels it with CANCELLED.
 pnyx-axi debug health [--limit <1..${DEBUG_MAX}>] [--hydra <id>]

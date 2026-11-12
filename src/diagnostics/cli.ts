@@ -5,7 +5,7 @@ import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { askHost } from '#app/server-state.ts'
 import { resolve } from 'node:path'
-import { PROFILE_SECONDS, PROFILE_MAX_SECONDS } from './cpu-profile.ts'
+import { PROFILE_SECONDS } from './cpu-profile.ts'
 import { requestCwd, requestEnv } from '#app/request-context.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { readSettings } from '#settings/store.ts'
@@ -174,15 +174,11 @@ export const debug = guard({
         ],
         usage: 'debug cpu-profile accepts only --hydra, --seconds and --out',
       })
-      const seconds = values.seconds === undefined ? PROFILE_SECONDS : Number(values.seconds)
-
-      if (!Number.isInteger(seconds) || seconds < 1 || seconds > PROFILE_MAX_SECONDS) {
-        throw new HydraError({
-          code: 'VALIDATION_ERROR',
-          message: `--seconds must be between 1 and ${PROFILE_MAX_SECONDS}`,
-        })
-      }
-
+      // The server checks the range, so every caller gets the same rule.
+      const seconds = integer({
+        value: values.seconds,
+        flag: '--seconds',
+      }) ?? PROFILE_SECONDS
       const output = required({
         value: values.out as string | undefined,
         what: '--out',
@@ -243,12 +239,21 @@ export const debug = guard({
       })
     }
 
-    if (values.operation !== undefined) {
-      throw new HydraError({
-        code: 'VALIDATION_ERROR',
-        message: '--operation belongs to debug performance',
-      })
-    }
+    onlyFlags({
+      values,
+      allowed: [
+        'hydra',
+        'task',
+        'message',
+        'batch',
+        'session',
+        'since',
+        'until',
+        'limit',
+        'cursor',
+      ],
+      usage: 'debug timeline accepts only --hydra, --task, --message, --batch, --session, --since, --until, --limit and --cursor',
+    })
 
     const since = instant({
       value: values.since,

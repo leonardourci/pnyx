@@ -575,6 +575,19 @@ test(
       rejected.code,
       'VALIDATION_ERROR',
     )
+    assert.equal(
+      (await s.ownerRefusal({
+        args: [
+          'debug',
+          'cpu-profile',
+          '--seconds',
+          '1e1',
+          '--out',
+          profile,
+        ],
+      })).code,
+      'VALIDATION_ERROR',
+    )
     const cancelled = join(
       s.folder({ name: 'cpu-profiles' }),
       'cancelled.cpuprofile',
@@ -625,6 +638,17 @@ test(
     })
     assert.equal(
       invalid.code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      (await s.ownerRefusal({
+        args: [
+          'debug',
+          'timeline',
+          '--out',
+          profile,
+        ],
+      })).code,
       'VALIDATION_ERROR',
     )
   },
