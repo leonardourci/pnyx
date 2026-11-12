@@ -916,7 +916,7 @@ export function createHost({
       const catalog = providers[providerIdOf({ harness: selected })].toolCatalog
 
       return catalog ? catalog({
-        cwd: folder ?? card.agent?.cwd ?? card.folder ?? hydraDir({ hydraId }),
+        cwd: folder ?? card.agent?.cwd ?? card.folder ?? card.project ?? hydraDir({ hydraId }),
         env,
       }) : ['browser']
     },
