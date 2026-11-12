@@ -1,3 +1,5 @@
+import { taskLease } from '#routine-helper/leases.ts'
+import { HydraError } from '#store/errors.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { replyRoute } from './reply-route.ts'
@@ -71,141 +73,165 @@ export async function notifySteering({
     }
   }
 
-  const canSend = () => withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      drainSpool({ writer })
-      const current = writer.state.cards[cardId]
-      const pending = current?.steering?.find(message => message.id === messageId)
+  let release: () => void
 
-      if (!current || current.mirror || current.sourceRefs.some(source => source.adapter === 'firstmate')) {
-        return false
-      }
-
-      const waiting = waitsOnHook({ attention: current.attention })
-      const active = !current.hidden && !steeringHeld({ card: current }) && !waiting
-
-      return Boolean(active && pending && !pending.ack
-        && sameClaim({
-          current: steeringClaim({ card: current }),
-          claim,
-        }))
-    },
-  })
-  const found = replyRoute({
-    card,
-    homes: [],
-  })
-  let outcome: NotificationResult
-
-  if ('reason' in found) {
-    outcome = {
-      result: 'gone',
-      detail: found.reason,
-    }
-  } else {
-    const route = found.route
-    const text = steeringNotice({
-      task: card.id,
+  try {
+    release = taskLease({
       hydraId,
-      ids: [message.id],
+      task: cardId,
+      actor: 'main',
+      message: true,
     })
+  } catch (error) {
+    if (!(error instanceof HydraError) || error.code !== 'TASK_LEASED') {
+      throw error
+    }
 
-    if (route.kind === 'pnyx') {
-      try {
-        const accepted = await askHost({
-          hydraId,
-          body: {
-            action: 'send',
-            card: card.id,
-            steering: message.id,
-            attempt,
-            actor: 'pnyx',
-          },
-        })
-        outcome = accepted.deferred
-          ? {
-            result: 'deferred',
-            detail: 'host deferred notification while the worker is held',
-          }
-          : { result: 'delivered' }
-      } catch (error) {
-        outcome = {
-          result: 'unknown',
-          detail: `host did not confirm notification: ${(error as Error).message}`,
-        }
-      }
-    } else if (route.kind === 'firstmate') {
-      return {
-        result: 'gone',
-        detail: 'Firstmate owns this task’s inbox; use fm-send',
-      }
-    } else if (route.kind === 'paseo-agent' && waitsOnHook({ attention: card.attention })) {
-      outcome = {
-        result: 'deferred',
-        detail: 'worker is waiting on a permission or question; answer it before notifying',
-      }
-    } else if (route.kind === 'paseo-agent') {
-      outcome = await paseoNotice({
-        route,
-        text,
-        id: attempt,
-        canSend,
-        connect: connectPaseo,
-      })
-    } else {
-      outcome = await terminalNotice({
-        route,
-        text,
-        card,
-        send: async ({
-          route,
-          text,
-        }) => canSend()
-          ? typeInto({
-            route,
-            text,
-          })
-          : {
-            state: 'failed',
-            detail: 'instruction was handled, held or reassigned; nothing was typed',
-          },
-      })
+    return {
+      result: 'deferred',
+      detail: 'task copy cleanup is still in progress',
     }
   }
 
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      const current = writer.state.cards[cardId]
-      const pending = current?.steering?.find(message => message.id === messageId)
+  try {
+    const canSend = () => withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        drainSpool({ writer })
+        const current = writer.state.cards[cardId]
+        const pending = current?.steering?.find(message => message.id === messageId)
 
-      if (!current || !pending || pending.ack || !sameClaim({
-        current: steeringClaim({ card: current }),
-        claim,
-      })) {
-        return
+        if (!current || current.mirror || current.sourceRefs.some(source => source.adapter === 'firstmate')) {
+          return false
+        }
+
+        const waiting = waitsOnHook({ attention: current.attention })
+        const active = !current.hidden && !steeringHeld({ card: current }) && !waiting
+
+        return Boolean(active && pending && !pending.ack
+          && sameClaim({
+            current: steeringClaim({ card: current }),
+            claim,
+          }))
+      },
+    })
+    const found = replyRoute({
+      card,
+      homes: [],
+    })
+    let outcome: NotificationResult
+
+    if ('reason' in found) {
+      outcome = {
+        result: 'gone',
+        detail: found.reason,
       }
-
-      recordSteeringAttempt({
-        writer,
-        ref: cardId,
-        id: messageId,
-        attempt: {
-          id: attempt,
-          at: new Date(now).toISOString(),
-          actor: 'pnyx',
-          claim,
-          result: outcome.result === 'gone' ? 'failed' : outcome.result,
-          detail: outcome.detail,
-        },
-        meta: {
-          at: new Date(now).toISOString(),
-          actor: 'pnyx',
-        },
+    } else {
+      const route = found.route
+      const text = steeringNotice({
+        task: card.id,
+        hydraId,
+        ids: [message.id],
       })
-    },
-  })
 
-  return outcome
+      if (route.kind === 'pnyx') {
+        try {
+          const accepted = await askHost({
+            hydraId,
+            body: {
+              action: 'send',
+              card: card.id,
+              steering: message.id,
+              attempt,
+              actor: 'pnyx',
+            },
+          })
+          outcome = accepted.deferred
+            ? {
+              result: 'deferred',
+              detail: 'host deferred notification while the worker is held',
+            }
+            : { result: 'delivered' }
+        } catch (error) {
+          outcome = {
+            result: 'unknown',
+            detail: `host did not confirm notification: ${(error as Error).message}`,
+          }
+        }
+      } else if (route.kind === 'firstmate') {
+        return {
+          result: 'gone',
+          detail: 'Firstmate owns this task’s inbox; use fm-send',
+        }
+      } else if (route.kind === 'paseo-agent' && waitsOnHook({ attention: card.attention })) {
+        outcome = {
+          result: 'deferred',
+          detail: 'worker is waiting on a permission or question; answer it before notifying',
+        }
+      } else if (route.kind === 'paseo-agent') {
+        outcome = await paseoNotice({
+          route,
+          text,
+          id: attempt,
+          canSend,
+          connect: connectPaseo,
+        })
+      } else {
+        outcome = await terminalNotice({
+          route,
+          text,
+          card,
+          send: async ({
+            route,
+            text,
+          }) => canSend()
+            ? typeInto({
+              route,
+              text,
+            })
+            : {
+              state: 'failed',
+              detail: 'instruction was handled, held or reassigned; nothing was typed',
+            },
+        })
+      }
+    }
+
+    withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        const current = writer.state.cards[cardId]
+        const pending = current?.steering?.find(message => message.id === messageId)
+
+        if (!current || !pending || pending.ack || !sameClaim({
+          current: steeringClaim({ card: current }),
+          claim,
+        })) {
+          return
+        }
+
+        recordSteeringAttempt({
+          writer,
+          ref: cardId,
+          id: messageId,
+          attempt: {
+            id: attempt,
+            at: new Date(now).toISOString(),
+            actor: 'pnyx',
+            claim,
+            result: outcome.result === 'gone' ? 'failed' : outcome.result,
+            detail: outcome.detail,
+          },
+          meta: {
+            at: new Date(now).toISOString(),
+            actor: 'pnyx',
+          },
+        })
+      },
+    })
+
+    return outcome
+  } finally {
+    release()
+  }
 }
