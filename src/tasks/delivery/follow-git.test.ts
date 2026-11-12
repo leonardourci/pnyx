@@ -6,13 +6,17 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as wait } from 'node:timers/promises'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { readStream } from '#test-harness/streams.ts'
 import { settle } from '#test-harness/child-fixture.ts'
-import { followGit } from './follow-git.ts'
+import { followGit, GIT_RETRY_MS } from './follow-git.ts'
+
+// Long enough for a native watch to report a ref write it was going to report.
+const QUIET_REF_MS = 300
 
 test(
-  'a local Git ref change makes a working task pull request due immediately',
+  'only a change to its own branch makes a working task pull request due, and failed watches back off',
   async t => {
     const root = realpathSync(mkdtempSync(join(
       tmpdir(),
@@ -37,16 +41,17 @@ test(
         url: 'https://github.com/synthetic/repo/pull/1',
       },
     ]
-    let changed: string | undefined
+    const changes: string[] = []
     const watching = followGit({
       changed: ({ task }) => {
-        changed = task
+        changes.push(task)
       },
     })
     const opened: FSWatcher[] = []
     const closed = new Set<FSWatcher>()
     const watch = fs.watch
     let refuseSetup = true
+    let attempts = 0
     t.mock.method(
       fs,
       'watch',
@@ -71,6 +76,8 @@ test(
           return watch(...parameters)
         }
 
+        attempts++
+
         if (refuseSetup) {
           refuseSetup = false
           throw new Error('Synthetic native watch refusal')
@@ -87,6 +94,10 @@ test(
       },
     )
     syncBuiltinESMExports()
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: 0,
+    })
     t.after(() => {
       watching.close()
       t.mock.restoreAll()
@@ -108,10 +119,24 @@ test(
         root,
       ],
     )
-    const remote = join(
+    const branch = execFileSync(
+      'git',
+      [
+        '-C',
+        root,
+        'symbolic-ref',
+        '--short',
+        'HEAD',
+      ],
+      { encoding: 'utf8' },
+    ).trim()
+    const refs = join(
       root,
       '.git',
       'refs',
+    )
+    const remote = join(
+      refs,
       'remotes',
       'origin',
     )
@@ -121,14 +146,24 @@ test(
     )
     await watching.reconcile({ state })
     assert.equal(
-      opened.length,
+      attempts,
       0,
+      'a missing repository is not tried again on the next pump',
     )
+    t.mock.timers.tick(GIT_RETRY_MS)
+    await watching.reconcile({ state })
+    await watching.reconcile({ state })
+    assert.equal(
+      attempts,
+      1,
+      'a failed watch setup is not tried again on the next pump',
+    )
+    t.mock.timers.tick(GIT_RETRY_MS)
     await watching.reconcile({ state })
     assert.equal(
       opened.length,
       1,
-      'a missing repository and a failed watch setup are retried',
+      'a missing repository and a failed watch setup are retried once their wait passed',
     )
     opened[0]!.emit(
       'error',
@@ -139,31 +174,39 @@ test(
       check: () => closed.has(opened[0]!),
     })
     await watching.reconcile({ state })
+    t.mock.timers.tick(GIT_RETRY_MS)
+    await watching.reconcile({ state })
     assert.equal(
       opened.length,
       2,
       'a failed installed watcher is retried',
     )
-    assert.equal(
-      changed,
-      undefined,
-      'installing the watcher reports no ref change',
+    writeFileSync(
+      join(
+        refs,
+        'heads',
+        'another-copy',
+      ),
+      'a'.repeat(40),
+    )
+    await wait(QUIET_REF_MS)
+    assert.deepEqual(
+      changes,
+      [],
+      'installing the watcher and another copy\'s commit report no change',
     )
     writeFileSync(
       join(
         remote,
-        'worker',
+        branch,
       ),
       'a'.repeat(40),
     )
     await settle({
       what: 'the ref change',
-      check: () => changed,
+      check: () => changes.length,
     })
-    assert.equal(
-      changed,
-      card.id,
-    )
+    assert.ok(changes.every(task => task === card.id))
     card.sessionActivity = 'finished'
     delete card.status
     await watching.reconcile({ state })
