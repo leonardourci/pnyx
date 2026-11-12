@@ -194,6 +194,8 @@ const MessageRow = memo(function MessageRow({
 }) {
   const canResend = canSendAgain && entry.task
     && (entry.delivery?.agent?.state ?? entry.receipt) === 'delivery_unknown'
+  // A transcript copy's time is when the agent read it; the owner's message shows when it was sent.
+  const sentAt = entry.sent ?? entry.at
 
   return entry.kind === 'divider' ? (
     <div
@@ -348,14 +350,14 @@ const MessageRow = memo(function MessageRow({
               Retry
             </InlineButton>
           )}
-          {entry.at && (
+          {sentAt && (
             <time
-              dateTime={entry.at}
-              title={`Sent ${new Date(entry.at).toLocaleDateString()}, ${clock({
-                at: entry.at,
+              dateTime={sentAt}
+              title={`Sent ${new Date(sentAt).toLocaleDateString()}, ${clock({
+                at: sentAt,
                 seconds: true,
               })}`}
-            >{clock({ at: entry.at })}
+            >{clock({ at: sentAt })}
             </time>
           )}
           <CopyButton
