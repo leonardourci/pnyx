@@ -24,6 +24,9 @@ import { offerHost } from '#app/server-state.ts'
 import { hostRequest } from '#app/host-request.ts'
 import { runForClient } from '#app/request-context.ts'
 
+// Longer than any wait here, so a delayed retry is never due during the test.
+const HOUR_MS = 3_600_000
+
 test(
   'failed tool reopening retries within the host bound and a new revision resets it',
   async () => {
@@ -313,8 +316,8 @@ test(
         hydraId: 'delayed',
         changed: () => {},
         retryDelays: [
-          Number.MAX_SAFE_INTEGER,
-          Number.MAX_SAFE_INTEGER,
+          HOUR_MS,
+          HOUR_MS,
         ],
         query: ({ ...request }) => {
           if (delayedNativeFails) {

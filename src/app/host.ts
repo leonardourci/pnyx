@@ -69,8 +69,6 @@ const RETRY_MS = [
 ]
 
 // Every Hydra this server runs answers whether one of its agents is mid-turn, so an upgrade restarts between turns.
-// Node fires a longer timer at once, so a longer delay waits this long and finds its retry not yet due.
-const MAX_TIMER_MS = 2 ** 31 - 1
 const midTurnChecks = new Set<() => boolean>()
 
 export const agentsMidTurn = () => [...midTurnChecks].some(check => check())
@@ -130,6 +128,7 @@ export function createHost({
   const children = trackChildren({ hydraId })
   const controller = new AbortController()
   const live = new Map<string, Live>()
+  const toolRetries = new Map<string, NodeJS.Timeout>()
   const toolApplications = new Map<string, {
     revision: string
     attempted: boolean
@@ -655,16 +654,17 @@ export function createHost({
         const delay = retryDelays[application.attempts - 1]!
         application.retryAt = Date.now() + delay
         // A quiet Hydra may see no event before then, so the retry has its own timer.
-        setTimeout(
-          () => background({
-            name: 'tool grant retry',
-            run: () => host.toolsChanged({ task }),
-          }),
-          Math.min(
+        clearTimeout(toolRetries.get(task))
+        toolRetries.set(
+          task,
+          setTimeout(
+            () => background({
+              name: 'tool grant retry',
+              run: () => host.toolsChanged({ task }),
+            }),
             delay,
-            MAX_TIMER_MS,
-          ),
-        ).unref()
+          ).unref(),
+        )
       }
     },
     usageTracker,
@@ -1417,6 +1417,11 @@ export function createHost({
       controller.abort()
 
       compaction.close()
+
+
+      for (const timer of toolRetries.values()) {
+        clearTimeout(timer)
+      }
 
       closeSessions()
     },
