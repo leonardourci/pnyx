@@ -28,6 +28,8 @@ export interface Scope {
   ready: boolean
   subscribed: boolean
   subscription: string | null
+  // The arguments of the last page command, sent again on subscribe so the first snapshot is already scoped.
+  page?: string[]
   failed: boolean
   restoredSaves: boolean
   error: string

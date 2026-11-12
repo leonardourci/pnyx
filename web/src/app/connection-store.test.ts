@@ -18,9 +18,11 @@ class TestSocket {
   sent: Record<string, unknown>[] = []
 
   token: string | null
+  page: unknown
   // eslint-disable-next-line pnyx/object-params -- WebSocket owns the constructor signature.
   constructor(url: URL) {
     this.token = url.searchParams.get('token')
+    this.page = JSON.parse(url.searchParams.get('page') ?? 'null')
     TestSocket.current = this
   }
 
@@ -1206,3 +1208,41 @@ for (const scenario of [
     },
   )
 }
+
+test(
+  'a reconnecting page names the cards it last opened in its socket address',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection()
+    const stop = connection.start()
+    const socket = TestSocket.current
+    open({ socket })
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    void connection.commandFor({ id: 'default' })({
+      name: 'page',
+      args,
+    }).catch(() => {})
+
+    socket.onclose?.()
+    window.dispatchEvent(new Event('online'))
+    assert.notEqual(
+      TestSocket.current,
+      socket,
+    )
+    assert.deepEqual(
+      TestSocket.current.page,
+      args,
+    )
+  },
+)

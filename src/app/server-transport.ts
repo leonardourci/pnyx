@@ -172,9 +172,11 @@ export interface MountedHydra {
   connect({
     ws,
     after,
+    page,
   }: {
     ws: HydraClient
     after: string | null
+    page?: string[]
   }): HydraSubscription
   summaries({ hydras }: { hydras: HydraSummary[] }): void
   upgrade(): void

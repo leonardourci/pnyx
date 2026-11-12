@@ -41,6 +41,7 @@ import { listenIngest } from '#integrations/hooks/socket.ts'
 import { healthFacts } from '#diagnostics/health.ts'
 import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
 import { HydraError } from '#store/errors.ts'
+import { pageInterest, parsePage } from './page-cli.ts'
 
 export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
@@ -465,14 +466,48 @@ export async function mountOwnedHydra({
     startWorker,
   })
 
+  // The page sends its open cards again as a page command once connected, which reports bad arguments and
+  // missing cards; here they only scope the first snapshot, so arguments that do not parse keep the default.
+  const openPage = ({
+    ws,
+    page,
+  }: {
+    ws: HydraClient
+    page?: string[]
+  }) => {
+    if (!page) {
+      return
+    }
+
+    try {
+      tabs.open({
+        ws,
+        interest: pageInterest({
+          state,
+          values: parsePage({ args: page }).values,
+        }).interest,
+      })
+    } catch (error) {
+      if (!(error instanceof HydraError)) {
+        throw error
+      }
+    }
+  }
+
   const connect = ({
     ws,
     after,
+    page,
   }: {
     ws: HydraClient
     after: string | null
+    page?: string[]
   }): HydraSubscription => {
     clients.add(ws)
+    openPage({
+      ws,
+      page,
+    })
     send({
       ws,
       message: {

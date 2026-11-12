@@ -199,12 +199,18 @@ export function createHydraConnection() {
         name,
         args,
         onChecking,
-      }) => command({
-        scope,
-        name,
-        args,
-        onChecking,
-      }),
+      }) => {
+        if (name === 'page') {
+          scope.page = args
+        }
+
+        return command({
+          scope,
+          name,
+          args,
+          onChecking,
+        })
+      },
     }
 
     scope.command.retain = () => {
@@ -586,6 +592,7 @@ export function createHydraConnection() {
         scope: scope.id,
         subscription: scope.subscription,
         ...(scope.hasSnapshot ? { after: String(scope.resource.snapshot().confirmed.seq) } : {}),
+        ...(scope.page ? { page: scope.page } : {}),
       },
     })
   }
@@ -902,10 +909,20 @@ export function createHydraConnection() {
       'subscription',
       crypto.randomUUID(),
     )
+    const primary = selection().creation && selected.startsWith('pending-') ? selection().creation!.from : selected
     url.searchParams.set(
       'scope',
-      selection().creation && selected.startsWith('pending-') ? selection().creation!.from : selected,
+      primary,
     )
+    const page = scopes.get(primary)?.page
+
+    if (page) {
+      url.searchParams.set(
+        'page',
+        JSON.stringify(page),
+      )
+    }
+
     const ws = new WebSocket(url)
     let opened = false
     socket = ws

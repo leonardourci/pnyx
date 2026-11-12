@@ -43,6 +43,24 @@ const bearer = ({ req }: { req: IncomingMessage }) => {
   )
 }
 
+// A page's open cards as page command arguments, from its subscribe message or its socket URL.
+const pageArgs = ({ value }: { value: unknown }) => Array.isArray(value) && value.every(arg => typeof arg === 'string')
+  ? value
+  : undefined
+
+const parseJson = ({ text }: { text: string | null }): unknown => {
+  if (text === null) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    // An unreadable value is the same as none: the page sends its cards again as a page command.
+    return undefined
+  }
+}
+
 export async function startServer({
   hydraId = 'default',
   port = 0,
@@ -380,11 +398,13 @@ export async function startServer({
             hydra,
             mounted,
             after,
+            page,
             subscriptionId,
           }: {
             hydra: string
             mounted: MountedHydra
             after: string | null
+            page?: string[]
             subscriptionId?: string
           }) => {
             const client: HydraClient = {
@@ -411,6 +431,7 @@ export async function startServer({
             const subscription = mounted.connect({
               ws: client,
               after,
+              page,
             })
             subscriptions.set(
               hydra,
@@ -421,10 +442,12 @@ export async function startServer({
           const subscribe = async ({
             hydra,
             after,
+            page,
             subscriptionId,
           }: {
             hydra: string
             after: string | null
+            page?: string[]
             subscriptionId?: string
           }) => {
             subscriptions.get(hydra)?.close()
@@ -444,6 +467,7 @@ export async function startServer({
                   hydra,
                   mounted: served.get(hydra)!,
                   after,
+                  page,
                   subscriptionId,
                 })
               }
@@ -511,6 +535,7 @@ export async function startServer({
                 void subscribe({
                   hydra,
                   after: typeof message.after === 'string' ? message.after : null,
+                  page: pageArgs({ value: message.page }),
                   subscriptionId: typeof message.subscription === 'string' ? message.subscription : undefined,
                 })
               } else if (message?.type === 'unsubscribe') {
@@ -540,6 +565,7 @@ export async function startServer({
             hydra: primary,
             mounted: mount,
             after: url.searchParams.get('after'),
+            page: pageArgs({ value: parseJson({ text: url.searchParams.get('page') }) }),
             subscriptionId: url.searchParams.get('subscription') ?? undefined,
           })
         },

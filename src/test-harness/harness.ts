@@ -168,15 +168,20 @@ export function pnyxAxi({
 }
 
 // The owner's page: the snapshot it gets, kept current with the events that follow, and its commands.
+// `page` names the cards it opens with, as page command arguments in its socket address.
 export async function openPage({
   port,
   hydraId,
+  page,
 }: {
   port: number
   hydraId: string
+  page?: string[]
 }) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}`)
+  const opened = page ? `&page=${encodeURIComponent(JSON.stringify(page))}` : ''
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}${opened}`)
   let state: HydraState | undefined
+  let snapshots = 0
   const answers = new Map<string, ServerMessage>()
   const queues: HydraQueue[] = []
   const threads: ThreadPage[] = []
@@ -225,6 +230,7 @@ export async function openPage({
       } else if (message.type === 'thread') {
         threads.push(message.thread)
       } else if (message.type === 'snapshot') {
+        snapshots += 1
         state = {
           ...message.state,
           eventIds: {},
@@ -282,6 +288,8 @@ export async function openPage({
   }
 
   return {
+    // How many snapshots the server has sent this page.
+    snapshots: () => snapshots,
     queues,
     // Every thread page the server pushed to the subscribed tab, in order.
     threads,

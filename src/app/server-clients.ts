@@ -686,6 +686,19 @@ export function createServerClients({
     queueMessage,
     sendQueue,
     sendSnapshot,
+    // A tab that names its cards when it subscribes gets its first snapshot or resume already scoped.
+    open({
+      ws,
+      interest,
+    }: {
+      ws: HydraClient
+      interest: PageInterest
+    }) {
+      interests.set(
+        ws,
+        interest,
+      )
+    },
     show({
       ws,
       interest,
