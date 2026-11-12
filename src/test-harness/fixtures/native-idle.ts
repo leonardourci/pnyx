@@ -497,6 +497,58 @@ for (const ending of [
         }),
         { code: 'FOLDER_MISSING' },
       )
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          const card = writer.state.cards[task.id]!
+          const attached = decidePush({
+            state: writer.state,
+            key: card.key,
+            input: {
+              agent: {
+                ...card.agent!,
+                cwd: folder,
+              },
+            },
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in attached)
+          writer.append({ event: attached.event })
+          const aliased = hydraEvent({
+            state: writer.state,
+            cardId: task.id,
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+            change: {
+              type: 'task.copy',
+              data: {
+                before: card.copy ?? null,
+                after: {
+                  ...card.copy!,
+                  path: alias,
+                },
+              },
+            },
+          })
+          assert.ok('event' in aliased)
+          writer.append({ event: aliased.event })
+        },
+      })
+      assert.throws(
+        () => taskHost.send({
+          card: task.id,
+          text: 'Reply to a copy saved under an alias',
+          actor: 'cli',
+          direct: true,
+        }),
+        { code: 'FOLDER_MISSING' },
+        'a copy saved under an older alias still counts as released',
+      )
     }
   } finally {
     if (childPid) {

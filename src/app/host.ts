@@ -202,7 +202,7 @@ export function createHost({
   const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
     const { cwd } = card.agent
 
-    const released = card.copy?.state === 'removed' && card.copy.path === canonical({ path: cwd })
+    const released = card.copy?.state === 'removed' && canonical({ path: card.copy.path }) === canonical({ path: cwd })
 
     if (!cwd || released || !isFolder({ path: cwd })) {
       throw new HydraError({
