@@ -204,7 +204,6 @@ export function search({
 
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
-    const newest = index.newest
 
     for (const document of index.documents({
       terms,
@@ -274,8 +273,7 @@ export function search({
       if (query.since) {
         const cutoff = Date.parse(query.since)
         const recentCard = Date.parse(card.updatedAt) >= cutoff
-        const recentEntry = (newest.get(card.id) ?? 0) >= cutoff
-        const recent = recentCard || recentEntry
+        const recent = recentCard || index.newestAt({ card: card.id }) >= cutoff
 
         if (!recent) {
           continue

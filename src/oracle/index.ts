@@ -83,7 +83,6 @@ export function openIndex({
   const path = searchPath({ hydraId })
   const { DatabaseSync } = sqlite()
   const db = new DatabaseSync(path)
-  const newest = new Map<string, number>()
 
   try {
     chmodSync(
@@ -115,24 +114,19 @@ export function openIndex({
       hydraId,
       state,
     })
-    const times = db.prepare('SELECT card, max((julianday(at) - 2440587.5) * 86400000) AS at FROM docs GROUP BY card').all() as {
-      card: string
-      at: number | null
-    }[]
-
-    for (const row of times) {
-      newest.set(
-        row.card,
-        Math.round(row.at ?? 0),
-      )
-    }
   } catch (error) {
     db.close()
     throw error
   }
 
+  const latest = db.prepare('SELECT max((julianday(at) - 2440587.5) * 86400000) AS at FROM docs WHERE card=?')
+
   return {
-    newest,
+    newestAt({ card }: { card: string }) {
+      const row = latest.get(card) as { at: number | null }
+
+      return Math.round(row.at ?? 0)
+    },
     documents({
       terms,
       fuzzy,
