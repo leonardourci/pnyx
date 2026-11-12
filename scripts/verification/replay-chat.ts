@@ -396,7 +396,7 @@ export function replayChat({
         inventory,
         pages,
         expected: expected.length,
-        undated: expected.length - ordered.length,
+        undated: expected.filter(entry => entry.at === undefined).length,
         counts,
         examples: mismatches.slice(
           0,
