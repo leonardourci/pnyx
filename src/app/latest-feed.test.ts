@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import fs, { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import fs, { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,6 +9,7 @@ import { decidePush } from '#tasks/push.ts'
 import { settle } from '#test-harness/child-fixture.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { withWriter } from './writer.ts'
+import { loadHydra } from './store.ts'
 import { startServer } from './server-daemon.ts'
 import { localToken } from './server-state.ts'
 import type { RunningServer, ServerMessage } from './server-transport.ts'
@@ -16,10 +17,10 @@ import type { RunningServer, ServerMessage } from './server-transport.ts'
 test(
   'working and unknown transcripts reach clients, finished watches close and resumed sessions update again',
   async t => {
-    const root = mkdtempSync(join(
+    const root = realpathSync(mkdtempSync(join(
       tmpdir(),
       'pnyx-latest-watches-',
-    ))
+    )))
     const previous = process.env.PNYX_HOME
     process.env.PNYX_HOME = join(
       root,
@@ -60,6 +61,11 @@ test(
       'unknown',
       'native.jsonl',
     )
+    const finished = join(
+      root,
+      'finished',
+      'native.jsonl',
+    )
     const ended = join(
       root,
       'ended',
@@ -69,6 +75,7 @@ test(
     for (const path of [
       current,
       unknown,
+      finished,
       ended,
     ]) {
       mkdirSync(
@@ -90,11 +97,24 @@ test(
     const folders = new Set([
       dirname(current),
       dirname(unknown),
+      dirname(finished),
       dirname(ended),
     ])
+    const openedPolls = new Set<string>()
     const closedPolls = new Set<string>()
     const openedFolders = new Set<string>()
     const closedFolders = new Set<string>()
+    const watchFile = fs.watchFile
+    t.mock.method(
+      fs,
+      'watchFile',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.watchFile's signature.
+      (...parameters: Parameters<typeof fs.watchFile>) => {
+        openedPolls.add(String(parameters[0]))
+
+        return watchFile(...parameters)
+      },
+    )
     const unwatchFile = fs.unwatchFile
     const watch = fs.watch
     t.mock.method(
@@ -172,10 +192,19 @@ test(
       path: unknown,
     })
     put({
-      key: 'ended',
-      path: ended,
+      key: 'finished',
+      path: finished,
       activity: 'finished',
     })
+    const endedCard = put({
+      key: 'ended',
+      path: ended,
+      activity: 'ended',
+    })
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.cards[endedCard]?.activity,
+      'ended',
+    )
     server = await startServer({
       port: 0,
       homes: [],
@@ -216,6 +245,23 @@ test(
           && latest[external]?.text === 'Initial conversation'
       },
     })
+
+    for (const path of [
+      finished,
+      ended,
+    ]) {
+      assert.equal(
+        openedPolls.has(path),
+        false,
+        'settled sessions start without transcript polling',
+      )
+      assert.equal(
+        openedFolders.has(dirname(path)),
+        false,
+        'settled sessions start without folder watches',
+      )
+    }
+
     const append = ({
       path,
       text,
