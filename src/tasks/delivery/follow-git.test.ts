@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import fs, { type FSWatcher } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -14,10 +14,10 @@ import { followGit } from './follow-git.ts'
 test(
   'a local Git ref change makes a working task pull request due immediately',
   async t => {
-    const root = mkdtempSync(join(
+    const root = realpathSync(mkdtempSync(join(
       tmpdir(),
       'pnyx-follow-refs-',
-    ))
+    )))
     const state = replay({
       state: emptyHydra(),
       events: readStream({ name: 'lifecycle' }),
@@ -51,7 +51,26 @@ test(
       fs,
       'watch',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
-      (...parameters: Parameters<typeof fs.watch>) => {
+      (...parameters: [
+        fs.PathLike,
+        fs.WatchOptionsWithStringEncoding,
+        fs.WatchListener<string>?,
+      ]) => {
+        const options = parameters[1]
+        const recursive = typeof options === 'object' && options?.recursive
+
+        if (!recursive) {
+          return watch(...parameters)
+        }
+
+        if (parameters[0] !== join(
+          root,
+          '.git',
+          'refs',
+        )) {
+          return watch(...parameters)
+        }
+
         if (refuseSetup) {
           refuseSetup = false
           throw new Error('Synthetic native watch refusal')

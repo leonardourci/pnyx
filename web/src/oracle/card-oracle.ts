@@ -148,11 +148,11 @@ export function searchSchedule({
       clearTimeout(waiting); clearTimeout(refreshing)
       waiting = undefined; refreshing = undefined
 
-      if (!search) {
-        if (running) {
-          cancel?.()
-        }
+      if (running) {
+        cancel?.()
+      }
 
+      if (!search) {
         return
       }
 
