@@ -1,7 +1,3 @@
-import { test } from 'node:test'
-import { assertChromeOffKeychain } from './fake-chrome.ts'
+import { testChromeOffKeychain } from './fake-chrome.ts'
 
-test(
-  'a Chrome started under the test launcher stays off the Keychain',
-  assertChromeOffKeychain,
-)
+testChromeOffKeychain({ where: 'under the test launcher' })

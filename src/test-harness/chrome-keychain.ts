@@ -1,4 +1,5 @@
-import { ChildProcess } from 'node:child_process'
+import childProcess, { ChildProcess } from 'node:child_process'
+import { syncBuiltinESMExports } from 'node:module'
 import { basename } from 'node:path'
 
 // Tests point HOME at a temporary folder. A Chrome started there finds no login keychain, and macOS then
@@ -18,11 +19,58 @@ type SpawnCall = (
   },
 ) => unknown
 
+// eslint-disable-next-line pnyx/object-params -- Node owns spawnSync's and execFileSync's signatures.
+type SyncLaunch = (
+  file: string,
+  args?: unknown,
+  options?: unknown,
+) => unknown
+
 let guardInstalled = false
 
-// Every asynchronous spawn, execFile, exec and fork goes through ChildProcess.prototype.spawn, whose args
-// start with argv0. Chrome reads every argument after `--` as a URL, so the flags go right after argv0.
-// spawnSync and shell command strings bypass it, so a test starts Chrome with spawn or execFile.
+function isChrome({ file }: { file: string }) {
+  return CHROME_BINARY.test(basename(file))
+}
+
+// Chrome reads every argument after `--` as a URL, so the flags go first.
+function guardSync({ launch }: { launch: SyncLaunch }): SyncLaunch {
+  // eslint-disable-next-line pnyx/object-params -- Node owns spawnSync's and execFileSync's signatures.
+  return function (
+    file,
+    args,
+    options,
+  ) {
+    if (!isChrome({ file })) {
+      return launch(
+        file,
+        args,
+        options,
+      )
+    }
+
+    if (Array.isArray(args)) {
+      return launch(
+        file,
+        [
+          ...KEYCHAIN_FLAGS,
+          ...args,
+        ],
+        options,
+      )
+    }
+
+    // Without an argument list, the second argument is the options.
+    return launch(
+      file,
+      [...KEYCHAIN_FLAGS],
+      args ?? options,
+    )
+  }
+}
+
+// The guard covers Chrome started with spawn or execFile, which go through ChildProcess.prototype.spawn
+// with args starting at argv0, and with spawnSync or execFileSync. It cannot see a Chrome started through
+// a shell: exec, execSync or `shell: true` pass the command to /bin/sh, so those callers add KEYCHAIN_FLAGS.
 export function keepChromeOffKeychain() {
   if (guardInstalled) {
     return
@@ -34,7 +82,7 @@ export function keepChromeOffKeychain() {
 
   // eslint-disable-next-line pnyx/object-params -- Node owns ChildProcess.prototype.spawn's signature.
   prototype.spawn = function (options) {
-    if (CHROME_BINARY.test(basename(options.file))) {
+    if (isChrome({ file: options.file })) {
       options.args = [
         options.args[0],
         ...KEYCHAIN_FLAGS,
@@ -47,4 +95,9 @@ export function keepChromeOffKeychain() {
       options,
     )
   }
+
+  const launches = childProcess as unknown as Record<'spawnSync' | 'execFileSync', SyncLaunch>
+  launches.spawnSync = guardSync({ launch: launches.spawnSync })
+  launches.execFileSync = guardSync({ launch: launches.execFileSync })
+  syncBuiltinESMExports()
 }
