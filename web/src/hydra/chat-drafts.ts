@@ -1,9 +1,13 @@
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { taskMentions } from '#hydra/mentions.ts'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ChatComment } from './chat.ts'
 import { commentPrefix, loadCommentRecords, readCommentRecord, saveCommentRecords } from './comment-storage.ts'
 
 const SAVE_PAUSE_MS = 500
+
+const mentionedTasks = ({ text }: { text: string }) =>
+  [...new Set(taskMentions({ text }).map(mention => mention.id))].sort().join('\n')
 
 function mergeComments({
   current,
@@ -136,9 +140,11 @@ export function createChatDrafts({
     subscribe,
     subscribeSettled,
     flush,
+    // The chat shows the questions of the tasks a draft mentions, so a change to which tasks it names publishes at once.
     setDraft: ({ text }: { text: string }) => write({
       text,
       comments: current.comments,
+      structural: mentionedTasks({ text }) !== mentionedTasks({ text: current.text }),
     }),
     setComments: ({ items }: { items: ChatComment[] }) => write({
       text: current.text,

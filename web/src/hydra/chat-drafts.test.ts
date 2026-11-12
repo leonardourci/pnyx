@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { imageLine } from '#hydra/images.ts'
+import { taskMention } from '#hydra/mentions.ts'
 import { createChatDrafts } from './chat-drafts.ts'
 import { commentReply, type ChatComment } from './chat.ts'
 import { hasPendingImage, pendingImage } from './draft.ts'
@@ -483,6 +484,33 @@ test(
         }),
       }),
       false,
+    )
+  },
+)
+
+test(
+  'answering a task in chat shows its question at once, while the words after the mention wait for the pause',
+  t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const drafts = createChatDrafts({ save: ({ comments }) => comments })
+    const answer = `For ${taskMention({
+      id: 't1',
+      title: 'Fix the login',
+    })}: `
+    drafts.setDraft({ text: answer })
+    assert.equal(
+      drafts.readSettled().text,
+      answer,
+    )
+    drafts.setDraft({ text: `${answer}yes` })
+    assert.equal(
+      drafts.readSettled().text,
+      answer,
+    )
+    drafts.setDraft({ text: 'yes' })
+    assert.equal(
+      drafts.readSettled().text,
+      'yes',
     )
   },
 )
