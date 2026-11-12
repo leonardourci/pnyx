@@ -1050,10 +1050,12 @@ export function HydraChat({
 
             // Paging emits layout scrolls near the bottom; only owner input may resume following.
             const owner = performance.now() - scrolledAt.current < OWNER_SCROLL_MS
+            const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
+            const movedAway = remaining > 0 && el.scrollTop < lastTop.current
 
-            if (owner && el.scrollTop < lastTop.current) {
+            if (owner && movedAway) {
               follow.current = false
-            } else if (owner && el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+            } else if (owner && remaining < 40) {
               follow.current = true
             }
 
