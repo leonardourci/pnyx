@@ -55,7 +55,9 @@ const keyOf = ({ search }: { search: Search }) => `${search.text}${search.filter
 export function searchSchedule({
   find,
   show,
+  cancel,
 }: {
+  cancel?(): void
   find({ search }: { search: Search }): Promise<Hit[]>
   show({
     key,
@@ -70,14 +72,14 @@ export function searchSchedule({
   let current: Search | null = null
   let waiting: ReturnType<typeof setTimeout> | undefined
   let refreshing: ReturnType<typeof setTimeout> | undefined
-  let running = false
+  let running = 0
   let shown = ''
 
   // Never rejects: a failed refresh keeps the shown results, and the next query or event tries again.
   const send = async ({ search }: { search: Search }) => {
     const key = keyOf({ search })
     const stillCurrent = () => !!current && keyOf({ search: current }) === key
-    running = true
+    running += 1
 
     try {
       const hits = await find({ search })
@@ -101,7 +103,7 @@ export function searchSchedule({
         })
       }
     } finally {
-      running = false
+      running -= 1
     }
   }
 
@@ -143,6 +145,10 @@ export function searchSchedule({
       waiting = undefined; refreshing = undefined
 
       if (!search) {
+        if (running) {
+          cancel?.()
+        }
+
         return
       }
 
@@ -158,6 +164,10 @@ export function searchSchedule({
     stop() {
       current = null
       clearTimeout(waiting); clearTimeout(refreshing)
+
+      if (running) {
+        cancel?.()
+      }
     },
   }
 }
@@ -196,7 +206,22 @@ export function useFoundCards({
   const schedule = useRef<ReturnType<typeof searchSchedule> | null>(null)
   useEffect(
     () => {
+      const cancel = async () => {
+        try {
+          await command({
+            name: 'oracle',
+            args: [],
+          })
+        } catch (error) {
+          console.warn(
+            'Oracle cancellation failed',
+            error,
+          )
+        }
+      }
+
       const next = searchSchedule({
+        cancel,
         find: ({ search }) => findCards({
           command,
           query: search.text,
