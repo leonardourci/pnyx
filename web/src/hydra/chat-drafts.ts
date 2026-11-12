@@ -4,6 +4,28 @@ import { sendableComment, type ChatComment } from './chat.ts'
 
 const SAVE_PAUSE_MS = 500
 
+function mergeComments({
+  current,
+  previous,
+  incoming,
+}: {
+  current: ChatComment[]
+  previous: ChatComment[]
+  incoming: ChatComment[]
+}): ChatComment[] {
+  const dirty = current.filter(comment => JSON.stringify(comment)
+    !== JSON.stringify(previous.find(saved => saved.id === comment.id)))
+  const removed = previous.filter(saved => !current.some(comment => comment.id === saved.id))
+  const merged = incoming.filter(item => !removed.some(saved => saved.id === item.id))
+    .map(item => dirty.find(comment => comment.id === item.id) ?? item)
+  const added = dirty.filter(comment => !incoming.some(item => item.id === comment.id))
+
+  return [
+    ...merged,
+    ...added,
+  ]
+}
+
 export function createChatDrafts({
   text = '',
   comments = [],
@@ -17,7 +39,8 @@ export function createChatDrafts({
   }: {
     text: string
     comments: ChatComment[]
-  }): void
+    previous: ChatComment[]
+  }): ChatComment[] | false
 }) {
   let current = {
     text,
@@ -56,8 +79,28 @@ export function createChatDrafts({
     clearTimeout(timer)
     timer = undefined
     publish()
-    save(current)
-    persistedComments = current.comments.filter(comment => sendableComment({ comment }))
+    const saved = save({
+      ...current,
+      previous: persistedComments,
+    })
+
+    if (saved !== false) {
+      const comments = mergeComments({
+        current: current.comments,
+        previous: persistedComments,
+        incoming: saved,
+      })
+      persistedComments = saved
+
+      if (JSON.stringify(comments) !== JSON.stringify(current.comments)) {
+        current = {
+          ...current,
+          comments,
+        }
+        listeners.forEach(listener => listener())
+        publish()
+      }
+    }
   }
 
   const write = ({
@@ -102,20 +145,15 @@ export function createChatDrafts({
       structural: true,
     }),
     syncComments: ({ items }: { items: ChatComment[] }) => {
-      const dirty = current.comments.filter(comment => JSON.stringify(comment)
-        !== JSON.stringify(persistedComments.find(saved => saved.id === comment.id)))
-      const removed = persistedComments.filter(saved =>
-        !current.comments.some(comment => comment.id === saved.id))
-      const merged = items.filter(item => !removed.some(saved => saved.id === item.id))
-        .map(item => dirty.find(comment => comment.id === item.id) ?? item)
-      const added = dirty.filter(comment => !items.some(item => item.id === comment.id))
+      const comments = mergeComments({
+        current: current.comments,
+        previous: persistedComments,
+        incoming: items,
+      })
       persistedComments = items
       write({
         text: current.text,
-        comments: [
-          ...merged,
-          ...added,
-        ],
+        comments,
         structural: true,
       })
     },
@@ -193,19 +231,18 @@ export function useChatDrafts({
   }
   const [drafts] = useState(() => {
     let comments: ChatComment[] = []
-    let lastSaved: string | null = null
 
     try {
-      lastSaved = localStorage.getItem(commentsKey)
-      comments = storedComments({ value: lastSaved })
+      comments = storedComments({ value: localStorage.getItem(commentsKey) })
     } catch { /* Blocked storage starts with an empty draft. */ }
 
-    const resource = createChatDrafts({
+    return createChatDrafts({
       text,
       comments,
       save: ({
         text,
         comments,
+        previous,
       }) => {
         const {
           commentsKey,
@@ -213,42 +250,47 @@ export function useChatDrafts({
         } = persistence.current
         saveText({ text })
 
+        const current = comments.filter(comment => sendableComment({ comment }))
+
+        if (JSON.stringify(current) === JSON.stringify(previous)) {
+          return previous
+        }
+
         try {
-          const saved = storedCards({ value: localStorage.getItem(commentsKey) })
-          saved[HYDRA_CARD] = comments.filter(comment => sendableComment({ comment }))
+          const stored = localStorage.getItem(commentsKey)
+          const saved = storedCards({ value: stored })
+          const merged = mergeComments({
+            current,
+            previous,
+            incoming: storedComments({ value: stored }),
+          })
+          saved[HYDRA_CARD] = merged
           const encoded = JSON.stringify(saved)
 
-          if (encoded !== lastSaved) {
+          if (encoded !== stored) {
             localStorage.setItem(
               commentsKey,
               encoded,
             )
-            lastSaved = encoded
           }
-        } catch { /* Storage full or blocked: the mounted chat retains its drafts. */ }
+
+          return merged
+        } catch {
+          // Keep unsaved edits dirty when storage is full or blocked.
+          return false
+        }
       },
     })
-
-    return {
-      ...resource,
-      remember: ({ value }: { value: string | null }) => {
-        lastSaved = value
-      },
-    }
   })
   useEffect(
     () => {
-      const sync = ({
-        key,
-        newValue,
-      }: StorageEvent) => {
+      const sync = ({ key }: StorageEvent) => {
         if (key !== commentsKey) {
           return
         }
 
         try {
-          const incoming = storedComments({ value: newValue })
-          drafts.remember({ value: newValue })
+          const incoming = storedComments({ value: localStorage.getItem(commentsKey) })
           drafts.syncComments({ items: incoming })
         } catch { /* Invalid storage events leave the current comments intact. */ }
       }

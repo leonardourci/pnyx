@@ -15,10 +15,14 @@ test(
       save: ({
         text,
         comments,
-      }) => saved.push({
-        text,
-        comments,
-      }),
+      }) => {
+        saved.push({
+          text,
+          comments,
+        })
+
+        return comments
+      },
     })
     const original = drafts.readSettled()
     let liveUpdates = 0
@@ -184,6 +188,8 @@ test(
       ],
       save: ({ comments }) => {
         saved = comments
+
+        return comments
       },
     })
     drafts.editComment({
@@ -275,5 +281,127 @@ test(
       ],
     )
     drafts.flush()
+  },
+)
+
+test(
+  'failed comment saves preserve local edits and removals across another tab’s save',
+  t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const first: ChatComment = {
+      id: 'first',
+      messageId: 'reply',
+      block: 0,
+      offset: 0,
+      quote: 'First passage',
+      text: 'Saved first',
+    }
+    const second = {
+      ...first,
+      id: 'second',
+      text: 'Saved second',
+    }
+    const added = {
+      ...first,
+      id: 'added',
+      text: 'Remote addition',
+    }
+    let succeeds = false
+    const baselines: ChatComment[][] = []
+    const drafts = createChatDrafts({
+      comments: [
+        first,
+        second,
+      ],
+      save: ({
+        comments,
+        previous,
+      }) => {
+        baselines.push(previous)
+
+        return succeeds ? comments : false
+      },
+    })
+    drafts.flush()
+    assert.deepEqual(
+      baselines,
+      [
+        [
+          first,
+          second,
+        ],
+      ],
+    )
+    drafts.setComments({
+      items: [
+        {
+          ...first,
+          text: 'Unsaved local edit',
+        },
+      ],
+    })
+    drafts.flush()
+    assert.deepEqual(
+      baselines,
+      [
+        [
+          first,
+          second,
+        ],
+        [
+          first,
+          second,
+        ],
+      ],
+    )
+    drafts.syncComments({
+      items: [
+        first,
+        second,
+        added,
+      ],
+    })
+    assert.deepEqual(
+      drafts.read().comments,
+      [
+        {
+          ...first,
+          text: 'Unsaved local edit',
+        },
+        added,
+      ],
+    )
+    succeeds = true
+    drafts.flush()
+    drafts.syncComments({
+      items: [
+        {
+          ...first,
+          text: 'Later remote edit',
+        },
+        added,
+      ],
+    })
+    assert.deepEqual(
+      drafts.read().comments,
+      [
+        {
+          ...first,
+          text: 'Later remote edit',
+        },
+        added,
+      ],
+    )
+    drafts.flush()
+    assert.deepEqual(
+      baselines.at(-1),
+      [
+        {
+          ...first,
+          text: 'Later remote edit',
+        },
+        added,
+      ],
+    )
   },
 )
