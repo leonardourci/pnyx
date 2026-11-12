@@ -200,3 +200,69 @@ test(
     )
   },
 )
+
+test(
+  'profile functions sum one function reached from several callers into one row',
+  () => {
+    const hot = {
+      functionName: 'hot',
+      scriptId: '1',
+      url: 'file:///synthetic/app.ts',
+      lineNumber: 2,
+      columnNumber: 0,
+    }
+    const rows = profileFunctions({
+      profile: {
+        startTime: 0,
+        endTime: 1000,
+        nodes: [
+          {
+            id: 1,
+            callFrame: hot,
+          },
+          {
+            id: 2,
+            callFrame: { ...hot },
+          },
+          {
+            id: 3,
+            callFrame: {
+              ...hot,
+              functionName: 'cold',
+              lineNumber: 9,
+            },
+          },
+        ],
+        samples: [
+          1,
+          2,
+          3,
+        ],
+        timeDeltas: [
+          300,
+          300,
+          400,
+        ],
+      },
+    })
+    assert.deepEqual(
+      rows.map(row => [
+        row.function,
+        row.samples,
+        row.percent,
+      ]),
+      [
+        [
+          'hot',
+          2,
+          60,
+        ],
+        [
+          'cold',
+          1,
+          40,
+        ],
+      ],
+    )
+  },
+)

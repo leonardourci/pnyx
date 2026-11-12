@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs'
 import { Session } from 'node:inspector/promises'
-import type { Profiler } from 'node:inspector'
+import type { Profiler, Runtime } from 'node:inspector'
 import { setTimeout as delay } from 'node:timers/promises'
 import { writeDurably } from '#store/storage.ts'
 import { log } from '#app/diagnostics.ts'
+import { oneDecimal } from '#app/log-line.ts'
 import { HydraError } from '#store/errors.ts'
 
 export const PROFILE_SECONDS = 10
@@ -13,47 +14,59 @@ const MS_PER_SECOND = 1000
 const PROFILE_FUNCTIONS = 20
 let profiling = false
 
+// V8 nodes are call-tree positions, so one function reached from several callers spans several nodes.
+const frameKey = ({ frame }: { frame: Runtime.CallFrame }) => [
+  frame.url,
+  frame.functionName,
+  frame.lineNumber,
+  frame.columnNumber,
+].join(':')
+
 export function profileFunctions({ profile }: { profile: Profiler.Profile }) {
-  const counts = new Map<number, {
+  const frames = new Map(profile.nodes.map(node => [
+    node.id,
+    node.callFrame,
+  ]))
+  const counts = new Map<string, {
+    frame: Runtime.CallFrame
     samples: number
     micros: number
   }>()
-  const samples = profile.samples ?? []
 
-  for (let index = 0; index < samples.length; index++) {
-    const id = samples[index]!
-    const count = counts.get(id) ?? {
+  profile.samples?.forEach((
+    id,
+    index,
+  ) => {
+    const frame = frames.get(id)
+
+    if (!frame) {
+      return
+    }
+
+    const key = frameKey({ frame })
+    const count = counts.get(key) ?? {
+      frame,
       samples: 0,
       micros: 0,
     }
     count.samples++
     count.micros += profile.timeDeltas?.[index] ?? 0
     counts.set(
-      id,
+      key,
       count,
     )
-  }
+  })
 
   const total = profile.endTime - profile.startTime
 
-  return profile.nodes.flatMap(node => {
-    const count = counts.get(node.id)
-
-    if (!count) {
-      return []
-    }
-
-    return [
-      {
-        function: node.callFrame.functionName || '(anonymous)',
-        file: node.callFrame.url,
-        line: node.callFrame.lineNumber + 1,
-        samples: count.samples,
-        selfMs: Math.round(count.micros / MICROS_PER_MS),
-        percent: Math.round(count.micros / total * 1000) / 10,
-      },
-    ]
-  }).sort((
+  return [...counts.values()].map(count => ({
+    function: count.frame.functionName || '(anonymous)',
+    file: count.frame.url,
+    line: count.frame.lineNumber + 1,
+    samples: count.samples,
+    selfMs: Math.round(count.micros / MICROS_PER_MS),
+    percent: oneDecimal({ value: count.micros / total * 100 }),
+  })).sort((
     a,
     b,
   ) => b.selfMs - a.selfMs)
