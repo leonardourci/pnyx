@@ -81,27 +81,21 @@ export async function settleCopy({
   requireSafe()
 
   if (check.gone || mode === 'discard' || mode === 'safe' || !('reason' in check)) {
-    try {
-      const released = await askHost({
-        hydraId,
-        body: {
-          action: 'release',
-          task: card.id,
-          permanent: true,
-          actor: meta.actor,
-        },
-      })
+    const released = await askHost({
+      hydraId,
+      body: {
+        action: 'release',
+        task: card.id,
+        permanent: true,
+        actor: meta.actor,
+      },
+    })
 
-      if (released.busy) {
-        throw new HydraError({
-          message: `Cannot release a copy while its worker is ${String(released.busy)}`,
-          code: 'CONFLICT',
-        })
-      }
-    } catch (error) {
-      if (!(error instanceof HydraError && error.code === 'NOT_RUNNING')) {
-        throw error
-      }
+    if (released.busy) {
+      throw new HydraError({
+        message: `Cannot release a copy while its worker is ${String(released.busy)}`,
+        code: 'CONFLICT',
+      })
     }
 
     check = await checkCopy({
