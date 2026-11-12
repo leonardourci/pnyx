@@ -311,7 +311,7 @@ export function createWorkerStarts({
           }
         }
 
-        if (tools && card.toolsRevision !== toolsRevision) {
+        if (card.toolsRevision !== toolsRevision) {
           throw new HydraError({
             message: 'the task tools changed while its agent was starting; retry the start',
             code: 'CONFLICT',

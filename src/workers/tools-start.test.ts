@@ -165,6 +165,31 @@ test(
         'tools-start',
       ])
 
+      create({ key: 'catalog' })
+      const catalog = await commands.task([
+        'tools',
+        card({ key: 'catalog' }).id,
+        '--available',
+        '--harness',
+        'claude',
+        '--hydra',
+        'tools-start',
+      ])
+      assert.ok((catalog.tools as string[]).includes('mcp:local'))
+      await commands.task([
+        'tools',
+        card({ key: 'catalog' }).id,
+        '--grant',
+        'mcp:local',
+        '--harness',
+        'claude',
+        '--hydra',
+        'tools-start',
+      ])
+      assert.deepEqual(
+        card({ key: 'catalog' }).tools,
+        ['mcp:local'],
+      )
       create({ key: 'flags' })
       const beforeFlags = readEvents({ hydraId: 'tools-start' }).length
 
@@ -457,6 +482,51 @@ test(
           'browser',
           'mcp:fresh',
         ],
+      )
+      create({ key: 'no-flags' })
+      recordTools({
+        hydraId: 'tools-start',
+        task: card({ key: 'no-flags' }).id,
+        grant: ['browser'],
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      const plainStart = () => host.start({
+        task: card({ key: 'no-flags' }).id,
+        folder: fresh,
+        id: 'plain-concurrent-start',
+        actor: 'cli',
+        prompt: 'Work',
+        settings: { provider: 'claude-code' },
+      })
+      const plainPending = plainStart()
+      recordTools({
+        hydraId: 'tools-start',
+        task: card({ key: 'no-flags' }).id,
+        revoke: ['browser'],
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      await assert.rejects(
+        plainPending,
+        { code: 'CONFLICT' },
+      )
+      assert.equal(
+        card({ key: 'no-flags' }).agent,
+        undefined,
+      )
+      await plainStart()
+      await until({
+        what: 'plain retry receives the revoked selection',
+        check: () => sessions[5]?.incoming.length === 1,
+      })
+      assert.equal(
+        sessions[5]!.options()?.env?.CHROME_DEVTOOLS_AXI_SESSION,
+        undefined,
       )
     } finally {
       unoffer()
