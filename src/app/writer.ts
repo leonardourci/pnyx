@@ -22,6 +22,7 @@ import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { writeSnapshot } from './snapshot.ts'
+import { snapshotInBackground } from './snapshot-background.ts'
 import { log } from './diagnostics.ts'
 
 // Returns the bytes appended, which move the log's offset.
@@ -242,19 +243,38 @@ export function withWriter<T>({
   }
 }
 
-// How long after a write the server saves the Hydra's snapshot; the log already holds every change.
-const SNAPSHOT_DELAY_MS = 2000
+const SNAPSHOT_INTERVAL_MS = 60_000
 const snapshotTimers = new WeakMap<Held, ReturnType<typeof setTimeout>>()
+const snapshotRuns = new WeakMap<Held, Promise<void>>()
 
-// Saves a held Hydra's snapshot now; the server calls it when it lets the Hydra go.
-export function saveSnapshot({ live }: { live: Held }): void {
+export async function saveSnapshot({ live }: { live: Held }): Promise<void> {
   clearTimeout(snapshotTimers.get(live))
   snapshotTimers.delete(live)
-  writeSnapshot({
-    dir: live.dir,
-    state: live.state,
-    offset: live.offset,
-  })
+  const previous = snapshotRuns.get(live)
+
+  const run = async () => {
+    try {
+      await previous
+    } catch {
+      // The previous failure was reported by its caller; this save retries from the durable log.
+    }
+
+    await snapshotInBackground({ dir: live.dir })
+  }
+
+  const pending = run()
+  snapshotRuns.set(
+    live,
+    pending,
+  )
+
+  try {
+    await pending
+  } finally {
+    if (snapshotRuns.get(live) === pending) {
+      snapshotRuns.delete(live)
+    }
+  }
 }
 
 // A write to a Hydra the server holds: no lock and no reload. Each line is fsynced before it applies; a transaction
@@ -382,27 +402,28 @@ function heldWrite<T>({
     return result
   } finally {
     if (dirty) {
-      clearTimeout(snapshotTimers.get(live))
-      snapshotTimers.set(
-        live,
-        setTimeout(
-          () => {
-            // The log holds the change; a snapshot that cannot be written is only a slower next start.
-            try {
-              saveSnapshot({ live })
-            } catch (error) {
-              log({
-                level: 'error',
-                operation: 'snapshot',
-                error,
-                hydraId,
-                eventSeq: live.state.seq,
-              })
-            }
-          },
-          SNAPSHOT_DELAY_MS,
-        ).unref(),
-      )
+      if (!snapshotTimers.has(live)) {
+        snapshotTimers.set(
+          live,
+          setTimeout(
+            async () => {
+              try {
+                await saveSnapshot({ live })
+              } catch (error) {
+                log({
+                  level: 'error',
+                  operation: 'snapshot',
+                  error,
+                  hydraId,
+                  eventSeq: live.state.seq,
+                })
+              }
+            },
+            SNAPSHOT_INTERVAL_MS,
+          ).unref(),
+        )
+      }
+
       live.changed()
     }
   }

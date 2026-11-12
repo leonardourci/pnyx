@@ -41,7 +41,11 @@ export function writeSnapshot({
   dir: string
   state: HydraState
   offset: number
-}): void {
+}): {
+  bytes: number
+  ms: number
+  eventSeq: number
+} {
   const started = performance.now()
   const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
   const data = Buffer.from(JSON.stringify({
@@ -59,12 +63,16 @@ export function writeSnapshot({
     tmp,
     snapshotPath({ dir }),
   )
-  log({
-    operation: 'snapshot.write',
-    // A Hydra's folder is named by its id.
-    hydraId: basename(dir),
+  const result = {
     eventSeq: state.seq,
     bytes: data.length,
     ms: performance.now() - started,
+  }
+  log({
+    operation: 'snapshot.write',
+    hydraId: basename(dir),
+    ...result,
   })
+
+  return result
 }

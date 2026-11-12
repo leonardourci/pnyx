@@ -596,7 +596,7 @@ export async function mountOwnedHydra({
     // so the rest of shutdown runs regardless.
     if (live) {
       try {
-        saveSnapshot({ live })
+        await saveSnapshot({ live })
       } catch (error) {
         log({
           level: 'error',
