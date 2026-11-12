@@ -1,4 +1,3 @@
-import { copySettling } from '#projects/copy-lease.ts'
 import { background } from './background.ts'
 import { hydraDir } from './home-migration.ts'
 import { nativeIdle } from '#workers/native-session.ts'
@@ -923,10 +922,7 @@ export function createHost({
         return
       }
 
-      if (steeringHeld({ card }) || copySettling({
-        hydraId,
-        task,
-      }) || card.id !== HYDRA_CARD && closedTask({
+      if (steeringHeld({ card }) || card.id !== HYDRA_CARD && closedTask({
         state,
         card,
       })) {
