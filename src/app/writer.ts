@@ -245,36 +245,11 @@ export function withWriter<T>({
 
 const SNAPSHOT_INTERVAL_MS = 60_000
 const snapshotTimers = new WeakMap<Held, ReturnType<typeof setTimeout>>()
-const snapshotRuns = new WeakMap<Held, Promise<void>>()
 
 export async function saveSnapshot({ live }: { live: Held }): Promise<void> {
   clearTimeout(snapshotTimers.get(live))
   snapshotTimers.delete(live)
-  const previous = snapshotRuns.get(live)
-
-  const run = async () => {
-    try {
-      await previous
-    } catch {
-      // The previous failure was reported by its caller; this save retries from the durable log.
-    }
-
-    await snapshotInBackground({ dir: live.dir })
-  }
-
-  const pending = run()
-  snapshotRuns.set(
-    live,
-    pending,
-  )
-
-  try {
-    await pending
-  } finally {
-    if (snapshotRuns.get(live) === pending) {
-      snapshotRuns.delete(live)
-    }
-  }
+  await snapshotInBackground({ dir: live.dir })
 }
 
 // A write to a Hydra the server holds: no lock and no reload. Each line is fsynced before it applies; a transaction
