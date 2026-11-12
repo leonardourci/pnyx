@@ -2,9 +2,8 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { KEYCHAIN_FLAGS } from './chrome-keychain.ts'
-import { LAUNCHES } from '#test-harness/fixtures/fake-chrome.ts'
 
+const MISSING_FLAGS = 'started Chrome without --use-mock-keychain --password-store=basic:'
 const LAUNCHER_FIXTURE = fileURLToPath(new URL(
   './fixtures/chrome-under-launcher.ts',
   import.meta.url,
@@ -73,12 +72,21 @@ test(
       0,
       unguarded.output,
     )
-
-    for (const launch of Object.keys(LAUNCHES)) {
-      assert.ok(
-        unguarded.output.includes(`Chrome started with ${launch} without ${KEYCHAIN_FLAGS.join(' ')}:`),
-        unguarded.output,
-      )
-    }
+    assert.ok(
+      unguarded.output.includes(`execFile ${MISSING_FLAGS}`),
+      unguarded.output,
+    )
+    assert.ok(
+      unguarded.output.includes(`execFileSync ${MISSING_FLAGS}`),
+      unguarded.output,
+    )
+    assert.ok(
+      unguarded.output.includes(`spawnSync ${MISSING_FLAGS}`),
+      unguarded.output,
+    )
+    assert.ok(
+      unguarded.output.includes(`spawnSync(file, options) ${MISSING_FLAGS}`),
+      unguarded.output,
+    )
   },
 )

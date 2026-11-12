@@ -32,7 +32,7 @@ function fakeChrome() {
   return binary
 }
 
-export const LAUNCHES = {
+const LAUNCHES = {
   execFile: async ({ binary }: { binary: string }) => (await promisify(execFile)(
     binary,
     CHROME_ARGS,
@@ -47,7 +47,7 @@ export const LAUNCHES = {
     CHROME_ARGS,
     { encoding: 'utf8' },
   ).stdout,
-  'spawnSync without arguments': async ({ binary }: { binary: string }) => spawnSync(
+  'spawnSync(file, options)': async ({ binary }: { binary: string }) => spawnSync(
     binary,
     { encoding: 'utf8' },
   ).stdout,
@@ -72,7 +72,7 @@ export function testChromeOffKeychain({ where }: { where: string }) {
         assert.deepEqual(
           missing,
           [],
-          `Chrome started with ${name} without ${missing.join(' ')}: ${args.join(' ')}`,
+          `${name} started Chrome without ${missing.join(' ')}: ${args.join(' ')}`,
         )
       },
     )
