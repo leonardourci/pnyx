@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { transcriptPath } from './claude.ts'
 import type { trackChildren } from './children.ts'
@@ -216,15 +217,17 @@ export function createWorkerStarts({
       })
     }
 
-    const cwd = folder ?? target.folder
+    const requestedFolder = folder ?? target.folder
 
-    if (!cwd || !isFolder({ path: cwd })) {
+    if (!requestedFolder || !isFolder({ path: requestedFolder })) {
       throw new HydraError({
-        message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in',
+        message: requestedFolder ? `folder not found: ${requestedFolder}` : 'choose the folder the agent works in',
         code: 'VALIDATION_ERROR',
         help: ['Pass --folder <absolute path>'],
       })
     }
+
+    const cwd = realpathSync(requestedFolder)
 
     const {
       provider: requested,
@@ -285,7 +288,7 @@ export function createWorkerStarts({
             replacement,
           })
 
-          if ((folder ?? card.folder) !== cwd) {
+          if ((folder ?? card.folder) !== requestedFolder) {
             throw new HydraError({
               message: 'the task folder changed while its agent was starting; retry the start',
               code: 'CONFLICT',

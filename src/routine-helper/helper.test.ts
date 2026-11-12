@@ -747,7 +747,7 @@ test(
 
 test(
   'helper inspection exposes its actual session and armed deadline without consuming the turn',
-  async t => {
+  async () => {
     const lab = helperLab()
     const hold = deferred()
     const task = state().keys.work!
@@ -763,49 +763,82 @@ test(
         ],
       }),
     })
-    t.after(async () => {
+    let releaseMessage = () => {}
+
+    try {
+      await until({
+        what: 'helper deadline observation',
+        check: () => lab.helper.inspect().deadlineAt !== undefined,
+      })
+      releaseMessage = taskLease({
+        hydraId: 'lab',
+        task,
+        actor: 'main',
+        message: true,
+      })
+      assert.throws(
+        () => taskLease({
+          hydraId: 'lab',
+          task,
+          actor: 'main',
+        }),
+        { code: 'TASK_LEASED' },
+      )
+      const before = state().seq
+      const inspected = lab.helper.inspect()
+      const started = readEvents({ hydraId: 'lab' }).find(event => event.type === 'hydra.helper-started')
+      assert.ok(started?.type === 'hydra.helper-started')
+      assert.equal(
+        inspected.batchId,
+        started.data.id,
+      )
+      assert.equal(
+        inspected.sessionId,
+        'claude-code:helper-session',
+      )
+      assert.equal(
+        typeof inspected.deadlineAt,
+        'number',
+      )
+      assert.equal(
+        inspected.busy,
+        true,
+      )
+      assert.equal(
+        state().seq,
+        before,
+      )
       hold.resolve()
       await turn.finished
+      assert.equal(
+        lab.helper.inspect().busy,
+        false,
+      )
+      assert.equal(
+        lab.helper.inspect().deadlineAt,
+        undefined,
+      )
+      assert.equal(
+        taskLeasePresent({
+          hydraId: 'lab',
+          task,
+        }),
+        true,
+      )
+      releaseMessage()
+      assert.equal(
+        taskLeasePresent({
+          hydraId: 'lab',
+          task,
+        }),
+        false,
+      )
+    } finally {
+      hold.resolve()
+      await turn.finished
+      releaseMessage()
       lab.helper.close()
-    })
-    await until({
-      what: 'helper deadline observation',
-      check: () => lab.helper.inspect().deadlineAt !== undefined,
-    })
-    const before = state().seq
-    const inspected = lab.helper.inspect()
-    const started = readEvents({ hydraId: 'lab' }).find(event => event.type === 'hydra.helper-started')
-    assert.ok(started?.type === 'hydra.helper-started')
-    assert.equal(
-      inspected.batchId,
-      started.data.id,
-    )
-    assert.equal(
-      inspected.sessionId,
-      'claude-code:helper-session',
-    )
-    assert.equal(
-      typeof inspected.deadlineAt,
-      'number',
-    )
-    assert.equal(
-      inspected.busy,
-      true,
-    )
-    assert.equal(
-      state().seq,
-      before,
-    )
-    hold.resolve()
-    await turn.finished
-    assert.equal(
-      lab.helper.inspect().busy,
-      false,
-    )
-    assert.equal(
-      lab.helper.inspect().deadlineAt,
-      undefined,
-    )
+    }
   },
 )
 

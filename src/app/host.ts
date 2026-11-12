@@ -1,3 +1,4 @@
+import { canonical } from '#store/paths.ts'
 import { background } from './background.ts'
 import { hydraDir } from './home-migration.ts'
 import { nativeIdle } from '#workers/native-session.ts'
@@ -162,7 +163,7 @@ export function createHost({
   const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
     const { cwd } = card.agent
 
-    const released = card.copy?.state === 'removed' && card.copy.path === cwd
+    const released = card.copy?.state === 'removed' && card.copy.path === canonical({ path: cwd })
 
     if (!cwd || released || !isFolder({ path: cwd })) {
       throw new HydraError({
