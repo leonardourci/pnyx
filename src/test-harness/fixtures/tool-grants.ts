@@ -1,3 +1,5 @@
+import { COPY_LEASE_PREFIX } from '#projects/copy-lease.ts'
+import { taskLease } from '#routine-helper/leases.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
 import { offerHost } from '#app/server-state.ts'
@@ -127,6 +129,10 @@ for (const harness of [
     text: 'Work',
     hold: true,
   })
+  const grantTurn = native.plan({
+    match: ({ text }) => text.includes('Pnyx external tool grants:'),
+    hold: true,
+  })
 
   const query: QueryFn = ({
     prompt,
@@ -148,6 +154,7 @@ for (const harness of [
     changed: () => {},
     wakeDelay: 3_600_000,
   })
+  let releaseCopyLease: (() => void) | undefined
   const sessionId = `${harness}-conversation`
   const task = withWriter({
     hydraId,
@@ -424,6 +431,13 @@ for (const harness of [
       sessionId,
     )
 
+    await grant({ revoke: true })
+    releaseCopyLease = taskLease({
+      hydraId,
+      task,
+      actor: `${COPY_LEASE_PREFIX}${randomUUID()}`,
+    })
+
     if (harness === 'claude') {
       assert.equal(
         claude[1]!.options()?.resume,
@@ -483,13 +497,25 @@ for (const harness of [
         native.sessions[1]!.config?.['plugins."unused@fixture".mcp_servers."unused".enabled'],
         false,
       )
+      grantTurn.release()
       await settle({
         what: 'grant turn finishes',
         check: () => loadHydra({ hydraId }).state.cards[task]?.sessionActivity === 'finished',
       })
     }
 
-    await grant({ revoke: true })
+    await settle({
+      what: 'scheduled revocation waits for copy settlement',
+      check: () => host.diagnostics().sessions.length === 0,
+    })
+    assert.equal(
+      count(),
+      2,
+      'a scheduled revocation cannot resume during copy settlement',
+    )
+    releaseCopyLease()
+    releaseCopyLease = undefined
+    host.reconcile({ state: loadHydra({ hydraId }).state })
     await settle({
       what: 'revocation resumes without the server',
       check: () => count() === 3 && incoming({ index: 2 }) === 1,
@@ -576,7 +602,20 @@ for (const harness of [
       0,
       'a pending grant must not resume a held task',
     )
+    releaseCopyLease = taskLease({
+      hydraId,
+      task,
+      actor: `${COPY_LEASE_PREFIX}${randomUUID()}`,
+    })
     releaseHold()
+    assert.equal(
+      count(),
+      3,
+      'a recovered grant cannot open a session during copy settlement',
+    )
+    releaseCopyLease()
+    releaseCopyLease = undefined
+    host.reconcile({ state: loadHydra({ hydraId }).state })
     await settle({
       what: 'pending grant resumes after restart',
       check: () => count() === 4 && incoming({ index: 3 }) === 1,
@@ -645,6 +684,8 @@ for (const harness of [
       undefined,
     )
   } finally {
+    releaseCopyLease?.()
+    grantTurn.release()
     first.release()
     host.close()
     unoffer()
