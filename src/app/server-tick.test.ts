@@ -5,6 +5,10 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from './cli.ts'
 import { hydraDir } from './home-migration.ts'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
+import { spoolWrite } from './spool.ts'
+import { spoolDir, privateDir } from '#store/storage.ts'
 import { loadHydra } from './store.ts'
 import { withWriter } from './writer.ts'
 import { createServerTick } from './server-tick.ts'
@@ -113,9 +117,36 @@ test(
       at: number
       fire(): void
     } | undefined
+    const spool = spoolDir({ dir: hydraDir({ hydraId: 'lab' }) })
+    privateDir({ dir: spool })
+    let spoolReads = 0
+    let failSpool = false
+    const readDirectory = fs.readdirSync
+    t.mock.method(
+      fs,
+      'readdirSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.readdirSync's signature.
+      (...args: Parameters<typeof fs.readdirSync>) => {
+        if (String(args[0]) === spool) {
+          spoolReads++
+
+          if (failSpool) {
+            throw Object.assign(
+              new Error('Synthetic spool read failure'),
+              { code: 'EIO' },
+            )
+          }
+        }
+
+        return readDirectory(...args)
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      t.mock.restoreAll(); syncBuiltinESMExports()
+    })
     const tick = createServerTick({
       hydraId: 'lab',
-      dir: hydraDir({ hydraId: 'lab' }),
       state,
       closed: () => closed,
       pump: () => {},
@@ -167,12 +198,33 @@ test(
       openDecisions({ state: state() }).some(item => item.id === question),
       false,
     )
+    const afterFirstTick = spoolReads
     time = Date.parse(until) - 1
     tick.kick()
     await new Promise<void>(resolve => setImmediate(resolve))
     assert.equal(
       openDecisions({ state: state() }).some(item => item.id === question),
       false,
+    )
+    assert.equal(
+      spoolReads,
+      afterFirstTick,
+    )
+    spoolWrite({
+      hydraId: 'lab',
+      entry: {
+        id: 'queued-observation',
+        key: 'queued',
+        at: new Date().toISOString(),
+        actor: 'fixture',
+        card: { title: 'Queued observation' },
+      },
+    })
+    tick.spooled()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      state().cards[state().keys.queued!]?.title,
+      'Queued observation',
     )
     time = Date.parse(until)
     assert.ok(scheduled)
@@ -190,6 +242,48 @@ test(
       state().hydraMessages?.some(message => message.reminderQuestions?.length),
       false,
     )
+    assert.equal(
+      tick.health().lastFailureAt,
+      undefined,
+    )
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.now(),
+    })
+    spoolWrite({
+      hydraId: 'lab',
+      entry: {
+        id: 'retry-observation',
+        key: 'retry',
+        at: new Date().toISOString(),
+        actor: 'fixture',
+        card: { title: 'Retried observation' },
+      },
+    })
+    failSpool = true
+    tick.spooled()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.ok(tick.health().lastFailureAt)
+    assert.equal(
+      state().keys.retry,
+      undefined,
+    )
+    const afterFailure = spoolReads
+    failSpool = false
+    tick.kick()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      spoolReads,
+      afterFailure,
+    )
+    t.mock.timers.tick(1000)
+    tick.kick()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(
+      state().cards[state().keys.retry!]?.title,
+      'Retried observation',
+    )
+    t.mock.timers.reset()
     closed = true
     clearTimeout(tick.expiryTimer)
     tick.cancelReminder()
@@ -197,10 +291,7 @@ test(
     assert.ok(reviewed > 0)
     assert.ok(state().cards[task]?.reminder?.dueAt)
     assert.ok(tick.health().lastSuccessAt)
-    assert.equal(
-      tick.health().lastFailureAt,
-      undefined,
-    )
+    assert.ok(tick.health().lastFailureAt)
     assert.ok(output.mock.calls.some(call => JSON.parse(String(call.arguments[0])).operation === 'diagnostic reconcile'))
   },
 )

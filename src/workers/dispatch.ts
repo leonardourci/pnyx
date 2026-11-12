@@ -164,13 +164,62 @@ interface PlanUsage {
   windows: PlanWindow[]
 }
 
-// The account's plan windows for the composer's usage panel: a cached quota-axi read, so a hover never waits on the vendor.
+const USAGE_CACHE_MS = 5 * 60_000
+const usageCache = new Map<string, {
+  at: number
+  result: Promise<PlanUsage | undefined>
+}>()
+
 export async function readUsage({
   account,
   refresh = false,
 }: {
   account: Account
   refresh?: boolean
+}): Promise<PlanUsage | undefined> {
+  if (!existsSync(loginFolder({ account }))) {
+    return undefined
+  }
+
+  const key = `${account.provider}\n${loginFolder({ account })}\n${process.env.QUOTA_AXI_SNAPSHOT ?? ''}`
+  const cached = usageCache.get(key)
+
+  if (!refresh && cached && Date.now() - cached.at < USAGE_CACHE_MS) {
+    return cached.result
+  }
+
+  const result = usageReading({
+    account,
+    refresh,
+  })
+  const entry = {
+    at: Date.now(),
+    result,
+  }
+  usageCache.set(
+    key,
+    entry,
+  )
+  let successful = false
+
+  try {
+    const usage = await result
+    successful = usage !== undefined
+
+    return usage
+  } finally {
+    if (!successful && usageCache.get(key) === entry) {
+      usageCache.delete(key)
+    }
+  }
+}
+
+async function usageReading({
+  account,
+  refresh,
+}: {
+  account: Account
+  refresh: boolean
 }): Promise<PlanUsage | undefined> {
   if (!existsSync(loginFolder({ account }))) {
     return undefined

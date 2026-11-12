@@ -429,6 +429,7 @@ export const EVENT_TYPES: readonly EventType[] = [
 ]
 
 export interface HydraState {
+  creationAttempt?: string
   contextNotes?: import('#hydra/context-notes.ts').ContextNote[]
   diagnosticRetries?: Record<string, RecoveryAttempt[]>
   dispatchProposals?: DispatchProposal[]

@@ -1,3 +1,6 @@
+import { captureCpuProfile } from '#diagnostics/cpu-profile.ts'
+import { followGit } from '#tasks/delivery/follow-git.ts'
+import { findCard } from '#tasks/push-rules.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
@@ -189,6 +192,10 @@ export async function mountOwnedHydra({
     } = loadHydra({ hydraId }))
     recent = []
     agents.reconcile({ state })
+    background({
+      name: 'follow git refs',
+      run: () => gitFollow.reconcile({ state }),
+    })
     followHome()
 
     for (const ws of clients) {
@@ -247,6 +254,13 @@ export async function mountOwnedHydra({
         })
       }
 
+      const observedLink = event.type === 'card.linked' && event.actor === 'pnyx'
+      const observation = event.type === 'card.observed' || event.actor === 'harvest'
+
+      if (!observedLink && !observation && event.type !== 'chat.message') {
+        tick.refreshLinks({ task: event.cardId })
+      }
+
       recent.push(event)
 
       if (event.type === 'hydra.project') {
@@ -281,6 +295,10 @@ export async function mountOwnedHydra({
 
     hydrasChanged()
     agents.reconcile({ state })
+    background({
+      name: 'follow git refs',
+      run: () => gitFollow.reconcile({ state }),
+    })
     followHome()
 
     if (recent.length > RESUME_LIMIT) {
@@ -301,7 +319,6 @@ export async function mountOwnedHydra({
 
   const tick = createServerTick({
     hydraId,
-    dir,
     state: () => state,
     closed: () => closed,
     pump,
@@ -315,6 +332,12 @@ export async function mountOwnedHydra({
     review: () => review,
     recover: () => recovery.reconcile(),
   })
+  const gitFollow = followGit({ changed: tick.refreshLinks })
+  background({
+    name: 'follow git refs',
+    run: () => gitFollow.reconcile({ state }),
+  })
+
   const { kick } = tick
 
   const agents = createHost({
@@ -351,9 +374,45 @@ export async function mountOwnedHydra({
     pause: recoveryPause,
   })
 
+  const profileAbort = new AbortController()
   const withdrawHost = offerHost({
     hydraId,
     ask: async ({ body }) => {
+      if (body.action === 'cpu-profile') {
+        if (typeof body.seconds !== 'number' || typeof body.path !== 'string') {
+          throw new HydraError({
+            code: 'VALIDATION_ERROR',
+            message: 'CPU profile needs seconds and output path',
+          })
+        }
+
+        return captureCpuProfile({
+          seconds: body.seconds,
+          path: body.path,
+          signal: profileAbort.signal,
+        })
+      }
+
+      if (body.action === 'refresh-links') {
+        if (typeof body.task !== 'string') {
+          throw new HydraError({
+            code: 'VALIDATION_ERROR',
+            message: 'task is required',
+          })
+        }
+
+        const card = findCard({
+          state,
+          ref: body.task,
+        })
+        tick.refreshLinks({ task: card.id })
+
+        return {
+          refreshing: 'pull requests',
+          task: card.id,
+        }
+      }
+
       if (body.action === 'debug-health') {
         const limit = typeof body.limit === 'number' ? body.limit : DEBUG_LIMIT
 
@@ -564,6 +623,8 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    profileAbort.abort()
+    gitFollow.close()
     await recovery.close()
     withdrawHost()
 
@@ -659,7 +720,7 @@ export async function mountOwnedHydra({
       }),
       watchPath({
         path: spoolDir({ dir }),
-        changed: kick,
+        changed: tick.spooled,
       }),
     )
     followHome()

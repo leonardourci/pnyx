@@ -51,7 +51,7 @@ export function writeDurably({
 }: {
   path: string
   data: string | Buffer
-  flag: 'a' | 'w'
+  flag: 'a' | 'w' | 'wx'
 }): void {
   const fd = openSync(
     path,

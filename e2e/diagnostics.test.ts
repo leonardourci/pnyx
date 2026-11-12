@@ -7,7 +7,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 import { HELPER_INSTRUCTIONS } from '#routine-helper/runner.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
-import { until, RECOVERY_TEST_PAUSE_MS } from '#test-harness/harness.ts'
+import { until, logLines, RECOVERY_TEST_PAUSE_MS } from '#test-harness/harness.ts'
 import { withWriter } from '#app/writer.ts'
 import { decideReply } from '#workers/reply-rules.ts'
 import type { HydraEvent } from '#app/model.ts'
@@ -466,7 +466,7 @@ test(
 )
 
 test(
-  'debug queries page correlated events without message bodies or writes and report runtime health',
+  'debug history and health preserve events, and CPU profiles save privately and cancel on shutdown',
   async () => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -538,6 +538,62 @@ test(
         'utf8',
       ),
       before,
+    )
+    const profile = join(
+      s.folder({ name: 'cpu-profiles' }),
+      'idle.cpuprofile',
+    )
+    await s.owner({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '1',
+        '--out',
+        profile,
+      ],
+    })
+    assert.ok(JSON.parse(readFileSync(
+      profile,
+      'utf8',
+    )).nodes.length > 0)
+    const rejected = await s.ownerRefusal({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '0',
+        '--out',
+        profile,
+      ],
+    })
+    assert.equal(
+      rejected.code,
+      'VALIDATION_ERROR',
+    )
+    const cancelled = join(
+      s.folder({ name: 'cpu-profiles' }),
+      'cancelled.cpuprofile',
+    )
+    const running = s.ownerRefusal({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '60',
+        '--out',
+        cancelled,
+      ],
+    })
+    await until({
+      what: 'the CPU capture to start',
+      check: () => logLines().some(record => record.operation === 'cpu.profile' && record.status === 'started' && record.name === cancelled),
+    })
+    await pnyx.restart()
+    await running
+    assert.equal(
+      fs.existsSync(cancelled),
+      false,
     )
     const invalid = await s.ownerRefusal({
       args: [

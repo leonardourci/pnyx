@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readUsage } from './dispatch.ts'
+import { settle } from '#test-harness/child-fixture.ts'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -72,6 +74,7 @@ test(
     }
     writeDocument({ document })
     const reads: string[] = []
+    const streamed: string[] = []
     const fixture = claudeNative()
     const host = createHost({
       hydraId: 'lab',
@@ -101,6 +104,9 @@ test(
         return catalog
       },
       changed: () => {},
+      streamed: ({ session }) => {
+        streamed.push(session)
+      },
     })
     t.after(() => host.close())
     const [
@@ -184,6 +190,29 @@ test(
       '--hydra',
       'lab',
     ])
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const decision = decidePush({
+          state: writer.state,
+          key: 'usage-sibling',
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'shared-work',
+              account: 'work',
+              loginFolder: homes.work,
+            },
+          },
+          meta: {
+            actor: 'fixture',
+            at: new Date().toISOString(),
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      },
+    })
     const quotaCommand = join(
       root,
       'fake-bin',
@@ -198,6 +227,18 @@ test(
       root,
       'quota-reads.jsonl',
     )
+    const quotaGate = join(
+      root,
+      'quota-gate',
+    )
+    const quotaReady = join(
+      root,
+      'quota-ready',
+    )
+    const quotaRelease = join(
+      root,
+      'quota-release',
+    )
     renameSync(
       quotaCommand,
       quotaFixture,
@@ -205,15 +246,60 @@ test(
     writeFileSync(
       quotaCommand,
       `#!/usr/bin/env node
-const { appendFileSync } = require('node:fs');
+const { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } = require('node:fs');
 const { spawnSync } = require('node:child_process');
 appendFileSync(${JSON.stringify(quotaReads)}, JSON.stringify(process.argv.slice(2)) + '\\n');
-const result = spawnSync(process.execPath, [${JSON.stringify(quotaFixture)}, ...process.argv.slice(2)], { stdio: 'inherit' });
-process.exit(result.status ?? 1);
+const readFixture = () => {
+  const result = spawnSync(process.execPath, [${JSON.stringify(quotaFixture)}, ...process.argv.slice(2)], { stdio: 'inherit' });
+  process.exit(result.status ?? 1);
+};
+if (existsSync(${JSON.stringify(quotaGate)})) {
+  const fail = readFileSync(${JSON.stringify(quotaGate)}, 'utf8') === 'fail';
+  unlinkSync(${JSON.stringify(quotaGate)});
+  writeFileSync(${JSON.stringify(quotaReady)}, '');
+  const gateTimeoutMs = 5000;
+  const gatePollMs = 10;
+  const until = Date.now() + gateTimeoutMs;
+  setInterval(() => {
+    if (existsSync(${JSON.stringify(quotaRelease)})) {
+      if (fail) process.exit(1);
+      readFixture();
+    }
+    if (Date.now() >= until) process.exit(1);
+  }, gatePollMs);
+} else {
+  readFixture();
+}
 `,
       { mode: 0o755 },
     )
+    streamed.length = 0
+    await Promise.all([
+      host.refreshUsage({}),
+      host.refreshUsage({}),
+      host.refreshUsage({}),
+    ])
+    assert.deepEqual(
+      streamed.sort(),
+      [
+        'claude-code:selected-work',
+        'claude-code:shared-work',
+      ],
+    )
+    assert.equal(
+      readFileSync(
+        quotaReads,
+        'utf8',
+      ).trim()
+        .split('\n').length,
+      1,
+    )
+    streamed.length = 0
     await host.refreshUsage({})
+    assert.deepEqual(
+      streamed,
+      [],
+    )
     const usage = await host.usage()
     assert.ok('who' in usage)
     assert.equal(
@@ -225,6 +311,11 @@ process.exit(result.status ?? 1);
       'work',
     )
     await host.refreshUsage({ force: true })
+    assert.deepEqual(
+      streamed,
+      [],
+      'identical forced quota contents do not stream sessions',
+    )
     const maxAges = readFileSync(
       quotaReads,
       'utf8',
@@ -242,6 +333,102 @@ process.exit(result.status ?? 1);
         '0',
       ],
     )
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.now(),
+    })
+    t.mock.timers.tick(5 * 60_000)
+    await host.refreshUsage({})
+    assert.equal(
+      readFileSync(
+        quotaReads,
+        'utf8',
+      ).trim()
+        .split('\n').length,
+      3,
+    )
+    assert.deepEqual(
+      streamed,
+      [],
+      'identical expired quota contents do not stream sessions',
+    )
+    t.mock.timers.reset()
+    writeFileSync(
+      join(
+        homes.work,
+        'quota.json',
+      ),
+      JSON.stringify({
+        provider: {
+          plan: 'work',
+          windows: [
+            {
+              label: 'Daily',
+              percentUsed: 10,
+            },
+          ],
+        },
+      }),
+    )
+    await host.refreshUsage({ force: true })
+    assert.deepEqual(
+      streamed.sort(),
+      [
+        'claude-code:selected-work',
+        'claude-code:shared-work',
+      ],
+      'changed window contents reach every session on the login',
+    )
+    streamed.length = 0
+    writeFileSync(
+      quotaGate,
+      '',
+    )
+    const addingSession = host.refreshUsage({ force: true })
+
+    try {
+      await settle({
+        what: 'quota read while a session is added',
+        check: () => existsSync(quotaReady),
+      })
+      withWriter({
+        hydraId: 'lab',
+        fn: ({ writer }) => {
+          const decision = decidePush({
+            state: writer.state,
+            key: 'late-usage-session',
+            input: {
+              agent: {
+                provider: 'claude-code',
+                sessionId: 'late-work',
+                account: 'work',
+                loginFolder: homes.work,
+              },
+            },
+            meta: {
+              actor: 'fixture',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in decision)
+          writer.append({ event: decision.event })
+        },
+      })
+    } finally {
+      writeFileSync(
+        quotaRelease,
+        '',
+      )
+      await addingSession
+    }
+
+    assert.deepEqual(
+      streamed,
+      ['claude-code:late-work'],
+      'an unchanged quota read still reaches a session added while it was running',
+    )
+    rmSync(quotaReady)
+    rmSync(quotaRelease)
     writeDocument({
       document: {
         ...document,
@@ -269,16 +456,95 @@ process.exit(result.status ?? 1);
       afterEdit.who.plan,
       'work',
     )
+    const quotaPath = join(
+      homes.work,
+      'quota.json',
+    )
+    const savedQuota = readFileSync(
+      quotaPath,
+      'utf8',
+    )
     rmSync(join(
       homes.work,
       'quota.json',
     ))
-    await host.refreshUsage({})
+    await host.refreshUsage({ force: true })
     const unavailable = await host.usage()
     assert.ok('who' in unavailable)
     assert.equal(
       unavailable.who.plan,
       undefined,
+    )
+    writeFileSync(
+      quotaPath,
+      'malformed quota fixture',
+    )
+    await host.refreshUsage({ force: true })
+    writeFileSync(
+      quotaPath,
+      savedQuota,
+    )
+    await host.refreshUsage({})
+    const retried = await host.usage()
+    assert.ok('who' in retried)
+    assert.equal(
+      retried.who.plan,
+      'work',
+      'a failed quota reading does not suppress the next refresh',
+    )
+    writeFileSync(
+      quotaReads,
+      '',
+    )
+    writeFileSync(
+      quotaGate,
+      'fail',
+    )
+    const account = {
+      provider: 'claude' as const,
+      folder: homes.work,
+    }
+    const older = readUsage({
+      account,
+      refresh: true,
+    })
+
+    try {
+      await settle({
+        what: 'older quota request before failure',
+        check: () => existsSync(quotaReady),
+      })
+      const newer = await readUsage({
+        account,
+        refresh: true,
+      })
+      assert.equal(
+        newer?.plan,
+        'work',
+      )
+    } finally {
+      writeFileSync(
+        quotaRelease,
+        '',
+      )
+      assert.equal(
+        await older,
+        undefined,
+      )
+    }
+
+    assert.equal(
+      (await readUsage({ account }))?.plan,
+      'work',
+    )
+    assert.equal(
+      readFileSync(
+        quotaReads,
+        'utf8',
+      ).trim()
+        .split('\n').length,
+      2,
+      'an older failed reading cannot evict the newer forced result',
     )
     await assert.rejects(
       host.models({

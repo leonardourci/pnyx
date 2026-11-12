@@ -33,7 +33,7 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
-  debug timeline|health|performance          Read correlated history, runtime health facts, or action durations and memory from the logs
+  debug timeline|health|performance|cpu-profile          Read correlated history, runtime health facts, or action durations and memory from the logs
   logs [clean]                               Show the diagnostic log files, or delete them all now
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
@@ -66,6 +66,10 @@ Filters intersect. Times include their timezone and endpoints are inclusive. Def
 Pass the returned cursor with the same filters for older matches. Service records are the warnings
 and errors in the last ${LOG_BYTES / 1024 / 1024} MiB of the log files, newest day first, then service.log;
 serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
+pnyx-axi debug cpu-profile [--seconds <1..60>] --out <file> [--hydra <id>]
+Capture the running server's CPU samples (10 seconds by default), save a private .cpuprofile,
+and show the top functions. Existing output files are refused.
+Only one profile runs at a time; shutdown cancels it.
 pnyx-axi debug health [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read unfinished helper batches and their observed native ownership/deadline, unsettled inputs,
 sessions retained during settings retirement, pending helper completions, eligible spool age,
@@ -213,6 +217,7 @@ pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
 pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
+pnyx-axi task refresh-links <id>
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.

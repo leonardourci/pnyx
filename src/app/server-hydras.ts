@@ -150,10 +150,7 @@ function summarize({ id }: { id: string }): {
       summary: {
         id,
         identity: hydraIdentity({ hydraId: id }),
-        creationAttempt: Object.entries(state.eventIds).find(([
-          event,
-          seq,
-        ]) => seq === 1 && event.startsWith('hydra-create:'))?.[0].slice('hydra-create:'.length),
+        creationAttempt: state.creationAttempt,
         name: config.name,
         icon: config.icon,
         order: config.position ?? createdAt({ id }),

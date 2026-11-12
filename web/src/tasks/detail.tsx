@@ -1,3 +1,4 @@
+import { useLinkRefresh } from './link-refresh.ts'
 import { Prerequisites } from './prerequisites.tsx'
 import { TaskUpdates } from './task-updates.tsx'
 import type { HydraState } from '#app/model.ts'
@@ -16,6 +17,12 @@ export function Detail({
   command: Command
   connected: boolean
 }) {
+  useLinkRefresh({
+    task: card.id,
+    command,
+    connected,
+  })
+
   return (
     <section aria-label={`Details for ${card.title}`} className="detail inline">
       <Prerequisites card={card} state={state} />

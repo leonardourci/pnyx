@@ -1,3 +1,4 @@
+import { sessionId } from '#workers/session-attachments.ts'
 import { dirname, join } from 'node:path'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { latestMessage, threadPath, type LatestMessage, type LatestRead } from '#hydra/transcripts-read.ts'
@@ -15,7 +16,6 @@ const EVENT_POLL_MS = 500
 // to every tab. A card is read again when it gets an event or its transcript
 // changes: transcript folders are watched, as a live session writes between hook events.
 // File watches and stat polling cover content writes a native folder watch does not report.
-// ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
 export function createLatestFeed({
   state,
   closed,
@@ -111,16 +111,38 @@ export function createLatestFeed({
     }
   }
 
-  const watchWorkingTranscripts = () => {
-    const working = new Set(Object.values(state().cards).flatMap(c => (c.sessionActivity ?? c.activity) === 'working' ? threadPath({ card: c }) ?? [] : []))
+  const watchedPaths = () => new Set(Object.values(state().cards).flatMap(card => {
+    const activity = card.sessionActivity ?? card.activity
+    const finished = activity === 'finished' || activity === 'ended'
+
+    return finished ? [] : threadPath({ card }) ?? []
+  }))
+
+  const watchTranscripts = () => {
+    const wanted = watchedPaths()
+    const directories = new Set([...wanted].map(path => dirname(path)))
+
+    for (const [
+      dir,
+      watcher,
+    ] of folders) {
+      if (!directories.has(dir)) {
+        watcher.close()
+        folders.delete(dir)
+      }
+    }
+
+    for (const dir of directories) {
+      watchFolder({ dir })
+    }
 
     for (const path of transcripts.keys()) {
-      if (!working.has(path)) {
+      if (!wanted.has(path)) {
         unwatchTranscript({ path })
       }
     }
 
-    for (const path of working) {
+    for (const path of wanted) {
       watchTranscript({ path })
     }
   }
@@ -165,7 +187,7 @@ export function createLatestFeed({
   }
 
   const pollTranscripts = () => {
-    const wanted = new Set(Object.values(state().cards).flatMap(c => threadPath({ card: c }) ?? []))
+    const wanted = watchedPaths()
 
     for (const [
       path,
@@ -227,10 +249,6 @@ export function createLatestFeed({
     for (const id of unread) {
       const card = state().cards[id], path = card && threadPath({ card })
 
-      if (path) {
-        watchFolder({ dir: dirname(path) })
-      }
-
       const read = path ? latestMessage({
         path,
         prev: reads.get(id),
@@ -263,7 +281,7 @@ export function createLatestFeed({
     }
 
     unread.clear()
-    watchWorkingTranscripts()
+    watchTranscripts()
     pollTranscripts()
     spend.count()
 
@@ -310,7 +328,8 @@ export function createLatestFeed({
     text?: boolean
   }) => {
     touchLatest({
-      ids: Object.values(state().cards).filter(card => card.agent && `${card.agent.provider}:${card.agent.sessionId}` === session)
+      ids: Object.values(state().cards).filter(card =>
+        card.agent && sessionId({ agent: card.agent }) === session)
         .map(card => card.id),
     })
 
@@ -321,7 +340,7 @@ export function createLatestFeed({
       ] of map) {
         const agent = state().cards[sub.card]?.agent
 
-        if (agent && `${agent.provider}:${agent.sessionId}` === session) {
+        if (agent && sessionId({ agent }) === session) {
           if (text) {
             refreshLiveThread({
               ws,
