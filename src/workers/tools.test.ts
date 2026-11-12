@@ -322,43 +322,61 @@ test(
       },
       'an old request cannot report a revoked grant as applied',
     )
-    assert.throws(
-      () => runForClient({
-        identity: {
-          PNYX_ACTOR: `worker:${task}`,
-          PNYX_TASK: task,
-        },
-        cwd: lab.cwd,
-        run: () => recordTools({
-          hydraId: 'tools',
-          task,
-          grant: ['mcp:company'],
-          meta: {
-            actor: `worker:${task}`,
-            at: new Date().toISOString(),
-          },
+    const beforeRefusals = readEvents({ hydraId: 'tools' }).length
+
+    for (const identity of [
+      {
+        PNYX_ACTOR: `worker:${task}`,
+        PNYX_TASK: task,
+      },
+      {
+        PNYX_ACTOR: 'hydra',
+        PNYX_TASK: task,
+      },
+      {
+        PNYX_ACTOR: 'hydra',
+        PNYX_STEERING_WORKER: 'worker-session',
+      },
+    ]) {
+      await assert.rejects(
+        runForClient({
+          identity,
+          cwd: lab.cwd,
+          run: () => commands.task([
+            'tools',
+            task,
+            '--grant',
+            'mcp:company',
+            '--actor',
+            'hydra',
+            '--hydra',
+            'tools',
+          ]),
         }),
-      }),
-      { code: 'HYDRA_ONLY' },
-    )
-    assert.throws(
-      () => runForClient({
-        identity: {
-          PNYX_ACTOR: `worker:${task}`,
-          PNYX_TASK: task,
-        },
-        cwd: lab.cwd,
-        run: () => recordTools({
-          hydraId: 'tools',
+        { code: 'HYDRA_ONLY' },
+      )
+    }
+
+    for (const action of [
+      'tools',
+      'continue',
+    ]) {
+      await assert.rejects(
+        commands.task([
+          action,
           task,
-          grant: ['mcp:company'],
-          meta: {
-            actor: 'hydra',
-            at: new Date().toISOString(),
-          },
-        }),
-      }),
-      { code: 'HYDRA_ONLY' },
+          '--tool',
+          'browser',
+          '--hydra',
+          'tools',
+        ]),
+        { code: 'VALIDATION_ERROR' },
+      )
+    }
+
+    assert.equal(
+      readEvents({ hydraId: 'tools' }).length,
+      beforeRefusals,
     )
   },
 )
