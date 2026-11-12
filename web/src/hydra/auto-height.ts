@@ -72,4 +72,13 @@ export function useAutoHeight({
     },
     [],
   )
+
+  return () => {
+    const element = input.current
+
+    if (element) {
+      fit({ element })
+      afterFit({ element })
+    }
+  }
 }

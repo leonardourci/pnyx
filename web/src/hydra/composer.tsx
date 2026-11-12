@@ -1,8 +1,8 @@
-import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
+import type { ChatDrafts } from './chat-drafts.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { COMPOSER_ICON } from '#web-workers/agent-pickers.tsx'
 import { sendableRequest } from './project-request.ts'
@@ -55,10 +55,6 @@ export function Composer({
   projectRequested?(): void
 }) {
   const {
-    text: draft,
-    comments,
-  } = useDraftSnapshot({ drafts })
-  const {
     setDraft,
     setComments,
   } = drafts
@@ -85,24 +81,49 @@ export function Composer({
       text,
       caret,
     })
-
-    current.current.draft = text
   }
+
+  useEffect(
+    () => drafts.subscribe(() => {
+      const text = drafts.read().text
+      const editor = field.current
+
+      if (editor && editor.read() !== text) {
+        editor.write({
+          text,
+          caret: draftView({ text }).display.length,
+        })
+      }
+    }),
+    [drafts],
+  )
 
   const cacheIdentity = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
   const attempt = useRef(readAttempt({
     key: card,
     hydraId: cacheIdentity,
   }))
-  const outgoing = commentReply({
-    draft,
-    comments,
-    hydraId,
-    card,
-  })
-  const sendable = comments.filter(comment => sendableComment({ comment }))
-  const imagesLoading = hasPendingImage({ text: outgoing })
-  const commented = sendable.length
+  const commented = useSyncExternalStore(
+    drafts.subscribe,
+    () => drafts.read().comments.filter(comment => sendableComment({ comment })).length,
+  )
+  const disabled = useSyncExternalStore(
+    drafts.subscribe,
+    () => {
+      const {
+        text: draft,
+        comments,
+      } = drafts.read()
+      const outgoing = commentReply({
+        draft,
+        comments,
+        hydraId,
+        card,
+      })
+
+      return !outgoing.trim() || hasPendingImage({ text: outgoing })
+    },
+  )
   const [
     listing,
     setListing,
@@ -130,14 +151,6 @@ export function Composer({
     [drafts],
   )
 
-  const current = useRef({
-    draft,
-    comments,
-  })
-  current.current = {
-    draft,
-    comments,
-  }
   const { label } = useKeyboard()
   const insertBlock = ({ block }: { block: string }) => field.current!.insertBlock({ block })
 
@@ -305,7 +318,8 @@ export function Composer({
         {commented > 0 && (
           <CommentsPill
             count={commented}
-            open={() => setListing(sendable.map(c => c.id))}
+            open={() => setListing(drafts.read().comments
+              .filter(comment => sendableComment({ comment })).map(c => c.id))}
             remove={() => setComments({ items: [] })}
           />
         )}
@@ -323,7 +337,7 @@ export function Composer({
           standalone={false}
           id={`reply-${card}`}
           keyScope="composer"
-          value={draft}
+          value={drafts.read().text}
           change={setDraft}
           label={`Reply to ${title}`}
           placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
@@ -395,11 +409,11 @@ export function Composer({
                       text,
                     })
                   }))
-                  const before = current.current.draft
+                  const before = drafts.read().text
                   const next = insertBlock({ block: contents.join('\n\n') })
                   const text = commentReply({
                     draft: next,
-                    comments: current.current.comments,
+                    comments: drafts.read().comments,
                     hydraId,
                     card,
                   })
@@ -446,7 +460,7 @@ export function Composer({
             className="composer-send"
             aria-label="Send reply"
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
-            disabled={sending || !outgoing.trim() || imagesLoading}
+            disabled={sending || disabled}
           >
             <Icon name="send" size={COMPOSER_ICON} />
           </Button>

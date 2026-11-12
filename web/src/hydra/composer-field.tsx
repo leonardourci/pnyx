@@ -17,11 +17,11 @@ import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
 import { taskStateIcon } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
-import { useEffect,useImperativeHandle,useRef,useState,type KeyboardEvent,type Ref } from 'react'
+import { useEffect,useLayoutEffect,useImperativeHandle,useRef,useState,type KeyboardEvent,type Ref } from 'react'
 import { select,selectionEnds } from './composer-caret.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { useComposerUploads } from './composer-uploads.ts'
-import { DraftMirror } from './draft-mirror.tsx'
+import { DraftMirror,writeDraftMirror } from './draft-mirror.tsx'
 import { mentionCandidates } from './mention-candidates.ts'
 import { folderSuggestions } from './mention-folders.ts'
 import { useSlashMenu } from './slash-menu.ts'
@@ -29,6 +29,7 @@ import { slashIcons } from './skill-icons.ts'
 
 export interface ComposerFieldHandle {
   input: HTMLTextAreaElement | null
+  read(): string
   write({
     text,
     caret,
@@ -124,25 +125,27 @@ export function ComposerField({
     uploads,
     setUploads,
   ] = useState<Record<string, number>>({})
-  const draft = value
-  const view = draftView({ text: draft })
-  const display = view.display
-  const paths = requestPaths({ display })
-  const mirrored = view.chips.length > 0 || paths.length > 0
+  const current = useRef(value)
+  const [
+    , redraw,
+  ] = useState(0)
+  let draft = current.current
+  let view = draftView({ text: draft })
+  let display = view.display
+  let paths = requestPaths({ display })
+  let mirrored = view.chips.length > 0 || paths.length > 0
   const [fieldKey] = useState(() => id ?? crypto.randomUUID())
   const mentionList = `mentions-${fieldKey}`
   const suggestionList = `suggestions-${fieldKey}`
   const input = useRef<HTMLTextAreaElement>(null)
   const mirror = useRef<HTMLDivElement>(null)
-  // Where the selection goes once React has written the new display text.
+  // Programmatic chip writes restore the selection after their mirror mounts.
   const caretNext = useRef<{
     anchor: number
     focus: number
   } | null>(null), caretLast = useRef(0)
   // The draft before each cut, keyed by what it showed, so an Undo that brings that text back restores its chips.
   const beforeCuts = useRef(new Map<string, string>())
-  const current = useRef(draft)
-  current.current = draft
   // An upload settles after later renders, so it writes through the newest change, never a stale one.
   const latestChange = useRef(change)
   latestChange.current = change
@@ -210,12 +213,17 @@ export function ComposerField({
     cursor: number
   }) => {
     const shown = draftView({ text })
-    setSlash(previous => slashState({
+    const nextSlash = slashState({
       text: shown.display,
       cursor,
       chips: shown.chips,
-      dismissed: previous.dismissed,
-    }))
+      dismissed: slash.dismissed,
+    })
+
+    if (nextSlash.prefix !== slash.prefix || nextSlash.dismissed !== slash.dismissed) {
+      setSlash(nextSlash)
+    }
+
     const found = mentionQuery({
       text: shown.display,
       cursor,
@@ -253,8 +261,15 @@ export function ComposerField({
 
     const insideChip = found && shown.chips.some(chip =>
       chip.from <= found.start && found.start < chip.to)
-    setMention(insideChip ? null : found)
-    setMentionActive(0)
+    const nextMention = insideChip ? null : found
+
+    if (nextMention?.start !== mention?.start || nextMention?.query !== mention?.query) {
+      setMention(nextMention)
+    }
+
+    if (mentionActive !== 0) {
+      setMentionActive(0)
+    }
   }
 
   const write = ({
@@ -266,16 +281,69 @@ export function ComposerField({
     caret: number
     anchor?: number
   }) => {
+    const next = draftView({ text })
+    const nextPaths = requestPaths({ display: next.display })
+    const nextMirrored = next.chips.length > 0 || nextPaths.length > 0
+    const decorationChanged = mirrored !== nextMirrored || view.chips.length !== next.chips.length
+      || view.chips.some((
+        chip,
+        index,
+      ) => {
+        const after = next.chips[index]
+
+        return !after || chip.kind !== after.kind || chip.value !== after.value
+          || chip.label !== after.label || chip.name !== after.name
+          || chip.attached !== after.attached
+      })
+    current.current = text
+    draft = text
+    view = next
+    display = next.display
+    paths = nextPaths
+    mirrored = nextMirrored
     caretNext.current = {
       anchor,
       focus: caret,
     }
+    const element = input.current
+
+    if (element && element.value !== display) {
+      element.value = display
+    }
+
+    if (decorationChanged) {
+      redraw(version => version + 1)
+    } else {
+      if (mirror.current) {
+        writeDraftMirror({
+          element: mirror.current,
+          view,
+          paths,
+        })
+      }
+
+      fit()
+    }
+
     latestChange.current({ text })
-    // An insert finishing before the next render, like a second chosen file, builds on this text.
-    current.current = text
   }
 
-  useAutoHeight({
+  useLayoutEffect(
+    () => {
+      if (value !== current.current) {
+        write({
+          text: value,
+          caret: Math.min(
+            input.current?.selectionEnd ?? 0,
+            draftView({ text: value }).display.length,
+          ),
+        })
+      }
+    },
+    [value],
+  )
+
+  const fit = useAutoHeight({
     input,
     mirror,
     display,
@@ -555,6 +623,7 @@ export function ComposerField({
       get input() {
         return input.current
       },
+      read: () => current.current,
       write,
       attach,
       insertBlock,
@@ -679,7 +748,7 @@ export function ComposerField({
           rows={1}
           data-key-scope={keyScope}
           id={id}
-          value={display}
+          defaultValue={display}
           placeholder={placeholder}
           aria-label={label}
           aria-controls={mention ? mentionList : catalogOpen ? suggestionList : undefined}
@@ -788,8 +857,15 @@ export function ComposerField({
             }
 
             write(edit)
-            setGoal(null)
-            setActive(0)
+
+            if (goal !== null) {
+              setGoal(null)
+            }
+
+            if (active !== 0) {
+              setActive(0)
+            }
+
             trackMention({
               text: edit.text,
               cursor: edit.caret,
@@ -950,12 +1026,11 @@ export function ComposerField({
         {mirrored && (
           <DraftMirror
             view={view}
-            display={display}
             paths={paths}
             uploads={uploads}
             labelColors={labelColors}
-            removeCard={removeCard}
-            openChip={openChip}
+            removeCard={({ index }) => removeCard({ chip: view.chips[index]! })}
+            openChip={({ index }) => openChip({ chip: view.chips[index]! })}
             chipLook={chipLook}
             mirror={mirror}
           />

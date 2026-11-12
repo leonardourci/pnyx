@@ -1,13 +1,14 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect,useRef } from 'react'
 import type { ChatDrafts } from './chat-drafts.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { ComposerField } from './composer-field.tsx'
+import { ComposerField,type ComposerFieldHandle } from './composer-field.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { markdownText } from './markdown-text.ts'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
 import { COMMENT_FOCUS } from './comment-motion.ts'
+import { draftView } from './draft.ts'
 import { CommentNumber } from './comment-number.tsx'
 
 const CLIP = 40
@@ -87,9 +88,25 @@ export function MessageComment({
   release?(): void
   show?(): void
 }) {
-  const text = useSyncExternalStore(
-    drafts.subscribe,
-    () => drafts.read().comments.find(item => item.id === comment.id)?.text ?? comment.text,
+  const field = useRef<ComposerFieldHandle>(null)
+  const read = () => drafts.read().comments.find(item => item.id === comment.id)?.text
+    ?? comment.text
+  useEffect(
+    () => drafts.subscribe(() => {
+      const editor = field.current
+      const text = read()
+
+      if (editor && editor.read() !== text) {
+        editor.write({
+          text,
+          caret: draftView({ text }).display.length,
+        })
+      }
+    }),
+    [
+      drafts,
+      comment.id,
+    ],
   )
 
   return (
@@ -112,10 +129,11 @@ export function MessageComment({
       </div>
       <div className="comment-row">
         <ComposerField
+          ref={field}
           className="comment-note"
           placeholder="Comment…"
           label="Comment on selected text"
-          value={text}
+          value={read()}
           change={({ text }) => drafts.editComment({
             id: comment.id,
             text,
