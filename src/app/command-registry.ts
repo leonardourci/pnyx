@@ -40,6 +40,7 @@ export const COMMAND_REGISTRY = {
       'timeline',
       'health',
       'performance',
+      'cpu-profile',
     ],
   },
   approval: {

@@ -1,3 +1,4 @@
+import { captureCpuProfile } from '#diagnostics/cpu-profile.ts'
 import { followGit } from '#tasks/delivery/follow-git.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -373,9 +374,25 @@ export async function mountOwnedHydra({
     pause: recoveryPause,
   })
 
+  const profileAbort = new AbortController()
   const withdrawHost = offerHost({
     hydraId,
     ask: async ({ body }) => {
+      if (body.action === 'cpu-profile') {
+        if (typeof body.seconds !== 'number' || typeof body.path !== 'string') {
+          throw new HydraError({
+            code: 'VALIDATION_ERROR',
+            message: 'CPU profile needs seconds and output path',
+          })
+        }
+
+        return captureCpuProfile({
+          seconds: body.seconds,
+          path: body.path,
+          signal: profileAbort.signal,
+        })
+      }
+
       if (body.action === 'refresh-links') {
         if (typeof body.task !== 'string') {
           throw new HydraError({
@@ -602,6 +619,7 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    profileAbort.abort()
     gitFollow.close()
     await recovery.close()
     withdrawHost()
