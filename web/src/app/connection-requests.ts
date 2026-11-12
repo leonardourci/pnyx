@@ -375,7 +375,12 @@ export function createConnectionRequests({
         })
       }
 
-      scope.error = message.error
+      const cancelledSearch = request.name === 'oracle' && message.code === 'CANCELLED'
+
+      if (!cancelledSearch) {
+        scope.error = message.error
+      }
+
       request.reject({ error })
     } else {
       if (request.optimistic) {

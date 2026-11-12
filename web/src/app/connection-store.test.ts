@@ -906,6 +906,28 @@ test(
   async t => {
     const { connection } = recoveryPage({ t })
     const socket = TestSocket.current
+    const search = connection.commandFor({ id: 'default' })({
+      name: 'oracle',
+      args: ['billing'],
+    })
+    const cancelled = assert.rejects(
+      search,
+      { code: 'CANCELLED' },
+    )
+    const scan = socket.sent.find(message => message.name === 'oracle')!
+    socket.receive({
+      message: {
+        type: 'error',
+        id: scan.id,
+        code: 'CANCELLED',
+        error: 'Oracle search cancelled',
+      },
+    })
+    await cancelled
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
     const catalog = connection.commandFor({ id: 'default' })({
       name: 'models',
       args: ['codex'],

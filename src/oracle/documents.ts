@@ -98,11 +98,12 @@ export function* documents({
 
     if (agent && path && isAbsolute(path) && path.endsWith('.jsonl') && !paths.has(path)) {
       const session = sessionId({ agent })
+      const currentTask = state.sessions?.[session]?.taskId
       paths.set(
         path,
         {
           card: target({
-            card: event.cardId,
+            card: currentTask ?? event.cardId,
             session,
           }),
           session,
