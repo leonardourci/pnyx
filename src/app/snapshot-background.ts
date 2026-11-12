@@ -46,6 +46,7 @@ function writeInBackground({ dir }: { dir: string }): Promise<void> {
       { workerData: dir },
     )
     let failure: Error | undefined
+    // Only snapshot-worker.ts posts here, once, with writeSnapshot's result.
     worker.once(
       'message',
       (result: ReturnType<typeof writeSnapshot>) => log({
