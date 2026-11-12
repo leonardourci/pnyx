@@ -1,4 +1,4 @@
-import type { HydraEvent, HydraState } from './model.ts'
+import type { EventType, HydraEvent, HydraState } from './model.ts'
 import { replayOwned } from './reducer.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
@@ -20,6 +20,87 @@ export interface PageUpdate {
   labelColors?: HydraState['labelColors']
 }
 export type PageState = Omit<HydraState, 'eventIds' | 'contextNotes' | 'questionReminders'>
+
+// Which tabs replay an event: every tab, a tab that shows its card (and then also
+// gets that card's sessions), or none, so a tab only gets the cards it changed.
+type PageReach = 'every tab' | 'shown card' | 'shown card and sessions' | 'cards only'
+
+const PAGE_REACH = {
+  'task.wait-resumed': 'cards only',
+  'hydra.context-delivered': 'every tab',
+  'diagnostic.retry': 'every tab',
+  'apply.recorded': 'shown card',
+  'session.compaction': 'shown card',
+  'pnyx.upgrade': 'every tab',
+  'task.source.registered': 'cards only',
+  'task.source.lavish.published': 'cards only',
+  'task.source.started': 'cards only',
+  'task.source.result': 'cards only',
+  'task.source.alerted': 'cards only',
+  'task.source.handled': 'cards only',
+  'project.refreshed': 'every tab',
+  'task.steering.queued': 'cards only',
+  'task.steering.notified': 'cards only',
+  'task.steering.handled': 'cards only',
+  'task.steering.recovery': 'cards only',
+  'card.pushed': 'shown card and sessions',
+  'card.observed': 'shown card and sessions',
+  'card.moved': 'shown card and sessions',
+  'card.linked': 'shown card and sessions',
+  'card.outcome': 'shown card and sessions',
+  'card.replied': 'shown card and sessions',
+  'card.noted': 'shown card and sessions',
+  'board.view': 'every tab',
+  'task.session': 'shown card and sessions',
+  'board.configured': 'every tab',
+  'board.columns': 'every tab',
+  'board.agents': 'every tab',
+  'task.created': 'shown card',
+  'task.brief': 'shown card',
+  'task.owner-ask': 'shown card',
+  'task.intent': 'shown card',
+  'task.visibility': 'shown card and sessions',
+  'task.retention': 'shown card',
+  'hydra.memory': 'every tab',
+  'task.declared': 'shown card',
+  'task.asked': 'shown card',
+  'task.ask.escalated': 'shown card',
+  'task.ask.closed': 'shown card',
+  'task.ask.deferred': 'shown card',
+  'task.ask.reopened': 'shown card',
+  'task.mirrored': 'shown card',
+  'hydra.message': 'every tab',
+  'hydra.status': 'every tab',
+  'hydra.received': 'every tab',
+  'hydra.operation': 'every tab',
+  'hydra.agent-used': 'every tab',
+  'hydra.agent-change': 'every tab',
+  'hydra.review': 'every tab',
+  'hydra.helper-started': 'every tab',
+  'hydra.helper-finished': 'every tab',
+  'hydra.helper-acknowledged': 'every tab',
+  'hydra.dispatch-proposed': 'every tab',
+  'hydra.dispatch-resolved': 'every tab',
+  'hydra.dispatch-progress': 'every tab',
+  'hydra.project': 'every tab',
+  'chat.message': 'every tab',
+  'task.launched': 'shown card',
+  'task.permission': 'shown card',
+  'task.project': 'shown card',
+  'task.reminder': 'shown card',
+  'task.reminder-due': 'every tab',
+  'task.copy': 'shown card',
+  'task.moved-out': 'shown card and sessions',
+  'task.moved-in': 'shown card and sessions',
+  'task.queue': 'shown card',
+  'task.dependencies': 'shown card',
+  'task.held': 'shown card',
+  'task.released': 'shown card',
+  'task.kind': 'shown card',
+  'task.report': 'shown card',
+  'task.report-reviewed': 'shown card',
+  'task.landing': 'shown card',
+} as const satisfies Record<EventType, PageReach>
 
 export function pageCard({ card }: { card: Card }): Card {
   const visible = { ...card }
@@ -108,18 +189,12 @@ export function pageEvent({
 }): PageUpdate {
   const card = state.cards[event.cardId]
     ?? (event.type === 'task.moved-out' ? event.data.card : undefined)
-  const global = event.type.startsWith('hydra.') || event.type.startsWith('board.')
-    || event.type === 'chat.message' || event.type === 'task.reminder-due'
-    || event.type === 'project.refreshed' || event.type === 'diagnostic.retry'
-    || event.type === 'pnyx.upgrade'
-    || (event.type === 'session.compaction' && event.cardId === HYDRA_CARD)
-  const shown = card && pageShows({
+  const reach: PageReach = PAGE_REACH[event.type]
+  const shown = event.cardId === HYDRA_CARD || Boolean(card && pageShows({
     card,
     interest,
-  })
-  const hidden = !shown && !global
-  const omitted = hidden || event.type.startsWith('task.steering.') || event.type.startsWith('task.source.')
-    || event.type === 'task.wait-resumed'
+  }))
+  const forwarded = reach === 'every tab' || (reach !== 'cards only' && shown)
   const movedSessions = event.type === 'task.moved-in' || event.type === 'task.moved-out'
     ? event.data.sessions.filter(session => {
       const current = state.sessions?.[session.id]
@@ -132,7 +207,7 @@ export function pageEvent({
     }) : []
   let projected: HydraEvent | undefined = event
 
-  if (omitted) {
+  if (!forwarded) {
     projected = undefined
   } else if (event.type === 'task.moved-in') {
     projected = {
@@ -173,8 +248,7 @@ export function pageEvent({
     ids.add(sessionChange.after)
   }
 
-  if (event.type.startsWith('card.') || event.type.startsWith('task.moved-')
-    || event.type === 'task.visibility' || sessionChange) {
+  if (reach === 'shown card and sessions') {
     for (const session of Object.values(state.sessions ?? {})) {
       if (session.originCardId === event.cardId || session.taskId === event.cardId
         || session.id === sessionChange?.session
