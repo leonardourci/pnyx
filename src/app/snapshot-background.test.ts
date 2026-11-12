@@ -5,7 +5,7 @@ import workerThreads, { Worker, setEnvironmentData } from 'node:worker_threads'
 import { startServer } from './server-daemon.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
 import { snapshotInBackground } from './snapshot-background.ts'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { heldHydra, loadHydra } from './store.ts'
@@ -237,6 +237,10 @@ test(
     rmSync(cache)
     mkdirSync(cache)
     await assert.rejects(saveSnapshot({ live }))
+    assert.equal(
+      readdirSync(live.dir).some(name => name.startsWith('snapshot.json.tmp-')),
+      false,
+    )
     assert.ok(loadHydra({ hydraId: 'default' }).state.cards.second)
     rmSync(
       cache,

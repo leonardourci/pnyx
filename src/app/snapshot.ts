@@ -1,6 +1,6 @@
 import type { HydraState } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
-import { readFileSync, renameSync } from 'node:fs'
+import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { basename } from 'node:path'
 import { threadId } from 'node:worker_threads'
 import { snapshotPath, writeDurably } from '#store/storage.ts'
@@ -55,15 +55,35 @@ export function writeSnapshot({
     offset,
     state,
   } satisfies Snapshot))
-  writeDurably({
-    path: tmp,
-    data,
-    flag: 'w',
-  })
-  renameSync(
-    tmp,
-    snapshotPath({ dir }),
-  )
+
+  try {
+    writeDurably({
+      path: tmp,
+      data,
+      flag: 'w',
+    })
+    renameSync(
+      tmp,
+      snapshotPath({ dir }),
+    )
+  } catch (error) {
+    try {
+      rmSync(
+        tmp,
+        { force: true },
+      )
+    } catch (cleanupError) {
+      log({
+        level: 'error',
+        operation: 'snapshot.cleanup',
+        hydraId: basename(dir),
+        error: cleanupError,
+      })
+    }
+
+    throw error
+  }
+
   const result = {
     eventSeq: state.seq,
     bytes: data.length,
