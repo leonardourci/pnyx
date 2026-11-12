@@ -52,6 +52,13 @@ test(
       'watch',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
       (...parameters: Parameters<typeof fs.watch>) => {
+        const options = parameters[1]
+        const recursive = typeof options === 'object' && options?.recursive
+
+        if (!recursive) {
+          return watch(...parameters)
+        }
+
         if (parameters[0] !== join(
           root,
           '.git',
