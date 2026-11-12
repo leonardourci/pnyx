@@ -9,8 +9,8 @@ import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readReport } from '#investigations/report.ts'
 import { decidePush } from '#tasks/push.ts'
-import { searchPath, sqlite, updateIndex } from './index.ts'
 import { search } from './search.ts'
+import { searchInBackground } from './search-background.ts'
 import { redact } from './text.ts'
 
 const scratch = mkdtempSync(join(
@@ -43,7 +43,7 @@ const CODEX = join(
 )
 
 test(
-  'Oracle recovers task instructions, reports and helper results after edits and an index rebuild',
+  'Oracle recovers task instructions, reports and helper results after edits without an index',
   () => {
     process.env.PNYX_HOME = mkdtempSync(join(
       scratch,
@@ -83,7 +83,7 @@ test(
             title: 'Recorded instructions',
             kind: 'investigation',
             intent: 'Retain saffron instructions.',
-            brief: 'Confirm semaphore behavior.',
+            brief: 'Confirm semaphore migração deploying behavior.',
             ask: {
               text: 'Record marzipan preferences.',
               at: base.at,
@@ -103,7 +103,6 @@ test(
         },
       ],
     })
-    updateIndex({ hydraId: 'default' })
     const find = ({ text }: { text: string }) => search({
       hydraId: 'default',
       query: {
@@ -135,7 +134,6 @@ test(
       }),
       reportText,
     )
-    updateIndex({ hydraId: 'default' })
     assert.deepEqual(
       find({ text: 'mossstone' }).map(hit => hit.card),
       ['task-records'],
@@ -159,7 +157,7 @@ test(
           id: 'revised-records',
           type: 'task.brief',
           data: {
-            before: 'Confirm semaphore behavior.',
+            before: 'Confirm semaphore migração deploying behavior.',
             after: 'Validate cobalt pipeline. sk-abcdefghijklmnop1234',
             intent: 'Publish indigo output.',
           },
@@ -275,7 +273,22 @@ test(
       }),
       revisedReport,
     )
-    updateIndex({ hydraId: 'default' })
+    assert.equal(
+      find({ text: 'saffr*' })[0]?.card,
+      'task-records',
+    )
+    assert.equal(
+      find({ text: 'saffrn' })[0]?.match,
+      'fuzzy',
+    )
+    assert.equal(
+      find({ text: 'migracao' })[0]?.card,
+      'task-records',
+    )
+    assert.equal(
+      find({ text: 'deploy' })[0]?.card,
+      'task-records',
+    )
     assert.deepEqual(
       find({ text: 'mossstone tourmaline' }).map(hit => hit.card),
       ['task-records'],
@@ -313,16 +326,6 @@ test(
       /\[redacted\]/,
     )
 
-    const { DatabaseSync } = sqlite()
-    const oldIndex = new DatabaseSync(searchPath({ hydraId: 'default' }))
-    // Version 7 omitted report bodies while still advancing its event cursor.
-    oldIndex.exec(`
-      UPDATE meta SET value = '7' WHERE key = 'chunker_version';
-      DELETE FROM docs;
-      DELETE FROM card_fts;
-    `)
-    oldIndex.close()
-    updateIndex({ hydraId: 'default' })
     assert.deepEqual(
       find({ text: 'saffron semaphore marzipan cobalt indigo tangerine vermilion topaz quartz jasper' })
         .map(hit => hit.card),
@@ -454,7 +457,6 @@ test(
         },
       }),
     })
-    updateIndex({ hydraId: 'default' })
 
     for (const query of [
       'project',
@@ -487,65 +489,15 @@ test(
 )
 
 test(
-  'a search answers from the saved index while a catch-up holds its write lock',
-  () => {
-    process.env.PNYX_HOME = mkdtempSync(join(
-      scratch,
-      'pnyx-oracle-locked-',
-    ))
-    withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => writer.append({
-        event: {
-          v: 1,
-          seq: 1,
-          id: 'keys',
-          at: '2026-10-15T10:00:00Z',
-          actor: 'fixture',
-          cardId: '$board',
-          type: 'hydra.message',
-          data: {
-            action: 'send',
-            text: 'Rotate the signing keys',
-            hydra: 'hydra',
-          },
-        },
-      }),
-    })
-    updateIndex({ hydraId: 'default' })
-    const { DatabaseSync } = sqlite()
-    const catchUp = new DatabaseSync(searchPath({ hydraId: 'default' }))
-    // A long catch-up holds the lock this strongly once its page cache spills.
-    catchUp.exec('BEGIN EXCLUSIVE; DELETE FROM docs;')
-
-    try {
-      assert.deepEqual(
-        search({
-          hydraId: 'default',
-          query: {
-            text: 'signing',
-            limit: 1,
-          },
-        }).hits.map(hit => hit.card),
-        ['$board'],
-      )
-    } finally {
-      catchUp.exec('ROLLBACK')
-      catchUp.close()
-    }
-  },
-)
-
-test(
-  'building the search index writes nothing to the Hydra, so the server stays its only writer',
-  () => {
+  'searching writes nothing to the Hydra, so the server stays its only writer',
+  async () => {
     const home = mkdtempSync(join(
       scratch,
       'pnyx-oracle-reader-',
     ))
     process.env.PNYX_HOME = home
     // Hydra's own session has a transcript whose messages a harvest would record as events.
-    withWriter({
+    const card = withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
         const pushed = decidePush({
@@ -565,6 +517,8 @@ test(
         })
         assert.ok('event' in pushed)
         writer.append({ event: pushed.event })
+
+        return pushed.event.cardId
       },
     })
     const dir = join(
@@ -580,7 +534,35 @@ test(
       'utf8',
     )
 
-    updateIndex({ hydraId: 'default' })
+    const result = await searchInBackground({
+      hydraId: 'default',
+      query: {
+        text: 'migration',
+        limit: 20,
+      },
+    })
+
+    assert.equal(
+      result.hits[0]?.card,
+      card,
+    )
+    await assert.rejects(
+      searchInBackground({
+        hydraId: 'default',
+        query: {
+          text: '!!!',
+          limit: 20,
+        },
+      }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.equal(
+      existsSync(join(
+        dir,
+        'search.db',
+      )),
+      false,
+    )
 
     assert.equal(
       readFileSync(
@@ -603,7 +585,7 @@ test(
 )
 
 test(
-  'Oracle omits context notes from native transcripts and previously harvested messages after rebuilding',
+  'Oracle omits context notes from native transcripts and previously harvested messages without an index',
   () => {
     const home = mkdtempSync(join(
       scratch,
@@ -685,7 +667,6 @@ test(
         highlight: false,
       },
     }).hits
-    updateIndex({ hydraId: 'default' })
     assert.equal(
       find({ text: 'sample' }).length,
       1,
@@ -710,11 +691,6 @@ test(
       find({ text: 'archivedwakeword' }),
       [],
     )
-    const { DatabaseSync } = sqlite()
-    const oldIndex = new DatabaseSync(searchPath({ hydraId: 'default' }))
-    oldIndex.exec("UPDATE meta SET value = '8' WHERE key = 'chunker_version'; DELETE FROM docs; DELETE FROM card_fts;")
-    oldIndex.close()
-    updateIndex({ hydraId: 'default' })
     assert.equal(
       find({ text: 'sample' }).length,
       1,

@@ -5,12 +5,6 @@ export const KINDS = [
 ] as const
 export type Kind = (typeof KINDS)[number]
 
-export interface IndexResult {
-  events: number
-  transcripts: number
-  docs: number
-}
-
 export interface Query {
   text: string
   kind?: Kind
@@ -37,7 +31,7 @@ export interface SnippetPart {
 }
 
 // lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched
-// that way, so words with typos or cut short matched the indexed words nearest them.
+// that way, so words with typos or cut short matched similar words in the source text.
 export type Match = 'lexical' | 'fuzzy'
 
 export interface Hit {
@@ -46,15 +40,4 @@ export interface Hit {
   kind?: 'hydra'
   match: Match
   snippets: Snippet[]
-}
-
-export interface IndexStatus {
-  builtThrough: number
-  docs: Record<Kind, number>
-  transcripts: {
-    tracked: number
-    missing: number
-  }
-  bytes: number
-  current: boolean
 }

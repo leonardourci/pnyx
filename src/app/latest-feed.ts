@@ -24,7 +24,6 @@ export function createLatestFeed({
   threadSubscriptions,
   refreshThread,
   refreshLiveThread,
-  historyIndex,
   agents,
   spend,
 }: {
@@ -53,7 +52,6 @@ export function createLatestFeed({
     ws: HydraClient
     card: string
   }): void
-  historyIndex(): { changed(): void }
   agents(): Pick<ReturnType<typeof createHost>, 'action'>
   spend: { count(): void }
 }) {
@@ -78,7 +76,6 @@ export function createLatestFeed({
 
   const transcriptChanged = ({ path }: { path: string }) => {
     touchPath({ path })
-    historyIndex().changed()
 
     for (const map of threadSubscriptions) {
       for (const [

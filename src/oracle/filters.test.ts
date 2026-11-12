@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { withWriter } from '#app/writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { updateIndex } from './index.ts'
 import { search } from './search.ts'
 import { readSearchFilters, type SearchFilters } from './filters.ts'
 
@@ -77,7 +76,6 @@ test(
         return writer.state
       },
     })
-    updateIndex({ hydraId: 'default' })
 
     const first = ({ filters }: { filters: SearchFilters }) => {
       const result = search({

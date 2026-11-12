@@ -12,7 +12,6 @@ import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
-import { createIndexSync } from '#oracle/index-sync.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { existsSync, rmSync } from 'node:fs'
@@ -208,7 +207,6 @@ export async function mountOwnedHydra({
     threadSubscriptions,
     refreshThread,
     refreshLiveThread,
-    historyIndex: () => historyIndex,
     agents: () => agents,
     spend,
   })
@@ -281,10 +279,6 @@ export async function mountOwnedHydra({
 
     offset = read.end
 
-    if (read.events.length) {
-      historyIndex.changed()
-    }
-
     hydrasChanged()
     agents.reconcile({ state })
     followHome()
@@ -304,12 +298,6 @@ export async function mountOwnedHydra({
     hydraId,
     closed: () => closed,
   })
-
-  const historyIndex = createIndexSync({
-    hydraId,
-    startWorker,
-  })
-  historyIndex.changed()
 
   const tick = createServerTick({
     hydraId,
@@ -456,7 +444,6 @@ export async function mountOwnedHydra({
     kick,
     agents,
     catalogCommand,
-    historyIndex,
     hydraSubscribers,
     subscriptionMap,
     bindThread,
@@ -575,7 +562,6 @@ export async function mountOwnedHydra({
     closed = true
     await recovery.close()
     withdrawHost()
-    historyIndex.stop()
 
     await Promise.all([
       tick.queueRun,

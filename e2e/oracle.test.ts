@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { chmodSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { hydraDir } from '#app/home-migration.ts'
+import { join } from 'node:path'
 import { test } from 'node:test'
-import { searchPath } from '#oracle/index.ts'
 import type { Hit } from '#oracle/model.ts'
-import { indexStatus } from '#oracle/status.ts'
-import { openPage, until } from '#test-harness/harness.ts'
+import { openPage } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 type Page = Awaited<ReturnType<typeof openPage>>
@@ -46,7 +46,7 @@ const createTask = ({
 })
 
 test(
-  'Oracle serves fresh results, catches up after changes and reports a failed catch-up',
+  'Oracle reads new tasks directly and creates no index',
   async t => {
     const s = await pnyx.scenario()
     await createTask({
@@ -66,7 +66,7 @@ test(
         words: 'billing',
       })).map(hit => hit.card),
       [s.task({ key: 'billing' }).id],
-      'a first query waits for the first build',
+      'the first query reads the task directly',
     )
 
     await createTask({
@@ -84,7 +84,7 @@ test(
         words: 'refund',
       })).map(hit => hit.card),
       [s.task({ key: 'refunds' }).id],
-      'a query on an index behind the log waits for it to catch up',
+      'a query sees the newest durable event',
     )
 
     await createTask({
@@ -92,20 +92,6 @@ test(
       title: 'Rotate the invoice signing keys',
       key: 'keys',
     })
-    const created = s.state().seq
-    await until({
-      what: 'the index to catch up with the new task without a query',
-      check: () => {
-        const index = indexStatus({ hydraId: s.hydraId })
-
-        return index !== null && index.builtThrough >= created
-      },
-    })
-    chmodSync(
-      searchPath({ hydraId: s.hydraId }),
-      0o400,
-    )
-
     await createTask({
       s,
       title: 'Audit the payment logs',
@@ -115,16 +101,24 @@ test(
       what: 'the new task on the page',
       check: ({ state }) => !!state.cards[s.task({ key: 'audit' }).id],
     })
-    const refusal = await page.refusal(oracle({ words: 'audit' }))
     assert.deepEqual(
-      {
-        error: refusal.error,
-        code: refusal.code,
-      },
-      {
-        error: 'Oracle index could not catch up: attempt to write a readonly database',
-        code: 'UNKNOWN',
-      },
+      (await ask({
+        page,
+        words: 'audit',
+      })).map(hit => hit.card),
+      [s.task({ key: 'audit' }).id],
+    )
+    const invalid = await page.refusal(oracle({ words: '!!!' }))
+    assert.equal(
+      invalid.code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      existsSync(join(
+        hydraDir({ hydraId: s.hydraId }),
+        'search.db',
+      )),
+      false,
     )
   },
 )

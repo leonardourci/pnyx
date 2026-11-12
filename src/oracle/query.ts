@@ -6,25 +6,13 @@ export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize
     '',
   )
 
-// The distinct words of a text, folded, as typo matching looks them up. Words under
-// three letters have no trigram; longer than 32 are mostly hashes and ids.
-export function words({ text }: { text: string }): Set<string> {
-  return new Set(tokens({ text: fold({ text }) }).filter(w => w.length >= 3 && w.length <= 32))
-}
-
-export const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(
-  /"/g,
-  '""',
-)}"`
-
 export const bare = ({ token }: { token: string }) => token.replace(
   /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,
   '',
 )
 
 // One query word, or a synonym phrase, and what it may match: its synonym group,
-// or the word itself. A trailing * matches the word as a prefix, and the indexed
-// words starting with it, and skips synonyms and typos.
+// or the word itself. A trailing * matches the word as a prefix, and words starting with it, and skips synonyms and typos.
 export interface Term {
   alts: readonly string[]
   prefix: boolean
@@ -112,15 +100,4 @@ export function queryTerms({ text }: { text: string }): Term[] {
   }
 
   return terms
-}
-
-// A term as an FTS5 expression, each phrase quoted so punctuation is never read as
-// query syntax. A prefix term's first alternative is the prefix.
-export function termExpr({ term }: { term: Term }): string {
-  const alts = term.alts.map((
-    alt,
-    i,
-  ) => `${quote({ phrase: alt })}${term.prefix && i === 0 ? '*' : ''}`)
-
-  return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
 }

@@ -8,17 +8,12 @@ import { test } from 'node:test'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { joinMessageParts, loggedEntry } from '#hydra/history.ts'
 import { hydraThreadView } from '#hydra/thread-view.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { harvestTranscripts, backfillConversations } from './harvest.ts'
 import { recordEntries } from '#hydra/transcripts-read.ts'
 import type { ChatEvent } from '#hydra/model.ts'
-import { createIndexSync } from '#oracle/index-sync.ts'
-import { setImmediate } from 'node:timers/promises'
-import { updateIndex, openReader, searchPath } from '#oracle/index.ts'
 import { redact } from '#oracle/text.ts'
-import { until } from '#test-harness/harness.ts'
 import { replayOwned } from '#app/reducer.ts'
 
 test(
@@ -438,8 +433,6 @@ test(
       },
     })
 
-    updateIndex({ hydraId: 'default' })
-
     let complete = false
 
     for (let batch = 0; batch < 100; batch++) {
@@ -467,32 +460,11 @@ test(
     )
     harvest()
     const events = readEvents({ hydraId: 'default' })
-    updateIndex({ hydraId: 'default' })
     const correction = events.find((event): event is ChatEvent => event.type === 'chat.message'
       && event.data.replaces !== undefined && event.data.part === 1000)
     assert.ok(correction)
     const replaced = events.find(event => event.id === correction.data.replaces)
     assert.ok(replaced)
-    const index = openReader({ path: searchPath({ hydraId: 'default' }) })
-
-    try {
-      assert.equal(
-        index.prepare('SELECT count(*) AS count FROM docs WHERE source = ? AND pos = ?')
-          .get(
-            'events',
-            replaced.seq,
-          )!.count,
-        0,
-      )
-      assert.ok(Number(index.prepare('SELECT count(*) AS count FROM docs WHERE source = ? AND pos = ?')
-        .get(
-          'events',
-          correction.seq,
-        )!.count) > 0)
-    } finally {
-      index.close()
-    }
-
     assert.deepEqual(
       events.filter((event): event is ChatEvent => event.type === 'chat.message' && event.data.kind === 'tool' && event.data.call === 'check-release').map(event => event.data.call),
       [
@@ -597,235 +569,6 @@ test(
         'tool',
         'tool',
       ],
-    )
-  },
-)
-
-test(
-  'legacy migration yields between bounded batches and resumes after stopping',
-  async t => {
-    const home = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-backfill-batches-',
-    ))
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
-    t.after(() => {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    })
-    const transcript = join(
-      home,
-      'native.jsonl',
-    )
-    const records: unknown[] = Array.from(
-      { length: 70 },
-      (
-        _,
-        index,
-      ) => ({
-        type: 'assistant',
-        message: {
-          content: [
-            {
-              type: 'tool_use',
-              id: `call:${index}`,
-              name: 'Read',
-              input: {},
-            },
-          ],
-        },
-      }),
-    )
-    records.push({
-      type: 'assistant',
-      message: {
-        content: [
-          {
-            type: 'text',
-            text: 'x'.repeat(40000),
-          },
-        ],
-      },
-    })
-    writeFileSync(
-      transcript,
-      records.map(record => JSON.stringify(record)).join('\n') + '\n',
-    )
-    withWriter({
-      hydraId: 'default',
-      create: true,
-      fn: ({ writer }) => {
-        writer.append({
-          event: {
-            v: 1,
-            seq: 1,
-            id: 'create',
-            at: '2026-10-22T10:00:00Z',
-            actor: 'web',
-            cardId: '$hydra',
-            type: 'task.created',
-            data: {
-              key: '$hydra',
-              title: 'Hydra',
-            },
-          },
-        })
-        writer.state.sessions = {
-          fixture: {
-            id: 'fixture',
-            originCardId: '$hydra',
-            taskId: null,
-            attention: [],
-            sourceRefs: [],
-            agent: {
-              provider: 'claude-code',
-              sessionId: 'fixture',
-              transcriptPath: transcript,
-            },
-          },
-        }
-      },
-    })
-    const folder = join(
-      home,
-      'hydras/default',
-    )
-    const info = statSync(transcript)
-    writeFileSync(
-      join(
-        folder,
-        'harvest.json',
-      ),
-      JSON.stringify({
-        [`$hydra\n${transcript}`]: {
-          identity: `${info.dev}:${info.ino}`,
-          pos: info.size,
-        },
-      }),
-    )
-    let workers = 0
-
-    const startWorker: Parameters<typeof createIndexSync>[0]['startWorker'] = ({ done }) => {
-      workers++
-      done({
-        error: null,
-        stdout: '',
-      })
-    }
-
-    const first = createIndexSync({
-      hydraId: 'default',
-      startWorker,
-    })
-    t.after(() => first.stop())
-    await first.ready()
-    assert.equal(
-      readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message').length,
-      0,
-    )
-    assert.equal(
-      workers,
-      1,
-    )
-    await setImmediate()
-    const partial = readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message')
-    assert.ok(partial.length > 0 && partial.length < 70)
-    first.stop()
-    const sourcePrefix = records.slice(
-      0,
-      69,
-    ).map(record => JSON.stringify(record))
-      .join('\n') + '\n'
-    const intervening = recordEntries({
-      record: records[69],
-      offset: Buffer.byteLength(sourcePrefix),
-    })[0]!
-    withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => writer.append({
-        event: {
-          v: 1,
-          seq: writer.state.seq + 1,
-          id: 'intervening',
-          at: '2026-10-22T10:00:00Z',
-          actor: 'harvest',
-          cardId: '$hydra',
-          type: 'chat.message',
-          data: {
-            session: 'fixture',
-            nativeId: intervening.id,
-            block: intervening.block,
-            role: intervening.role,
-            kind: 'tool',
-            call: intervening.call,
-            text: intervening.text,
-          },
-        },
-      }),
-    })
-    const second = createIndexSync({
-      hydraId: 'default',
-      startWorker,
-    })
-    t.after(() => second.stop())
-    await second.ready()
-    await until({
-      what: 'historical conversation migration to finish',
-      check: () => JSON.parse(readFileSync(
-        join(
-          folder,
-          'harvest.json',
-        ),
-        'utf8',
-      ))[`$hydra\n${transcript}`].conversation === 1,
-    })
-    second.stop()
-    const saved = readEvents({ hydraId: 'default' }).filter(event => event.type === 'chat.message')
-    assert.equal(
-      saved.filter(event => event.data.kind === 'tool').length,
-      70,
-    )
-    assert.deepEqual(
-      joinMessageParts({
-        entries: saved.filter(event => event.data.kind === 'message')
-          .map(event => loggedEntry({ event })),
-      }).map(entry => entry.text),
-      ['x'.repeat(40000)],
-    )
-    assert.equal(
-      new Set(saved.map(event => event.id)).size,
-      saved.length,
-    )
-    assert.equal(
-      workers,
-      2,
-    )
-    const cursor = JSON.parse(readFileSync(
-      join(
-        folder,
-        'harvest.json',
-      ),
-      'utf8',
-    ))[`$hydra\n${transcript}`]
-    assert.equal(
-      cursor.conversation,
-      1,
-    )
-    assert.equal(
-      cursor.backfill,
-      undefined,
     )
   },
 )
