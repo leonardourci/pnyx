@@ -1,5 +1,5 @@
 import { needsRecentThread } from '#hydra/thread-history.ts'
-import { receiveConversation, loadEarlierMessages } from './conversation-history.ts'
+import { historyRead, receiveConversation, loadEarlierMessages } from './conversation-history.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -228,6 +228,74 @@ test(
     assert.deepEqual(
       loads,
       [],
+    )
+  },
+)
+
+test(
+  'a window read is not sent again while one is on its way or after it failed in the same reading state',
+  () => {
+    const full: ThreadPage = {
+      ...page({
+        stream: 'connection-1',
+        version: 1,
+      }),
+      pages: 4,
+      entries: [
+        {
+          id: 'oldest',
+          kind: 'message',
+          role: 'assistant',
+          text: 'An old passage',
+        },
+      ],
+    }
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: false,
+        serverTrims: false,
+      }),
+      'recent',
+    )
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: false,
+        serverTrims: false,
+        failed: 'recent',
+      }),
+      undefined,
+    )
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: true,
+        serverTrims: true,
+        pending: 'recent',
+        failed: 'recent',
+      }),
+      'retain',
+    )
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: true,
+        serverTrims: true,
+        failed: 'retain',
+      }),
+      undefined,
+    )
+    assert.equal(
+      historyRead({
+        page: {
+          ...full,
+          entries: [],
+        },
+        reading: true,
+        serverTrims: true,
+      }),
+      undefined,
     )
   },
 )

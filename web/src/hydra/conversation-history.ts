@@ -1,3 +1,5 @@
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { needsRecentThread } from '#hydra/thread-history.ts'
 import { receivedThread } from '#hydra/thread-delta.ts'
 import type { ThreadEntry, ThreadPage } from '#hydra/transcripts-read.ts'
 import { threadEntryOrder } from '#hydra/thread-order.ts'
@@ -130,4 +132,46 @@ export function receiveConversation({
     before,
     latest,
   })
+}
+
+export type HistoryMode = 'recent' | 'retain'
+
+// The window read Hydra's chat needs now: trim to the recent pages while nobody reads, or keep the loaded range
+// while the owner reads and the server trims. A read already on its way, or one that failed in this reading state,
+// is not sent again.
+export function historyRead({
+  page,
+  reading,
+  serverTrims,
+  pending,
+  failed,
+}: {
+  page: ThreadPage
+  reading: boolean
+  serverTrims: boolean
+  pending?: HistoryMode
+  failed?: HistoryMode
+}): HistoryMode | undefined {
+  const pause = reading && serverTrims && page.entries.length > 0
+  const trim = !reading && needsRecentThread({ page })
+
+  if (!pause && !trim) {
+    return undefined
+  }
+
+  const mode = pause ? 'retain' : 'recent'
+
+  return mode === pending || mode === failed ? undefined : mode
+}
+
+// The thread arguments that restore the range a page holds, by its session and oldest entry.
+export function retainArgs({ page }: { page: ThreadPage }): string[] {
+  return [
+    HYDRA_CARD,
+    '--retain',
+    JSON.stringify({
+      session: page.session,
+      oldest: page.entries[0]!.id,
+    }),
+  ]
 }

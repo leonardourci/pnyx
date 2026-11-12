@@ -1,4 +1,3 @@
-import { needsRecentThread } from '#hydra/thread-history.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
@@ -37,7 +36,7 @@ import { createChatFollow } from './chat-follow.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { loadEarlierMessages, receiveConversation } from './conversation-history.ts'
+import { historyRead, loadEarlierMessages, receiveConversation, retainArgs, type HistoryMode } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
@@ -203,7 +202,8 @@ export function HydraChat({
         const focusInside = host?.contains(selection?.focusNode ?? null)
         const inside = anchorInside || focusInside
         const focused = !!host?.contains(document.activeElement)
-        const selected = focused || !!inside && !selection?.isCollapsed
+        const selecting = !!inside && !selection?.isCollapsed
+        const selected = focused || selecting
         selectionInHistory.current = selected
         setSelectedHistory(selected)
       }
@@ -259,18 +259,8 @@ export function HydraChat({
       }
 
       let cancelled = false
-      const args = [HYDRA_CARD]
       const retained = retainedPage.current
-
-      if (retained?.entries.length) {
-        args.push(
-          '--retain',
-          JSON.stringify({
-            session: retained.session,
-            oldest: retained.entries[0]!.id,
-          }),
-        )
-      }
+      const args = retained?.entries.length ? retainArgs({ page: retained }) : [HYDRA_CARD]
 
       void command({
         name: 'thread',
@@ -527,27 +517,39 @@ export function HydraChat({
 
   const historyRequest = useRef<{
     id: number
-    mode: 'recent' | 'retain'
+    mode: HistoryMode
   } | null>(null)
   const historyGeneration = useRef(0)
+  // The server keeps only the recent pages, or a read asking it to is on its way.
+  const serverTrims = () => page?.recent === true || liveThread?.recent === true
+    || historyRequest.current?.mode === 'recent'
+  // A window read that failed waits for the owner's reading state or the connection to change before it retries.
+  const failedHistory = useRef<HistoryMode>(undefined)
+  useEffect(
+    () => {
+      failedHistory.current = undefined
+    },
+    [
+      away,
+      selectedHistory,
+      connected,
+    ],
+  )
   useEffect(
     () => {
       if (!connected || !page || loadingEarlier) {
         return
       }
 
-      const reading = away || selectedHistory
-      const trim = !reading && needsRecentThread({ page })
-      const pause = reading && (page.recent === true || liveThread?.recent === true
-        || historyRequest.current?.mode === 'recent')
+      const mode = historyRead({
+        page,
+        reading: away || selectedHistory,
+        serverTrims: serverTrims(),
+        pending: historyRequest.current?.mode,
+        failed: failedHistory.current,
+      })
 
-      if (!trim && !pause) {
-        return
-      }
-
-      const mode = pause ? 'retain' : 'recent'
-
-      if (historyRequest.current?.mode === mode) {
+      if (!mode) {
         return
       }
 
@@ -558,30 +560,16 @@ export function HydraChat({
       }
       const session = threadSession.current
 
+      const recentArgs = [
+        HYDRA_CARD,
+        '--recent',
+      ]
+
       const read = async () => {
         try {
-          const args = [
-            HYDRA_CARD,
-            '--recent',
-          ]
-
-          if (pause) {
-            const oldest = page.entries[0]?.id
-
-            if (!oldest) {
-              return
-            }
-
-            args[1] = '--retain'
-            args.push(JSON.stringify({
-              session: page.session,
-              oldest,
-            }))
-          }
-
           const result = await command({
             name: 'thread',
-            args,
+            args: mode === 'retain' ? retainArgs({ page }) : recentArgs,
           })
 
           const current = historyRequest.current?.id === id
@@ -596,6 +584,7 @@ export function HydraChat({
           }
         } catch (error) {
           if (!(error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED')) {
+            failedHistory.current = mode
             notify({ text: (error as Error).message })
           }
         } finally {
@@ -629,17 +618,10 @@ export function HydraChat({
     const session = threadSession.current
     let current = page
 
-    if (page?.entries[0] && (page.recent || historyRequest.current?.mode === 'recent' || liveThread?.recent)) {
+    if (page?.entries[0] && serverTrims()) {
       const restored = await command({
         name: 'thread',
-        args: [
-          HYDRA_CARD,
-          '--retain',
-          JSON.stringify({
-            session: page.session,
-            oldest: page.entries[0].id,
-          }),
-        ],
+        args: retainArgs({ page }),
       })
       current = restored.thread as ThreadPage
     }
