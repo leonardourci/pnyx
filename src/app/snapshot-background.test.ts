@@ -43,10 +43,7 @@ test(
     let active = 0
     let maximum = 0
     let releaseExit = () => {}
-    let exited = () => {}
-    const stopped = new Promise<void>(resolve => {
-      exited = resolve
-    })
+    let exited = false
 
     const releaseGate = ({ buffer }: Gate) => {
       Atomics.store(
@@ -146,7 +143,7 @@ test(
                 releaseExit = () => {}
               }
 
-              exited()
+              exited = true
             },
           )
         }
@@ -286,7 +283,10 @@ test(
     t.mock.timers.enable({ apis: ['setTimeout'] })
     append({ id: 'in-flight' })
     t.mock.timers.tick(60_000)
-    await stopped
+    await settle({
+      what: 'the timed snapshot worker to exit',
+      check: () => exited,
+    })
     assert.ok(readSnapshot({ dir: live.dir })?.state.cards['in-flight'])
     append({ id: 'shutdown-final' })
     t.mock.timers.reset()
