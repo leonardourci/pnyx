@@ -190,6 +190,36 @@ test(
       changed.get(reply.id)?.question,
       'Ship it?',
     )
+    const relabeled = answerLeads({
+      cards: {
+        [card.id]: {
+          ...card,
+          asks: [
+            {
+              ...merge,
+              question: 'Ship it?',
+              options: [
+                { label: 'Ship' },
+                { label: 'Wait' },
+              ],
+            },
+          ],
+        },
+      },
+      messages: [reply],
+      previous: changed,
+    })
+    assert.notEqual(
+      relabeled.get(reply.id),
+      changed.get(reply.id),
+    )
+    assert.deepEqual(
+      relabeled.get(reply.id)?.options,
+      [
+        'Ship',
+        'Wait',
+      ],
+    )
   },
 )
 
