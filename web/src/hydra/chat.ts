@@ -370,3 +370,31 @@ export const clock = ({
 export const hydraDown = ({ status }: { status?: HydraStatus }) => status?.state === 'down'
   ? `Down since ${clock({ at: status.since })} · retrying`
   : undefined
+
+// The server orders the conversation's rows; a late owner message may carry an earlier time than the row before it.
+export function withTimedRows<Row extends Pick<ThreadEntry, 'at'>>({
+  rows,
+  timed,
+}: {
+  rows: Row[]
+  timed: Row[]
+}): Row[] {
+  const pending = timed.toSorted((
+    a,
+    b,
+  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  const merged: Row[] = []
+
+  for (const row of rows) {
+    while (pending.length && (pending[0]!.at ?? '') < (row.at ?? '')) {
+      merged.push(pending.shift()!)
+    }
+
+    merged.push(row)
+  }
+
+  return [
+    ...merged,
+    ...pending,
+  ]
+}
