@@ -337,7 +337,7 @@ test(
     })
     const live = await until({
       what: 'a detailed line for each live update the page gets',
-      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'event'),
+      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'page.event'),
     })
     assert.ok(Number(live.bytes) > 0)
     assert.equal(

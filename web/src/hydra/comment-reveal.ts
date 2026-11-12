@@ -33,5 +33,9 @@ export function revealComment({
         { detail: comment.id },
       )),
     })
+
+    return true
   }
+
+  return false
 }

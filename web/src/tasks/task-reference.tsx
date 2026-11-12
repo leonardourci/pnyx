@@ -85,7 +85,7 @@ export function TaskReference({
     context.references,
     id,
   ) ? context.references[id] : undefined
-  const open = context ? reference ? context.openTask : undefined : openTask
+  const open = context ? context.openTask : openTask
   const savedTitle = savedLabels ? savedLabel : undefined
   const label = savedTitle ?? reference?.title ?? children ?? 'Unavailable task'
   const state = reference?.state ?? 'Unavailable'
@@ -95,7 +95,7 @@ export function TaskReference({
   }
 
   return (
-    <Tooltip content={context && !reference ? 'Task unavailable in this Hydra' : reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
+    <Tooltip content={reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
       <InlineButton
         className={`button task-mention task-reference column-${reference?.column ?? 'custom'} ${className}`}
         contentEditable={false}

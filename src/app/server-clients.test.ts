@@ -8,6 +8,7 @@ import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
+import { usageFor } from '#workers/usage.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 
 test(
@@ -52,6 +53,20 @@ test(
       },
     })
     state.cards.$hydra!.activity = 'working'
+    state.cards.other = {
+      ...state.cards.$hydra!,
+      id: 'other',
+      key: 'other',
+      automaticTask: false,
+      hidden: false,
+    }
+    state.cards.removed = {
+      ...state.cards.$hydra!,
+      id: 'removed',
+      key: 'removed',
+      automaticTask: false,
+      hidden: false,
+    }
     const action: CurrentAction = {
       calls: [
         {
@@ -63,6 +78,19 @@ test(
       done: false,
     }
     const actions: Record<string, CurrentAction> = { $hydra: action }
+    const cachedLatest = {
+      hidden: {
+        role: 'assistant' as const,
+        text: 'Cached hidden reply',
+      },
+    }
+    const cachedUsage = usageFor({
+      spend: {
+        total: 42,
+        unavailable: 0,
+        sharedHydra: false,
+      },
+    })
     const tabs = createServerClients({
       hydraId: 'default',
       state: () => state,
@@ -72,13 +100,13 @@ test(
           waiting: [],
           reading: [],
         }),
-        usageViews: () => ({}),
+        usageViews: () => ({ hidden: cachedUsage }),
       }),
       threadSubscriptions: [],
       bindThread() {},
       refreshThread() {},
       feed: () => ({
-        latest: {},
+        latest: cachedLatest,
         actions,
       }),
     })
@@ -362,6 +390,147 @@ test(
         },
       ],
       'recovery must read the current list instead of sending the stale payload',
+    )
+    state.cards.hidden = {
+      ...state.cards.other!,
+      id: 'hidden',
+      key: 'hidden',
+      hidden: true,
+      steering: [
+        {
+          id: 'history',
+          order: 1,
+          text: 'Private history',
+          source: 'fixture',
+          at: '2026-11-12T00:00:00Z',
+          actor: 'owner',
+          attempts: [],
+        },
+      ],
+    }
+    state.keys.hidden = 'hidden'
+    buffered = 0
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: ['hidden'],
+        hidden: false,
+      },
+    })
+    const opened = received.findLast(message => message.type === 'snapshot')
+    assert.ok(opened?.type === 'snapshot')
+    assert.equal(
+      opened.state.cards.hidden?.title,
+      state.cards.hidden.title,
+    )
+    assert.equal(
+      opened.state.cards.hidden?.steering,
+      undefined,
+    )
+    assert.equal(
+      'eventIds' in opened.state,
+      false,
+    )
+    buffered = 0
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: [],
+        hidden: false,
+      },
+    })
+    const closed = received.findLast(message => message.type === 'snapshot')
+    assert.ok(closed?.type === 'snapshot')
+    assert.equal(
+      closed.state.cards.hidden,
+      undefined,
+    )
+    buffered = 0
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: [],
+        hidden: true,
+      },
+    })
+    const all = received.findLast(message => message.type === 'snapshot')
+    assert.ok(all?.type === 'snapshot')
+    assert.ok(all.state.cards.hidden)
+    assert.equal(
+      state.cards.hidden.steering?.[0]?.text,
+      'Private history',
+    )
+    buffered = 0
+    tabs.send({
+      ws: client,
+      message: {
+        type: 'latest',
+        messages: {
+          absent: {
+            role: 'assistant',
+            text: 'Stale text',
+          },
+        },
+        actions: { absent: null },
+      },
+    })
+    const scopedLatest = received.at(-1)
+    assert.ok(scopedLatest?.type === 'latest')
+    assert.equal(
+      scopedLatest.messages.absent,
+      undefined,
+    )
+    assert.equal(
+      scopedLatest.actions.absent,
+      null,
+    )
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: [],
+        hidden: false,
+      },
+    })
+    buffered = 0
+    received.length = 0
+    const unhide = {
+      v: 1 as const,
+      id: 'unhide',
+      seq: state.seq + 1,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+      cardId: 'hidden',
+      type: 'task.visibility' as const,
+      data: {
+        before: true,
+        after: false,
+      },
+    }
+    state = reduce({
+      state,
+      event: unhide,
+    })
+    tabs.spendNow.spend = {
+      hidden: {
+        total: 42,
+        unavailable: 0,
+        sharedHydra: false,
+      },
+    }
+    tabs.broadcast({ event: unhide })
+    const restoredLatest = received.find(message => message.type === 'latest')
+    assert.ok(restoredLatest?.type === 'latest')
+    assert.equal(
+      restoredLatest.messages.hidden?.text,
+      'Cached hidden reply',
+    )
+    assert.equal(
+      restoredLatest.spend?.hidden?.total,
+      42,
+    )
+    assert.equal(
+      restoredLatest.usage?.hidden?.recorded.tokens,
+      42,
     )
   },
 )

@@ -29,6 +29,18 @@ test(
     })
 
     try {
+      const refused = await page.refusal({
+        name: 'page',
+        args: ['--hydra=other-hydra'],
+      })
+      assert.equal(
+        refused.code,
+        'VALIDATION_ERROR',
+      )
+      assert.match(
+        refused.error,
+        /--hydra is not allowed/,
+      )
       await create({ title: 'First release' })
       await create({ title: 'Second release' })
       await create({

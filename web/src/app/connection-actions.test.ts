@@ -5,6 +5,7 @@ import { setImmediate } from 'node:timers/promises'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
+import { loadUpdates, updatesOf } from '#web-tasks/updates-cache.ts'
 import { createHydraConnection } from './connection-store.ts'
 
 class BrowserSocket {
@@ -158,6 +159,24 @@ test(
     )
     socket.receive({
       message: {
+        type: 'receipt',
+        id: request.id,
+        event: {
+          id: 'later-attempt',
+          seq: 4,
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === request.id)?.stage,
+      'accepted',
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
+      '2099-10-16T13:00:00.000Z',
+    )
+    socket.receive({
+      message: {
         type: 'event',
         event: {
           v: 1,
@@ -180,6 +199,14 @@ test(
         id: request.id,
       },
     })
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === request.id)?.stage,
+      'confirmed',
+    )
+    assert.deepEqual(
+      connection.snapshot().state.eventIds,
+      {},
+    )
     const outcome = await result
     assert.ok(!(outcome instanceof Error))
     assert.equal(
@@ -248,6 +275,7 @@ test(
       message: {
         type: 'receipt',
         id: clearRequest.id,
+        stateSeq: 6,
       },
     })
     assert.ok(!((await clear) instanceof Error))
@@ -258,6 +286,102 @@ test(
     assert.equal(
       connection.snapshot().state.cards.task?.asks?.[0]?.answered,
       undefined,
+    )
+    const agentSave = connection.commandFor({ id: 'default' })({
+      name: 'hydra-agent',
+      args: [
+        JSON.stringify({
+          harness: 'claude',
+          model: 'next-model',
+        }),
+      ],
+    })
+    const agentRequest = socket.sent.find(message => message.name === 'hydra-agent')!
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: agentRequest.id,
+        saved: true,
+        stateSeq: 7,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.config?.hydra.agent?.model,
+      'next-model',
+    )
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
+      'accepted',
+    )
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: 7,
+        state: {
+          ...connection.snapshot().state,
+          seq: 7,
+        },
+      },
+    })
+    await agentSave
+    const readTask = loadUpdates({
+      command: connection.commandFor({ id: 'default' }),
+      id: 'task',
+    })
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: socket.sent.at(-1)!.id,
+        events: [],
+      },
+    })
+    await readTask
+    const readOther = loadUpdates({
+      command: connection.commandFor({ id: 'default' }),
+      id: 'unaffected',
+    })
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: socket.sent.at(-1)!.id,
+        events: [],
+      },
+    })
+    await readOther
+    assert.equal(
+      updatesOf({ id: 'task' }).stale,
+      false,
+    )
+    socket.receive({
+      message: {
+        type: 'page.event',
+        update: {
+          seq: 8,
+          cards: {
+            task: {
+              ...connection.snapshot().state.cards.task!,
+              revision: 8,
+            },
+          },
+        },
+      },
+    })
+    assert.equal(
+      updatesOf({ id: 'task' }).stale,
+      true,
+    )
+    assert.equal(
+      updatesOf({ id: 'unaffected' }).stale,
+      false,
+    )
+
+    assert.equal(
+      connection.snapshot().state.config?.hydra.agent?.model,
+      'next-model',
+    )
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
+      'confirmed',
     )
   },
 )

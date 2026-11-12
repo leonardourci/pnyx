@@ -1,3 +1,4 @@
+import { applyPageUpdate } from '#app/page-state.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { randomUUID } from 'node:crypto'
 // The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
@@ -216,7 +217,19 @@ export async function openPage({
       } else if (message.type === 'thread') {
         threads.push(message.thread)
       } else if (message.type === 'snapshot') {
-        state = message.state
+        state = {
+          ...message.state,
+          eventIds: {},
+        }
+      } else if (message.type === 'page.event') {
+        if (!state) {
+          state = emptyHydra()
+        }
+
+        applyPageUpdate({
+          state,
+          update: message.update,
+        })
       } else if (message.type === 'event') {
         state = reduce({
           state: state ?? emptyHydra(),
