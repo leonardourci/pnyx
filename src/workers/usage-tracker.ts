@@ -13,6 +13,9 @@ import { findCard } from '#tasks/push-rules.ts'
 import { loadHydra } from '#app/store.ts'
 import type { Host } from '#app/host-types.ts'
 
+const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
+const trackers = new Set<({ account }: { account: string }) => void>()
+
 // What each hosted session and login reported about its usage, and the usage views built from it.
 export function createUsageTracker({
   hydraId,
@@ -23,7 +26,6 @@ export function createUsageTracker({
 }) {
   // The latest size and spend each session reported, kept after its process idles out.
   const usages = new Map<string, Omit<HostedUsage, 'type'>>()
-  const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
 
   const usageAccount = ({ agent }: { agent: AgentRef }) => {
     const harness = harnessOf({ provider: agent.provider })
@@ -58,6 +60,17 @@ export function createUsageTracker({
 
       return [sessionId({ agent: task.agent })]
     }))
+
+  const notifyPlan = ({ account }: { account: string }) => {
+    for (const session of accountSessions({
+      state: loadHydra({ hydraId }).state,
+      account,
+    })) {
+      streamed({ session })
+    }
+  }
+
+  trackers.add(notifyPlan)
 
   const mergeUsage = ({
     key,
@@ -197,6 +210,12 @@ export function createUsageTracker({
         account.key,
         plan,
       )
+
+      for (const notify of trackers) {
+        notify({ account: account.key })
+      }
+
+      return { refreshed: 'plan limits' }
     }
 
     const sessions = accountSessions({
@@ -205,15 +224,22 @@ export function createUsageTracker({
     })
 
     for (const session of sessions) {
-      if (changed || !before.has(session)) {
+      if (!before.has(session)) {
         streamed({ session })
       }
     }
 
-    return { refreshed: changed ? 'plan limits' : 'cached plan limits' }
+    return { refreshed: 'cached plan limits' }
   }
 
   return {
+    close() {
+      trackers.delete(notifyPlan)
+
+      if (trackers.size === 0) {
+        plans.clear()
+      }
+    },
     mergeUsage,
     usageViews,
     usage,
