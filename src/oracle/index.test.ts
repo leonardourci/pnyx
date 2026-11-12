@@ -154,6 +154,11 @@ test(
             },
           },
         })
+        assert.equal(
+          find({ text: 'zinnia*' }).hits[0]?.card,
+          created.card,
+          'another reader caches the predecessor after the first query captures state',
+        )
         writer.append({
           event: {
             v: 1,
