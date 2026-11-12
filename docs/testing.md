@@ -31,7 +31,7 @@ The long-reply contract replays text deltas recorded from a synthetic Codex repl
 
 The conversation-delivery regression exercises the real socket-budget guard with a controlled network client. It rejects the final page, drains the buffer without another content change, and checks eventual delivery, replacement by a newer pending page, snapshot resync, socket close and reconnect. Clock control makes recovery assertions independent of machine speed.
 
-Historical recovery tests check that Oracle readiness finishes before backfill, that batches yield and resume after stopping, and that a write between batches is retained once. Compaction history checks exclude tool and thinking records even when their role names start with `assistant`.
+Oracle regressions cover query-time catch-up, byte-cursor checkpoints, source replacement and cancellation. Historical recovery preserves legacy transcript backfill without rewriting the log. Compaction history checks exclude tool and thinking records even when their role names start with `assistant`.
 
 For an archived home, run the read-only replay against an evidence copy:
 
