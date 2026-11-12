@@ -5,7 +5,6 @@ import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { setTimeout as wait } from 'node:timers/promises'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { followPullRequests } from '#tasks/delivery/follow.ts'
 import { refreshProject } from '#projects/refresh.ts'
@@ -586,19 +585,10 @@ test(
       }),
       /refreshing: pull requests/,
     )
-    const refreshWaitMs = 5_000
-    const refreshPollMs = 10
-    const refreshDeadline = performance.now() + refreshWaitMs
-
-    while (s.task({ key: 'pr-fix' }).status?.state !== 'done' && performance.now() < refreshDeadline) {
-      await wait(refreshPollMs)
-    }
-
-    assert.equal(
-      s.task({ key: 'pr-fix' }).status?.state,
-      'done',
-      'the public refresh observes the merge while the poll clock is held',
-    )
+    await until({
+      what: 'the public refresh to observe the merge while the poll clock is held',
+      check: () => s.task({ key: 'pr-fix' }).status?.state === 'done',
+    })
     t.mock.timers.reset()
     assert.deepEqual(
       [
