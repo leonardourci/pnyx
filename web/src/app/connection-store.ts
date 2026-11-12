@@ -24,6 +24,7 @@ import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 
+// Freezing deep-walks every new snapshot on its next event; snapshots stay unfrozen, so never write one in place.
 const pageEvents = new Immer({ autoFreeze: false })
 
 const HEARTBEAT_INTERVAL_MS = 10_000
@@ -293,13 +294,15 @@ export function createHydraConnection() {
     scope: Scope
     view: HydraState
   }): HydraState => {
-    if (shown?.view === view && shown.spend === scope.spend && shown.usage === scope.usage) {
-      return shown.state
+    const previous = shown
+    const sameReadings = previous !== undefined && previous.spend === scope.spend
+      && previous.usage === scope.usage
+
+    if (sameReadings && previous.view === view) {
+      return previous.state
     }
 
-    const previous = shown
-    const sameCards = previous !== undefined && previous.view.cards === view.cards
-      && previous.spend === scope.spend && previous.usage === scope.usage
+    const sameCards = sameReadings && previous.view.cards === view.cards
     const cards = sameCards ? previous.state.cards : { ...view.cards }
 
     if (!sameCards) {
