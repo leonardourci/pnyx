@@ -13,6 +13,7 @@ import { ReviewReadiness } from './review-readiness.tsx'
 
 export function TaskQuestion({
   card,
+  connected,
   state,
   command,
   notify,
@@ -20,6 +21,7 @@ export function TaskQuestion({
 }: {
   card: Card
   state?: HydraState
+  connected: boolean
   command: Command
   notify({ text }: { text: string }): void
   answer({ card }: { card: Card }): void
@@ -60,6 +62,7 @@ export function TaskQuestion({
         <ReviewReadiness
           key={request.ask.id}
           request={request}
+          connected={connected}
           command={command}
           notify={notify}
         />

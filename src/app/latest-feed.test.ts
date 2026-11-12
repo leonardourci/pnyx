@@ -1,175 +1,286 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import fs, { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
-import { emptyHydra, replay } from './reducer.ts'
-import { readStream } from '#test-harness/streams.ts'
-import { createLatestFeed, LATEST_DELAY_MS } from './latest-feed.ts'
+import { WebSocket } from 'ws'
+import { decidePush } from '#tasks/push.ts'
+import { settle } from '#test-harness/child-fixture.ts'
+import type { LatestMessage } from '#hydra/transcripts-read.ts'
+import { withWriter } from './writer.ts'
+import { startServer } from './server-daemon.ts'
+import { localToken } from './server-state.ts'
+import type { RunningServer, ServerMessage } from './server-transport.ts'
 
 test(
-  'working and unknown transcripts stay watched, finished sessions release and resume their watches',
-  t => {
+  'working and unknown transcripts reach clients, finished watches close and resumed sessions update again',
+  async t => {
     const root = mkdtempSync(join(
       tmpdir(),
       'pnyx-latest-watches-',
     ))
-    const active = join(
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = join(
       root,
-      'active',
+      'home',
     )
-    const ended = join(
+    let server: RunningServer | undefined = undefined
+    let client: WebSocket | undefined = undefined
+    t.after(async () => {
+      try {
+        client?.close()
+        await server?.close()
+      } finally {
+        t.mock.restoreAll()
+        syncBuiltinESMExports()
+
+        if (previous === undefined) {
+          delete process.env.PNYX_HOME
+        } else {
+          process.env.PNYX_HOME = previous
+        }
+
+        rmSync(
+          root,
+          {
+            recursive: true,
+            force: true,
+          },
+        )
+      }
+    })
+    const current = join(
       root,
-      'ended',
+      'working',
+      'native.jsonl',
     )
     const unknown = join(
       root,
       'unknown',
-    )
-    mkdirSync(active)
-    mkdirSync(ended)
-    mkdirSync(unknown)
-    const current = join(
-      active,
       'native.jsonl',
     )
-    const old = join(
-      ended,
+    const ended = join(
+      root,
+      'ended',
       'native.jsonl',
     )
-    const unobserved = join(
-      unknown,
-      'native.jsonl',
-    )
-    writeFileSync(
-      unobserved,
-      '',
-    )
-    writeFileSync(
+
+    for (const path of [
       current,
-      '',
-    )
-    writeFileSync(
-      old,
-      '',
-    )
-    const state = replay({
-      state: emptyHydra(),
-      events: readStream({ name: 'lifecycle' }),
-    })
-    state.cards.c1!.agent = {
-      provider: 'claude',
-      sessionId: 'active',
-      transcriptPath: current,
-    }
-    state.cards.c2!.agent = {
-      provider: 'claude',
-      sessionId: 'ended',
-      transcriptPath: old,
-    }
-    state.cards.unknown = {
-      ...state.cards.c2!,
-      id: 'unknown',
-      key: 'unknown',
-      agent: {
-        provider: 'claude',
-        sessionId: 'unobserved',
-        transcriptPath: unobserved,
-      },
-      activity: undefined,
-      sessionActivity: undefined,
-    }
-    state.cards.c1!.sessionActivity = 'working'
-    state.cards.c2!.sessionActivity = 'finished'
-    const feed = createLatestFeed({
-      state: () => state,
-      closed: () => false,
-      clients: new Set(),
-      send() {},
-      threadSubscriptions: [],
-      refreshThread() {},
-      refreshLiveThread() {},
-      agents: () => ({ action: () => null }),
-      spend: { count() {} },
-    })
-    t.after(() => {
-      clearTimeout(feed.latestTimer)
-
-      for (const watcher of [
-        ...feed.folders.values(),
-        ...feed.transcripts.values(),
-        ...feed.transcriptPolls.values(),
-      ]) {
-        watcher.close()
-      }
-
-      rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
-        },
+      unknown,
+      ended,
+    ]) {
+      mkdirSync(
+        dirname(path),
+        { recursive: true },
       )
+      writeFileSync(
+        path,
+        `${JSON.stringify({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: 'Initial conversation',
+          },
+        })}\n`,
+      )
+    }
+
+    const folders = new Set([
+      dirname(current),
+      dirname(unknown),
+      dirname(ended),
+    ])
+    const closedPolls = new Set<string>()
+    const openedFolders = new Set<string>()
+    const closedFolders = new Set<string>()
+    const unwatchFile = fs.unwatchFile
+    const watch = fs.watch
+    t.mock.method(
+      fs,
+      'unwatchFile',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.unwatchFile's signature.
+      (...parameters: Parameters<typeof fs.unwatchFile>) => {
+        closedPolls.add(String(parameters[0]))
+
+        return unwatchFile(...parameters)
+      },
+    )
+    t.mock.method(
+      fs,
+      'watch',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
+      (...parameters: Parameters<typeof fs.watch>) => {
+        const watcher = watch(...parameters)
+        const path = String(parameters[0])
+
+        if (folders.has(path)) {
+          openedFolders.add(path)
+          closedFolders.delete(path)
+          watcher.once(
+            'close',
+            () => closedFolders.add(path),
+          )
+        }
+
+        return watcher
+      },
+    )
+    syncBuiltinESMExports()
+    const put = ({
+      key,
+      path,
+      activity,
+    }: {
+      key: string
+      path: string
+      activity?: string
+    }) => withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const decision = decidePush({
+          state: writer.state,
+          key,
+          input: {
+            title: key,
+            activity,
+            agent: {
+              provider: 'claude-code',
+              sessionId: key,
+              transcriptPath: path,
+            },
+          },
+          meta: {
+            actor: 'fixture',
+            at: '2026-11-12T00:00:00Z',
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+
+        return decision.event.cardId
+      },
     })
-    t.mock.timers.enable({ apis: ['setTimeout'] })
-    feed.touchLatest({
-      ids: [
-        'c1',
-        'c2',
-        'unknown',
-      ],
+    const working = put({
+      key: 'working',
+      path: current,
+      activity: 'working',
     })
-    t.mock.timers.tick(LATEST_DELAY_MS)
-    assert.deepEqual(
-      [...feed.transcriptPolls.keys()],
-      [
-        current,
-        unobserved,
-      ],
+    const external = put({
+      key: 'unknown',
+      path: unknown,
+    })
+    put({
+      key: 'ended',
+      path: ended,
+      activity: 'finished',
+    })
+    server = await startServer({
+      port: 0,
+      homes: [],
+    })
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/default/ws?token=${localToken()}`)
+    client = ws
+    const latest: Record<string, LatestMessage | null> = {}
+    let failure: Error | undefined
+    ws.on(
+      'error',
+      error => {
+        failure = error
+      },
     )
-    assert.deepEqual(
-      [...feed.folders.keys()],
-      [
-        active,
-        unknown,
-      ],
+    ws.on(
+      'message',
+      bytes => {
+        const message = JSON.parse(String(bytes)) as ServerMessage
+
+        if (message.type === 'latest') {
+          Object.assign(
+            latest,
+            message.messages,
+          )
+        }
+      },
     )
-    state.cards.c1!.sessionActivity = 'finished'
-    feed.touchLatest({ ids: ['c1'] })
-    t.mock.timers.tick(LATEST_DELAY_MS)
-    assert.deepEqual(
-      [...feed.transcriptPolls.keys()],
-      [unobserved],
+
+    await settle({
+      what: 'initial conversations over the socket',
+      check: () => {
+        if (failure) {
+          throw failure
+        }
+
+        return ws.readyState === WebSocket.OPEN
+          && latest[working]?.text === 'Initial conversation'
+          && latest[external]?.text === 'Initial conversation'
+      },
+    })
+    const append = ({
+      path,
+      text,
+    }: {
+      path: string
+      text: string
+    }) => appendFileSync(
+      path,
+      `${JSON.stringify({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: text,
+        },
+      })}\n`,
     )
-    assert.deepEqual(
-      [...feed.folders.keys()],
-      [unknown],
-    )
-    state.cards.unknown!.sessionActivity = 'finished'
-    feed.touchLatest({ ids: ['unknown'] })
-    t.mock.timers.tick(LATEST_DELAY_MS)
-    assert.equal(
-      feed.transcriptPolls.size,
-      0,
-    )
-    assert.equal(
-      feed.transcripts.size,
-      0,
-    )
-    assert.equal(
-      feed.folders.size,
-      0,
-    )
-    state.cards.c1!.sessionActivity = 'working'
-    feed.touchLatest({ ids: ['c1'] })
-    t.mock.timers.tick(LATEST_DELAY_MS)
-    assert.deepEqual(
-      [...feed.transcriptPolls.keys()],
-      [current],
-    )
-    assert.deepEqual(
-      [...feed.folders.keys()],
-      [active],
-    )
+    append({
+      path: current,
+      text: 'Working session update',
+    })
+    append({
+      path: unknown,
+      text: 'Unknown external session update',
+    })
+    await settle({
+      what: 'both live transcript updates over the socket',
+      check: () =>
+        latest[working]?.text === 'Working session update' && latest[external]?.text === 'Unknown external session update',
+    })
+    put({
+      key: 'working',
+      path: current,
+      activity: 'finished',
+    })
+    await settle({
+      what: 'finished working session resources to close',
+      check: () =>
+        closedPolls.has(current) && closedFolders.has(dirname(current)),
+    })
+    put({
+      key: 'unknown',
+      path: unknown,
+      activity: 'finished',
+    })
+    await settle({
+      what: 'finished external session resources to close',
+      check: () =>
+        closedPolls.has(unknown) && closedFolders.has(dirname(unknown)),
+    })
+    put({
+      key: 'working',
+      path: current,
+      activity: 'working',
+    })
+    await settle({
+      what: 'resumed session watch to reopen',
+      check: () => openedFolders.has(dirname(current)) && !closedFolders.has(dirname(current)),
+    })
+    append({
+      path: current,
+      text: 'Resumed session update',
+    })
+    await settle({
+      what: 'resumed transcript update over the socket',
+      check: () => latest[working]?.text === 'Resumed session update',
+    })
   },
 )

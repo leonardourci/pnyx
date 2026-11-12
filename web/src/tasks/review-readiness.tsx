@@ -17,10 +17,12 @@ const NOTICE = {
 
 export function ReviewReadiness({
   request,
+  connected,
   command,
   notify,
 }: {
   request: ReviewRequest
+  connected: boolean
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -31,6 +33,7 @@ export function ReviewReadiness({
   } = request
   useLinkRefresh({
     task: card.id,
+    connected,
     command,
   })
   const [

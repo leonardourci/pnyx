@@ -192,15 +192,26 @@ export async function readUsage({
     account,
     refresh,
   })
+  const entry = {
+    at: Date.now(),
+    result,
+  }
   usageCache.set(
     key,
-    {
-      at: Date.now(),
-      result,
-    },
+    entry,
   )
+  let successful = false
 
-  return result
+  try {
+    const usage = await result
+    successful = usage !== undefined
+
+    return usage
+  } finally {
+    if (!successful && usageCache.get(key) === entry) {
+      usageCache.delete(key)
+    }
+  }
 }
 
 async function usageReading({

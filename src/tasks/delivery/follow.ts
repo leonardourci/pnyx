@@ -213,6 +213,7 @@ export async function followPullRequests({
     }
 
     let status: PullRequestStatus | undefined
+    const started = schedule?.generation({ task: card.id })
 
     try {
       status = await readStatus({ url: link.url })
@@ -221,6 +222,7 @@ export async function followPullRequests({
         card,
         link,
         found: false,
+        started,
       })
       log({
         level: 'warn',
@@ -236,6 +238,7 @@ export async function followPullRequests({
       card,
       link,
       found: status !== undefined,
+      started,
     })
 
     if (!status) {

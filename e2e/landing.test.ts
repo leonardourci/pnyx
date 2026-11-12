@@ -5,6 +5,7 @@ import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as wait } from 'node:timers/promises'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { followPullRequests } from '#tasks/delivery/follow.ts'
 import { refreshProject } from '#projects/refresh.ts'
@@ -565,6 +566,11 @@ test(
       what: 'Pnyx to read the open pull request',
       check: () => s.task({ key: 'pr-fix' }).links[0]?.state === 'open',
     })
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.now(),
+    })
+    t.after(() => t.mock.timers.reset())
     // Merged on GitHub, not through task merge.
     s.pullRequest({
       number: 3,
@@ -580,10 +586,20 @@ test(
       }),
       /refreshing: pull requests/,
     )
-    await until({
-      what: 'the merge on GitHub to finish the task',
-      check: () => s.task({ key: 'pr-fix' }).status?.state === 'done',
-    })
+    const refreshWaitMs = 5_000
+    const refreshPollMs = 10
+    const refreshDeadline = performance.now() + refreshWaitMs
+
+    while (s.task({ key: 'pr-fix' }).status?.state !== 'done' && performance.now() < refreshDeadline) {
+      await wait(refreshPollMs)
+    }
+
+    assert.equal(
+      s.task({ key: 'pr-fix' }).status?.state,
+      'done',
+      'the public refresh observes the merge while the poll clock is held',
+    )
+    t.mock.timers.reset()
     assert.deepEqual(
       [
         s.task({ key: 'pr-fix' }).status?.note,

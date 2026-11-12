@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import fs, { type FSWatcher } from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,14 +18,6 @@ test(
       tmpdir(),
       'pnyx-follow-refs-',
     ))
-    execFileSync(
-      'git',
-      [
-        'init',
-        '-q',
-        root,
-      ],
-    )
     const state = replay({
       state: emptyHydra(),
       events: readStream({ name: 'lifecycle' }),
@@ -49,8 +43,35 @@ test(
         changed = task
       },
     })
+    const opened: FSWatcher[] = []
+    const closed = new Set<FSWatcher>()
+    const watch = fs.watch
+    let refuseSetup = true
+    t.mock.method(
+      fs,
+      'watch',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
+      (...parameters: Parameters<typeof fs.watch>) => {
+        if (refuseSetup) {
+          refuseSetup = false
+          throw new Error('Synthetic native watch refusal')
+        }
+
+        const watcher = watch(...parameters)
+        opened.push(watcher)
+        watcher.once(
+          'close',
+          () => closed.add(watcher),
+        )
+
+        return watcher
+      },
+    )
+    syncBuiltinESMExports()
     t.after(() => {
       watching.close()
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
       rmSync(
         root,
         {
@@ -60,6 +81,39 @@ test(
       )
     })
     await watching.reconcile({ state })
+    execFileSync(
+      'git',
+      [
+        'init',
+        '-q',
+        root,
+      ],
+    )
+    await watching.reconcile({ state })
+    assert.equal(
+      opened.length,
+      0,
+    )
+    await watching.reconcile({ state })
+    assert.equal(
+      opened.length,
+      1,
+      'a missing repository and a failed watch setup are retried',
+    )
+    opened[0]!.emit(
+      'error',
+      new Error('Synthetic installed watcher failure'),
+    )
+    await settle({
+      what: 'failed ref watcher to close',
+      check: () => closed.has(opened[0]!),
+    })
+    await watching.reconcile({ state })
+    assert.equal(
+      opened.length,
+      2,
+      'a failed installed watcher is retried',
+    )
     const remote = join(
       root,
       '.git',
@@ -89,5 +143,9 @@ test(
     card.sessionActivity = 'finished'
     delete card.status
     await watching.reconcile({ state })
+    await settle({
+      what: 'finished task ref watcher to close',
+      check: () => closed.has(opened[1]!),
+    })
   },
 )
