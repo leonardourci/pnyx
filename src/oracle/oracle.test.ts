@@ -44,7 +44,7 @@ const CODEX = join(
 )
 
 test(
-  'Oracle recovers task instructions, reports and helper results after edits without an index',
+  'Oracle recovers task instructions, reports and helper results after edits',
   () => {
     process.env.PNYX_HOME = mkdtempSync(join(
       scratch,
@@ -762,7 +762,7 @@ test(
 )
 
 test(
-  'Oracle omits context notes from native transcripts and previously harvested messages without an index',
+  'Oracle omits context notes from native transcripts and previously harvested messages',
   () => {
     const home = mkdtempSync(join(
       scratch,

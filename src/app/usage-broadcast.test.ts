@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -56,7 +56,7 @@ test(
       login,
       'quota.json',
     )
-    writeFileSync(
+    const setQuota = ({ used }: { used: number }) => writeFileSync(
       quota,
       JSON.stringify({
         provider: {
@@ -64,12 +64,29 @@ test(
           windows: [
             {
               label: 'Daily',
-              percentUsed: 10,
+              percentUsed: used,
             },
           ],
         },
       }),
     )
+    const forceRefresh = ({
+      page,
+      task,
+    }: {
+      page: Awaited<ReturnType<typeof openPage>>
+      task: string
+    }) => page.command({
+      name: 'hydra',
+      args: [
+        'usage',
+        'refresh',
+        '--task',
+        task,
+        '--force',
+      ],
+    })
+    setQuota({ used: 10 })
     const cards = new Map<string, string>()
 
     for (const hydraId of [
@@ -132,15 +149,9 @@ test(
     pages.push(second)
     const one = cards.get('one')!
     const two = cards.get('two')!
-    await first.command({
-      name: 'hydra',
-      args: [
-        'usage',
-        'refresh',
-        '--task',
-        one,
-        '--force',
-      ],
+    await forceRefresh({
+      page: first,
+      task: one,
     })
     await second.command({
       name: 'hydra',
@@ -156,34 +167,118 @@ test(
       check: () =>
         first.usages[one]?.windows[0]?.used === 10 && second.usages[two]?.windows[0]?.used === 10,
     })
-    writeFileSync(
-      quota,
-      JSON.stringify({
-        provider: {
-          plan: 'Shared plan',
-          windows: [
-            {
-              label: 'Daily',
-              percentUsed: 40,
-            },
-          ],
-        },
-      }),
-    )
-    await first.command({
-      name: 'hydra',
-      args: [
-        'usage',
-        'refresh',
-        '--task',
-        one,
-        '--force',
-      ],
+    setQuota({ used: 40 })
+    await forceRefresh({
+      page: first,
+      task: one,
     })
     await settle({
       what: 'changed limits delivered to both Hydras without refreshing the second',
       check: () =>
         first.usages[one]?.windows[0]?.used === 40 && second.usages[two]?.windows[0]?.used === 40,
+    })
+    const executable = join(
+      root,
+      'fake-bin',
+      'quota-axi',
+    )
+    const fixture = join(
+      root,
+      'fake-bin',
+      'quota-fixture',
+    )
+    const gate = join(
+      root,
+      'quota-gate',
+    )
+    const ready = join(
+      root,
+      'quota-ready',
+    )
+    const release = join(
+      root,
+      'quota-release',
+    )
+    renameSync(
+      executable,
+      fixture,
+    )
+    writeFileSync(
+      executable,
+      `#!/usr/bin/env node
+const { existsSync, unlinkSync, writeFileSync } = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const gated = existsSync(${JSON.stringify(gate)});
+const answer = spawnSync(process.execPath, [${JSON.stringify(fixture)}, ...process.argv.slice(2)], { encoding: 'utf8' });
+const publish = () => {
+  process.stdout.write(answer.stdout ?? '');
+  process.stderr.write(answer.stderr ?? '');
+  process.exit(answer.status ?? 1);
+};
+if (!gated) publish();
+unlinkSync(${JSON.stringify(gate)});
+writeFileSync(${JSON.stringify(ready)}, '');
+const TIMEOUT_MS = 10000;
+const POLL_MS = 10;
+const until = Date.now() + TIMEOUT_MS;
+const waiting = setInterval(() => {
+  if (existsSync(${JSON.stringify(release)})) { clearInterval(waiting); publish(); }
+  if (Date.now() >= until) process.exit(1);
+}, POLL_MS);
+`,
+      { mode: 0o755 },
+    )
+    setQuota({ used: 50 })
+    writeFileSync(
+      gate,
+      '',
+    )
+    const older = forceRefresh({
+      page: first,
+      task: one,
+    })
+
+    try {
+      await settle({
+        what: 'older forced quota read captured before a newer read',
+        check: () => existsSync(ready),
+      })
+      setQuota({ used: 70 })
+      await forceRefresh({
+        page: second,
+        task: two,
+      })
+      await settle({
+        what: 'newer forced limits reach both Hydras',
+        check: () =>
+          first.usages[one]?.windows[0]?.used === 70 && second.usages[two]?.windows[0]?.used === 70,
+      })
+    } finally {
+      writeFileSync(
+        release,
+        '',
+      )
+      await older
+    }
+
+    const current = await first.command({
+      name: 'hydra',
+      args: [
+        'usage',
+        '--task',
+        one,
+      ],
+    })
+    assert.ok(Array.isArray(current.windows))
+    assert.equal(
+      current.windows[0]?.used,
+      70,
+      'the older forced read cannot replace newer shared plan limits',
+    )
+    await settle({
+      what: 'both streamed sessions retain the newer shared limits',
+      check: () =>
+        first.usages[one]?.windows[0]?.used === 70 && second.usages[two]?.windows[0]?.used === 70,
     })
   },
 )

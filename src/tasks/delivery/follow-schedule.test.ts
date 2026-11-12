@@ -373,7 +373,7 @@ test(
     })
     const detachedRead = follow()
     schedule.prune({ links: [] })
-    schedule.touch({ task: card.id })
+    schedule.generation({ task: card.id })
     release()
     await detachedRead
     pause = undefined

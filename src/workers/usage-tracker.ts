@@ -14,6 +14,8 @@ import { loadHydra } from '#app/store.ts'
 import type { Host } from '#app/host-types.ts'
 
 const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
+const planReads = new Map<string, number>()
+let nextPlanRead = 0
 const trackers = new Set<({ account }: { account: string }) => void>()
 
 // What each hosted session and login reported about its usage, and the usage views built from it.
@@ -188,6 +190,11 @@ export function createUsageTracker({
     }
 
     const account = usageAccount({ agent: card.agent })
+    const generation = ++nextPlanRead
+    planReads.set(
+      account.key,
+      generation,
+    )
     const before = accountSessions({
       state,
       account: account.key,
@@ -199,6 +206,10 @@ export function createUsageTracker({
         folder: account.folder,
       },
     })
+
+    if (planReads.get(account.key) !== generation) {
+      return { refreshed: 'cached plan limits' }
+    }
 
     const changed = !plans.has(account.key) || !isDeepStrictEqual(
       plans.get(account.key),
@@ -238,6 +249,7 @@ export function createUsageTracker({
 
       if (trackers.size === 0) {
         plans.clear()
+        planReads.clear()
       }
     },
     mergeUsage,

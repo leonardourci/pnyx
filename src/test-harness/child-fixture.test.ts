@@ -46,6 +46,9 @@ test(
       }),
       /ticked deadline/,
     )
-    assert.ok(Date.now() >= TICK_MS)
+    assert.equal(
+      Date.now(),
+      5000,
+    )
   },
 )
