@@ -18,22 +18,28 @@ export function refreshLinks({
     return pending
   }
 
-  const request = command({
-    name: 'task',
-    args: [
-      'refresh-links',
-      task,
-    ],
-  }).then(
-    () => {},
-    error => log({
-      level: 'warn',
-      operation: 'page.links-refresh',
-      taskId: task,
-      error,
-    }),
-  )
-    .finally(() => refreshing.delete(task))
+  const run = async () => {
+    try {
+      await command({
+        name: 'task',
+        args: [
+          'refresh-links',
+          task,
+        ],
+      })
+    } catch (error) {
+      log({
+        level: 'warn',
+        operation: 'page.links-refresh',
+        taskId: task,
+        error,
+      })
+    } finally {
+      refreshing.delete(task)
+    }
+  }
+
+  const request = run()
   refreshing.set(
     task,
     request,
@@ -58,7 +64,7 @@ export function useLinkRefresh({
         return
       }
 
-      // Its failure is logged inside, and the minute poll still reads the links.
+      // Its failure is logged inside, and the scheduled poll still reads the links.
       void refreshLinks({
         task,
         command,
