@@ -158,9 +158,11 @@ export function createHost({
   const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
     const { cwd } = card.agent
 
-    if (!cwd || !isFolder({ path: cwd })) {
+    const released = card.copy?.state === 'removed' && card.copy.path === cwd
+
+    if (!cwd || released || !isFolder({ path: cwd })) {
       throw new HydraError({
-        message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`,
+        message: released ? `the agent's copy ${cwd} was released, so its session cannot continue` : `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`,
         code: 'FOLDER_MISSING',
         help: [card.agent.host === 'pnyx' ? `Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id} --folder <absolute path>\` to start fresh from the brief` : `Run \`pnyx-axi task start ${card.id} --via pnyx --replace-session ${sessionId({ agent: card.agent })} --folder <absolute path>\` to start fresh from the brief`],
       })
@@ -1015,7 +1017,9 @@ export function createHost({
         , entry,
       ]) => entry.task === task)
 
-      if (starting({ task })) {
+      if (starting({ task }) || entries.some(([
+        , entry,
+      ]) => entry.session === undefined)) {
         return { busy: 'starting' }
       }
 
