@@ -161,7 +161,7 @@ export function toolEnvironment({
   task?: string
 }): NodeJS.ProcessEnv {
   if (!tools.includes(BROWSER_TOOL)) {
-    return env
+    return Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith('CHROME_DEVTOOLS_AXI_')))
   }
 
   return {
