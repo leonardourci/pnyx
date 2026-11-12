@@ -1480,6 +1480,8 @@ test(
         s.state().cards[HYDRA_CARD]?.sessionActivity,
         'working',
       )
+      const sent = s.state().hydraMessages?.find(message => message.id === 'steer')?.at
+      assert.ok(sent && received >= sent)
       const thread = (await page.command({
         name: 'thread',
         args: [HYDRA_CARD],
