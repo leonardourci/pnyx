@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraState } from '#app/model.ts'
 import { harnessAccount } from './account-choice.ts'
 import { readUsage } from './dispatch.ts'
 import { defaultLogin, effectiveDispatch } from './dispatch-config.ts'
@@ -16,22 +15,31 @@ import type { Host } from '#app/host-types.ts'
 const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
 const planReads = new Map<string, number>()
 let nextPlanRead = 0
-const trackers = new Set<({ account }: { account: string }) => void>()
+// Each Hydra's usage views, rebuilt when a login's plan limits change.
+const trackers = new Set<() => void>()
 
 // What each hosted session and login reported about its usage, and the usage views built from it.
 export function createUsageTracker({
   hydraId,
   streamed,
+  usageChanged,
 }: {
   hydraId: string
   streamed({ session }: { session: string }): void
+  // Rebuilds and pushes the usage of every session in the Hydra, once for all of them.
+  usageChanged(): void
 }) {
   // The latest size and spend each session reported, kept after its process idles out.
   const usages = new Map<string, Omit<HostedUsage, 'type'>>()
 
-  const usageAccount = ({ agent }: { agent: AgentRef }) => {
+  const usageAccount = ({
+    agent,
+    effective = effectiveDispatch(),
+  }: {
+    agent: AgentRef
+    effective?: ReturnType<typeof effectiveDispatch>
+  }) => {
     const harness = harnessOf({ provider: agent.provider })
-    const effective = effectiveDispatch()
     const name = agent.account ?? harnessAccount({
       effective,
       harness,
@@ -48,31 +56,7 @@ export function createUsageTracker({
     }
   }
 
-  const accountSessions = ({
-    state,
-    account,
-  }: {
-    state: HydraState
-    account: string
-  }) =>
-    new Set(Object.values(state.cards).flatMap(task => {
-      if (!task.agent || usageAccount({ agent: task.agent }).key !== account) {
-        return []
-      }
-
-      return [sessionId({ agent: task.agent })]
-    }))
-
-  const notifyPlan = ({ account }: { account: string }) => {
-    for (const session of accountSessions({
-      state: loadHydra({ hydraId }).state,
-      account,
-    })) {
-      streamed({ session })
-    }
-  }
-
-  trackers.add(notifyPlan)
+  trackers.add(usageChanged)
 
   const mergeUsage = ({
     key,
@@ -115,6 +99,7 @@ export function createUsageTracker({
     readings = {},
   }) => {
     const state = loadHydra({ hydraId }).state
+    const effective = effectiveDispatch()
 
     return Object.fromEntries(Object.values(state.cards).flatMap(card => {
       const agent = card.agent
@@ -124,7 +109,10 @@ export function createUsageTracker({
       }
 
       const key = sessionId({ agent })
-      const account = usageAccount({ agent })
+      const account = usageAccount({
+        agent,
+        effective,
+      })
 
       return [
         [
@@ -195,10 +183,6 @@ export function createUsageTracker({
       account.key,
       generation,
     )
-    const before = accountSessions({
-      state,
-      account: account.key,
-    })
     const plan = await readUsage({
       refresh: force,
       account: {
@@ -223,21 +207,10 @@ export function createUsageTracker({
       )
 
       for (const notify of trackers) {
-        notify({ account: account.key })
+        notify()
       }
 
       return { refreshed: 'plan limits' }
-    }
-
-    const sessions = accountSessions({
-      state: loadHydra({ hydraId }).state,
-      account: account.key,
-    })
-
-    for (const session of sessions) {
-      if (!before.has(session)) {
-        streamed({ session })
-      }
     }
 
     return { refreshed: 'cached plan limits' }
@@ -245,7 +218,7 @@ export function createUsageTracker({
 
   return {
     close() {
-      trackers.delete(notifyPlan)
+      trackers.delete(usageChanged)
 
       if (trackers.size === 0) {
         plans.clear()

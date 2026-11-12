@@ -393,6 +393,7 @@ export async function mountOwnedHydra({
       }
     },
     streamed,
+    usageChanged: () => spend.count(),
   })
 
   const recovery = createDiagnosticRecovery({

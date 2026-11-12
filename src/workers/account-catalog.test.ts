@@ -75,6 +75,7 @@ test(
     writeDocument({ document })
     const reads: string[] = []
     const streamed: string[] = []
+    let usageChanges = 0
     const fixture = claudeNative()
     const host = createHost({
       hydraId: 'lab',
@@ -106,6 +107,9 @@ test(
       changed: () => {},
       streamed: ({ session }) => {
         streamed.push(session)
+      },
+      usageChanged: () => {
+        usageChanges++
       },
     })
     t.after(() => host.close())
@@ -279,12 +283,14 @@ if (existsSync(${JSON.stringify(quotaGate)})) {
       host.refreshUsage({}),
       host.refreshUsage({}),
     ])
+    assert.equal(
+      usageChanges,
+      1,
+      'a new plan rebuilds the Hydra\'s usage once, not once per session',
+    )
     assert.deepEqual(
-      streamed.sort(),
-      [
-        'claude-code:selected-work',
-        'claude-code:shared-work',
-      ],
+      streamed,
+      [],
     )
     assert.equal(
       readFileSync(
@@ -294,11 +300,11 @@ if (existsSync(${JSON.stringify(quotaGate)})) {
         .split('\n').length,
       1,
     )
-    streamed.length = 0
+    usageChanges = 0
     await host.refreshUsage({})
-    assert.deepEqual(
-      streamed,
-      [],
+    assert.equal(
+      usageChanges,
+      0,
     )
     const usage = await host.usage()
     assert.ok('who' in usage)
@@ -311,10 +317,10 @@ if (existsSync(${JSON.stringify(quotaGate)})) {
       'work',
     )
     await host.refreshUsage({ force: true })
-    assert.deepEqual(
-      streamed,
-      [],
-      'identical forced quota contents do not stream sessions',
+    assert.equal(
+      usageChanges,
+      0,
+      'identical forced quota contents rebuild nothing',
     )
     const maxAges = readFileSync(
       quotaReads,
@@ -347,10 +353,10 @@ if (existsSync(${JSON.stringify(quotaGate)})) {
         .split('\n').length,
       3,
     )
-    assert.deepEqual(
-      streamed,
-      [],
-      'identical expired quota contents do not stream sessions',
+    assert.equal(
+      usageChanges,
+      0,
+      'identical expired quota contents rebuild nothing',
     )
     t.mock.timers.reset()
     writeFileSync(
@@ -371,64 +377,11 @@ if (existsSync(${JSON.stringify(quotaGate)})) {
       }),
     )
     await host.refreshUsage({ force: true })
-    assert.deepEqual(
-      streamed.sort(),
-      [
-        'claude-code:selected-work',
-        'claude-code:shared-work',
-      ],
-      'changed window contents reach every session on the login',
+    assert.equal(
+      usageChanges,
+      1,
+      'changed window contents rebuild every session\'s usage',
     )
-    streamed.length = 0
-    writeFileSync(
-      quotaGate,
-      '',
-    )
-    const addingSession = host.refreshUsage({ force: true })
-
-    try {
-      await settle({
-        what: 'quota read while a session is added',
-        check: () => existsSync(quotaReady),
-      })
-      withWriter({
-        hydraId: 'lab',
-        fn: ({ writer }) => {
-          const decision = decidePush({
-            state: writer.state,
-            key: 'late-usage-session',
-            input: {
-              agent: {
-                provider: 'claude-code',
-                sessionId: 'late-work',
-                account: 'work',
-                loginFolder: homes.work,
-              },
-            },
-            meta: {
-              actor: 'fixture',
-              at: new Date().toISOString(),
-            },
-          })
-          assert.ok('event' in decision)
-          writer.append({ event: decision.event })
-        },
-      })
-    } finally {
-      writeFileSync(
-        quotaRelease,
-        '',
-      )
-      await addingSession
-    }
-
-    assert.deepEqual(
-      streamed,
-      ['claude-code:late-work'],
-      'an unchanged quota read still reaches a session added while it was running',
-    )
-    rmSync(quotaReady)
-    rmSync(quotaRelease)
     writeDocument({
       document: {
         ...document,

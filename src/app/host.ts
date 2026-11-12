@@ -75,6 +75,7 @@ export function createHost({
   spawnCodex,
   changed,
   streamed = () => {},
+  usageChanged = () => {},
   queued = () => {},
   wakeDelay = WAKE_MS,
   stallDelay = STALL_MS,
@@ -103,6 +104,8 @@ export function createHost({
     session: string
     text?: boolean
   }): void
+  // A login's plan limits changed, so every session's usage view is rebuilt.
+  usageChanged?(): void
   // Hydra's queue of unread changes grew, or its check turn took or finished them.
   queued?(): void
   wakeDelay?: number
@@ -134,6 +137,7 @@ export function createHost({
   const usageTracker = createUsageTracker({
     hydraId,
     streamed,
+    usageChanged,
   })
 
   let closing = false
