@@ -22,6 +22,10 @@ import { settle } from '#test-harness/child-fixture.ts'
 import type { QueryFn } from '#workers/claude.ts'
 
 fakeDispatch({ root: process.env.HOME! })
+process.env.CHROME_DEVTOOLS_AXI_SESSION = 'inherited-session'
+process.env.CHROME_DEVTOOLS_AXI_BROWSER_URL = 'http://127.0.0.1:1'
+process.env.CHROME_DEVTOOLS_AXI_WS_HEADERS = 'inherited-credential'
+
 const login = process.env.CLAUDE_CONFIG_DIR!
 mkdirSync(
   login,
@@ -130,7 +134,6 @@ for (const harness of [
     hold: true,
   })
   const grantTurn = native.plan({
-    match: ({ text }) => text.includes('Pnyx external tool grants:'),
     hold: true,
   })
 
@@ -271,6 +274,24 @@ for (const harness of [
       check: () => incoming({ index: 0 }) === 1,
     })
 
+    const initialEnv = harness === 'claude' ? claude[0]!.options()?.env : native.sessions[0]!.env
+    assert.ok(initialEnv)
+    assert.deepEqual(
+      Object.keys(initialEnv).filter(name => name.startsWith('CHROME_DEVTOOLS_AXI_')),
+      [],
+    )
+    assert.equal(
+      initialEnv.PNYX_HYDRA,
+      hydraId,
+    )
+
+    if (harness === 'codex') {
+      assert.deepEqual(
+        Object.keys(native.sessions[0]!.config ?? {}).filter(name => name.startsWith('shell_environment_policy.set.CHROME_DEVTOOLS_AXI_')),
+        [],
+      )
+    }
+
     if (harness === 'claude') {
       assert.equal(
         claude[0]!.options()?.strictMcpConfig,
@@ -393,6 +414,20 @@ for (const harness of [
       1,
       'a grant must also wait for background work',
     )
+    const original = host.diagnostics().sessions.find(session => session.taskId === task)
+    assert.equal(
+      original?.sessionId,
+      `${harness === 'claude' ? 'claude-code' : 'codex'}:${sessionId}`,
+    )
+    assert.equal(
+      original?.attached,
+      true,
+    )
+    assert.equal(
+      original?.work?.background.knowledge,
+      'known',
+    )
+    assert.ok(original?.work?.background.knowledge === 'known' && original.work.background.tasks.length > 0)
 
     if (harness === 'claude') {
       claude[0]!.send({
@@ -590,7 +625,6 @@ for (const harness of [
       { code: 'TASK_HELD' },
     )
     recoveredTurn = native.plan({
-      match: ({ text }) => text.includes('Pnyx external tool grants:'),
       hold: true,
     })
     host.close()
