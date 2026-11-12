@@ -519,10 +519,46 @@ test(
       state: emptyHydra(),
       event,
     })
+    state.config = hydraConfig({ state })
     state.cards.task!.agent = {
       provider: 'claude-code',
       sessionId: 'current',
     }
+    state.cards.task!.asks = [
+      {
+        id: 'go',
+        at: event.at,
+        actor: 'hydra',
+        audience: 'owner',
+        kind: 'go',
+        question: 'Proceed?',
+        answered: 'answer',
+        choice: 'Go',
+        hold: {
+          id: 'hold',
+          at: event.at,
+          actor: 'owner',
+          reason: 'Review first',
+        },
+      },
+      {
+        id: 'sibling',
+        at: event.at,
+        actor: 'hydra',
+        audience: 'owner',
+        question: 'Another question?',
+      },
+    ]
+    state.hydraMessages = [
+      {
+        id: 'earlier-message',
+        action: 'send',
+        text: 'Keep this message',
+        at: event.at,
+        actor: 'owner',
+        hydra: 'default',
+      },
+    ]
     socket.receive({
       message: {
         type: 'snapshot',
@@ -557,6 +593,8 @@ test(
       connection.snapshot().state.cards.task!.spend,
       spend,
     )
+    const beforeEvent = connection.snapshot().state
+    const previousValue = structuredClone(beforeEvent)
     socket.receive({
       message: {
         type: 'event',
@@ -579,6 +617,24 @@ test(
     assert.deepEqual(
       connection.snapshot().state.cards.task!.usage,
       usage,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.task,
+      beforeEvent.cards.task,
+      'an unrelated event retains a card with live readings',
+    )
+    assert.equal(
+      connection.snapshot().state.hydraMessages,
+      beforeEvent.hydraMessages,
+    )
+    assert.equal(
+      connection.snapshot().state.hydraMessages?.[0],
+      beforeEvent.hydraMessages?.[0],
+    )
+    assert.deepEqual(
+      beforeEvent,
+      previousValue,
+      'applying an event leaves the previous snapshot unchanged',
     )
     const other = connection.snapshot().state.cards.other
     socket.receive({
@@ -603,6 +659,144 @@ test(
       other,
       'a card without live totals keeps its identity',
     )
+    const beforeMessage = connection.snapshot().state
+    const messageEvent: HydraEvent = {
+      ...event,
+      id: 'next-message',
+      seq: 3,
+      cardId: '$hydra',
+      type: 'hydra.message',
+      data: {
+        action: 'send',
+        text: 'A new message',
+        hydra: 'default',
+      },
+    }
+    socket.receive({
+      message: {
+        type: 'event',
+        event: messageEvent,
+      },
+    })
+    const afterMessage = connection.snapshot().state
+    assert.equal(
+      afterMessage.cards,
+      beforeMessage.cards,
+      'a chat append retains all card views',
+    )
+    assert.equal(
+      afterMessage.hydraMessages?.[0],
+      beforeMessage.hydraMessages?.[0],
+    )
+    assert.notEqual(
+      afterMessage.hydraMessages,
+      beforeMessage.hydraMessages,
+    )
+    assert.equal(
+      afterMessage.hydraMessages?.[1]?.text,
+      'A new message',
+    )
+    assert.equal(
+      beforeMessage.hydraMessages?.length,
+      1,
+    )
+    assert.doesNotThrow(() => structuredClone(afterMessage))
+    socket.receive({
+      message: {
+        type: 'event',
+        event: messageEvent,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state,
+      afterMessage,
+      'a duplicate event keeps the entire view',
+    )
+    const beforeReopen = connection.snapshot().state
+    socket.receive({
+      message: {
+        type: 'event',
+        event: {
+          ...event,
+          id: 'reopened',
+          seq: 4,
+          type: 'task.ask.reopened',
+          data: {
+            ask: 'go',
+            answer: 'answer',
+          },
+        },
+      },
+    })
+    const reopened = connection.snapshot().state.cards.task!
+    assert.deepEqual(
+      reopened.hold,
+      {
+        id: 'hold',
+        at: event.at,
+        actor: 'owner',
+        reason: 'Review first',
+      },
+    )
+    assert.notEqual(
+      reopened.hold,
+      beforeReopen.cards.task!.asks?.[0]?.hold,
+    )
+    assert.equal(
+      reopened.asks?.[0]?.answered,
+      undefined,
+    )
+    assert.equal(
+      reopened.asks?.[0]?.choice,
+      undefined,
+    )
+    assert.equal(
+      reopened.asks?.[1],
+      beforeReopen.cards.task!.asks?.[1],
+    )
+    assert.equal(
+      beforeReopen.cards.task!.asks?.[0]?.answered,
+      'answer',
+    )
+    assert.equal(
+      beforeReopen.cards.task!.hold,
+      undefined,
+    )
+    const beforeConfig = connection.snapshot().state
+    const previousConfig = structuredClone(beforeConfig.config)
+    socket.receive({
+      message: {
+        type: 'event',
+        event: {
+          ...event,
+          id: 'agents',
+          seq: 5,
+          type: 'board.agents',
+          data: {
+            agents: { builder: { harness: 'codex' } },
+            before: {},
+          },
+        },
+      },
+    })
+    const configured = connection.snapshot().state
+    assert.deepEqual(
+      configured.config?.agents,
+      { builder: { harness: 'codex' } },
+    )
+    assert.deepEqual(
+      beforeConfig.config,
+      previousConfig,
+    )
+    assert.notEqual(
+      configured.config,
+      beforeConfig.config,
+    )
+    assert.equal(
+      configured.cards.task,
+      beforeConfig.cards.task,
+    )
+    assert.doesNotThrow(() => structuredClone(configured))
     events.dispatchEvent(new Event('pagehide'))
     const saved = [...stored.values()].map(value => JSON.parse(value)).filter(value => value?.cards)
     assert.ok(saved.length > 0)

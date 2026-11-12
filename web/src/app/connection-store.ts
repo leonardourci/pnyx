@@ -1,5 +1,6 @@
 import type { HydraState } from '#app/model.ts'
-import { emptyHydra,reduce } from '#app/reducer.ts'
+import { emptyHydra,replayOwned } from '#app/reducer.ts'
+import { Immer } from 'immer'
 import { saveEventId,savedReceipt,type SaveCommand } from '#app/save-receipts.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
@@ -21,6 +22,8 @@ import { createHydraCreation } from './hydra-creation.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
+
+const pageEvents = new Immer({ autoFreeze: false })
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
@@ -290,19 +293,27 @@ export function createHydraConnection() {
       return shown.state
     }
 
-    const cards = { ...view.cards }
+    const previous = shown
+    const sameCards = previous !== undefined && previous.view.cards === view.cards
+      && previous.spend === scope.spend && previous.usage === scope.usage
+    const cards = sameCards ? previous.state.cards : { ...view.cards }
 
-    for (const id of new Set([
-      ...Object.keys(scope.spend),
-      ...Object.keys(scope.usage),
-    ])) {
-      const card = view.cards[id]
+    if (!sameCards) {
+      for (const id of new Set([
+        ...Object.keys(scope.spend),
+        ...Object.keys(scope.usage),
+      ])) {
+        const card = view.cards[id]
 
-      if (card) {
-        cards[id] = {
-          ...card,
-          spend: scope.spend[id],
-          usage: scope.usage[id],
+        if (card) {
+          const cached = previous?.state.cards[id]
+          const unchanged = previous?.view.cards[id] === card
+            && previous?.spend[id] === scope.spend[id] && previous?.usage[id] === scope.usage[id]
+          cards[id] = cached && unchanged ? cached : {
+            ...card,
+            spend: scope.spend[id],
+            usage: scope.usage[id],
+          }
         }
       }
     }
@@ -738,10 +749,16 @@ export function createHydraConnection() {
 
       confirmState({
         scope,
-        state: reduce({
+        state: pageEvents.produce(
           state,
-          event: message.event,
-        }),
+          // eslint-disable-next-line pnyx/object-params -- Immer owns the recipe callback signature.
+          draft => {
+            replayOwned({
+              state: draft,
+              events: [message.event],
+            })
+          },
+        ),
       })
 
       confirmSaves({ scope })
