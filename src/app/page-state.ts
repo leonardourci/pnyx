@@ -111,13 +111,20 @@ export function pageCard({ card }: { card: Card }): Card {
   return visible
 }
 
-// A hidden task keeps what chips, prerequisites, waits and answer heads read, without its histories.
+// A hidden task keeps what chips, prerequisites, waits and answer heads read: no histories,
+// texts or worker setup.
 function pageReference({ card }: { card: Card }): Card {
   const reference = pageCard({ card })
   delete reference.statusLog
   delete reference.replies
   delete reference.brief
   delete reference.initialPrompt
+  delete reference.intent
+  delete reference.progress
+  delete reference.projectRefresh
+  delete reference.launch
+  delete reference.settings
+  delete reference.copy
 
   return reference
 }
