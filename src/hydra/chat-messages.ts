@@ -1,4 +1,4 @@
-import { HYDRA_ACTOR } from '#app/actors.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { hydraDelivery,QUIET_REPLY,reportActor } from './hydra.ts'
 import { taskMentions } from './mentions.ts'
 import type { HydraMessage } from './model.ts'
@@ -50,11 +50,14 @@ export function hydraMessages({
   transcript,
   provider,
   boundaries = false,
+  waiting,
 }: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
   provider?: string
   boundaries?: boolean
+  // Why the owner's queued messages wait, when Pnyx knows.
+  waiting?: string
 }): ThreadEntry[] {
   transcript = transcript.filter(entry => {
     const visible = boundaries || !quietReply({ entry })
@@ -70,6 +73,11 @@ export function hydraMessages({
     ' ',
   )
   const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
+  const owned: {
+    message: HydraMessage
+    entry: ThreadEntry
+    copied: boolean
+  }[] = []
   const rewritten = new Map<ThreadEntry, ThreadEntry>()
   const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
     entry,
@@ -132,13 +140,21 @@ export function hydraMessages({
           copy.task = message.task
         }
 
+        if (ownerActor({ actor: message.actor })) {
+          owned.push({
+            message,
+            entry: copy,
+            copied: true,
+          })
+        }
+
         rewritten.set(
           entry!,
           copy,
         )
       }
     } else if (!report) {
-      recorded.push({
+      const entry: ThreadEntry = {
         id: message.id,
         reference: message.id,
         kind: message.kind === 'divider' ? 'divider' : 'message',
@@ -148,7 +164,39 @@ export function hydraMessages({
         at: message.at,
         hidden: boundaries && message.kind !== 'divider' && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
         ...(message.task ? { task: message.task } : {}),
-      })
+      }
+      recorded.push(entry)
+
+      if (role === 'user' && ownerActor({ actor: message.actor }) && !entry.hidden) {
+        owned.push({
+          message,
+          entry,
+          copied: false,
+        })
+      }
+    }
+  }
+
+  // Hydra takes the owner's messages in order, so one sent before a received message was received too, at a time Pnyx did not record.
+  let laterReceived = false
+
+  for (const {
+    message,
+    entry,
+    copied,
+  } of owned.toReversed()) {
+    const received = message.received ?? (copied ? entry.at : undefined)
+
+    if (received) {
+      entry.receipt = 'delivered'
+      entry.received = received
+      laterReceived = true
+    } else if (!laterReceived) {
+      entry.receipt = 'queued'
+
+      if (waiting) {
+        entry.waiting = waiting
+      }
     }
   }
 

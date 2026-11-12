@@ -43,14 +43,20 @@ export interface ThreadEntry {
   session?: string
   streaming?: boolean
   receipt?: ReplyState
+  // When the agent's harness confirmed it took this message.
+  received?: string
+  // Why a queued message still waits, when Pnyx knows.
+  waiting?: string
   delivery?: {
     agent?: {
       state: ReplyState
       detail?: string
+      received?: string
     }
     hydra: {
       state: ReplyState
       detail?: string
+      received?: string
     }
   }
   task?: string

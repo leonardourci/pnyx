@@ -62,6 +62,7 @@ export function hydraConversation({
     transcript: inputs,
     provider,
     boundaries: true,
+    waiting: working ? 'Hydra is in the middle of a step' : undefined,
   })
     .filter(entry => oldest === undefined || entry.at === undefined || entry.at >= oldest)
     .sort((
