@@ -45,7 +45,7 @@ function waitingReason({ card }: { card: Card }) {
   return undefined
 }
 
-function hydraDelivery({
+function hydraPart({
   card,
   reply,
   received,
@@ -117,7 +117,7 @@ export function taskReceipt({
 
   if (receipt.route) {
     entry.delivery = {
-      hydra: hydraDelivery({
+      hydra: hydraPart({
         card,
         reply,
         received: hydraReceived,
