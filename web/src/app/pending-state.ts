@@ -62,7 +62,7 @@ function createHydraResource({
       const event = receipt.event
 
       const eventSeq = event && typeof event === 'object' && 'seq' in event ? event.seq : undefined
-      const seq = typeof receipt.through === 'number' ? receipt.through : eventSeq
+      const seq = typeof receipt.stateSeq === 'number' ? receipt.stateSeq : eventSeq
 
       if (typeof seq === 'number') {
         receipts.set(

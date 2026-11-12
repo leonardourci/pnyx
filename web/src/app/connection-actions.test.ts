@@ -274,7 +274,7 @@ test(
       message: {
         type: 'receipt',
         id: clearRequest.id,
-        through: 6,
+        stateSeq: 6,
       },
     })
     assert.ok(!((await clear) instanceof Error))
@@ -301,7 +301,7 @@ test(
         type: 'receipt',
         id: agentRequest.id,
         saved: true,
-        through: 7,
+        stateSeq: 7,
       },
     })
     assert.equal(
