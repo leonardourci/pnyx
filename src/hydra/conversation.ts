@@ -19,6 +19,132 @@ export interface TurnActions {
 
 const spoken = ({ entry }: { entry: ThreadEntry }) => entry.text.trim() !== '' && !quietReply({ entry })
 
+// The owner's messages among the entries, in the order they were sent.
+export function ownerMessagesInSendOrder({
+  messages,
+  entries,
+}: {
+  messages: HydraMessage[]
+  entries: ThreadEntry[]
+}) {
+  const sent = new Map(messages.map((
+    message,
+    index,
+  ) => [
+    message.id,
+    index,
+  ]))
+
+  return entries.flatMap(entry => {
+    const index = sent.get(entry.reference ?? '')
+
+    return ownMessage({ entry }) && index !== undefined ? [
+      {
+        entry,
+        index,
+      },
+    ] : []
+  })
+    .toSorted((
+      a,
+      b,
+    ) => a.index - b.index)
+}
+
+// Claude Code records a message that joins a running turn as an attachment, not a user message, so it keeps its send time.
+// An owner message no later than one sent before it is late, so a tie still shows in send order.
+export function lateOwnerMessages({
+  messages,
+  entries,
+}: {
+  messages: HydraMessage[]
+  entries: ThreadEntry[]
+}) {
+  const owner = ownerMessagesInSendOrder({
+    messages,
+    entries,
+  })
+  const late = new Map<ThreadEntry, {
+    at: string
+    index: number
+  }>()
+  let floor = ''
+
+  for (const {
+    entry,
+    index,
+  } of owner) {
+    if (entry.at && entry.at <= floor) {
+      late.set(
+        entry,
+        {
+          at: floor,
+          index,
+        },
+      )
+    } else if (entry.at) {
+      floor = entry.at
+    }
+  }
+
+  return late
+}
+
+// Time order, except that an owner message shows no earlier than the owner messages sent before it.
+function conversationOrder({
+  messages,
+  entries,
+}: {
+  messages: HydraMessage[]
+  entries: ThreadEntry[]
+}) {
+  const late = lateOwnerMessages({
+    messages,
+    entries,
+  })
+  const shownAt = ({ entry }: { entry: ThreadEntry }) => late.get(entry)?.at ?? entry.at
+
+  const order = ({
+    first,
+    second,
+  }: {
+    first: ThreadEntry
+    second: ThreadEntry
+  }) => {
+    const before = late.get(first)
+    const after = late.get(second)
+    const time = (shownAt({ entry: first }) ?? '').localeCompare(shownAt({ entry: second }) ?? '')
+
+    if (time) {
+      return time
+    }
+
+    // A late message goes after the entries already at the place it takes.
+    if (before && !after) {
+      return 1
+    }
+
+    if (after && !before) {
+      return -1
+    }
+
+    // Late messages that share a place keep the order they were sent in.
+    if (before && after) {
+      return before.index - after.index
+    }
+
+    return threadEntryOrder({
+      first,
+      second,
+    })
+  }
+
+  return {
+    shownAt,
+    order,
+  }
+}
+
 export function hydraConversation({
   messages,
   transcript,
@@ -57,20 +183,30 @@ export function hydraConversation({
     })
   }
 
-  const reconciled = hydraMessages({
+  const merged = hydraMessages({
     messages,
     transcript: inputs,
     provider,
     boundaries: true,
   })
-    .filter(entry => oldest === undefined || entry.at === undefined || entry.at >= oldest)
-    .sort((
-      a,
-      b,
-    ) => threadEntryOrder({
-      first: a,
-      second: b,
-    }))
+  const {
+    shownAt,
+    order,
+  } = conversationOrder({
+    messages,
+    entries: merged,
+  })
+  const reconciled = merged.filter(entry => {
+    const at = shownAt({ entry })
+
+    return oldest === undefined || at === undefined || at >= oldest
+  }).sort((
+    first,
+    second,
+  ) => order({
+    first,
+    second,
+  }))
   const turns: {
     input?: ThreadEntry
     entries: ThreadEntry[]
@@ -184,11 +320,13 @@ export function hydraConversation({
       )
     }
 
-    if (ownerStarted && !current && turn.input?.at && last?.at) {
+    const start = turn.input && shownAt({ entry: turn.input })
+
+    if (ownerStarted && !current && start && last?.at) {
       timings.set(
         last.id,
         {
-          start: turn.input.at,
+          start,
           end: last.at,
           reply: last.text,
           task: leadingTask({ entry: last }),
@@ -201,9 +339,9 @@ export function hydraConversation({
       continue
     }
 
-    const nextAt = turns[index + 1]?.input?.at
+    const next = turns[index + 1]?.input
+    const nextAt = next && shownAt({ entry: next })
     const tasks = new Map<string, TaskUpdate[]>()
-    const start = turn.input!.at
 
     for (const event of orderedActions) {
       const afterStart = start !== undefined && event.at >= start
@@ -266,11 +404,11 @@ export function hydraConversation({
   }
 
   entries.sort((
-    a,
-    b,
-  ) => threadEntryOrder({
-    first: a,
-    second: b,
+    first,
+    second,
+  ) => order({
+    first,
+    second,
   }))
 
   const latest = [...timings.values()].at(-1)

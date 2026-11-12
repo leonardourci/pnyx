@@ -12,6 +12,7 @@ import type { createHydraOperations, createHydraOutage } from './operations.ts'
 import type { createWakeQueue } from './wake-queue.ts'
 import { REPLY_RULES, WAKE_HANDLED, sealed, wakesThrough } from './wakes.ts'
 import { ownerActor } from '#app/actors.ts'
+import { log } from '#app/diagnostics.ts'
 import { HYDRA_COMMANDS } from '#app/command-registry.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraAgentFolder } from '#app/home-migration.ts'
@@ -137,6 +138,27 @@ export function createHydraTurns({
   armWake: ReturnType<typeof createWakeQueue>['armWake']
 }) {
   let hydraTurn = Promise.resolve()
+  let wakeTurn = Promise.resolve()
+  let waitingWakes = 0
+  // Inputs in the chain: one may still be opening Hydra's session before its turn counts as working.
+  let entering = 0
+
+  const hydraBusy = () => {
+    const agent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
+
+    return entering > 0 || Boolean(agent && live.get(sessionId({ agent }))?.activity === 'working')
+  }
+
+  // No deadline: a turn has none, and like the wait inside the chain this one ends only when the turn does or Pnyx stops.
+  const turnEnd = async () => {
+    while (!closing() && hydraBusy()) {
+      await new Promise(resolve => setTimeout(
+        resolve,
+        HYDRA_TURN_POLL_MS,
+      ))
+    }
+  }
+
   let outcomesPresented = 0
   const contextPresented = new Map<string, number>()
   const helperBatchesPresented = new Set<string>()
@@ -314,7 +336,8 @@ export function createHydraTurns({
     }
 
     queuedHydra.add(id)
-    const turn = hydraTurn.then(async () => {
+
+    const run = async () => {
       if (closing()) {
         return { state: 'queued' }
       }
@@ -742,11 +765,55 @@ export function createHydraTurns({
           hydra: config.hydra.id,
         })
       }
-    })
-    hydraTurn = turn.then(
-      () => {},
-      () => {},
-    ).finally(() => queuedHydra.delete(id))
+    }
+
+    const enter = () => {
+      const previous = hydraTurn
+      entering += 1
+      hydraTurn = (async () => {
+        try {
+          await previous
+          await run()
+        } catch (error) {
+          log({
+            level: 'error',
+            operation: 'hydra.turn',
+            hydraId,
+            correlationId: id,
+            error,
+          })
+        } finally {
+          entering -= 1
+          queuedHydra.delete(id)
+        }
+      })()
+    }
+
+    // A Pnyx wake waits for the running turn outside the chain, so owner messages sent meanwhile still join that turn.
+    if (actor === 'pnyx' && (waitingWakes > 0 || hydraBusy())) {
+      waitingWakes += 1
+      const previous = wakeTurn
+      wakeTurn = (async () => {
+        await previous
+
+        try {
+          await turnEnd()
+        } catch (error) {
+          log({
+            level: 'error',
+            operation: 'hydra.wake-wait',
+            hydraId,
+            correlationId: id,
+            error,
+          })
+        }
+
+        waitingWakes -= 1
+        enter()
+      })()
+    } else {
+      enter()
+    }
 
     return Promise.resolve({ state: 'queued' })
   }
@@ -886,7 +953,10 @@ export function createHydraTurns({
   }
 
   return {
-    hydraTurn: () => hydraTurn,
+    hydraTurn: async () => {
+      await wakeTurn
+      await hydraTurn
+    },
     digest,
     hydraSession,
     hydra,
