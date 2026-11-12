@@ -48,10 +48,12 @@ export type Subscription = {
   paseo?: string
   watcher?: { close(): unknown }
   native?: Promise<PaseoConversation>
-  // The Hydra thread last sent: its card titles, and the page apart from the seq it was read at.
+  // The card titles the Hydra thread was last built from.
   titles?: Record<string, string>
+  // The last page the tab accepted, apart from the seq it was read at.
   sent?: string
-  page?: ThreadPage
+  // The last page versioned for the tab, which the next delta is computed from.
+  versioned?: ThreadPage
   // Whether Hydra's window keeps only its recent pages, how many entries its last reset kept, and a count of
   // explicit reads, so a read or refresh that a newer read overtook is dropped.
   recent?: boolean
@@ -157,11 +159,11 @@ export function createThreadSubscriptions({
     key: sub,
     ws,
     thread: prepared.thread,
-    delta: threadDelivery.has({ key: sub }) ? undefined : prepared.delta,
+    delta: prepared.delta,
     receipt,
     current: () => subscriptionMap({ card: sub.card }).get(ws) === sub,
     accepted: () => {
-      if (prepared.signature !== undefined && sub.page === prepared.thread) {
+      if (prepared.signature !== undefined && sub.versioned === prepared.thread) {
         sub.sent = prepared.signature
       }
     },
@@ -252,10 +254,12 @@ export function createThreadSubscriptions({
       return undefined
     }
 
-    sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
-      card.id,
-      card.title,
-    ]))
+    if (prepared.card === HYDRA_CARD) {
+      sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
+        card.id,
+        card.title,
+      ]))
+    }
 
     if (!sub.view) {
       sub.view = {
@@ -279,11 +283,13 @@ export function createThreadSubscriptions({
       }
     }
 
-    const delta = sub.sent === undefined ? undefined : threadDelta({
-      before: sub.page,
+    // Only a push with nothing pending goes as a delta; a read is answered with a full page.
+    const asDelta = push && sub.sent !== undefined && !threadDelivery.has({ key: sub })
+    const delta = asDelta ? threadDelta({
+      before: sub.versioned,
       after: thread,
-    })
-    sub.page = thread
+    }) : undefined
+    sub.versioned = thread
 
     return {
       signature: sent,
@@ -406,7 +412,7 @@ export function createThreadSubscriptions({
 
           if (resync) {
             sub.sent = undefined
-            sub.page = undefined
+            sub.versioned = undefined
           }
         }
       }
@@ -750,7 +756,7 @@ export function createThreadSubscriptions({
 
       if (recent) {
         sub.history = undefined
-        sub.page = undefined
+        sub.versioned = undefined
         sub.sent = undefined
         sub.recentLimit = threadSize({ page })
       }
