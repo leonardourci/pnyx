@@ -16,6 +16,11 @@ import { until } from '#test-harness/harness.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { trackChildren } from './children.ts'
 import { recordTools } from './tools.ts'
+import { enqueueSteering } from './inbox.ts'
+import { pendingSteering } from './steering.ts'
+import { followUpSteering, STEERING_GRACE_MS } from './inbox-follow-up.ts'
+import { offerHost } from '#app/server-state.ts'
+import { hostRequest } from '#app/host-request.ts'
 
 test(
   'tool recovery and reconciliation wait for the earlier agent to be fenced',
@@ -67,6 +72,7 @@ test(
             agent: {
               provider: 'claude-code',
               sessionId: 'fenced-conversation',
+              resume: true,
               host: 'pnyx',
               cwd,
             },
@@ -90,6 +96,20 @@ test(
         actor: 'cli',
         at: new Date().toISOString(),
       },
+    })
+    withWriter({
+      hydraId: 'fence',
+      fn: ({ writer }) => enqueueSteering({
+        writer,
+        ref: task,
+        id: 'fenced-instruction',
+        text: 'Continue the work',
+        source: 'cli',
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      }),
     })
     const child = spawn(
       process.execPath,
@@ -139,8 +159,28 @@ test(
       },
     })
 
+    const unoffer = offerHost({
+      hydraId: 'fence',
+      ask: ({ body }) => hostRequest({
+        host,
+        body,
+      }),
+    })
+
     try {
       await host.recover()
+      assert.deepEqual(
+        host.diagnostics().sessions,
+        [],
+      )
+      await followUpSteering({
+        hydraId: 'fence',
+        now: Date.now() + STEERING_GRACE_MS,
+      })
+      assert.equal(
+        loadHydra({ hydraId: 'fence' }).state.cards[task]?.steering?.[0]?.attempts.at(-1)?.result,
+        'deferred',
+      )
       host.toolsChanged({ task })
       host.reconcile({ state: loadHydra({ hydraId: 'fence' }).state })
       assert.deepEqual(
@@ -154,6 +194,10 @@ test(
       assert.notEqual(
         loadHydra({ hydraId: 'fence' }).state.cards[task]?.toolsApplied,
         loadHydra({ hydraId: 'fence' }).state.cards[task]?.toolsRevision,
+      )
+      assert.deepEqual(
+        pendingSteering({ card: loadHydra({ hydraId: 'fence' }).state.cards[task]! }).map(message => message.id),
+        ['fenced-instruction'],
       )
       blocked.mock.restore()
       child.kill('SIGKILL')
@@ -170,6 +214,7 @@ test(
         sessions[0]!.options()?.resume,
         'fenced-conversation',
       )
+      assert.ok(JSON.stringify(sessions[0]!.incoming).includes('fenced-instruction'))
       await until({
         what: 'fenced grant receipt',
         check: () => {
@@ -179,6 +224,7 @@ test(
         },
       })
     } finally {
+      unoffer()
       blocked.mock.restore()
       child.kill('SIGKILL')
 

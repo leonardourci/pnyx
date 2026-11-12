@@ -149,7 +149,7 @@ export async function notifySteering({
           outcome = accepted.deferred
             ? {
               result: 'deferred',
-              detail: 'host deferred notification while the worker is held',
+              detail: 'host deferred notification until the worker can resume',
             }
             : { result: 'delivered' }
         } catch (error) {

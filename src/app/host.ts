@@ -611,6 +611,7 @@ export function createHost({
     send,
   } = createHostedDelivery({
     hydraId,
+    fenced: () => fenced(),
     live,
     at,
     write,

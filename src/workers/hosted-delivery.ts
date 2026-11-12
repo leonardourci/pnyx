@@ -21,6 +21,7 @@ import type { Writer } from '#app/writer.ts'
 // A message reaching a hosted agent: persisted steering or a direct input, and the direct reply settled on the provider's receipt.
 export function createHostedDelivery({
   hydraId,
+  fenced,
   live,
   at,
   write,
@@ -34,6 +35,7 @@ export function createHostedDelivery({
   unnotifiedSteering,
 }: {
   hydraId: string
+  fenced(): boolean
   live: Map<string, Live>
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
@@ -175,6 +177,10 @@ export function createHostedDelivery({
         message: 'A notification attempt needs a persisted steering ID',
         code: 'VALIDATION_ERROR',
       })
+    }
+
+    if (steering && !fenced()) {
+      return { deferred: true }
     }
 
     direct ||= compactCommand({ text })
