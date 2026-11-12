@@ -67,11 +67,23 @@ export function followGit({ changed }: { changed({ task }: { task: string }): vo
         task,
         entry,
       )
+
+      const release = () => {
+        entry.cancelled = true
+        entry.watcher?.close()
+
+        if (watching.get(task) === entry) {
+          watching.delete(task)
+        }
+      }
+
       pending.push((async () => {
         try {
           const directory = await commonDir({ cwd: folder })
 
           if (entry.cancelled || !directory) {
+            release()
+
             return
           }
 
@@ -89,7 +101,7 @@ export function followGit({ changed }: { changed({ task }: { task: string }): vo
           entry.watcher.on(
             'error',
             error => {
-              entry.watcher?.close()
+              release()
               log({
                 level: 'warn',
                 operation: 'follow.git',
@@ -99,6 +111,7 @@ export function followGit({ changed }: { changed({ task }: { task: string }): vo
             },
           )
         } catch (error) {
+          release()
           // The active PR poll still observes a push when native refs cannot be watched.
           log({
             level: 'warn',
