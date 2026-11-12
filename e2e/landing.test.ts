@@ -632,6 +632,29 @@ test(
       number: 3,
       comments: 3,
     })
+    await pnyx.restart()
+    await until({
+      what: 'the restarted server to read the pull request',
+      check: () => comments() === 3,
+    })
+    s.pullRequest({
+      number: 3,
+      comments: 4,
+    })
+    await status({
+      state: 'working',
+      note: 'Still on it',
+    })
+    await wait(UNREAD_MS)
+    assert.equal(
+      comments(),
+      3,
+      'the first status note after a restart that keeps the task working reads nothing',
+    )
+    s.pullRequest({
+      number: 3,
+      comments: 5,
+    })
     change({
       copy: copies[1]!,
       file: 'review.txt',
@@ -639,7 +662,7 @@ test(
     commitAll({ copy: copies[1]! })
     await until({
       what: 'a commit on the task branch to read the pull request',
-      check: () => comments() === 3,
+      check: () => comments() === 5,
     })
     assert.match(
       await s.owner({

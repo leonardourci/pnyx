@@ -228,8 +228,14 @@ export async function mountOwnedHydra({
 
   // Each task's declared working state as the pump last saw it; a held Hydra's writer has already
   // changed the state before the pump reads the event, so the state alone cannot tell a change.
-  // ponytail: one entry per task touched since the server started; prune if Hydras get huge.
-  const declaredWork = new Map<string, boolean>()
+  // ponytail: one entry per task, seeded at mount; prune if Hydras get huge.
+  const declaredWork = new Map<string, boolean>(Object.entries(state.cards).map(([
+    task,
+    card,
+  ]) => [
+    task,
+    card.status?.state === 'working',
+  ]))
 
   const workChanged = ({ task }: { task: string }) => {
     const working = state.cards[task]?.status?.state === 'working'
