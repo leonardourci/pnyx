@@ -251,6 +251,14 @@ test(
         check: () => failedQueries === 1
           && !host.diagnostics().sessions.some(session => session.taskId === asynchronous.task),
       })
+      await until({
+        what: 'the failed reopen shows on the card',
+        check: () => card({ task: asynchronous.task }).status?.state === 'blocked',
+      })
+      assert.match(
+        card({ task: asynchronous.task }).status!.note,
+        /Fixture provider failed before accepting input/,
+      )
       host.reconcile({ state: loadHydra({ hydraId: 'retry' }).state })
       await until({
         what: 'second asynchronous failure retires',
@@ -380,14 +388,6 @@ test(
         what: 'new revision clears the retry delay',
         check: () => sessions.get('delayed')?.incoming.length === 1,
       })
-    } finally {
-      releaseCopy?.()
-      delayedHost?.close()
-      host.close()
-      release()
-
-      if (previousHome === undefined) {
-        delete process.env.PNYX_HOME
 
       const unoffer = offerHost({
         hydraId: 'retry',
@@ -429,6 +429,14 @@ test(
       } finally {
         unoffer()
       }
+    } finally {
+      releaseCopy?.()
+      delayedHost?.close()
+      host.close()
+      release()
+
+      if (previousHome === undefined) {
+        delete process.env.PNYX_HOME
       } else {
         process.env.PNYX_HOME = previousHome
       }

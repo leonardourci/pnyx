@@ -1176,6 +1176,9 @@ export function createLiveSessions({
           },
         },
       })
+      // A turn the provider fails to open is then recorded as stopped, as a failed reply is.
+      resumed.activity = 'working'
+      resumed.sentAt = Date.now()
       resumed.input.push({
         id: randomUUID(),
         text,
