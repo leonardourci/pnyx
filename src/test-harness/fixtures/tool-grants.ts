@@ -155,6 +155,7 @@ for (const harness of [
     wakeDelay: 3_600_000,
   })
   let releaseCopyLease: (() => void) | undefined
+  let recoveredTurn: ReturnType<typeof native.plan> | undefined
   const sessionId = `${harness}-conversation`
   const task = withWriter({
     hydraId,
@@ -588,6 +589,10 @@ for (const harness of [
       grant({}),
       { code: 'TASK_HELD' },
     )
+    recoveredTurn = native.plan({
+      match: ({ text }) => text.includes('Pnyx external tool grants:'),
+      hold: true,
+    })
     host.close()
     host = createHost({
       hydraId,
@@ -632,6 +637,36 @@ for (const harness of [
         return card.toolsApplied === card.toolsRevision
       },
     })
+
+    await grant({ revoke: true })
+    releaseCopyLease = taskLease({
+      hydraId,
+      task,
+      actor: `${COPY_LEASE_PREFIX}${randomUUID()}`,
+    })
+    assert.deepEqual(
+      await host.release({
+        task,
+        permanent: true,
+      }),
+      { released: 1 },
+    )
+    assert.equal(
+      count(),
+      4,
+      'permanent release does not reopen a worker during copy settlement',
+    )
+    releaseCopyLease()
+    releaseCopyLease = undefined
+    host.reconcile({ state: loadHydra({ hydraId }).state })
+    await settle({
+      what: 'permanently retired tool revision retries in its available folder',
+      check: () => count() === 5 && incoming({ index: 4 }) === 1,
+    })
+    assert.equal(
+      loadHydra({ hydraId }).state.cards[task]?.agent?.sessionId,
+      sessionId,
+    )
 
     const unavailable = withWriter({
       hydraId,
@@ -685,6 +720,7 @@ for (const harness of [
     )
   } finally {
     releaseCopyLease?.()
+    recoveredTurn?.release()
     grantTurn.release()
     first.release()
     host.close()
