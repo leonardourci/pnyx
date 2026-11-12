@@ -46,10 +46,6 @@ function apply({
     return false
   }
 
-  if (event.seq === 1 && event.id.startsWith('hydra-create:')) {
-    state.creationAttempt = event.id.slice('hydra-create:'.length)
-  }
-
   state.seq = event.seq
   state.eventIds[event.id] = event.seq
 

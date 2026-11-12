@@ -6,6 +6,7 @@ import { hostedHydra, hydraConfig } from '#hydra/config.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { readInitialEvent } from './event-log.ts'
+import type { HydraEvent } from './model.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { projectsFor } from '#projects/read.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
@@ -13,6 +14,8 @@ import { liveTask } from '#tasks/select.ts'
 import { hydraWorking } from '#hydra/chat-queue.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
+
+const CREATION_PREFIX = 'hydra-create:'
 
 export interface HydraProjectSummary {
   name: string
@@ -103,8 +106,19 @@ export function listHydras(): HydraSummary[] {
     ) => a.order - b.order || a.id.localeCompare(b.id))
 }
 
+const creationEventId = ({ attempt }: { attempt: string }) => `${CREATION_PREFIX}${attempt}`
+
+const creationAttempt = ({ event }: { event: HydraEvent | null }) => {
+  if (!event?.id.startsWith(CREATION_PREFIX)) {
+    return undefined
+  }
+
+  return event.id.slice(CREATION_PREFIX.length)
+}
+
 // A Hydra whose log has no readable first event sorts last.
-const createdAt = ({ id }: { id: string }) => Date.parse(readInitialEvent({ hydraId: id })?.at ?? '') || Number.MAX_SAFE_INTEGER
+const createdAt = ({ event }: { event: HydraEvent | null }) => Date.parse(event?.at ?? '')
+  || Number.MAX_SAFE_INTEGER
 
 function summarize({ id }: { id: string }): {
   summary: HydraSummary
@@ -144,16 +158,17 @@ function summarize({ id }: { id: string }): {
       })
 
     const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
+    const initial = readInitialEvent({ hydraId: id })
 
     return {
       home,
       summary: {
         id,
         identity: hydraIdentity({ hydraId: id }),
-        creationAttempt: state.creationAttempt,
+        creationAttempt: creationAttempt({ event: initial }),
         name: config.name,
         icon: config.icon,
-        order: config.position ?? createdAt({ id }),
+        order: config.position ?? createdAt({ event: initial }),
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
         working: hostedHydra({ state }) ? hydraWorking({ state }) : undefined,
         projects,
@@ -184,7 +199,7 @@ export function createHydra({
   return withRegistryLock({
     fn: () => {
       const ids = hydraIds()
-      const eventId = attempt ? `hydra-create:${attempt}` : undefined
+      const eventId = attempt ? creationEventId({ attempt }) : undefined
 
       if (eventId) {
         for (const id of ids) {
