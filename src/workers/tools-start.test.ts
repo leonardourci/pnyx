@@ -165,6 +165,45 @@ test(
         'tools-start',
       ])
 
+      create({ key: 'flags' })
+      const beforeFlags = readEvents({ hydraId: 'tools-start' }).length
+
+      for (const flags of [
+        [
+          '--grant',
+          'browser',
+        ],
+        [
+          '--revoke',
+          'browser',
+        ],
+        ['--available'],
+      ]) {
+        await assert.rejects(
+          start({
+            key: 'flags',
+            flags,
+          }),
+          { code: 'VALIDATION_ERROR' },
+        )
+        await assert.rejects(
+          commands.task([
+            'continue',
+            card({ key: 'flags' }).id,
+            ...flags,
+            '--reason',
+            'Validate flags',
+            '--hydra',
+            'tools-start',
+          ]),
+          { code: 'VALIDATION_ERROR' },
+        )
+      }
+
+      assert.equal(
+        readEvents({ hydraId: 'tools-start' }).length,
+        beforeFlags,
+      )
       create({ key: 'failed' })
       recordTools({
         hydraId: 'tools-start',
