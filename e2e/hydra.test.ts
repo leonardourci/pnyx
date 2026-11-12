@@ -1439,6 +1439,78 @@ test(
 )
 
 test(
+  'an owner message joins the running turn while a Pnyx wake waits for it to end',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    await page.command({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    const held = pnyx.codex.plan({
+      text: 'Take a long look',
+      hold: true,
+    })
+
+    try {
+      await send({
+        s,
+        text: 'Take a long look',
+        id: 'long',
+      })
+      const agent = await s.agent({ hydra: true })
+      await until({
+        what: 'Codex to start the held turn',
+        check: () => agent.received.length === 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
+      })
+      // Pnyx's own messages wait for the running turn to end.
+      await s.as({
+        agent: {
+          ...agent,
+          env: {
+            ...process.env,
+            PNYX_ACTOR: 'pnyx',
+          },
+        },
+      }).run({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Pnyx wake',
+          '--event-id',
+          'wake',
+        ],
+      })
+      await send({
+        s,
+        text: 'Also check the docs',
+        id: 'steer',
+      })
+      await until({
+        what: 'the owner message inside the running turn',
+        check: () => agent.received.includes('Also check the docs'),
+      })
+      assert.equal(
+        agent.received.some(text => text.includes('Pnyx wake')),
+        false,
+      )
+      held.release()
+      await until({
+        what: 'the Pnyx wake after the turn ends',
+        check: () => agent.received.at(-1)?.includes('Pnyx wake'),
+      })
+    } finally {
+      held.release()
+      page.close()
+    }
+  },
+)
+
+test(
   'a Hydra with no projects offers built-ins before a session and delivers the selected shipped skill',
   async () => {
     const s = await pnyx.scenario()

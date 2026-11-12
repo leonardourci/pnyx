@@ -137,6 +137,24 @@ export function createHydraTurns({
   armWake: ReturnType<typeof createWakeQueue>['armWake']
 }) {
   let hydraTurn = Promise.resolve()
+  let wakeTurn = Promise.resolve()
+  let waitingWakes = 0
+
+  const hydraWorking = () => {
+    const agent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
+
+    return Boolean(agent && live.get(sessionId({ agent }))?.activity === 'working')
+  }
+
+  const turnEnd = async () => {
+    while (!closing() && hydraWorking()) {
+      await new Promise(resolve => setTimeout(
+        resolve,
+        HYDRA_TURN_POLL_MS,
+      ))
+    }
+  }
+
   let outcomesPresented = 0
   const contextPresented = new Map<string, number>()
   const helperBatchesPresented = new Set<string>()
@@ -314,7 +332,8 @@ export function createHydraTurns({
     }
 
     queuedHydra.add(id)
-    const turn = hydraTurn.then(async () => {
+
+    const run = async () => {
       if (closing()) {
         return { state: 'queued' }
       }
@@ -742,11 +761,27 @@ export function createHydraTurns({
           hydra: config.hydra.id,
         })
       }
-    })
-    hydraTurn = turn.then(
-      () => {},
-      () => {},
-    ).finally(() => queuedHydra.delete(id))
+    }
+
+    const enter = () => {
+      hydraTurn = hydraTurn.then(run).then(
+        () => {},
+        () => {},
+      )
+        .finally(() => queuedHydra.delete(id))
+    }
+
+    // A Pnyx wake waits for the running turn outside the chain, so owner messages sent meanwhile still join that turn.
+    if (actor === 'pnyx' && (waitingWakes || hydraWorking())) {
+      waitingWakes += 1
+      wakeTurn = wakeTurn.then(turnEnd).catch(() => {})
+        .then(() => {
+          waitingWakes -= 1
+          enter()
+        })
+    } else {
+      enter()
+    }
 
     return Promise.resolve({ state: 'queued' })
   }
@@ -886,7 +921,7 @@ export function createHydraTurns({
   }
 
   return {
-    hydraTurn: () => hydraTurn,
+    hydraTurn: () => wakeTurn.then(() => hydraTurn),
     digest,
     hydraSession,
     hydra,
