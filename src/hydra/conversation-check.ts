@@ -125,7 +125,10 @@ export function checkConversation({
         continue
       }
 
-      if (found.index < previous) {
+      // An owner message out of both time and send order is reported once.
+      const reported = mismatches.some(mismatch => mismatch.kind === 'order' && mismatch.reference === key)
+
+      if (found.index < previous && !reported) {
         mismatches.push({
           kind: 'order',
           reference: key,

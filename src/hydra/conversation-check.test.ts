@@ -355,3 +355,70 @@ test(
     )
   },
 )
+
+test(
+  'an owner message out of both time and send order is reported once',
+  () => {
+    const [
+      first,
+      second,
+    ] = [
+      'first',
+      'second',
+    ].map((
+      id,
+      index,
+    ): ThreadEntry => ({
+      id,
+      reference: id,
+      kind: 'message',
+      role: 'user',
+      text: id,
+      at: `2026-11-11T15:5${index}:00.000Z`,
+    }))
+    const {
+      sent,
+    } = ownerSendOrder({
+      messages: [
+        first,
+        second,
+      ].map(entry => ({
+        id: entry.id,
+        action: 'send' as const,
+        actor: 'web',
+        hydra: 'hydra',
+        text: entry.text,
+        at: entry.at ?? '',
+      })),
+      expected: [
+        first,
+        second,
+      ],
+    })
+    assert.deepEqual(
+      checkConversation({
+        expected: [
+          first,
+          second,
+        ],
+        conversation: {
+          through: 0,
+          entries: [
+            second,
+            first,
+          ],
+          folds: {},
+          timings: {},
+          trailing: {},
+        },
+        sent,
+      }),
+      [
+        {
+          kind: 'order',
+          reference: 'second',
+        },
+      ],
+    )
+  },
+)
