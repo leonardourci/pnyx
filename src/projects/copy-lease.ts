@@ -1,7 +1,7 @@
-import { taskLeasePresent } from '#routine-helper/leases.ts'
+import { COPY_LEASE_PREFIX, taskLeasePresent } from '#routine-helper/leases.ts'
 import { HydraError } from '#store/errors.ts'
 
-export const COPY_LEASE_PREFIX = 'copy-settlement:'
+export { COPY_LEASE_PREFIX }
 
 export function copySettling({
   hydraId,
