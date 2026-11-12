@@ -16,7 +16,7 @@ import type { TranscriptUsageReader, HostedImage, InputReceipt, ModelOption, Pro
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
 import { compactCommand } from './compact-command.ts'
-import { claudeIntake } from './claude-intake.ts'
+import { watchIntake } from './claude-intake.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
@@ -353,6 +353,10 @@ export function claudeProvider({
           let fresh = true, manualCompact = false
 
           const nativeInputs = new Map<string, string>()
+          const intake = watchIntake({ path })
+          // When Claude Code took each input; a folded one is confirmed as soon as it is taken.
+          const takenAt = new Map<string, string>()
+          const confirmedEarly = new Set<string>()
 
           const prompt = async function* (): AsyncGenerator<UserMessage> {
             for await (const item of input) {
@@ -370,6 +374,7 @@ export function claudeProvider({
                 uuid,
                 item.id,
               )
+              intake.expect({ uuid })
               emit({
                 event: {
                   type: 'input',
@@ -591,23 +596,49 @@ export function claudeProvider({
               })
             }
 
+            // The SDK names a message folded into a typed turn only on the turn's result, so its intake line confirms it.
+            for (const found of intake.taken()) {
+              const inputId = nativeInputs.get(found.uuid)
+
+              if (!inputId) {
+                continue
+              }
+
+              takenAt.set(
+                inputId,
+                found.at,
+              )
+
+              if (found.folded && active) {
+                confirmedEarly.add(inputId)
+                emit({
+                  event: {
+                    type: 'input',
+                    receipt: {
+                      inputId,
+                      phase: 'confirmed',
+                      turn: turnId,
+                      at: found.at,
+                    },
+                  },
+                })
+              }
+            }
+
             for (const inputId of consumedInputs({
               message,
               nativeInputs,
             })) {
-              const native = [...nativeInputs].find(([
-                ,
-                input,
-              ]) => input === inputId)?.[0]
-              const taken = native ? claudeIntake({
-                path,
-                uuid: native,
-              }) : undefined
+              if (confirmedEarly.has(inputId)) {
+                continue
+              }
+
               const receipt: InputReceipt = {
                 inputId,
                 phase: 'confirmed',
                 turn: turnId,
               }
+              const taken = takenAt.get(inputId)
 
               if (taken) {
                 receipt.at = taken
@@ -790,6 +821,8 @@ export function claudeProvider({
               ] of nativeInputs) {
                 if (inputIds.includes(input)) {
                   nativeInputs.delete(native)
+                  takenAt.delete(input)
+                  confirmedEarly.delete(input)
                 }
               }
             }

@@ -146,12 +146,25 @@ export function createHostedDelivery({
     }
 
     entry.pendingDirect.delete(inputId)
+
+    if (phase === 'refused') {
+      directReply({
+        card: pending.card,
+        inputId,
+        state: 'failed',
+        detail: 'the agent refused this message; nothing was delivered',
+      })
+
+      return
+    }
+
+    // Without the harness's own time, the receipt arrives when it took the input.
+    const received = taken ?? at()
     directReply({
       card: pending.card,
       inputId,
-      state: phase === 'refused' ? 'failed' : 'delivered',
-      received: phase === 'refused' ? undefined : taken ?? at(),
-      detail: phase === 'refused' ? 'the agent refused this message; nothing was delivered' : undefined,
+      state: 'delivered',
+      received,
     })
   }
 
