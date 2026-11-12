@@ -12,6 +12,7 @@ import type { createHydraOperations, createHydraOutage } from './operations.ts'
 import type { createWakeQueue } from './wake-queue.ts'
 import { REPLY_RULES, WAKE_HANDLED, sealed, wakesThrough } from './wakes.ts'
 import { ownerActor } from '#app/actors.ts'
+import { log } from '#app/diagnostics.ts'
 import { HYDRA_COMMANDS } from '#app/command-registry.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraAgentFolder } from '#app/home-migration.ts'
@@ -774,11 +775,25 @@ export function createHydraTurns({
     // A Pnyx wake waits for the running turn outside the chain, so owner messages sent meanwhile still join that turn.
     if (actor === 'pnyx' && (waitingWakes || hydraWorking())) {
       waitingWakes += 1
-      wakeTurn = wakeTurn.then(turnEnd).catch(() => {})
-        .then(() => {
-          waitingWakes -= 1
-          enter()
-        })
+      const previous = wakeTurn
+      wakeTurn = (async () => {
+        await previous
+
+        try {
+          await turnEnd()
+        } catch (error) {
+          log({
+            level: 'error',
+            operation: 'hydra.wake-wait',
+            hydraId,
+            correlationId: id,
+            error,
+          })
+        }
+
+        waitingWakes -= 1
+        enter()
+      })()
     } else {
       enter()
     }
