@@ -46,16 +46,6 @@ export function commentUpdates({
 
   return {
     edit,
-    change: ({
-      id,
-      text,
-    }: {
-      id: string
-      text: string
-    }) => edit({
-      id,
-      update: () => text,
-    }),
     remove: ({ id }: { id: string }) => write({
       items: read().filter(comment => comment.id !== id),
     }),
