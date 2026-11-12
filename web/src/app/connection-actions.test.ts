@@ -610,7 +610,7 @@ test(
 )
 
 test(
-  'live spend and usage survive events and same-session snapshots without entering persisted state',
+  'socket events keep untouched cards, messages and the previous snapshot, and live spend and usage survive them without entering persisted state',
   t => {
     const {
       connection,
