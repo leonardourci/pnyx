@@ -1061,3 +1061,64 @@ test(
     )
   },
 )
+
+test(
+  'an owner message sent at the time a late one shows at stays after it',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    // The second shows at the first's 10:05, the third's own send time.
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 4,
+        }),
+        sent({
+          id: 'third',
+          minute: 5,
+        }),
+      ],
+      transcript: [
+        {
+          ...entry({
+            id: 'native-first',
+            minute: 5,
+            role: 'user',
+            text: 'first',
+          }),
+          session: 'hydra-session',
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'second',
+        'third',
+      ],
+    )
+  },
+)

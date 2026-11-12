@@ -20,6 +20,7 @@ export interface TurnActions {
 const spoken = ({ entry }: { entry: ThreadEntry }) => entry.text.trim() !== '' && !quietReply({ entry })
 
 // Claude Code records a message that joins a running turn as an attachment, not a user message, so it keeps its send time.
+// An owner message no later than one sent before it is late, so a tie still shows in send order.
 function lateOwnerMessages({
   messages,
   entries,
@@ -58,7 +59,7 @@ function lateOwnerMessages({
     entry,
     index,
   } of owner) {
-    if (entry.at && entry.at < floor) {
+    if (entry.at && entry.at <= floor) {
       late.set(
         entry,
         {
