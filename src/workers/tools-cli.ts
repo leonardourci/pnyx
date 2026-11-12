@@ -1,4 +1,4 @@
-import { recordTools } from './tools.ts'
+import { recordTools, requireToolAuthority } from './tools.ts'
 import { harnessOf } from './providers.ts'
 import { loadHydra } from '#app/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -27,6 +27,10 @@ export async function toolsCommand({
     state,
     ref: task,
   })
+
+  if (values.grant || values.revoke) {
+    requireToolAuthority({ meta })
+  }
 
   const workerHarness = card.agent ? harnessOf({ provider: card.agent.provider }) : undefined
   const wrongHarness = values.harness && values.harness !== workerHarness
