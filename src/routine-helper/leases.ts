@@ -42,19 +42,20 @@ export function dropCopyLeases({ hydraId }: { hydraId: string }): void {
         dir,
         name,
       )
-      let lease: Lease | undefined
+      let actor: unknown
 
       try {
-        lease = readLease({
+        actor = JSON.parse(readFileSync(
           path,
-          cleanup: false,
-        })
+          'utf8',
+        )).actor
       } catch {
         // An unreadable lease is not provably a settlement's, so it stays.
         continue
       }
 
-      if (lease?.actor.startsWith(COPY_LEASE_PREFIX)) {
+      // Its holder's pid may belong to any process by now, so liveness is not checked.
+      if (typeof actor === 'string' && actor.startsWith(COPY_LEASE_PREFIX)) {
         rmSync(path)
       }
     }

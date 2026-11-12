@@ -49,6 +49,13 @@ test(
       actor: `${COPY_LEASE_PREFIX}crashed`,
       pid: unrelated.pid,
     })
+    // A pid now held by another user's process, which this one may not signal.
+    taskLease({
+      hydraId: 'default',
+      task: 'task-other-user',
+      actor: `${COPY_LEASE_PREFIX}crashed`,
+      pid: 1,
+    })
     assert.equal(
       copySettling({
         hydraId: 'default',
@@ -62,6 +69,13 @@ test(
       copySettling({
         hydraId: 'default',
         task: 'task-left',
+      }),
+      false,
+    )
+    assert.equal(
+      copySettling({
+        hydraId: 'default',
+        task: 'task-other-user',
       }),
       false,
     )
