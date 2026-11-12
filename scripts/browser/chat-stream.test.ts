@@ -1600,13 +1600,17 @@ test(
         script: `async () => {
           const peer = window.draftPeer;
           document.querySelector('.comments-dialog footer button').click();
-          peer.document.querySelector('.comments-dialog footer button').click();
+          peer.location.reload();
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           document.querySelector('.composer-comments .card-main').click();
-          peer.document.querySelector('.composer-comments .card-main').click();
           return 'chat-assertion-passed';
         }`,
       })
+      await waitFor({
+        what: 'the source tab loading the raw storage fixture',
+        condition: 'window.draftPeer.document.querySelector(\'.composer-comments\')?.textContent.includes(\'3\')',
+      })
+      await evaluate({ script: "() => { window.draftPeer.document.querySelector('.composer-comments .card-main').click(); return 'chat-assertion-passed'; }" })
       await waitFor({
         what: 'both dialogs showing the newly added comment',
         condition: 'document.querySelector(\'.comments-dialog [data-comment-ref="third"]\') && window.draftPeer.document.querySelector(\'.comments-dialog [data-comment-ref="third"]\')',
