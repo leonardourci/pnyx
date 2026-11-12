@@ -79,6 +79,11 @@ export function writeSnapshot({
         hydraId: basename(dir),
         error: cleanupError,
       })
+
+      // A worker thread's log line reaches only stderr, so the cause carries it to the thread that logs to the files.
+      if (error instanceof Error && error.cause === undefined) {
+        error.cause = cleanupError
+      }
     }
 
     throw error

@@ -5,7 +5,7 @@ import workerThreads, { Worker, setEnvironmentData } from 'node:worker_threads'
 import { startServer } from './server-daemon.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
 import { snapshotInBackground } from './snapshot-background.ts'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { heldHydra, loadHydra } from './store.ts'
@@ -14,6 +14,8 @@ import { readSnapshot } from './snapshot.ts'
 import { repairHydra } from './repair.ts'
 import { settle } from '#test-harness/child-fixture.ts'
 import { once } from 'node:events'
+import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
+import { hydraDir } from './home-migration.ts'
 
 const WORKER_EXIT_MS = 20_000
 
@@ -46,6 +48,100 @@ test(
     } finally {
       await worker.terminate()
     }
+  },
+)
+
+test(
+  'a background save whose staging cleanup fails logs the cleanup to the log files',
+  async t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-snapshot-cleanup-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    const OriginalWorker = Worker
+
+    class FailingCleanupWorker extends OriginalWorker {
+      // eslint-disable-next-line pnyx/object-params -- Node owns the Worker constructor signature.
+      constructor(...[
+        filename,
+        options,
+      ]: ConstructorParameters<typeof Worker>) {
+        super(
+          filename,
+          {
+            ...options,
+            execArgv: [
+              ...SOURCE_CONDITIONS,
+              '--import',
+              new URL(
+                './fixtures/snapshot-cleanup-failure.ts',
+                import.meta.url,
+              ).href,
+            ],
+          },
+        )
+      }
+    }
+
+    t.after(() => {
+      closeLogs()
+      workerThreads.Worker = OriginalWorker
+      syncBuiltinESMExports()
+
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'first',
+          cardId: 'first',
+          type: 'task.created',
+          actor: 'fixture',
+          at: '2026-11-12T00:00:00Z',
+          data: {
+            key: 'first',
+            title: 'first',
+          },
+        },
+      }),
+    })
+    workerThreads.Worker = FailingCleanupWorker
+    syncBuiltinESMExports()
+    openLogs()
+    await assert.rejects(
+      snapshotInBackground({ dir: hydraDir({ hydraId: 'default' }) }),
+      /snapshot rename refused/,
+    )
+    closeLogs()
+    const lines = readdirSync(logsDir()).flatMap(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => JSON.parse(line)))
+    assert.ok(lines.some(line => line.operation === 'snapshot.cleanup'
+      && line.hydraId === 'default'
+      && line.error?.message === 'snapshot cleanup refused'))
   },
 )
 

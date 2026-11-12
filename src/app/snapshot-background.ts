@@ -58,6 +58,15 @@ function writeInBackground({ dir }: { dir: string }): Promise<void> {
       'error',
       (error: Error) => {
         failure = error
+
+        if (error.cause !== undefined) {
+          log({
+            level: 'error',
+            operation: 'snapshot.cleanup',
+            hydraId: basename(dir),
+            error: error.cause,
+          })
+        }
       },
     )
     worker.once(

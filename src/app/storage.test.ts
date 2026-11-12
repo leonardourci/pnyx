@@ -65,7 +65,7 @@ function seedLog({ stream }: { stream: string }): string {
 }
 
 test(
-  'failed snapshot writes remove their stage and preserve the original error if cleanup fails',
+  'failed snapshot writes remove their stage and keep the original error, with a failed cleanup as its cause',
   t => {
     const dir = seedLog({ stream: 'lifecycle' })
     const loaded = loadHydra({ hydraId: 'default' })
@@ -84,6 +84,7 @@ test(
     )
     const writeFailure = new Error('snapshot sync refused')
     const publishFailure = new Error('snapshot rename refused')
+    const cleanupFailure = new Error('snapshot cleanup refused')
     t.after(() => {
       t.mock.restoreAll()
       syncBuiltinESMExports()
@@ -129,13 +130,13 @@ test(
       fs,
       'rmSync',
       () => {
-        throw new Error('snapshot cleanup refused')
+        throw cleanupFailure
       },
     )
     syncBuiltinESMExports()
     assert.throws(
       () => writeSnapshot(input),
-      error => error === publishFailure,
+      error => error === publishFailure && publishFailure.cause === cleanupFailure,
     )
     assert.equal(
       readFileSync(
