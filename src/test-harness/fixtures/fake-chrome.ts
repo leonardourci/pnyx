@@ -29,9 +29,10 @@ export async function assertChromeOffKeychain() {
     ],
   )
   const args = stdout.trim().split('\n')
+  const missing = KEYCHAIN_FLAGS.filter(flag => !args.includes(flag))
   assert.deepEqual(
-    KEYCHAIN_FLAGS.filter(flag => !args.includes(flag)),
+    missing,
     [],
-    `Chrome started with ${args.join(' ')}`,
+    `Chrome started without ${missing.join(' ')}: ${args.join(' ')}`,
   )
 }

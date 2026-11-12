@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { KEYCHAIN_FLAGS } from './chrome-keychain.ts'
 
 const LAUNCHER_FIXTURE = fileURLToPath(new URL(
   './fixtures/chrome-under-launcher.ts',
@@ -71,9 +72,9 @@ test(
       0,
       unguarded.output,
     )
-    assert.match(
+    assert.ok(
+      unguarded.output.includes(`Chrome started without ${KEYCHAIN_FLAGS.join(' ')}:`),
       unguarded.output,
-      /--use-mock-keychain/,
     )
   },
 )
