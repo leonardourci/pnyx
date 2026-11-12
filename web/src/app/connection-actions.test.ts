@@ -5,6 +5,7 @@ import { setImmediate } from 'node:timers/promises'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
+import { loadUpdates, updatesOf } from '#web-tasks/updates-cache.ts'
 import { createHydraConnection } from './connection-store.ts'
 
 class BrowserSocket {
@@ -323,6 +324,57 @@ test(
       },
     })
     await agentSave
+    const readTask = loadUpdates({
+      command: connection.commandFor({ id: 'default' }),
+      id: 'task',
+    })
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: socket.sent.at(-1)!.id,
+        events: [],
+      },
+    })
+    await readTask
+    const readOther = loadUpdates({
+      command: connection.commandFor({ id: 'default' }),
+      id: 'unaffected',
+    })
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: socket.sent.at(-1)!.id,
+        events: [],
+      },
+    })
+    await readOther
+    assert.equal(
+      updatesOf({ id: 'task' }).stale,
+      false,
+    )
+    socket.receive({
+      message: {
+        type: 'page.event',
+        update: {
+          seq: 8,
+          cards: {
+            task: {
+              ...connection.snapshot().state.cards.task!,
+              revision: 8,
+            },
+          },
+        },
+      },
+    })
+    assert.equal(
+      updatesOf({ id: 'task' }).stale,
+      true,
+    )
+    assert.equal(
+      updatesOf({ id: 'unaffected' }).stale,
+      false,
+    )
+
     assert.equal(
       connection.snapshot().state.config?.hydra.agent?.model,
       'next-model',

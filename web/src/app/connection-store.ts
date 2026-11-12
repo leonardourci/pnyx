@@ -785,8 +785,12 @@ export function createHydraConnection() {
 
       const changed = message.type === 'event' ? message.event : message.update.event
 
-      if (selected === scope.id && changed) {
-        noteUpdate({ event: changed })
+      if (selected === scope.id) {
+        if (changed) {
+          noteUpdate({ event: changed })
+        } else if (message.type === 'page.event') {
+          staleUpdates({ ids: Object.keys(message.update.cards) })
+        }
       }
 
       persistSoon({ scope })

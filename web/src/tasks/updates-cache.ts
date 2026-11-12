@@ -245,18 +245,20 @@ export function noteUpdate({ event }: { event: HydraEvent }) {
 }
 
 // A snapshot skips the events in between, so every kept list may be behind.
-export function staleUpdates() {
+export function staleUpdates({ ids }: { ids?: string[] } = {}) {
   for (const [
     id,
     entry,
   ] of entries) {
-    entries.set(
-      id,
-      {
-        ...entry,
-        stale: true,
-      },
-    )
+    if (!ids || ids.includes(id)) {
+      entries.set(
+        id,
+        {
+          ...entry,
+          stale: true,
+        },
+      )
+    }
   }
 
   for (const listener of listeners) {
