@@ -149,6 +149,7 @@ export function createHydraTurns({
     return entering > 0 || Boolean(agent && live.get(sessionId({ agent }))?.activity === 'working')
   }
 
+  // No deadline: a turn has none, and like the wait inside the chain this one ends only when the turn does or Pnyx stops.
   const turnEnd = async () => {
     while (!closing() && hydraBusy()) {
       await new Promise(resolve => setTimeout(
@@ -789,7 +790,7 @@ export function createHydraTurns({
     }
 
     // A Pnyx wake waits for the running turn outside the chain, so owner messages sent meanwhile still join that turn.
-    if (actor === 'pnyx' && (waitingWakes || hydraBusy())) {
+    if (actor === 'pnyx' && (waitingWakes > 0 || hydraBusy())) {
       waitingWakes += 1
       const previous = wakeTurn
       wakeTurn = (async () => {
