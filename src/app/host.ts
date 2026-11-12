@@ -822,7 +822,10 @@ export function createHost({
     sessionKey,
   })
 
-  const { recover } = createHostRecovery({
+  const {
+    recover,
+    fenced,
+  } = createHostRecovery({
     hydraId,
     live,
     children,
@@ -917,6 +920,10 @@ export function createHost({
     toolsChanged: ({ task }) => {
       const state = loadHydra({ hydraId }).state
       const card = state.cards[task]
+      if (!fenced()) {
+        return
+      }
+
       const entry = card?.agent && live.get(sessionId({ agent: card.agent }))
 
       if (!card?.agent || card.agent.host !== 'pnyx') {
@@ -1195,7 +1202,7 @@ export function createHost({
           card,
         })
 
-        if (pending && !attempted && !closed && !steeringHeld({ card }) && card.agent?.host === 'pnyx') {
+        if (fenced() && pending && !attempted && !closed && !steeringHeld({ card }) && card.agent?.host === 'pnyx') {
           toolApplications.set(
             card.id,
             card.toolsRevision!,

@@ -73,9 +73,12 @@ export function createHostRecovery({
   startFrom: ReturnType<typeof createWakeQueue>['startFrom']
   host(): Host
 }) {
+  let fenced = true
+
   const recover: Host['recover'] = async () => {
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
-    const fenced = await children.sweep()
+    fenced = false
+    fenced = await children.sweep()
     upgrades.recover()
 
     // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
@@ -361,7 +364,7 @@ export function createHostRecovery({
     for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
       const current = loadHydra({ hydraId }).state
 
-      if (card.toolsRevision && card.toolsRevision !== card.toolsApplied
+      if (fenced && card.toolsRevision && card.toolsRevision !== card.toolsApplied
         && card.agent?.host === 'pnyx' && !steeringHeld({ card }) && (card.id === HYDRA_CARD || !closedTask({
         state: current,
         card,
@@ -432,5 +435,8 @@ export function createHostRecovery({
     }
   }
 
-  return { recover }
+  return {
+    recover,
+    fenced: () => fenced,
+  }
 }
