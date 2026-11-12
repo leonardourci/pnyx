@@ -902,3 +902,85 @@ test(
     )
   },
 )
+
+test(
+  'an owner message the agent took mid-turn shows after the owner message sent before it',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'comments',
+          minute: 1,
+        }),
+        sent({
+          id: '/inscribe',
+          minute: 2,
+        }),
+      ],
+      // Claude Code records only the first as a user message, when its turn starts; the second joins that turn unrecorded.
+      transcript: [
+        {
+          ...entry({
+            id: 'native-comments',
+            minute: 3,
+            role: 'user',
+            text: 'comments',
+          }),
+          session: 'hydra-session',
+        },
+        {
+          ...entry({
+            id: 'reply',
+            minute: 4,
+          }),
+          session: 'hydra-session',
+          final: true,
+        },
+      ],
+      actions: [
+        action({
+          minute: 2,
+          task: 'task-before',
+        }),
+        action({
+          minute: 4,
+          task: 'task-during',
+        }),
+      ],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'comments',
+        '/inscribe',
+        'reply',
+      ],
+    )
+    assert.equal(
+      result.entries[1]?.at,
+      at({ minute: 2 }),
+    )
+    assert.equal(
+      result.timings.get('reply')?.start,
+      at({ minute: 3 }),
+    )
+  },
+)

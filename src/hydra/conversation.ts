@@ -19,6 +19,43 @@ export interface TurnActions {
 
 const spoken = ({ entry }: { entry: ThreadEntry }) => entry.text.trim() !== '' && !quietReply({ entry })
 
+// Claude Code leaves a message that joins a running turn out of its transcript, so it would keep its earlier send time.
+function lateOwnerMessages({
+  messages,
+  entries,
+}: {
+  messages: HydraMessage[]
+  entries: ThreadEntry[]
+}) {
+  const sent = new Map(messages.map((
+    message,
+    index,
+  ) => [
+    message.id,
+    index,
+  ]))
+  const owner = entries.filter(entry => ownMessage({ entry }) && sent.has(entry.reference ?? ''))
+    .toSorted((
+      a,
+      b,
+    ) => sent.get(a.reference!)! - sent.get(b.reference!)!)
+  const late = new Map<ThreadEntry, string>()
+  let floor = ''
+
+  for (const entry of owner) {
+    if (entry.at && entry.at < floor) {
+      late.set(
+        entry,
+        floor,
+      )
+    } else if (entry.at) {
+      floor = entry.at
+    }
+  }
+
+  return late
+}
+
 export function hydraConversation({
   messages,
   transcript,
@@ -57,20 +94,37 @@ export function hydraConversation({
     })
   }
 
-  const reconciled = hydraMessages({
+  const merged = hydraMessages({
     messages,
     transcript: inputs,
     provider,
     boundaries: true,
   })
     .filter(entry => oldest === undefined || entry.at === undefined || entry.at >= oldest)
-    .sort((
-      a,
-      b,
-    ) => threadEntryOrder({
-      first: a,
-      second: b,
-    }))
+  const late = lateOwnerMessages({
+    messages,
+    entries: merged,
+  })
+  const shownAt = ({ entry }: { entry: ThreadEntry }) => late.get(entry) ?? entry.at
+  const order = ({
+    first,
+    second,
+  }: {
+    first: ThreadEntry
+    second: ThreadEntry
+  }) => (shownAt({ entry: first }) ?? '').localeCompare(shownAt({ entry: second }) ?? '')
+    || Number(late.has(first)) - Number(late.has(second))
+    || threadEntryOrder({
+      first,
+      second,
+    })
+  const reconciled = merged.sort((
+    first,
+    second,
+  ) => order({
+    first,
+    second,
+  }))
   const turns: {
     input?: ThreadEntry
     entries: ThreadEntry[]
@@ -184,11 +238,13 @@ export function hydraConversation({
       )
     }
 
-    if (ownerStarted && !current && turn.input?.at && last?.at) {
+    const start = turn.input && shownAt({ entry: turn.input })
+
+    if (ownerStarted && !current && start && last?.at) {
       timings.set(
         last.id,
         {
-          start: turn.input.at,
+          start,
           end: last.at,
           reply: last.text,
           task: leadingTask({ entry: last }),
@@ -201,9 +257,9 @@ export function hydraConversation({
       continue
     }
 
-    const nextAt = turns[index + 1]?.input?.at
+    const next = turns[index + 1]?.input
+    const nextAt = next && shownAt({ entry: next })
     const tasks = new Map<string, TaskUpdate[]>()
-    const start = turn.input!.at
 
     for (const event of orderedActions) {
       const afterStart = start !== undefined && event.at >= start
@@ -266,11 +322,11 @@ export function hydraConversation({
   }
 
   entries.sort((
-    a,
-    b,
-  ) => threadEntryOrder({
-    first: a,
-    second: b,
+    first,
+    second,
+  ) => order({
+    first,
+    second,
   }))
 
   const latest = [...timings.values()].at(-1)
