@@ -308,6 +308,13 @@ export function createServerCommands({
             hydraSubscribers,
           })
         } else if (name === 'page') {
+          if (args.some(arg => arg === '--hydra' || arg.startsWith('--hydra='))) {
+            return fail({
+              error: `--hydra is not allowed; this server writes Hydra ${hydraId}`,
+              code: 'VALIDATION_ERROR',
+            })
+          }
+
           const interest = pageInterest({
             state: state(),
             args,
