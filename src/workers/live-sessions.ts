@@ -159,6 +159,10 @@ export function createLiveSessions({
 
     entry.input.end()
 
+    if (permanent) {
+      deferTools({ task: entry.task })
+    }
+
     if (entry.session) {
       entry.session.close()
       log({
