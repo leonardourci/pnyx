@@ -10,9 +10,40 @@ export function threadSize({ page }: { page: ThreadPage }): number {
   return page.entries.filter(entry => !entry.id.startsWith('live:')).length
 }
 
+// A page without a count is one page.
+export function pageCount({ page }: { page: ThreadPage }): number {
+  return page.pages ?? 1
+}
+
 export function needsRecentThread({ page }: { page: ThreadPage }): boolean {
-  return page.recent !== true && ((page.pages ?? 1) > RECENT_THREAD_PAGES
-    || threadSize({ page }) > RECENT_THREAD_ENTRIES)
+  const manyPages = pageCount({ page }) > RECENT_THREAD_PAGES
+  const manyEntries = threadSize({ page }) > RECENT_THREAD_ENTRIES
+
+  return page.recent !== true && (manyPages || manyEntries)
+}
+
+// The cursor of the next older page a recent window reads, or undefined once it holds RECENT_THREAD_PAGES pages.
+export function nextRecentCursor({
+  page,
+  seen,
+}: {
+  page: ThreadPage
+  seen: Set<string>
+}): string | undefined {
+  if (seen.size + 1 >= RECENT_THREAD_PAGES || !page.older) {
+    return undefined
+  }
+
+  if (seen.has(page.older)) {
+    throw new HydraError({
+      code: 'THREAD_HISTORY_STALLED',
+      message: 'Earlier conversation pages did not advance.',
+    })
+  }
+
+  seen.add(page.older)
+
+  return page.older
 }
 
 export async function recentThreadPages({
@@ -25,21 +56,20 @@ export async function recentThreadPages({
   let recent = page
   const seen = new Set<string>()
 
-  for (let count = 1; count < RECENT_THREAD_PAGES && recent.older; count++) {
-    const cursor = recent.older
+  let cursor = nextRecentCursor({
+    page: recent,
+    seen,
+  })
 
-    if (seen.has(cursor)) {
-      throw new HydraError({
-        code: 'THREAD_HISTORY_STALLED',
-        message: 'Earlier conversation pages did not advance.',
-      })
-    }
-
-    seen.add(cursor)
+  while (cursor) {
     recent = mergeThreadPages({
       before: recent,
       latest: await read({ before: cursor }),
       olderPage: true,
+    })
+    cursor = nextRecentCursor({
+      page: recent,
+      seen,
     })
   }
 
@@ -97,9 +127,8 @@ export function mergeThreadPages({
     second: b,
   }))
   const older = olderPage ? latest.older : before.entries.length ? before.older : latest.older
-
-  const pages = olderPage ? (before.pages ?? 1) + (latest.pages ?? 1)
-    : before.pages ?? latest.pages ?? 1
+  const pages = olderPage ? pageCount({ page: before }) + pageCount({ page: latest })
+    : before.pages ?? pageCount({ page: latest })
 
   return {
     ...latest,
