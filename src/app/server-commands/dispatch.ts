@@ -1,4 +1,4 @@
-import { pageInterest } from '#app/page-cli.ts'
+import { pageInterest, parsePage } from '#app/page-cli.ts'
 import { AxiError } from 'axi-sdk-js'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
@@ -315,9 +315,12 @@ export function createServerCommands({
             })
           }
 
-          const interest = pageInterest({
+          const {
+            interest,
+            unavailable,
+          } = pageInterest({
             state: state(),
-            args,
+            values: parsePage({ args }).values,
           })
           showPage({
             ws,
@@ -328,7 +331,7 @@ export function createServerCommands({
             message: {
               type: 'receipt',
               id,
-              unavailable: interest.unavailable ?? [],
+              unavailable,
             },
           })
         } else if (name === 'thread') {

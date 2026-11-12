@@ -8,7 +8,6 @@ import { isManagedTask, knownCards, liveTask } from '#tasks/select.ts'
 export interface PageInterest {
   cards: string[]
   hidden: boolean
-  unavailable?: string[]
 }
 export interface PageUpdate {
   seq: number

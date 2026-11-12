@@ -111,6 +111,26 @@ test(
         2000,
       )
       assert.ok(new TextEncoder().encode(JSON.stringify(next)).length < 25000)
+      const summary = await s.owner({ args: ['page'] })
+      assert.ok(
+        summary.length < 2000,
+        'the default page output is a bounded summary',
+      )
+      assert.match(
+        summary,
+        /none: every card found/,
+      )
+      assert.match(
+        summary,
+        /page --full/,
+      )
+      const full = await s.owner({
+        args: [
+          'page',
+          '--full',
+        ],
+      })
+      assert.ok(full.includes('Release rule.'))
     } finally {
       page.close()
     }

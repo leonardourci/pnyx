@@ -27,7 +27,7 @@ commands:
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   apply --file <changes.json|-> [--check]    Validate and atomically apply local task changes
   push --key <key> --file <card.json|->      Create or update the card with this key
-  page [--card <id|key>] [--hidden]           Read the page view; include opened or hidden cards on demand
+  page [--card <id|key>] [--hidden] [--full] Summarize the page view; --full prints the whole projection
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
   move <id> <column> [--before <id>]         Put a card in a column, above another card or at its end
@@ -60,10 +60,12 @@ flags:
 `
 
 const COMMAND_HELP: Record<string, string> = {
-  page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--hydra <id>]
-Read the page projection without the event-id index, steering history or source captures.
-Repeat --card for opened cards. --hidden includes
-hidden and automatic cards. On a page connection, this also updates that tab's interests.
+  page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--full] [--hydra <id>]
+Summarize what a page receives: shown cards per column, opened cards, chat messages and unavailable refs.
+--full prints the whole projection, without the event-id index, steering history or source captures.
+Repeat --card for opened cards.
+--hidden includes hidden and automatic cards.
+On a page connection, this also updates that tab's interests.
 Activity continues reading history through the history command.
 `,
   debug: `usage: pnyx-axi debug timeline [--task <id|key>] [--message <id>] [--batch <id>] [--session <id>] [--since <ISO>] [--until <ISO>] [--cursor <token>] [--limit <1..${DEBUG_MAX}>] [--hydra <id>]

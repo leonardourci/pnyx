@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { HydraEvent } from './model.ts'
 import { emptyHydra, replayOwned } from './reducer.ts'
 import { applyPageUpdate, pageCard, pageEvent, pageState } from './page-state.ts'
-import { pageInterest } from './page-cli.ts'
+import { pageInterest, parsePage } from './page-cli.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
@@ -175,11 +175,13 @@ test(
         state,
         interest: pageInterest({
           state,
-          args: [
-            '--card',
-            'hidden',
-          ],
-        }),
+          values: parsePage({
+            args: [
+              '--card',
+              'hidden',
+            ],
+          }).values,
+        }).interest,
       }).cards),
       [
         'task',
@@ -604,17 +606,21 @@ test(
     assert.deepEqual(
       pageInterest({
         state,
-        args: [
-          '--card',
-          'missing',
-          '--card',
-          'hidden',
-        ],
+        values: parsePage({
+          args: [
+            '--card',
+            'missing',
+            '--card',
+            'hidden',
+          ],
+        }).values,
       }),
       {
-        cards: ['hidden'],
+        interest: {
+          cards: ['hidden'],
+          hidden: false,
+        },
         unavailable: ['missing'],
-        hidden: false,
       },
     )
     const detachedSession = {
