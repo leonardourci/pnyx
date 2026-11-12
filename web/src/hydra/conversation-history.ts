@@ -1,6 +1,17 @@
 import { receivedThread } from '#hydra/thread-delta.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import type { ThreadEntry, ThreadPage } from '#hydra/transcripts-read.ts'
 import { threadEntryOrder } from '#hydra/thread-order.ts'
+
+function holdsMessage({
+  entries,
+  message,
+}: {
+  entries: ThreadEntry[]
+  message: string
+}): boolean {
+  return entries.some(entry =>
+    entry.id === message || entry.messageId === message || entry.reference === message)
+}
 
 export async function loadEarlierMessages({
   past,
@@ -25,6 +36,17 @@ export async function loadEarlierMessages({
   ]))
   let earliest = past
   const seen = new Set<string>()
+  const loaded = [
+    ...found.values(),
+    ...past?.conversation?.entries ?? [],
+  ]
+
+  if (message !== undefined && holdsMessage({
+    entries: loaded,
+    message,
+  })) {
+    return past
+  }
 
   while (cursor) {
     if (seen.has(cursor)) {
@@ -52,13 +74,17 @@ export async function loadEarlierMessages({
     cursor = previous.older
     const earliestAt = previous.entries[0]?.at
     const visible = previous.conversation?.entries ?? []
-    const foundMessage = message && [
-      ...found.values(),
-      ...visible,
-    ].some(entry =>
-      entry.id === message || entry.messageId === message || entry.reference === message)
+    const foundMessage = message !== undefined && holdsMessage({
+      entries: [
+        ...found.values(),
+        ...visible,
+      ],
+      message,
+    })
     const reachedTime = until === undefined || (earliestAt !== undefined && earliestAt <= until)
-    const reached = message ? foundMessage : reachedTime
+    // A comment carries its message's time, so a range older than that holds the message or never will.
+    const passedComment = until !== undefined && earliestAt !== undefined && earliestAt < until
+    const reached = message === undefined ? reachedTime : foundMessage || passedComment
 
     if (reached) {
       break

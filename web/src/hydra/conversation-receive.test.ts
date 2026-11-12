@@ -29,7 +29,7 @@ const page = ({
 })
 
 test(
-  'an older response cannot replace a newer server conversation, and a reconnect can',
+  'an older response cannot replace a newer server conversation, a reconnect can, a range being read is kept, a comment source loads, and only a full window is trimmed',
   async () => {
     const newer = page({
       stream: 'connection-1',
@@ -156,6 +156,78 @@ test(
         },
       }),
       true,
+    )
+  },
+)
+
+test(
+  'a comment source stops loading once pages are older than its message, and needs no load when the page holds it',
+  async () => {
+    const source = page({
+      stream: 'connection-1',
+      version: 1,
+    })
+    const pageAt = ({
+      index,
+    }: {
+      index: number
+    }): ThreadPage => ({
+      ...source,
+      older: index > 0 ? `p${index - 1}` : undefined,
+      entries: [
+        {
+          id: `entry-${index}`,
+          kind: 'message',
+          role: 'assistant',
+          text: `Reply ${index}`,
+          at: `2026-11-06T00:00:0${index}Z`,
+        },
+      ],
+    })
+    const loads: string[] = []
+    const earlier = await loadEarlierMessages({
+      past: pageAt({ index: 9 }),
+      cursor: 'p8',
+      until: '2026-11-06T00:00:06Z',
+      message: 'gone',
+      load: async ({ before }) => {
+        loads.push(before)
+
+        return pageAt({ index: Number(before.slice(1)) })
+      },
+    })
+    assert.deepEqual(
+      loads,
+      [
+        'p8',
+        'p7',
+        'p6',
+        'p5',
+      ],
+    )
+    assert.equal(
+      earlier?.entries[0]!.id,
+      'entry-5',
+    )
+    loads.length = 0
+    const held = pageAt({ index: 9 })
+    assert.equal(
+      await loadEarlierMessages({
+        past: held,
+        cursor: 'p8',
+        until: '2026-11-06T00:00:09Z',
+        message: 'entry-9',
+        load: async ({ before }) => {
+          loads.push(before)
+
+          return pageAt({ index: Number(before.slice(1)) })
+        },
+      }),
+      held,
+    )
+    assert.deepEqual(
+      loads,
+      [],
     )
   },
 )
