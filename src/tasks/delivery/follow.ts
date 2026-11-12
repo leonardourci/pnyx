@@ -13,7 +13,7 @@ import { pullRequestRef, pullRequestStatus, type PullRequestStatus } from '#inte
 import { pullRequestMergeOutcome, type MergeOutcome } from '#integrations/github/merge-evidence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { loadHydra } from '#app/store.ts'
-import type { followSchedule } from './follow-schedule.ts'
+import { UNRESOLVED_RETRIES, type followSchedule } from './follow-schedule.ts'
 import { withWriter } from '#app/writer.ts'
 
 // Active work and pending checks use this interval; idle links back off.
@@ -221,7 +221,7 @@ export async function followPullRequests({
       schedule?.read({
         card,
         link,
-        found: false,
+        result: 'failed',
         started,
       })
       log({
@@ -241,12 +241,23 @@ export async function followPullRequests({
     }
 
     if (!status) {
-      schedule?.read({
+      const suspended = schedule?.read({
         card,
         link,
-        found: false,
+        result: 'missing',
         started,
       })
+
+      if (suspended) {
+        log({
+          level: 'warn',
+          operation: 'follow.suspend',
+          hydraId,
+          taskId: card.id,
+          count: UNRESOLVED_RETRIES,
+        })
+      }
+
       continue
     }
 
@@ -272,7 +283,7 @@ export async function followPullRequests({
       schedule?.read({
         card,
         link,
-        found: true,
+        result: 'found',
         started,
       })
     }

@@ -40,7 +40,7 @@ test(
     schedule.read({
       card,
       link,
-      found: true,
+      result: 'found',
       now: 0,
     })
     assert.equal(
@@ -121,19 +121,19 @@ test(
     schedule.read({
       card,
       link,
-      found: false,
+      result: 'missing',
       now: 60_000,
     })
     schedule.read({
       card,
       link,
-      found: false,
+      result: 'missing',
       now: 120_000,
     })
     schedule.read({
       card,
       link,
-      found: false,
+      result: 'missing',
       now: 180_000,
     })
     assert.equal(
@@ -165,7 +165,7 @@ test(
     schedule.read({
       card,
       link,
-      found: true,
+      result: 'found',
       started: detached,
       now: 3_600_000,
     })
@@ -176,6 +176,69 @@ test(
         now: 3_600_000,
       }),
       true,
+    )
+  },
+)
+
+test(
+  'failed reads keep a link on its schedule and only unresolved links are suspended, once',
+  () => {
+    const card = replay({
+      state: emptyHydra(),
+      events: readStream({ name: 'lifecycle' }),
+    }).cards.c1!
+    card.sessionActivity = 'working'
+    const link: Link = {
+      kind: 'github_pr',
+      url: 'https://github.com/synthetic/repo/pull/1',
+    }
+    const schedule = followSchedule({ interval: 60_000 })
+
+    for (const now of [
+      0,
+      60_000,
+      120_000,
+      180_000,
+    ]) {
+      assert.equal(
+        schedule.read({
+          card,
+          link,
+          result: 'failed',
+          now,
+        }),
+        false,
+      )
+    }
+
+    assert.equal(
+      schedule.due({
+        card,
+        link,
+        now: 240_000,
+      }),
+      true,
+      'a link whose reads failed is read again after one interval',
+    )
+    const suspensions = [
+      240_000,
+      300_000,
+      360_000,
+      420_000,
+    ].map(now => schedule.read({
+      card,
+      link,
+      result: 'missing',
+      now,
+    }))
+    assert.deepEqual(
+      suspensions,
+      [
+        false,
+        false,
+        true,
+        false,
+      ],
     )
   },
 )

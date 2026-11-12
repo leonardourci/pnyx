@@ -9,6 +9,8 @@ export function workingTask({ card }: { card: Card }): boolean {
   return card.status?.state === 'working' || (card.sessionActivity ?? card.activity) === 'working'
 }
 
+export type ReadResult = 'found' | 'missing' | 'failed'
+
 type Check = {
   at: number
   misses: number
@@ -88,36 +90,44 @@ export function followSchedule({ interval }: { interval: number }) {
 
       return now - check.at >= delay
     },
+    // A failed read (offline, expired auth, rate limit) keeps the normal schedule; only reads that
+    // find no pull request count toward suspension. Returns true when this read suspends the link.
     read({
       card,
       link,
-      found,
+      result,
       now = Date.now(),
       started = generation({ task: card.id }),
     }: {
       card: Card
       link: Link
-      found: boolean
+      result: ReadResult
       now?: number
       started?: number
-    }) {
+    }): boolean {
       if (started !== generation({ task: card.id })) {
-        return
+        return false
       }
 
       const id = key({
         card,
         link,
       })
-      const previous = checks.get(id)
+      const previous = checks.get(id)?.misses ?? 0
+      const misses = missesAfter({
+        previous,
+        result,
+      })
       checks.set(
         id,
         {
           task: card.id,
           at: now,
-          misses: found ? 0 : (previous?.misses ?? 0) + 1,
+          misses,
         },
       )
+
+      return misses === UNRESOLVED_RETRIES && previous < UNRESOLVED_RETRIES
     },
     prune({ links }: {
       links: {
@@ -141,4 +151,18 @@ export function followSchedule({ interval }: { interval: number }) {
       }
     },
   }
+}
+
+function missesAfter({
+  previous,
+  result,
+}: {
+  previous: number
+  result: ReadResult
+}): number {
+  if (result === 'found') {
+    return 0
+  }
+
+  return result === 'missing' ? previous + 1 : previous
 }
