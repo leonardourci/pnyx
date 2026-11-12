@@ -13,9 +13,10 @@ import { pullRequestRef, pullRequestStatus, type PullRequestStatus } from '#inte
 import { pullRequestMergeOutcome, type MergeOutcome } from '#integrations/github/merge-evidence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { loadHydra } from '#app/store.ts'
+import type { followSchedule } from './follow-schedule.ts'
 import { withWriter } from '#app/writer.ts'
 
-// GitHub changes on human time; once a minute keeps a few followed pull requests well inside gh's rate limit.
+// Active work and pending checks use this interval; idle links back off.
 export const FOLLOW_POLL_MS = 60_000
 
 // Every open pull request linked to a live task, until it merges or closes.
@@ -152,11 +153,13 @@ export async function followPullRequests({
   tell = tellWorker,
   active = () => true,
   readOutcome = pullRequestMergeOutcome,
+  schedule,
 }: {
   hydraId: string
   readStatus?: typeof pullRequestStatus
   tell?: typeof tellWorker
   active?(): boolean
+  schedule?: ReturnType<typeof followSchedule>
   readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<void> {
   const state = loadHydra({ hydraId }).state
@@ -202,11 +205,23 @@ export async function followPullRequests({
       return
     }
 
+    if (schedule && !schedule.due({
+      card,
+      link,
+    })) {
+      continue
+    }
+
     let status: PullRequestStatus | undefined
 
     try {
       status = await readStatus({ url: link.url })
     } catch (error) {
+      schedule?.read({
+        card,
+        link,
+        found: false,
+      })
       log({
         level: 'warn',
         operation: 'follow.read',
@@ -216,6 +231,12 @@ export async function followPullRequests({
       })
       continue
     }
+
+    schedule?.read({
+      card,
+      link,
+      found: status !== undefined,
+    })
 
     if (!status) {
       continue

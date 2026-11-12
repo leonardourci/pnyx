@@ -5,7 +5,8 @@ import { readSettings } from '#settings/store.ts'
 import { spoolFiles } from '#store/storage.ts'
 import type { createSourceRunner } from '#task-sources/runner.ts'
 import { sourceDeadline } from '#task-sources/state.ts'
-import { followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
+import { followSchedule } from '#tasks/delivery/follow-schedule.ts'
+import { followPullRequests, followedLinks, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { resumeWaits, waitResumesPending, notifyWaitResumes } from '#tasks/resume-waits.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
@@ -59,6 +60,7 @@ export function createServerTick({
   review(): ReturnType<typeof startReviewTimer>
   recover(): void
 }) {
+  const followChecks = followSchedule({ interval: followDelay })
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let cancelReminder = () => {}
   let queueRun: Promise<void> | undefined
@@ -127,6 +129,7 @@ export function createServerTick({
           })()
         }
 
+        followChecks.prune({ links: followedLinks({ state: state() }) })
         const following = needsPullRequestFollow({ state: state() })
 
         if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
@@ -136,6 +139,7 @@ export function createServerTick({
               await followPullRequests({
                 hydraId,
                 active: () => !closed(),
+                schedule: followChecks,
               })
             } catch (error) {
               log({
@@ -328,6 +332,11 @@ export function createServerTick({
   }
 
   return {
+    refreshLinks({ task }: { task: string }) {
+      followChecks.touch({ task })
+      followCheckedAt = 0
+      kick()
+    },
     health: () => ({
       lastSuccessAt,
       lastSuccessSeq,

@@ -570,6 +570,16 @@ test(
       number: 3,
       state: 'merged',
     })
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'pr-fix',
+        ],
+      }),
+      /refreshing: pull requests/,
+    )
     await until({
       what: 'the merge on GitHub to finish the task',
       check: () => s.task({ key: 'pr-fix' }).status?.state === 'done',
