@@ -936,6 +936,51 @@ test(
         ],
       ],
     )
+    // With only the newer "OK" copy on this page, it is the newer message's receipt; the older one, taken before, shows none.
+    const twice: HydraMessage[] = [
+      {
+        ...message({
+          id: 'first-ok',
+          text: 'OK',
+        }),
+        at: '2026-10-20T10:00:00Z',
+      },
+      {
+        ...message({
+          id: 'second-ok',
+          text: 'OK',
+        }),
+        at: '2026-10-20T10:05:00Z',
+      },
+    ]
+    assert.deepEqual(
+      hydraMessages({
+        messages: twice,
+        transcript: [
+          copy({
+            id: 'native-second-ok',
+            text: 'OK',
+            at: '2026-10-20T10:05:02Z',
+          }),
+        ],
+      }).map(entry => [
+        entry.reference,
+        entry.receipt,
+        entry.received,
+      ]),
+      [
+        [
+          'second-ok',
+          'delivered',
+          '2026-10-20T10:05:02Z',
+        ],
+        [
+          'first-ok',
+          undefined,
+          undefined,
+        ],
+      ],
+    )
     // A Hydra Pnyx does not run never reports taking a message, so none shows a receipt.
     assert.deepEqual(
       hydraMessages({

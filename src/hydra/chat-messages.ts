@@ -80,7 +80,10 @@ export function hydraMessages({
   const owned: {
     message: HydraMessage
     entry: ThreadEntry
-    copied: boolean
+    // The words a transcript copy of this message can have.
+    copies: Set<string>
+    // The words of the transcript copy shown for it.
+    copy?: string
   }[] = []
   const rewritten = new Map<ThreadEntry, ThreadEntry>()
   const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
@@ -148,7 +151,8 @@ export function hydraMessages({
           owned.push({
             message,
             entry: copy,
-            copied: true,
+            copies,
+            copy: ownCopies.get(entry!),
           })
         }
 
@@ -175,9 +179,33 @@ export function hydraMessages({
         owned.push({
           message,
           entry,
-          copied: false,
+          copies,
         })
       }
+    }
+  }
+
+  // A copy found by its words is the newest unclaimed message with those words sent before it, so an older message
+  // cannot take a newer one's copy when its own copy is on another page.
+  const copyTimes = new Map<HydraMessage, string>()
+  const shownCopies = owned.filter(item => item.copy !== undefined && item.entry.at)
+    .toSorted((
+      a,
+      b,
+    ) => b.entry.at!.localeCompare(a.entry.at!))
+
+  for (const {
+    entry,
+    copy,
+  } of shownCopies) {
+    const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy!)
+      && item.message.at <= entry.at!)
+
+    if (taker) {
+      copyTimes.set(
+        taker.message,
+        entry.at!,
+      )
     }
   }
 
@@ -187,7 +215,6 @@ export function hydraMessages({
   for (const {
     message,
     entry,
-    copied,
   } of receipts ? owned.toReversed() : []) {
     entry.sent = message.at
     // Pnyx runs /restart and /upgrade itself, so they never reach the harness.
@@ -198,8 +225,7 @@ export function hydraMessages({
       continue
     }
 
-    // A transcript copy found by its text counts only when it comes after the send; an older message with the same words cannot take it.
-    const copyTime = copied && entry.at && entry.at >= message.at ? entry.at : undefined
+    const copyTime = copyTimes.get(message)
     const received = message.received ?? copyTime
 
     if (received) {
