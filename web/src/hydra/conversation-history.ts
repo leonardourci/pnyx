@@ -73,17 +73,3 @@ export async function loadEarlierMessages({
     actions: [...actions.values()],
   }
 }
-
-export function receivedThread({
-  before,
-  latest,
-}: {
-  before: ThreadPage | null
-  latest: ThreadPage
-}): ThreadPage {
-  const sameSession = before?.session === latest.session
-  const sameStream = sameSession && before?.conversation?.stream === latest.conversation?.stream
-  const newer = (before?.conversation?.version ?? 0) > (latest.conversation?.version ?? 0)
-
-  return sameStream && newer ? before! : latest
-}

@@ -151,6 +151,45 @@ test(
         },
       },
     )
+
+    const reply = message({
+      text: 'Follow up on paste separately.',
+      answers: merge.id,
+      choice: 'Merge',
+    })
+    const refreshed = answerLeads({
+      cards: { [card.id]: card },
+      messages: [reply],
+      previous: leads,
+    })
+    assert.equal(
+      refreshed.get(reply.id),
+      leads.get(reply.id),
+    )
+
+    const changed = answerLeads({
+      cards: {
+        [card.id]: {
+          ...card,
+          asks: [
+            {
+              ...merge,
+              question: 'Ship it?',
+            },
+          ],
+        },
+      },
+      messages: [reply],
+      previous: refreshed,
+    })
+    assert.notEqual(
+      changed.get(reply.id),
+      refreshed.get(reply.id),
+    )
+    assert.equal(
+      changed.get(reply.id)?.question,
+      'Ship it?',
+    )
   },
 )
 

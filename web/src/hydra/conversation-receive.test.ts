@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { receivedThread } from './conversation-history.ts'
+import { receivedThread } from '#hydra/thread-delta.ts'
 
 const page = ({
   stream,
@@ -12,12 +12,12 @@ const page = ({
 }): ThreadPage => ({
   card: '$hydra',
   session: 'fixture',
+  stream,
+  version,
   entries: [],
   route: true,
   watching: 'unknown',
   conversation: {
-    stream,
-    version,
     through: 1,
     entries: [],
     timings: {},

@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useRef, type ReactNode } from 'react'
 import { InlineButton } from '#web-shared/ui/controls.tsx'
 import { ReferenceBadge } from '#web-hydra/reference-badge.tsx'
 import { CHIP_SPACE } from '#web-hydra/draft.ts'
@@ -38,15 +38,27 @@ export function TaskReferencesProvider({
   openTask?: OpenTask
   children: ReactNode
 }) {
-  return (
-    <TaskReferences.Provider
-      value={references ? {
+  const current = useRef(openTask)
+  current.current = openTask
+  const canOpen = openTask !== undefined
+  const value = useMemo(
+    () => {
+      if (!references) {
+        return undefined
+      }
+
+      return {
         references,
-        openTask,
-      } : undefined}
-    >{children}
-    </TaskReferences.Provider>
+        openTask: canOpen ? ({ id }: { id: string }) => current.current?.({ id }) : undefined,
+      }
+    },
+    [
+      references,
+      canOpen,
+    ],
   )
+
+  return <TaskReferences.Provider value={value}>{children}</TaskReferences.Provider>
 }
 
 export function TaskReference({

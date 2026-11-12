@@ -69,8 +69,6 @@ export interface ThreadPage {
   entries: ThreadEntry[]
   conversation?: {
     through: number
-    stream?: string
-    version?: number
     entries: ThreadEntry[]
     folds: Record<string, TurnActions>
     timings: Record<string, TurnTiming>

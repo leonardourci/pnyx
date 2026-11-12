@@ -33,7 +33,8 @@ import { hydraDown,keepStreamedKeys,quoteInto } from './chat.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { loadEarlierMessages,receivedThread } from './conversation-history.ts'
+import { receivedThread } from '#hydra/thread-delta.ts'
+import { loadEarlierMessages } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
@@ -536,7 +537,15 @@ export function HydraChat({
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && inFlight.length > 0)
   // A send counts from the owner's message until the server says the turn began.
-  const lookup = pnyxLookup({ state })
+  const lookupState = useRef(state)
+  lookupState.current = state
+  const lookup = useMemo(
+    () => pnyxLookup({ state: () => lookupState.current }),
+    [
+      state.config,
+      state.view?.customColumns,
+    ],
+  )
   const since = (working ? card?.workingSince : undefined)
     ?? inFlight.at(-1)?.at ?? null
 
@@ -764,11 +773,18 @@ export function HydraChat({
     actions: taskActions,
     connected,
   })
+  const previousLeads = useRef<ReturnType<typeof answerLeads> | undefined>(undefined)
   const leads = useMemo(
-    () => answerLeads({
-      messages: state.hydraMessages,
-      cards: state.cards,
-    }),
+    () => {
+      const next = answerLeads({
+        messages: state.hydraMessages,
+        cards: state.cards,
+        previous: previousLeads.current,
+      })
+      previousLeads.current = next
+
+      return next
+    },
     [
       state.hydraMessages,
       state.cards,

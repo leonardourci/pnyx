@@ -41,19 +41,69 @@ test(
       previous: [],
       keys,
     })
+    const final: ThreadEntry = {
+      id: '5:m0',
+      kind: 'message',
+      role: 'assistant',
+      text: 'word '.repeat(320),
+    }
     const settled = keepStreamedKeys({
       entries: [
         owner,
-        {
-          id: '5:m0',
-          kind: 'message',
-          role: 'assistant',
-          text: 'word '.repeat(320),
-        },
+        final,
       ],
       previous: streaming,
       keys,
     })
+    const repeated = keepStreamedKeys({
+      entries: [
+        owner,
+        final,
+      ],
+      previous: settled,
+      keys,
+    })
+    assert.equal(
+      repeated[0],
+      owner,
+    )
+    assert.equal(
+      repeated[1],
+      settled[1],
+      'an unchanged settled reply keeps its object as well as its key',
+    )
+    const failed = {
+      ...owner,
+      id: 'retry',
+      streaming: true,
+      sending: true,
+      unsent: 'Waiting',
+    }
+    const delivered = {
+      ...owner,
+      id: 'retry',
+    }
+    const cleared = keepStreamedKeys({
+      entries: [delivered],
+      previous: [failed],
+      keys: new Map(),
+    })
+    assert.equal(
+      cleared[0],
+      delivered,
+    )
+    assert.equal(
+      'streaming' in cleared[0]!,
+      false,
+    )
+    assert.equal(
+      'sending' in cleared[0]!,
+      false,
+    )
+    assert.equal(
+      'unsent' in cleared[0]!,
+      false,
+    )
     assert.equal(
       settled[1]!.renderKey,
       'live:msg_1',

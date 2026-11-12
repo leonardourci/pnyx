@@ -149,7 +149,10 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
   keys: Map<string, string>
 }): Keyed<Entry>[] {
   const ids = new Set(entries.map(entry => entry.id))
-  const seen = new Set(previous.map(entry => entry.id))
+  const seen = new Map(previous.map(entry => [
+    entry.id,
+    entry,
+  ]))
 
   for (const gone of previous) {
     if (!gone.streaming || ids.has(gone.id)) {
@@ -169,10 +172,40 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
   }
 
   // A key whose live entry is back on the page stays with it, so keys never collide.
-  return entries.map(entry => keys.has(entry.id) && !ids.has(keys.get(entry.id)!) ? {
-    ...entry,
-    renderKey: keys.get(entry.id),
-  } : entry)
+  return entries.map(entry => {
+    const mapped = keys.get(entry.id)
+    const renderKey = mapped !== undefined && !ids.has(mapped) ? mapped : undefined
+    const before = seen.get(entry.id)
+
+    if (before === entry && before.renderKey === renderKey) {
+      return before
+    }
+
+    if (before && before.renderKey === renderKey) {
+      const fields = Object.entries(entry).filter(([key]) => key !== 'renderKey')
+      const previousKeys = Object.keys(before).filter(key => key !== 'renderKey')
+      const same = previousKeys.length === fields.length && fields.every(([
+        key,
+        value,
+      ]) =>
+        Object.hasOwn(
+          before,
+          key,
+        ) && Reflect.get(
+          before,
+          key,
+        ) === value)
+
+      if (same) {
+        return before
+      }
+    }
+
+    return renderKey === undefined ? entry : {
+      ...entry,
+      renderKey,
+    }
+  })
 }
 
 const markdownQuote = ({ text }: { text: string }) => text.split('\n')
