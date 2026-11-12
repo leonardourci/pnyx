@@ -3,55 +3,15 @@ import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Hit, Match, Query, Snippet } from './model.ts'
-import { queryTerms, fold, tokens, type Term } from './query.ts'
-import { documents, type Document } from './documents.ts'
+import { queryTerms, fold, tokens, matches, type Term } from './query.ts'
+import type { Document } from './documents.ts'
+import { openIndex } from './index.ts'
 import { redact } from './text.ts'
-import { similarity } from './fuzzy.ts'
 
 export const SNIPPETS = 3
 const NOTE_WEIGHT = 2
 const CONTEXT_WEIGHT = 0.5
-const FUZZY_SIMILARITY = 0.4
 const SNIPPET_CHARS = 180
-
-const inflection = ({ word }: { word: string }) => word.replace(
-  /(?:ing|ed|es|s)$/u,
-  '',
-)
-
-function matches({
-  word,
-  term,
-  fuzzy,
-}: {
-  word: string
-  term: Term
-  fuzzy: boolean
-}): boolean {
-  return term.alts.some(alt => {
-    const alternative = fold({ text: alt })
-
-    if (term.prefix) {
-      return word.startsWith(alternative)
-    }
-
-    if (word === alternative || inflection({ word }) === inflection({ word: alternative })) {
-      return true
-    }
-
-    if (!fuzzy || !term.typo || alternative.length < 3) {
-      return false
-    }
-
-    const contains = alternative.length >= 4 && word.includes(alternative)
-    const similar = similarity({
-      a: word,
-      b: alternative,
-    }) >= FUZZY_SIMILARITY
-
-    return contains || similar
-  })
-}
 
 function wordMatches({
   text,
@@ -237,23 +197,19 @@ export function search({
     })
   }
 
+  const index = openIndex({
+    hydraId,
+    state,
+  })
+
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
-    const newest = new Map<string, number>()
+    const newest = index.newest
 
-    for (const document of documents({
-      hydraId,
-      state,
+    for (const document of index.documents({
+      terms,
+      fuzzy,
     })) {
-      const at = Date.parse(document.at)
-
-      if (at > (newest.get(document.card) ?? 0)) {
-        newest.set(
-          document.card,
-          at,
-        )
-      }
-
       if (!terms.some(term => wordMatches({
         text: document.text,
         term,
@@ -414,7 +370,11 @@ export function search({
     }
   }
 
-  const lexical = run({ fuzzy: false })
+  try {
+    const lexical = run({ fuzzy: false })
 
-  return lexical.hits.length ? lexical : run({ fuzzy: true })
+    return lexical.hits.length ? lexical : run({ fuzzy: true })
+  } finally {
+    index.close()
+  }
 }
