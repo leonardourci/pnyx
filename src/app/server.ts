@@ -433,7 +433,10 @@ export async function mountOwnedHydra({
     }
   })
 
-  const { runCommand } = createServerCommands({
+  const {
+    runCommand,
+    closeClient: closeCommands,
+  } = createServerCommands({
     hydraId,
     url,
     open,
@@ -513,6 +516,7 @@ export async function mountOwnedHydra({
         }
       },
       close() {
+        closeCommands({ ws })
         tabs.closeClient({ ws })
         clients.delete(ws)
         hydraSubscribers.delete(ws)
@@ -631,6 +635,7 @@ export async function mountOwnedHydra({
     liveThreadTimers.clear()
 
     for (const ws of clients) {
+      closeCommands({ ws })
       ws.terminate()
     }
 
