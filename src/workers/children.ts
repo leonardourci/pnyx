@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { hydraDir } from '#app/home-migration.ts'
 import { processStart } from '#app/server-state.ts'
 import { pnyxHome, replaceFile } from '#store/storage.ts'
+import { HydraError } from '#store/errors.ts'
 
 const OLD_HOST_STOP_MS = 30_000
 // How long the start waits for an earlier server's agents and their tools to be gone.
@@ -116,6 +117,7 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
       return
     }
 
+    // A group id stays unused while its group lives, so after this check the pid alone names the group.
     const owned = recorded.filter(child => retained({ child }))
 
     for (const child of owned) {
@@ -127,10 +129,11 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
 
     const grace = Date.now() + STOP_GRACE_MS
     const end = Date.now() + SWEEP_WAIT_MS
+    const alive = () => owned.filter(child => treeAlive({ pid: child.pid }))
 
-    while (owned.some(child => retained({ child }))) {
+    while (alive().length) {
       if (Date.now() >= grace) {
-        for (const child of owned.filter(child => retained({ child }))) {
+        for (const child of alive()) {
           signalTree({
             pid: child.pid,
             signal: 'SIGKILL',
@@ -139,7 +142,14 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
       }
 
       if (Date.now() >= end) {
-        throw new Error(`Agent process groups for ${task} did not stop`)
+        const pids = alive().map(child => child.pid)
+          .join(', ')
+
+        throw new HydraError({
+          message: `Agent process groups for ${task} did not stop: ${pids}`,
+          code: 'AGENT_STOP_FAILED',
+          help: [`Stop processes ${pids} yourself, then retry the cleanup`],
+        })
       }
 
       await delay(SWEEP_POLL_MS)
@@ -184,7 +194,9 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
       try {
         await pending
       } finally {
-        stopping.delete(task)
+        if (stopping.get(task) === pending) {
+          stopping.delete(task)
+        }
       }
     },
     // Restart stops agent leaders while their background tools keep running until permanent close.

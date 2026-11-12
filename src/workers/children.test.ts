@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { mock, test } from 'node:test'
 import { once } from 'node:events'
 import { hydraDir } from '#app/home-migration.ts'
 import { processStart } from '#app/server-state.ts'
@@ -281,6 +281,68 @@ test(
         'utf8',
       )),
       [],
+    )
+  },
+)
+
+test(
+  'a task group that ignores its stop fails with a code naming its processes',
+  async t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-children-stuck-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    const stuck = idle()
+    t.after(() => {
+      mock.restoreAll()
+      stuck.kill('SIGKILL')
+      process.env.PNYX_HOME = previous
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    mkdirSync(
+      hydraDir({ hydraId: 'default' }),
+      { recursive: true },
+    )
+    const tracker = trackChildren({ hydraId: 'default' })
+    tracker.spawned({ child: stuck })
+    tracker.associate({
+      pid: stuck.pid!,
+      task: 'worker',
+    })
+    const kill = process.kill.bind(process)
+    // As a process the server may not signal: it stays after every signal.
+    mock.method(
+      process,
+      'kill',
+      // eslint-disable-next-line pnyx/object-params -- process.kill owns this signature.
+      (
+        pid: number,
+        signal?: NodeJS.Signals | 0,
+      ) => signal === 0 ? kill(
+        pid,
+        0,
+      ) : true,
+    )
+
+    await assert.rejects(
+      tracker.stop({ task: 'worker' }),
+      {
+        code: 'AGENT_STOP_FAILED',
+        message: new RegExp(String(stuck.pid)),
+      },
+    )
+    assert.deepEqual(
+      [...tracker.tasks()],
+      ['worker'],
+      'the record stays for a later permanent release',
     )
   },
 )
