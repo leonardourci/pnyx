@@ -8,6 +8,8 @@ import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { acquireLock } from '#store/storage.ts'
 
+export const COPY_LEASE_PREFIX = 'copy-settlement:'
+
 interface Lease {
   actor: string
   holders: {
@@ -180,16 +182,19 @@ export function taskLease({
   hydraId,
   task,
   actor,
+  message = false,
   pid = process.pid,
   lockTimeout,
 }: {
   hydraId: string
   task: string
   actor: string
+  message?: boolean
   pid?: number
   lockTimeout?: number
 }): () => void {
   const holder = randomUUID()
+  let owner = actor
   const dir = hydraDir({ hydraId })
   const unlock = acquireLock({
     dir,
@@ -203,7 +208,13 @@ export function taskLease({
     })
     const lease = readLease({ path })
 
-    if (lease && lease.actor !== actor) {
+    const copyHeld = message && lease?.actor.startsWith(COPY_LEASE_PREFIX)
+
+    if (message && lease && !copyHeld) {
+      owner = lease.actor
+    }
+
+    if (lease && (lease.actor !== owner || copyHeld)) {
       throw new HydraError({
         message: `Task ${task} is being handled by ${lease.actor}; try again after its turn ends`,
         code: 'TASK_LEASED',
@@ -231,7 +242,7 @@ export function taskLease({
     writeLease({
       path,
       lease: {
-        actor,
+        actor: owner,
         holders,
       },
     })
@@ -243,7 +254,7 @@ export function taskLease({
     releaseTask({
       hydraId,
       task,
-      actor,
+      actor: owner,
       holder,
       lockTimeout,
     })
