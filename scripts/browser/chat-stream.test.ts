@@ -1,3 +1,4 @@
+import { taskMention } from '#hydra/mentions.ts'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs'
@@ -339,6 +340,7 @@ test(
       run,
       evaluate,
       capture,
+      waitFor,
     } = await browser({
       s,
       session: 'chat-stream',
@@ -617,6 +619,117 @@ test(
         if (window.scopeLeaks) throw new Error('Hydra switch painted another conversation');
         return 'chat-assertion-passed';
       }`,
+      })
+
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'hidden-reference',
+          '--title',
+          'Hidden reference fixture',
+          '--brief',
+          'An archived task still opens from its message chip.',
+        ],
+      })
+      const hiddenTask = s.task({ key: 'hidden-reference' }).id
+      await s.owner({
+        args: [
+          'task',
+          'hide',
+          hiddenTask,
+        ],
+      })
+      const defaultPage = await s.owner({ args: ['page'] })
+      assert.equal(
+        defaultPage.includes('Hidden reference fixture'),
+        false,
+      )
+      const includedPage = await s.owner({
+        args: [
+          'page',
+          '--card',
+          hiddenTask,
+        ],
+      })
+      assert.ok(includedPage.includes('Hidden reference fixture'))
+      const mention = taskMention({
+        id: hiddenTask,
+        title: 'Hidden reference fixture',
+      })
+      pnyx.claude.plan({
+        text: `Find the hidden reference ${mention}`,
+        reply: `Open ${mention}.`,
+      })
+      await s.chat({ text: `Find the hidden reference ${mention}` })
+      await waitFor({
+        what: 'the unloaded task chip',
+        condition: `document.querySelector('.messages [data-task-ref="${hiddenTask}"]:not(:disabled)')`,
+      })
+      await evaluate({ script: `() => { document.querySelector('.messages [data-task-ref="${hiddenTask}"]').click(); return 'chat-assertion-passed'; }` })
+      await waitFor({
+        what: 'the hidden task detail',
+        condition: `document.querySelector('.card[data-task="${hiddenTask}"].selected .card-panel:not([hidden])')`,
+      })
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await waitFor({
+        what: 'the restored hidden task detail',
+        condition: `document.querySelector('.card[data-task="${hiddenTask}"].selected .card-panel:not([hidden])')`,
+      })
+      await s.owner({
+        args: [
+          'task',
+          'move',
+          hiddenTask,
+          '--to-hydra',
+          other.hydraId,
+        ],
+      })
+      await waitFor({
+        what: 'the moved card leaving the source',
+        condition: `!document.querySelector('.card[data-task="${hiddenTask}"]')`,
+      })
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'second-hidden-reference',
+          '--title',
+          'Second hidden fixture',
+        ],
+      })
+      const secondHidden = s.task({ key: 'second-hidden-reference' }).id
+      await s.owner({
+        args: [
+          'task',
+          'hide',
+          secondHidden,
+        ],
+      })
+      const secondMention = taskMention({
+        id: secondHidden,
+        title: 'Second hidden fixture',
+      })
+      pnyx.claude.plan({
+        text: `Find the other hidden reference ${secondMention}`,
+        reply: `Open ${secondMention}.`,
+      })
+      await s.chat({ text: `Find the other hidden reference ${secondMention}` })
+      await waitFor({
+        what: 'another unloaded task chip',
+        condition: `document.querySelector('.messages [data-task-ref="${secondHidden}"]:not(:disabled)')`,
+      })
+      await evaluate({ script: `() => { document.querySelector('.messages [data-task-ref="${secondHidden}"]').click(); return 'chat-assertion-passed'; }` })
+      await waitFor({
+        what: 'another hidden card after a moved selection',
+        condition: `document.querySelector('.card[data-task="${secondHidden}"].selected .card-panel:not([hidden])')`,
       })
     } catch (error) {
       try {

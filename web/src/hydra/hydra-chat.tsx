@@ -64,6 +64,7 @@ const EMPTY_CHAT_QUEUE: HydraChatQueue = {
   compactInputs: [],
   working: false,
   through: 0,
+  started: [],
 }
 
 // Sends the server has not recorded yet; a confirmed one waits for its message to arrive.
@@ -261,11 +262,8 @@ export function HydraChat({
   const chatQueue = queue.chat ?? EMPTY_CHAT_QUEUE
   const held = new Set(chatQueue.held)
   const pending = sending.filter(item => {
-    const deliveredAt = state.eventIds[item.id]
-    const recorded = deliveredAt !== undefined
-    const rendered = (deliveredAt ?? 0) <= (page?.conversation?.through ?? 0)
-
-    return !recorded || !rendered
+    return !page?.conversation?.entries.some(entry =>
+      entry.reference === item.id || entry.id === item.id)
   })
   const {
     compacting,
@@ -447,7 +445,7 @@ export function HydraChat({
   previousEntries.current = entries
   // The reply to the owner's last send is the first text that streams once the send's own turn started, and was not
   // already streaming when it was sent.
-  const sendTurn = lastSend.current !== undefined && `${lastSend.current}:hosted` in state.eventIds
+  const sendTurn = lastSend.current !== undefined && chatQueue.started.includes(lastSend.current)
   const newReply = sendTurn && entries.some(entry => entry.streaming && entry.text
     && !streamingAtSend.current.has(entry.id))
   useLayoutEffect(() => {

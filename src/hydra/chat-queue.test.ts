@@ -136,7 +136,10 @@ test(
         'upgrade',
       ],
     )
-    // The queue goes to every tab after every event, so it carries nothing per recorded message.
+    assert.deepEqual(
+      wire.started,
+      ['taken'],
+    )
     assert.equal(
       'received' in wire,
       false,

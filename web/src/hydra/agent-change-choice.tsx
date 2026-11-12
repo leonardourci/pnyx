@@ -208,14 +208,13 @@ export function AgentChangeChoice({
     return null
   }
 
+  const ownerMessages = state.hydraMessages?.filter(message => ownerActor({ actor: message.actor }))
+  const revision = (state.cards[HYDRA_CARD]?.updatedSeq ?? 0) + (ownerMessages?.length ?? 0)
+
   return (
     <HeldMessageCard
       change={change}
-      revision={Math.max(
-        state.cards[HYDRA_CARD]?.updatedSeq ?? 0,
-        ...state.hydraMessages?.filter(message => ownerActor({ actor: message.actor }))
-          .map(message => state.eventIds[message.id] ?? 0) ?? [],
-      )}
+      revision={revision}
       command={command}
       connected={connected}
       notify={notify}
