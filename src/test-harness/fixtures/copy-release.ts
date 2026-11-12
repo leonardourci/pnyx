@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { ChildProcess } from 'node:child_process'
+import { hostRequest } from '#app/host-request.ts'
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { commands } from '#app/cli.ts'
@@ -73,35 +75,61 @@ for (const mode of [
     ],
   })
   const worker = claudeNative()
-  let committed = false
+  const ready = join(
+    process.env.HOME,
+    `${mode}-ready`,
+  )
+  const committed = join(
+    process.env.HOME,
+    `${mode}-committed`,
+  )
+  let child: ChildProcess | undefined
+  git({
+    cwd: project,
+    args: [
+      'config',
+      'user.name',
+      'Test',
+    ],
+  })
+  git({
+    cwd: project,
+    args: [
+      'config',
+      'user.email',
+      'test@example.com',
+    ],
+  })
 
   const query: QueryFn = ({ ...request }) => {
     assert.ok(request.options)
-    const stream = worker.query(request)
 
     if (request.options.persistSession !== false) {
-      const close = stream.close.bind(stream)
-
-      stream.close = () => {
-        if (!committed) {
-          committed = true
-          git({
-            cwd: folder,
-            args: [
-              'commit',
-              '-q',
-              '--allow-empty',
-              '-m',
-              'Final background work',
-            ],
-          })
-        }
-
-        close()
-      }
+      assert.ok(request.options.spawnClaudeCodeProcess)
+      const spawned = request.options.spawnClaudeCodeProcess({
+        command: process.execPath,
+        args: [
+          '-e',
+          `
+          const { writeFileSync } = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          process.on('SIGTERM', () => {
+            execFileSync('git', ['-C', ${JSON.stringify(folder)}, 'commit', '-q', '--allow-empty', '-m', 'Final background work']);
+            writeFileSync(${JSON.stringify(committed)}, '');
+          });
+          process.stdin.once('data', () => process.exit(0));
+          writeFileSync(${JSON.stringify(ready)}, '');
+        `,
+        ],
+        cwd: folder,
+        env: process.env,
+        signal: new AbortController().signal,
+      })
+      assert.ok(spawned instanceof ChildProcess)
+      child = spawned
     }
 
-    return stream
+    return worker.query(request)
   }
 
   const host = createHost({
@@ -109,25 +137,14 @@ for (const mode of [
     query,
     changed: () => {},
   })
-  const stopOffering = offerHost({
+  const offer = () => offerHost({
     hydraId,
-    ask: async ({ body }) => {
-      assert.equal(
-        body.action,
-        'release',
-      )
-      assert.equal(
-        body.permanent,
-        true,
-      )
-      assert.ok(typeof body.task === 'string')
-
-      return host.release({
-        task: body.task,
-        permanent: true,
-      })
-    },
+    ask: ({ body }) => hostRequest({
+      host,
+      body,
+    }),
   })
+  let stopOffering = offer()
 
   try {
     const task = withWriter({
@@ -217,6 +234,33 @@ for (const mode of [
       },
     })
 
+    await settle({
+      what: 'child is ready for cleanup',
+      check: () => existsSync(ready),
+    })
+    assert.ok(child)
+
+    if (mode === 'check') {
+      stopOffering()
+      await assert.rejects(
+        release,
+        { code: 'NOT_RUNNING' },
+      )
+      assert.equal(
+        existsSync(folder),
+        true,
+      )
+      assert.equal(
+        loadHydra({ hydraId }).state.cards[task]?.copy?.state,
+        'active',
+      )
+      assert.equal(
+        worker.closed(),
+        false,
+      )
+      stopOffering = offer()
+    }
+
     if (mode === 'safe') {
       const dirty = join(
         folder,
@@ -236,22 +280,58 @@ for (const mode of [
         'unsafe work is refused before releasing the worker',
       )
       unlinkSync(dirty)
-      await assert.rejects(
-        release,
-        { code: 'CONFLICT' },
+    }
+
+    let finished = false
+    const settlement = release()
+    const observed = (async () => {
+      try {
+        return { result: await settlement }
+      } catch (error) {
+        return { error }
+      } finally {
+        finished = true
+      }
+    })()
+    await settle({
+      what: 'final commit while cleanup waits',
+      check: () => existsSync(committed),
+    })
+    assert.equal(
+      finished,
+      false,
+      'settlement waits for the task-owned group',
+    )
+    assert.equal(
+      existsSync(folder),
+      true,
+    )
+    assert.equal(
+      loadHydra({ hydraId }).state.cards[task]?.copy?.state,
+      'active',
+    )
+    assert.ok(child.stdin)
+    child.stdin.end('finish')
+    const outcome = await observed
+
+    if (mode === 'safe') {
+      assert.ok('error' in outcome && outcome.error instanceof Error)
+      assert.equal(
+        'code' in outcome.error && outcome.error.code,
+        'CONFLICT',
       )
       assert.equal(
         loadHydra({ hydraId }).state.cards[task]?.copy?.state,
         'active',
       )
     } else {
-      const result = await release()
+      assert.ok(outcome.result)
       assert.equal(
-        result.copy?.state,
+        outcome.result.copy?.state,
         'flagged',
       )
       assert.equal(
-        result.check?.landed,
+        outcome.result.check?.landed,
         false,
       )
     }
@@ -261,7 +341,7 @@ for (const mode of [
       true,
     )
     assert.equal(
-      committed,
+      existsSync(committed),
       true,
     )
     assert.equal(
@@ -280,6 +360,7 @@ for (const mode of [
       before,
     )
   } finally {
+    child?.kill('SIGKILL')
     stopOffering()
     host.close()
   }
