@@ -220,6 +220,7 @@ Rows show id, title, project and column; --fields adds any of attention, parent,
 pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task refresh-links <id>
+Reads the task's open pull requests now instead of at their next poll, discarding a read in flight; task show lists what was read.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
