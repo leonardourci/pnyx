@@ -1,9 +1,12 @@
+import { hydraEvent } from '#hydra/hydra.ts'
+import type { QueryFn } from '#workers/claude.ts'
 import { planTaskChange } from '#tasks/plans.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { decidePush } from '#tasks/push.ts'
 import assert from 'node:assert/strict'
+import { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mock } from 'node:test'
 import { commands } from '#app/cli.ts'
@@ -166,11 +169,37 @@ for (const ending of [
   'done',
   'archive',
   'release',
+  'idle-release',
+  'starting',
 ]) {
   const worker = claudeNative()
+  let childPid: number | undefined
+
+  const query: QueryFn = ({ ...request }) => {
+    assert.ok(request.options)
+
+    if (request.options.persistSession !== false) {
+      assert.ok(request.options.spawnClaudeCodeProcess)
+      const child = request.options.spawnClaudeCodeProcess({
+        command: process.execPath,
+        args: [
+          '-e',
+          'setInterval(() => {}, 1000)',
+        ],
+        cwd: process.env.HOME,
+        env: process.env,
+        signal: new AbortController().signal,
+      })
+      assert.ok(child instanceof ChildProcess)
+      childPid = child.pid
+    }
+
+    return worker.query(request)
+  }
+
   const taskHost = createHost({
     hydraId,
-    query: worker.query,
+    query,
     changed: () => {},
     wakeDelay: QUIET_HOST_MS,
   })
@@ -193,76 +222,155 @@ for (const ending of [
       })
       assert.ok('event' in created)
       writer.append({ event: created.event })
-      const decision = decidePush({
-        state: writer.state,
-        key: `worker-${ending}`,
-        input: {
-          agent: {
-            provider: 'claude-code',
-            sessionId: `worker-${ending}`,
-            host: 'pnyx',
-            cwd: process.env.HOME,
+
+      if (ending !== 'starting') {
+        const decision = decidePush({
+          state: writer.state,
+          key: `worker-${ending}`,
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: `worker-${ending}`,
+              host: 'pnyx',
+              cwd: process.env.HOME,
+            },
           },
-        },
-        meta: {
-          actor: 'cli',
-          at: new Date().toISOString(),
-        },
-      })
-      assert.ok('event' in decision)
-      writer.append({ event: decision.event })
+          meta: {
+            actor: 'cli',
+            at: new Date().toISOString(),
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      }
 
       return Object.values(writer.state.cards).find(card => card.key === `worker-${ending}`)!
     },
   })
 
   try {
-    taskHost.send({
-      card: task.id,
-      text: 'Work',
-      actor: 'cli',
-      direct: true,
-      inputId: `input-${ending}`,
-    })
+    if (ending === 'starting') {
+      const start = taskHost.start({
+        task: task.id,
+        prompt: 'Work',
+        folder: process.env.HOME,
+        settings: { provider: 'claude-code' },
+        actor: 'cli',
+        id: 'pending-start',
+      })
+      assert.deepEqual(
+        await taskHost.release({
+          task: task.id,
+          permanent: true,
+        }),
+        { busy: 'starting' },
+        'a permanent release refuses cleanup before a pending start settles',
+      )
+      await start
+    } else {
+      taskHost.send({
+        card: task.id,
+        text: 'Work',
+        actor: 'cli',
+        direct: true,
+        inputId: `input-${ending}`,
+      })
+    }
+
     await settle({
       what: 'worker input',
       check: () => worker.incoming.length === 1,
     })
-    worker.send({
-      message: {
-        ...recordedResult,
-        uuid: randomUUID(),
-        user_message_uuid: worker.incoming[0]!.uuid,
-        queued_turn_count: 0,
-      },
-    })
-    await settle({
-      what: 'worker completion',
-      check: () => worker.delivered() === 1,
-    })
+    assert.ok(childPid)
+    const pid = childPid
     assert.equal(
-      worker.closed(),
-      false,
+      process.kill(
+        -childPid,
+        0,
+      ),
+      true,
     )
 
-    if (ending === 'release') {
-      await taskHost.release({ task: task.id })
+    if (ending === 'idle-release') {
+      worker.send({
+        message: {
+          ...recordedResult,
+          uuid: randomUUID(),
+          user_message_uuid: worker.incoming[0]!.uuid,
+          queued_turn_count: 0,
+        },
+      })
+      await settle({
+        what: 'worker completion',
+        check: () => worker.delivered() === 1,
+      })
+      assert.deepEqual(
+        await taskHost.release({ task: task.id }),
+        { released: 1 },
+      )
+      assert.equal(
+        process.kill(
+          -childPid,
+          0,
+        ),
+        true,
+        'ordinary release preserves detached work',
+      )
+      await taskHost.release({
+        task: task.id,
+        permanent: true,
+      })
+    } else if (ending === 'release' || ending === 'starting') {
+      assert.deepEqual(
+        await taskHost.release({ task: task.id }),
+        { busy: 'mid-turn' },
+      )
+      assert.deepEqual(
+        await taskHost.release({
+          task: task.id,
+          permanent: true,
+        }),
+        { released: 1 },
+      )
     } else {
-      const state = structuredClone(loadHydra({ hydraId }).state)
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          const decision = ending === 'archive' ? hydraEvent({
+            state: writer.state,
+            cardId: task.id,
+            change: {
+              type: 'task.visibility',
+              data: {
+                before: false,
+                after: true,
+                automatic: false,
+              },
+            },
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          }) : declareTask({
+            state: writer.state,
+            ref: task.id,
+            status: 'done',
+            note: 'Complete',
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in decision)
+          writer.append({ event: decision.event })
+        },
+      })
+      const state = loadHydra({ hydraId }).state
       const card = state.cards[task.id]!
-
-      if (ending === 'archive') {
-        card.hidden = true
-      } else {
-        card.status = {
-          id: 'done',
-          at: new Date().toISOString(),
-          actor: 'cli',
-          state: 'done',
-          note: 'Complete',
-        }
-      }
-
+      assert.equal(
+        ending === 'archive' ? card.hidden : card.status?.state === 'done',
+        true,
+      )
       taskHost.reconcile({ state })
     }
 
@@ -270,7 +378,48 @@ for (const ending of [
       what: `${ending} closes worker`,
       check: () => worker.closed(),
     })
+    await settle({
+      what: `${ending} reaps worker group`,
+      check: () => {
+        try {
+          process.kill(
+            -pid,
+            0,
+          )
+
+          return false
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+
+          if (code === 'EPERM') {
+            return false
+          }
+
+          assert.equal(
+            code,
+            'ESRCH',
+          )
+
+          return true
+        }
+      },
+    })
   } finally {
+    if (childPid) {
+      try {
+        process.kill(
+          -childPid,
+          'SIGKILL',
+        )
+      } catch (error) {
+        assert.equal(
+          (error as NodeJS.ErrnoException).code,
+          'ESRCH',
+          `${ending} child group ${childPid}`,
+        )
+      }
+    }
+
     taskHost.close()
   }
 }
