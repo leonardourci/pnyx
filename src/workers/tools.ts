@@ -160,11 +160,19 @@ export function writeTools({
   }
 }
 
-export function toolInstructions({ tools }: { tools: string[] }): string {
-  const browser = tools.includes(BROWSER_TOOL)
-    ? 'Use chrome-devtools-axi with your own isolated headless browser. Run chrome-devtools-axi stop when finished. Do not control the owner’s browser.' : ''
-
-  return `Pnyx external tool grants: ${tools.join(', ') || 'none'}. ${browser} For another tool, ask Hydra with pnyx-axi task ask; Hydra grants configured tools with task tools --grant and Pnyx resumes this conversation after the current native work settles.`
+// Only a task's worker asks Hydra for another tool; Hydra reads its own grants.
+export function toolInstructions({
+  tools,
+  worker,
+}: {
+  tools: string[]
+  worker: boolean
+}): string {
+  return [
+    `Pnyx external tool grants: ${tools.join(', ') || 'none'}.`,
+    tools.includes(BROWSER_TOOL) ? 'Use chrome-devtools-axi with your own isolated headless browser. Run chrome-devtools-axi stop when finished. Do not control the owner’s browser.' : undefined,
+    worker ? 'For another tool, ask Hydra with pnyx-axi task ask; Hydra grants configured tools with task tools --grant and Pnyx resumes this conversation after the current native work settles.' : undefined,
+  ].filter(Boolean).join(' ')
 }
 
 export function toolEnvironment({
@@ -178,13 +186,14 @@ export function toolEnvironment({
   hydraId: string
   task?: string
 }): NodeJS.ProcessEnv {
-  if (!tools.includes(BROWSER_TOOL)) {
+  // A session with no task, as the routine helper, never has a browser.
+  if (!task || !tools.includes(BROWSER_TOOL)) {
     return Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith('CHROME_DEVTOOLS_AXI_')))
   }
 
   return {
     ...env,
-    CHROME_DEVTOOLS_AXI_SESSION: `pnyx-${hydraId}-${task ?? 'hydra'}`,
+    CHROME_DEVTOOLS_AXI_SESSION: `pnyx-${hydraId}-${task === HYDRA_CARD ? 'hydra' : task}`,
     CHROME_DEVTOOLS_AXI_HEADED: '0',
     CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '0',
     CHROME_DEVTOOLS_AXI_BROWSER_URL: '',

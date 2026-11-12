@@ -548,7 +548,10 @@ export function createHost({
           }),
           instructions: [
             options.instructions,
-            toolInstructions({ tools: capabilities }),
+            taskId && toolInstructions({
+              tools: capabilities,
+              worker: taskId !== HYDRA_CARD,
+            }),
           ].filter(Boolean).join('\n\n'),
           spawned: tracked,
         })
@@ -1037,7 +1040,10 @@ export function createHost({
 
       application.attempted = true
       const entry = live.get(sessionId({ agent: card.agent }))
-      const text = toolInstructions({ tools: card.tools ?? [] })
+      const text = toolInstructions({
+        tools: card.tools ?? [],
+        worker: card.id !== HYDRA_CARD,
+      })
 
       if (entry) {
         const scheduled = entry.toolsRevision === card.toolsRevision

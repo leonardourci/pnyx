@@ -870,3 +870,150 @@ try {
 }
 
 console.log('Handoff summaries keep an empty tool set when Hydra has grants')
+
+const ownHydra = 'hydra-tools'
+await commands.hydra([
+  'create',
+  ownHydra,
+])
+const hydraSessions: ReturnType<typeof claudeNative>[] = []
+
+const hydraQuery: QueryFn = ({
+  prompt,
+  options,
+}) => {
+  const native = claudeNative()
+
+  if (options?.persistSession !== false) {
+    hydraSessions.push(native)
+  }
+
+  return native.query({
+    prompt,
+    options,
+  })
+}
+
+let hydraHost = createHost({
+  hydraId: ownHydra,
+  query: hydraQuery,
+  changed: () => {},
+  wakeDelay: 3_600_000,
+})
+const hydraCard = () => loadHydra({ hydraId: ownHydra }).state.cards.$hydra!
+const unofferHydra = offerHost({
+  hydraId: ownHydra,
+  ask: ({ body }) => hostRequest({
+    host: hydraHost,
+    body,
+  }),
+})
+
+const finishTurn = async ({ index }: { index: number }) => {
+  const session = hydraSessions[index]!
+  session.send({
+    message: {
+      ...result,
+      uuid: randomUUID(),
+      user_message_uuid: session.incoming.at(-1)!.uuid,
+      queued_turn_count: 0,
+    },
+  })
+  await settle({
+    what: `Hydra turn ${index} finishes`,
+    check: () => hydraCard().sessionActivity === 'finished',
+  })
+}
+
+try {
+  await hydraHost.hydra({
+    id: 'initial',
+    text: 'Begin',
+    actor: 'cli',
+  })
+  await settle({
+    what: 'Hydra initial input',
+    check: () => hydraSessions[0]?.incoming.length === 1,
+  })
+  await finishTurn({ index: 0 })
+  const conversation = hydraCard().agent!.sessionId
+  await runForClient({
+    identity: { PNYX_ACTOR: 'hydra' },
+    cwd: process.env.HOME!,
+    run: () => commands.task([
+      'tools',
+      '$hydra',
+      '--grant',
+      'browser',
+      '--actor',
+      'hydra',
+      '--hydra',
+      ownHydra,
+    ]),
+  })
+  await settle({
+    what: 'Hydra resumes with its own grant',
+    check: () => hydraSessions[1]?.incoming.length === 1,
+  })
+  assert.equal(
+    hydraSessions[1]!.options()?.resume,
+    conversation,
+  )
+  assert.equal(
+    hydraSessions[1]!.options()?.env?.CHROME_DEVTOOLS_AXI_SESSION,
+    `pnyx-${ownHydra}-hydra`,
+  )
+  const prompt = JSON.stringify(hydraSessions[1]!.options()?.systemPrompt)
+  assert.match(
+    prompt,
+    /Pnyx external tool grants: browser\./,
+  )
+  assert.doesNotMatch(
+    prompt,
+    /ask Hydra with pnyx-axi task ask/,
+    'Hydra is not told to ask itself for tools',
+  )
+  await settle({
+    what: 'Hydra grant applied',
+    check: () => hydraCard().toolsApplied === hydraCard().toolsRevision,
+  })
+  await finishTurn({ index: 1 })
+  recordTools({
+    hydraId: ownHydra,
+    task: '$hydra',
+    revoke: ['browser'],
+    meta: {
+      actor: 'hydra',
+      at: new Date().toISOString(),
+    },
+  })
+  hydraHost.close()
+  hydraHost = createHost({
+    hydraId: ownHydra,
+    query: hydraQuery,
+    changed: () => {},
+    wakeDelay: 3_600_000,
+  })
+  await hydraHost.recover()
+  await settle({
+    what: 'a pending Hydra grant applies after restart',
+    check: () => hydraSessions[2]?.incoming.length === 1,
+  })
+  assert.equal(
+    hydraSessions[2]!.options()?.resume,
+    conversation,
+  )
+  assert.equal(
+    hydraSessions[2]!.options()?.env?.CHROME_DEVTOOLS_AXI_SESSION,
+    undefined,
+  )
+  await settle({
+    what: 'recovered Hydra grant applied',
+    check: () => hydraCard().toolsApplied === hydraCard().toolsRevision,
+  })
+} finally {
+  hydraHost.close()
+  unofferHydra()
+}
+
+console.log('Hydra applies grants to its own card in the same conversation, including after restart')
