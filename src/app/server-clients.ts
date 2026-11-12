@@ -85,6 +85,18 @@ export function createServerClients({
   // The cards a tab shows without interests, so a card an event brings back gets its cached latest.
   let liveCards = liveCardIds()
 
+  const shownWithoutInterest = ({ id }: { id: string }) => {
+    const card = state().cards[id]
+
+    return card !== undefined && pageShows({
+      card,
+      interest: {
+        cards: [],
+        hidden: false,
+      },
+    })
+  }
+
   let derivedThrough = -1
   let derivedHistory: HydraEvent[] = []
 
@@ -681,11 +693,22 @@ export function createServerClients({
       ws: HydraClient
       interest: PageInterest
     }) {
+      const before = interestFor({ ws })
       interests.set(
         ws,
         interest,
       )
-      sendSnapshot({ ws })
+      // Only an added or released card the tab would not show anyway changes what it holds.
+      const toggled = ({ id }: { id: string }) =>
+        before.cards.includes(id) !== interest.cards.includes(id)
+      const changed = before.hidden !== interest.hidden || (!interest.hidden && [
+        ...before.cards,
+        ...interest.cards,
+      ].some(id => toggled({ id }) && !shownWithoutInterest({ id })))
+
+      if (changed) {
+        sendSnapshot({ ws })
+      }
     },
     broadcast,
     spend,

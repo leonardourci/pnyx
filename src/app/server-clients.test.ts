@@ -859,3 +859,103 @@ test(
     )
   },
 )
+
+test(
+  'opening a live card sends no snapshot; opening or releasing a hidden one does',
+  t => {
+    let state = emptyHydra()
+
+    for (const [
+      seq,
+      id,
+    ] of [
+        'live',
+        'gone',
+      ].entries()) {
+      state = reduce({
+        state,
+        event: {
+          v: 1,
+          id,
+          seq: seq + 1,
+          at: '2026-11-12T00:00:00Z',
+          actor: 'owner',
+          cardId: id,
+          type: 'task.created',
+          data: {
+            key: id,
+            title: id,
+          },
+        },
+      })
+    }
+
+    state.cards.gone!.hidden = true
+    const tabs = createServerClients({
+      hydraId: 'default',
+      state: () => state,
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting: [],
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+    t.after(() => tabs.close())
+    const received: ServerMessage[] = []
+    const client: HydraClient = {
+      OPEN: 1,
+      readyState: 1,
+      bufferedAmount: 0,
+      send({ message }) {
+        received.push(message)
+      },
+      terminate() {},
+    }
+    tabs.clients.add(client)
+
+    const snapshots = ({ cards }: { cards: string[] }) => {
+      received.length = 0
+      tabs.show({
+        ws: client,
+        interest: {
+          cards,
+          hidden: false,
+        },
+      })
+
+      return received.filter(message => message.type === 'snapshot').length
+    }
+
+    assert.equal(
+      snapshots({ cards: ['live'] }),
+      0,
+    )
+    assert.equal(
+      snapshots({
+        cards: [
+          'live',
+          'gone',
+        ],
+      }),
+      1,
+    )
+    assert.equal(
+      snapshots({ cards: ['gone'] }),
+      0,
+    )
+    assert.equal(
+      snapshots({ cards: [] }),
+      1,
+    )
+  },
+)
