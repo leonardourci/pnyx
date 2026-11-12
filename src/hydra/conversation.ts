@@ -114,10 +114,18 @@ function conversationOrder({
     const before = late.get(first)
     const after = late.get(second)
     const time = (shownAt({ entry: first }) ?? '').localeCompare(shownAt({ entry: second }) ?? '')
-    const oneLate = Boolean(before) !== Boolean(after)
 
-    if (time || oneLate) {
-      return time || (before ? 1 : -1)
+    if (time) {
+      return time
+    }
+
+    // A late message goes after the entries already at the place it takes.
+    if (before && !after) {
+      return 1
+    }
+
+    if (after && !before) {
+      return -1
     }
 
     // Late messages that share a place keep the order they were sent in.
