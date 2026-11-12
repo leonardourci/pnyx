@@ -10,8 +10,20 @@ import { redact } from './text.ts'
 
 export const SNIPPETS = 3
 const NOTE_WEIGHT = 2
-const CONTEXT_WEIGHT = 0.5
+// A term in the card's title, project or link titles outweighs that term in any one entry, so the
+// card a query names ranks above cards that only mention it, however long their history.
+const CONTEXT_WEIGHT = NOTE_WEIGHT + 1
 const SNIPPET_CHARS = 180
+
+const count = ({ found }: { found: boolean[] }) => found.filter(Boolean).length
+
+const entryWeight = ({
+  entry,
+  found,
+}: {
+  entry: Document
+  found: boolean[]
+}) => count({ found }) * (entry.kind === 'note' ? NOTE_WEIGHT : 1)
 
 function wordMatches({
   text,
@@ -233,6 +245,7 @@ export function search({
     const ranked: {
       hit: Hit
       score: number
+      latest: number
     }[] = []
     const candidates = [
       ...Object.values(state.cards).filter(card => card.id !== '$hydra'),
@@ -288,6 +301,11 @@ export function search({
           ...card.links.map(link => link.title),
         ].join(' '),
       })
+      const contextFound = terms.map(term => wordMatches({
+        text: context,
+        term,
+        fuzzy,
+      }))
       const scored = selected.map(entry => ({
         entry,
         found: terms.map(term => wordMatches({
@@ -297,16 +315,17 @@ export function search({
         })),
       }))
       const scoped = Boolean(query.kind || query.card)
-      const found = terms.map((
-        term,
+      const everyTermFound = terms.every((
+        _,
         index,
-      ) => !scoped && wordMatches({
-        text: context,
-        term,
-        fuzzy,
-      }) || scored.some(entry => entry.found[index]))
+      ) => {
+        const inContext = !scoped && contextFound[index]!
 
-      if (!found.every(Boolean) || scoped && !scored.some(entry => entry.found.every(Boolean))) {
+        return inContext || scored.some(entry => entry.found[index])
+      })
+      const scopedMatch = scored.some(entry => entry.found.every(Boolean))
+
+      if (!everyTermFound || scoped && !scopedMatch) {
         continue
       }
 
@@ -316,18 +335,13 @@ export function search({
         .sort((
           a,
           b,
-        ) => b.found.filter(Boolean).length * (b.entry.kind === 'note' ? NOTE_WEIGHT : 1) - a.found.filter(Boolean).length * (a.entry.kind === 'note' ? NOTE_WEIGHT : 1))
-      const score = scored.reduce(
-        (
-          sum,
-          entry,
-        ) => sum + entry.found.filter(Boolean).length * (entry.entry.kind === 'note' ? NOTE_WEIGHT : 1),
-        0,
-      ) + terms.filter(term => wordMatches({
-        text: context,
-        term,
-        fuzzy,
-      })).length * CONTEXT_WEIGHT
+        ) => entryWeight(b) - entryWeight(a))
+      const bestEntry = snippets[0] ? entryWeight(snippets[0]) : 0
+      const score = count({ found: contextFound }) * CONTEXT_WEIGHT + bestEntry
+      const latest = Math.max(
+        Date.parse(card.updatedAt) || 0,
+        ...snippets.map(({ entry }) => Date.parse(entry.at) || 0),
+      )
       const hit: Hit = {
         card: card.id,
         title: card.title,
@@ -350,13 +364,14 @@ export function search({
       ranked.push({
         hit,
         score,
+        latest,
       })
     }
 
     ranked.sort((
       a,
       b,
-    ) => b.score - a.score)
+    ) => b.score - a.score || b.latest - a.latest)
 
     return {
       hits: ranked.slice(

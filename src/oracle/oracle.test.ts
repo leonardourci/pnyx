@@ -26,6 +26,7 @@ after(() => rmSync(
   },
 ))
 
+const MENTIONS = 20
 const TRANSCRIPT = join(
   import.meta.dirname,
   '..',
@@ -943,6 +944,88 @@ test(
     assert.deepEqual(
       find({ text: 'xylophoneinjected' }),
       [],
+    )
+  },
+)
+
+test(
+  'a card titled with the query outranks a card that mentions it in many entries',
+  () => {
+    process.env.PNYX_HOME = mkdtempSync(join(
+      scratch,
+      'pnyx-oracle-rank-',
+    ))
+    const base = {
+      v: 1 as const,
+      actor: 'fixture',
+      at: '2026-10-15T10:00:00Z',
+    }
+    const mentions: HydraEvent[] = Array.from(
+      { length: MENTIONS },
+      (
+        _,
+        entry,
+      ) => ({
+        ...base,
+        seq: 0,
+        id: `mention-${entry}`,
+        cardId: 'task-chatty',
+        type: 'card.noted',
+        data: {
+          text: 'Looked at the gazebo lantern again.',
+          kind: 'context',
+          source: 'fixture',
+        },
+      }),
+    )
+    const events: HydraEvent[] = [
+      {
+        ...base,
+        seq: 0,
+        id: 'created-chatty',
+        cardId: 'task-chatty',
+        type: 'task.created',
+        data: {
+          key: 'chatty',
+          title: 'Long running work',
+        },
+      },
+      ...mentions,
+      {
+        ...base,
+        seq: 0,
+        id: 'created-named',
+        cardId: 'task-named',
+        type: 'task.created',
+        data: {
+          key: 'named',
+          title: 'Gazebo lantern',
+        },
+      },
+    ]
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        for (const event of events) {
+          writer.append({
+            event: {
+              ...event,
+              seq: writer.state.seq + 1,
+            },
+            effects: false,
+          })
+        }
+      },
+    })
+    assert.equal(
+      search({
+        hydraId: 'default',
+        query: {
+          text: 'gazebo lantern',
+          limit: 20,
+        },
+      }).hits[0]?.card,
+      'task-named',
     )
   },
 )

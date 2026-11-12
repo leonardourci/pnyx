@@ -58,6 +58,22 @@ test(
           event: {
             v: 1,
             seq: writer.state.seq + 1,
+            id: 'note-other',
+            at: '2020-01-01T00:00:00Z',
+            actor: 'web',
+            cardId: 'task-other',
+            type: 'card.noted',
+            data: {
+              text: 'Migration',
+              kind: 'context',
+              source: 'fixture',
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
             id: 'create-target',
             at: '2026-11-06T00:00:00Z',
             actor: 'web',
