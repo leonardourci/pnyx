@@ -1,4 +1,4 @@
-import { requireToolAuthority } from './tools.ts'
+import { BROWSER_TOOL, requireConfigured, requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -356,6 +356,30 @@ export async function startTask({
       card: currentCard,
     })
 
+    const toolNames = [
+      ...currentCard.tools ?? [],
+      ...tools ?? [],
+    ]
+
+    // Saved grants belong to the task, so a start on another harness or login checks them before it makes a copy.
+    if (how === 'pnyx' && dispatch && toolNames.some(name => name !== BROWSER_TOOL)) {
+      const catalog = await askHost({
+        hydraId,
+        body: {
+          action: 'tool-catalog',
+          task: card.id,
+          harness: dispatch.provider,
+          account: dispatch.account,
+          folder: given,
+          actor: meta.actor,
+        },
+      })
+      requireConfigured({
+        names: toolNames,
+        offered: catalog.tools as string[],
+      })
+    }
+
     const folder = replacement ? given
       : await taskFolder({
         hydraId,
@@ -380,28 +404,6 @@ export async function startTask({
     }
 
     if (how === 'pnyx') {
-      if (tools?.length) {
-        const catalog = await askHost({
-          hydraId,
-          body: {
-            action: 'tool-catalog',
-            task: card.id,
-            harness: dispatch!.provider,
-            account: dispatch!.account,
-            folder: folder ?? currentCard.folder,
-            actor: meta.actor,
-          },
-        })
-        const missing = tools.find(name => !(catalog.tools as string[]).includes(name))
-
-        if (missing) {
-          throw new HydraError({
-            message: `Tool capability is not configured: ${missing}`,
-            code: 'TOOL_UNAVAILABLE',
-          })
-        }
-      }
-
       return await askHost({
         hydraId,
         body: {

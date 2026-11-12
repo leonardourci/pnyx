@@ -337,6 +337,29 @@ test(
         ['mcp:local'],
       )
 
+      create({ key: 'unconfigured' })
+      recordTools({
+        hydraId: 'tools-start',
+        task: card({ key: 'unconfigured' }).id,
+        grant: ['mcp:elsewhere'],
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      await assert.rejects(
+        start({ key: 'unconfigured' }),
+        {
+          code: 'TOOL_UNAVAILABLE',
+          message: /mcp:elsewhere/,
+        },
+      )
+      assert.equal(
+        card({ key: 'unconfigured' }).copy,
+        undefined,
+        'a saved grant this login lacks is refused before a copy is made',
+      )
+
       const old = join(
         root,
         'old',

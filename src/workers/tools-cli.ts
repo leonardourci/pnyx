@@ -1,4 +1,4 @@
-import { recordTools, requireToolAuthority } from './tools.ts'
+import { BROWSER_TOOL, recordTools, requireConfigured, requireToolAuthority } from './tools.ts'
 import { harnessOf } from './providers.ts'
 import { loadHydra } from '#app/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -59,15 +59,10 @@ export async function toolsCommand({
       return catalog
     }
 
-    const offered = catalog.tools as string[]
-    const missing = (values.grant as string[] | undefined)?.find(name => !offered.includes(name))
-
-    if (missing) {
-      throw new HydraError({
-        message: `Tool capability is not configured: ${missing}`,
-        code: 'TOOL_UNAVAILABLE',
-      })
-    }
+    requireConfigured({
+      names: grants ?? [],
+      offered: catalog.tools as string[],
+    })
   }
 
   if (!values.grant && !values.revoke) {

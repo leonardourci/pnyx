@@ -956,7 +956,7 @@ async function scopedConfig({
   for (const name of grants) {
     if (!catalog.includes(name)) {
       throw new HydraError({
-        message: `Tool capability is not configured for this Codex login: ${name}`,
+        message: `Tool capability is not configured for this Codex login: ${name}; configure it or run \`pnyx-axi task tools <task> --revoke ${name}\``,
         code: 'TOOL_UNAVAILABLE',
       })
     }
