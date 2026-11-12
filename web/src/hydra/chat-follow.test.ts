@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createChatFollow } from './chat-follow.ts'
+import { createChatFollow, OWNER_SCROLL_MS } from './chat-follow.ts'
 
 const tracked = () => {
   const reports: boolean[] = []
@@ -27,6 +27,44 @@ test(
     assert.deepEqual(
       reports,
       [true],
+    )
+  },
+)
+
+test(
+  'a scroll that keeps going from the owner input resumes following at the bottom after the input window',
+  () => {
+    const {
+      follow,
+      reports,
+    } = tracked()
+    follow.stop()
+    follow.input({ at: 0 })
+    const step = OWNER_SCROLL_MS * 0.6
+
+    for (const [
+      index,
+      remaining,
+    ] of [
+        900,
+        600,
+        300,
+        10,
+      ].entries()) {
+      follow.scrolled({
+        at: step * (index + 1),
+        top: 1000 - remaining,
+        remaining,
+      })
+    }
+
+    assert.equal(
+      follow.following(),
+      true,
+    )
+    assert.equal(
+      reports.at(-1),
+      false,
     )
   },
 )
