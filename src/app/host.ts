@@ -1,9 +1,12 @@
 import { background } from './background.ts'
+import { hydraDir } from './home-migration.ts'
+import { nativeIdle } from '#workers/native-session.ts'
+import { toolInstructions, toolEnvironment } from '#workers/tools.ts'
 import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
-import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
+import { PROVIDERS, harnessOf, knownProvider, providerIdOf, knownHarness } from '#workers/providers.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
@@ -11,7 +14,7 @@ import { trackChildren } from '#workers/children.ts'
 import { watchAgent } from '#workers/agent-memory.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 import { createHostedHelper } from '#routine-helper/hosted-helper.ts'
-import { agentExhausted } from '#workers/dispatch.ts'
+import { agentExhausted, accountEnv } from '#workers/dispatch.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
@@ -124,6 +127,7 @@ export function createHost({
   const children = trackChildren({ hydraId })
   const controller = new AbortController()
   const live = new Map<string, Live>()
+  const toolApplications = new Map<string, string>()
   const midTurn = () => [...live.values()].some(entry => entry.activity === 'working')
   midTurnChecks.add(midTurn)
   const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
@@ -483,10 +487,26 @@ export function createHost({
           })
         }
 
+        const toolOwner = taskId ? loadHydra({ hydraId }).state.cards[taskId] : undefined
+        const inheritsTools = options.capabilities === undefined
+        const toolsRevision = inheritsTools ? toolOwner?.toolsRevision : undefined
+        const capabilities = options.capabilities ?? toolOwner?.tools ?? []
         const session = await chosen.open({
           ...options,
+          capabilities,
+          env: toolEnvironment({
+            env: options.env,
+            tools: capabilities,
+            hydraId,
+            task: taskId,
+          }),
+          instructions: [
+            options.instructions,
+            toolInstructions({ tools: capabilities }),
+          ].filter(Boolean).join('\n\n'),
           spawned: tracked,
         })
+        session.toolsRevision = toolsRevision
         ids.sessionId = `${known}:${session.id}`
         log({
           operation: 'session.open',
@@ -537,6 +557,7 @@ export function createHost({
   const {
     retire,
     open,
+    resumeTools,
     action,
     thread,
     close: closeSessions,
@@ -547,6 +568,9 @@ export function createHost({
     controller,
     children,
     streamed,
+    deferTools: ({ task }) => {
+      toolApplications.delete(task)
+    },
     usageTracker,
     compaction,
     at,
@@ -844,6 +868,106 @@ export function createHost({
       })),
     }),
     catalogCommands: catalogs.commands,
+    toolCatalog: async ({
+      task,
+      harness,
+      account: selectedAccount,
+    }) => {
+      const state = loadHydra({ hydraId }).state
+      const card = state.cards[task]
+      const savedHarness = card?.agent ? harnessOf({ provider: card.agent.provider }) : undefined
+      const selected = knownHarness({ name: harness ?? savedHarness })
+
+      if (!card || !selected) {
+        throw new HydraError({
+          message: 'Name a task and --harness claude|codex to list its configured tools',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      const { account } = accountFor({
+        effective: effectiveDispatch(),
+        harness: selected,
+        prefer: selectedAccount ?? card.agent?.account,
+      })
+      const sameHarness = !harness || harness === savedHarness
+      const sameAccount = !selectedAccount || selectedAccount === card.agent?.account
+      const sameLogin = sameHarness && sameAccount
+      const login = sameLogin && card.agent?.loginFolder
+        ? {
+          provider: selected,
+          folder: card.agent.loginFolder,
+        } : account
+      const env = accountEnv({
+        account: login,
+        env: environment({ task }),
+      })
+      const catalog = providers[providerIdOf({ harness: selected })].toolCatalog
+
+      return catalog ? catalog({
+        cwd: card.agent?.cwd ?? card.folder ?? hydraDir({ hydraId }),
+        env,
+      }) : ['browser']
+    },
+    toolsChanged: ({ task }) => {
+      const state = loadHydra({ hydraId }).state
+      const card = state.cards[task]
+      const entry = card?.agent && live.get(sessionId({ agent: card.agent }))
+
+      if (!card?.agent || card.agent.host !== 'pnyx') {
+        return
+      }
+
+      if (steeringHeld({ card }) || card.id !== HYDRA_CARD && closedTask({
+        state,
+        card,
+      })) {
+        toolApplications.delete(task)
+
+        return
+      }
+
+      if (card.toolsRevision) {
+        toolApplications.set(
+          card.id,
+          card.toolsRevision,
+        )
+      }
+
+      const text = toolInstructions({ tools: card.tools ?? [] })
+
+      if (!entry) {
+        resumeTools({
+          task,
+          text,
+        })
+
+        return
+      }
+
+      const scheduled = entry.toolsRevision === card.toolsRevision
+      const loaded = entry.session?.toolsRevision === card.toolsRevision
+
+      if (scheduled || loaded) {
+        return
+      }
+
+      entry.toolsRevision = card.toolsRevision
+      entry.stale = true
+      entry.toolResume = text
+
+      if (entry.activity === 'finished' && !entry.input.pending({ includes: () => true })
+        && entry.session && nativeIdle({ work: entry.session.snapshot().work })) {
+        retire({
+          key: sessionId({ agent: card.agent }),
+          entry,
+        })
+        resumeTools({
+          task,
+          text,
+        })
+      }
+    },
     models: catalogs.models,
     hydraId,
     hydra,
@@ -1053,6 +1177,26 @@ export function createHost({
       syncCompactions({ state })
 
       reconcilePermissions({ state })
+
+      for (const card of Object.values(state.cards)) {
+        const pending = card.toolsRevision && card.toolsRevision !== card.toolsApplied
+        const attempted = toolApplications.get(card.id) === card.toolsRevision
+        const closed = card.id !== HYDRA_CARD && closedTask({
+          state,
+          card,
+        })
+
+        if (pending && !attempted && !closed && !steeringHeld({ card }) && card.agent?.host === 'pnyx') {
+          toolApplications.set(
+            card.id,
+            card.toolsRevision!,
+          )
+          background({
+            name: 'tool grant application',
+            run: () => host.toolsChanged({ task: card.id }),
+          })
+        }
+      }
 
       const owned = children.tasks()
 

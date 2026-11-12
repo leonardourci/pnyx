@@ -358,6 +358,18 @@ export function createHostRecovery({
       }
     }
 
+    for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
+      const current = loadHydra({ hydraId }).state
+
+      if (card.toolsRevision && card.toolsRevision !== card.toolsApplied
+        && card.agent?.host === 'pnyx' && !steeringHeld({ card }) && (card.id === HYDRA_CARD || !closedTask({
+        state: current,
+        card,
+      }))) {
+        host().toolsChanged({ task: card.id })
+      }
+    }
+
     // Changes made while the server was stopped wake Hydra once it is back.
     const state = loadHydra({ hydraId }).state
 

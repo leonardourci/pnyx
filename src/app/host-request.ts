@@ -74,6 +74,36 @@ export async function hostRequestUnlocked({
         now: body.now === true,
       })
 
+    case 'tool-catalog':
+      return {
+        tools: await host.toolCatalog({
+          task: field({
+            body,
+            name: 'task',
+          })!,
+          harness: field({
+            body,
+            name: 'harness',
+            optional: true,
+          }),
+          account: field({
+            body,
+            name: 'account',
+            optional: true,
+          }),
+        }),
+      }
+
+    case 'tools-changed':
+      host.toolsChanged({
+        task: field({
+          body,
+          name: 'task',
+        })!,
+      })
+
+      return { applied: 'at the next safe turn boundary' }
+
     case 'release':
       return host.release({
         permanent: body.permanent === true,
