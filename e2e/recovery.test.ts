@@ -5,9 +5,8 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { withWriter, saveSnapshot } from '#app/writer.ts'
+import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
-import { heldHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { spoolWrite } from '#app/spool.ts'
 import { QUIET_MS, logLines, openPage, until } from '#test-harness/harness.ts'
@@ -155,12 +154,12 @@ test(
       what: 'the helper lease to release',
       check: () => !fs.existsSync(`${process.env.PNYX_HOME}/hydras/${s.hydraId}/helper-lease-${encodeURIComponent(task.id)}.json`),
     })
-    const live = heldHydra({ hydraId: s.hydraId })!
-    await saveSnapshot({ live })
+    await pnyx.restart()
     const cache = join(
-      live.dir,
+      hydraDir({ hydraId: s.hydraId }),
       'snapshot.json',
     )
+    assert.ok(fs.existsSync(cache))
     fs.rmSync(cache)
     fs.mkdirSync(cache)
     t.after(() => fs.rmSync(
