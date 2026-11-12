@@ -9,6 +9,8 @@ import { decidePush } from '#tasks/push.ts'
 import { settle } from '#test-harness/child-fixture.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { withWriter } from './writer.ts'
+import { emptyHydra, replay } from './reducer.ts'
+import { watchedTranscripts } from './latest-feed.ts'
 import { loadHydra } from './store.ts'
 import { startServer } from './server-daemon.ts'
 import { localToken } from './server-state.ts'
@@ -328,5 +330,65 @@ test(
       what: 'resumed transcript update over the socket',
       check: () => latest[working]?.text === 'Resumed session update',
     })
+  },
+)
+
+test(
+  'a hosted session releases its transcript once its task finishes, though its hook card has no activity',
+  () => {
+    const path = '/synthetic/hosted/native.jsonl'
+    const decision = decidePush({
+      state: emptyHydra(),
+      key: 'hook',
+      input: {
+        title: 'hook',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'hosted',
+          transcriptPath: path,
+          host: 'pnyx',
+        },
+      },
+      meta: {
+        actor: 'fixture',
+        at: '2026-11-12T00:00:00Z',
+      },
+    })
+    assert.ok('event' in decision)
+    const state = replay({
+      state: emptyHydra(),
+      events: [decision.event],
+    })
+    const hook = state.cards[decision.event.cardId]!
+    const [session] = Object.values(state.sessions ?? {})
+    assert.ok(session)
+    assert.equal(
+      hook.activity,
+      undefined,
+    )
+    // The shape session attachment leaves: the task card mirrors the session the host records turns on.
+    state.cards.task = {
+      ...structuredClone(hook),
+      id: 'task',
+      key: 'task',
+      sessionIds: [session.id],
+      activity: 'working',
+      sessionActivity: 'working',
+    }
+    session.taskId = 'task'
+    session.activity = 'working'
+    session.sessionActivity = 'working'
+    assert.deepEqual(
+      [...watchedTranscripts({ state })],
+      [path],
+    )
+    state.cards.task.activity = 'finished'
+    state.cards.task.sessionActivity = 'finished'
+    session.activity = 'finished'
+    session.sessionActivity = 'finished'
+    assert.deepEqual(
+      [...watchedTranscripts({ state })],
+      [],
+    )
   },
 )

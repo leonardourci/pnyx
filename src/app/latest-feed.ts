@@ -1,4 +1,4 @@
-import { sessionId } from '#workers/session-attachments.ts'
+import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
 import { dirname, join } from 'node:path'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { latestMessage, threadPath, type LatestMessage, type LatestRead } from '#hydra/transcripts-read.ts'
@@ -11,6 +11,19 @@ import { pollPath, watchPath, type PathWatch } from './watch.ts'
 
 export const LATEST_DELAY_MS = 200
 const EVENT_POLL_MS = 500
+
+// A hosted session's hook card never gets an activity, so the session decides
+// for every card that names its transcript.
+export function watchedTranscripts({ state }: { state: HydraState }): Set<string> {
+  return new Set(Object.values(state.cards).flatMap(card => {
+    const session = state.sessions?.[cardSessionId({ card }) ?? '']
+    const activity = session?.sessionActivity ?? session?.activity
+      ?? card.sessionActivity ?? card.activity
+    const finished = activity === 'finished' || activity === 'ended'
+
+    return finished ? [] : threadPath({ card }) ?? []
+  }))
+}
 
 // Each card's last conversation message, read from its transcript tail and pushed
 // to every tab. A card is read again when it gets an event or its transcript
@@ -111,12 +124,7 @@ export function createLatestFeed({
     }
   }
 
-  const watchedPaths = () => new Set(Object.values(state().cards).flatMap(card => {
-    const activity = card.sessionActivity ?? card.activity
-    const finished = activity === 'finished' || activity === 'ended'
-
-    return finished ? [] : threadPath({ card }) ?? []
-  }))
+  const watchedPaths = () => watchedTranscripts({ state: state() })
 
   const watchTranscripts = () => {
     const wanted = watchedPaths()
