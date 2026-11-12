@@ -91,12 +91,7 @@ export function useTaskReferences({
       const same = saved && Object.keys(saved).length === entries.length && entries.every(([
         id,
         value,
-      ]) => {
-        const before = saved[id]
-
-        return before && before.title === value.title && before.state === value.state
-          && before.kind === value.kind && before.column === value.column
-      })
+      ]) => JSON.stringify(saved[id]) === JSON.stringify(value))
 
       if (same) {
         return saved
