@@ -32,16 +32,18 @@ function commentValue({ value }: { value: unknown }): ChatComment | undefined {
     comment.at,
   ]
 
-  if (typeof comment.id !== 'string' || !comment.id || typeof comment.messageId !== 'string'
-    || typeof comment.text !== 'string' || typeof comment.quote !== 'string'
-    || !Number.isSafeInteger(comment.block) || !Number.isSafeInteger(comment.offset)
-    || indices.some(index => index !== undefined && (!Number.isSafeInteger(index) || index < 0))
-    || strings.some(text => text !== undefined && typeof text !== 'string')
-    || (comment.end !== undefined && (!comment.end || typeof comment.end !== 'object'
-      || !Number.isSafeInteger(comment.end.position) || !Number.isSafeInteger(comment.end.offset)))
-    || (comment.images !== undefined && (!Array.isArray(comment.images)
-      || !comment.images.every(path => typeof path === 'string')))
-    || !sendableComment({ comment })) {
+  const validIdentity = typeof comment.id === 'string' && !!comment.id && typeof comment.messageId === 'string'
+    && typeof comment.text === 'string' && typeof comment.quote === 'string'
+  const validIndices = Number.isSafeInteger(comment.block) && Number.isSafeInteger(comment.offset)
+    && indices.every(index => index === undefined || (Number.isSafeInteger(index) && index >= 0))
+  const validStrings = strings.every(text => text === undefined || typeof text === 'string')
+  const validEnd = comment.end === undefined || (!!comment.end && typeof comment.end === 'object'
+    && Number.isSafeInteger(comment.end.position) && Number.isSafeInteger(comment.end.offset))
+  const validImages = comment.images === undefined
+    || (Array.isArray(comment.images) && comment.images.every(path => typeof path === 'string'))
+  const valid = validIdentity && validIndices && validStrings && validEnd && validImages
+
+  if (!valid || !sendableComment({ comment })) {
     return
   }
 
