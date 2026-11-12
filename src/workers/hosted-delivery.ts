@@ -179,10 +179,7 @@ export function createHostedDelivery({
       })
     }
 
-    if (steering && !fenced()) {
-      return { deferred: true }
-    }
-
+    const unfenced = !fenced()
     direct ||= compactCommand({ text })
     const card = deliveringMessage.run(
       true,
@@ -228,7 +225,7 @@ export function createHostedDelivery({
               })
             }
 
-            if (steeringHeld({ card }) || settling) {
+            if (steeringHeld({ card }) || settling || unfenced) {
               return writer.state.cards[card.id] as Card & { agent: AgentRef }
             }
 
@@ -286,7 +283,7 @@ export function createHostedDelivery({
       return
     }
 
-    if (!direct && steeringHeld({ card })) {
+    if (!direct && (steeringHeld({ card }) || unfenced)) {
       return { deferred: true }
     }
 

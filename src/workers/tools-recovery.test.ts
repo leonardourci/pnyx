@@ -22,6 +22,8 @@ import { followUpSteering, STEERING_GRACE_MS } from './inbox-follow-up.ts'
 import { offerHost } from '#app/server-state.ts'
 import { hostRequest } from '#app/host-request.ts'
 
+const CHILD_EXIT_TIMEOUT_MS = 5000
+
 test(
   'tool recovery and reconciliation wait for the earlier agent to be fenced',
   async t => {
@@ -122,6 +124,21 @@ test(
         detached: true,
       },
     )
+
+    const stopChild = async () => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        return
+      }
+
+      const exited = once(
+        child,
+        'exit',
+        { signal: AbortSignal.timeout(CHILD_EXIT_TIMEOUT_MS) },
+      )
+      child.kill('SIGKILL')
+      await exited
+    }
+
     const tracker = trackChildren({ hydraId: 'fence' })
     tracker.spawned({ child })
     tracker.associate({
@@ -170,6 +187,15 @@ test(
     try {
       await host.recover()
       assert.deepEqual(
+        host.send({
+          card: task,
+          text: 'New owner instruction',
+          inputId: 'owner-during-fence',
+          actor: 'cli',
+        }),
+        { deferred: true },
+      )
+      assert.deepEqual(
         host.diagnostics().sessions,
         [],
       )
@@ -197,14 +223,13 @@ test(
       )
       assert.deepEqual(
         pendingSteering({ card: loadHydra({ hydraId: 'fence' }).state.cards[task]! }).map(message => message.id),
-        ['fenced-instruction'],
+        [
+          'fenced-instruction',
+          'owner-during-fence',
+        ],
       )
       blocked.mock.restore()
-      child.kill('SIGKILL')
-      await once(
-        child,
-        'exit',
-      )
+      await stopChild()
       await host.recover()
       await until({
         what: 'the same pending grant resumes after fencing',
@@ -215,6 +240,7 @@ test(
         'fenced-conversation',
       )
       assert.ok(JSON.stringify(sessions[0]!.incoming).includes('fenced-instruction'))
+      assert.ok(JSON.stringify(sessions[0]!.incoming).includes('owner-during-fence'))
       await until({
         what: 'fenced grant receipt',
         check: () => {
@@ -226,31 +252,27 @@ test(
     } finally {
       unoffer()
       blocked.mock.restore()
-      child.kill('SIGKILL')
 
-      if (child.exitCode === null && child.signalCode === null) {
-        await once(
-          child,
-          'exit',
+      try {
+        await stopChild()
+      } finally {
+        host.close()
+
+        if (previousHome === undefined) {
+          delete process.env.PNYX_HOME
+        } else {
+          process.env.PNYX_HOME = previousHome
+        }
+
+        process.env.PATH = previousPath
+        rmSync(
+          root,
+          {
+            recursive: true,
+            force: true,
+          },
         )
       }
-
-      host.close()
-
-      if (previousHome === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previousHome
-      }
-
-      process.env.PATH = previousPath
-      rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
     }
   },
 )
