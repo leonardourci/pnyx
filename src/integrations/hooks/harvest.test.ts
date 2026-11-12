@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync, statSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout } from 'node:timers/promises'
+import { hydraDir } from '#app/home-migration.ts'
+import { emptyHydra, reduce } from '#app/reducer.ts'
+import { mountOwnedHydra } from '#app/server.ts'
+import { writeSnapshot } from '#app/snapshot.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -15,6 +21,9 @@ import { recordEntries } from '#hydra/transcripts-read.ts'
 import type { ChatEvent } from '#hydra/model.ts'
 import { redact } from '#oracle/text.ts'
 import { replayOwned } from '#app/reducer.ts'
+
+const BACKFILL_WAIT_MS = 10_000
+const BACKFILL_POLL_MS = 20
 
 test(
   'harvesting survives replacement and lost cursors, preserves repeated sends and hides legacy copies',
@@ -569,6 +578,124 @@ test(
         'tool',
         'tool',
       ],
+    )
+  },
+)
+
+test(
+  'mounting a Hydra finishes the backfill of a legacy Hydra cursor',
+  async t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-mount-backfill-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    const resources: { mounted?: Awaited<ReturnType<typeof mountOwnedHydra>> } = {}
+    t.after(async () => {
+      await resources.mounted?.close()
+
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const transcript = join(
+      home,
+      'session.jsonl',
+    )
+    copyFileSync(
+      new URL(
+        '../../hydra/fixtures/transcripts/reliability.jsonl',
+        import.meta.url,
+      ),
+      transcript,
+    )
+    const dir = hydraDir({ hydraId: 'default' })
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-10-22T09:00:00.000Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: HYDRA_CARD,
+          title: 'Hydra',
+        },
+      },
+    })
+    state.sessions = {
+      'claude-code:old': {
+        id: 'claude-code:old',
+        originCardId: HYDRA_CARD,
+        taskId: null,
+        attention: [],
+        sourceRefs: [],
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'old',
+          transcriptPath: transcript,
+        },
+      },
+    }
+    writeSnapshot({
+      dir,
+      state,
+      offset: 0,
+    })
+    const info = statSync(transcript)
+    const cursors = join(
+      dir,
+      'harvest.json',
+    )
+    const cursorName = `${HYDRA_CARD}\n${transcript}`
+    writeFileSync(
+      cursors,
+      JSON.stringify({
+        [cursorName]: {
+          identity: `${info.dev}:${info.ino}`,
+          pos: info.size,
+        },
+      }),
+    )
+    resources.mounted = await mountOwnedHydra({
+      hydraId: 'default',
+      url: 'http://127.0.0.1/',
+      homes: [],
+      open: async () => 'http://127.0.0.1/',
+      hydrasChanged() {},
+      upgradeStatus: () => undefined,
+    })
+    const backfilled = () => JSON.parse(readFileSync(
+      cursors,
+      'utf8',
+    ))[cursorName]?.conversation === 1
+    const deadline = performance.now() + BACKFILL_WAIT_MS
+
+    while (!backfilled() && performance.now() < deadline) {
+      await setTimeout(BACKFILL_POLL_MS)
+    }
+
+    assert.equal(
+      backfilled(),
+      true,
     )
   },
 )
