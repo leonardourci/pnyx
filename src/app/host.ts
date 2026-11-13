@@ -660,7 +660,12 @@ export function createHost({
           setTimeout(
             () => background({
               name: 'tool grant retry',
-              run: () => host.toolsChanged({ task }),
+              run: () => {
+                // Node may fire a timer a millisecond before Date.now reaches its mark, so the wait counts as done.
+                application.retryAt = 0
+
+                return host.toolsChanged({ task })
+              },
             }),
             delay,
           ).unref(),

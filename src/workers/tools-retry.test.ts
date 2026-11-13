@@ -26,6 +26,7 @@ import { runForClient } from '#app/request-context.ts'
 
 // Longer than any wait here, so a delayed retry is never due during the test.
 const HOUR_MS = 3_600_000
+const CLOCK_LAG_MS = 20
 
 test(
   'failed tool reopening retries within the host bound and a new revision resets it',
@@ -426,10 +427,22 @@ test(
         'FOLDER_MISSING',
       )
       mkdirSync(timed.cwd)
-      await until({
-        what: 'a failed reopen retries at its delay with no other event',
-        check: () => sessions.get('timed')?.incoming.length === 1,
-      })
+      const realNow = Date.now.bind(Date)
+      // As when Node fires the timer just before the clock reaches the retry time.
+      const lagging = mock.method(
+        Date,
+        'now',
+        () => realNow() - CLOCK_LAG_MS,
+      )
+
+      try {
+        await until({
+          what: 'a failed reopen retries at its delay with no other event',
+          check: () => sessions.get('timed')?.incoming.length === 1,
+        })
+      } finally {
+        lagging.mock.restore()
+      }
 
       const unoffer = offerHost({
         hydraId: 'retry',
