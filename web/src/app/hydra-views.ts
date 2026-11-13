@@ -43,7 +43,7 @@ function watch<Data>({
   return watched
 }
 
-// The open Hydra's data on the page: its row, board cards, task references, messages, Hydra's own card and
+// The open Hydra's data on the page: its row, board cards, task references, the owner's latest message, Hydra's own card and
 // the cards opened outside the board. Changes from one write publish once.
 export function watchHydra({
   zero,
@@ -131,7 +131,7 @@ export function watchHydra({
         hydra,
         cards,
         references,
-        messages,
+        ownerMessage,
         ...details.values(),
       ]
 
@@ -153,7 +153,7 @@ export function watchHydra({
         cards: cards.data,
         opened: [...details.values()].flatMap(view => view.data ? [view.data] : []),
         references: references.data,
-        messages: messages.data,
+        ownerMessage: ownerMessage.data,
         previous: state,
       })
       // The Hydra row changes with every write; its queue keeps its identity while it reads the same.
@@ -195,8 +195,8 @@ export function watchHydra({
     view: zero.materialize(queries.cards.references({ hydraId })),
     changed: update,
   })
-  const messages = watch<readonly MessageRow[]>({
-    view: zero.materialize(queries.hydra.messages({ hydraId })),
+  const ownerMessage = watch<MessageRow | undefined>({
+    view: zero.materialize(queries.hydra.ownerMessage({ hydraId })),
     changed: update,
   })
   const details = new Map<string, Watched<DetailRow | undefined>>()
@@ -231,7 +231,7 @@ export function watchHydra({
         hydra,
         cards,
         references,
-        messages,
+        ownerMessage,
         ...details.values(),
       ]) {
         view.destroy()

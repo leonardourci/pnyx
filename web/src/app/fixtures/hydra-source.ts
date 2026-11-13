@@ -4,6 +4,7 @@ import type { Settings } from '#settings/model.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { emptyHydra, reduce } from '#app/reducer.ts'
+import { ownerMessage } from '#app/page-state.ts'
 
 // Keeps every part of the earlier value that reads the same, as Zero keeps an unchanged row.
 function share<Value>({
@@ -47,7 +48,7 @@ function share<Value>({
 }
 
 // Stands in for the Hydra data the page reads from Zero: a test shows a state, or one event applied to the last.
-// The page gets no event ids, and a write that changed nothing reports nothing.
+// The page gets no event ids or message history, and a write that changed nothing reports nothing.
 export function hydraSource() {
   const watched = new Map<string, {
     publish({
@@ -77,11 +78,16 @@ export function hydraSource() {
       return
     }
 
+    const {
+      hydraMessages,
+      ...shown
+    } = state
     const next = share({
       previous: entry.state,
       next: {
-        ...state,
+        ...shown,
         eventIds: {},
+        hydraOwnerMessage: ownerMessage({ messages: hydraMessages }) ?? state.hydraOwnerMessage,
       },
     })
 

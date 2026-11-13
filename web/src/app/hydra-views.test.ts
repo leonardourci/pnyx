@@ -126,8 +126,8 @@ function answerAll({
     data: [],
     resultType: 'complete',
   })
-  fake.live({ name: 'hydra.messages' })[0]!.answer({
-    data: [],
+  fake.live({ name: 'hydra.ownerMessage' })[0]!.answer({
+    data: undefined,
     resultType: 'complete',
   })
   fake.live({ name: 'cards.references' })[0]!.answer({

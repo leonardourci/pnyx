@@ -8,7 +8,7 @@ export type HydraRow = NonNullable<QueryResultType<typeof queries.hydra.one>>
 export type CardRow = QueryResultType<typeof queries.board.cards>[number]
 export type DetailRow = NonNullable<QueryResultType<typeof queries.card.detail>>
 export type ReferenceRow = QueryResultType<typeof queries.cards.references>[number]
-export type MessageRow = QueryResultType<typeof queries.hydra.messages>[number]
+export type MessageRow = NonNullable<QueryResultType<typeof queries.hydra.ownerMessage>>
 
 // Rows keep their identity while unchanged, so each card does too.
 const built = new WeakMap<object, Card>()
@@ -126,7 +126,7 @@ const referenceLists = new WeakMap<readonly ReferenceRow[], Pick<HydraState, 'ke
   shown: Set<string>
 }>()
 
-const messageLists = new WeakMap<readonly MessageRow[], HydraState['hydraMessages']>()
+const ownerMessages = new WeakMap<MessageRow, NonNullable<HydraState['hydraOwnerMessage']>>()
 
 function referencesOf({
   rows,
@@ -164,21 +164,22 @@ function referencesOf({
   return built
 }
 
-function messagesOf({ rows }: { rows: readonly MessageRow[] }) {
-  const cached = messageLists.get(rows)
-
-  if (cached) {
-    return cached
+function ownerMessageOf({ row }: { row?: MessageRow }): HydraState['hydraOwnerMessage'] {
+  if (!row) {
+    return undefined
   }
 
-  // Zero types the json column as plain JSON; it holds the message the server stored.
-  const messages = rows.map(row => row.data) as HydraState['hydraMessages']
-  messageLists.set(
-    rows,
-    messages,
+  const message = ownerMessages.get(row) ?? {
+    id: row.id,
+    task: row.task_id ?? undefined,
+    text: row.text,
+  }
+  ownerMessages.set(
+    row,
+    message,
   )
 
-  return messages
+  return message
 }
 
 export function hydraFromRows({
@@ -186,14 +187,14 @@ export function hydraFromRows({
   cards,
   opened,
   references,
-  messages,
+  ownerMessage,
   previous,
 }: {
   hydra: HydraRow
   cards: readonly CardRow[]
   opened: readonly DetailRow[]
   references: readonly ReferenceRow[]
-  messages: readonly MessageRow[]
+  ownerMessage?: MessageRow
   previous?: HydraState
 }): HydraState {
   // An opened card's detail row replaces its board row.
@@ -238,6 +239,6 @@ export function hydraFromRows({
     cards: sameCards ? previous.cards : byId,
     references: listed.references,
     keys: listed.keys,
-    hydraMessages: messagesOf({ rows: messages }),
+    hydraOwnerMessage: ownerMessageOf({ row: ownerMessage }),
   }
 }

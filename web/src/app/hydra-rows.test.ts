@@ -155,7 +155,6 @@ test(
       cards: [boardRow],
       opened: [],
       references,
-      messages: [],
     })
 
     assert.equal(
@@ -229,7 +228,6 @@ test(
       cards: [boardRow],
       opened: [],
       references,
-      messages: [],
     })
 
     assert.equal(

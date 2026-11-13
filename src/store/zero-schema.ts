@@ -1,5 +1,6 @@
 import { type ReadonlyJSONValue, boolean, createBuilder, createSchema, defineQueries, defineQuery, enumeration, json, number, relationships, string, table } from '@rocicorp/zero'
 import type { HydraConfig, HydraMessage } from '#hydra/model.ts'
+import { OWNER_ACTORS } from '#app/actors.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Ask, Card, NoteKind, TaskDeclaration, TaskKind, TaskStatus } from '#tasks/model.ts'
 import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
@@ -495,17 +496,28 @@ export const queries = defineQueries({
         )
         .one(),
     ),
-    messages: defineQuery(
+    // The owner's latest message is all of the conversation the page holds outside its thread pages.
+    ownerMessage: defineQuery(
       hydraArgs,
       ({ args }) => zql.messages
         .where(
           'hydra_id',
           args.hydraId,
         )
+        .where(
+          'action',
+          'send',
+        )
+        .where(
+          'actor',
+          'IN',
+          OWNER_ACTORS,
+        )
         .orderBy(
           'position',
-          'asc',
-        ),
+          'desc',
+        )
+        .one(),
     ),
   },
   board: {
