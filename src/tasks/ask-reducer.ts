@@ -1,5 +1,6 @@
 import { cloneValue } from '#app/preimage.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { AnswerMessage, Ask } from './model.ts'
 import { touch } from './touch.ts'
 
@@ -80,6 +81,17 @@ export function applyAsk({
           answered: accepted.id,
           answeredAt: event.at,
           fromMessage: accepted.source,
+        }
+
+        // The Hydra card never finishes, so a Hydra-wide answer taken from the owner's message closes its question
+        // here; left open, its recorded answer would stay under Hydra's chat for good.
+        if (card.id === HYDRA_CARD && accepted.source) {
+          answered.closed = {
+            id: event.id,
+            at: event.at,
+            reason: 'answered from the owner\'s message',
+            evidence: accepted.source.id,
+          }
         }
 
         if (ask.kind === 'merge' && ask.choice === 'Hold' && ask.answered) {

@@ -36,6 +36,10 @@ export const openAsks = ({
 }) => (card.asks ?? []).filter(a =>
   !a.answered && !a.closed && (!audience || a.audience === audience))
 
+// Answers recorded from the owner's messages, which the owner can still undo.
+export const recordedAnswers = ({ card }: { card: Card }) =>
+  (card.asks ?? []).filter(ask => ask.answered && ask.fromMessage && !ask.closed)
+
 export const activeAsks = ({
   card,
   audience,

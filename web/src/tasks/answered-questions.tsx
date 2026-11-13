@@ -1,12 +1,9 @@
 import type { Ask, Card } from '#tasks/model.ts'
-import { askWording } from '#tasks/ask-state.ts'
+import { askWording, recordedAnswers } from '#tasks/ask-state.ts'
 import { Disclosure, CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { clock } from '#web-hydra/chat.ts'
 import type { Command } from '#web-app/connection.ts'
-
-export const recordedAnswers = ({ card }: { card: Card }) =>
-  (card.asks ?? []).filter(ask => ask.answered && ask.fromMessage && !ask.closed)
 
 export function AnsweredQuestions({
   card,
