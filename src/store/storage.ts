@@ -11,7 +11,7 @@ export const nonblockingLocks = new AsyncLocalStorage<true>()
 const STALE_EMPTY_LOCK_MS = 10_000
 const LOCK_POLL_MS = 25
 
-// HydraSnapshot files hold copied transcript text, which is as private as the transcripts.
+// A Hydra's folder holds its spool, caches and agent files, which can quote transcripts and are as private.
 export function privateDir({ dir }: { dir: string }): void {
   mkdirSync(
     dir,

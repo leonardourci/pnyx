@@ -13,6 +13,9 @@ const WORKER_ENTRY = new URL(
 )
 // A statement the server waits on longer than this has a stuck connection behind it.
 const QUERY_TIMEOUT_MS = 30_000
+// Postgres refuses U+0000 even in json columns, so one stored value holding it would fail every later write.
+const NUL = '\u0000'
+const REPLACEMENT = '\ufffd'
 const LIVE_DATABASE = 'pnyx'
 const CONDITIONS = '--conditions='
 
@@ -31,12 +34,14 @@ export interface Request {
   rollback?: boolean
 }
 
-export type Reply = { id: number } & ({ results: Record<string, unknown>[][] } | {
+export type Outcome = { results: Record<string, unknown>[][] } | {
   error: {
     message: string
     code?: string
   }
-})
+}
+
+export type Reply = { id: number } & Outcome
 
 interface Connection {
   worker: Worker
@@ -161,18 +166,41 @@ export function configuredUrl(): string | undefined {
   return url
 }
 
-// Runs statements on the home's database and waits for them: the writer and the reducer stay synchronous, as they
-// were over fsynced files. A transaction commits all of them or none.
+// Replaces U+0000 in every string of a record headed for Postgres, in place, so memory and rows keep the same text.
+export function withoutNul<Value>({ value }: { value: Value }): Value {
+  if (typeof value === 'string') {
+    return (value.includes(NUL) ? value.replaceAll(
+      NUL,
+      REPLACEMENT,
+    ) : value) as Value
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+
+    for (const key of Object.keys(record)) {
+      record[key] = withoutNul({ value: record[key] })
+    }
+  }
+
+  return value
+}
+
+// Runs statements on the home's database and waits for them, so the writer and the reducer stay synchronous. A
+// transaction commits all of them or none.
 export function query({
   statements,
   transaction = false,
   rollback = false,
   url,
+  timeoutMs = QUERY_TIMEOUT_MS,
 }: {
   statements: Statement[]
   transaction?: boolean
   rollback?: boolean
   url?: string
+  // An import writes a whole Hydra in one transaction, which can outlast an ordinary statement's wait.
+  timeoutMs?: number
 }): Record<string, unknown>[][] {
   const target = url ?? configuredUrl()
   const open = connection({ url: target })
@@ -193,17 +221,18 @@ export function query({
     open.signal,
     0,
     0,
-    QUERY_TIMEOUT_MS,
+    timeoutMs,
   )
   const reply = receiveMessageOnPort(open.port)?.message as Reply | undefined
 
   // A request left running past its wait could still answer later; that worker goes, so its reply never answers the
   // next request, and the next request opens a new connection.
   if (waited === 'timed-out' || reply?.id !== id) {
-    void open.worker.terminate()
+    // Nothing here can wait for the worker to stop; whatever it still holds ends with it.
+    open.worker.terminate().catch(() => undefined)
     connections.delete(target ?? homeDatabase())
     throw new HydraError({
-      message: `Postgres did not answer within ${QUERY_TIMEOUT_MS / 1000}s`,
+      message: `Postgres did not answer within ${timeoutMs / 1000}s`,
       code: 'DATABASE_TIMEOUT',
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running'],
     })

@@ -2,9 +2,12 @@ import { readFileSync } from 'node:fs'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
 import { CONFLICT_CODE } from './errors.ts'
-import type { Reply, Request, Statement } from './postgres.ts'
+import type { Outcome, Reply, Request, Statement } from './postgres.ts'
 
 const MISSING_DATABASE = '3D000'
+// Two processes opening a new home at once migrate it once, under this advisory lock.
+const SCHEMA_LOCK = 'select pg_advisory_lock(hashtext(\'pnyx schema\'))'
+const SCHEMA_UNLOCK = 'select pg_advisory_unlock(hashtext(\'pnyx schema\'))'
 const DUPLICATE_DATABASE = '42P04'
 const CONNECTION_LOST = [
   '08',
@@ -77,8 +80,7 @@ async function connect(): Promise<pg.Client> {
     return connect()
   }
 
-  // Two processes opening a new home at once migrate it once.
-  await client.query('select pg_advisory_lock(hashtext(\'pnyx schema\'))')
+  await client.query(SCHEMA_LOCK)
 
   try {
     const { rows } = await client.query<{ table: string | null }>('select to_regclass(\'public.hydras\') as table')
@@ -93,7 +95,7 @@ async function connect(): Promise<pg.Client> {
       ))
     }
   } finally {
-    await client.query('select pg_advisory_unlock(hashtext(\'pnyx schema\'))')
+    await client.query(SCHEMA_UNLOCK)
   }
 
   return client
@@ -136,7 +138,7 @@ async function execute({
   return result.rows
 }
 
-async function run({ request }: { request: Request }): Promise<Omit<Reply, 'id'>> {
+async function run({ request }: { request: Request }): Promise<Outcome> {
   try {
     const client = await connection()
 
@@ -169,7 +171,8 @@ async function run({ request }: { request: Request }): Promise<Omit<Reply, 'id'>
 
       return { results }
     } catch (error) {
-      await client.query('rollback')
+      // A lost connection fails the rollback too; the caller needs the error that stopped the transaction.
+      await client.query('rollback').catch(() => undefined)
       throw error
     }
   } catch (error) {
@@ -195,26 +198,64 @@ async function run({ request }: { request: Request }): Promise<Omit<Reply, 'id'>
   }
 }
 
+const answer = ({ reply }: { reply: Reply }) => {
+  port.postMessage(reply)
+  Atomics.store(
+    signal,
+    0,
+    1,
+  )
+  Atomics.notify(
+    signal,
+    0,
+  )
+}
+
 // One request at a time on the one connection, so no request's statements land inside another's transaction.
 let running = Promise.resolve()
+let current: number | undefined
+
+const serve = async ({
+  previous,
+  request,
+}: {
+  previous: Promise<void>
+  request: Request
+}) => {
+  await previous
+  current = request.id
+  answer({
+    reply: {
+      id: request.id,
+      ...await run({ request }),
+    },
+  })
+  current = undefined
+}
 
 port.on(
   'message',
   (request: Request) => {
-    running = running.then(async () => {
-      port.postMessage({
-        id: request.id,
-        ...await run({ request }),
-      })
-      Atomics.store(
-        signal,
-        0,
-        1,
-      )
-      Atomics.notify(
-        signal,
-        0,
-      )
+    running = serve({
+      previous: running,
+      request,
     })
+  },
+)
+
+// An error that escapes a request answers it at once, instead of leaving the server waiting out its timeout.
+process.on(
+  'uncaughtException',
+  error => {
+    if (current !== undefined) {
+      answer({
+        reply: {
+          id: current,
+          error: { message: error.message },
+        },
+      })
+    }
+
+    process.exit(1)
   },
 )
