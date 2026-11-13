@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
 import { configuredUrl, homeDatabase, query } from '#store/postgres.ts'
@@ -17,6 +18,9 @@ const MIN_VERSION = 150_000
 const MAJOR_FACTOR = 10_000
 const FORMULA = 'postgresql@17'
 const READY_MS = 30_000
+// The most WAL a replication slot keeps for a zero-cache that stopped; past it Postgres invalidates the slot and zero-cache
+// syncs again on its next start.
+const MAX_SLOT_WAL = '4GB'
 const POLL_MS = 500
 // How a connection fails when no Postgres listens, over TCP or a socket file; any other failure has a running server.
 const NOT_RUNNING = /ECONNREFUSED|ENOENT|connection refused/i
@@ -201,6 +205,32 @@ function brewService({ action }: { action: 'start' | 'restart' }): void {
   })
 }
 
+// Only Homebrew's own postgresql@17 is changed and restarted; a Postgres.app, Docker or other Homebrew version that
+// answers on the same port is the owner's to configure.
+function requireHomebrewData(): void {
+  const prefix = spawnSync(
+    'brew',
+    ['--prefix'],
+    { encoding: 'utf8' },
+  )
+  const expected = prefix.status === 0 ? join(
+    prefix.stdout.trim(),
+    'var',
+    FORMULA,
+  ) : undefined
+  const actual = String(query({ statements: [{ text: 'select current_setting(\'data_directory\') as dir' }] })[0]![0]!.dir)
+
+  if (expected !== undefined && resolve(actual) === resolve(expected)) {
+    return
+  }
+
+  throw new HydraError({
+    message: `the Postgres answering keeps its data in ${actual}, not in Homebrew's ${FORMULA}, so Pnyx leaves its settings alone`,
+    code: 'POSTGRES_UNAVAILABLE',
+    help: ['Fix: run `alter system set wal_level = logical` on that Postgres, restart it, then run `pnyx-axi setup check`'],
+  })
+}
+
 // Waits for the Postgres Homebrew just started or restarted to accept connections.
 async function started(): Promise<Server | HydraError> {
   const deadline = Date.now() + READY_MS
@@ -349,7 +379,14 @@ export async function setupPostgres({
   }
 
   requireSetupHome({ allowCustomHome })
-  query({ statements: [{ text: 'alter system set wal_level = \'logical\'' }] })
+  requireHomebrewData()
+  query({
+    statements: [
+      { text: 'alter system set wal_level = \'logical\'' },
+      // A stopped server's replication slot would otherwise keep every WAL file of the cluster from then on.
+      { text: `alter system set max_slot_wal_keep_size = '${MAX_SLOT_WAL}'` },
+    ],
+  })
   brewService({ action: 'restart' })
   const restarted = await started()
   // The restart reached another server than the one that took the setting, such as a Postgres not from Homebrew.

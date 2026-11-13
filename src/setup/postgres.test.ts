@@ -6,6 +6,7 @@ import { delimiter, join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { hydraDir } from '#app/home-migration.ts'
 import { holdHydra, hydraExists } from '#app/store.ts'
+import { query } from '#store/postgres.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import type { Output } from '#app/cli-support.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
@@ -92,8 +93,8 @@ const waitingLog = ({ dir }: { dir: string }) => {
   return path
 }
 
-// A brew on PATH that only records how it was called.
-function fakeBrew(): { calls: () => string } {
+// A brew on PATH that records how it was called and prints `prefix` for `brew --prefix`.
+function fakeBrew({ prefix = '' }: { prefix?: string } = {}): { calls: () => string } {
   const bin = mkdtempSync(join(
     tmpdir(),
     'pnyx-brew-',
@@ -108,7 +109,12 @@ function fakeBrew(): { calls: () => string } {
   )
   writeFileSync(
     brew,
-    `#!/bin/sh\necho "$@" >> '${calls}'\n`,
+    `#!/bin/sh
+echo "$@" >> '${calls}'
+case "$1" in
+  --prefix) echo '${prefix}' ;;
+esac
+`,
   )
   chmodSync(
     brew,
@@ -123,6 +129,11 @@ function fakeBrew(): { calls: () => string } {
     ) : '',
   }
 }
+
+// The settings ALTER SYSTEM has written for the test's cluster.
+const alteredSettings = () => query({
+  statements: [{ text: 'select name from pg_file_settings where sourcefile like \'%postgresql.auto.conf\' order by name' }],
+})[0]!.map(row => row.name)
 
 test(
   'setup check and the digest name Postgres first when this home cannot reach it',
@@ -300,6 +311,55 @@ test(
     assert.equal(
       hydraExists({ hydraId: 'waiting' }),
       false,
+    )
+  },
+)
+
+test(
+  'setup postgres leaves the settings of a Postgres with wal_level replica that is not Homebrew\'s postgresql@17 alone',
+  async () => {
+    // The test's cluster runs with wal_level=logical, so every connection to this home's database reads wal_level
+    // through a function that answers replica, as a Postgres.app or Docker Postgres left at its default would.
+    query({
+      statements: [
+        { text: 'create schema replica_level' },
+        {
+          text: `create function replica_level.current_setting(name text) returns text language sql
+          as $$ select case when name = 'wal_level' then 'replica' else pg_catalog.current_setting(name) end $$`,
+        },
+        { text: 'do $$ begin execute format(\'alter database %I set search_path = replica_level, pg_catalog, public\', current_database()); end $$' },
+        { text: 'set search_path = replica_level, pg_catalog, public' },
+      ],
+    })
+    const dataDirectory = String(query({ statements: [{ text: 'show data_directory' }] })[0]![0]!.data_directory)
+    const prefix = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-homebrew-',
+    ))
+    const brew = fakeBrew({ prefix })
+    onPlatform({ platform: 'darwin' })
+
+    await assert.rejects(
+      () => run({
+        args: [
+          'postgres',
+          '--allow-custom-home',
+        ],
+      }),
+      {
+        code: 'POSTGRES_UNAVAILABLE',
+        message: `the Postgres answering keeps its data in ${dataDirectory}, not in Homebrew's postgresql@17, so Pnyx leaves its settings alone`,
+      },
+    )
+    assert.deepEqual(
+      [
+        brew.calls(),
+        alteredSettings(),
+      ],
+      [
+        '--prefix\n',
+        [],
+      ],
     )
   },
 )
