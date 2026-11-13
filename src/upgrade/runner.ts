@@ -243,7 +243,8 @@ export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'fa
 
 let busy = false
 
-// Pulls main, installs and builds; a failed or stopped step puts the folder back on the commit it started from.
+// Pulls main, installs, builds and checks the new build can import the data; a failed or stopped step puts the folder
+// back on the commit it started from.
 // The caller restarts the server, and only after this reports upgraded.
 // The busy flag guards one process: a CLI and a server upgrading at once can still race.
 export async function runUpgrade({
