@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
+import { createChatFollow, OWNER_SCROLL_MS, watchHistoryFocus } from './chat-follow.ts'
 
 const tracked = () => {
   const reports: boolean[] = []
@@ -68,6 +68,30 @@ test(
     assert.equal(
       reports.at(-1),
       false,
+    )
+  },
+)
+
+test(
+  'scrolls while the chat follows do not renew the owner window, so a later layout scroll keeps following',
+  () => {
+    const { follow } = tracked()
+    follow.input({ at: 0 })
+    // The glide to the bottom after the owner's input.
+    follow.scrolled({
+      at: OWNER_SCROLL_MS / 2,
+      top: 500,
+      remaining: 0,
+    })
+    // A top trim's anchoring scroll, after the owner's window ended.
+    follow.scrolled({
+      at: OWNER_SCROLL_MS + 200,
+      top: 300,
+      remaining: 200,
+    })
+    assert.equal(
+      follow.following(),
+      true,
     )
   },
 )

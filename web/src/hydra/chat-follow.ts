@@ -1,4 +1,5 @@
-// How long after the owner's last input, or the last scroll that continued it, a scroll still counts as theirs.
+// How long after the owner's last input, or the last scroll that continued it while away, a scroll still counts as
+// theirs.
 export const OWNER_SCROLL_MS = 1000
 // How near the bottom an owner's scroll resumes following.
 const RESUME_DISTANCE_PX = 40
@@ -53,8 +54,11 @@ export function createChatFollow({ changed }: { changed({ away }: { away: boolea
       lastTop = top
 
       if (owner) {
-        // A fling or a scrollbar drag keeps scrolling after its last input event.
-        inputAt = at
+        // A fling or a scrollbar drag keeps scrolling after its last input event. While the chat follows, its own
+        // glide must not renew the window, or a later layout scroll would count as the owner's.
+        if (!following) {
+          inputAt = at
+        }
 
         if (movedAway) {
           following = false
