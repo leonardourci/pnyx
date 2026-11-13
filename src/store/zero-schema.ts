@@ -384,6 +384,9 @@ const HYDRA_LIMIT = 200
 const BOARD_LIMIT = 1_000
 const REFERENCE_LIMIT = 1_000
 const LIST_LIMIT = 100
+// One page of the Updates tab, and the most Older updates reaches.
+export const HISTORY_PAGE = 50
+export const MAX_HISTORY = 5_000
 
 // The Hydra-wide fields the page reads; the rest of hydra_values is the server's.
 const PAGE_VALUES = [
@@ -421,11 +424,14 @@ interface Validator<T> {
   }
 }
 
-// A query's arguments come from the page, so each one is checked to be the strings it names.
-function strings<T extends Record<string, string>>({
+// A query's arguments come from the page, so each one is checked to be what it names: strings, and the number of
+// updates a page of card history reads.
+function validator<T extends Record<string, string | number>>({
   names,
+  counts = [],
 }: {
   names: (keyof T & string)[]
+  counts?: (keyof T & string)[]
 }): Validator<T> {
   return {
     '~standard': {
@@ -434,21 +440,32 @@ function strings<T extends Record<string, string>>({
       // eslint-disable-next-line pnyx/object-params -- Standard Schema owns this signature.
       validate: (value: unknown) => {
         const given = value as Record<string, unknown> | null
+        const isObject = typeof given === 'object' && given !== null
+        const valid = isObject && names.every(name => typeof given[name] === 'string')
+          && counts.every(name => Number.isInteger(given[name]) && (given[name] as number) > 0
+            && (given[name] as number) <= MAX_HISTORY)
 
-        return typeof given === 'object' && given !== null && names.every(name => typeof given[name] === 'string')
+        return valid
           ? { value: given as T }
-          : { issues: [{ message: `expected strings: ${names.join(', ')}` }] }
+          : { issues: [{ message: `expected strings ${names.join(', ')} and counts ${counts.join(', ')} up to ${MAX_HISTORY}` }] }
       },
     },
   }
 }
 
-const hydraArgs = strings<OfHydra>({ names: ['hydraId'] })
-const cardArgs = strings<OfCard>({
+const hydraArgs = validator<OfHydra>({ names: ['hydraId'] })
+const cardArgs = validator<OfCard>({
   names: [
     'hydraId',
     'cardId',
   ],
+})
+const historyArgs = validator<OfCard & { limit: number }>({
+  names: [
+    'hydraId',
+    'cardId',
+  ],
+  counts: ['limit'],
 })
 
 // The only reads zero-cache serves, so they are the page's permissions: the page asks for one by name and the
@@ -608,9 +625,10 @@ export const queries = defineQueries({
         )
         .one(),
     ),
-    // The Updates tab, newest first. A card moved in shows its updates from this Hydra on.
+    // The Updates tab, newest first, `limit` at a time: Older updates asks for more. A card moved in shows its updates
+    // from this Hydra on.
     history: defineQuery(
-      cardArgs,
+      historyArgs,
       ({ args }) => zql.card_updates
         .where(
           'hydra_id',
@@ -624,6 +642,7 @@ export const queries = defineQueries({
           'seq',
           'desc',
         )
+        .limit(args.limit)
         .related('event'),
     ),
   },

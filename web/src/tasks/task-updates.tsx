@@ -1,12 +1,15 @@
 import { useId, useState } from 'react'
+import { useQuery } from '@rocicorp/zero/react'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card } from '#tasks/model.ts'
+import type { TaskEvent } from '#tasks/updates.ts'
+import { HISTORY_PAGE, MAX_HISTORY, queries } from '#store/zero-schema.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
-import { useCardHistory } from './card-history.ts'
 import { hasTaskQuestion } from './task-question.ts'
 import { UpdateRow } from './update-rows.tsx'
 
+// The card's Updates, newest first, as Zero syncs them: the events its card_updates rows list.
 export function TaskUpdates({
   card,
   columns,
@@ -16,15 +19,25 @@ export function TaskUpdates({
   columns: HydraColumn[]
   hydraId: string
 }) {
-  const {
-    events,
-    loaded,
-    error,
-    retry,
-  } = useCardHistory({
+  const [
+    limit,
+    setLimit,
+  ] = useState(HISTORY_PAGE)
+  const [
+    rows,
+    result,
+  ] = useQuery(queries.card.history({
     hydraId,
     cardId: card.id,
-  })
+    limit,
+  }))
+  // A row whose event Zero has not synced yet shows once it has.
+  const events = rows.flatMap(row => row.event ? [row.event.data as TaskEvent] : [])
+  const error = result.type === 'error' ? result : undefined
+  const loaded = result.type === 'complete' || result.type === 'cached'
+  // A full page may have older updates behind it.
+  const more = rows.length === limit && limit + HISTORY_PAGE <= MAX_HISTORY
+  const older = () => setLimit(current => current + HISTORY_PAGE)
   const [
     oldestFirst,
     setOldestFirst,
@@ -110,7 +123,10 @@ export function TaskUpdates({
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
       {!shown.length && !loading && !error && <p className="empty">No updates yet.</p>}
-      {error && <p role="alert">{error} <Button onClick={retry}>Try again</Button></p>}
+      {error && <p role="alert">{error.error.message} <Button onClick={error.retry}>Try again</Button></p>}
+      {more && (
+        <Button disabled={loading} onClick={older}>Older updates</Button>
+      )}
     </div>
   )
 }

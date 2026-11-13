@@ -612,7 +612,7 @@ export function createHydraConnection({
     }
     scope.views = watch ? watch(options) : watchHydra({
       ...options,
-      zero: zero(),
+      zero: openPageZero({ installation }),
     })
 
     return scope.views
@@ -657,8 +657,6 @@ export function createHydraConnection({
       },
     })
   }
-
-  const zero = () => openPageZero({ installation })
 
   const receiveState = ({
     scope,
@@ -1236,7 +1234,7 @@ export function createHydraConnection({
       }
       const installationViews = watchShared ? watchShared(sharedOptions) : watchInstallation({
         ...sharedOptions,
-        zero: zero(),
+        zero: openPageZero({ installation }),
       })
       const stopLog = startPageLog({
         send: ({ lines }) => {

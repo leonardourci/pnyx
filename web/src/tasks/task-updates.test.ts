@@ -1,10 +1,53 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import * as nodeModule from 'node:module'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
+import type { Zero } from '@rocicorp/zero'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { Card } from '#tasks/model.ts'
 import { type TaskEvent, type TaskUpdate } from '#tasks/updates.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
+
+// Node strips types from .ts but cannot read JSX, so the Updates tab's .tsx files are transpiled as they load.
+// registerHooks exists from Node 22.15.
+const hooks = typeof nodeModule.registerHooks === 'function'
+
+nodeModule.registerHooks?.({
+  // eslint-disable-next-line pnyx/object-params -- Node owns the load hook's signature.
+  load(
+    url,
+    context,
+    next,
+  ) {
+    if (!url.endsWith('.tsx')) {
+      return next(
+        url,
+        context,
+      )
+    }
+
+    return {
+      format: 'module',
+      shortCircuit: true,
+      source: ts.transpileModule(
+        readFileSync(
+          fileURLToPath(url),
+          'utf8',
+        ),
+        {
+          compilerOptions: {
+            jsx: ts.JsxEmit.ReactJSX,
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ESNext,
+          },
+        },
+      ).outputText,
+    }
+  },
+})
 
 const event = ({
   seq,
@@ -539,6 +582,139 @@ test(
     assert.equal(
       updates[0]?.decision?.question,
       'Merge PR #281?',
+    )
+  },
+)
+
+// Stands in for the page's Zero client: every card.history view answers at once with the given rows or error. Each is
+// a client of its own, since useQuery shares views by client.
+function historyZero({
+  count,
+  error,
+}: {
+  count: number
+  error?: string
+}) {
+  const rows = Array.from(
+    { length: count },
+    (
+      _,
+      index,
+    ) => ({
+      hydra_id: 'h',
+      card_id: 'c1',
+      seq: count - index,
+      event: {
+        data: {
+          ...event({
+            seq: count - index,
+            type: 'card.renamed',
+            data: { title: `Title ${count - index}` },
+          }),
+          cardId: 'c1',
+        },
+      },
+    }),
+  )
+
+  return {
+    clientID: crypto.randomUUID(),
+    context: undefined,
+    materialize: () => ({
+      // eslint-disable-next-line pnyx/object-params -- Zero's view listener contract.
+      addListener: (listener: (
+        data: unknown,
+        resultType: string,
+        error?: unknown,
+      ) => void) => {
+        listener(
+          error ? [] : rows,
+          error ? 'error' : 'complete',
+          error ? {
+            error: 'app',
+            message: error,
+          } : undefined,
+        )
+
+        return () => {}
+      },
+      destroy() {},
+      updateTTL() {},
+    }),
+  } as unknown as Zero
+}
+
+const renderUpdates = async ({ zero }: { zero: Zero }) => {
+  const { createElement } = await import('react')
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { ZeroProvider } = await import('@rocicorp/zero/react')
+  const { TaskUpdates } = await import('./task-updates.tsx')
+
+  return renderToStaticMarkup(createElement(
+    ZeroProvider,
+    {
+      zero,
+      children: createElement(
+        TaskUpdates,
+        {
+          card: {
+            id: 'c1',
+            key: 'c1',
+            title: 'Ship it',
+            column: 'in_progress',
+            workspace: '',
+            tags: [],
+            attention: [],
+            links: [],
+            sourceRefs: [],
+            revision: 1,
+            createdSeq: 1,
+            updatedSeq: 1,
+            updatedAt: '2026-10-13T13:00:00Z',
+          } satisfies Card,
+          columns,
+          hydraId: 'h',
+        },
+      ),
+    },
+  ))
+}
+
+test(
+  'the Updates tab offers older updates only while a page comes back full',
+  { skip: !hooks },
+  async () => {
+    const { HISTORY_PAGE } = await import('#store/zero-schema.ts')
+
+    assert.match(
+      await renderUpdates({ zero: historyZero({ count: HISTORY_PAGE }) }),
+      />Older updates</,
+    )
+    assert.doesNotMatch(
+      await renderUpdates({ zero: historyZero({ count: 3 }) }),
+      /Older updates/,
+    )
+  },
+)
+
+test(
+  'updates Zero cannot read name the error and offer to read them again',
+  { skip: !hooks },
+  async () => {
+    const shown = await renderUpdates({
+      zero: historyZero({
+        count: 0,
+        error: 'query endpoint unreachable',
+      }),
+    })
+
+    assert.match(
+      shown,
+      /query endpoint unreachable/,
+    )
+    assert.match(
+      shown,
+      />Try again</,
     )
   },
 )
