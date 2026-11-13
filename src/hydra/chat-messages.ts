@@ -7,6 +7,22 @@ import { withoutInjected } from '#oracle/text.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 
+// One of the owner's messages shown in the thread.
+interface Owned {
+  message: HydraMessage
+  entry: ThreadEntry
+  // The words a transcript copy of this message can have.
+  copies: Set<string>
+  // The words of the transcript copy shown for it.
+  copy?: string
+}
+
+// An owned message shown by its transcript copy, which has a time.
+type ShownCopy = Owned & {
+  entry: ThreadEntry & { at: string }
+  copy: string
+}
+
 export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
   if (!entry.task || entry.task === HYDRA_CARD) {
     return undefined
@@ -77,14 +93,7 @@ export function hydraMessages({
     ' ',
   )
   const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
-  const owned: {
-    message: HydraMessage
-    entry: ThreadEntry
-    // The words a transcript copy of this message can have.
-    copies: Set<string>
-    // The words of the transcript copy shown for it.
-    copy?: string
-  }[] = []
+  const owned: Owned[] = []
   const rewritten = new Map<ThreadEntry, ThreadEntry>()
   const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
     entry,
@@ -188,23 +197,24 @@ export function hydraMessages({
   // A copy found by its words is the newest unclaimed message with those words sent before it, so an older message
   // cannot take a newer one's copy when its own copy is on another page.
   const copyTimes = new Map<HydraMessage, string>()
-  const shownCopies = owned.filter(item => item.copy !== undefined && item.entry.at)
+  const shownCopies = owned
+    .filter((item): item is ShownCopy => item.copy !== undefined && !!item.entry.at)
     .toSorted((
       a,
       b,
-    ) => b.entry.at!.localeCompare(a.entry.at!))
+    ) => b.entry.at.localeCompare(a.entry.at))
 
   for (const {
     entry,
     copy,
   } of shownCopies) {
-    const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy!)
-      && item.message.at <= entry.at!)
+    const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy)
+      && item.message.at <= entry.at)
 
     if (taker) {
       copyTimes.set(
         taker.message,
-        entry.at!,
+        entry.at,
       )
     }
   }
