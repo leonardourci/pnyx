@@ -152,13 +152,14 @@ export async function startServer({
         if (key !== summariesKey) {
           query({
             statements: hydras.map(summary => ({
-              text: 'update hydras set summary = $2 where id = $1 and summary::text is distinct from $2',
+              text: 'update hydras set summary = $2::json where id = $1 and summary::text is distinct from $2::text',
               values: [
                 summary.id,
                 JSON.stringify(summary),
               ],
             })),
           })
+          // Only once written, so a failed write is tried again on the next change.
           summariesKey = key
         }
       },
@@ -813,9 +814,8 @@ export async function startServer({
   // The settings log is written by any pnyx-axi process; every open page gets the change.
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
-  const startSettings = readSettings()
-  let settingsRevision = startSettings.revision
-  mirrorSettings(startSettings)
+  // Mirrored to Postgres once the first mount has reached it, and from then on whenever the log changes.
+  let settingsRevision: number | undefined
   const settingsWatcher = watchPath({
     path: settingsDir,
     changed: () => {
@@ -824,15 +824,16 @@ export async function startServer({
         settings,
       } = readSettings()
 
-      if (closed || revision === settingsRevision) {
+      if (closed || settingsRevision === undefined || revision === settingsRevision) {
         return
       }
 
-      settingsRevision = revision
       mirrorSettings({
         settings,
         revision,
       })
+      // Only once mirrored, so a mirror that failed is tried again on the next change.
+      settingsRevision = revision
       logs.apply({ settings })
       served.forEach(m => m.settings())
     },
@@ -856,13 +857,7 @@ export async function startServer({
       })
     },
   })
-  // A check made before this start may describe the build it replaced, so the notice waits for this build's own.
-  query({ statements: [{ text: 'delete from upgrade_status' }] })
-  checkUpgrade()
-  const upgradeTimer = setInterval(
-    checkUpgrade,
-    UPGRADE_CHECK_MS,
-  ).unref()
+  let upgradeTimer: NodeJS.Timeout | undefined
 
   const close = async () => {
     const stopping = performance.now()
@@ -922,9 +917,21 @@ export async function startServer({
     }
   }
 
+  // Everything from here reads Postgres, so a Postgres that is down or misconfigured stops the start and releases the
+  // claim, instead of leaving a server that holds it without serving.
   try {
     named = await mount({ id: hydraId })
     await mount({ id: 'default' })
+    const startSettings = readSettings()
+    mirrorSettings(startSettings)
+    settingsRevision = startSettings.revision
+    // A check made before this start may describe the build it replaced, so the notice waits for this build's own.
+    query({ statements: [{ text: 'delete from upgrade_status' }] })
+    checkUpgrade()
+    upgradeTimer = setInterval(
+      checkUpgrade,
+      UPGRADE_CHECK_MS,
+    ).unref()
 
     // After the first mount, which creates the home's database that zero-cache replicates.
     if (zeroCache) {
