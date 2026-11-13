@@ -3,6 +3,7 @@ import type { HydraState } from '#app/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import type { Card } from '#tasks/model.ts'
 import type { queries } from '#store/zero-schema.ts'
+import { kept } from '#web-shared/stable.ts'
 
 export type HydraRow = NonNullable<QueryResultType<typeof queries.hydra.one>>
 export type CardRow = QueryResultType<typeof queries.board.cards>[number]
@@ -49,6 +50,7 @@ function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
   }
 
   const body = row.body?.data
+  // Zero types json columns as plain JSON; the body and the list rows hold the card's parts as the server stored them.
   const card = {
     ...body,
     asks: stored({
@@ -60,6 +62,11 @@ function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
       rows: inPosition({ rows: row.declarations }).map(declaration => declaration.data),
       body,
       name: 'statusLog',
+    }),
+    replies: stored({
+      rows: inPosition({ rows: row.replies }).map(reply => reply.data),
+      body,
+      name: 'replies',
     }),
     links: inPosition({ rows: row.links }).map(link => link.data),
     facts: {
@@ -106,16 +113,23 @@ function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
   return card
 }
 
-// A hidden task, for the chips, waits, prerequisites and answer leads that read it.
-function referenceCard({ row }: { row: ReferenceRow }): Card {
+// A hidden task, for the chips, waits, prerequisites and answer leads that read it, once its reference row has synced.
+function referenceCard({ row }: { row: ReferenceRow }): Card | undefined {
+  const reference = row.reference?.data
+
+  if (!reference) {
+    return undefined
+  }
+
   const cached = built.get(row)
 
   if (cached) {
     return cached
   }
 
+  // Zero types json columns as plain JSON; this one holds the card the server stored for references.
   const card = {
-    ...row.reference,
+    ...reference,
     facts: {
       childWorking: row.child_working,
       waitTitle: row.wait_title ?? undefined,
@@ -131,20 +145,7 @@ function referenceCard({ row }: { row: ReferenceRow }): Card {
   return card
 }
 
-// The Hydra row changes with every write, so its fields keep their earlier value while they read the same.
-function kept<Value>({
-  previous,
-  next,
-}: {
-  previous: Value
-  next: Value
-}): Value {
-  const same = previous === next || JSON.stringify(previous) === JSON.stringify(next)
-
-  return same ? previous : next
-}
-
-const referenceLists = new WeakMap<readonly ReferenceRow[], Pick<HydraState, 'keys'> & {
+const referenceLists = new WeakMap<readonly ReferenceRow[], {
   references: Record<string, Card>
   shown: Set<string>
 }>()
@@ -168,16 +169,16 @@ function referencesOf({
 
   const built = {
     shown,
-    references: Object.fromEntries(rows
-      .filter(row => !shown.has(row.id) && !row.automatic_task)
-      .map(row => [
-        row.id,
-        referenceCard({ row }),
-      ])),
-    keys: Object.fromEntries(rows.map(row => [
-      row.key,
-      row.id,
-    ])),
+    references: Object.fromEntries(rows.filter(row => !shown.has(row.id)).flatMap(row => {
+      const card = referenceCard({ row })
+
+      return card ? [
+        [
+          row.id,
+          card,
+        ],
+      ] : []
+    })),
   }
   referenceLists.set(
     rows,
@@ -228,6 +229,14 @@ export function hydraFromRows({
     row.id,
     cardFromRow({ row }),
   ]))
+  const keys = Object.fromEntries([
+    ...references,
+    ...cards,
+    ...opened,
+  ].map(row => [
+    row.key,
+    row.id,
+  ]))
   const shown = Object.values(byId)
   const sameCards = previous !== undefined && Object.keys(previous.cards).length === shown.length
     && shown.every(card => previous.cards[card.id] === card)
@@ -246,6 +255,7 @@ export function hydraFromRows({
       next: value,
     }),
   ])) as Partial<HydraState>
+  // The config and its columns are the HydraConfig the server stored, split across a json column and rows.
   const config = hydra.config ? {
     ...hydra.config,
     columns: hydra.columns.map(column => column.data),
@@ -261,7 +271,10 @@ export function hydraFromRows({
     }),
     cards: sameCards ? previous.cards : byId,
     references: listed.references,
-    keys: listed.keys,
+    keys: kept({
+      previous: previous?.keys ?? keys,
+      next: keys,
+    }),
     hydraOwnerMessage: ownerMessageOf({ row: ownerMessage }),
   }
 }

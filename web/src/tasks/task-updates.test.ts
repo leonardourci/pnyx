@@ -9,7 +9,7 @@ import { emptyHydra, reduce } from '#app/reducer.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { Card } from '#tasks/model.ts'
 import { type TaskEvent, type TaskUpdate } from '#tasks/updates.ts'
-import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
+import { groupUpdates, olderUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 
 // Node strips types from .ts but cannot read JSX, so the Updates tab's .tsx files are transpiled as they load.
 // registerHooks exists from Node 22.15.
@@ -715,6 +715,52 @@ test(
     assert.match(
       shown,
       />Try again</,
+    )
+  },
+)
+
+test(
+  'Older updates stays, disabled, while the page after a full one loads, and leaves once a page comes back short',
+  async () => {
+    const {
+      HISTORY_PAGE,
+      MAX_HISTORY,
+    } = await import('#store/zero-schema.ts')
+    const pressed = HISTORY_PAGE * 2
+
+    assert.equal(
+      olderUpdates({
+        rows: HISTORY_PAGE,
+        limit: pressed,
+        loading: true,
+      }),
+      'loading',
+    )
+    assert.equal(
+      olderUpdates({
+        rows: HISTORY_PAGE + 3,
+        limit: pressed,
+        loading: false,
+      }),
+      'hidden',
+    )
+    assert.equal(
+      olderUpdates({
+        rows: 0,
+        limit: HISTORY_PAGE,
+        loading: true,
+      }),
+      'hidden',
+      'the first page loading shows no Older updates',
+    )
+    assert.equal(
+      olderUpdates({
+        rows: MAX_HISTORY,
+        limit: MAX_HISTORY,
+        loading: false,
+      }),
+      'hidden',
+      'the Updates tab reads no further than its most',
     )
   },
 )

@@ -35,6 +35,8 @@ export interface Scope {
   restoredSaves: boolean
   error: string
   loadError: string
+  // The load error came from a Zero view, which reads again only once a retry builds it anew.
+  readFailed?: boolean
   subscriptionTimer?: ReturnType<typeof setTimeout>
   subscriptionAttempt: number
   readonly thread: ThreadPage | null

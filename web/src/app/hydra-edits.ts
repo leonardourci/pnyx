@@ -3,7 +3,7 @@ import type { HydraSummary } from '#app/server-hydras.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from './connection.ts'
-import { inListOrder } from './hydra-order.ts'
+import { inListOrder } from '#app/hydra-list-order.ts'
 
 type Edit = {
   name: string

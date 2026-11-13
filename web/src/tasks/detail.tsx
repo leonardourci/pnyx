@@ -27,7 +27,8 @@ export function Detail({
     command,
     connected,
   })
-  // Updates read through the page's one Zero client, once the connection has opened it.
+  // Updates read through the page's one Zero client once the connection opens it. The provider sits here, not at the
+  // root, because a ZeroProvider renders nothing without a client, so at the root it would blank and remount the page.
   const zero = usePageZero()
 
   return (

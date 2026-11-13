@@ -19,14 +19,25 @@ export function useStableActions<Actions extends Record<string, Action>>({
   return stable
 }
 
-// The previous value while the new one reads the same, so a child receiving it is not redrawn for a copy.
+// The previous value while the next one reads the same, so whatever receives it is not redrawn for a copy.
+export function kept<Value>({
+  previous,
+  next,
+}: {
+  previous: Value
+  next: Value
+}): Value {
+  const same = previous === next || JSON.stringify(previous) === JSON.stringify(next)
+
+  return same ? previous : next
+}
+
 export function useKept<Value>({ value }: { value: Value }): Value {
-  const kept = useRef(value)
-  const same = kept.current === value || JSON.stringify(kept.current) === JSON.stringify(value)
+  const held = useRef(value)
+  held.current = kept({
+    previous: held.current,
+    next: value,
+  })
 
-  if (!same) {
-    kept.current = value
-  }
-
-  return kept.current
+  return held.current
 }

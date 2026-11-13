@@ -1343,7 +1343,7 @@ test(
 )
 
 test(
-  'a Hydra list or shared settings Zero cannot read shows its error until they read again',
+  'a Hydra list or shared settings Zero cannot read shows its error and a retry until they read again',
   async t => {
     t.after(() => stop())
     installPage({
@@ -1362,11 +1362,62 @@ test(
     open({ socket: TestSocket.current })
     hydras.show({ state: emptyHydra() })
     shared.failure({ message: 'query endpoint unreachable' })
+    assert.deepEqual(
+      connection.snapshot().recovery,
+      {
+        message: 'query endpoint unreachable',
+        action: 'retry',
+      },
+    )
+    const retries = shared.retries()
+    connection.retry()
     assert.equal(
-      connection.snapshot().recovery?.message,
-      'query endpoint unreachable',
+      shared.retries(),
+      retries + 1,
+      'a retry builds the failed views again',
     )
     shared.failure({})
+    assert.equal(
+      connection.snapshot().recovery,
+      null,
+    )
+  },
+)
+
+test(
+  'a Zero connection that stopped shows why with a retry, which reconnects it',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
+    const stop = connection.start()
+    open({ socket: TestSocket.current })
+    hydras.show({ state: emptyHydra() })
+    shared.connection({ state: 'error' })
+    assert.deepEqual(
+      connection.snapshot().recovery,
+      {
+        message: 'This page stopped receiving updates after an error.',
+        action: 'retry',
+      },
+    )
+    const retries = shared.retries()
+    connection.retry()
+    assert.equal(
+      shared.retries(),
+      retries + 1,
+    )
+    shared.connection({ state: 'connected' })
     assert.equal(
       connection.snapshot().recovery,
       null,

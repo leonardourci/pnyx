@@ -1,3 +1,4 @@
+import type { ConnectionState } from '@rocicorp/zero'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Settings } from '#settings/model.ts'
@@ -139,6 +140,7 @@ export function hydraSource() {
 
           return { unavailable: refs.filter(ref => !shown?.cards[ref] && !shown?.keys[ref]) }
         },
+        retry() {},
         close: () => {
           watched.delete(hydraId)
         },
@@ -174,7 +176,10 @@ export function sharedSource() {
       revision: number
     }): void
     failure({ message }: { message?: string }): void
+    connection({ state }: { state: ConnectionState['name'] }): void
   } | undefined
+  // How many times the page asked these views to read again.
+  let retries = 0
 
   return {
     watch: ({
@@ -182,15 +187,20 @@ export function sharedSource() {
       settings,
       upgrade,
       failure,
+      connection,
     }: NonNullable<typeof shown>) => {
       shown = {
         hydras,
         settings,
         upgrade,
         failure,
+        connection,
       }
 
       return {
+        retry: () => {
+          retries++
+        },
         close: () => {
           shown = undefined
         },
@@ -199,6 +209,8 @@ export function sharedSource() {
     hydras: ({ rows }: { rows: HydraSummary[] }) => shown?.hydras({ rows }),
     upgrade: ({ status }: { status: UpgradeStatus | undefined }) => shown?.upgrade({ status }),
     failure: ({ message }: { message?: string }) => shown?.failure({ message }),
+    connection: ({ state }: { state: ConnectionState['name'] }) => shown?.connection({ state }),
+    retries: () => retries,
     settings: ({
       settings,
       revision,

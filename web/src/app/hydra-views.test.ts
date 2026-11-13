@@ -21,9 +21,14 @@ type View = {
   }): void
 }
 
-// Stands in for Zero: every materialized view waits until the test answers it.
+// Stands in for Zero: every materialized view waits until the test answers it, and, as in Zero, a view that
+// reported an error never answers again.
 function fakeZero() {
   const views: View[] = []
+  let state: { name: string } = { name: 'connected' }
+  let connects = 0
+  // eslint-disable-next-line pnyx/object-params -- Zero's connection state listener contract.
+  const stateListeners: ((state: { name: string }) => void)[] = []
   const zero = {
     // eslint-disable-next-line pnyx/object-params -- Zero owns materialize's signature.
     materialize: (request: {
@@ -36,6 +41,7 @@ function fakeZero() {
         resultType: string,
         error?: { message: string },
       ) => void)[] = []
+      let errored = false
       const view: View = {
         name: request.query.queryName,
         args: request.args,
@@ -44,11 +50,18 @@ function fakeZero() {
           data,
           resultType,
           message,
-        }) => listeners.forEach(listener => listener(
-          data,
-          resultType,
-          message === undefined ? undefined : { message },
-        )),
+        }) => {
+          if (errored) {
+            return
+          }
+
+          errored = resultType === 'error'
+          listeners.forEach(listener => listener(
+            data,
+            resultType,
+            message === undefined ? undefined : { message },
+          ))
+        },
       }
       views.push(view)
 
@@ -68,6 +81,25 @@ function fakeZero() {
         },
       }
     },
+    connection: {
+      state: {
+        get current() {
+          return state
+        },
+        // eslint-disable-next-line pnyx/object-params -- Zero's connection state listener contract.
+        subscribe: (listener: (state: { name: string }) => void) => {
+          stateListeners.push(listener)
+
+          return () => stateListeners.splice(
+            stateListeners.indexOf(listener),
+            1,
+          )
+        },
+      },
+      connect: async () => {
+        connects++
+      },
+    },
   }
 
   const live = ({ name }: { name: string }) =>
@@ -77,7 +109,12 @@ function fakeZero() {
     zero: zero as unknown as Zero,
     views,
     live,
-    detail: ({ id }: { id: string }) => live({ name: 'card.detail' }).find(view => view.args.cardId === id),
+    detail: ({ ref }: { ref: string }) => live({ name: 'card.detail' }).find(view => view.args.ref === ref),
+    connect: ({ name }: { name: string }) => {
+      state = { name }
+      stateListeners.forEach(listener => listener(state))
+    },
+    connects: () => connects,
   }
 }
 
@@ -145,6 +182,7 @@ const detailRow = ({ id }: { id: string }) => ({
   wait_title: null,
   unmet_prerequisites: [],
   body: { data: { id } },
+  replies: [],
   questions: [],
   declarations: [],
   links: [],
@@ -170,28 +208,21 @@ test(
     })
     answerAll({
       fake,
-      references: [
-        reference({
-          id: 'task-1',
-          key: 'ship',
-        }),
-      ],
+      references: [],
     })
     await setImmediate()
-    const detail = fake.detail({ id: 'task-1' })
-    assert.ok(
-      detail,
-      'the key resolves to the card id once the references load',
-    )
-    assert.equal(
-      fake.detail({ id: 'nothing-here' }),
-      undefined,
-    )
-    detail.answer({
-      data: detailRow({ id: 'task-1' }),
+    fake.detail({ ref: 'ship' })!.answer({
+      data: {
+        ...detailRow({ id: 'task-1' }),
+        key: 'ship',
+      },
       resultType: 'complete',
     })
-    fake.detail({ id: HYDRA_CARD })!.answer({
+    fake.detail({ ref: 'nothing-here' })!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    fake.detail({ ref: HYDRA_CARD })!.answer({
       data: undefined,
       resultType: 'complete',
     })
@@ -199,13 +230,20 @@ test(
       await opened,
       { unavailable: ['nothing-here'] },
     )
-    assert.ok(states.at(-1)?.cards['task-1'])
+    assert.ok(
+      states.at(-1)?.cards['task-1'],
+      'a card past the references window opens by its key',
+    )
+    assert.equal(
+      states.at(-1)?.keys.ship,
+      'task-1',
+    )
     watched.close()
   },
 )
 
 test(
-  'a task that gets its row after it was opened loads then, and closing settles a waiting request',
+  'an opened card waits until its detail loads, and closing settles a waiting request',
   async () => {
     const fake = fakeZero()
     const watched = watchHydra({
@@ -214,40 +252,108 @@ test(
       publish: () => {},
       failed: () => {},
     })
-    // Settles only once the card loads or the view closes, which the end of this test does.
     const opening = watched.open({ refs: ['task:attempt'] })
     answerAll({
       fake,
       references: [],
     })
     await setImmediate()
-    assert.equal(
-      fake.detail({ id: 'task-new' }),
-      undefined,
-    )
-    fake.live({ name: 'cards.references' })[0]!.answer({
-      data: [
-        reference({
-          id: 'task-new',
-          key: 'task:attempt',
-        }),
-      ],
+    fake.detail({ ref: HYDRA_CARD })!.answer({
+      data: undefined,
       resultType: 'complete',
     })
     await setImmediate()
-    assert.ok(
-      fake.detail({ id: 'task-new' }),
-      'the created task loads once its row exists',
+    assert.equal(
+      await Promise.race([
+        opening,
+        setImmediate('waiting'),
+      ]),
+      'waiting',
+      'a task still being created has no row yet',
     )
-
-    const waiting = watched.open({ refs: ['task:attempt'] })
     watched.close()
     assert.deepEqual(
-      await waiting,
+      await opening,
       { unavailable: [] },
     )
-    await opening
     assert.ok(fake.views.every(view => view.destroyed))
+  },
+)
+
+test(
+  'an opened card fails to open, rather than waiting, while the board cannot be read',
+  async () => {
+    const fake = fakeZero()
+    const watched = watchHydra({
+      zero: fake.zero,
+      hydraId: 'h',
+      publish: () => {},
+      failed: () => {},
+    })
+    const opening = watched.open({ refs: ['ship'] })
+    fake.live({ name: 'board.cards' })[0]!.answer({
+      data: [],
+      resultType: 'error',
+      message: 'query endpoint unreachable',
+    })
+    await assert.rejects(
+      opening,
+      /query endpoint unreachable/,
+    )
+    watched.close()
+  },
+)
+
+test(
+  'a view Zero failed reads again only once a retry builds it anew, and the rest keep theirs',
+  async () => {
+    const fake = fakeZero()
+    const states: HydraState[] = []
+    const watched = watchHydra({
+      zero: fake.zero,
+      hydraId: 'h',
+      publish: ({ state }) => states.push(state),
+      failed: () => {},
+    })
+    const failed = fake.live({ name: 'board.cards' })[0]!
+    failed.answer({
+      data: [],
+      resultType: 'error',
+      message: 'query endpoint unreachable',
+    })
+    answerAll({
+      fake,
+      references: [],
+    })
+    await setImmediate()
+    fake.detail({ ref: HYDRA_CARD })!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    await setImmediate()
+    assert.equal(
+      states.length,
+      0,
+      'the failed view never answers again, so the board waits',
+    )
+
+    watched.retry()
+    assert.ok(failed.destroyed)
+    assert.equal(
+      fake.views.filter(view => view.name === 'hydra.one').length,
+      1,
+      'a view that read keeps reading',
+    )
+    fake.live({ name: 'board.cards' })[0]!.answer({
+      data: [],
+      resultType: 'complete',
+    })
+    await setImmediate()
+    assert.equal(
+      states.at(-1)?.seq,
+      3,
+    )
+    watched.close()
   },
 )
 
@@ -297,6 +403,7 @@ const boardCard = ({
       title,
     },
   },
+  replies: [],
   questions: [],
   declarations: [],
   links: [],
@@ -323,7 +430,11 @@ test(
       resultType: 'complete',
     })
     await setImmediate()
-    fake.detail({ id: HYDRA_CARD })!.answer({
+    fake.detail({ ref: HYDRA_CARD })!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    fake.detail({ ref: 'ship' })!.answer({
       data: undefined,
       resultType: 'complete',
     })
@@ -376,11 +487,11 @@ test(
       ],
     })
     await setImmediate()
-    fake.detail({ id: HYDRA_CARD })!.answer({
+    fake.detail({ ref: HYDRA_CARD })!.answer({
       data: undefined,
       resultType: 'complete',
     })
-    fake.detail({ id: 'broken' })!.answer({
+    fake.detail({ ref: 'broken' })!.answer({
       data: undefined,
       resultType: 'error',
       message: 'detail query failed',
@@ -403,7 +514,7 @@ test(
       'waiting',
       'the request waits for the card still loading',
     )
-    fake.detail({ id: 'slow' })!.answer({
+    fake.detail({ ref: 'slow' })!.answer({
       data: detailRow({ id: 'slow' }),
       resultType: 'complete',
     })
@@ -463,7 +574,7 @@ test(
       resultType: 'complete',
     })
     await setImmediate()
-    fake.detail({ id: HYDRA_CARD })!.answer({
+    fake.detail({ ref: HYDRA_CARD })!.answer({
       data: undefined,
       resultType: 'complete',
     })
@@ -530,7 +641,7 @@ test(
 )
 
 test(
-  'the Hydra list shows Hydras by their order, then id, and its read error reaches the page until it reads again',
+  'the Hydra list shows Hydras by their order, then id, and its read error reaches the page until a retry reads it again',
   async () => {
     const fake = fakeZero()
     const lists: string[][] = []
@@ -541,14 +652,16 @@ test(
       settings: () => {},
       upgrade: () => {},
       failure: ({ message }) => failures.push(message),
+      connection: () => {},
     })
-    const list = fake.live({ name: 'hydras.list' })[0]!
-    list.answer({
+    const failed = fake.live({ name: 'hydras.list' })[0]!
+    failed.answer({
       data: [],
       resultType: 'error',
       message: 'query endpoint unreachable',
     })
-    list.answer({
+    watched.retry()
+    fake.live({ name: 'hydras.list' })[0]!.answer({
       data: [
         {
           id: 'a',
@@ -592,5 +705,38 @@ test(
       ],
     )
     watched.close()
+  },
+)
+
+test(
+  'a Zero connection that stopped reaches the page, and a retry connects it again',
+  () => {
+    const fake = fakeZero()
+    const states: string[] = []
+    const watched = watchInstallation({
+      zero: fake.zero,
+      hydras: () => {},
+      settings: () => {},
+      upgrade: () => {},
+      failure: () => {},
+      connection: ({ state }) => states.push(state),
+    })
+    fake.connect({ name: 'error' })
+    assert.deepEqual(
+      states,
+      ['error'],
+    )
+    watched.retry()
+    assert.equal(
+      fake.connects(),
+      1,
+    )
+    watched.close()
+    fake.connect({ name: 'closed' })
+    assert.deepEqual(
+      states,
+      ['error'],
+      'a closed watch hears nothing more',
+    )
   },
 )

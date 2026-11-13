@@ -1,4 +1,5 @@
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
+import type { ConnectionState } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
@@ -16,7 +17,7 @@ import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
 import { createConnectionRequests } from './connection-requests.ts'
-import { save } from './connection-storage.ts'
+import { dropSnapshots, save } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
 import { watchHydra, watchInstallation } from './hydra-views.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
@@ -37,6 +38,13 @@ const PERMANENT_SCOPE_ERRORS = new Set([
   'UNAUTHORIZED',
   'OWNER_ONLY',
 ])
+
+// Why Zero stopped reading, for each state in which it no longer tries by itself.
+const ZERO_STOPPED: Partial<Record<ConnectionState['name'], string>> = {
+  'error': 'This page stopped receiving updates after an error.',
+  'needs-auth': 'This page stopped receiving updates because its access was refused.',
+  'closed': 'This page stopped receiving updates.',
+}
 
 const emptyQueue = (): HydraQueue => ({
   waiting: [],
@@ -89,6 +97,8 @@ export function createHydraConnection({
   let upgrade: UpgradeStatus | undefined
   // Why the Hydra list, shared settings or upgrade check could not be read.
   let installationError = ''
+  let zeroState: ConnectionState['name'] | undefined
+  let installationViews: ReturnType<WatchInstallation> | undefined
   let watchdog: ReturnType<typeof setInterval> | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
@@ -376,6 +386,7 @@ export function createHydraConnection({
       message: string
       action?: 'reload' | 'retry'
     } | null = null
+    const stopped = zeroState && ZERO_STOPPED[zeroState]
 
     if (reloadError) {
       recovery = {
@@ -387,14 +398,22 @@ export function createHydraConnection({
         message: scope.error,
         action: 'retry',
       }
+    } else if (stopped) {
+      recovery = {
+        message: stopped,
+        action: 'retry',
+      }
     } else if (scope.loadError) {
       recovery = { message: scope.loadError }
 
-      if (scope.failed) {
+      if (scope.failed || scope.readFailed) {
         recovery.action = 'retry'
       }
     } else if (installationError) {
-      recovery = { message: installationError }
+      recovery = {
+        message: installationError,
+        action: 'retry',
+      }
     }
 
     return {
@@ -566,6 +585,7 @@ export function createHydraConnection({
     scope.failed = false
     scope.subscriptionTimer = setTimeout(
       () => {
+        scope.views?.retry()
         subscribe({ scope })
         publish()
       },
@@ -607,6 +627,7 @@ export function createHydraConnection({
       },
       failed: ({ message }: { message: string }) => {
         scope.loadError = message
+        scope.readFailed = true
         publish()
       },
     }
@@ -616,6 +637,66 @@ export function createHydraConnection({
     })
 
     return scope.views
+  }
+
+  const readInstallation = () => {
+    const options = {
+      hydras: ({ rows }: { rows: HydraSummary[] }) => {
+        updateHydras({ rows })
+        publish()
+      },
+      settings: ({
+        settings,
+        revision,
+      }: {
+        settings: Settings
+        revision: number
+      }) => {
+        setLogMode({ mode: settings.logs })
+        sharedSettings().receive({
+          state: {
+            settings,
+            revision,
+          },
+        })
+      },
+      upgrade: ({ status }: { status: UpgradeStatus | undefined }) => {
+        upgrade = status
+        publish()
+      },
+      failure: ({ message = '' }: { message?: string }) => {
+        installationError = message
+        publish()
+      },
+      connection: ({ state }: { state: ConnectionState['name'] }) => {
+        zeroState = state
+        publish()
+      },
+    }
+
+    return watchShared ? watchShared(options) : watchInstallation({
+      ...options,
+      zero: openPageZero({ installation }),
+    })
+  }
+
+  // A closed Zero client never reads again, so the page opens a new one and reads every view through it.
+  const reopenZero = () => {
+    for (const scope of scopes.values()) {
+      scope.views?.close()
+      scope.views = undefined
+    }
+
+    installationViews?.close()
+    closePageZero()
+    zeroState = undefined
+    installationViews = readInstallation()
+
+    for (const scope of scopes.values()) {
+      if (scope.subscribed) {
+        readData({ scope })
+      }
+    }
   }
 
   // A card the page is still creating has no row yet, so it is on its way rather than missing.
@@ -676,6 +757,7 @@ export function createHydraConnection({
     if (scope.ready) {
       clearTimeout(scope.subscriptionTimer)
       scope.loadError = ''
+      scope.readFailed = false
     }
 
     confirmSaves({ scope })
@@ -1193,7 +1275,16 @@ export function createHydraConnection({
 
       scope.failed = false
       scope.loadError = ''
+      scope.readFailed = false
       scope.subscribed = false
+
+      if (zeroState === 'closed') {
+        reopenZero()
+      } else {
+        installationViews?.retry()
+        scope.views?.retry()
+      }
+
       subscribe({ scope })
       publish()
     },
@@ -1203,39 +1294,8 @@ export function createHydraConnection({
     },
     start() {
       active = true
-      const sharedOptions = {
-        hydras: ({ rows }: { rows: HydraSummary[] }) => {
-          updateHydras({ rows })
-          publish()
-        },
-        settings: ({
-          settings,
-          revision,
-        }: {
-          settings: Settings
-          revision: number
-        }) => {
-          setLogMode({ mode: settings.logs })
-          sharedSettings().receive({
-            state: {
-              settings,
-              revision,
-            },
-          })
-        },
-        upgrade: ({ status }: { status: UpgradeStatus | undefined }) => {
-          upgrade = status
-          publish()
-        },
-        failure: ({ message = '' }: { message?: string }) => {
-          installationError = message
-          publish()
-        },
-      }
-      const installationViews = watchShared ? watchShared(sharedOptions) : watchInstallation({
-        ...sharedOptions,
-        zero: openPageZero({ installation }),
-      })
+      dropSnapshots()
+      installationViews = readInstallation()
       const stopLog = startPageLog({
         send: ({ lines }) => {
           if (socket?.readyState !== WebSocket.OPEN) {
@@ -1302,7 +1362,8 @@ export function createHydraConnection({
           scope.views = undefined
         }
 
-        installationViews.close()
+        installationViews?.close()
+        installationViews = undefined
         closePageZero()
         removeEventListener(
           'popstate',

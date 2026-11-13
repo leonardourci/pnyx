@@ -16,10 +16,12 @@ const card = {
   child_working: false,
   unmet_prerequisites: [],
   reference: {
-    id: 'task-1',
-    key: 'ship',
-    title: 'Ship it',
-    column: 'working',
+    data: {
+      id: 'task-1',
+      key: 'ship',
+      title: 'Ship it',
+      column: 'working',
+    },
   },
 }
 
@@ -57,6 +59,22 @@ const boardRow = {
       data: {
         id: 'ask-1',
         question: 'First?',
+      },
+    },
+  ],
+  replies: [
+    {
+      position: 9,
+      data: {
+        id: 'reply-2',
+        answers: 'ask-2',
+      },
+    },
+    {
+      position: 8,
+      data: {
+        id: 'reply-1',
+        answers: 'ask-1',
       },
     },
   ],
@@ -115,11 +133,13 @@ const boardRow = {
           child_working: false,
           unmet_prerequisites: [],
           reference: {
-            id: 'task-2',
-            key: 'old',
-            title: 'Old work',
-            column: 'done',
-            hidden: true,
+            data: {
+              id: 'task-2',
+              key: 'old',
+              title: 'Old work',
+              column: 'done',
+              hidden: true,
+            },
           },
         },
       },
@@ -172,35 +192,30 @@ const references = [
     hidden: true,
     wait_title: 'Ship it',
     reference: {
-      id: 'task-2',
-      key: 'old',
-      title: 'Old work',
-      column: 'done',
-      hidden: true,
-      status: {
-        id: 'status-9',
-        state: 'needs_you',
-        note: 'Pick a name',
-        at: '2026-11-13T00:00:00.000Z',
-        actor: 'agent',
-      },
-      asks: [
-        {
-          id: 'ask-9',
-          audience: 'owner',
-          question: 'Which name?',
+      data: {
+        id: 'task-2',
+        key: 'old',
+        title: 'Old work',
+        column: 'done',
+        hidden: true,
+        status: {
+          id: 'status-9',
+          state: 'needs_you',
+          note: 'Pick a name',
           at: '2026-11-13T00:00:00.000Z',
           actor: 'agent',
         },
-      ],
+        asks: [
+          {
+            id: 'ask-9',
+            audience: 'owner',
+            question: 'Which name?',
+            at: '2026-11-13T00:00:00.000Z',
+            actor: 'agent',
+          },
+        ],
+      },
     },
-  },
-  {
-    ...card,
-    id: 'session-1',
-    key: 'session',
-    title: 'A session',
-    automatic_task: true,
   },
 ] as unknown as ReferenceRow[]
 
@@ -271,7 +286,6 @@ test(
       {
         ship: 'task-1',
         old: 'task-2',
-        session: 'session-1',
       },
     )
   },
@@ -326,6 +340,13 @@ test(
       ],
     )
     assert.deepEqual(
+      shown?.replies?.map(reply => reply.id),
+      [
+        'reply-1',
+        'reply-2',
+      ],
+    )
+    assert.deepEqual(
       shown?.notes?.map(note => note.id),
       [
         'note-1',
@@ -369,6 +390,7 @@ test(
           },
           questions: [],
           declarations: [],
+          replies: [],
         } as unknown as CardRow,
       ],
       opened: [],
