@@ -507,7 +507,10 @@ export function commit(
           seq,
           intent,
         })
-        const original = readEvents({ hydraId }).find(event => event.id === meta.id)
+        const original = readEvents({
+          hydraId,
+          ids: [meta.id!],
+        })[0]
 
         if (original?.type === 'hydra.memory' && original.data.key === 'workers') {
           workerNotesNotice({

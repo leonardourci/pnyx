@@ -32,32 +32,81 @@ const eventsAfter = ({
   ],
 })[0] as { data: HydraEvent }[]).map(row => row.data)
 
-export function readEvents({
-  hydraId,
-  cardId,
-  types,
-  after = 0,
-  ids,
-}: {
+export interface EventSelection {
   hydraId: string
   cardId?: string
+  cardIds?: string[]
   types?: string[]
   after?: number
+  before?: number
   ids?: string[]
-}): HydraEvent[] {
+  seqs?: number[]
+  limit?: number
+  descending?: boolean
+  updates?: boolean
+}
+
+function eventSelection({
+  hydraId,
+  cardId,
+  cardIds,
+  types,
+  after = 0,
+  before,
+  ids,
+  seqs,
+  updates = false,
+}: EventSelection) {
+  const cards = cardIds ?? (cardId === undefined ? null : [cardId])
+
+  return {
+    where: `where hydra_id = $1 and seq > $2
+      and ($3::text[] is null or $9::boolean or card_id = any($3)
+        or (type = 'hydra.message' and (data->'data'->>'task' = any($3)
+          or exists (select 1 from unnest($8::text[]) related(id)
+            where strpos(coalesce(data->'data'->>'text', ''), related.id) > 0)))
+        or (type = 'task.session' and
+          (data->'data'->>'before' = any($3) or data->'data'->>'after' = any($3))))
+      and ($4::text[] is null or type = any($4))
+      and ($5::text[] is null or id = any($5))
+      and ($6::bigint[] is null or seq = any($6))
+      and ($7::bigint is null or seq < $7)
+      and (not $9::boolean or exists (select 1 from card_updates updated
+        where updated.hydra_id = events.hydra_id and updated.seq = events.seq
+          and ($3::text[] is null or updated.card_id = any($3))))`,
+    values: [
+      hydraId,
+      after,
+      cards,
+      types ?? null,
+      ids ?? null,
+      seqs ?? null,
+      before ?? null,
+      cards?.flatMap(id => [
+        id,
+        encodeURIComponent(id),
+      ]) ?? null,
+      updates,
+    ],
+  }
+}
+
+export function readEvents({
+  limit,
+  descending = false,
+  ...selection
+}: EventSelection): HydraEvent[] {
+  const {
+    where,
+    values,
+  } = eventSelection(selection)
   const [rows] = query({
     statements: [
       {
-        text: `select data from events where hydra_id = $1 and seq > $2
-      and ($3::text is null or card_id = $3 or type in ('hydra.message', 'task.session'))
-      and ($4::text[] is null or type = any($4))
-      and ($5::text[] is null or id = any($5)) order by seq`,
+        text: `select data from events ${where} order by seq ${descending ? 'desc' : 'asc'} limit $10`,
         values: [
-          hydraId,
-          after,
-          cardId ?? null,
-          types ?? null,
-          ids ?? null,
+          ...values,
+          limit ?? null,
         ],
       },
     ],
@@ -66,13 +115,87 @@ export function readEvents({
   return rows!.map(row => row.data)
 }
 
+export function countEvents({ ...selection }: Omit<EventSelection, 'limit' | 'descending'>): number {
+  const {
+    where,
+    values,
+  } = eventSelection(selection)
+  const [rows] = query({
+    statements: [
+      {
+        text: `select count(*)::integer as count from events ${where}`,
+        values,
+      },
+    ],
+  })
+
+  return Number(rows![0]!.count)
+}
+
+const EVENT_PAGE_SIZE = 200
+
+// Scans that need old history retain only one bounded page, in either direction.
+export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+  let after = selection.after ?? 0
+  let before = selection.before
+
+  while (true) {
+    const page = readEvents({
+      ...selection,
+      after,
+      before,
+      limit: EVENT_PAGE_SIZE,
+    })
+
+    if (!page.length) {
+      return
+    }
+
+    yield* page
+
+    if (selection.descending) {
+      before = page.at(-1)!.seq
+    } else {
+      after = page.at(-1)!.seq
+    }
+
+    if (page.length < EVENT_PAGE_SIZE) {
+      return
+    }
+  }
+}
+
+export function findEvent({
+  matches,
+  ...selection
+}: Omit<EventSelection, 'limit'> & {
+  matches({ event }: { event: HydraEvent }): boolean
+}): HydraEvent | undefined {
+  for (const event of scanEvents(selection)) {
+    if (matches({ event })) {
+      return event
+    }
+  }
+}
+
 // A Hydra's events, from its events.jsonl while it still waits to be imported, for the one-time moves of old values.
-export function eventsOrLegacy({ hydraId }: { hydraId: string }): HydraEvent[] {
+export function eventsOrLegacy({
+  hydraId,
+  types,
+}: {
+  hydraId: string
+  types?: string[]
+}): HydraEvent[] {
   if (hydraExists({ hydraId })) {
-    return readEvents({ hydraId })
+    return readEvents({
+      hydraId,
+      types,
+    })
   }
 
-  return readLog({ dir: hydraDir({ hydraId }) }).events
+  const events = readLog({ dir: hydraDir({ hydraId }) }).events
+
+  return types ? events.filter(event => types.includes(event.type)) : events
 }
 
 // Read candidates from Postgres, then apply the caller's task association rule.

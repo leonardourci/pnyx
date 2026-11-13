@@ -594,7 +594,13 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
     const spend = taskSpend({
       state,
-      events: readEvents({ hydraId }),
+      events: readEvents({
+        hydraId,
+        types: [
+          'board.configured',
+          'task.session',
+        ],
+      }),
       task: task.id,
     })
 
@@ -1026,9 +1032,12 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     },
   })
 
-  if (action === 'attach' && typeof result.event === 'object' && result.event !== null && 'id' in result.event) {
+  if (action === 'attach' && typeof result.event === 'object' && result.event !== null && 'id' in result.event && typeof result.event.id === 'string') {
     const eventId = result.event.id
-    const attachment = readEvents({ hydraId }).find(e => e.id === eventId)
+    const attachment = readEvents({
+      hydraId,
+      ids: [eventId],
+    })[0]
 
     if (attachment?.type === 'task.session') {
       return afterAttach({
