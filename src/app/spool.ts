@@ -3,8 +3,8 @@ import { hydraDir } from './home-migration.ts'
 import { join } from 'node:path'
 import { writeFileSync, renameSync } from 'node:fs'
 
-// Writes one hook event to the spool without taking the writer lock. The next
-// writer ingests it; the spool is a buffer, never a second writer of the log.
+// Writes one hook event to the spool without a write of its own. The next write ingests it; the spool is a buffer,
+// never a second writer of the Hydra.
 export function spoolWrite({
   hydraId,
   entry,

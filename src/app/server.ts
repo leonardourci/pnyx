@@ -254,6 +254,11 @@ export async function mountOwnedHydra({
 
     const live = heldHydra({ hydraId })
 
+    // A write that failed reads the held Hydra back into a new state, with no event to carry it here.
+    if (live) {
+      state = live.state
+    }
+
     for (const event of read.events) {
       // A held Hydra's writer has already applied the event to the state this server reads.
       if (live) {

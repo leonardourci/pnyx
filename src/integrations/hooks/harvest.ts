@@ -492,9 +492,12 @@ export function harvestTranscripts({
   }
 
   if (moved) {
-    writeCursors({
-      dir: writer.dir,
-      cursors,
+    const saved = structuredClone(cursors)
+    writer.afterCommit({
+      run: () => writeCursors({
+        dir: writer.dir,
+        cursors: saved,
+      }),
     })
   }
 
@@ -565,9 +568,12 @@ export function backfillConversations({
             item,
             end: progress.end,
           }
-          writeCursors({
-            dir: writer.dir,
-            cursors,
+          const saved = structuredClone(cursors)
+          writer.afterCommit({
+            run: () => writeCursors({
+              dir: writer.dir,
+              cursors: saved,
+            }),
           })
 
           return {
@@ -600,9 +606,12 @@ export function backfillConversations({
       delete cursor.backfill
     }
 
-    writeCursors({
-      dir: writer.dir,
-      cursors,
+    const saved = structuredClone(cursors)
+    writer.afterCommit({
+      run: () => writeCursors({
+        dir: writer.dir,
+        cursors: saved,
+      }),
     })
 
     return {

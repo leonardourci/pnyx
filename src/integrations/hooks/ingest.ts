@@ -327,7 +327,8 @@ export function drainSpool({ writer }: {
       continue
     }
 
-    rmSync(file)
+    // A spooled event is gone from the spool only once the write that took it commits.
+    writer.afterCommit({ run: () => rmSync(file) })
     ingested += 1
   }
 

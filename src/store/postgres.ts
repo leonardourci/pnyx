@@ -13,6 +13,7 @@ const WORKER_ENTRY = new URL(
 // A statement the server waits on longer than this has a stuck connection behind it.
 const QUERY_TIMEOUT_MS = 30_000
 const LIVE_DATABASE = 'pnyx'
+const CONDITIONS = '--conditions='
 // What the worker reports when a conditional write matched another row count.
 export const CONFLICT_CODE = 'PNYX_CONFLICT'
 
@@ -24,17 +25,17 @@ export interface Statement {
 }
 
 export interface Request {
+  id: number
   statements: Statement[]
   transaction: boolean
 }
 
-export type Reply = { results: Record<string, unknown>[][] } | {
+export type Reply = { id: number } & ({ results: Record<string, unknown>[][] } | {
   error: {
     message: string
     code?: string
-    constraint?: string
   }
-}
+})
 
 interface Connection {
   worker: Worker
@@ -43,6 +44,13 @@ interface Connection {
 }
 
 const connections = new Map<string, Connection>()
+let requests = 0
+// A refused conditional write, a serialization failure, and a duplicate key, such as an event seq or id already taken.
+const CONFLICTS = new Set([
+  CONFLICT_CODE,
+  '40001',
+  '23505',
+])
 
 // The live home's database is pnyx; every other home, such as the dev home or a test's, gets its own name, so two
 // homes never share one. Host, port and user come from the usual libpq environment (PGHOST, PGPORT, PGUSER).
@@ -93,6 +101,8 @@ function connection({ url }: { url?: string }): Connection {
         } : { database },
       },
       transferList: [port2],
+      // The worker needs only the import conditions; a flag such as --input-type from `node -e` would stop it loading.
+      execArgv: process.execArgv.filter(arg => arg.startsWith(CONDITIONS)),
       // The worker prints nothing; left unpiped, its streams add no listener per home and keep no command running.
       stdout: true,
       stderr: true,
@@ -110,6 +120,19 @@ function connection({ url }: { url?: string }): Connection {
     key,
     opened,
   )
+  // A worker that died is replaced on the next request; its error reached the caller as a timeout.
+  worker.once(
+    'error',
+    () => undefined,
+  )
+  worker.once(
+    'exit',
+    () => {
+      if (connections.get(key) === opened) {
+        connections.delete(key)
+      }
+    },
+  )
 
   return opened
 }
@@ -126,12 +149,15 @@ export function query({
   url?: string
 }): Record<string, unknown>[][] {
   const open = connection({ url })
+  requests += 1
+  const id = requests
   Atomics.store(
     open.signal,
     0,
     0,
   )
   open.port.postMessage({
+    id,
     statements,
     transaction,
   } satisfies Request)
@@ -143,7 +169,11 @@ export function query({
   )
   const reply = receiveMessageOnPort(open.port)?.message as Reply | undefined
 
-  if (waited === 'timed-out' || !reply) {
+  // A request left running past its wait could still answer later; that worker goes, so its reply never answers the
+  // next request, and the next request opens a new connection.
+  if (waited === 'timed-out' || reply?.id !== id) {
+    void open.worker.terminate()
+    connections.delete(url ?? homeDatabase())
     throw new HydraError({
       message: `Postgres did not answer within ${QUERY_TIMEOUT_MS / 1000}s`,
       code: 'DATABASE_TIMEOUT',
@@ -154,9 +184,7 @@ export function query({
   if ('error' in reply) {
     throw new HydraError({
       message: `Postgres: ${reply.error.message}`,
-      code: reply.error.code === CONFLICT_CODE || reply.error.code === '40001' || reply.error.constraint
-        ? 'CONFLICT'
-        : 'DATABASE_ERROR',
+      code: CONFLICTS.has(reply.error.code ?? '') ? 'CONFLICT' : 'DATABASE_ERROR',
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running and configured'],
     })
   }

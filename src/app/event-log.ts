@@ -9,8 +9,11 @@ type Index = Map<string, HydraEvent[]>
 
 // ponytail: the server keeps every event it has read (65 MB of heap for a 45 MB log); query the events table per
 // card if that is too much.
+// through is the seq the events were read up to, which may pass the last one kept: an imported Hydra's last events
+// can be agent transcript copies that stayed out of Postgres.
 const read = new Map<string, {
   events: HydraEvent[]
+  through: number
   indexes: Map<EventKeys, Index>
 }>()
 
@@ -97,6 +100,7 @@ function eventLog({ hydraId }: { hydraId: string }) {
   if (!entry) {
     entry = {
       events: [],
+      through: 0,
       indexes: new Map(),
     }
     read.set(
@@ -105,16 +109,25 @@ function eventLog({ hydraId }: { hydraId: string }) {
     )
   }
 
-  const last = entry.events.at(-1)?.seq ?? 0
+  const held = heldHydra({ hydraId })?.state.seq
 
-  if (heldHydra({ hydraId })?.state.seq !== last) {
+  if (held !== entry.through) {
+    const events = eventsAfter({
+      hydraId,
+      seq: entry.through,
+    })
     extend({
       entry,
-      events: eventsAfter({
-        hydraId,
-        seq: last,
-      }),
+      events,
     })
+    const lastRead = events.at(-1)?.seq
+
+    // A held Hydra is read up to its own seq; any other up to the last event the query found.
+    if (held !== undefined) {
+      entry.through = held
+    } else if (lastRead !== undefined) {
+      entry.through = lastRead
+    }
   }
 
   return entry
@@ -132,11 +145,13 @@ export function rememberEvents({
 }): void {
   const entry = read.get(homeScoped({ hydraId }))
 
-  if (entry && (entry.events.at(-1)?.seq ?? 0) === from) {
+  if (entry?.through === from) {
     extend({
       entry,
       events,
     })
+    // Only a write that appended events commits, so there is a last one.
+    entry.through = events.at(-1)!.seq
   }
 }
 

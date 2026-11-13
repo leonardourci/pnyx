@@ -5,6 +5,10 @@ import { CONFLICT_CODE, type Reply, type Request, type Statement } from './postg
 
 const MISSING_DATABASE = '3D000'
 const DUPLICATE_DATABASE = '42P04'
+const CONNECTION_LOST = [
+  '08',
+  '57P',
+]
 
 const {
   port,
@@ -16,15 +20,37 @@ const {
   config: pg.ClientConfig & { database: string }
 }
 
+// The same server's maintenance database, which can create this one; a connection string names its database itself.
+function adminConfig(): pg.ClientConfig {
+  if (!config.connectionString) {
+    return {
+      ...config,
+      database: 'postgres',
+    }
+  }
+
+  const url = new URL(config.connectionString)
+  url.pathname = '/postgres'
+
+  return { connectionString: url.href }
+}
+
 // A home's database appears on its first use, with the folded migration applied once.
 async function connect(): Promise<pg.Client> {
   const client = new pg.Client(config)
+
   // A dropped connection, as when Postgres restarts, is replaced on the next request.
+  const drop = () => {
+    ready = undefined
+  }
+
   client.on(
     'error',
-    () => {
-      ready = undefined
-    },
+    drop,
+  )
+  client.on(
+    'end',
+    drop,
   )
 
   try {
@@ -34,10 +60,7 @@ async function connect(): Promise<pg.Client> {
       throw error
     }
 
-    const admin = new pg.Client({
-      ...config,
-      database: 'postgres',
-    })
+    const admin = new pg.Client(adminConfig())
     await admin.connect()
 
     try {
@@ -53,16 +76,23 @@ async function connect(): Promise<pg.Client> {
     return connect()
   }
 
-  const { rows } = await client.query<{ table: string | null }>('select to_regclass(\'public.hydras\') as table')
+  // Two processes opening a new home at once migrate it once.
+  await client.query('select pg_advisory_lock(hashtext(\'pnyx schema\'))')
 
-  if (!rows[0]?.table) {
-    await client.query(readFileSync(
-      new URL(
-        './schema.sql',
-        import.meta.url,
-      ),
-      'utf8',
-    ))
+  try {
+    const { rows } = await client.query<{ table: string | null }>('select to_regclass(\'public.hydras\') as table')
+
+    if (!rows[0]?.table) {
+      await client.query(readFileSync(
+        new URL(
+          './schema.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ))
+    }
+  } finally {
+    await client.query('select pg_advisory_unlock(hashtext(\'pnyx schema\'))')
   }
 
   return client
@@ -105,7 +135,7 @@ async function execute({
   return result.rows
 }
 
-async function run({ request }: { request: Request }): Promise<Reply> {
+async function run({ request }: { request: Request }): Promise<Omit<Reply, 'id'>> {
   try {
     const client = await connection()
 
@@ -145,31 +175,45 @@ async function run({ request }: { request: Request }): Promise<Reply> {
     const failure = error as {
       message?: string
       code?: string
-      constraint?: string
+    }
+
+    // A connection exception (08), a shutdown or restart (57P) or an error without a code ends the connection, so the
+    // next request opens another.
+    const { code } = failure
+
+    if (code === undefined || CONNECTION_LOST.some(prefix => code.startsWith(prefix))) {
+      ready = undefined
     }
 
     return {
       error: {
         message: failure.message ?? String(error),
         code: failure.code,
-        constraint: failure.constraint,
       },
     }
   }
 }
 
+// One request at a time on the one connection, so no request's statements land inside another's transaction.
+let running = Promise.resolve()
+
 port.on(
   'message',
-  async (request: Request) => {
-    port.postMessage(await run({ request }))
-    Atomics.store(
-      signal,
-      0,
-      1,
-    )
-    Atomics.notify(
-      signal,
-      0,
-    )
+  (request: Request) => {
+    running = running.then(async () => {
+      port.postMessage({
+        id: request.id,
+        ...await run({ request }),
+      })
+      Atomics.store(
+        signal,
+        0,
+        1,
+      )
+      Atomics.notify(
+        signal,
+        0,
+      )
+    })
   },
 )

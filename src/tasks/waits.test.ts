@@ -11,7 +11,8 @@ import { readEvents } from '#app/event-log.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { offerHost } from '#app/server-state.ts'
-import { acquireLock, nonblockingLocks } from '#store/storage.ts'
+import { nonblockingLocks } from '#store/storage.ts'
+import { refuseEvents } from '#test-harness/database.ts'
 import { cardStatus } from './card-status.ts'
 import { resumeWaits, notifyWaitResumes, waitResumesPending } from './resume-waits.ts'
 import { taskReadiness } from './dependencies.ts'
@@ -174,13 +175,7 @@ test(
         received.push(body.card)
 
         if (failReceipt) {
-          releaseLock = acquireLock({
-            dir: join(
-              root,
-              'hydras',
-              hydraId,
-            ),
-          })
+          releaseLock = refuseEvents({ type: 'task.steering.notified' })
         }
 
         return {}
@@ -199,7 +194,7 @@ test(
     )
     await assert.rejects(
       notify({ at: now }),
-      /locked/,
+      /refused task.steering.notified/,
     )
     assert.equal(
       card().steering?.[0]?.attempts.length,

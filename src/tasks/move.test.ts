@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { refuseEvents } from '#test-harness/database.ts'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -13,7 +14,6 @@ import { appendNote } from '#integrations/hooks/harvest.ts'
 import { offerHost } from '#app/server-state.ts'
 import { base } from '#app/command-meta.ts'
 import { readEvents } from '#app/event-log.ts'
-import { query } from '#store/postgres.ts'
 
 const INHERITED = [
   'PNYX_HOME',
@@ -794,20 +794,15 @@ test(
 
 // Runs a move whose source write fails after the target's committed, as a crash between the two would leave it.
 async function cutMove({ id }: { id: string }) {
-  query({
-    statements: [
-      { text: 'create or replace function cut_move() returns trigger language plpgsql as $$ begin raise exception \'cut\'; end $$' },
-      { text: 'create trigger cut_move before insert on events for each row when (new.type = \'task.moved-out\') execute function cut_move()' },
-    ],
-  })
+  const release = refuseEvents({ type: 'task.moved-out' })
 
   try {
     await assert.rejects(
       task({ args: move({ id }) }),
-      /Postgres: cut/,
+      /Postgres: refused task.moved-out/,
     )
   } finally {
-    query({ statements: [{ text: 'drop trigger cut_move on events' }] })
+    release()
   }
 
   // The target's arrival, which the cut left committed.

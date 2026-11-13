@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
@@ -8,6 +8,7 @@ import { after, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { commit } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { HydraConfig } from '#hydra/model.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -580,6 +581,43 @@ test(
     assert.equal(
       moved.revision,
       1,
+    )
+  },
+)
+
+test(
+  'a Hydra still kept in events.jsonl gives the shared settings its old view on the first read',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    legacyView({
+      hydraId: 'alpha',
+      at: '2026-01-01T00:00:00.000Z',
+      patch: { theme: 'dark' },
+    })
+    const log = `${readEvents({ hydraId: 'alpha' }).map(event => JSON.stringify(event))
+      .join('\n')}\n`
+    // A second home holding only that log, as one an older release left, with no settings log yet.
+    home()
+    const dir = hydraDir({ hydraId: 'alpha' })
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        dir,
+        'events.jsonl',
+      ),
+      log,
+    )
+
+    assert.equal(
+      (await settings()).settings.theme,
+      'dark',
     )
   },
 )
