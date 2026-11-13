@@ -18,7 +18,7 @@ import type { upgradeQueue } from '#upgrade/queue.ts'
 import type { trackChildren } from '#workers/children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
-import { WORKER_RESUME, findWorkerTurnToResume } from '#workers/host.ts'
+import { WORKER_RESUME, findWorkerTurnToResume, closedTask, toolApplicationReady } from '#workers/host.ts'
 import type { createHostedDelivery } from '#workers/hosted-delivery.ts'
 import type { AgentRef } from '#workers/model.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
@@ -73,9 +73,12 @@ export function createHostRecovery({
   startFrom: ReturnType<typeof createWakeQueue>['startFrom']
   host(): Host
 }) {
+  let fenced = true
+
   const recover: Host['recover'] = async () => {
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
-    const fenced = await children.sweep()
+    fenced = false
+    fenced = await children.sweep()
     upgrades.recover()
 
     // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
@@ -194,6 +197,10 @@ export function createHostRecovery({
               resumeAttemptId = cutHydraTurn.resumeAttemptId
             }
           } else if (resumable && task && liveTask({ card: task })
+            && !closedTask({
+              state: writer.state,
+              card: task,
+            })
             && !steeringHeld({ card: task })
             && session.id !== writer.state.config?.hydra.session) {
             resumeAttemptId = findWorkerTurnToResume({
@@ -354,6 +361,17 @@ export function createHostRecovery({
       }
     }
 
+    const pendingTools = loadHydra({ hydraId }).state
+
+    for (const card of Object.values(pendingTools.cards)) {
+      if (fenced && toolApplicationReady({
+        state: pendingTools,
+        card,
+      })) {
+        host().toolsChanged({ task: card.id })
+      }
+    }
+
     // Changes made while the server was stopped wake Hydra once it is back.
     const state = loadHydra({ hydraId }).state
 
@@ -416,5 +434,8 @@ export function createHostRecovery({
     }
   }
 
-  return { recover }
+  return {
+    recover,
+    fenced: () => fenced,
+  }
 }

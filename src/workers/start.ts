@@ -1,3 +1,6 @@
+import { BROWSER_TOOL, requireConfigured, requireToolAuthority } from './tools.ts'
+import { taskLease } from '#routine-helper/leases.ts'
+import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
@@ -8,7 +11,7 @@ import { openPaseo } from '#integrations/paseo/client.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { findCard } from '#tasks/push-rules.ts'
+import { checkRevision, findCard } from '#tasks/push-rules.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -141,6 +144,7 @@ export async function startTask({
   rule,
   harness,
   override,
+  tools,
   prompt,
   folder: given,
   inPlace,
@@ -158,6 +162,7 @@ export async function startTask({
   rule?: string
   harness?: string
   override?: Override
+  tools?: string[]
   prompt?: string
   folder?: string
   inPlace?: boolean
@@ -171,223 +176,280 @@ export async function startTask({
     ref: task,
   })
 
-  requireUnheld({ card })
-  requireReady({
-    state,
-    card,
+  requireCopyAvailable({
+    hydraId,
+    task: card.id,
+  })
+  const release = taskLease({
+    hydraId,
+    task: card.id,
+    actor: 'main',
   })
 
-  if (card.queue) {
-    throw new HydraError({
-      message: 'unqueue this task before starting a separate worker',
-      code: 'CONFLICT',
+  try {
+    requireUnheld({ card })
+    requireReady({
+      state,
+      card,
     })
-  }
 
-  const how = chooseVia({
-    state,
-    via,
-  })
-
-  if (commandName && how !== 'command') {
-    throw new HydraError({
-      message: '--command needs --via command',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  if (replacement && how !== 'pnyx') {
-    throw new HydraError({
-      message: 'starting fresh from an outside session uses Pnyx',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  if (override && (how === 'firstmate' || how === 'command')) {
-    throw new HydraError({
-      message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
-      code: 'VALIDATION_ERROR',
-      help: ['Use --via pnyx or --via paseo'],
-    })
-  }
-
-  if (how === 'firstmate') {
-    return askFirstmate({
-      hydraId,
-      task,
-      prompt,
-      meta,
-    })
-  }
-
-  if (meta.id && (how === 'pnyx' || how === 'paseo') && `${meta.id}:attach` in state.eventIds) {
-    return {
-      task: card.id,
-      event: 'none: duplicate',
-    }
-  }
-
-  let dispatch: DispatchChoice | undefined
-
-  if (how !== 'command') {
-    let offers: Partial<Record<Harness, string[]>> | undefined
-    const { dispatch: effective } = effectiveDispatch()
-    const list = harness ? startCandidates({
-      dispatch: effective,
-      rule,
-      harness,
-      override,
-    }) ?? []
-      : override?.model ? ([
-        'claude',
-        'codex',
-      ] as const).map(harness => ({
-        harness,
-        model: override.model,
-      }))
-        : ruleCandidates({
-          dispatch: effective,
-          rule,
-        }) ?? []
-
-    if (how === 'pnyx') {
-      // Only a candidate that names a model needs its harness's catalog.
-      const named = list.filter(c => (!harness || c.harness === harness)
-        && (override?.model || c.model))
-      offers = await hostedOffers({
-        hydraId,
-        harnesses: named.map(c => c.harness),
+    if (card.queue) {
+      throw new HydraError({
+        message: 'unqueue this task before starting a separate worker',
+        code: 'CONFLICT',
       })
     }
 
-    if (how === 'paseo') {
-      offers = {}
-      const client = await (connect ?? openPaseo)({ url: paseoUrl({ url }) })
+    const how = chooseVia({
+      state,
+      via,
+    })
 
-      try {
-        for (const candidate of list) {
-          if (!offers[candidate.harness]) {
-            const { models } = await client.providers.listModels(
-              candidate.harness,
-              {
-                cwd: given ?? card.folder ?? requestCwd(),
-              },
-            )
-            offers[candidate.harness] = models?.map(m => m.id) ?? []
-          }
-        }
-      } finally {
-        await client.close()
+    if (commandName && how !== 'command') {
+      throw new HydraError({
+        message: '--command needs --via command',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    if (replacement && how !== 'pnyx') {
+      throw new HydraError({
+        message: 'starting fresh from an outside session uses Pnyx',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    if (override && (how === 'firstmate' || how === 'command')) {
+      throw new HydraError({
+        message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
+        code: 'VALIDATION_ERROR',
+        help: ['Use --via pnyx or --via paseo'],
+      })
+    }
+
+    if (tools?.length && how !== 'pnyx') {
+      throw new HydraError({
+        message: 'Tool grants require the pnyx launch route',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    if (how === 'firstmate') {
+      return await askFirstmate({
+        hydraId,
+        task,
+        prompt,
+        meta,
+      })
+    }
+
+    if (meta.id && (how === 'pnyx' || how === 'paseo') && `${meta.id}:attach` in state.eventIds) {
+      return {
+        task: card.id,
+        event: 'none: duplicate',
       }
     }
 
-    dispatch = await dispatchTask({
-      project: card.project,
-      rule,
-      harness,
-      override,
-      offers,
-    })
-  }
+    if (tools?.length) {
+      requireToolAuthority({ meta })
+    }
 
-  const agent = dispatch?.candidate
-
-  // The host checks a Pnyx start when it receives it; a Paseo start is checked here.
-  if (how === 'paseo' && agent) {
-    requireOwnerToRaise({
-      state,
-      actor: meta.actor,
-      harness: agent.harness,
-      before: agent.mode,
-      after: override?.mode,
-    })
-  }
-
-  const command = how === 'command' || !agent
-  const selectedCommand = commandName
-    ? namedProjectCommand({
-      state,
+    checkRevision({
       card,
-      name: commandName,
-    }) : undefined
-  const ownsFolder = commandName
-    ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
-  const ownFolder = command && ownsFolder
-  const currentState = loadHydra({ hydraId }).state
-  const currentCard = findCard({
-    state: currentState,
-    ref: task,
-  })
-  requireUnheld({ card: currentCard })
-  requireReady({
-    state: currentState,
-    card: currentCard,
-  })
-
-  const folder = replacement ? given
-    : await taskFolder({
-      hydraId,
-      task,
-      folder: given,
-      inPlace,
-      ownFolder,
-      meta,
+      ifRevision: meta.ifRevision,
     })
 
-  if (command) {
-    return startCommand({
-      hydraId,
-      role: 'worker',
-      task,
-      prompt,
-      folder,
-      harness,
-      commandName,
-      meta,
-    })
-  }
+    let dispatch: DispatchChoice | undefined
 
-  if (how === 'pnyx') {
-    return askHost({
-      hydraId,
-      body: {
-        action: 'start',
-        dispatch,
-        task: card.id,
-        ...(replacement ? { replacement } : {}),
-        prompt: await taskPrompt({
+    if (how !== 'command') {
+      let offers: Partial<Record<Harness, string[]>> | undefined
+      const { dispatch: effective } = effectiveDispatch()
+      const list = harness ? startCandidates({
+        dispatch: effective,
+        rule,
+        harness,
+        override,
+      }) ?? []
+        : override?.model ? ([
+          'claude',
+          'codex',
+        ] as const).map(harness => ({
+          harness,
+          model: override.model,
+        }))
+          : ruleCandidates({
+            dispatch: effective,
+            rule,
+          }) ?? []
+
+      if (how === 'pnyx') {
+        // Only a candidate that names a model needs its harness's catalog.
+        const named = list.filter(c => (!harness || c.harness === harness)
+          && (override?.model || c.model))
+        offers = await hostedOffers({
           hydraId,
-          card,
-          prompt,
-          replacing: replacement,
-        }),
-        ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
-        id: meta.id ?? randomUUID(),
-        actor: meta.actor,
-        ...(meta.reason ? { reason: meta.reason } : {}),
-      },
-    }) as Promise<Output>
-  }
+          harnesses: named.map(c => c.harness),
+        })
+      }
 
-  return startAgent({
-    hydraId,
-    task,
-    harness: harness ?? agent.harness,
-    agent: {
-      ...agent,
-      ...dispatch?.override,
-    },
-    dispatch,
-    prompt: await taskPrompt({
+      if (how === 'paseo') {
+        offers = {}
+        const client = await (connect ?? openPaseo)({ url: paseoUrl({ url }) })
+
+        try {
+          for (const candidate of list) {
+            if (!offers[candidate.harness]) {
+              const { models } = await client.providers.listModels(
+                candidate.harness,
+                {
+                  cwd: given ?? card.folder ?? requestCwd(),
+                },
+              )
+              offers[candidate.harness] = models?.map(m => m.id) ?? []
+            }
+          }
+        } finally {
+          await client.close()
+        }
+      }
+
+      dispatch = await dispatchTask({
+        project: card.project,
+        rule,
+        harness,
+        override,
+        offers,
+      })
+    }
+
+    const agent = dispatch?.candidate
+
+    // The host checks a Pnyx start when it receives it; a Paseo start is checked here.
+    if (how === 'paseo' && agent) {
+      requireOwnerToRaise({
+        state,
+        actor: meta.actor,
+        harness: agent.harness,
+        before: agent.mode,
+        after: override?.mode,
+      })
+    }
+
+    const command = how === 'command' || !agent
+    const selectedCommand = commandName
+      ? namedProjectCommand({
+        state,
+        card,
+        name: commandName,
+      }) : undefined
+    const ownsFolder = commandName
+      ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
+    const ownFolder = command && ownsFolder
+    const currentState = loadHydra({ hydraId }).state
+    const currentCard = findCard({
+      state: currentState,
+      ref: task,
+    })
+    requireUnheld({ card: currentCard })
+    requireReady({
+      state: currentState,
+      card: currentCard,
+    })
+
+    const toolNames = [
+      ...currentCard.tools ?? [],
+      ...tools ?? [],
+    ]
+
+    // Saved grants belong to the task, so a start on another harness or login checks them before it makes a copy.
+    if (how === 'pnyx' && dispatch && toolNames.some(name => name !== BROWSER_TOOL)) {
+      const catalog = await askHost({
+        hydraId,
+        body: {
+          action: 'tool-catalog',
+          task: card.id,
+          harness: dispatch.provider,
+          account: dispatch.account,
+          folder: given,
+          actor: meta.actor,
+        },
+      })
+      requireConfigured({
+        names: toolNames,
+        offered: catalog.tools as string[],
+        task: card.id,
+        hydraId,
+      })
+    }
+
+    const folder = replacement ? given
+      : await taskFolder({
+        hydraId,
+        task,
+        folder: given,
+        inPlace,
+        ownFolder,
+        meta,
+      })
+
+    if (command) {
+      return await startCommand({
+        hydraId,
+        role: 'worker',
+        task,
+        prompt,
+        folder,
+        harness,
+        commandName,
+        meta,
+      })
+    }
+
+    if (how === 'pnyx') {
+      return await askHost({
+        hydraId,
+        body: {
+          action: 'start',
+          dispatch,
+          tools,
+          task: card.id,
+          ...(replacement ? { replacement } : {}),
+          prompt: await taskPrompt({
+            hydraId,
+            card,
+            prompt,
+            replacing: replacement,
+          }),
+          ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
+          id: meta.id ?? randomUUID(),
+          actor: meta.actor,
+          ...(meta.reason ? { reason: meta.reason } : {}),
+        },
+      }) as Output
+    }
+
+    return await startAgent({
       hydraId,
-      card,
-      prompt,
-    }),
-    folder,
-    url,
-    meta,
-    connect,
-  })
+      task,
+      harness: harness ?? agent.harness,
+      agent: {
+        ...agent,
+        ...dispatch?.override,
+      },
+      dispatch,
+      prompt: await taskPrompt({
+        hydraId,
+        card,
+        prompt,
+      }),
+      folder,
+      url,
+      meta,
+      connect,
+    })
+  } finally {
+    release()
+  }
 }
 
 // Puts the request in Hydra's chat, then hands it to the Firstmate home that is

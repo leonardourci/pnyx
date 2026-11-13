@@ -114,17 +114,17 @@ test(
     )
     assert.equal(
       regular?.strictMcpConfig,
-      undefined,
+      true,
     )
-    assert.equal(
+    assert.deepEqual(
       regular?.mcpServers,
-      undefined,
+      {},
     )
   },
 )
 
 test(
-  'routine Codex sessions disable configured MCP servers, skills, apps and plugins only for that thread',
+  'routine Codex sessions restrict skills and web search while all sessions exclude ungranted servers',
   async t => {
     const native = replayCodex({ hydra: () => 'lab' })
     const session = await codexProvider({ spawnCodex: native.spawnCodex }).open({
@@ -197,7 +197,7 @@ test(
     const normal = native.sessions[1]!.config
     assert.equal(
       normal?.['mcp_servers."unrelated.server".enabled'],
-      undefined,
+      false,
     )
     assert.equal(
       normal?.['skills.config'],
@@ -205,11 +205,11 @@ test(
     )
     assert.equal(
       normal?.['features.apps'],
-      undefined,
+      false,
     )
     assert.equal(
       normal?.['features.plugins'],
-      undefined,
+      false,
     )
     assert.equal(
       normal?.web_search,
