@@ -220,7 +220,9 @@ export function hydraExists({ hydraId }: { hydraId: string }): boolean {
 export function requireHydra({ hydraId }: { hydraId: string }): void {
   const waiting = () => existsSync(logPath({ dir: hydraDir({ hydraId }) }))
 
-  if (hydraId !== DEFAULT_HYDRA && !heldHydra({ hydraId }) && !hydraExists({ hydraId }) && !waiting()) {
+  const known = hydraId === DEFAULT_HYDRA || heldHydra({ hydraId }) || hydraExists({ hydraId })
+
+  if (!known && !waiting()) {
     throw new HydraError({
       message: `unknown Hydra: ${hydraId}`,
       code: 'NOT_FOUND',
