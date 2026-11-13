@@ -9,14 +9,14 @@ import { spawnSync } from 'node:child_process'
 import { withWriter } from '#app/writer.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { logPath, snapshotPath } from '#store/storage.ts'
+import { query } from '#store/postgres.ts'
+import { storedHydra } from '#test-harness/database.ts'
 import { decidePush } from '#tasks/push.ts'
 import { search } from './search.ts'
 import { searchPath } from './index.ts'
 
 const CHECKPOINT_WORDS = 20_000
 const TAIL_WORDS = 100_000
-const EVENT_BATCH_WORDS = 6000
 const PEER_SEARCH_TIMEOUT_MS = 10_000
 
 const nativeLine = ({ text }: { text: string }) => `${JSON.stringify({
@@ -119,7 +119,7 @@ function temporaryHome({
   return root
 }
 
-// A task whose transcript holds two lines, one of them already archived in the log, and a cache
+// A task whose transcript holds two lines, one of them already archived as an event, and a cache
 // that has caught up with both.
 function transcriptTask({ t }: { t: TestContext }) {
   const root = temporaryHome({
@@ -161,13 +161,7 @@ function transcriptTask({ t }: { t: TestContext }) {
       assert.ok('event' in decision)
       writer.append({ event: decision.event })
 
-      return {
-        card: decision.event.cardId,
-        log: join(
-          writer.dir,
-          'events.jsonl',
-        ),
-      }
+      return { card: decision.event.cardId }
     },
   })
   chat({
@@ -223,7 +217,7 @@ function chat({
   })
 }
 
-// Records every read of the event log and the transcript, and lets a test fail or change them mid-read.
+// Records every read of the transcript, and lets a test fail or change it mid-read.
 function watchReads({
   t,
   task,
@@ -242,10 +236,6 @@ function watchReads({
     appendWhileReading: false,
     failNativeRead: false,
     failFromPosition: 0,
-    failEventRead: false,
-    eventBatchStart: 0,
-    failedEventPosition: 0,
-    overlapEvents: false,
     overlapNative: false,
   }
 
@@ -265,7 +255,6 @@ function watchReads({
       process.execPath,
       [
         '--conditions=source',
-        '--input-type=module',
         '-e',
         `import { search } from ${JSON.stringify(source)}; process.stdout.write(JSON.stringify(search(${input})));`,
       ],
@@ -358,19 +347,6 @@ function watchReads({
       const nativeRead = path === task.native && length > 0
       const pastFailure = position !== null && position >= hooks.failFromPosition
 
-      const eventRead = path === task.log && length > 0
-      const laterEventBatch = position !== null && position > hooks.eventBatchStart
-
-      if (hooks.overlapEvents && eventRead) {
-        hooks.overlapEvents = false
-        peerSearch({ text: 'overlapevent' })
-      }
-
-      if (hooks.failEventRead && eventRead && laterEventBatch) {
-        hooks.failedEventPosition = position
-        throw new Error('Synthetic event batch read failure')
-      }
-
       if (hooks.appendWhileReading && nativeRead) {
         hooks.appendWhileReading = false
         fs.appendFileSync(
@@ -383,7 +359,7 @@ function watchReads({
         throw new Error('Synthetic native read failure')
       }
 
-      if ((path === task.log || path === task.native) && length > 0) {
+      if (nativeRead) {
         reads.push({
           path,
           position,
@@ -419,7 +395,7 @@ function watchReads({
 }
 
 test(
-  'Oracle removes the retired index and rebuilds its cache when the event log under it was replaced',
+  'Oracle removes the retired index and rebuilds its cache when the Hydra under it was replaced',
   t => {
     temporaryHome({
       t,
@@ -454,16 +430,14 @@ test(
       false,
       'a query removes the retired full-text index',
     )
-
-    for (const file of [
-      logPath({ dir }),
-      snapshotPath({ dir }),
-    ]) {
-      fs.rmSync(
-        file,
-        { force: true },
-      )
-    }
+    query({
+      statements: [
+        {
+          text: 'delete from hydras where id = $1',
+          values: ['default'],
+        },
+      ],
+    })
 
     note({
       card: 'task-noted',
@@ -482,10 +456,9 @@ test(
 )
 
 test(
-  'a correction removes its older entry even when another reader cached that entry first',
+  'a correction removes its older entry after a query indexed it',
   t => {
     const task = transcriptTask({ t })
-    const captured = structuredClone(loadHydra({ hydraId: 'default' }).state)
     chat({
       card: task.card,
       id: 'earlier-record',
@@ -495,7 +468,6 @@ test(
     assert.equal(
       find({ text: 'zinnia*' }).hits[0]?.card,
       task.card,
-      'another reader caches the predecessor after the first query captures state',
     )
     chat({
       card: task.card,
@@ -505,26 +477,18 @@ test(
       replaces: 'earlier-record',
     })
     assert.equal(
-      search({
-        hydraId: 'default',
-        state: captured,
-        query: {
-          text: 'quartz*',
-          limit: 20,
-        },
-      }).hits[0]?.card,
+      find({ text: 'quartz*' }).hits[0]?.card,
       task.card,
     )
     assert.equal(
       find({ text: 'zinnia*' }).total,
       0,
-      'a correction beyond the captured state removes its older indexed entry',
     )
   },
 )
 
 test(
-  'an unchanged query reads no historical bytes and needs no cache write lock',
+  'an unchanged query reads no transcript bytes and needs no cache write lock',
   t => {
     const task = transcriptTask({ t })
     const { reads } = watchReads({
@@ -538,7 +502,7 @@ test(
     assert.equal(
       reads.length,
       0,
-      'an unchanged query reads no historical event or transcript bytes',
+      'an unchanged query reads no transcript bytes',
     )
     const locked = new DatabaseSync(searchPath({ hydraId: 'default' }))
     locked.exec('BEGIN IMMEDIATE')
@@ -560,7 +524,6 @@ test(
   'a failed transcript read keeps the committed batch and the retry reads only new bytes',
   t => {
     const task = transcriptTask({ t })
-    const logSize = fs.statSync(task.log).size
     const nativeSize = fs.statSync(task.native).size
     const {
       reads,
@@ -606,14 +569,12 @@ test(
       throughCheckpoint,
       'retry preserves the committed native batch instead of ingesting it again',
     )
-    assert.ok(reads.some(entry => entry.path === task.log && entry.position === logSize))
-    assert.ok(reads.some(entry => entry.path === task.native && entry.position === nativeSize))
+    assert.equal(
+      reads[0]?.position,
+      nativeSize,
+    )
     assert.ok(
-      reads.every(entry => {
-        const start = entry.path === task.native ? nativeSize : logSize
-
-        return entry.position !== null && entry.position >= start
-      }),
+      reads.every(entry => entry.position !== null && entry.position >= nativeSize),
       'delta catch-up never reads an older byte',
     )
   },
@@ -632,10 +593,7 @@ test(
       find({ text: 'incrementalnote' }).hits[0]?.card,
       task.card,
     )
-    const {
-      reads,
-      hooks,
-    } = watchReads({
+    const { hooks } = watchReads({
       t,
       task,
     })
@@ -677,10 +635,6 @@ test(
       task.card,
       'a native source reset preserves indexed events',
     )
-    assert.ok(
-      reads.every(entry => entry.path === task.native),
-      'resetting one native source does not reread the event log',
-    )
   },
 )
 
@@ -710,81 +664,13 @@ test(
 )
 
 test(
-  'event batches commit with their cursor, so a retry after a failed read resumes after them',
-  t => {
-    const task = transcriptTask({ t })
-    const {
-      reads,
-      hooks,
-    } = watchReads({
-      t,
-      task,
-    })
-    hooks.eventBatchStart = fs.statSync(task.log).size
-
-    for (const id of [
-      'batch-one',
-      'batch-two',
-      'batch-three',
-      'batch-four',
-      'batch-five',
-    ]) {
-      note({
-        card: task.card,
-        id,
-        text: `${id} ${'eventcheckpoint '.repeat(EVENT_BATCH_WORDS)}`,
-      })
-    }
-
-    hooks.failEventRead = true
-
-    try {
-      assert.throws(
-        () => find({ text: 'eventcheckpoint*' }),
-        /Synthetic event batch read failure/,
-      )
-    } finally {
-      hooks.failEventRead = false
-    }
-
-    const beforeEventRetry = reads.length
-    assert.equal(
-      find({ text: 'eventcheckpoint*' }).hits[0]?.card,
-      task.card,
-    )
-    assert.ok(hooks.failedEventPosition > hooks.eventBatchStart)
-    assert.equal(
-      find({ text: 'batch-one' }).hits[0]?.card,
-      task.card,
-      'the first committed event batch remains searchable after a later read fails',
-    )
-    assert.equal(
-      reads.slice(beforeEventRetry).find(entry => entry.path === task.log)?.position,
-      hooks.failedEventPosition,
-      'event retry resumes after committed batches',
-    )
-  },
-)
-
-test(
-  'another process advancing a cursor mid-query does not duplicate its batch',
+  'another process advancing the transcript cursor mid-query does not duplicate its batch',
   t => {
     const task = transcriptTask({ t })
     const { hooks } = watchReads({
       t,
       task,
     })
-    note({
-      card: task.card,
-      id: 'overlap-event',
-      text: 'overlapevent',
-    })
-    hooks.overlapEvents = true
-    assert.equal(
-      find({ text: 'overlapevent' }).hits[0]?.snippets.length,
-      1,
-      'another process advancing the event cursor does not duplicate its batch',
-    )
     fs.appendFileSync(
       task.native,
       nativeLine({ text: 'overlapnative' }),
@@ -793,13 +679,12 @@ test(
     assert.equal(
       find({ text: 'overlapnative' }).hits[0]?.snippets.length,
       1,
-      'another process advancing the native cursor does not duplicate its batch',
     )
   },
 )
 
 test(
-  'an incompatible cache version rebuilds from durable sources and leaves the log untouched',
+  'an incompatible cache version rebuilds from durable sources and leaves the Hydra untouched',
   t => {
     const task = transcriptTask({ t })
     note({
@@ -819,7 +704,7 @@ test(
       stale.close()
     }
 
-    const before = fs.readFileSync(task.log)
+    const before = storedHydra({ hydraId: 'default' })
     assert.equal(
       find({ text: 'versionednote' }).hits[0]?.card,
       task.card,
@@ -829,8 +714,8 @@ test(
       loadHydra({ hydraId: 'default' }).state.cards[task.card]?.title,
       'Delta task',
     )
-    assert.deepEqual(
-      fs.readFileSync(task.log),
+    assert.equal(
+      storedHydra({ hydraId: 'default' }),
       before,
     )
   },

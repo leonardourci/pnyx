@@ -277,7 +277,13 @@ function catchUp({
       through: throughEvents,
     })
     const captured = !cursor.event || state.eventIds[cursor.event] === cursor.seq
-    const belongs = captured || cursor.seq > state.seq
+    // A cursor past this state belongs only while the Hydra still holds the event it stopped at.
+    const ahead = cursor.seq > state.seq && readEventsFrom({
+      hydraId,
+      offset: cursor.seq - 1,
+      limit: 1,
+    }).events[0]?.id === cursor.event
+    const belongs = captured || ahead
 
     if (!belongs) {
       if (cursor.pos === 0) {
@@ -287,7 +293,7 @@ function catchUp({
         })
       }
 
-      // A restored or replaced events.jsonl leaves the derived cache behind; rebuild it from the log.
+      // A restored or replaced Hydra leaves the derived cache behind; rebuild it from its events.
       transaction({
         db,
         fn: () => {
