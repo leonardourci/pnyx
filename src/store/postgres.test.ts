@@ -347,6 +347,35 @@ test(
           },
         ],
       )
+      const published = ({ name }: { name: string }) => query({
+        url: `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${name}`,
+        statements: [{ text: 'select tablename, attnames::text[] as attnames, rowfilter from pg_publication_tables where pubname = \'pnyx_page\' order by tablename' }],
+      })[0]
+      const fresh = `fresh_${randomUUID().replaceAll(
+        '-',
+        '',
+      )}`
+      await admin.query(`create database ${fresh}`)
+      const created = new pg.Client({ database: fresh })
+      await created.connect()
+      await created.query(readFileSync(
+        new URL(
+          './schema.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ))
+      await created.end()
+      assert.deepEqual(
+        published({ name: database }),
+        published({ name: fresh }),
+        'a migrated database replicates exactly what a new one does: no events, and only the columns and keys the page reads',
+      )
+      assert.equal(
+        published({ name: database }).some(row => row.tablename === 'events'),
+        false,
+      )
+      await admin.query(`drop database ${fresh} with (force)`)
     } finally {
       await old.end()
       await admin.query(`drop database ${database} with (force)`)

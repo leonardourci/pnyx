@@ -4,7 +4,7 @@ import { OWNER_ACTORS } from '#app/actors.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Ask, Card, NoteKind, TaskDeclaration, TaskKind, TaskStatus } from '#tasks/model.ts'
 import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { Reply } from '#workers/model.ts'
@@ -59,34 +59,6 @@ const hydraValues = table('hydra_values')
   .primaryKey(
     'hydra_id',
     'key',
-  )
-
-const events = table('events')
-  .columns({
-    hydra_id: string(),
-    seq: number(),
-    id: string(),
-    type: string<HydraEvent['type']>(),
-    at: string(),
-    actor: string(),
-    card_id: string(),
-    data: json<Stored<HydraEvent>>(),
-  })
-  .primaryKey(
-    'hydra_id',
-    'seq',
-  )
-
-const cardUpdates = table('card_updates')
-  .columns({
-    hydra_id: string(),
-    card_id: string(),
-    seq: number(),
-  })
-  .primaryKey(
-    'hydra_id',
-    'card_id',
-    'seq',
   )
 
 const columns = table('columns')
@@ -351,23 +323,6 @@ const linkRelationships = relationships(
   }),
 )
 
-const updateRelationships = relationships(
-  cardUpdates,
-  ({ one }) => ({
-    event: one({
-      sourceField: [
-        'hydra_id',
-        'seq',
-      ],
-      destField: [
-        'hydra_id',
-        'seq',
-      ],
-      destSchema: events,
-    }),
-  }),
-)
-
 const hydraRelationships = relationships(
   hydras,
   ({
@@ -399,8 +354,6 @@ export const schema = createSchema({
     settings,
     upgradeStatus,
     hydraValues,
-    events,
-    cardUpdates,
     columns,
     cards,
     cardBodies,
@@ -416,7 +369,6 @@ export const schema = createSchema({
     cardRelationships,
     questionRelationships,
     linkRelationships,
-    updateRelationships,
     hydraRelationships,
   ],
 })
@@ -435,12 +387,9 @@ const HYDRA_LIMIT = 200
 const BOARD_LIMIT = 1_000
 const REFERENCE_LIMIT = 1_000
 export const LIST_LIMIT = 100
-// One page of the Updates tab, and the most Older updates reaches.
-export const HISTORY_PAGE = 50
-export const MAX_HISTORY = 5_000
 
 // The Hydra-wide fields the page reads; the rest of hydra_values is the server's.
-const PAGE_VALUES = [
+export const PAGE_VALUES = [
   'configured',
   'configRevision',
   'view',
@@ -459,8 +408,6 @@ const PAGE_VALUES = [
 
 type OfHydra = { hydraId: string }
 
-type OfCard = OfHydra & { cardId: string }
-
 // The Standard Schema shape Zero takes as a query's validator.
 interface Validator<T> {
   readonly '~standard': {
@@ -475,14 +422,11 @@ interface Validator<T> {
   }
 }
 
-// A query's arguments come from the page, so each one is checked to be what it names: strings, and the number of
-// updates a page of card history reads.
-function validator<T extends Record<string, string | number>>({
+// A query's arguments come from the page, so each one is checked to be a string.
+function validator<T extends Record<string, string>>({
   names,
-  counts = [],
 }: {
   names: (keyof T & string)[]
-  counts?: (keyof T & string)[]
 }): Validator<T> {
   return {
     '~standard': {
@@ -491,14 +435,11 @@ function validator<T extends Record<string, string | number>>({
       // eslint-disable-next-line pnyx/object-params -- Standard Schema owns this signature.
       validate: (value: unknown) => {
         const given = value as Record<string, unknown> | null
-        const isObject = typeof given === 'object' && given !== null
-        const valid = isObject && names.every(name => typeof given[name] === 'string')
-          && counts.every(name => Number.isInteger(given[name]) && (given[name] as number) > 0
-            && (given[name] as number) <= MAX_HISTORY)
+        const valid = typeof given === 'object' && given !== null && names.every(name => typeof given[name] === 'string')
 
         return valid
           ? { value: given as T }
-          : { issues: [{ message: `expected strings ${names.join(', ')} and counts ${counts.join(', ')} up to ${MAX_HISTORY}` }] }
+          : { issues: [{ message: `expected strings ${names.join(', ')}` }] }
       },
     },
   }
@@ -511,14 +452,6 @@ const refArgs = validator<OfHydra & { ref: string }>({
     'ref',
   ],
 })
-const historyArgs = validator<OfCard & { limit: number }>({
-  names: [
-    'hydraId',
-    'cardId',
-  ],
-  counts: ['limit'],
-})
-
 // The newest replies that answer a question, which the page reads to know an answer is still on its way.
 // eslint-disable-next-line pnyx/object-params -- Zero owns related query callbacks.
 const answering = (query: ReturnType<typeof zql.replies.where>) => query.where(
@@ -713,26 +646,6 @@ export const queries = defineQueries({
           ).limit(LIST_LIMIT),
         )
         .one(),
-    ),
-    // The Updates tab, newest first, `limit` at a time: Older updates asks for more. A card moved in shows its updates
-    // from this Hydra on.
-    history: defineQuery(
-      historyArgs,
-      ({ args }) => zql.card_updates
-        .where(
-          'hydra_id',
-          args.hydraId,
-        )
-        .where(
-          'card_id',
-          args.cardId,
-        )
-        .orderBy(
-          'seq',
-          'desc',
-        )
-        .limit(args.limit)
-        .related('event'),
     ),
   },
   cards: {

@@ -45,7 +45,8 @@ create table hydra_values (
   primary key (hydra_id, key)
 );
 
--- Every change, in order: a card's Updates tab and the history commands read it.
+-- Every change, in order: a card's Updates tab and the history commands read it, through the server and not through the
+-- page's replica.
 create table events (
   hydra_id text not null references hydras (id) on delete cascade,
   seq bigint not null check (seq > 0),
@@ -76,7 +77,7 @@ create table source_observations (
 );
 
 -- Each card's Updates tab: the events it lists, which can be listed by several cards, as a message to Hydra is by
--- its task and every task it mentions.
+-- its task and every task it mentions. The server pages it; the page's replica never holds it.
 create table card_updates (
   hydra_id text not null,
   card_id text not null,
@@ -265,9 +266,13 @@ create table sessions (
   primary key (hydra_id, id)
 );
 
--- The tables zero-cache replicates for the page; sessions, transactions and card_private stay with the server.
-create publication pnyx_page for table hydras, hydra_queues, settings, upgrade_status, hydra_values, events, card_updates, columns,
-  cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
+-- What zero-cache replicates for the page, and no more: the tables its queries read, hydras without the columns only
+-- the server reads, and hydra_values with only the keys the page reads (src/store/zero-schema.ts PAGE_VALUES). Events,
+-- card_updates, sessions, transactions, source_observations and card_private stay with the server.
+create publication pnyx_page for table hydras (id, seq, config, summary), hydra_queues, settings, upgrade_status,
+  hydra_values where (key in ('configured', 'configRevision', 'view', 'viewRevision', 'labelColors', 'projects',
+  'projectsRevision', 'hydraStatus', 'hydraOperation', 'hydraAgent', 'hydraAgentChange', 'helper', 'dispatchProposals',
+  'upgrades')), columns, cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
 
 -- The schema version this file creates. A change to the tables bumps it, with a migration for databases on the older
 -- one; a build refuses a database on a version it does not know instead of failing its writes.
@@ -275,4 +280,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (4);
+insert into schema_version (version) values (5);

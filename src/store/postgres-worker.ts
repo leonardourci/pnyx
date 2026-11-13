@@ -63,6 +63,8 @@ const SCHEMA = readFileSync(
   ),
   'utf8',
 )
+// The page's publication as schema.sql creates it, which a migration sets an older database's to.
+const PAGE_PUBLICATION = /create publication pnyx_page for table[^;]*/.exec(SCHEMA)![0]
 // schema.sql names its own version, so the number has one source.
 const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(SCHEMA)?.[1])
 
@@ -87,7 +89,7 @@ async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
     return
   }
 
-  if (current === 1 || current === 2 || current === 3) {
+  if (current >= 1 && current <= 4) {
     await client.query('begin')
 
     try {
@@ -134,10 +136,19 @@ async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
       ) select hydra_id, count(*)::integer as count from removed group by hydra_id`)
       }
 
-      await client.query(`create index events_card_history on events (hydra_id, card_id, seq);
+      if (current < 4) {
+        await client.query(`create index events_card_history on events (hydra_id, card_id, seq);
         create index events_type_history on events (hydra_id, type, seq);
         create index card_updates_event on card_updates (hydra_id, seq);
         insert into schema_version (version) values (4)`)
+      }
+
+      // The page reads no events: a card's Updates come from the server a page at a time.
+      await client.query(`${PAGE_PUBLICATION.replace(
+        'create publication pnyx_page for table',
+        'alter publication pnyx_page set table',
+      )};
+        insert into schema_version (version) values (5)`)
       await client.query('commit')
       removedDebugRows = removed?.rows.map(row => ({
         hydraId: row.hydra_id,

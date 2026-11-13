@@ -321,3 +321,101 @@ test(
     )
   },
 )
+
+test(
+  'a replica built under the older, larger publication keeps serving after the publication shrinks to what the page reads',
+  async t => {
+    const previous = process.env.PNYX_HOME
+    const folder = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-zero-publication-',
+    ))
+    process.env.PNYX_HOME = folder
+    const resources: { server?: RunningServer } = {}
+    t.after(async () => {
+      await resources.server?.close()
+      process.env.PNYX_HOME = previous
+      rmSync(
+        folder,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const publication = ({ tables }: { tables: string }) => query({
+      statements: [{ text: `alter publication pnyx_page set table ${tables}` }],
+    })
+    // The first use creates the home's database with the current schema; the older publication replaces its own.
+    query({ statements: [{ text: 'select 1' }] })
+    publication({
+      tables: `hydras, hydra_queues, settings, upgrade_status, hydra_values, events, card_updates, columns, cards,
+        card_bodies, card_references, replies, questions, declarations, links, notes, messages`,
+    })
+
+    const start = async () => {
+      const server = await startServer({
+        zeroCache: true,
+        wakeDelay: QUIET_MS,
+        stallDelay: QUIET_MS,
+        busyDelay: QUIET_MS,
+      })
+      resources.server = server
+
+      return server
+    }
+
+    const listed = async ({ port }: { port: number }) => {
+      const cookie = `${zeroCookieName({ port })}=${localToken()}`
+      await zeroReady({
+        url: `http://127.0.0.1:${port}/zero/`,
+        cookie,
+      })
+
+      return (await readRows<{ id: string }[]>({
+        url: `http://127.0.0.1:${port}/zero`,
+        cookie,
+        query: ({ zero }) => zero.materialize(queries.hydras.list()),
+      })).rows.map(hydra => hydra.id)
+    }
+
+    const first = await start()
+    assert.deepEqual(
+      await listed({ port: first.port }),
+      ['default'],
+    )
+    await first.close()
+    resources.server = undefined
+    // What the schema migration does to a database whose replica was built under the older publication.
+    const migrated = readFileSync(
+      new URL(
+        '../store/schema.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    ).match(/create publication pnyx_page for table([^;]*)/)![1]!
+    publication({ tables: migrated })
+    const second = await start()
+    assert.deepEqual(
+      await listed({ port: second.port }),
+      ['default'],
+    )
+    await commands.task([
+      'create',
+      '--title',
+      'After the change',
+      '--key',
+      'after',
+    ])
+    const cookie = `${zeroCookieName({ port: second.port })}=${localToken()}`
+    const board = await readRows<{ key: string }[]>({
+      url: `http://127.0.0.1:${second.port}/zero`,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.board.cards({ hydraId: 'default' })),
+    })
+    assert.deepEqual(
+      board.rows.map(card => card.key),
+      ['after'],
+    )
+  },
+)
