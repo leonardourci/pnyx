@@ -165,6 +165,50 @@ export function preimage<T extends object>({
     return value
   }
 
+  const ownValue = ({
+    value,
+    owner,
+  }: {
+    value: unknown
+    owner?: Owner
+  }): unknown => {
+    if (value === null || typeof value !== 'object' || owner === undefined) {
+      return value
+    }
+
+    const previous = owners.get(value)
+    const namedOwners = previous !== undefined && previous !== CARDS && owner !== CARDS
+    const same = previous === owner || (namedOwners
+      && previous.card === owner.card && previous.field === owner.field)
+    const owned = previous !== undefined && !same ? cloneValue({ value }) : value
+    owners.set(
+      owned,
+      owner,
+    )
+
+    for (const key of Object.keys(owned)) {
+      const child = Reflect.get(
+        owned,
+        key,
+      )
+      const childOwner = owner === CARDS ? { card: key } : owner
+      const next = ownValue({
+        value: child,
+        owner: childOwner,
+      })
+
+      if (next !== child) {
+        Reflect.set(
+          owned,
+          key,
+          next,
+        )
+      }
+    }
+
+    return owned
+  }
+
   const wrap = ({
     value,
     reading,
@@ -277,7 +321,7 @@ export function preimage<T extends object>({
             throw new Error('Cannot change an event preimage')
           }
 
-          const plain = unwrap({ value: next })
+          const unwrapped = unwrap({ value: next })
 
           if (Object.hasOwn(
             target,
@@ -285,9 +329,18 @@ export function preimage<T extends object>({
           ) && Reflect.get(
             target,
             key,
-          ) === plain) {
+          ) === unwrapped) {
             return true
           }
+
+          // Each assignment owns its JSON tree, so two row groups cannot share an untracked mutable object.
+          const plain = ownValue({
+            value: unwrapped,
+            owner: ownerOf({
+              target,
+              key,
+            }),
+          })
 
           for (const observe of observers) {
             observe({
