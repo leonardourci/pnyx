@@ -936,3 +936,76 @@ test(
     )
   },
 )
+
+test(
+  'the owner’s answers and discussions carry their question and choice into the chat, recorded or copied; Hydra’s carry none',
+  () => {
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'answer',
+            text: 'Merge it',
+          }),
+          task: 't1',
+          answers: 'ask-merge',
+          choice: 'Merge',
+        },
+        {
+          ...message({
+            id: 'discussion',
+            text: 'Does this touch the chat?',
+          }),
+          task: 't1',
+          discusses: 'ask-merge',
+        },
+        {
+          ...message({
+            id: 'relay',
+            actor: 'hydra',
+            text: 'Relaying an answer',
+          }),
+          task: 't1',
+          answers: 'ask-merge',
+        },
+      ],
+      transcript: [
+        {
+          id: 'copy',
+          kind: 'message',
+          role: 'user',
+          text: 'Merge it',
+          at: '2026-10-20T10:00:05Z',
+        },
+      ],
+    })
+    assert.deepEqual(
+      entries.map(entry => [
+        entry.reference,
+        entry.answers,
+        entry.discusses,
+        entry.choice,
+      ]),
+      [
+        [
+          'discussion',
+          undefined,
+          'ask-merge',
+          undefined,
+        ],
+        [
+          'relay',
+          undefined,
+          undefined,
+          undefined,
+        ],
+        [
+          'answer',
+          'ask-merge',
+          undefined,
+          'Merge',
+        ],
+      ],
+    )
+  },
+)

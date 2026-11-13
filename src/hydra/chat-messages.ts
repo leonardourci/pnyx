@@ -180,6 +180,23 @@ export function hydraMessages({
     }
   }
 
+  for (const {
+    message,
+    entry,
+  } of owned) {
+    if (message.answers) {
+      entry.answers = message.answers
+    }
+
+    if (message.discusses) {
+      entry.discusses = message.discusses
+    }
+
+    if (message.choice) {
+      entry.choice = message.choice
+    }
+  }
+
   // Hydra takes the owner's messages in order, so one sent before a received message no longer waits; with no recorded time, it shows no receipt.
   let laterReceived = false
 

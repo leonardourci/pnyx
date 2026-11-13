@@ -63,6 +63,10 @@ export interface ThreadEntry {
     }
   }
   task?: string
+  // The owner's message answers or discusses this question on its task, choosing this option.
+  answers?: string
+  discusses?: string
+  choice?: string
   // Pairs a tool call with its result.
   call?: string
   initial?: boolean
