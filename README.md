@@ -16,22 +16,24 @@ Recorded on the current app in dark mode, with made-up projects, tasks and agent
 
 ## Install
 
-You need Node 22.13 or newer and pnpm, at the version pinned in `package.json`.
+You need Node 22.13 or newer, pnpm at the version pinned in `package.json`, and PostgreSQL 15 or newer with `wal_level=logical` for Pnyx's data (`brew install postgresql@17`, then `pnyx-axi setup postgres` starts and configures it).
 
 Install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both to run agents.
 
 ```sh
+brew install postgresql@17
 git clone https://github.com/leonardourci/pnyx.git
 cd pnyx
 pnpm install
 pnpm run build
 pnpm add -g "$PWD"
 pnyx-axi --version
+pnyx-axi setup postgres
 ```
 
 If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/pnyx-axi.js` directly from the clone.
 
-The global install links this clone; keep it in place. To upgrade, run `pnyx-axi upgrade` or send `/upgrade` in Hydra's chat; both pull `main`, install, build and restart the server.
+The global install links this clone; keep it in place. To upgrade, run `pnyx-axi upgrade` or send `/upgrade` in Hydra's chat; both pull `main`, install, build, check that the new build can import the data, and restart the server.
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
@@ -139,7 +141,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi` | Show the Hydra summary. |
 | `pnyx-axi serve` | Run the one server for every Hydra until stopped. |
 | `pnyx-axi stop` | Stop the running server. |
-| `pnyx-axi upgrade [--check] [--stop]` | Pull, install and build the latest `main`, then restart the server; `--stop` stops a running upgrade, not the server. |
+| `pnyx-axi upgrade [--check] [--stop]` | Pull, install, build and check the data of the latest `main`, then restart the server; `--stop` stops a running upgrade, not the server. |
 | `pnyx-axi hydra create\|list\|show\|set` | Create and configure Hydras. |
 | `pnyx-axi hydra start\|send\|messages\|check` | Start Hydra, queue a message in its chat, read the chat, or wait for changes. |
 | `pnyx-axi project add\|list\|set\|remove` | Attach, list, configure or detach projects. |
@@ -153,7 +155,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi oracle "<words>"` | Search titles, links, events and transcripts with the Oracle. |
 | `pnyx-axi history` | Page through past events, newest first. |
 | `pnyx-axi rule`, `pnyx-axi account list\|set\|remove` | Edit dispatch rules and worker login folders. |
-| `pnyx-axi setup [check\|skills\|hooks]` | Install the login services, list missing setup, or install global skills and reporting hooks. |
+| `pnyx-axi setup [check\|postgres\|skills\|hooks]` | Install the login services, list missing setup, start Postgres for Pnyx's data, or install global skills and reporting hooks. |
 | `pnyx-axi integrations` | Show which integrations are ready and how to set each up. |
 | `pnyx-axi undo <event-id>` | Append the reverse of a manual edit, move, link or outcome. |
 

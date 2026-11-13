@@ -1,3 +1,4 @@
+import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
 import { background } from '#app/background.ts'
@@ -21,7 +22,7 @@ import type { trackChildren } from './children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { accountEnvironment } from './dispatch.ts'
-import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS } from './host.ts'
+import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS, closedTask, toolApplicationReady } from './host.ts'
 import type { createHostedDelivery } from './hosted-delivery.ts'
 import { steeringMessages } from './inbox-notice.ts'
 import type { AgentRef } from './model.ts'
@@ -44,6 +45,8 @@ export function createLiveSessions({
   controller,
   children,
   streamed,
+  beginTools,
+  deferTools,
   usageTracker,
   compaction,
   at,
@@ -69,6 +72,14 @@ export function createLiveSessions({
   closing(): boolean
   controller: AbortController
   children: ReturnType<typeof trackChildren>
+  beginTools({ task }: { task: string }): boolean
+  deferTools({
+    task,
+    failed,
+  }: {
+    task: string
+    failed?: boolean
+  }): void
   streamed({
     session,
     text,
@@ -142,9 +153,13 @@ export function createLiveSessions({
   const retire = ({
     key,
     entry,
+    permanent = false,
+    failed = false,
   }: {
     key: string
     entry: Live
+    permanent?: boolean
+    failed?: boolean
   }) => {
     clearTimeout(entry.idle)
     expireEntry({ entry })
@@ -155,6 +170,13 @@ export function createLiveSessions({
 
     entry.input.end()
 
+    if (permanent || entry.toolResume) {
+      deferTools({
+        task: entry.task,
+        failed,
+      })
+    }
+
     if (entry.session) {
       entry.session.close()
       log({
@@ -163,6 +185,21 @@ export function createLiveSessions({
         taskId: entry.task,
         sessionId: key,
       })
+    }
+
+    if (permanent && entry.activity === 'working') {
+      const agent = loadHydra({ hydraId }).state.sessions?.[key]?.agent
+
+      if (agent) {
+        note({
+          fn: ({ writer }) => record({
+            writer,
+            agent,
+            input: { activity: 'interrupted' },
+            actor: 'pnyx',
+          }),
+        })
+      }
     }
 
     streamed({ session: key })
@@ -463,15 +500,43 @@ export function createLiveSessions({
       const armIdle = () => {
         clearTimeout(entry.idle)
 
-        if (!entry.session || entry.activity !== 'finished' || !nativeIdle({ work: entry.session.snapshot().work })) {
+        if (!entry.session || entry.activity !== 'finished') {
           return
         }
 
-        if (entry.stale) {
+        const state = loadHydra({ hydraId }).state
+        const current = state.cards[entry.task]
+
+        if (entry.task !== HYDRA_CARD && current && closedTask({
+          state,
+          card: current,
+        })) {
+          retire({
+            key,
+            entry,
+            permanent: true,
+          })
+          background({
+            name: 'closed agent cleanup',
+            run: () => children.stop({ task: entry.task }),
+          })
+
+          return
+        }
+
+        if (entry.stale && !entry.input.pending({ includes: () => true })
+          && nativeIdle({ work: entry.session.snapshot().work })) {
           retire({
             key,
             entry,
           })
+
+          if (entry.toolResume && !closing()) {
+            resumeTools({
+              task: card.id,
+              text: entry.toolResume,
+            })
+          }
 
           return
         }
@@ -480,11 +545,19 @@ export function createLiveSessions({
           () => background({
             name: 'idle agent cleanup',
             run: () => {
-              if (entry.session && nativeIdle({ work: entry.session.snapshot().work })) {
+              if (entry.toolResume) {
+                armIdle()
+
+                return
+              }
+
+              if (entry.session && entry.activity === 'finished' && nativeIdle({ work: entry.session.snapshot().work })) {
                 retire({
                   key,
                   entry,
                 })
+              } else {
+                armIdle()
               }
             },
           }),
@@ -539,6 +612,42 @@ export function createLiveSessions({
         }
 
         const receipt = typeof received === 'object' && received.type === 'input' ? received.receipt : undefined
+        const toolsRevision = entry.session.toolsRevision
+
+        if (toolsRevision && receipt?.phase === 'taken') {
+          note({
+            fn: ({ writer }) => {
+              const current = writer.state.cards[card.id]
+
+              const selected = current?.toolsRevision === toolsRevision
+              const pending = current?.toolsApplied !== toolsRevision
+
+              if (selected && pending) {
+                applyDecision({
+                  writer,
+                  decision: hydraEvent({
+                    state: writer.state,
+                    cardId: card.id,
+                    meta: {
+                      at: at(),
+                      actor: 'pnyx',
+                    },
+                    change: {
+                      type: 'task.tools-applied',
+                      data: { revision: toolsRevision },
+                    },
+                  }),
+                })
+              }
+
+              if (entry.toolsRevision === toolsRevision
+                && writer.state.cards[card.id]?.toolsApplied === toolsRevision) {
+                entry.toolResume = undefined
+              }
+            },
+          })
+        }
+
         const refused = receipt?.phase === 'refused'
         const confirmed = receipt?.phase === 'confirmed' ? receipt : undefined
 
@@ -974,9 +1083,12 @@ export function createLiveSessions({
       return
     }
 
+    const pendingTools = loadHydra({ hydraId }).state.cards[card.id]
+    const unapplied = pendingTools?.toolsRevision !== pendingTools?.toolsApplied
     retire({
       key,
       entry,
+      failed: Boolean(entry.toolResume) && unapplied,
     })
 
     if (card.id === HYDRA_CARD) {
@@ -1024,10 +1136,17 @@ export function createLiveSessions({
   const open = ({
     card,
     session,
+    toolResume,
   }: {
     card: Card & { agent: AgentRef }
     session?: HostedSession
+    toolResume?: string
   }): Live => {
+    requireCopyAvailable({
+      hydraId,
+      task: card.id,
+    })
+
     const key = sessionId({ agent: card.agent })
     const running = live.get(key)
 
@@ -1055,6 +1174,8 @@ export function createLiveSessions({
       input: inbox(),
       replies: liveReplies(),
       activity: 'finished',
+      toolsRevision: session ? session.toolsRevision : card.toolsRevision,
+      toolResume,
       steering: new Set(),
       delivered: new Map(),
       carried: new Map(),
@@ -1077,6 +1198,74 @@ export function createLiveSessions({
     })
 
     return entry
+  }
+
+  const resumeTools = ({
+    task,
+    text,
+  }: {
+    task: string
+    text: string
+  }) => {
+    const state = loadHydra({ hydraId }).state
+    const card = state.cards[task]
+
+    if (!card?.agent || closing()) {
+      return
+    }
+
+    if (!toolApplicationReady({
+      state,
+      card,
+    }) || copySettling({
+      hydraId,
+      task,
+    })) {
+      deferTools({ task })
+
+      return
+    }
+
+    if (!beginTools({ task })) {
+      deferTools({ task })
+
+      return
+    }
+
+    try {
+      const resumed = open({
+        toolResume: text,
+        card: {
+          ...card,
+          agent: {
+            ...card.agent,
+            resume: true,
+          },
+        },
+      })
+      // Recorded as a reply's turn is, so the card shows it, recovery resumes it and a failed open is recorded as stopped.
+      resumed.activity = 'working'
+      resumed.sentAt = Date.now()
+      const agent = card.agent
+      note({
+        fn: ({ writer }) => record({
+          writer,
+          agent,
+          input: { activity: 'working' },
+          actor: 'pnyx',
+        }),
+      })
+      resumed.input.push({
+        id: randomUUID(),
+        text,
+      })
+    } catch (error) {
+      deferTools({
+        task,
+        failed: true,
+      })
+      throw error
+    }
   }
 
   const action: Host['action'] = ({
@@ -1132,6 +1321,7 @@ export function createLiveSessions({
   return {
     retire,
     open,
+    resumeTools,
     action,
     thread,
     close,

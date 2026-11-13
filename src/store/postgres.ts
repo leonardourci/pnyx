@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { MessageChannel, receiveMessageOnPort, Worker, type MessagePort } from 'node:worker_threads'
-import { HydraError } from './errors.ts'
+import { CONFLICT_CODE, HydraError } from './errors.ts'
+import { configuredPostgres } from '#settings/store.ts'
 import { pnyxHome } from './paths.ts'
 
 // Its own entry file, so the worker runs only the connection.
@@ -14,8 +15,6 @@ const WORKER_ENTRY = new URL(
 const QUERY_TIMEOUT_MS = 30_000
 const LIVE_DATABASE = 'pnyx'
 const CONDITIONS = '--conditions='
-// What the worker reports when a conditional write matched another row count.
-export const CONFLICT_CODE = 'PNYX_CONFLICT'
 
 export interface Statement {
   text: string
@@ -28,6 +27,8 @@ export interface Request {
   id: number
   statements: Statement[]
   transaction: boolean
+  // A trial runs every statement and then rolls the transaction back.
+  rollback?: boolean
 }
 
 export type Reply = { id: number } & ({ results: Record<string, unknown>[][] } | {
@@ -137,18 +138,44 @@ function connection({ url }: { url?: string }): Connection {
   return opened
 }
 
+const configuredUrls = new Map<string, string>()
+
+// The postgresUrl setting, read once per home: zero-cache and the held Hydras keep the connection they opened, so a
+// change applies when the server restarts.
+export function configuredUrl(): string | undefined {
+  const database = homeDatabase()
+
+  if (!configuredUrls.has(database)) {
+    configuredUrls.set(
+      database,
+      configuredPostgres(),
+    )
+  }
+
+  const url = configuredUrls.get(database)
+
+  if (url === '') {
+    return undefined
+  }
+
+  return url
+}
+
 // Runs statements on the home's database and waits for them: the writer and the reducer stay synchronous, as they
 // were over fsynced files. A transaction commits all of them or none.
 export function query({
   statements,
   transaction = false,
+  rollback = false,
   url,
 }: {
   statements: Statement[]
   transaction?: boolean
+  rollback?: boolean
   url?: string
 }): Record<string, unknown>[][] {
-  const open = connection({ url })
+  const target = url ?? configuredUrl()
+  const open = connection({ url: target })
   requests += 1
   const id = requests
   Atomics.store(
@@ -160,6 +187,7 @@ export function query({
     id,
     statements,
     transaction,
+    rollback,
   } satisfies Request)
   const waited = Atomics.wait(
     open.signal,
@@ -173,7 +201,7 @@ export function query({
   // next request, and the next request opens a new connection.
   if (waited === 'timed-out' || reply?.id !== id) {
     void open.worker.terminate()
-    connections.delete(url ?? homeDatabase())
+    connections.delete(target ?? homeDatabase())
     throw new HydraError({
       message: `Postgres did not answer within ${QUERY_TIMEOUT_MS / 1000}s`,
       code: 'DATABASE_TIMEOUT',

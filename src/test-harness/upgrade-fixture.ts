@@ -2,7 +2,17 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export const building = ({ version }: { version: string }) => `echo ${version} > built.txt\n`
+// A build that records its version and leaves a CLI whose `setup postgres --check` exits with dataExit.
+export const building = ({
+  version,
+  dataExit = 0,
+}: {
+  version: string
+  dataExit?: number
+}) => `echo ${version} > built.txt
+mkdir -p dist/cli
+echo "process.stderr.write('data check ${dataExit}'); process.exit(${dataExit})" > dist/cli/pnyx-axi.js
+`
 
 export const git = ({
   cwd,
@@ -154,7 +164,7 @@ esac
   })
   publish({
     files: {
-      '.gitignore': 'built.txt\n',
+      '.gitignore': 'built.txt\ndist/\n',
       'build.sh': building({ version: 'one' }),
     },
     message: 'one',

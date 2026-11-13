@@ -46,8 +46,8 @@ commands:
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the application and the agents it runs
   restart                                    Restart the application; a turn it cut resumes from its saved session
-  upgrade [--check] [--now] [--stop]         Pull, install and build the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
-  setup [check|skills|hooks]                 Install login services, list missing setup, or install skills or hooks
+  upgrade [--check] [--now] [--stop]         Pull, install, build and check the data of the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
+  setup [check|postgres|skills|hooks]        Install login services, list missing setup, start Postgres, or install skills or hooks
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -225,6 +225,9 @@ pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [-
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
+pnyx-axi task tools <task> [--available] [--harness claude|codex] [--account <name>]
+pnyx-axi task tools <task> [--grant <capability>]... [--revoke <capability>]... [--harness claude|codex] [--account <name>]
+Capabilities: browser, mcp:<configured-name>, plugin:<installed-id>. Hydra grants tools itself; workers ask with task ask. Pnyx resumes the same conversation when native work settles. Grants survive restart. Hosted sessions start with no external MCP/plugins; browser selects one isolated headless chrome-devtools-axi session.
 pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task refresh-links <id>
@@ -298,7 +301,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear> [--every "4 hours" --until worker-started|question-answered|task-done] [--question <id>]
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
+pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>] [--tool <capability>]...
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
@@ -411,13 +414,20 @@ Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup check [--hydra <id>]
+pnyx-axi setup postgres [--check] [--allow-custom-home]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
-setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
-project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup check lists what is still missing (Postgres, local config, logins, hooks, skills, quota-axi, the login
+service, project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup postgres starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and creates
+this home's database (pnyx for ~/.pnyx). Host, port and user come from PGHOST, PGPORT and PGUSER, unless the
+postgresUrl setting names the Postgres; then setup postgres only checks it and starts or changes nothing.
+--check writes no Hydra data (it creates this home's empty database if missing): it reports what is missing and
+imports each Hydra still kept in events.jsonl in a transaction it rolls back.
 setup installs the server's login service.
-setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
+setup, setup hooks, setup skills and setup postgres without --check refuse a non-default PNYX_HOME unless
+--allow-custom-home is given.
 setup refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.

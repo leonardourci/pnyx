@@ -3,12 +3,14 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
-import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
+import { candidates, effectiveDispatch, type Candidate } from '#workers/dispatch-config.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
 import { withWriter } from '#app/writer.ts'
 import type { CommandRequest } from './dispatch.ts'
 import { background } from '#app/background.ts'
+import { loadHydra } from '#app/store.ts'
+import { BROWSER_TOOL, requireConfigured } from '#workers/tools.ts'
 
 // `hydra-agent-change <id> inscribe|compact|neither`: settles the message held for a Hydra agent change.
 export function hydraAgentChangeCommand({
@@ -52,10 +54,11 @@ export function hydraAgentCommand({
   id,
   args,
   send,
+  fail,
   hydraId,
   agents,
   kick,
-}: Omit<CommandRequest, 'fail'> & {
+}: CommandRequest & {
   hydraId: string
   agents: ReturnType<typeof createHost>
   kick(): void
@@ -78,6 +81,75 @@ export function hydraAgentCommand({
     })
   }
 
+  // Hydra's grants go with it, so a login that lacks one would leave Hydra down at its next open.
+  const saved = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.tools ?? []
+  const grants = saved.filter(name => name !== BROWSER_TOOL)
+
+  if (!grants.length) {
+    saveAgent({
+      ws,
+      id,
+      send,
+      hydraId,
+      agents,
+      kick,
+      agent,
+    })
+
+    return
+  }
+
+  background({
+    name: 'Hydra agent tool check',
+    context: { hydraId },
+    run: async () => {
+      try {
+        requireConfigured({
+          names: grants,
+          offered: await agents.toolCatalog({
+            task: HYDRA_CARD,
+            harness: agent.harness,
+            account: agent.account,
+          }),
+          task: HYDRA_CARD,
+          hydraId,
+        })
+      } catch (error) {
+        fail({
+          error: (error as Error).message,
+          code: error instanceof HydraError ? error.code : 'UNKNOWN',
+        })
+
+        return
+      }
+
+      saveAgent({
+        ws,
+        id,
+        send,
+        hydraId,
+        agents,
+        kick,
+        agent,
+      })
+    },
+  })
+}
+
+function saveAgent({
+  ws,
+  id,
+  send,
+  hydraId,
+  agents,
+  kick,
+  agent,
+}: Omit<CommandRequest, 'fail' | 'args'> & {
+  hydraId: string
+  agents: ReturnType<typeof createHost>
+  kick(): void
+  agent: Candidate
+}) {
   const {
     previous,
     running,

@@ -11,6 +11,7 @@ import { projectsFor } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
 import { recordExitCode } from '#app/request-context.ts'
+import { postgresIssue } from './postgres.ts'
 
 export interface SetupItem {
   name: string
@@ -31,7 +32,8 @@ const SIGN_IN: Record<Harness, string> = {
   codex: 'sign in to Codex (`codex login`)',
 }
 
-// Reads only files, PATH and each attached project's git sources, so it is cheap enough for every session open.
+// Reads files, PATH, each attached project's git sources and one Postgres query, so it is cheap enough for every session
+// open.
 export async function setupCheck({
   hydraId,
   state,
@@ -40,6 +42,11 @@ export async function setupCheck({
   state: HydraState
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
+  const database = postgresIssue()
+
+  if (database) {
+    items.push(database)
+  }
 
   if (onTemplate()) {
     items.push({
@@ -186,7 +193,9 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
 ] : []
 
 export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
-  const items = await setupCheck({
+  // A Hydra loads only through Postgres, so while Postgres is not ready that is the one item listed.
+  const database = postgresIssue()
+  const items = database ? [database] : await setupCheck({
     hydraId,
     state: loadHydra({ hydraId }).state,
   })

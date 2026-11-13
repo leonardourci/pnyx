@@ -28,10 +28,12 @@ function applied({ events }: { events: readonly HydraEvent[] }): HydraEvent[] {
 }
 
 // Writes a Hydra kept in an events.jsonl log into Postgres in one transaction: its events, the rows of the state they
-// replay to, and the receipts of its applied plans. A Hydra already there is refused, so nothing is half imported.
+// replay to, and the receipts of its applied plans. A Hydra already there is refused, so nothing is half imported. A
+// trial runs the whole import and rolls it back, so an upgrade can learn that the import would fail before it restarts.
 export function importHydra({
   hydraId,
   events,
+  trial = false,
   transactions = [],
   state = replayOwned({
     state: emptyHydra(),
@@ -40,6 +42,7 @@ export function importHydra({
 }: {
   hydraId: string
   events: readonly HydraEvent[]
+  trial?: boolean
   transactions?: readonly Transaction[]
   state?: HydraState
 }): HydraState {
@@ -56,6 +59,7 @@ export function importHydra({
   })
   query({
     transaction: true,
+    rollback: trial,
     statements: [
       ...eventStatements({
         hydraId,
@@ -76,7 +80,10 @@ export function importHydra({
       })),
     ],
   })
-  reloadHydra({ hydraId })
+
+  if (!trial) {
+    reloadHydra({ hydraId })
+  }
 
   return state
 }

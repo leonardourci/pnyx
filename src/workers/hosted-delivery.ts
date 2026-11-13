@@ -1,3 +1,4 @@
+import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { randomUUID } from 'node:crypto'
 import { enqueueSteering } from './inbox.ts'
 import type { AgentRef } from './model.ts'
@@ -19,6 +20,8 @@ import type { Writer } from '#app/writer.ts'
 
 // A message reaching a hosted agent: persisted steering or a direct input, and the direct reply settled on the provider's receipt.
 export function createHostedDelivery({
+  hydraId,
+  fenced,
   live,
   at,
   write,
@@ -31,6 +34,8 @@ export function createHostedDelivery({
   ringSteering,
   unnotifiedSteering,
 }: {
+  hydraId: string
+  fenced(): boolean
   live: Map<string, Live>
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
@@ -197,6 +202,7 @@ export function createHostedDelivery({
       })
     }
 
+    const unfenced = !fenced()
     direct ||= compactCommand({ text })
     const card = deliveringMessage.run(
       true,
@@ -206,6 +212,18 @@ export function createHostedDelivery({
             writer,
             ref,
           })
+
+          const settling = copySettling({
+            hydraId,
+            task: card.id,
+          })
+
+          if (direct) {
+            requireCopyAvailable({
+              hydraId,
+              task: card.id,
+            })
+          }
 
           if (!direct && card.id !== HYDRA_CARD) {
             if (steering) {
@@ -230,7 +248,7 @@ export function createHostedDelivery({
               })
             }
 
-            if (steeringHeld({ card })) {
+            if (steeringHeld({ card }) || settling || unfenced) {
               return writer.state.cards[card.id] as Card & { agent: AgentRef }
             }
 
@@ -288,8 +306,18 @@ export function createHostedDelivery({
       return
     }
 
-    if (!direct && steeringHeld({ card })) {
+    if (!direct && (steeringHeld({ card }) || unfenced)) {
       return { deferred: true }
+    }
+
+    if (copySettling({
+      hydraId,
+      task: card.id,
+    })) {
+      return {
+        deferred: true,
+        queued: true,
+      }
     }
 
     if (holdCompact({

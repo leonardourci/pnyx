@@ -15,7 +15,7 @@ import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
-import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
+import { SETTING_KEYS, type PageSettings, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
@@ -379,6 +379,39 @@ export function saveSettings({
   })
 }
 
+// The Postgres URL set for this home, read without the move from older per-Hydra values, which itself needs Postgres.
+export const configuredPostgres = () => readFolded().settings.postgresUrl
+
+// postgresUrl may hold a password, so pages never get it.
+export function pageSettings({ settings }: { settings: Settings }): PageSettings {
+  const shown: Partial<Settings> = { ...settings }
+  delete shown.postgresUrl
+
+  return shown as PageSettings
+}
+
+const maskedUrl = ({ url }: { url: string }) => {
+  if (!URL.canParse(url)) {
+    return url
+  }
+
+  const parsed = new URL(url)
+
+  if (!parsed.password) {
+    return url
+  }
+
+  parsed.password = '***'
+
+  return parsed.toString()
+}
+
+// What the CLI prints: everything, with a password in postgresUrl masked.
+export const shownSettings = ({ settings }: { settings: Settings }): Settings => ({
+  ...settings,
+  postgresUrl: maskedUrl({ url: settings.postgresUrl }),
+})
+
 // The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
 // stays their record, since it also names the database.
 export function mirrorSettings({
@@ -395,7 +428,7 @@ export function mirrorSettings({
           do update set revision = excluded.revision, value = excluded.value where settings.revision < excluded.revision`,
         values: [
           revision,
-          JSON.stringify(settings),
+          JSON.stringify(pageSettings({ settings })),
         ],
       },
     ],
@@ -418,17 +451,25 @@ export function checkSettings({ patch }: { patch: unknown }): void {
 }
 
 export function settingsReceipt({ saved }: { saved: SettingsSave }): Output {
+  const settings = shownSettings({ settings: saved.settings })
+
   if ('skipped' in saved) {
     return {
       event: `none: ${saved.skipped}`,
-      settings: saved.settings,
+      settings,
       revision: saved.revision,
     }
   }
 
+  const changed = { ...saved.entry.after }
+
+  if (changed.postgresUrl !== undefined) {
+    changed.postgresUrl = maskedUrl({ url: changed.postgresUrl })
+  }
+
   return {
-    changed: saved.entry.after,
-    settings: saved.settings,
+    changed,
+    settings,
     revision: saved.revision,
   }
 }

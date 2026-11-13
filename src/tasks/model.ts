@@ -163,6 +163,9 @@ export interface CardFacts {
 }
 
 export interface Card {
+  tools?: string[]
+  toolsRevision?: string
+  toolsApplied?: string
   wait?: TaskWait & {
     id: string
     at: string

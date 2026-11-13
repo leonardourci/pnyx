@@ -5,7 +5,7 @@ import type { Ask, Card, NoteKind, TaskDeclaration, TaskKind, TaskStatus } from 
 import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
-import type { HydraChatQueue } from '#hydra/chat-queue.ts'
+import type { HydraQueue } from '#hydra/wakes.ts'
 import type { Settings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
 import type { currentState } from '#tasks/card-status.ts'
@@ -23,7 +23,7 @@ const hydras = table('hydras')
     seq: number(),
     config: json<Stored<Omit<HydraConfig, 'columns'>>>().optional(),
     summary: json<Stored<HydraSummary>>(),
-    queue: json<Stored<HydraChatQueue>>(),
+    queue: json<Stored<HydraQueue>>(),
   })
   .primaryKey('id')
 
@@ -32,6 +32,14 @@ const settings = table('settings')
     id: string(),
     revision: number(),
     value: json<Stored<Settings>>(),
+  })
+  .primaryKey('id')
+
+const upgradeStatus = table('upgrade_status')
+  .columns({
+    id: string(),
+    available: boolean(),
+    checked_at: string(),
   })
   .primaryKey('id')
 
@@ -329,6 +337,7 @@ export const schema = createSchema({
   tables: [
     hydras,
     settings,
+    upgradeStatus,
     hydraValues,
     events,
     columns,
@@ -645,6 +654,13 @@ export const queries = defineQueries({
     shared: defineQuery(() => zql.settings.where(
       'id',
       'shared',
+    ).one()),
+  },
+  upgrade: {
+    // Whether a newer Pnyx is available, as the server's last check found.
+    status: defineQuery(() => zql.upgrade_status.where(
+      'id',
+      'current',
     ).one()),
   },
 })

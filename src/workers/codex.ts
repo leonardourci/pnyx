@@ -1,3 +1,5 @@
+import { HydraError } from '#store/errors.ts'
+import { BROWSER_TOOL } from './tools.ts'
 import { log } from '#app/diagnostics.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
@@ -145,7 +147,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     id: string
     type: string
   }>()
-  let unknownWork: string | undefined
+  const unknownItems = new Map<string, string>()
 
   const observeWork = ({
     params,
@@ -159,6 +161,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     }
 
     const item = object({ value: params.item })
+    const unknownId = String(item.id ?? item.type)
+    let unknownWork: string | undefined
+
+    if (completed) {
+      unknownItems.delete(unknownId)
+    }
 
     if (item.type === 'collabAgentToolCall') {
       const receivers = Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds : []
@@ -215,23 +223,30 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
       } else if (item.status !== 'completed') {
         unknownWork = 'Codex did not report whether a command stopped'
       }
-    } else if (typeof item.type !== 'string' || ![
+    } else if (!completed && (typeof item.type !== 'string' || ![
       ...VIEW_ITEMS,
       ...TOOL_ITEMS,
       'fileChange',
       'imageGeneration',
       'sleep',
-    ].includes(item.type)) {
+    ].includes(item.type))) {
       unknownWork = `Codex reported an unrecognized native item: ${String(item.type)}`
     }
 
     if (unknownWork) {
+      unknownItems.set(
+        unknownId,
+        unknownWork,
+      )
+    }
+
+    if (unknownItems.size) {
       emit({
         event: {
           type: 'background',
           background: {
             knowledge: 'unknown',
-            reason: unknownWork,
+            reason: [...unknownItems.values()].join('; '),
           },
         },
       })
@@ -819,7 +834,7 @@ const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fro
   .filter(([
     name,
     value,
-  ]) => name.startsWith('PNYX_') && value !== undefined)
+  ]) => (name.startsWith('PNYX_') || name.startsWith('CHROME_DEVTOOLS_AXI_')) && value !== undefined)
   .map(([
     name,
     value,
@@ -867,7 +882,7 @@ export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsag
   }
 }
 
-async function routineConfig({
+async function readConfig({
   rpc,
   cwd,
 }: {
@@ -883,59 +898,121 @@ async function routineConfig({
   })
 
   if (!settings.config || typeof settings.config !== 'object') {
-    throw new Error('Routine helper configuration could not be read')
+    throw new Error('Codex tool configuration could not be read')
   }
 
-  const config = object({ value: settings.config })
-  const skills = await rpc.request({
-    method: 'skills/list',
-    params: { cwds: [cwd] },
+  return object({ value: settings.config })
+}
+
+// Servers and plugins the owner turned off stay off the catalog, so a grant cannot turn them on.
+function codexCatalog({ config }: { config: Record<string, unknown> }): string[] {
+  const enabled = ({ entries }: { entries: Record<string, unknown> }) => Object.keys(entries)
+    .filter(name => name !== '_default' && object({ value: entries[name] }).enabled !== false)
+
+  return [
+    BROWSER_TOOL,
+    ...enabled({ entries: object({ value: config.mcp_servers }) }).map(name => `mcp:${name}`),
+    ...enabled({ entries: object({ value: config.plugins }) }).map(name => `plugin:${name}`),
+  ].sort()
+}
+
+async function scopedConfig({
+  rpc,
+  cwd,
+  grants = [],
+  routine = false,
+}: {
+  rpc: ReturnType<typeof connection>
+  cwd: string
+  grants?: string[]
+  routine?: boolean
+}): Promise<Record<string, unknown>> {
+  const config = await readConfig({
+    rpc,
+    cwd,
   })
-
-  if (!Array.isArray(skills.data)) {
-    throw new Error('Routine helper skill catalog could not be read')
-  }
-
   const disabledSkills: {
     path: string
     enabled: false
   }[] = []
 
-  for (const value of skills.data) {
-    const row = object({ value })
+  if (routine) {
+    const skills = await rpc.request({
+      method: 'skills/list',
+      params: { cwds: [cwd] },
+    })
 
-    if (!Array.isArray(row.skills)) {
-      throw new Error('Routine helper skill catalog is invalid')
+    if (!Array.isArray(skills.data)) {
+      throw new Error('Routine helper skill catalog could not be read')
     }
 
-    for (const value of row.skills) {
-      const skill = object({ value })
+    for (const value of skills.data) {
+      const row = object({ value })
 
-      if (typeof skill.path !== 'string') {
-        throw new Error('Routine helper skill path is invalid')
+      if (!Array.isArray(row.skills)) {
+        throw new Error('Routine helper skill catalog is invalid')
       }
 
-      disabledSkills.push({
-        path: skill.path,
-        enabled: false,
+      for (const value of row.skills) {
+        const skill = object({ value })
+
+        if (typeof skill.path !== 'string') {
+          throw new Error('Routine helper skill path is invalid')
+        }
+
+        disabledSkills.push({
+          path: skill.path,
+          enabled: false,
+        })
+      }
+    }
+  }
+
+  const servers = object({ value: config.mcp_servers })
+  const plugins = object({ value: config.plugins })
+  const catalog = codexCatalog({ config })
+
+  for (const name of grants) {
+    if (!catalog.includes(name)) {
+      throw new HydraError({
+        message: `Tool capability is not configured for this Codex login: ${name}; configure it or run \`pnyx-axi task tools <task> --revoke ${name}\``,
+        code: 'TOOL_UNAVAILABLE',
       })
     }
   }
 
   const overrides: Record<string, unknown> = {
-    'skills.config': disabledSkills,
-    'skills.bundled.enabled': false,
-    'skills.include_instructions': false,
     'features.apps': false,
-    'features.plugins': false,
-    'features.sleep_tool': false,
-    'features.default_mode_request_user_input': false,
-    'tools.update_plan.enabled': false,
-    web_search: 'disabled',
+    'features.plugins': grants.some(name => name.startsWith('plugin:')),
+    'plugins._default.enabled': false,
   }
 
-  for (const name of Object.keys(object({ value: config.mcp_servers }))) {
-    overrides[`mcp_servers.${JSON.stringify(name)}.enabled`] = false
+  if (routine) {
+    Object.assign(
+      overrides,
+      {
+        'skills.config': disabledSkills,
+        'skills.bundled.enabled': false,
+        'skills.include_instructions': false,
+        'features.sleep_tool': false,
+        'features.default_mode_request_user_input': false,
+        'tools.update_plan.enabled': false,
+        web_search: 'disabled',
+      },
+    )
+  }
+
+  for (const name of Object.keys(servers)) {
+    overrides[`mcp_servers.${JSON.stringify(name)}.enabled`] = grants.includes(`mcp:${name}`)
+  }
+
+  for (const name of Object.keys(plugins).filter(name => name !== '_default')) {
+    overrides[`plugins.${JSON.stringify(name)}.enabled`] = grants.includes(`plugin:${name}`)
+    const bundled = object({ value: object({ value: plugins[name] }).mcp_servers })
+
+    for (const server of Object.keys(bundled)) {
+      overrides[`plugins.${JSON.stringify(name)}.mcp_servers.${JSON.stringify(server)}.enabled`] = grants.includes(`plugin:${name}`)
+    }
   }
 
   return overrides
@@ -963,6 +1040,30 @@ export function codexProvider({
 }: { spawnCodex?: SpawnCodex }): Provider {
   return {
     compact: true,
+    async toolCatalog({
+      cwd,
+      env,
+    }) {
+      const rpc = connection({
+        child: spawnCodex({
+          cwd,
+          env,
+        }),
+      })
+
+      try {
+        await initialize({ rpc })
+
+        return codexCatalog({
+          config: await readConfig({
+            rpc,
+            cwd,
+          }),
+        })
+      } finally {
+        rpc.close()
+      }
+    },
     async models({
       cwd,
       env,
@@ -1057,6 +1158,7 @@ export function codexProvider({
       instructions,
       outputSchema,
       toolScope,
+      capabilities = [],
       context,
       spawned,
     }) {
@@ -1103,15 +1205,15 @@ export function codexProvider({
           'features.default_mode_request_user_input': true,
         }
 
-        if (toolScope === 'routine') {
-          Object.assign(
-            config,
-            await routineConfig({
-              rpc,
-              cwd,
-            }),
-          )
-        }
+        Object.assign(
+          config,
+          await scopedConfig({
+            rpc,
+            cwd,
+            grants: capabilities,
+            routine: toolScope === 'routine',
+          }),
+        )
 
         const result = await rpc.request({
           method: agent ? 'thread/resume' : 'thread/start',

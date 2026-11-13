@@ -9,7 +9,7 @@ import { dispatchCommands } from '#workers/dispatch-cli.ts'
 import type { ThreadPage, LatestMessage } from '#hydra/transcripts-read.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import type { Settings } from '#settings/model.ts'
+import type { PageSettings } from '#settings/model.ts'
 import type { HydraSummary } from './server-hydras.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
@@ -103,7 +103,7 @@ type ServerPayload =
   // The settings every Hydra shares: on connect, then whenever they change.
   | {
     type: 'settings'
-    settings: Settings
+    settings: PageSettings
     revision: number
   }
   // Hydra's unread changes: after a snapshot when there are any, then again whenever they change.

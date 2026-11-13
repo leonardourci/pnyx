@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
-import { CONFLICT_CODE, type Reply, type Request, type Statement } from './postgres.ts'
+import { CONFLICT_CODE } from './errors.ts'
+import type { Reply, Request, Statement } from './postgres.ts'
 
 const MISSING_DATABASE = '3D000'
 const DUPLICATE_DATABASE = '42P04'
@@ -164,7 +165,7 @@ async function run({ request }: { request: Request }): Promise<Omit<Reply, 'id'>
         }))
       }
 
-      await client.query('commit')
+      await client.query(request.rollback ? 'rollback' : 'commit')
 
       return { results }
     } catch (error) {
