@@ -116,7 +116,9 @@ function kept<Value>({
   previous: Value
   next: Value
 }): Value {
-  return JSON.stringify(previous) === JSON.stringify(next) ? previous : next
+  const same = previous === next || JSON.stringify(previous) === JSON.stringify(next)
+
+  return same ? previous : next
 }
 
 const referenceLists = new WeakMap<readonly ReferenceRow[], Pick<HydraState, 'keys'> & {
@@ -194,15 +196,20 @@ export function hydraFromRows({
   messages: readonly MessageRow[]
   previous?: HydraState
 }): HydraState {
-  const shown = [
+  // An opened card's detail row replaces its board row.
+  const byId = Object.fromEntries([
     ...cards,
     ...opened,
-  ].map(row => cardFromRow({ row }))
+  ].map(row => [
+    row.id,
+    cardFromRow({ row }),
+  ]))
+  const shown = Object.values(byId)
   const sameCards = previous !== undefined && Object.keys(previous.cards).length === shown.length
     && shown.every(card => previous.cards[card.id] === card)
   const listed = referencesOf({
     rows: references,
-    shown: new Set(shown.map(card => card.id)),
+    shown: new Set(Object.keys(byId)),
   })
   // Zero types json columns as plain JSON; they hold the Hydra fields the server stored.
   const values = Object.fromEntries(hydra.values.map(({
@@ -228,10 +235,7 @@ export function hydraFromRows({
       previous: previous?.config,
       next: config,
     }),
-    cards: sameCards ? previous.cards : Object.fromEntries(shown.map(card => [
-      card.id,
-      card,
-    ])),
+    cards: sameCards ? previous.cards : byId,
     references: listed.references,
     keys: listed.keys,
     hydraMessages: messagesOf({ rows: messages }),

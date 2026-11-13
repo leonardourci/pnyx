@@ -9,7 +9,6 @@ const card = {
   title: 'Ship it',
   column_id: 'working',
   hidden: false,
-  live: true,
   automatic_task: false,
   open_permissions: 0,
   created_seq: 1,
@@ -57,10 +56,39 @@ const boardRow = {
   declarations: [],
   links: [
     {
+      url: 'https://github.com/o/r/pull/1',
       data: {
         kind: 'github_pr',
         url: 'https://github.com/o/r/pull/1',
         number: 1,
+      },
+      mergeQuestion: {
+        card_id: 'task-1',
+        data: { id: 'ask-1' },
+        card: { id: 'task-1' },
+      },
+    },
+    {
+      url: 'https://github.com/o/r/pull/2',
+      data: {
+        kind: 'github_pr',
+        url: 'https://github.com/o/r/pull/2',
+        number: 2,
+      },
+      mergeQuestion: {
+        card_id: 'task-2',
+        data: { id: 'ask-9' },
+        card: {
+          id: 'task-2',
+          key: 'old',
+          title: 'Old work',
+          column_id: 'done',
+          hidden: true,
+          automatic_task: false,
+          created_seq: 2,
+          updated_seq: 3,
+          updated_at: '2026-11-13T00:00:00.000Z',
+        },
       },
     },
   ],
@@ -109,14 +137,12 @@ const references = [
     key: 'old',
     title: 'Old work',
     hidden: true,
-    live: false,
   },
   {
     ...card,
     id: 'session-1',
     key: 'session',
     title: 'A session',
-    live: false,
     automatic_task: true,
   },
 ] as unknown as ReferenceRow[]
@@ -165,6 +191,16 @@ test(
     assert.equal(
       state.cards['task-1']?.links[0]?.number,
       1,
+    )
+    const decided = state.cards['task-1']?.facts?.mergeQuestions
+    assert.equal(
+      decided?.['https://github.com/o/r/pull/1']?.card,
+      undefined,
+      'a question on the card itself names no other card',
+    )
+    assert.equal(
+      decided?.['https://github.com/o/r/pull/2']?.card?.title,
+      'Old work',
     )
     assert.deepEqual(
       Object.keys(state.references ?? {}),
