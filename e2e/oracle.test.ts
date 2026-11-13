@@ -291,7 +291,7 @@ test(
 )
 
 test(
-  'a hosted worker that finishes a turn leaves its transcript out of the log',
+  'a hosted worker\'s finished turn copies nothing into the log and wakes no hydra check, whose conversations hold the owner\'s queued reply',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'archive' })
@@ -325,6 +325,36 @@ test(
       s.events().filter(event => event.type === 'chat.message'),
       [],
       'no transcript message is copied into the log',
+    )
+    const finished = String(s.state().seq)
+    const check = () => s.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        finished,
+      ],
+    })
+    const quiet = await check()
+    assert.match(
+      quiet,
+      new RegExp(`changes: "none: nothing Hydra tracks changed after seq ${finished}"`),
+    )
+    assert.doesNotMatch(
+      quiet,
+      /conversations/,
+    )
+    await s.owner({
+      args: [
+        'reply',
+        'archive',
+        '--text',
+        'Keep the ledger sorted',
+      ],
+    })
+    assert.match(
+      await check(),
+      /conversations\[1\]:\n.*\n +messages\[1\]\{seq,role,text\}:\n +\d+,user,Keep the ledger sorted\n/,
     )
   },
 )
