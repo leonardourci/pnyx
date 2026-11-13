@@ -169,7 +169,8 @@ function claimIsStale({ file }: { file: string }): boolean {
   }
 }
 
-// Claim creation and dead-owner recovery share the writer lock; Git work stays outside it.
+// Claim creation and dead-owner recovery run inside one synchronous write, which the server, the only writer, never
+// interleaves with another; Git work stays outside it.
 function claim({
   hydraId,
   path,
