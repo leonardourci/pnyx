@@ -20,7 +20,8 @@ const TABLES = [
 export function storedHydra({ hydraId }: { hydraId: string }): string {
   return JSON.stringify(query({
     statements: TABLES.map(table => ({
-      text: `select * from ${table} where ${table === 'hydras' ? 'id' : 'hydra_id'} = $1 order by 1, 2, 3`,
+      // Ordered by the whole row's text: json columns have no ordering operator.
+      text: `select * from ${table} stored where ${table === 'hydras' ? 'id' : 'hydra_id'} = $1 order by stored::text`,
       values: [hydraId],
     })),
   }))
