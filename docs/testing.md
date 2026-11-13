@@ -41,7 +41,7 @@ Page-projection checks cover omitted histories and event IDs, explicit hidden-ca
 
 Oracle regressions check that a query reads only new event lines, that interrupted batches resume, that a cache version change or a replaced event log rebuilds the cache, that agent transcripts and the conversation copies an older Pnyx logged are never indexed, and that searches cancel. Searches from separate processes share the cursor, and an unchanged query succeeds while another connection holds the cache write lock.
 
-History checks read Hydra's replies from its native transcript, exclude its tool and thinking records, and bound each reply by the log events around it.
+History checks read Hydra's replies from the native transcripts of every session it was configured with, exclude its tool and thinking records, and bound each reply by the log events around it.
 
 ## Native clipboard regression
 

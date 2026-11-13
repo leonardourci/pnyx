@@ -161,7 +161,7 @@ pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
 pnyx-axi hydra message [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>]
 pnyx-axi hydra message [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
-Lookup reads Hydra's replies from its native transcripts and the owner's messages from the log; a task's lookup reads its current session's transcript and the owner's replies. A native reply takes the seq of the event before it, so several replies can share a seq. --direction excludes the selected message; ranges include both endpoints.
+Lookup reads Hydra's replies from its native transcripts and the owner's messages from the log; a task's lookup reads its current session's transcript and the owner's replies. A native reply takes the seq of the first event after it, or the next seq when none follows yet, so several replies can share a seq and one newer than a snapshot stays outside it. --direction excludes the selected message; ranges include both endpoints.
 No selector lists the oldest page. --id/--seq/--at alone returns one message; --budget alone with a selector grows surroundings to fit.
 Whole messages, at most ${MESSAGE_PAGE_LIMIT} and ${HISTORY_BUDGET} estimated tokens and ${MESSAGE_PAGE_BYTES} JSON bytes per page; a message over the budget fails explicitly.
 Use returned older/newer cursors with --cursor; they pin the Hydra, thread, range and log snapshot. --at needs a timezone; a time or seq several messages share requires an id.
@@ -179,8 +179,9 @@ Messages are durable entries in Hydra’s chat; one without --task is about the 
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
 except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It returns
-a compact conversations digest of the owner's queued task replies. Read task history --full
-for complete messages. Pass the printed through as the next --after.
+a compact conversations digest of the owner's queued task replies (read them whole with task history --full) and of the words
+typed straight into the session of a worker Pnyx does not run, which carry their time, count once an event follows them, wake --wait
+and are read whole with task chat <task>. Pass the printed through as the next --after.
 `,
   owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
 pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <n>]
