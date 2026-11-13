@@ -11,6 +11,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
+import { readTranscript } from '#oracle/index.ts'
 import type { TranscriptRecord } from '#workers/provider.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
 import { traces } from '#preferences/view.ts'
@@ -225,7 +226,7 @@ export function transcriptEntries({
   ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({ entry }))
 }
 
-export function threadPath({ card }: { card: Card }): string | undefined {
+export function threadPath({ card }: { card: Pick<Card, 'agent'> }): string | undefined {
   const path = card.agent?.transcriptPath
 
   return path && isAbsolute(path) && path.endsWith('.jsonl') && [
@@ -233,6 +234,71 @@ export function threadPath({ card }: { card: Card }): string | undefined {
     'claude-code',
     'codex',
   ].includes(card.agent!.provider) ? path : undefined
+}
+
+// One session's whole native transcript, each entry with the reference its thread page gives it.
+export function sessionEntries({
+  path,
+  session,
+  boundaries,
+}: {
+  path: string
+  session: string
+  boundaries: boolean
+}): ThreadEntry[] {
+  const lines = readTranscript({
+    cursor: {
+      source: path,
+      identity: '',
+      pos: 0,
+    },
+  })?.lines ?? []
+
+  return lines.flatMap(line => recordEntries({
+    record: line.record,
+    offset: line.pos,
+    boundaries,
+  }).map(item => ({
+    ...item,
+    reference: messageReference({
+      session,
+      id: item.id,
+      messageId: item.messageId,
+    }),
+    session,
+  })))
+}
+
+// Every session Hydra has had, read from their native transcripts; the card holds the current session's latest agent.
+export function hydraEntries({ state }: { state: HydraState }): ThreadEntry[] {
+  const agents = new Map(Object.values(state.sessions ?? {})
+    .filter(session => session.originCardId === HYDRA_CARD && !session.agent.agentId)
+    .map(session => [
+      session.id,
+      session.agent,
+    ]))
+  const hydra = state.cards[HYDRA_CARD]
+  const current = hydra && cardSessionId({ card: hydra })
+
+  if (current && hydra.agent) {
+    agents.set(
+      current,
+      hydra.agent,
+    )
+  }
+
+  return [...agents].flatMap(([
+    session,
+    agent,
+  ]) => {
+    const path = threadPath({ card: { agent } })
+
+    return path ? sessionEntries({
+      path,
+      session,
+      boundaries: true,
+    }) : []
+  })
 }
 
 export interface LatestMessage {

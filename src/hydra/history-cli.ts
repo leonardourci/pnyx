@@ -2,28 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
-import { withWriter } from '#app/writer.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { historyCommand, inscribeOperation, readHistory } from './history.ts'
+import { hydraEntries } from './transcripts-read.ts'
 import { operationEvent } from './operations.ts'
-
-export function harvestHydra({
-  values,
-  hydraId,
-}: {
-  values: Record<string, string | boolean | undefined>
-  hydraId: string
-}): void {
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => harvestTranscripts({
-      writer,
-      cardIds: [HYDRA_CARD],
-      at: meta({ values }).at,
-    }),
-  })
-}
 
 export function hydraHistory({
   values,
@@ -36,6 +18,7 @@ export function hydraHistory({
   const page = readHistory({
     state,
     events: readEvents({ hydraId }),
+    native: hydraEntries({ state }),
     since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
     after: values.after as string | undefined,
     through: integer({

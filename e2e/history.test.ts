@@ -1,4 +1,3 @@
-import { renameSync } from 'node:fs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -150,41 +149,6 @@ test(
         second.more,
         true,
       )
-      const transcriptPath = s.state().cards[HYDRA_CARD]?.agent?.transcriptPath
-      assert.ok(transcriptPath)
-      renameSync(
-        transcriptPath,
-        `${transcriptPath}.held`,
-      )
-
-      try {
-        const archived = await page.command({
-          name: 'hydra',
-          args: [
-            'history',
-            '--since',
-            'last-inscribe',
-            '--after',
-            String(first.after),
-            '--budget',
-            '1',
-          ],
-        })
-        assert.equal(
-          archived.text,
-          second.text,
-        )
-        assert.equal(
-          archived.totalTokens,
-          second.totalTokens,
-        )
-      } finally {
-        renameSync(
-          `${transcriptPath}.held`,
-          transcriptPath,
-        )
-      }
-
       const third = await page.command({
         name: 'hydra',
         args: [
