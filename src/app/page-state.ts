@@ -125,7 +125,7 @@ export function pageEvent({
   const card = state.cards[event.cardId]
     ?? (event.type === 'task.moved-out' ? event.data.card : undefined)
   const global = event.type.startsWith('hydra.') || event.type.startsWith('board.')
-    || event.type === 'chat.message' || event.type === 'task.reminder-due'
+    || event.type === 'task.reminder-due'
     || event.type === 'project.refreshed' || event.type === 'diagnostic.retry'
     || event.type === 'pnyx.upgrade'
     || (event.type === 'session.compaction' && event.cardId === HYDRA_CARD)

@@ -8,7 +8,7 @@ import { readThread } from './transcripts-read.ts'
 import { mergeThreadPages } from './thread-history.ts'
 
 test(
-  'paging retains late timestamped native and harvested records exactly once',
+  'paging reads only the native transcript, ignoring copies an older Pnyx stored in the log',
   t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -60,7 +60,7 @@ test(
       native,
       `${rows.map(row => JSON.stringify(row)).join('\n')}\n`,
     )
-    let state = withWriter({
+    const state = withWriter({
       hydraId: 'default',
       create: true,
       fn: ({ writer }) => {
@@ -94,7 +94,7 @@ test(
               cardId: '$hydra',
               type: 'chat.message',
               data: {
-                session: 'claude-code:old',
+                session: 'claude-code:older',
                 nativeId: `record:${index}`,
                 role: 'assistant',
                 text: row.message.content,
@@ -140,14 +140,31 @@ test(
       return page.entries
     }
 
-    const archived = pageAll()
+    card.agent = {
+      provider: 'claude-code',
+      sessionId: 'old',
+      transcriptPath: join(
+        home,
+        'missing.jsonl',
+      ),
+    }
+    const missing = readThread({
+      hydraId: 'default',
+      state,
+      card,
+      homes: [],
+    })
     assert.equal(
-      archived.length,
-      80,
+      missing.unavailable,
+      'The recorded transcript is unavailable.',
+    )
+    assert.deepEqual(
+      missing.entries,
+      [],
     )
     assert.equal(
-      new Set(archived.map(entry => entry.text)).size,
-      80,
+      missing.older,
+      undefined,
     )
     card.agent = {
       provider: 'claude-code',
@@ -170,56 +187,6 @@ test(
     assert.equal(
       recorded.at(-1)?.text,
       'Reply 59',
-    )
-    state = withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => {
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'late-reply',
-            at: '2026-10-22T11:00:00.000Z',
-            actor: 'harvest',
-            cardId: '$hydra',
-            type: 'chat.message',
-            data: {
-              session: 'claude-code:older',
-              nativeId: '100:m0',
-              role: 'assistant',
-              text: 'Finished',
-            },
-          },
-        })
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'late-tool',
-            at: '2026-10-22T11:00:00.000Z',
-            actor: 'harvest',
-            cardId: '$hydra',
-            type: 'chat.message',
-            data: {
-              session: 'claude-code:older',
-              nativeId: '0:t0',
-              kind: 'tool',
-              role: 'Read',
-              text: 'release.txt',
-            },
-          },
-        })
-
-        return writer.state
-      },
-    })
-    assert.deepEqual(
-      pageAll().slice(-2)
-        .map(entry => entry.reference),
-      [
-        'claude-code:older:0:t0',
-        'claude-code:older:100:m0',
-      ],
     )
   },
 )
