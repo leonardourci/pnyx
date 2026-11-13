@@ -1,0 +1,3 @@
+allowBuilds:
+  '@rocicorp/zero-sqlite3': true
+  protobufjs: false
