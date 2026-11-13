@@ -1,39 +1,58 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
 
 const USER = 'pnyx'
-// Homebrew's keg on Apple silicon and Intel, then the Ubuntu packages GitHub's runners carry.
-const HOMEBREW_BINS = [
-  '/opt/homebrew/opt/postgresql@17/bin',
-  '/usr/local/opt/postgresql@17/bin',
+const MIN_VERSION = 15
+// Homebrew's versioned kegs on Apple silicon and Intel, then the Ubuntu packages GitHub's runners carry.
+const ROOTS = [
+  {
+    dir: '/opt/homebrew/opt',
+    version: /^postgresql@(\d+)$/,
+  },
+  {
+    dir: '/usr/local/opt',
+    version: /^postgresql@(\d+)$/,
+  },
+  {
+    dir: '/usr/lib/postgresql',
+    version: /^(\d+)$/,
+  },
 ]
-const UBUNTU_ROOT = '/usr/lib/postgresql'
 
+// The newest installed PostgreSQL that zero-cache supports.
 function binaries(): string {
-  const ubuntu = existsSync(UBUNTU_ROOT)
-    ? readdirSync(UBUNTU_ROOT).toSorted()
-      .reverse()
-      .map(version => join(
-        UBUNTU_ROOT,
-        version,
+  const found = ROOTS.flatMap(root => existsSync(root.dir)
+    ? readdirSync(root.dir).flatMap(name => {
+      const version = Number(root.version.exec(name)?.[1])
+      const bin = join(
+        root.dir,
+        name,
         'bin',
-      ))
-    : []
-  const found = [
-    ...HOMEBREW_BINS,
-    ...ubuntu,
-  ].find(bin => existsSync(join(
-    bin,
-    'initdb',
-  )))
+      )
+
+      return version >= MIN_VERSION && existsSync(join(
+        bin,
+        'initdb',
+      )) ? [
+          {
+            version,
+            bin,
+          },
+        ] : []
+    })
+    : [])
+    .toSorted((
+      a,
+      b,
+    ) => b.version - a.version)[0]
 
   if (!found) {
-    throw new Error('Tests need PostgreSQL 15 or newer: run `brew install postgresql@17`')
+    throw new Error(`Tests need PostgreSQL ${MIN_VERSION} or newer: run \`brew install postgresql@17\``)
   }
 
-  return found
+  return found.bin
 }
 
 async function freePort(): Promise<number> {
@@ -53,8 +72,7 @@ async function freePort(): Promise<number> {
   return address.port
 }
 
-// A throwaway cluster for one test run, with the logical replication zero-cache needs. Each Pnyx home picks its
-// own database in it from the returned libpq environment.
+// A throwaway cluster for one test run, with the logical replication zero-cache needs.
 export async function startPostgres({ dir }: { dir: string }): Promise<{
   env: Record<'PGHOST' | 'PGPORT' | 'PGUSER', string>
   stop(): void
@@ -65,17 +83,43 @@ export async function startPostgres({ dir }: { dir: string }): Promise<{
     'data',
   )
   const port = await freePort()
+  const logFile = join(
+    dir,
+    'postgres.log',
+  )
   // Postgres refuses to start under a locale it cannot load, as a test's bare environment has.
   const env = {
     ...process.env,
     LC_ALL: 'C',
   }
-  execFileSync(
-    join(
-      bin,
-      'initdb',
-    ),
-    [
+
+  const run = ({
+    command,
+    args,
+  }: {
+    command: string
+    args: string[]
+  }) => {
+    const result = spawnSync(
+      join(
+        bin,
+        command,
+      ),
+      args,
+      {
+        env,
+        encoding: 'utf8',
+      },
+    )
+
+    if (result.status !== 0) {
+      throw new Error(`${command} failed: ${result.stderr || result.error?.message}; see ${logFile}`)
+    }
+  }
+
+  run({
+    command: 'initdb',
+    args: [
       '--pgdata',
       data,
       '--username',
@@ -84,34 +128,20 @@ export async function startPostgres({ dir }: { dir: string }): Promise<{
       '--encoding=UTF8',
       '--locale=C',
     ],
-    {
-      env,
-      stdio: 'ignore',
-    },
-  )
-  execFileSync(
-    join(
-      bin,
-      'pg_ctl',
-    ),
-    [
+  })
+  run({
+    command: 'pg_ctl',
+    args: [
       '--pgdata',
       data,
       '--log',
-      join(
-        dir,
-        'postgres.log',
-      ),
+      logFile,
       '--wait',
       '-o',
       `-p ${port} -k ${dir} -c listen_addresses=127.0.0.1 -c wal_level=logical -c fsync=off -c max_connections=200`,
       'start',
     ],
-    {
-      env,
-      stdio: 'ignore',
-    },
-  )
+  })
 
   return {
     env: {
@@ -119,23 +149,14 @@ export async function startPostgres({ dir }: { dir: string }): Promise<{
       PGPORT: String(port),
       PGUSER: USER,
     },
-    stop: () => {
-      spawnSync(
-        join(
-          bin,
-          'pg_ctl',
-        ),
-        [
-          '--pgdata',
-          data,
-          '--mode=immediate',
-          'stop',
-        ],
-        {
-          env,
-          stdio: 'ignore',
-        },
-      )
-    },
+    stop: () => run({
+      command: 'pg_ctl',
+      args: [
+        '--pgdata',
+        data,
+        '--mode=immediate',
+        'stop',
+      ],
+    }),
   }
 }

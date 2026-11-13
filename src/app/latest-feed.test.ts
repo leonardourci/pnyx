@@ -211,7 +211,9 @@ test(
       port: 0,
       homes: [],
     })
-    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/default/ws?token=${localToken()}`)
+    // The cards are hidden hook cards, so the page asks for hidden cards to receive their latest messages.
+    const hidden = encodeURIComponent(JSON.stringify(['--hidden']))
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/default/ws?token=${localToken()}&page=${hidden}`)
     client = ws
     const latest: Record<string, LatestMessage | null> = {}
     let failure: Error | undefined

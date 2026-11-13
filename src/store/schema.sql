@@ -3,7 +3,7 @@
 -- order survives a reload. The typed columns beside it are copies the page filters and sorts on.
 
 create table hydras (
-  id text primary key check (id ~ '^[A-Za-z0-9_-]+$'),
+  id text primary key check (id ~* '^[a-z0-9][a-z0-9._-]{0,63}$'),
   -- The last event's seq. A write moves it with UPDATE ... WHERE seq = <the seq it read>.
   seq bigint not null default 0 check (seq >= 0),
   -- HydraConfig without its columns, which have their own table. Null until Hydra is configured.
@@ -20,7 +20,8 @@ create table settings (
   value json not null
 );
 
--- The Hydra-wide fields that have no table of their own, one row per field of HydraState.
+-- The HydraState fields without a table of their own, one row each. keys and eventIds are rebuilt from cards and
+-- events on load.
 create table hydra_values (
   hydra_id text not null references hydras (id) on delete cascade,
   key text not null,
@@ -43,6 +44,15 @@ create table events (
 );
 
 create index events_card on events (hydra_id, card_id, seq);
+
+-- An applied plan's receipt under its id, so the same plan sent again returns it instead of applying twice.
+create table transactions (
+  hydra_id text not null references hydras (id) on delete cascade,
+  id text not null,
+  digest text not null,
+  receipt json not null,
+  primary key (hydra_id, id)
+);
 
 create table columns (
   hydra_id text not null references hydras (id) on delete cascade,
@@ -68,11 +78,7 @@ create table cards (
   kind text check (kind in ('build', 'investigation')),
   status text check (status in ('working', 'needs_you', 'paused', 'blocked', 'done')),
   hidden boolean not null,
-  -- On the board: neither hidden nor an automatic session record.
-  live boolean not null,
   automatic_task boolean not null,
-  initial_prompt text,
-  brief text,
   done_at text,
   open_permissions integer not null check (open_permissions >= 0),
   created_seq bigint not null,
@@ -111,7 +117,8 @@ create table questions (
   answered_at text,
   closed boolean not null,
   data json not null,
-  primary key (hydra_id, id),
+  -- Keyed by card too: a card moved in from another Hydra keeps the ids that Hydra gave its records.
+  primary key (hydra_id, card_id, id),
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
@@ -126,7 +133,7 @@ create table declarations (
   actor text not null,
   until text,
   data json not null,
-  primary key (hydra_id, id),
+  primary key (hydra_id, card_id, id),
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
@@ -141,13 +148,15 @@ create table links (
   state text check (state in ('open', 'merged', 'closed')),
   draft boolean,
   -- The question that decides this pull request's merge, among every card's merge questions for its url.
+  merge_question_card text,
   merge_question text,
   data json not null,
   primary key (hydra_id, card_id, url),
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
--- A card's notes; each note's text is in the event that wrote it, which has the note's id.
+-- A card's notes. Each note's text is in the event that wrote it, which has the note's id; a card moved in from
+-- another Hydra keeps notes whose events stay in that Hydra.
 create table notes (
   hydra_id text not null,
   card_id text not null,
@@ -156,9 +165,8 @@ create table notes (
   kind text not null check (kind in ('summary', 'decision', 'context')),
   source text not null,
   at text,
-  primary key (hydra_id, id),
-  foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade,
-  foreign key (hydra_id, id) references events (hydra_id, id)
+  primary key (hydra_id, card_id, id),
+  foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
 -- The conversation with Hydra: the owner's messages, workers' reports and Pnyx's lines, with each one's receipt.

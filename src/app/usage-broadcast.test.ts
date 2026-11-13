@@ -137,14 +137,17 @@ test(
       query: claudeNative().query,
     })
     server = running
+    // The cards are hidden hook cards, so each page asks for hidden cards to receive their usage.
     const first = await openPage({
       port: running.port,
       hydraId: 'one',
+      page: ['--hidden'],
     })
     pages.push(first)
     const second = await openPage({
       port: running.port,
       hydraId: 'two',
+      page: ['--hidden'],
     })
     pages.push(second)
     const one = cards.get('one')!
