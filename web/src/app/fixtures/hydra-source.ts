@@ -94,7 +94,7 @@ export function hydraSource() {
       )
 
       return {
-        open() {},
+        open: async () => ({ unavailable: [] }),
         close: () => {
           watched.delete(hydraId)
         },

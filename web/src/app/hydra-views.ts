@@ -50,6 +50,11 @@ export function watchHydra({
   let scheduled = false
   let closed = false
   let state: HydraState | undefined
+  // Opened cards waiting for Zero to load them, with the page's request to answer.
+  let pending: {
+    ids: string[]
+    resolve({ unavailable }: { unavailable: string[] }): void
+  }[] = []
 
   const update = () => {
     if (scheduled || closed) {
@@ -71,6 +76,9 @@ export function watchHydra({
         return
       }
 
+      const answered = pending
+      pending = []
+
       state = hydraFromRows({
         hydra: hydra.data,
         cards: cards.data,
@@ -80,6 +88,13 @@ export function watchHydra({
         previous: state,
       })
       publish({ state })
+
+      for (const {
+        ids,
+        resolve,
+      } of answered) {
+        resolve({ unavailable: ids.filter(id => !details.get(id)?.data) })
+      }
     })
   }
 
@@ -101,7 +116,9 @@ export function watchHydra({
   })
   const details = new Map<string, Watched<DetailRow | undefined>>()
 
-  const open = ({ ids }: { ids: string[] }) => {
+  // Resolves once every opened card is loaded, naming the ones this Hydra does not have.
+  const open = ({ refs }: { refs: string[] }) => {
+    const ids = refs.map(ref => state?.keys[ref] ?? ref)
     const wanted = new Set([
       HYDRA_CARD,
       ...ids,
@@ -132,10 +149,16 @@ export function watchHydra({
       }
     }
 
+    const loaded = new Promise<{ unavailable: string[] }>(resolve => pending.push({
+      ids,
+      resolve,
+    }))
     update()
+
+    return loaded
   }
 
-  open({ ids: [] })
+  open({ refs: [] })
 
   return {
     open,

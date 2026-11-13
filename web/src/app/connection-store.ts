@@ -201,10 +201,10 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
         args,
         onChecking,
       }) => {
+        // Zero loads the cards a tab opens; the answer names the ones this Hydra does not have.
         if (name === 'page') {
-          scope.page = args
-          scope.views?.open({
-            ids: args.filter((
+          return readData({ scope }).open({
+            refs: args.filter((
               _,
               index,
             ) => args[index - 1] === '--card'),
@@ -568,7 +568,7 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
 
   const readData = ({ scope }: { scope: Scope }) => {
     if (scope.views) {
-      return
+      return scope.views
     }
 
     const options = {
@@ -582,6 +582,8 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
       ...options,
       zero: zero(),
     })
+
+    return scope.views
   }
 
   const subscribe = ({ scope }: { scope: Scope }) => {
@@ -602,9 +604,6 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
         type: 'subscribe',
         scope: scope.id,
         subscription: scope.subscription,
-        ...(scope.hasSnapshot ? { after: String(scope.resource.snapshot().confirmed.seq) } : {}),
-        // JSON drops an undefined page, so a scope that opened no cards sends none.
-        page: scope.page,
       },
     })
   }
@@ -614,10 +613,7 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
 
   const zero = () => {
     if (!pageZero) {
-      pageZero = createPageZero({
-        installation,
-        token: document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content ?? '',
-      })
+      pageZero = createPageZero({ installation })
     }
 
     return pageZero
@@ -905,15 +901,6 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
       'scope',
       primary,
     )
-    const page = scopes.get(primary)?.page
-
-    if (page) {
-      url.searchParams.set(
-        'page',
-        JSON.stringify(page),
-      )
-    }
-
     const ws = new WebSocket(url)
     let opened = false
     socket = ws
