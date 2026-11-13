@@ -28,3 +28,7 @@ pnyx-axi setup skills --remove
 rm -rf ~/.pnyx
 pnpm remove -g pnyx-axi
 ```
+
+A legacy import refuses an incomplete final line with `TORN_TAIL` and its byte count. Repair the line from a backup before retrying. Event inserts use bounded batches inside the same transaction. During startup, the server records verified progress as it replays and saves the import; restart extends its readiness wait while that progress advances and still times out when it stalls.
+
+A write detaches an object assigned across different row owners, such as a card and a session, so a later change cannot silently alter an unrelated saved row. Cross-Hydra moves claim both sequences and commit both sides in one transaction.
