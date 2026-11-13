@@ -87,7 +87,7 @@ async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
     return
   }
 
-  if (current === 1 || current === 2) {
+  if (current === 1 || current === 2 || current === 3) {
     await client.query('begin')
 
     try {
@@ -102,7 +102,13 @@ async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
         insert into schema_version (version) values (2)`)
       }
 
-      await client.query(`create table source_observations (
+      let removed: pg.QueryResult<{
+        hydra_id: string
+        count: number
+      }> | undefined
+
+      if (current < 3) {
+        await client.query(`create table source_observations (
         hydra_id text not null references hydras (id) on delete cascade,
         card_id text not null, adapter text not null, instance_id text not null,
         object_id text not null, generation double precision not null check (generation >= 0),
@@ -120,17 +126,23 @@ async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
       order by hydra_id, card_id, source->>'adapter', coalesce(source->>'instanceId', ''), source->>'objectId',
         coalesce((source->>'generation')::double precision, 0) desc, coalesce(source->>'observedAt', at) desc, seq desc;
       insert into schema_version (version) values (3)`)
-      const removed = await client.query<{
-        hydra_id: string
-        count: number
-      }>(`with removed as (
+        removed = await client.query<{
+          hydra_id: string
+          count: number
+        }>(`with removed as (
         delete from events where type in ('card.observed', 'chat.message') returning hydra_id
       ) select hydra_id, count(*)::integer as count from removed group by hydra_id`)
+      }
+
+      await client.query(`create index events_card_history on events (hydra_id, card_id, seq);
+        create index events_type_history on events (hydra_id, type, seq);
+        create index card_updates_event on card_updates (hydra_id, seq);
+        insert into schema_version (version) values (4)`)
       await client.query('commit')
-      removedDebugRows = removed.rows.map(row => ({
+      removedDebugRows = removed?.rows.map(row => ({
         hydraId: row.hydra_id,
         count: row.count,
-      }))
+      })) ?? []
     } catch (error) {
       await client.query('rollback')
       throw error

@@ -59,6 +59,9 @@ create table events (
   unique (hydra_id, id)
 );
 
+create index events_card_history on events (hydra_id, card_id, seq);
+create index events_type_history on events (hydra_id, type, seq);
+
 -- Latest source watermarks reject delayed reports across restarts without recording repeat events.
 create table source_observations (
   hydra_id text not null references hydras (id) on delete cascade,
@@ -81,6 +84,8 @@ create table card_updates (
   primary key (hydra_id, card_id, seq),
   foreign key (hydra_id, seq) references events (hydra_id, seq) on delete cascade
 );
+
+create index card_updates_event on card_updates (hydra_id, seq);
 
 -- An applied plan's receipt under its id, so the same plan sent again returns it instead of applying twice.
 create table transactions (
@@ -270,4 +275,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (3);
+insert into schema_version (version) values (4);
