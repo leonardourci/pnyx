@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,9 +8,10 @@ import { startServer } from '#app/server-daemon.ts'
 import { localToken } from '#app/server-state.ts'
 import type { RunningServer } from '#app/server-transport.ts'
 import { zeroCookieName } from '#app/server-protocol.ts'
-import { queries, schema } from '#store/zero-schema.ts'
-import { Zero } from '@rocicorp/zero'
+import { commands } from '#app/cli.ts'
+import { queries } from '#store/zero-schema.ts'
 import { WebSocket as NodeSocket } from 'ws'
+import { readRows, zeroReady } from '#test-harness/zero-page.ts'
 
 const QUIET_MS = 3_600_000
 // zero-cache's first start copies the home's tables into its replica before it reports ready.
@@ -31,78 +33,32 @@ const alive = ({ pid }: { pid: number }) => {
   }
 }
 
-// The page's read: a Zero client on the same origin, whose WebSocket carries the cookie as a browser's would.
-async function readHydras({
-  origin,
-  cookie,
-  keepOpen = false,
-}: {
-  origin: string
-  cookie: string
-  // Leaves the client connected, as an open page is, and returns how to close it.
-  keepOpen?: boolean
-}) {
-  const browserSocket = globalThis.WebSocket
-  globalThis.WebSocket = class extends NodeSocket {
-    // eslint-disable-next-line pnyx/object-params -- the WebSocket constructor owns this signature.
-    constructor(
-      address: string,
-      protocols?: string | string[],
-    ) {
-      super(
-        address,
-        protocols,
-        { headers: { cookie } },
-      )
-      // A page left open sees its socket drop and its reconnects refused while the server stops.
-      this.on(
-        'error',
-        () => undefined,
-      )
-    }
-  } as unknown as typeof WebSocket
-  const zero = new Zero({
-    cacheURL: `${origin}/zero`,
-    schema,
-    userID: 'owner',
-    kvStore: 'mem',
-  })
+// Every address zero-cache's processes listen on.
+const listening = ({ pid }: { pid: number }) => [
+  ...execFileSync(
+    'lsof',
+    [
+      '-nP',
+      '-a',
+      '-g',
+      String(pid),
+      '-iTCP',
+      '-sTCP:LISTEN',
+    ],
+    { encoding: 'utf8' },
+  ).matchAll(/TCP (\S+):(\d+) \(LISTEN\)/g),
+].map(([
+  , host,
+  port,
+]) => ({
+  host: host!,
+  port: Number(port),
+}))
 
-  const close = async () => {
-    await zero.close()
-    globalThis.WebSocket = browserSocket
-  }
-
-  try {
-    return {
-      hydras: await zero.run(
-        queries.hydras.list(),
-        { type: 'complete' },
-      ),
-      close,
-    }
-  } finally {
-    if (!keepOpen) {
-      await close()
-    }
-  }
-}
-
-async function zeroReady({
-  url,
-  cookie,
-}: {
-  url: string
-  cookie: string
-}): Promise<Response> {
+async function until({ check }: { check: () => boolean }): Promise<void> {
   for (const end = performance.now() + READY_MS; performance.now() < end;) {
-    const answer = await fetch(
-      url,
-      { headers: { cookie } },
-    )
-
-    if (answer.status === 200) {
-      return answer
+    if (check()) {
+      return
     }
 
     await new Promise(resolve => setTimeout(
@@ -111,11 +67,11 @@ async function zeroReady({
     ))
   }
 
-  throw new Error('timed out waiting for zero-cache behind /zero')
+  throw new Error('timed out')
 }
 
 test(
-  'the server runs zero-cache behind /zero for the page cookie only, answers its queries, and stops it when it stops',
+  'the server runs zero-cache on loopback behind /zero for the page cookie only, never sends private card fields, restarts it after it dies, and stops it when it stops',
   async t => {
     const previous = process.env.PNYX_HOME
     const home = mkdtempSync(join(
@@ -176,20 +132,126 @@ test(
       url: `${origin}/zero/`,
       cookie,
     })
-    const { hydras } = await readHydras({
-      origin,
+    const listed = await readRows<{ id: string }[]>({
+      url: `${origin}/zero`,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.hydras.list()),
+    })
+    assert.deepEqual(
+      listed.rows.map(hydra => hydra.id),
+      ['default'],
+    )
+
+    // Queued steering is private to the server and its worker: no frame the page gets may carry it.
+    await commands.task([
+      'create',
+      '--title',
+      'Steered',
+      '--key',
+      'steered',
+    ])
+    await commands.task([
+      'inbox',
+      'enqueue',
+      'steered',
+      'private-1',
+      '--text',
+      'SECRET-STEERING',
+    ])
+    const board = await readRows<{ key: string }[]>({
+      url: `${origin}/zero`,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.board.cards({ hydraId: 'default' })),
+    })
+    assert.deepEqual(
+      board.rows.map(card => card.key),
+      ['steered'],
+    )
+    assert.equal(
+      board.frames.some(frame => frame.includes('SECRET-STEERING')),
+      false,
+    )
+
+    const pid = server.zeroCachePid()
+    assert.ok(pid)
+    const ports = listening({ pid })
+    assert.ok(ports.length)
+    assert.deepEqual(
+      [...new Set(ports.map(port => port.host))],
+      ['127.0.0.1'],
+    )
+
+    // A client that skips /zero has no cookie, so the query endpoint refuses what zero-cache asks for it.
+    for (const { port } of ports) {
+      const direct = await readRows<unknown[]>({
+        url: `http://127.0.0.1:${port}`,
+        query: ({ zero }) => zero.materialize(queries.hydras.list()),
+      })
+      assert.equal(
+        direct.frames.some(frame => frame.includes('"default"')),
+        false,
+      )
+    }
+
+    const refused = await new Promise<number | undefined>(resolve => {
+      const socket = new NodeSocket(
+        `ws://127.0.0.1:${server.port}/zero/sync/v1/connect`,
+        { headers: { cookie: `${zeroCookieName({ port: server.port })}=wrong` } },
+      )
+      socket.on(
+        'unexpected-response',
+        (
+          _request,
+          response,
+        ) => {
+          resolve(response.statusCode)
+          socket.terminate()
+        },
+      )
+      socket.on(
+        'open',
+        () => {
+          resolve(undefined)
+          socket.close()
+        },
+      )
+      socket.on(
+        'error',
+        () => undefined,
+      )
+    })
+    assert.equal(
+      refused,
+      401,
+    )
+
+    // A zero-cache that dies is started again, and the page reads through the new one.
+    process.kill(
+      -pid,
+      'SIGKILL',
+    )
+    await until({
+      check: () => server.zeroCachePid() !== undefined && server.zeroCachePid() !== pid,
+    })
+    await zeroReady({
+      url: `${origin}/zero/`,
       cookie,
     })
     assert.deepEqual(
-      hydras.map(hydra => hydra.id),
+      (await readRows<{ id: string }[]>({
+        url: `${origin}/zero`,
+        cookie,
+        query: ({ zero }) => zero.materialize(queries.hydras.list()),
+      })).rows.map(hydra => hydra.id),
       ['default'],
     )
-    const pid = server.zeroCachePid()
-    assert.ok(pid)
+    const restarted = server.zeroCachePid()!
+
     // An open page's /zero socket must not keep the server from stopping.
-    const openPage = await readHydras({
-      origin,
+    const openPage = await readRows({
+      url: `${origin}/zero`,
       cookie,
+      query: ({ zero }) => zero.materialize(queries.hydras.list()),
       keepOpen: true,
     })
     t.after(openPage.close)
@@ -213,7 +275,7 @@ test(
     )
     resources.server = undefined
     assert.equal(
-      alive({ pid }),
+      alive({ pid: restarted }),
       false,
     )
   },

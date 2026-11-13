@@ -27,7 +27,8 @@ const PAGE_PUBLICATION = 'pnyx_page'
 const DEFAULT_PG_PORT = '5432'
 // A child that stays ready this long has recovered, so its next exit starts the restart delays over.
 const STABLE_MS = 60_000
-// Waits before each restart after an unexpected exit; past the last one zero-cache stays down until the next serve.
+// Waits before each restart after an unexpected exit; past the last one every restart waits as long as the last, so a
+// Postgres that comes back, or another home that took a slot, never leaves the page without sync for good.
 const RESTART_DELAYS_MS = [
   1_000,
   5_000,
@@ -204,18 +205,10 @@ export function startZeroCache({
       return
     }
 
-    const delay = RESTART_DELAYS_MS[restarts]
-
-    if (delay === undefined) {
-      return log({
-        level: 'error',
-        operation: 'zero.stopped',
-        exitCode: code ?? undefined,
-        status: signal ?? undefined,
-        count: restarts,
-        error: new Error('zero-cache kept exiting; the page cannot sync until the server restarts'),
-      })
-    }
+    const delay = RESTART_DELAYS_MS[Math.min(
+      restarts,
+      RESTART_DELAYS_MS.length - 1,
+    )]
 
     log({
       level: 'warn',
@@ -274,6 +267,7 @@ export function startZeroCache({
           ZERO_NUM_SYNC_WORKERS: '1',
           ZERO_QUERY_URL: queryUrl,
           ZERO_QUERY_API_KEY: apiKey,
+          ZERO_QUERY_FORWARD_COOKIES: 'true',
           ZERO_LOG_LEVEL: 'warn',
           // Lag reports delay readiness by about 10 s, for lag a local replica of a small database never has.
           ZERO_REPLICATION_LAG_REPORT_INTERVAL_MS: '0',
@@ -394,16 +388,13 @@ export function startZeroCache({
         })
       }
 
-      // The token stays with the server; zero-cache needs no cookie.
-      const headers = { ...req.headers }
-      delete headers.cookie
       const upstream = http.request(
         {
           host: '127.0.0.1',
           port,
           method: req.method,
           path: zeroTarget({ url: req.url }),
-          headers,
+          headers: req.headers,
         },
         answer => {
           res.writeHead(
@@ -453,12 +444,9 @@ export function startZeroCache({
         () => {
           const lines = []
 
+          // The cookie stays, as zero-cache hands it to the query endpoint, which checks it.
           for (let index = 0; index < req.rawHeaders.length; index += 2) {
-            const name = req.rawHeaders[index]
-
-            if (name.toLowerCase() !== 'cookie') {
-              lines.push(`${name}: ${req.rawHeaders[index + 1]}`)
-            }
+            lines.push(`${req.rawHeaders[index]}: ${req.rawHeaders[index + 1]}`)
           }
 
           upstream.write(`${req.method} ${zeroTarget({ url: req.url })} HTTP/1.1\r\n${lines.join('\r\n')}\r\n\r\n`)
@@ -493,17 +481,19 @@ export function startZeroCache({
       search,
     }) {
       const key = req.headers['x-api-key']
-
       // A repeated header arrives as a list, which is never the one key.
-      if (!sameSecret({
+      const fromZeroCache = sameSecret({
         given: typeof key === 'string' ? key : undefined,
         expected: apiKey,
-      })) {
+      })
+
+      // The page's token cookie, which zero-cache forwards from the page's socket, proves the query came through /zero.
+      if (!fromZeroCache || !authorized({ req })) {
         return reply({
           res,
           status: 401,
           body: {
-            error: 'missing or wrong API key',
+            error: 'missing or wrong API key or token cookie',
             code: 'UNAUTHORIZED',
           },
         })

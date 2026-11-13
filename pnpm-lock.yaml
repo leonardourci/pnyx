@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@rocicorp/zero@1.11.5': 78121382cb274ef0f479fd64afab182532e2f2dd556dbb07696cdfc783db291c
+
 importers:
 
   .:
@@ -16,7 +19,7 @@ importers:
         version: 0.10.3
       '@rocicorp/zero':
         specifier: 1.11.5
-        version: 1.11.5(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))
+        version: 1.11.5(patch_hash=78121382cb274ef0f479fd64afab182532e2f2dd556dbb07696cdfc783db291c)(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))
       axi-sdk-js:
         specifier: ^0.1.13
         version: 0.1.13
@@ -4323,7 +4326,7 @@ snapshots:
     dependencies:
       node-gyp-build: 4.8.4
 
-  '@rocicorp/zero@1.11.5(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))':
+  '@rocicorp/zero@1.11.5(patch_hash=78121382cb274ef0f479fd64afab182532e2f2dd556dbb07696cdfc783db291c)(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))':
     dependencies:
       '@badrap/valita': 0.5.5
       '@databases/escape-identifier': 1.0.3
