@@ -167,3 +167,96 @@ test(
     }
   },
 )
+
+test(
+  'a page reads a card\'s updates newest first, a page at a time, over its own socket',
+  async t => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'First name',
+        '--key',
+        'ship',
+      ],
+    })
+
+    for (const title of [
+      'Second name',
+      'Third name',
+      'Fourth name',
+    ]) {
+      await s.owner({
+        args: [
+          'task',
+          'rename',
+          'ship',
+          '--title',
+          title,
+        ],
+      })
+    }
+
+    const newest = await page.command({
+      name: 'task',
+      args: [
+        'updates',
+        'ship',
+        '--limit',
+        '2',
+      ],
+    }) as {
+      events: { seq: number }[]
+      older?: number
+    }
+    const rest = await page.command({
+      name: 'task',
+      args: [
+        'updates',
+        'ship',
+        '--limit',
+        '50',
+        '--before',
+        String(newest.older),
+      ],
+    }) as {
+      events: { seq: number }[]
+      older?: number
+    }
+
+    assert.equal(
+      newest.events.length,
+      2,
+    )
+    assert.equal(
+      newest.older,
+      newest.events.at(-1)!.seq,
+    )
+    assert.ok(rest.events.every(event => event.seq < newest.older!))
+    assert.ok(rest.events.length >= 1)
+    assert.equal(
+      rest.older,
+      undefined,
+    )
+    const refused = await page.refusal({
+      name: 'task',
+      args: [
+        'updates',
+        'ship',
+        '--limit',
+        '5000',
+      ],
+    })
+    assert.equal(
+      refused.code,
+      'VALIDATION_ERROR',
+    )
+  },
+)

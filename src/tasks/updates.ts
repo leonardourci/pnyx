@@ -18,6 +18,17 @@ export const briefChange = ({ data }: {
 }) =>
   !data.intent ? 'Brief updated' : data.before === data.after ? 'Intent updated' : 'Brief and Intent updated'
 
+export const UPDATES_PAGE = 50
+export const UPDATES_MAX_PAGE = 200
+
+export type UpdatesPage = {
+  task: string
+  // Newest first; each is capped so one huge event cannot make a page heavy.
+  events: HydraEvent[]
+  // The `before` that reads the next older page; absent on the last page.
+  older?: number
+}
+
 export interface TaskEvent {
   id: string
   seq: number

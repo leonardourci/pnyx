@@ -22,6 +22,7 @@ import { askHost } from './server-state.ts'
 import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
+import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
@@ -582,6 +583,24 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
   }
 
+  if (action === 'updates') {
+    return taskUpdates({
+      hydraId,
+      ref: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+      before: integer({
+        value: values.before,
+        flag: '--before',
+      }),
+      limit: integer({
+        value: values.limit,
+        flag: '--limit',
+      }),
+    })
+  }
+
   if (action === 'show') {
     const state = loadHydra({ hydraId }).state
     const task = findCard({
@@ -970,7 +989,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, messages, rename, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }
