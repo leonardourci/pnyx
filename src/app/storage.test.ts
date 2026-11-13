@@ -11,7 +11,7 @@ import { HydraError } from '#store/errors.ts'
 import { query } from '#store/postgres.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
-import { holdHydra, loadHydra, reloadHydra } from './store.ts'
+import { heldHydra, holdHydra, loadHydra, reloadHydra } from './store.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { withWriter } from './writer.ts'
 import { acquireLock } from '#store/storage.ts'
@@ -174,9 +174,12 @@ test(
       second,
     ] = readStream({ name: 'lifecycle' })
     appendAll({ events: [first!] })
+    let changes = 0
     const release = holdHydra({
       hydraId: 'default',
-      changed: () => undefined,
+      changed: () => {
+        changes += 1
+      },
     })
 
     try {
@@ -185,6 +188,15 @@ test(
         fn: () => appendAll({ events: [second!] }),
         code: 'CONFLICT',
       })
+      // The server learns that the held state was read back, so it stops showing the refused event.
+      assert.equal(
+        changes,
+        1,
+      )
+      assert.equal(
+        heldHydra({ hydraId: 'default' })?.state.eventIds[second!.id],
+        undefined,
+      )
       assert.equal(
         storedEvents(),
         1,

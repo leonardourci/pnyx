@@ -20,7 +20,9 @@ export type Held = {
   dir: string
   state: HydraState
   saved: SavedRows
-  // Called after each committed write, so the server pushes the change in the same step.
+  // Set when a failed write could not read the Hydra back; the next read or write tries again.
+  stale?: boolean
+  // Called after each committed write, and after a failed one is read back, so the server shows the change.
   changed(): void
 }
 
@@ -130,12 +132,25 @@ export function reloadHydra({ hydraId }: { hydraId: string }): void {
     return
   }
 
-  const fresh = readHydra({
-    hydraId,
-    migrate: false,
-  })
-  live.state = fresh.state
-  live.saved = fresh.saved
+  try {
+    const fresh = readHydra({
+      hydraId,
+      migrate: false,
+    })
+    live.state = fresh.state
+    live.saved = fresh.saved
+    live.stale = false
+  } catch (error) {
+    live.stale = true
+    log({
+      level: 'error',
+      operation: 'hydra.reload',
+      hydraId,
+      error,
+    })
+  }
+
+  live.changed()
 }
 
 // The Hydra a write starts from: the held one, or this process's copy while no other process has moved its seq.
@@ -148,6 +163,16 @@ export function writableHydra({
 }): Held {
   const key = homeScoped({ hydraId })
   const live = held.get(key)
+
+  if (live?.stale) {
+    const fresh = readHydra({
+      hydraId,
+      migrate,
+    })
+    live.state = fresh.state
+    live.saved = fresh.saved
+    live.stale = false
+  }
 
   if (live) {
     return live
