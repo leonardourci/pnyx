@@ -36,13 +36,15 @@ const rowsOf = ({ hydraId }: { hydraId: string }) => stateFromRows({
 })
 
 // A Hydra still kept in its events.jsonl moves into Postgres the first time it is read, in one transaction; the file
-// stays as it was, as a backup.
-function importLegacy({
+// stays as it was, as a backup. A trial imports it in a transaction it rolls back. Returns whether there was one.
+export function importLegacy({
   hydraId,
   dir,
+  trial = false,
 }: {
   hydraId: string
   dir: string
+  trial?: boolean
 }): boolean {
   const legacy = existsSync(logPath({ dir })) ? readLog({ dir }) : null
 
@@ -54,12 +56,16 @@ function importLegacy({
     hydraId,
     events: legacy.events,
     transactions: legacy.transactions,
+    trial,
   })
-  log({
-    operation: 'hydra.import',
-    hydraId,
-    count: legacy.events.length,
-  })
+
+  if (!trial) {
+    log({
+      operation: 'hydra.import',
+      hydraId,
+      count: legacy.events.length,
+    })
+  }
 
   return true
 }
