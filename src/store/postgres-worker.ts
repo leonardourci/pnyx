@@ -134,7 +134,7 @@ async function run({ request }: { request: Request }): Promise<Reply> {
         }))
       }
 
-      await client.query('commit')
+      await client.query(request.rollback ? 'rollback' : 'commit')
 
       return { results }
     } catch (error) {

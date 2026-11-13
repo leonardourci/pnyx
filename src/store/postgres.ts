@@ -26,6 +26,8 @@ export interface Statement {
 export interface Request {
   statements: Statement[]
   transaction: boolean
+  // A trial runs every statement and then rolls the transaction back.
+  rollback?: boolean
 }
 
 export type Reply = { results: Record<string, unknown>[][] } | {
@@ -116,10 +118,12 @@ function connection({ url }: { url?: string }): Connection {
 export function query({
   statements,
   transaction = false,
+  rollback = false,
   url,
 }: {
   statements: Statement[]
   transaction?: boolean
+  rollback?: boolean
   url?: string
 }): Record<string, unknown>[][] {
   const open = connection({ url })
@@ -131,6 +135,7 @@ export function query({
   open.port.postMessage({
     statements,
     transaction,
+    rollback,
   } satisfies Request)
   const waited = Atomics.wait(
     open.signal,
