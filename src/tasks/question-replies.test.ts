@@ -13,7 +13,7 @@ import { sendReply } from '#workers/reply.ts'
 import { reply } from '#workers/reply-cli.ts'
 import { base } from '#app/command-meta.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { acquireLock, LOCK_TIMEOUT_MS } from '#store/storage.ts'
+import { refuseEvents } from '#test-harness/database.ts'
 import { HydraError } from '#store/errors.ts'
 import { offerHost } from '#app/server-state.ts'
 import { decidePush } from './push.ts'
@@ -720,22 +720,6 @@ type Change = {
 
 type Mode = 'held' | 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error' | 'failed-record-error'
 
-function lockClock({ t }: { t: TestContext }) {
-  t.mock.timers.enable({
-    apis: ['Date'],
-    now: Date.now(),
-  })
-  t.mock.method(
-    Atomics,
-    'wait',
-    () => {
-      t.mock.timers.tick(LOCK_TIMEOUT_MS)
-
-      return 'timed-out'
-    },
-  )
-}
-
 async function lab({ t }: { t: TestContext }) {
   const root = mkdtempSync(join(
     tmpdir(),
@@ -1037,13 +1021,7 @@ async function lab({ t }: { t: TestContext }) {
 
       if (mode === 'failed' || mode === 'failed-record-error') {
         if (mode === 'failed-record-error') {
-          releaseLock = acquireLock({
-            dir: join(
-              root,
-              'hydras',
-              hydraId,
-            ),
-          })
+          releaseLock = refuseEvents({ type: 'card.replied' })
         }
 
         throw new HydraError({
@@ -1061,13 +1039,7 @@ async function lab({ t }: { t: TestContext }) {
       }
 
       if (mode === 'record-error') {
-        releaseLock = acquireLock({
-          dir: join(
-            root,
-            'hydras',
-            hydraId,
-          ),
-        })
+        releaseLock = refuseEvents({ type: 'card.replied' })
       }
 
       const current = card({ ref: String(body.card) })
@@ -1439,7 +1411,6 @@ test(
   'a delivered answer survives a lost receipt write, while a failed acceptance sends nothing',
   async t => {
     const l = await lab({ t })
-    lockClock({ t })
     const ref = await l.create({ key: 'receipt' })
     const question = await l.ask({
       ref,
@@ -1467,7 +1438,7 @@ test(
     )
     assert.match(
       String(result.recordError),
-      /locked/,
+      /refused card.replied/,
     )
     assert.equal(
       ownerQuestions({ card: l.card({ ref }) }).length,
@@ -1480,13 +1451,7 @@ test(
     const second = await l.ask({ ref })
     const source = l.chat({ ref })
     const sends = l.received.length
-    const unlock = acquireLock({
-      dir: join(
-        l.root,
-        'hydras',
-        hydraId,
-      ),
-    })
+    const unlock = refuseEvents({ type: 'card.replied' })
 
     try {
       await assert.rejects(
@@ -1495,7 +1460,7 @@ test(
           question: second,
           message: source,
         }),
-        /locked/,
+        /refused card.replied/,
       )
     } finally {
       unlock()
@@ -1556,10 +1521,7 @@ test(
     assert.ok(failure?.type === 'card.replied')
     assert.equal(
       relevantUpdate({
-        event: {
-          ...failure,
-          summary: '',
-        },
+        event: failure,
         columns: [],
       })?.state,
       'Answer delivery failed',
@@ -2283,7 +2245,6 @@ test(
   'failed relays and task answers retain retry guidance after a lost receipt and deliver their original text',
   async t => {
     const l = await lab({ t })
-    lockClock({ t })
     const ref = await l.create({ key: 'failed-receipt' })
     const question = await l.ask({ ref })
     const message = l.chat({ ref })
@@ -2303,7 +2264,7 @@ test(
     assert.ok('recordError' in result.reply)
     assert.match(
       String(result.reply.recordError),
-      /locked/,
+      /refused card.replied/,
     )
     assert.ok(Array.isArray(result.help))
     assert.match(
@@ -2378,7 +2339,7 @@ test(
       )
       assert.match(
         String(result.recordError),
-        /locked/,
+        /refused card.replied/,
       )
       assert.ok(Array.isArray(result.help))
       assert.match(
@@ -2738,9 +2699,10 @@ test(
       state: emptyHydra(),
       events: readEvents({ hydraId }),
     }).cards[ref]?.asks
+    // Both as saved JSON, where a field set to undefined is gone.
     assert.deepEqual(
       JSON.parse(JSON.stringify(replayed)),
-      l.card({ ref }).asks,
+      JSON.parse(JSON.stringify(l.card({ ref }).asks)),
     )
   },
 )

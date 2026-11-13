@@ -262,14 +262,15 @@ export function findHydraTurnToResume({
 } | undefined {
   const events = readEvents({ hydraId })
   const cutHydraTurn = events.findLast(event => {
-    if (event.type !== 'board.configured' || event.cardId !== HYDRA_CARD) {
+    if (event.cardId !== HYDRA_CARD || !event.id.endsWith(':hosted')) {
       return false
     }
 
-    const matchesSession = event.data.hydra?.session === sessionId({ agent })
-    const isHostedTurn = event.id.endsWith(':hosted')
+    if (event.type === 'hydra.delivered') {
+      return event.data.session === sessionId({ agent })
+    }
 
-    return matchesSession && isHostedTurn
+    return event.type === 'board.configured' && event.data.hydra?.session === sessionId({ agent })
   })
 
   if (!cutHydraTurn || resumesInARow({

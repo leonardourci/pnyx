@@ -1,6 +1,5 @@
 // The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
-import { applyPageUpdate } from '#app/page-state.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { randomUUID } from 'node:crypto'
 import assert from 'node:assert/strict'
@@ -11,12 +10,12 @@ import { join } from 'node:path'
 import { after, before } from 'node:test'
 import { WebSocket } from 'ws'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { emptyHydra } from '#app/reducer.ts'
 import { startServer } from '#app/server-daemon.ts'
 import type { RunningServer, ServerMessage } from '#app/server-transport.ts'
 import { localToken } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
+import { query } from '#store/postgres.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -25,7 +24,7 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { keepChromeOffKeychain } from './chrome-keychain.ts'
 import { upgradeRepo } from './upgrade-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
-import type { Settings } from '#settings/model.ts'
+import type { PageSettings } from '#settings/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 
 const BIN = join(
@@ -169,7 +168,25 @@ export function pnyxAxi({
   })
 }
 
-// The owner's page: the snapshot it gets, kept current with the events that follow, and its commands.
+// The one row a statement selects, as the page's Zero query reads it.
+function row<T>({
+  text,
+  values,
+}: {
+  text: string
+  values?: unknown[]
+}): T | undefined {
+  return query({
+    statements: [
+      {
+        text,
+        values,
+      },
+    ],
+  })[0]?.[0] as T | undefined
+}
+
+// The owner's page: its socket's thread pages, live activity and commands, and the rows Zero syncs to it.
 // `page` names the cards it opens with, as page command arguments in its socket address.
 export async function openPage({
   port,
@@ -186,18 +203,13 @@ export async function openPage({
   const pageParameter = rawPage ?? (page && JSON.stringify(page))
   const opened = pageParameter === undefined ? '' : `&page=${encodeURIComponent(pageParameter)}`
   const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}${opened}`)
-  let state: HydraState | undefined
-  let snapshots = 0
   const answers = new Map<string, ServerMessage>()
-  const queues: HydraQueue[] = []
   const threads: ThreadPage[] = []
   const threadReceiver = createThreadReceiver()
   // Pushed deltas the page could not apply. This socket never backs up, so each one is a server fault.
   const gaps: string[] = []
   const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
   const actions: Record<string, CurrentAction | null> = {}
-  const upgrades: UpgradeStatus[] = []
-  const settings: Settings[] = []
   ws.on(
     'message',
     (data: unknown) => {
@@ -227,29 +239,8 @@ export async function openPage({
             message.usage,
           )
         }
-      } else if (message.type === 'upgrade') {
-        upgrades.push(message.upgrade)
-      } else if (message.type === 'settings') {
-        settings.push(message.settings)
-      } else if (message.type === 'hydraQueue') {
-        queues.push(message.queue)
       } else if (message.type === 'thread') {
         threads.push(message.thread)
-      } else if (message.type === 'snapshot') {
-        snapshots += 1
-        state = {
-          ...message.state,
-          eventIds: {},
-        }
-      } else if (message.type === 'page.event') {
-        if (!state) {
-          state = emptyHydra()
-        }
-
-        applyPageUpdate({
-          state,
-          update: message.update,
-        })
       } else if ((message.type === 'receipt' || message.type === 'error') && message.id) {
         answers.set(
           message.id,
@@ -294,16 +285,27 @@ export async function openPage({
   }
 
   return {
-    // How many snapshots the server has sent this page.
-    snapshots: () => snapshots,
-    queues,
+    // The queue box's row: the updates waiting for Hydra and the batch it is reading.
+    queue: () => row<{ queue: HydraQueue }>({
+      text: 'select queue from hydras where id = $1',
+      values: [hydraId],
+    })?.queue,
     // Every thread page the server pushed to the subscribed tab, in order.
     threads,
     usages,
     actions,
-    upgrades,
-    // Every shared settings push, in order: one on connect, then one per change.
-    settings,
+    upgrade: () => {
+      const saved = row<{
+        available: boolean
+        checked_at: string
+      }>({ text: 'select available, checked_at from upgrade_status where id = \'current\'' })
+
+      return saved && {
+        available: saved.available,
+        checkedAt: saved.checked_at,
+      } satisfies UpgradeStatus
+    },
+    settings: () => row<{ value: PageSettings }>({ text: 'select value from settings where id = \'shared\'' })?.value,
     shows: <T>({
       what,
       check,
@@ -312,7 +314,7 @@ export async function openPage({
       check: ({ state }: { state: HydraState }) => T | undefined | false
     }) => until({
       what,
-      check: () => state && check({ state }),
+      check: () => check({ state: loadHydra({ hydraId }).state }),
     }),
     // A command as the page sends it; resolves with its receipt and fails on an error.
     command: async ({
@@ -423,10 +425,13 @@ export function logLines(): LogRecord[] {
 export function scenarioGroup({
   retryDelays,
   upgradeRoot,
+  zeroCache = false,
 }: {
   // How long a failed Hydra start waits before each retry.
   retryDelays?: number[]
   upgradeRoot?: string
+  // Whether the server runs zero-cache, which a flow that opens the real page in a browser needs.
+  zeroCache?: boolean
 } = {}) {
   const root = realpathSync(mkdtempSync(join(
     tmpdir(),
@@ -526,6 +531,7 @@ export function scenarioGroup({
       recoveryPause: RECOVERY_TEST_PAUSE_MS,
       processLineMs: FLOW_PROCESS_LINE_MS,
       upgradeRoot: upgradeRoot ?? upgrade.install,
+      zeroCache,
       restart: () => {
         restarts++
 

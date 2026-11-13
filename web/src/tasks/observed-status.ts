@@ -136,16 +136,16 @@ export function observedStatus({
     }
   }
 
-  if (state) {
-    for (const prerequisite of unmetPrerequisites({
-      state,
-      card,
-    })) {
-      add({
-        kind: 'waiting',
-        text: `waiting for ${prerequisite.title}`,
-      })
-    }
+  const unmet = card.facts?.unmetPrerequisites ?? (state ? unmetPrerequisites({
+    state,
+    card,
+  }) : [])
+
+  for (const prerequisite of unmet) {
+    add({
+      kind: 'waiting',
+      text: `waiting for ${prerequisite.title}`,
+    })
   }
 
   if (card.queue) {

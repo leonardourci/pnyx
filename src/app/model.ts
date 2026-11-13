@@ -316,6 +316,11 @@ export type HydraChange = EventBase & (
     data: import('#workers/model.ts').AgentConfig
   }
   | {
+    // Pnyx handed Hydra a turn in a session already configured; its id, <turn>:hosted, marks the turn delivered.
+    type: 'hydra.delivered'
+    data: { session: string }
+  }
+  | {
     type: 'hydra.agent-change'
     data: import('#hydra/model.ts').HydraAgentChange
   }
@@ -422,6 +427,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.received',
   'hydra.operation',
   'hydra.agent-used',
+  'hydra.delivered',
   'hydra.agent-change',
   'hydra.review',
   'hydra.helper-started',
@@ -509,7 +515,7 @@ export interface HydraState {
   sessions?: Record<string, AgentSession>
   keys: Record<string, string>
   // event id -> seq, so a retried or respooled event is applied once.
-  // ponytail: grows with the log; move to a per-segment index if snapshots get large.
+  // ponytail: grows with the log and is rebuilt from the events table on every load; look ids up there if loads slow.
   eventIds: Record<string, number>
   // undone event id -> id of the event that reversed it
   undone: Record<string, string>

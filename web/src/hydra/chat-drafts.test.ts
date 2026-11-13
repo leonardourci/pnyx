@@ -27,13 +27,13 @@ test(
         return comments
       },
     })
-    const original = drafts.readSettled()
+    const original = drafts.settled.getState()
     let liveUpdates = 0
     let conversationUpdates = 0
     const unsubscribe = drafts.subscribe(() => {
       liveUpdates += 1
     })
-    drafts.subscribeSettled(() => {
+    drafts.settled.subscribe(() => {
       conversationUpdates += 1
     })
 
@@ -44,7 +44,7 @@ test(
       'Before the pause',
     )
     assert.equal(
-      drafts.readSettled(),
+      drafts.settled.getState(),
       original,
     )
     assert.equal(
@@ -77,7 +77,7 @@ test(
       ],
     )
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       'Latest text',
     )
     assert.equal(
@@ -98,10 +98,10 @@ test(
       ],
     })
     assert.equal(
-      drafts.readSettled().comments.length,
+      drafts.settled.getState().comments.length,
       1,
     )
-    const quoted = drafts.readSettled()
+    const quoted = drafts.settled.getState()
     drafts.editComment({
       id: 'quote',
       text: 'Unpublished comment',
@@ -111,7 +111,7 @@ test(
       'Unpublished comment',
     )
     assert.equal(
-      drafts.readSettled(),
+      drafts.settled.getState(),
       quoted,
     )
     assert.equal(
@@ -225,6 +225,11 @@ test(
         },
         added,
       ],
+    )
+    // The chat shows another tab's edit at once, without waiting for a pause.
+    assert.deepEqual(
+      drafts.settled.getState().comments,
+      drafts.read().comments,
     )
     drafts.setComments({
       items: [
@@ -499,18 +504,64 @@ test(
     })}: `
     drafts.setDraft({ text: answer })
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       answer,
     )
     drafts.setDraft({ text: `${answer}yes` })
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       answer,
     )
     drafts.setDraft({ text: 'yes' })
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       'yes',
+    )
+  },
+)
+
+test(
+  'a save that brings another tab’s comment shows it in the draft and the chat',
+  () => {
+    const mine: ChatComment = {
+      id: 'mine',
+      messageId: 'reply',
+      block: 0,
+      offset: 0,
+      quote: 'First passage',
+      text: 'Mine',
+    }
+    const theirs: ChatComment = {
+      ...mine,
+      id: 'theirs',
+      text: 'From another tab',
+    }
+    const drafts = createChatDrafts({
+      comments: [mine],
+      save: ({ comments }) => [
+        ...comments,
+        theirs,
+      ],
+    })
+    drafts.editComment({
+      id: 'mine',
+      text: 'Mine, edited',
+    })
+    drafts.flush()
+    const expected = [
+      {
+        ...mine,
+        text: 'Mine, edited',
+      },
+      theirs,
+    ]
+    assert.deepEqual(
+      drafts.read().comments,
+      expected,
+    )
+    assert.deepEqual(
+      drafts.settled.getState().comments,
+      expected,
     )
   },
 )

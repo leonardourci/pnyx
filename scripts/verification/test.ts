@@ -1,9 +1,12 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { constants, tmpdir } from 'node:os'
+import { copyFileSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { discover, isFlow } from './discover.ts'
 import { holdRunLock } from './run-lock.ts'
 import { createTestEnvironment } from './test-environment.ts'
 import { installedFixture } from './installed-fixture.ts'
+import { POSTGRES_LOG_TAIL_LINES, startPostgres } from './postgres.ts'
 
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
@@ -12,6 +15,13 @@ const FLOW_TIMEOUT_MS = 5 * MINUTE_MS
 const INSTALLED_FLOW = 'e2e/own-install.test.ts'
 // A lane past this is stuck outside any one test; the runner then names the file it interrupted.
 const LANE_TIMEOUT_MS = 60 * MINUTE_MS
+// A process a signal ended exits with 128 plus the signal's number, as a shell reports it.
+const SIGNAL_EXIT_BASE = 128
+const STOP_SIGNALS = [
+  'SIGINT',
+  'SIGTERM',
+  'SIGHUP',
+] as const
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
   'web/src/hydra/action-label.test.ts',
@@ -95,16 +105,95 @@ const lanes = [
   },
 ]
 const isolated = createTestEnvironment()
+let postgres: Awaited<ReturnType<typeof startPostgres>> | undefined
+let runningLane: ChildProcess | undefined
+let stopSignal: NodeJS.Signals | undefined
+
+// A stopped launcher ends its lane and runs no further ones, so the cleanup below still stops its cluster.
+for (const signal of STOP_SIGNALS) {
+  process.on(
+    signal,
+    () => {
+      // The test runner stops its test files on SIGINT and SIGTERM only.
+      const forwarded = signal === 'SIGHUP' ? 'SIGTERM' : signal
+      // A second signal means the lane ignored the first.
+      const laneSignal = stopSignal ? 'SIGKILL' : forwarded
+      stopSignal = signal
+      process.exitCode = SIGNAL_EXIT_BASE + constants.signals[signal]
+      runningLane?.kill(laneSignal)
+    },
+  )
+}
+
+async function runLane({
+  args,
+  env,
+}: {
+  args: string[]
+  env: NodeJS.ProcessEnv
+}): Promise<{
+  status: number | null
+  signal: NodeJS.Signals | null
+}> {
+  const child = spawn(
+    process.execPath,
+    args,
+    {
+      env,
+      stdio: 'inherit',
+      timeout: LANE_TIMEOUT_MS,
+    },
+  )
+  runningLane = child
+
+  try {
+    return await new Promise((
+      resolve,
+      reject,
+    ) => {
+      child.once(
+        'error',
+        reject,
+      )
+      child.once(
+        'exit',
+        (
+          status,
+          signal,
+        ) => resolve({
+          status,
+          signal,
+        }),
+      )
+    })
+  } finally {
+    runningLane = undefined
+  }
+}
 
 try {
+  postgres = await startPostgres({
+    dir: join(
+      isolated.env.TMPDIR!,
+      'postgres',
+    ),
+  })
+
   for (const lane of lanes) {
+    if (stopSignal) {
+      break
+    }
+
     if (!lane.files.length) {
       continue
     }
 
     console.log(`tests: ${lane.name}, ${lane.files.length} files, concurrency ${lane.concurrency}`)
     let testFiles = lane.files
-    const env = { ...isolated.env }
+    const env: NodeJS.ProcessEnv = {
+      ...isolated.env,
+      ...postgres.env,
+    }
 
     if (lane.name === 'installed flows') {
       const install = installedFixture({
@@ -120,40 +209,62 @@ try {
       ]
     }
 
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--import',
-        new URL(
-          './test-preload.ts',
-          import.meta.url,
-        ).href,
-        '--conditions=source',
-        '--test',
-        `--test-concurrency=${lane.concurrency}`,
-        ...lane.nodeArgs,
-        // A test past its lane's cap fails by name, and a handle it left open cannot keep its file
-        // running.
-        `--test-timeout=${lane.testTimeout}`,
-        '--test-force-exit',
-        ...options,
-        ...testFiles,
-      ],
-      {
+    try {
+      const result = await runLane({
         env,
-        stdio: 'inherit',
-        timeout: LANE_TIMEOUT_MS,
-      },
-    )
+        args: [
+          '--import',
+          new URL(
+            './test-preload.ts',
+            import.meta.url,
+          ).href,
+          '--conditions=source',
+          '--test',
+          `--test-concurrency=${lane.concurrency}`,
+          ...lane.nodeArgs,
+          // A test past its lane's cap fails by name, and a handle it left open cannot keep its file running.
+          `--test-timeout=${lane.testTimeout}`,
+          '--test-force-exit',
+          ...options,
+          ...testFiles,
+        ],
+      })
 
-    if (result.error) {
-      console.error(result.error)
-    }
+      if (result.signal) {
+        console.error(`tests: ${lane.name} ended by ${result.signal}`)
+      }
 
-    if (result.status !== 0) {
-      process.exitCode = result.status || 1
+      if (result.status !== 0 && !stopSignal) {
+        const directory = mkdtempSync(join(
+          tmpdir(),
+          'pnyx-postgres-failure-',
+        ))
+        const retainedLog = join(
+          directory,
+          'postgres.log',
+        )
+        copyFileSync(
+          postgres.logFile,
+          retainedLog,
+        )
+        console.error(`Postgres log retained at ${retainedLog}:\n${readFileSync(
+          retainedLog,
+          'utf8',
+        ).trimEnd()
+          .split('\n')
+          .slice(-POSTGRES_LOG_TAIL_LINES)
+          .join('\n')}`)
+        process.exitCode = result.status || 1
+      }
+    } catch (error) {
+      console.error(error)
+      process.exitCode = 1
     }
   }
 } finally {
-  isolated.close()
+  try {
+    postgres?.stop()
+  } finally {
+    isolated.close()
+  }
 }

@@ -608,6 +608,8 @@ export function createHydraTurns({
               state: writer.state,
               id: hydraId,
             })
+            const session = sessionId({ agent: ref })
+            // The configuration changes only when Hydra's session does; otherwise a small event marks the turn.
             const delivery = hydraEvent({
               state: writer.state,
               meta: {
@@ -615,13 +617,16 @@ export function createHydraTurns({
                 id: deliveryId,
               },
               cardId: HYDRA_CARD,
-              change: {
+              change: writer.state.config?.hydra.session === session ? {
+                type: 'hydra.delivered',
+                data: { session },
+              } : {
                 type: 'board.configured',
                 data: {
                   ...current,
                   hydra: {
                     ...current.hydra,
-                    session: sessionId({ agent: ref }),
+                    session,
                   },
                 },
               },

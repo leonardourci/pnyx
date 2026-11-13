@@ -26,7 +26,7 @@ Tasks can keep instructions before an agent exists: `task create --title "<title
 
 A restart or upgrade stops Pnyx-hosted agents; a turn it cut resumes from its saved session when the server is back, and a pending permission request expires, so the agent asks again. Never restart Pnyx to clear a blocked turn. Reconcile unknown answer delivery through its existing receipt.
 
-`pnyx-axi page` summarizes what the page receives; `--full` prints the whole projection and can be megabytes, so read tasks with `task list` and `card <id>`.
+`pnyx-axi page` summarizes the Hydra as a page shows it; `--full` prints all of it and can be megabytes, so read tasks with `task list` and `card <id>`.
 
 For diagnosis, `pnyx-axi debug timeline --task <task> --hydra <id>` returns bounded identities without conversation bodies; `--message`, `--batch`, `--session` and ISO time filters narrow it. Continue with the returned cursor and the same filters. `debug health` reads current ownership, unsettled inputs, helper completion/deadline facts, spool age and recovery attempts. Unknown means unavailable, not permission to resend or release ownership. Safe failed-message recovery is bounded to two logged attempts using the original idempotency key; inspect its recorded outcome before acting. For slowness, `debug performance` reads the diagnostic logs of the last hour (`--since`, `--until`, `--operation <prefix>`): each action's count, typical and worst duration, errors and warnings, the server's memory over time and the slowest actions.
 

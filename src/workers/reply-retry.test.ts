@@ -22,7 +22,7 @@ import { decidePush } from '#tasks/push.ts'
 import { decideReply } from './reply-rules.ts'
 import { decideSession } from './sessions.ts'
 import type { AgentSession, ReplyState } from './model.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadHydra, reloadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { terminalPresence } from './presence.ts'
@@ -965,12 +965,7 @@ test(
       now: SENT + 3 * STEERING_GRACE_MS,
       notify,
     })
-    rmSync(join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      'lab',
-      'snapshot.json',
-    ))
+    reloadHydra({ hydraId: 'lab' })
     await followUpSteering({
       hydraId: 'lab',
       now: SENT + 4 * STEERING_GRACE_MS,
@@ -1044,7 +1039,7 @@ test(
 )
 
 test(
-  'reading steering stops reminders while its work is still in progress, across replay',
+  'reading steering stops reminders while its work is still in progress, across a reload',
   async () => {
     queuedSteer()
     const card = task()
@@ -1092,12 +1087,7 @@ test(
       readEvents({ hydraId: 'lab' }).length,
       count,
     )
-    rmSync(join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      'lab',
-      'snapshot.json',
-    ))
+    reloadHydra({ hydraId: 'lab' })
     assert.deepEqual(
       task().steering![0]!.ack,
       acknowledged,
@@ -1237,7 +1227,7 @@ test(
 )
 
 test(
-  'legacy incorporated and blocked acknowledgements retain their outcomes on replay',
+  'legacy incorporated and blocked acknowledgements retain their outcomes after a reload',
   async () => {
     queuedSteer({ id: 'incorporated' })
     queuedSteer({ id: 'blocked' })
@@ -1272,12 +1262,7 @@ test(
       '--note',
       'Waiting for a decision',
     ])
-    rmSync(join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      'lab',
-      'snapshot.json',
-    ))
+    reloadHydra({ hydraId: 'lab' })
     assert.deepEqual(
       task().steering!.map(message => message.ack?.outcome),
       [
@@ -1303,15 +1288,7 @@ test(
       now: SENT + STEERING_GRACE_MS,
       notify: () => neverFinishes,
     })
-    rmSync(
-      join(
-        process.env.PNYX_HOME!,
-        'hydras',
-        'lab',
-        'snapshot.json',
-      ),
-      { force: true },
-    )
+    reloadHydra({ hydraId: 'lab' })
     const reserved = task().steering![0]!.recovery![0]!
     assert.equal(
       reserved.result,

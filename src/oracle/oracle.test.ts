@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -8,7 +8,8 @@ import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readReport } from '#investigations/report.ts'
 import { decidePush } from '#tasks/push.ts'
-import { logPath } from '#store/storage.ts'
+import { query } from '#store/postgres.ts'
+import { storedHydra } from '#test-harness/database.ts'
 import { search } from './search.ts'
 import { searchInBackground } from './search-background.ts'
 import { redact } from './text.ts'
@@ -547,13 +548,7 @@ test(
       'hydras',
       'default',
     )
-    const log = readFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     const find = async ({ text }: { text: string }) => (await searchInBackground({
       hydraId: 'default',
       query: {
@@ -597,15 +592,9 @@ test(
       )),
       false,
     )
-    assert.equal(
-      readFileSync(
-        join(
-          dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+    assert.deepEqual(
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
     assert.equal(
       existsSync(join(
@@ -708,8 +697,7 @@ test(
       'pnyx-oracle-long-',
     ))
     process.env.PNYX_HOME = home
-    // The writer's state stands in for replaying every appended event before the search.
-    const state = withWriter({
+    withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
         const base = {
@@ -730,32 +718,32 @@ test(
             },
           },
         })
-
-        // Written to the log directly: appending this many events one by one is slow.
-        appendFileSync(
-          logPath({ dir: writer.dir }),
-          Array.from(
-            { length: LONG_HISTORY },
-            (
-              _,
-              entry,
-            ) => `${JSON.stringify({
-              ...base,
-              seq: writer.state.seq + 1 + entry,
-              id: `long-${entry}`,
-              type: 'task.intent',
-              data: { text: 'zeppelin' },
-            })}\n`,
-          ).join(''),
-        )
-
-        return writer.state
       },
+    })
+    // Inserted directly: appending this many events one by one is slow.
+    query({
+      statements: [
+        {
+          text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+            select 'default', seq + n, 'long-' || n, 'task.intent', $2::text, 'fixture', 'long', json_build_object(
+              'v', 1, 'seq', seq + n, 'id', 'long-' || n, 'at', $2::text, 'actor', 'fixture', 'cardId', 'long',
+              'type', 'task.intent', 'data', json_build_object('text', 'zeppelin'))
+            from hydras, generate_series(1, $1::integer) as n where id = 'default'`,
+          values: [
+            LONG_HISTORY,
+            '2026-10-15T10:00:00Z',
+          ],
+        },
+        {
+          text: 'update hydras set seq = seq + $1 where id = \'default\'',
+          values: [LONG_HISTORY],
+        },
+      ],
+      transaction: true,
     })
     assert.deepEqual(
       search({
         hydraId: 'default',
-        state,
         query: {
           text: 'zeppelin',
           limit: 20,

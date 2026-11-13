@@ -7,6 +7,7 @@ import type { LatestMessage,ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import { createPendingResource } from '#web-shared/pending-intents.ts'
 import type { Command,Receipt } from './connection.ts'
+import type { watchHydra } from './hydra-views.ts'
 import { type HydraResource } from './pending-state.ts'
 
 export interface Creation {
@@ -28,12 +29,14 @@ export interface Scope {
   ready: boolean
   subscribed: boolean
   subscription: string | null
-  // The arguments of the last page command, sent again on subscribe so the first snapshot is already scoped.
+  // The cards the tab opened, sent with each subscribe so the server sends their live activity.
   page?: string[]
   failed: boolean
   restoredSaves: boolean
   error: string
   loadError: string
+  // The load error came from a Zero view, which reads again only once a retry builds it anew.
+  readFailed?: boolean
   subscriptionTimer?: ReturnType<typeof setTimeout>
   subscriptionAttempt: number
   readonly thread: ThreadPage | null
@@ -46,7 +49,7 @@ export interface Scope {
   command: Command
   leases: number
   creation?: Creation
-  persistTimer?: ReturnType<typeof setTimeout>
+  views?: ReturnType<typeof watchHydra>
 }
 export interface Request {
   id: string

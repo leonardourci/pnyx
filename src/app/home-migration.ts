@@ -286,12 +286,10 @@ export function hydrasDir(): string {
   )
 }
 
-export function hydraIds(): string[] {
-  let ids: string[] = []
-
+function folders({ dir }: { dir: string }): string[] {
   try {
-    ids = readdirSync(
-      hydrasDir(),
+    return readdirSync(
+      dir,
       { withFileTypes: true },
     ).filter(d => d.isDirectory())
       .map(d => d.name)
@@ -299,14 +297,33 @@ export function hydraIds(): string[] {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw error
     }
-  }
 
-  return [
-    ...new Set([
-      ...ids,
-      ...heldInBoards(),
-    ]),
-  ].sort()
+    return []
+  }
+}
+
+// Without migrate, Hydras still in boards/ are listed where they are instead of moved.
+export function hydraIds({ migrate = true }: { migrate?: boolean } = {}): string[] {
+  const home = pnyxHome()
+  const ids = migrate ? [
+    ...folders({ dir: hydrasDir() }),
+    ...heldInBoards(),
+  ] : [
+    ...folders({
+      dir: join(
+        home,
+        'hydras',
+      ),
+    }),
+    ...folders({
+      dir: join(
+        home,
+        'boards',
+      ),
+    }),
+  ]
+
+  return [...new Set(ids)].sort()
 }
 
 export function hydraDir({

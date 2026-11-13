@@ -8,6 +8,9 @@ import { hookSettings } from './settings.ts'
 
 import type { Harness } from '#workers/providers.ts'
 
+// A tool message or command line shown on a card.
+const SHORT_MAX = 200
+
 export { HARNESSES, type Harness } from '#workers/providers.ts'
 // The events whose hook looks for the session's terminal; any other carries at most its Paseo terminal.
 export const TERMINAL_EVENTS = [
@@ -83,16 +86,32 @@ function str({ value }: { value: unknown }): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
+// Cut on code points, so an emoji at the cut never leaves half of its surrogate pair.
+function cut({
+  text,
+  max,
+}: {
+  text: string
+  max: number
+}): string {
+  const points = Array.from(text)
+
+  return points.length > max ? `${points.slice(
+    0,
+    max - 1,
+  ).join('')}…` : text
+}
+
 function short({ value }: { value: string | undefined }): string | undefined {
   const line = value?.replace(
     /\s+/g,
     ' ',
   ).trim()
 
-  return line && (line.length > 200 ? `${line.slice(
-    0,
-    199,
-  )}…` : line)
+  return line && cut({
+    text: line,
+    max: SHORT_MAX,
+  })
 }
 
 export function commandText({ input }: { input: unknown }): string | undefined {
@@ -361,10 +380,10 @@ function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
     .map(l => l.trim())
     .find(l => l !== '')
 
-  return line && line.length > TITLE_MAX ? `${line.slice(
-    0,
-    TITLE_MAX - 1,
-  )}…` : line
+  return line && cut({
+    text: line,
+    max: TITLE_MAX,
+  })
 }
 
 export function attend({

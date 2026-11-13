@@ -1,5 +1,6 @@
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { showingPage, type PageView } from '#web-app/restore.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -14,14 +15,8 @@ export function useTaskNavigation({
   command,
   connected,
   notify,
-  selectedRef,
-  setActive,
-  expanded,
-  setExpanded,
-  revealed,
-  setRevealed,
-  page,
-  setPage,
+  view,
+  setView,
   project,
   projectReferences,
 }: {
@@ -29,23 +24,17 @@ export function useTaskNavigation({
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
-  selectedRef: string | null
-  setActive: Dispatch<SetStateAction<string | null>>
-  expanded: string[]
-  setExpanded: Dispatch<SetStateAction<string[]>>
-  revealed: {
-    scope: string
-    ids: string[]
-  }
-  setRevealed: Dispatch<SetStateAction<{
-    scope: string
-    ids: string[]
-  }>>
-  page: string
-  setPage: Dispatch<SetStateAction<string>>
+  view: PageView
+  setView: Dispatch<SetStateAction<PageView>>
   project: string
   projectReferences: string[]
 }) {
+  const {
+    page,
+    selected: selectedRef,
+    expanded,
+    revealed,
+  } = view
   const selected = selectedRef ? state.keys[selectedRef] ?? selectedRef : null
   const currentCards = useRef(state.cards)
   currentCards.current = state.cards
@@ -145,10 +134,12 @@ export function useTaskNavigation({
 
           if (active && unavailable.length) {
             // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-            setExpanded(expanded => expanded.filter(id => !unavailable.includes(id)))
-
-            // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-            setActive(current => current && unavailable.includes(current) ? null : current)
+            setView(current => ({
+              ...current,
+              expanded: current.expanded.filter(id => !unavailable.includes(id)),
+              selected: current.selected && unavailable.includes(current.selected)
+                ? null : current.selected,
+            }))
           }
         } catch (error) {
           if (active && !pendingOpen.current) {
@@ -194,7 +185,12 @@ export function useTaskNavigation({
   )
 
   const clearSelection = () => {
-    cancelOpen(); setActive(null); setExpanded([]); pendingFocus.current = null
+    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    cancelOpen(); setView(current => ({
+      ...current,
+      selected: null,
+      expanded: [],
+    })); pendingFocus.current = null
   }
 
   const expandedIds = expandedByColumn({
@@ -214,17 +210,22 @@ export function useTaskNavigation({
       }
 
       // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-      setExpanded(ids => {
+      setView(current => {
+        const ids = current.expanded
         const next = expandedByColumn({
           ids: ids.map(id => state.keys[id] ?? id),
           cards: state.cards,
           pending: pendingColumns.current,
         })
-
-        return ids.length === next.length && ids.every((
+        const unchanged = ids.length === next.length && ids.every((
           id,
           index,
-        ) => id === next[index]) ? ids : next
+        ) => id === next[index])
+
+        return unchanged ? current : {
+          ...current,
+          expanded: next,
+        }
       })
     },
     [
@@ -266,10 +267,14 @@ export function useTaskNavigation({
   useEffect(
     () => {
       if (revealed.scope && revealed.scope !== filterScope) {
-        setRevealed({
-          scope: '',
-          ids: [],
-        })
+        // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+        setView(current => ({
+          ...current,
+          revealed: {
+            scope: '',
+            ids: [],
+          },
+        }))
       }
     },
     [
@@ -296,7 +301,11 @@ export function useTaskNavigation({
   ]
 
   const openHydra = () => {
-    cancelOpen(); setPage('hydra')
+    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    cancelOpen(); setView(current => showingPage({
+      view: current,
+      page: 'hydra',
+    }))
     requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
   }
 
@@ -305,15 +314,22 @@ export function useTaskNavigation({
 
     if (card && liveTask({ card }) && !filteredCards.some(card => card.id === id)) {
       // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-      setRevealed(kept => ({
-        scope: filterScope,
-        ids: [
-          ...new Set([
-            ...(kept.scope === filterScope ? kept.ids : []),
-            id,
-          ]),
-        ],
-      }))
+      setView(current => {
+        const kept = current.revealed.scope === filterScope ? current.revealed.ids : []
+
+        return {
+          ...current,
+          revealed: {
+            scope: filterScope,
+            ids: [
+              ...new Set([
+                ...kept,
+                id,
+              ]),
+            ],
+          },
+        }
+      })
     }
   }
 
@@ -333,15 +349,19 @@ export function useTaskNavigation({
     keepRevealed({ id })
     pendingFocus.current = focus ? id : null
     // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-    setExpanded(ids => expandedByColumn({
-      ids: [
-        ...ids.filter(item => item !== id),
-        id,
-      ],
-      cards: currentCards.current,
-      pending: pendingColumns.current,
+    setView(current => ({
+      ...current,
+      expanded: expandedByColumn({
+        ids: [
+          ...current.expanded.filter(item => item !== id),
+          id,
+        ],
+        cards: currentCards.current,
+        pending: pendingColumns.current,
+      }),
+      selected: id,
+      page: 'hydra',
     }))
-    setActive(id); setPage('hydra')
   }
 
   const openFromPointer = ({
@@ -390,7 +410,11 @@ export function useTaskNavigation({
     const controller = new AbortController()
     const { signal } = controller
     pendingOpen.current = controller
-    setPage('hydra'); setRevealing(id)
+    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    setView(current => showingPage({
+      view: current,
+      page: 'hydra',
+    })); setRevealing(id)
 
     try {
       if (!currentCards.current[id]) {
@@ -509,11 +533,12 @@ export function useTaskNavigation({
     const remaining = expandedIds.filter(item => item !== id)
     const target = closing && liveTask({ card: closing }) ? closing
       : filteredCards.find(c => c.column === closing?.column) ?? filteredCards[0]
-    setExpanded(remaining)
-
-    if (selected === id) {
-      setActive(remaining.at(-1) ?? null)
-    }
+    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    setView(current => ({
+      ...current,
+      expanded: remaining,
+      selected: selected === id ? remaining.at(-1) ?? null : current.selected,
+    }))
 
     if (pendingFocus.current === id) {
       pendingFocus.current = null

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { CARET_HOST, CARET_KEY } from '#web-hydra/caret.ts'
 import { composing } from '#web-shared/ime.ts'
 import { bindingsFor, characterBinding, emptyProgress, keyLabel, resolveKey, type KeyboardPreferences, type KeyPlatform, type KeyScope } from '#preferences/keyboard.ts'
@@ -221,28 +221,35 @@ export function KeyboardProvider({
     [platform],
   )
 
+  // Every shortcut user reads this, so it changes only with the preferences.
+  const value = useMemo(
+    () => ({
+      prefs,
+      platform,
+      handlers: handlers.current,
+      label: ({ id }: { id: string }) => keyLabel(
+        {
+          keys: bindingsFor({
+            prefs,
+            id,
+          }).filter(
+            binding => prefs.characterShortcuts || !characterBinding({
+              binding,
+              platform,
+            }),
+          ),
+          platform,
+        },
+      ),
+    }),
+    [
+      prefs,
+      platform,
+    ],
+  )
+
   return (
-    <Context
-      value={{
-        prefs,
-        platform,
-        handlers: handlers.current,
-        label: ({ id }) => keyLabel(
-          {
-            keys: bindingsFor({
-              prefs,
-              id,
-            }).filter(
-              binding => prefs.characterShortcuts || !characterBinding({
-                binding,
-                platform,
-              }),
-            ),
-            platform,
-          },
-        ),
-      }}
-    >
+    <Context value={value}>
       {children}
     </Context>
   )

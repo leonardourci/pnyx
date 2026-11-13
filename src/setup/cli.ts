@@ -1,6 +1,7 @@
 import { AxiError } from 'axi-sdk-js'
 import { guard, WRITE, parse, integer, required, meta, type Options, type Output } from '#app/cli-support.ts'
 import { setupCheckOutput } from './check.ts'
+import { setupPostgres } from './postgres.ts'
 import { requireSetupHome } from './home.ts'
 import { setupSkills } from './skills.ts'
 import { setupService } from './service.ts'
@@ -18,6 +19,8 @@ export const setup = guard({
       'allow-custom-home': { type: 'boolean' },
       home: { type: 'string' },
       port: { type: 'string' },
+      check: { type: 'boolean' },
+      url: { type: 'string' },
     }
     const {
       values,
@@ -29,8 +32,38 @@ export const setup = guard({
       positionals: 1,
     })
 
+    const postgresOnly = [
+      'check',
+      'url',
+    ].filter(flag => values[flag] !== undefined)
+
+    if (postgresOnly.length && positionals[0] !== 'postgres') {
+      throw new AxiError(
+        `--${postgresOnly[0]} applies only to setup postgres`,
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi setup check` to list what is missing'],
+      )
+    }
+
+    if (postgresOnly.length > 1) {
+      throw new AxiError(
+        '--check and --url run separately',
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi setup postgres --url <url>`, then `pnyx-axi setup postgres --check`'],
+      )
+    }
+
     if (positionals[0] === 'check') {
       return setupCheckOutput({ hydraId })
+    }
+
+    if (positionals[0] === 'postgres') {
+      return setupPostgres({
+        check: !!values.check,
+        allowCustomHome: !!values['allow-custom-home'],
+        url: typeof values.url === 'string' ? values.url : undefined,
+        meta: meta({ values }),
+      })
     }
 
     if (positionals[0] === undefined || [
@@ -81,7 +114,7 @@ export const setup = guard({
       throw new AxiError(
         `unknown setup target: ${positionals[0] ?? '(none)'}`,
         'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
+        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup postgres`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
       )
     }
 

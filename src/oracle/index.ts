@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
@@ -7,7 +7,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { HydraError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
-import { logPath, privateDir } from '#store/storage.ts'
+import { privateDir } from '#store/storage.ts'
 import { eventDocuments, type Document } from './documents.ts'
 import { fold, inflection, matches, tokens, type Term } from './query.ts'
 
@@ -26,8 +26,8 @@ function sqlite(): typeof import('node:sqlite') {
 }
 
 // Bump when the schema, stored text, visibility or tokenization changes.
-const INDEX_VERSION = 4
-const CATCH_UP_BATCH_BYTES = 256 * 1024
+const INDEX_VERSION = 5
+const CATCH_UP_BATCH_EVENTS = 500
 const EVENTS = 'events'
 // The full-text index an earlier version kept beside each Hydra.
 const RETIRED_INDEX_FILES = [
@@ -226,8 +226,7 @@ function catchUp({
     )
   }
 
-  const eventLog = logPath({ dir: hydraDir({ hydraId }) })
-  const throughEvents = existsSync(eventLog) ? statSync(eventLog).size : 0
+  const throughEvents = state.seq
   let pendingEvents = true
 
   while (pendingEvents) {
@@ -240,15 +239,19 @@ function catchUp({
     const read = readEventsFrom({
       hydraId,
       offset: cursor.pos,
-      maxBytes: CATCH_UP_BATCH_BYTES,
+      limit: CATCH_UP_BATCH_EVENTS,
       through: throughEvents,
     })
     const captured = !cursor.event || state.eventIds[cursor.event] === cursor.seq
-    const belongs = captured || cursor.seq > state.seq
+    // A cursor past this state belongs only while the Hydra still holds the event it stopped at.
+    const ahead = cursor.seq > state.seq && readEventsFrom({
+      hydraId,
+      offset: cursor.seq - 1,
+      limit: 1,
+    }).events[0]?.id === cursor.event
+    const belongs = captured || ahead
 
-    const continues = !read?.events.length || read.events[0]!.seq === cursor.seq + 1
-
-    if (!read || !belongs || !continues) {
+    if (!belongs) {
       if (cursor.pos === 0) {
         throw new HydraError({
           code: 'LOG_CORRUPT',
@@ -256,7 +259,7 @@ function catchUp({
         })
       }
 
-      // A restored or replaced events.jsonl leaves the derived cache behind; rebuild it from the log.
+      // A restored or replaced Hydra leaves the derived cache behind; rebuild it from its events.
       transaction({
         db,
         fn: () => {

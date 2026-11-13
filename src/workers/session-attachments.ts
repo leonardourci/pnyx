@@ -84,7 +84,7 @@ export function selfSession({
 
 const firstmate = ({ card }: { card: Card }) => card.sourceRefs.some(r => r.adapter === 'firstmate')
 
-// An absent value deletes its key, so the state keeps its shape through a snapshot's JSON.
+// An absent value deletes its key, so the state keeps its shape through its saved JSON.
 export function assignDefined<T extends object>({
   target,
   values,
@@ -262,11 +262,14 @@ export function observeSession({
       }
     }
 
-    session.launch ??= card.launch ?? {
-      via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks',
-      at: event.at,
-      folder: card.agent.cwd,
-      harness: card.agent.provider,
+    if (!session.launch) {
+      // Copies, not the card's own objects: a write through one would otherwise change the other without touching its row.
+      session.launch = card.launch ? { ...card.launch } : {
+        via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks',
+        at: event.at,
+        folder: card.agent.cwd,
+        harness: card.agent.provider,
+      }
     }
 
     if (!session.lastSeen || event.data.source?.adapter === 'hooks' || event.data.source?.adapter === 'paseo' || event.data.source?.adapter === 'transcript') {
@@ -288,11 +291,11 @@ export function observeSession({
         stoppedAt: card.stoppedAt,
       },
     })
-    session.attention = card.attention.filter(a => a.key.startsWith('hook:'))
+    session.attention = card.attention.filter(a => a.key.startsWith('hook:')).map(a => ({ ...a }))
     const objectId = `${session.agent.sessionId}${session.agent.agentId ? `/${session.agent.agentId}` : ''}`
     session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId)
       || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath)
-      || (r.adapter === 'paseo' && r.objectId === session.agent.paseoAgentId))
+      || (r.adapter === 'paseo' && r.objectId === session.agent.paseoAgentId)).map(r => ({ ...r }))
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {

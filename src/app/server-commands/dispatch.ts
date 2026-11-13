@@ -52,7 +52,6 @@ export function createServerCommands({
   kick,
   agents,
   catalogCommand,
-  hydraSubscribers,
   showPage,
   subscriptionMap,
   bindThread,
@@ -75,7 +74,6 @@ export function createServerCommands({
     fail,
     send,
   }: CommandRequest): void
-  hydraSubscribers: WeakSet<HydraClient>
   showPage: ReturnType<typeof createServerClients>['show']
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
   bindThread: ThreadSubscriptions['bindThread']
@@ -303,7 +301,6 @@ export function createServerCommands({
             hydraId,
             url,
             open,
-            hydraSubscribers,
           })
         } else if (name === 'page') {
           if (args.some(arg => arg === '--hydra' || arg.startsWith('--hydra='))) {

@@ -47,7 +47,12 @@ export interface Settings extends SharedView {
   logs: LogMode
   logDays: number
   logMaxMB: number
+  // The Postgres that holds Pnyx's data; empty uses this home's own database through PGHOST, PGPORT and PGUSER.
+  postgresUrl: string
 }
+
+// The settings an open page gets, without the URL that may hold a password.
+export type PageSettings = Omit<Settings, 'postgresUrl'>
 
 export const SETTING_KEYS = [
   ...SHARED_VIEW_KEYS,
@@ -59,6 +64,7 @@ export const SETTING_KEYS = [
   'logs',
   'logDays',
   'logMaxMB',
+  'postgresUrl',
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]

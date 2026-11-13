@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { serverEnvironment } from './restart.ts'
+import { serverEnvironment, waitFor } from './restart.ts'
 
 const saved = { ...process.env }
 
@@ -69,6 +69,54 @@ test(
         },
       }).login,
       '/accounts/owner',
+    )
+  },
+)
+
+test(
+  'restart waits while verified import progress advances, then stops waiting if it stalls',
+  async t => {
+    let now = 0
+    t.mock.method(
+      Date,
+      'now',
+      () => now,
+    )
+    let checks = 0
+    const ready = await waitFor({
+      timeout: 3,
+      check: () => {
+        now += 2
+
+        return ++checks === 6
+      },
+      progress: () => String(checks),
+    })
+    assert.equal(
+      ready,
+      true,
+    )
+    assert.equal(
+      checks,
+      6,
+    )
+    checks = 0
+    const stalled = await waitFor({
+      timeout: 3,
+      check: () => {
+        now += 2; checks++
+
+        return false
+      },
+      progress: () => 'unchanged',
+    })
+    assert.equal(
+      stalled,
+      false,
+    )
+    assert.equal(
+      checks,
+      3,
     )
   },
 )

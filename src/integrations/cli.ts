@@ -223,7 +223,7 @@ export const harvest = guard({
         ref: values.card as string,
       }),
     ] : Object.values(state.cards)
-    // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
+    // Read before the write: gh-axi can be slow and must not hold up other writes.
     const prs = await Promise.all(cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(async l => ({
       card: c.id,
       url: l.url,

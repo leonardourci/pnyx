@@ -23,7 +23,6 @@ export interface TaskEvent {
   seq: number
   at: string
   type: string
-  summary: string
   data?: Record<string, unknown>
   actor?: string
   reason?: string
@@ -471,7 +470,7 @@ function updateRow({
     case 'task.reminder-due': return {
       kind: 'plain',
       state: 'Reminder due',
-      note: event.summary,
+      note: String((data.message as { text?: unknown } | undefined)?.text ?? ''),
     }
     case 'task.visibility': return data.automatic ? undefined : {
       kind: 'plain',
@@ -568,7 +567,6 @@ export function showsUpdate({ event }: { event: HydraEvent }): boolean {
   return !!updateRow({
     event: {
       ...event,
-      summary: '',
     } as TaskEvent,
     columns: [],
   })

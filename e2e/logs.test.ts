@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -47,13 +47,6 @@ test(
     const mine = ({ operation }: { operation: string }) => logLines()
       .filter(line => line.operation === operation && line.hydraId === s.hydraId)
 
-    const eventLog = join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      s.hydraId,
-      'events.jsonl',
-    )
-    const logBefore = statSync(eventLog).size
     const seqBefore = s.state().seq
     await page.command({
       name: 'task',
@@ -88,7 +81,7 @@ test(
     )
     assert.ok(Number.isFinite(Date.parse(String(pageCommand.at))))
     assert.equal(
-      mine({ operation: 'socket.send' }).filter(line => line.name !== 'snapshot').length,
+      mine({ operation: 'socket.send' }).length,
       0,
       'On writes no line for the live updates the page got',
     )
@@ -129,13 +122,13 @@ test(
         (
           sum,
           line,
-        ) => sum + Number(line.bytes),
+        ) => sum + Number(line.count),
         0,
       )
     assert.equal(
       appended,
-      statSync(eventLog).size - logBefore,
-      'event-log lines count the UTF-8 bytes they append',
+      s.events().filter(event => event.seq > seqBefore).length,
+      'event-log lines count the events they write',
     )
 
     await s.owner({
@@ -247,7 +240,7 @@ test(
     })
     await until({
       what: 'logging off on the page',
-      check: () => page.settings.at(-1)?.logs === 'off',
+      check: () => page.settings()?.logs === 'off',
     })
     const quietBefore = mine({ operation: 'command.page' }).length
     await page.command({
@@ -323,7 +316,7 @@ test(
     })
     await until({
       what: 'detailed logging on the page',
-      check: () => page.settings.at(-1)?.logs === 'detailed',
+      check: () => page.settings()?.logs === 'detailed',
     })
     await page.command({
       name: 'task',
@@ -337,7 +330,7 @@ test(
     })
     const live = await until({
       what: 'a detailed line for each live update the page gets',
-      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'page.event'),
+      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'receipt'),
     })
     assert.ok(Number(live.bytes) > 0)
     assert.equal(
@@ -414,7 +407,6 @@ test(
         'hydra.open',
         'message.taken',
         'session.open',
-        'snapshot.write',
         'socket.send',
         'thread.page',
         'turn.end',

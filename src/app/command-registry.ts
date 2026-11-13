@@ -167,7 +167,7 @@ type PageName = {
   [K in Name]: (typeof COMMAND_REGISTRY)[K] extends { page: true } ? K : never
 }[Name]
 
-// CLI commands exposed to the browser. push and repair stay CLI-only: push reads a file path, repair is maintenance.
+// CLI commands exposed to the browser. push stays CLI-only because it reads a file path.
 export const CLI_COMMANDS = entries.filter(([
   , entry,
 ]) => entry.page).map(([name]) => name) as PageName[]

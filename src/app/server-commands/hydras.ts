@@ -1,9 +1,8 @@
 import { HydraError } from '#store/errors.ts'
 import { createHydra, editHydra, listHydras } from '#app/server-hydras.ts'
-import type { HydraClient } from '#app/server-transport.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `hydras [open|create|edit|move ...]`: the Hydra list, and subscribes the tab to its changes.
+// `hydras [open|create|edit|move ...]`: the Hydra list, as it is now; the page follows it through Zero.
 export function hydrasCommand({
   ws,
   id,
@@ -13,23 +12,22 @@ export function hydrasCommand({
   hydraId,
   url,
   open,
-  hydraSubscribers,
 }: CommandRequest & {
   hydraId: string
   url: string
   open({ id }: { id: string }): Promise<string>
-  hydraSubscribers: WeakSet<HydraClient>
 }) {
-  hydraSubscribers.add(ws)
   const [
     action,
     first,
     second,
     third,
   ] = args
+  // The page lists Hydras from Zero; only a listing and a creation, whose new Hydra Zero may not list yet, carry it.
   const reply = ({
     open,
     creation,
+    listed = false,
   }: {
     open?: string
     creation?: {
@@ -38,13 +36,14 @@ export function hydrasCommand({
       status: 'saved'
       mount: 'pending'
     }
+    listed?: boolean
   } = {}) => send({
     ws,
     message: {
       type: 'receipt',
       id,
       hydraId,
-      hydras: listHydras(),
+      hydras: listed || creation ? listHydras() : undefined,
       ...(open ? { url: open } : {}),
       ...(creation ? { creation } : {}),
     },
@@ -116,7 +115,7 @@ export function hydrasCommand({
     })
     reply()
   } else if (action === undefined) {
-    reply()
+    reply({ listed: true })
   } else {
     throw new HydraError({
       message: 'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',

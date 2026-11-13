@@ -6,18 +6,19 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { ViewEvent } from '#preferences/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
-import { readLog } from '#app/event-log.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { eventsOrLegacy } from '#app/event-log.ts'
+import { hydraIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
-import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
+import { SETTING_KEYS, type PageSettings, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { settingsNotice } from '#hydra/settings-notice.ts'
+import { query } from '#store/postgres.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -165,7 +166,7 @@ function migrate(): void {
     return
   }
 
-  const logs = hydraIds().map(hydraId => readLog({ dir: hydraDir({ hydraId }) })?.events ?? [])
+  const logs = hydraIds().map(hydraId => eventsOrLegacy({ hydraId }))
   const views = logs.flat().filter((event): event is ViewEvent => event.type === 'board.view')
   const view = newest({ events: views })
   const changed = <K extends Legacy>({ key }: { key: K }) => newest({
@@ -373,6 +374,76 @@ export function saveSettings({
   })
 }
 
+// The Postgres URL set for this home, read without the move from older per-Hydra values, which itself needs Postgres.
+export const configuredPostgres = () => readFolded().settings.postgresUrl
+
+// postgresUrl may hold a password, so pages never get it.
+function pageSettings({ settings }: { settings: Settings }): PageSettings {
+  const shown: Partial<Settings> = { ...settings }
+  delete shown.postgresUrl
+
+  return shown as PageSettings
+}
+
+const MASK = '***'
+// libpq also reads a password from the URL's query, as in postgres://host/db?password=secret.
+const PASSWORD_PARAM = 'password'
+
+const maskedUrl = ({ url }: { url: string }) => {
+  if (!URL.canParse(url)) {
+    return url
+  }
+
+  const parsed = new URL(url)
+  const queryPassword = parsed.searchParams.has(PASSWORD_PARAM)
+
+  if (!parsed.password && !queryPassword) {
+    return url
+  }
+
+  if (parsed.password) {
+    parsed.password = MASK
+  }
+
+  if (queryPassword) {
+    parsed.searchParams.set(
+      PASSWORD_PARAM,
+      MASK,
+    )
+  }
+
+  return parsed.toString()
+}
+
+// What the CLI prints: everything, with a password in postgresUrl masked.
+export const shownSettings = ({ settings }: { settings: Settings }): Settings => ({
+  ...settings,
+  postgresUrl: maskedUrl({ url: settings.postgresUrl }),
+})
+
+// The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
+// stays their record, since it also names the database.
+export function mirrorSettings({
+  settings,
+  revision,
+}: {
+  settings: Settings
+  revision: number
+}): void {
+  query({
+    statements: [
+      {
+        text: `insert into settings (id, revision, value) values ('shared', $1, $2) on conflict (id)
+          do update set revision = excluded.revision, value = excluded.value where settings.revision < excluded.revision`,
+        values: [
+          revision,
+          JSON.stringify(pageSettings({ settings })),
+        ],
+      },
+    ],
+  })
+}
+
 // A command that also writes a Hydra checks its shared part first and saves it only once that write succeeds.
 export function checkSettings({ patch }: { patch: unknown }): void {
   const current = readSettings().settings
@@ -389,17 +460,25 @@ export function checkSettings({ patch }: { patch: unknown }): void {
 }
 
 export function settingsReceipt({ saved }: { saved: SettingsSave }): Output {
+  const settings = shownSettings({ settings: saved.settings })
+
   if ('skipped' in saved) {
     return {
       event: `none: ${saved.skipped}`,
-      settings: saved.settings,
+      settings,
       revision: saved.revision,
     }
   }
 
+  const changed = { ...saved.entry.after }
+
+  if (changed.postgresUrl !== undefined) {
+    changed.postgresUrl = maskedUrl({ url: changed.postgresUrl })
+  }
+
   return {
-    changed: saved.entry.after,
-    settings: saved.settings,
+    changed,
+    settings,
     revision: saved.revision,
   }
 }

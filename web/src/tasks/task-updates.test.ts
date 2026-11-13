@@ -1,201 +1,53 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import * as nodeModule from 'node:module'
 import { test } from 'node:test'
-import type { HydraEvent } from '#app/model.ts'
+import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
+import type { Zero } from '@rocicorp/zero'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { Card } from '#tasks/model.ts'
-import type { Command } from '#web-app/connection.ts'
-import { loadUpdates, noteUpdate, retryUpdates, staleUpdates, updatesOf } from './updates-cache.ts'
 import { type TaskEvent, type TaskUpdate } from '#tasks/updates.ts'
-import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
+import { groupUpdates, olderUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 
-test(
-  'kept Updates refresh once per change they show, activity alone sends no read, and Try again reads again',
-  async () => {
-    const id = 'task-cache'
-    const at = '2026-10-21T10:00:00Z'
-    const calls: string[][] = []
-    // eslint-disable-next-line pnyx/object-params -- Promise owns its resolver signature.
-    const pending: ((ok: boolean) => void)[] = []
+// Node strips types from .ts but cannot read JSX, so the Updates tab's .tsx files are transpiled as they load.
+// registerHooks exists from Node 22.15.
+const hooks = typeof nodeModule.registerHooks === 'function'
 
-    const command: Command = async ({ args }) => {
-      calls.push(args)
-      const n = calls.length
+nodeModule.registerHooks?.({
+  // eslint-disable-next-line pnyx/object-params -- Node owns the load hook's signature.
+  load(
+    url,
+    context,
+    next,
+  ) {
+    if (!url.endsWith('.tsx')) {
+      return next(
+        url,
+        context,
+      )
+    }
 
-      if (!await new Promise<boolean>(resolve => pending.push(resolve))) {
-        throw new Error('history failed')
-      }
-
-      return {
-        events: [
-          {
-            id: `e${n}`,
-            seq: n,
-            at,
-            type: 'task.brief',
-            summary: '',
+    return {
+      format: 'module',
+      shortCircuit: true,
+      source: ts.transpileModule(
+        readFileSync(
+          fileURLToPath(url),
+          'utf8',
+        ),
+        {
+          compilerOptions: {
+            jsx: ts.JsxEmit.ReactJSX,
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ESNext,
           },
-        ],
-      }
-    }
-
-    const settle = async ({ ok = true }: { ok?: boolean } = {}) => {
-      pending.shift()!(ok)
-      await new Promise(resolve => setTimeout(
-        resolve,
-        0,
-      ))
-    }
-
-    const event = ({
-      seq,
-      type,
-      data,
-      cardId = id,
-    }: {
-      seq: number
-      type: string
-      data: Record<string, unknown>
-      cardId?: string
-    }) => ({
-      v: 1,
-      seq,
-      id: `raw${seq}`,
-      at,
-      actor: 'cli',
-      cardId,
-      type,
-      data,
-    }) as unknown as HydraEvent
-    const load = () => loadUpdates({
-      command,
-      id,
-    })
-    const declared = ({ seq }: { seq: number }) => event({
-      seq,
-      type: 'task.declared',
-      data: {
-        state: 'working',
-        note: `Step ${seq}`,
-      },
-    })
-
-    void load()
-
-    for (let seq = 1; seq <= 25; seq++) {
-      noteUpdate({
-        event: event({
-          seq,
-          type: 'card.pushed',
-          data: {
-            key: 'k',
-            activity: seq % 2 ? 'working' : 'idle',
-          },
-        }),
-      })
-      void load()
-    }
-
-    assert.ok(calls[0]!.includes('--updates'))
-    await settle()
-    assert.deepEqual(
-      [
-        calls.length,
-        updatesOf({ id }).stale,
-        updatesOf({ id }).loaded,
-      ],
-      [
-        1,
-        false,
-        true,
-      ],
-    )
-
-    noteUpdate({ event: declared({ seq: 26 }) })
-    void load()
-
-    for (const seq of [
-      27,
-      28,
-    ]) {
-      noteUpdate({ event: declared({ seq }) })
-      void load()
-    }
-
-    assert.equal(
-      calls.length,
-      2,
-    )
-    await settle()
-    assert.equal(
-      calls.length,
-      3,
-    )
-    await settle()
-    assert.deepEqual(
-      updatesOf({ id }).events.map(event => event.id),
-      [
-        'e3',
-        'e2',
-        'e1',
-      ],
-    )
-    await load()
-    assert.equal(
-      calls.length,
-      3,
-    )
-
-    noteUpdate({
-      event: event({
-        seq: 29,
-        cardId: '$board',
-        type: 'hydra.message',
-        data: {
-          action: 'send',
-          text: `[@Cache task](pnyx-task:${id}) is next`,
         },
-      }),
-    })
-    assert.equal(
-      updatesOf({ id }).stale,
-      true,
-    )
-    void load()
-    await settle({ ok: false })
-    assert.equal(
-      updatesOf({ id }).error,
-      'history failed',
-    )
-    await load()
-    assert.equal(
-      calls.length,
-      4,
-    )
-
-    void retryUpdates({
-      command,
-      id,
-    })
-    await settle()
-    assert.deepEqual(
-      [
-        calls.length,
-        updatesOf({ id }).error,
-      ],
-      [
-        5,
-        '',
-      ],
-    )
-
-    staleUpdates()
-    assert.equal(
-      updatesOf({ id }).stale,
-      true,
-    )
+      ).outputText,
+    }
   },
-)
+})
 
 const event = ({
   seq,
@@ -219,7 +71,6 @@ const event = ({
   seq,
   at,
   type,
-  summary: '',
   data,
   ...(actor ? { actor } : {}),
   ...(reason ? { reason } : {}),
@@ -731,6 +582,185 @@ test(
     assert.equal(
       updates[0]?.decision?.question,
       'Merge PR #281?',
+    )
+  },
+)
+
+// Stands in for the page's Zero client: every card.history view answers at once with the given rows or error. Each is
+// a client of its own, since useQuery shares views by client.
+function historyZero({
+  count,
+  error,
+}: {
+  count: number
+  error?: string
+}) {
+  const rows = Array.from(
+    { length: count },
+    (
+      _,
+      index,
+    ) => ({
+      hydra_id: 'h',
+      card_id: 'c1',
+      seq: count - index,
+      event: {
+        data: {
+          ...event({
+            seq: count - index,
+            type: 'card.renamed',
+            data: { title: `Title ${count - index}` },
+          }),
+          cardId: 'c1',
+        },
+      },
+    }),
+  )
+
+  return {
+    clientID: crypto.randomUUID(),
+    context: undefined,
+    materialize: () => ({
+      // eslint-disable-next-line pnyx/object-params -- Zero's view listener contract.
+      addListener: (listener: (
+        data: unknown,
+        resultType: string,
+        error?: unknown,
+      ) => void) => {
+        listener(
+          error ? [] : rows,
+          error ? 'error' : 'complete',
+          error ? {
+            error: 'app',
+            message: error,
+          } : undefined,
+        )
+
+        return () => {}
+      },
+      destroy() {},
+      updateTTL() {},
+    }),
+  } as unknown as Zero
+}
+
+const renderUpdates = async ({ zero }: { zero: Zero }) => {
+  const { createElement } = await import('react')
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { ZeroProvider } = await import('@rocicorp/zero/react')
+  const { TaskUpdates } = await import('./task-updates.tsx')
+
+  return renderToStaticMarkup(createElement(
+    ZeroProvider,
+    {
+      zero,
+      children: createElement(
+        TaskUpdates,
+        {
+          card: {
+            id: 'c1',
+            key: 'c1',
+            title: 'Ship it',
+            column: 'in_progress',
+            workspace: '',
+            tags: [],
+            attention: [],
+            links: [],
+            sourceRefs: [],
+            revision: 1,
+            createdSeq: 1,
+            updatedSeq: 1,
+            updatedAt: '2026-10-13T13:00:00Z',
+          } satisfies Card,
+          columns,
+          hydraId: 'h',
+        },
+      ),
+    },
+  ))
+}
+
+test(
+  'the Updates tab offers older updates only while a page comes back full',
+  { skip: !hooks },
+  async () => {
+    const { HISTORY_PAGE } = await import('#store/zero-schema.ts')
+
+    assert.match(
+      await renderUpdates({ zero: historyZero({ count: HISTORY_PAGE }) }),
+      />Older updates</,
+    )
+    assert.doesNotMatch(
+      await renderUpdates({ zero: historyZero({ count: 3 }) }),
+      /Older updates/,
+    )
+  },
+)
+
+test(
+  'updates Zero cannot read name the error and offer to read them again',
+  { skip: !hooks },
+  async () => {
+    const shown = await renderUpdates({
+      zero: historyZero({
+        count: 0,
+        error: 'query endpoint unreachable',
+      }),
+    })
+
+    assert.match(
+      shown,
+      /query endpoint unreachable/,
+    )
+    assert.match(
+      shown,
+      />Try again</,
+    )
+  },
+)
+
+test(
+  'Older updates stays, disabled, while the page after a full one loads, and leaves once a page comes back short',
+  async () => {
+    const {
+      HISTORY_PAGE,
+      MAX_HISTORY,
+    } = await import('#store/zero-schema.ts')
+    const pressed = HISTORY_PAGE * 2
+
+    assert.equal(
+      olderUpdates({
+        rows: HISTORY_PAGE,
+        limit: pressed,
+        loading: true,
+      }),
+      'loading',
+    )
+    assert.equal(
+      olderUpdates({
+        rows: HISTORY_PAGE + 3,
+        limit: pressed,
+        loading: false,
+      }),
+      'hidden',
+    )
+    assert.equal(
+      olderUpdates({
+        rows: 0,
+        limit: HISTORY_PAGE,
+        loading: true,
+      }),
+      'hidden',
+      'the first page loading shows no Older updates',
+    )
+    assert.equal(
+      olderUpdates({
+        rows: MAX_HISTORY,
+        limit: MAX_HISTORY,
+        loading: false,
+      }),
+      'hidden',
+      'the Updates tab reads no further than its most',
     )
   },
 )

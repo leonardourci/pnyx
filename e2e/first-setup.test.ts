@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { processStart } from '#app/server-state.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
+import { query } from '#store/postgres.ts'
 
 const WAIT_MS = 120000
 const cli = join(
@@ -122,28 +123,28 @@ test(
         root,
         'gitconfig',
       ),
+      // The launcher's throwaway Postgres; HOME/.pnyx is the live home, whose database is pnyx there.
+      PGHOST: process.env.PGHOST,
+      PGPORT: process.env.PGPORT,
+      PGUSER: process.env.PGUSER,
     }
     const serverPath = join(
       pnyx,
       'server.json',
     )
-    // The server saves its snapshot in the background, so the log is what to read.
+    const readEvents = () => (query({
+      url: `postgres://${env.PGUSER}@${env.PGHOST}:${env.PGPORT}/pnyx`,
+      statements: [
+        {
+          text: 'select data from events where hydra_id = $1 order by seq',
+          values: ['default'],
+        },
+      ],
+    })[0] as { data: HydraEvent }[]).map(row => row.data)
     const hydraCard = () => replay({
       state: emptyHydra(),
-      events: readFileSync(
-        join(
-          pnyx,
-          'hydras/default/events.jsonl',
-        ),
-        'utf8',
-      ).split('\n')
-        .filter(Boolean)
-        .map(line => JSON.parse(line) as HydraEvent),
+      events: readEvents(),
     }).cards.$hydra
-    const events = join(
-      pnyx,
-      'hydras/default/events.jsonl',
-    )
     const run = async ({ args }: { args: string[] }) => promisify(execFile)(
       process.execPath,
       [
@@ -373,19 +374,9 @@ test(
         }
       },
     })
-    const finishes = () => readFileSync(
-      events,
-      'utf8',
-    ).split('\n')
-      .filter(line => {
-        if (!line) {
-          return false
-        }
-
-        const event = JSON.parse(line)
-
-        return event.type === 'card.pushed' && event.data.agent?.sessionId === session && event.data.activity === 'finished'
-      }).length
+    const finishes = () => readEvents()
+      .filter(event => event.type === 'card.pushed' && event.data.agent?.sessionId === session
+        && event.data.activity === 'finished').length
     const previousFinishes = finishes()
     await run({
       args: [

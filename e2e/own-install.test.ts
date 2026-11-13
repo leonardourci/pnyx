@@ -112,7 +112,7 @@ test(
     )
     assert.match(
       stopped,
-      /stopped: "?none: the Pnyx server is not pulling, installing or building an upgrade/,
+      /stopped: "?none: the Pnyx server is not pulling, installing, building or checking an upgrade/,
     )
     assert.equal(
       s.state().upgrades,
@@ -290,7 +290,7 @@ test(
       try {
         await until({
           what: 'the upgrade-available hint',
-          check: () => page.upgrades.at(-1)?.available === true,
+          check: () => page.upgrade()?.available === true,
         })
       } finally {
         page.close()

@@ -28,7 +28,7 @@ commands:
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   apply --file <changes.json|-> [--check]    Validate and atomically apply local task changes
   push --key <key> --file <card.json|->      Create or update the card with this key
-  page [--card <id|key>] [--hidden] [--full] Summarize the page view; --full prints the whole projection
+  page [--card <id|key>] [--hidden] [--full] Summarize the Hydra as a page shows it; --full prints all of it
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
   move <id> <column> [--before <id>]         Put a card in a column, above another card or at its end
@@ -43,12 +43,11 @@ commands:
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   settings show|schema|set                   Pnyx-wide settings: theme, text sizes, Hide Done, review cadence, helper, Oracle filters, Hydra order, logs
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths
-  repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the application and the agents it runs
   restart                                    Restart the application; a turn it cut resumes from its saved session
-  upgrade [--check] [--now] [--stop]         Pull, install and build the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
-  setup [check|skills|hooks]                 Install login services, list missing setup, or install skills or hooks
+  upgrade [--check] [--now] [--stop]         Pull, install, build and check the data of the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
+  setup [check|postgres|skills|hooks]        Install login services, list missing setup, start Postgres, or install skills or hooks
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -63,8 +62,8 @@ flags:
 
 const COMMAND_HELP: Record<string, string> = {
   page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--full] [--hydra <id>]
-Summarize what a page receives: shown cards per column, opened cards, the owner's latest Hydra message and unavailable refs.
---full prints the whole projection, without the event-ID index, steering history, source captures, context notes or Hydra message history.
+Summarize the Hydra as a page shows it: shown cards per column, opened cards, the owner's latest Hydra message and unavailable refs.
+--full prints the whole view, without the event-ID index, steering history, source captures, context notes or Hydra message history.
 Repeat --card for opened cards.
 --hidden includes hidden and automatic cards.
 On a page connection, this also updates that tab's interests.
@@ -416,13 +415,23 @@ Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup check [--hydra <id>]
+pnyx-axi setup postgres [--check | --url <url>] [--allow-custom-home]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
-setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
-project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup check lists what is still missing (Postgres, local config, logins, hooks, skills, quota-axi, the login
+service, project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup postgres on macOS starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and
+creates this home's database (pnyx for ~/.pnyx); elsewhere it only checks. Host, port and user come from PGHOST,
+PGPORT and PGUSER, unless the postgresUrl setting names the Postgres; then setup postgres only checks it and starts
+or changes nothing.
+--check writes no Hydra data (it creates this home's empty database if missing): it reports what is missing and
+imports each Hydra still kept in events.jsonl in a transaction it rolls back.
+--url saves the postgresUrl setting without the server, which cannot start while that URL is wrong; --url '' clears
+it. The server applies it on its next start.
 setup installs the server's login service.
-setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
+setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given, and so does
+setup postgres before it starts or changes Homebrew's service.
 setup refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
@@ -439,18 +448,14 @@ setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} 
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
 Firstmate's own files are not changed.
 `,
-  repair: `usage: pnyx-axi repair [--hydra <name>]
-A crash mid-append can leave a torn last line; writes refuse until it is repaired.
-Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
-`,
   serve: `usage: pnyx-axi serve [--port <n>] [--hydra <name>] [--home <Firstmate path>]...
 Serves every Hydra in PNYX_HOME on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
 Each Hydra lives at /hydra/<id>/; / opens the --hydra Hydra. A Hydra that fails to load is skipped and reported, and a Hydra created
 while the server runs is served once its folder appears. --hydra names the Hydra whose address is printed (default: default); it and
 the default Hydra must load. A Hydra run by a Firstmate home watches that home and replies through it. Each --home is a Firstmate home
 for the --hydra Hydra instead: replies to its cards go through it, and its tasks are folded in as \`pnyx-axi firstmate watch\` would.
-Hook events arrive on each Hydra's server.sock or through its spool. Browsers get one WebSocket per Hydra at /hydra/<id>/ws:
-a snapshot on connect, then events by sequence; ?after=<seq> resumes, a gap gets a fresh snapshot.
+Hook events arrive on each Hydra's server.sock or through its spool. Browsers read Hydra data through Zero at /zero and get one
+WebSocket per Hydra at /hydra/<id>/ws for live agent activity, conversation pages and commands.
 The handshake needs ?token=<token>: each Hydra page served here carries it, local programs read $PNYX_HOME/token.
 Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|rule|account","args":[...]}
 gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write that socket's Hydra;

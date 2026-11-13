@@ -10,7 +10,9 @@ import { projectMemoryView } from '#memory/project-memory.ts'
 import { projectsFor } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
+import { HydraError } from '#store/errors.ts'
 import { recordExitCode } from '#app/request-context.ts'
+import { postgresIssue } from './postgres.ts'
 
 export interface SetupItem {
   name: string
@@ -31,7 +33,7 @@ const SIGN_IN: Record<Harness, string> = {
   codex: 'sign in to Codex (`codex login`)',
 }
 
-// Reads only files, PATH and each attached project's git sources, so it is cheap enough for every session open.
+// Reads files, PATH, each attached project's git sources and one Postgres query: cheap enough for every session open.
 export async function setupCheck({
   hydraId,
   state,
@@ -40,6 +42,11 @@ export async function setupCheck({
   state: HydraState
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
+  const database = postgresIssue()
+
+  if (database) {
+    items.push(database)
+  }
 
   if (onTemplate()) {
     items.push({
@@ -185,10 +192,31 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
   ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'hydra' ? 'you' : 'owner'}: ${item.fix}`),
 ] : []
 
+// Setup runs without the server, which alone imports a Hydra still in its events.jsonl; until then it is the only item.
+function hydraIssue({ hydraId }: { hydraId: string }): SetupItem | HydraState {
+  try {
+    return loadHydra({ hydraId }).state
+  } catch (error) {
+    if (!(error instanceof HydraError && error.code === 'NOT_IMPORTED')) {
+      throw error
+    }
+
+    return {
+      name: 'import',
+      missing: error.message,
+      by: 'owner',
+      fix: 'run `pnyx-axi restart`, then `pnyx-axi setup check`',
+    }
+  }
+}
+
 export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
-  const items = await setupCheck({
+  // A Hydra loads only through Postgres, so while Postgres is not ready that is the one item listed.
+  const database = postgresIssue()
+  const loaded = database ?? hydraIssue({ hydraId })
+  const items = 'missing' in loaded ? [loaded] : await setupCheck({
     hydraId,
-    state: loadHydra({ hydraId }).state,
+    state: loaded,
   })
 
   if (!items.length) {

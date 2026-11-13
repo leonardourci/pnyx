@@ -1,317 +1,21 @@
-import type { Transaction } from './transactions.ts'
-import { asRecord } from './command-validation.ts'
-import { EVENT_TYPES, type HydraEvent } from './model.ts'
-import { EVENT_VERSION } from '#store/events.ts'
-import { HydraError } from '#store/errors.ts'
-import { logPath } from '#store/storage.ts'
-import { existsSync, openSync, fstatSync, readSync, closeSync, statSync } from 'node:fs'
+import type { HydraEvent } from './model.ts'
+import { homeScoped, query } from '#store/postgres.ts'
+import { heldHydra, hydraExists } from './store.ts'
 import { hydraDir } from './home-migration.ts'
-
-export interface LogRead {
-  events: HydraEvent[]
-  transactions: Transaction[]
-  // Byte offset just past the last complete line.
-  end: number
-  size: number
-}
-
-// Appended by repair after it closes a torn line with a newline. Readers skip the
-// line it names; it is not a Hydra event and takes no sequence number.
-export interface RepairMarker {
-  v: typeof EVENT_VERSION
-  type: 'log.repaired'
-  at: string
-  data: {
-    offset: number
-    length: number
-  }
-}
-
-function parseLine({ line }: { line: string }): unknown {
-  try {
-    return JSON.parse(line)
-  } catch {
-    return undefined
-  }
-}
-
-function repairMarker({ value }: { value: unknown }): RepairMarker | undefined {
-  const m = value as Partial<RepairMarker> | undefined
-
-  return m?.type === 'log.repaired' && Number.isInteger(m.data?.offset) && Number.isInteger(m.data?.length)
-    ? m as RepairMarker
-    : undefined
-}
-
-function corrupt({ offset }: { offset: number }): HydraError {
-  return new HydraError({
-    message: `events.jsonl is corrupt at byte ${offset}`,
-    code: 'LOG_CORRUPT',
-    help: ['The log is never rewritten automatically; inspect that line by hand'],
-  })
-}
-
-function toEvent({
-  event,
-  offset,
-}: {
-  event: unknown
-  offset: number
-}): HydraEvent {
-  const e = event as Partial<HydraEvent> | undefined
-
-  if (
-    typeof e !== 'object' ||
-    e === null ||
-    !Number.isInteger(e.seq) ||
-    typeof e.id !== 'string' ||
-    typeof e.cardId !== 'string' ||
-    !EVENT_TYPES.includes(e.type as HydraEvent['type'])
-  ) {
-    throw corrupt({ offset })
-  }
-
-  if (e.v !== EVENT_VERSION) {
-    throw new HydraError({
-      message: `event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`,
-      code: 'UNSUPPORTED_VERSION',
-    })
-  }
-
-  return e as HydraEvent
-}
-
-// Reads complete lines from `from`. Bytes after the last newline are a torn tail
-// left by a crash mid-append: they are reported through `end` < `size`, never parsed.
-// A line named by the repair marker right after it is skipped, whatever it holds.
-export function readLog({
-  dir,
-  from = 0,
-  maxBytes,
-  through,
-}: {
-  dir: string
-  from?: number
-  maxBytes?: number
-  through?: number
-}): LogRead | null {
-  const path = logPath({ dir })
-
-  if (!existsSync(path)) {
-    return from === 0 ? {
-      events: [],
-      transactions: [],
-      end: 0,
-      size: 0,
-    } : null
-  }
-
-  const fd = openSync(
-    path,
-    'r',
-  )
-
-  try {
-    const fileSize = fstatSync(fd).size
-    const size = Math.min(
-      fileSize,
-      through ?? fileSize,
-    )
-
-    if (from > size) {
-      return null
-    }
-
-    const available = size - from
-    let buf = Buffer.alloc(Math.min(
-      available,
-      maxBytes ?? available,
-    ))
-    readSync(
-      fd,
-      buf,
-      0,
-      buf.length,
-      from,
-    )
-
-    // A repair marker applies to the preceding record, so a batch needs one record of lookahead.
-    while (buf.indexOf(
-      10,
-      buf.indexOf(10) + 1,
-    ) < 0 && buf.length < available) {
-      buf = Buffer.alloc(Math.min(
-        available,
-        Math.max(
-          1,
-          buf.length * 2,
-        ),
-      ))
-      readSync(
-        fd,
-        buf,
-        0,
-        buf.length,
-        from,
-      )
-    }
-
-    let complete = buf.lastIndexOf(10) + 1
-
-    if (maxBytes !== undefined && buf.length < available && complete > 0) {
-      const lastStart = buf.lastIndexOf(
-        10,
-        complete - 2,
-      ) + 1
-      const last = parseLine({
-        line: buf.toString(
-          'utf8',
-          lastStart,
-          complete - 1,
-        ),
-      })
-
-      if (!repairMarker({ value: last })) {
-        complete = lastStart
-      }
-    }
-
-    const events: HydraEvent[] = []
-    const transactions: Transaction[] = []
-    let previous: {
-      offset: number
-      length: number
-      count?: number
-      transaction?: Transaction
-      error?: HydraError
-    } | undefined
-
-    for (let start = 0; start < complete; ) {
-      const end = buf.indexOf(
-        10,
-        start,
-      )
-      const offset = from + start
-      const line = buf.toString(
-        'utf8',
-        start,
-        end,
-      )
-      const length = end - start
-      start = end + 1
-
-      if (line.trim() === '') {
-        continue
-      }
-
-      const value = parseLine({ line })
-
-      const marker = repairMarker({ value })
-
-      if (marker) {
-        if (previous?.offset !== marker.data.offset || previous.length !== marker.data.length) {
-          throw corrupt({ offset })
-        }
-
-        if (previous.count) {
-          events.splice(events.length - previous.count)
-        }
-
-        if (previous.transaction) {
-          transactions.pop()
-        }
-
-        previous = undefined
-        continue
-      }
-
-      if (previous?.error) {
-        throw previous.error
-      }
-
-      previous = {
-        offset,
-        length,
-      }
-
-      try {
-        const record = asRecord({ value })
-
-        if (record?.type === 'log.transaction') {
-          if (record.v !== EVENT_VERSION || typeof record.id !== 'string'
-            || typeof record.digest !== 'string' || !Array.isArray(record.events)
-            || !asRecord({ value: record.receipt })) {
-            throw corrupt({ offset })
-          }
-
-          const children = record.events.map(event => toEvent({
-            event,
-            offset,
-          }))
-          const receiptEvent = children.at(-1)
-
-          if (receiptEvent?.type !== 'apply.recorded' || receiptEvent.id !== record.id
-            || receiptEvent.data.digest !== record.digest) {
-            throw corrupt({ offset })
-          }
-
-          if (children.some((
-            event,
-            index,
-          ) => event.transaction !== record.id
-            || (index > 0 && event.seq !== children[index - 1]!.seq + 1))) {
-            throw corrupt({ offset })
-          }
-
-          const transaction: Transaction = {
-            v: EVENT_VERSION,
-            type: 'log.transaction',
-            id: record.id,
-            digest: record.digest,
-            events: children,
-            receipt: record.receipt as Record<string, unknown>,
-          }
-          transactions.push(transaction)
-          events.push(...children)
-          previous.count = children.length
-          previous.transaction = transaction
-        } else {
-          events.push(toEvent({
-            event: value,
-            offset,
-          }))
-          previous.count = 1
-        }
-      } catch (error) {
-        previous.error = error as HydraError
-      }
-    }
-
-    if (previous?.error) {
-      throw previous.error
-    }
-
-    return {
-      events,
-      transactions,
-      end: from + complete,
-      size,
-    }
-  } finally {
-    closeSync(fd)
-  }
-}
+import { readLog } from './legacy-log.ts'
 
 // The tasks an event belongs to, under which an index lists it.
 type EventKeys = ({ event }: { event: HydraEvent }) => readonly string[]
 
 type Index = Map<string, HydraEvent[]>
 
-// ponytail: the log only grows, so the server keeps every parsed event (65 MB of heap for a 45 MB log); index offsets per card if that is too much.
-const parsed = new Map<string, {
-  file: string
+// ponytail: the server keeps every event it has read (65 MB of heap for a 45 MB log); query the events table per
+// card if that is too much.
+// through is the seq the events were read up to, which may pass the last one kept: an imported Hydra's last events
+// can be agent transcript copies that stayed out of Postgres.
+const read = new Map<string, {
   events: HydraEvent[]
-  end: number
+  through: number
   indexes: Map<EventKeys, Index>
 }>()
 
@@ -322,7 +26,7 @@ const addToIndex = ({
 }: {
   index: Index
   keys: EventKeys
-  events: HydraEvent[]
+  events: readonly HydraEvent[]
 }) => {
   for (const event of events) {
     for (const key of keys({ event })) {
@@ -340,144 +44,131 @@ const addToIndex = ({
   }
 }
 
-export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
-  let fd: number
+const eventsAfter = ({
+  hydraId,
+  seq,
+  through,
+  limit,
+}: {
+  hydraId: string
+  seq: number
+  through?: number
+  limit?: number
+}): HydraEvent[] => (query({
+  statements: [
+    {
+      text: `select data from events where hydra_id = $1 and seq > $2 and ($3::bigint is null or seq <= $3)
+        order by seq limit $4`,
+      values: [
+        hydraId,
+        seq,
+        through ?? null,
+        limit ?? null,
+      ],
+    },
+  ],
+})[0] as { data: HydraEvent }[]).map(row => row.data)
 
-  try {
-    fd = openSync(
-      logPath({ dir: hydraDir({ hydraId }) }),
-      'r',
-    )
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null
-    }
-
-    throw error
+const extend = ({
+  entry,
+  events,
+}: {
+  entry: NonNullable<ReturnType<typeof read.get>>
+  events: readonly HydraEvent[]
+}) => {
+  // Pushed one by one: a long tail would overflow a spread's argument limit.
+  for (const event of events) {
+    entry.events.push(event)
   }
 
-  try {
-    const chunks: Buffer[] = []
-    const buffer = Buffer.alloc(4096)
-
-    for (;;) {
-      const bytes = readSync(
-        fd,
-        buffer,
-        0,
-        buffer.length,
-        null,
-      )
-
-      if (!bytes) {
-        return null
-      }
-
-      const chunk = buffer.subarray(
-        0,
-        bytes,
-      )
-      const newline = chunk.indexOf(10)
-
-      if (newline !== -1) {
-        chunks.push(chunk.subarray(
-          0,
-          newline,
-        ))
-
-        const value = parseLine({ line: Buffer.concat(chunks).toString('utf8') })
-        const record = asRecord({ value })
-
-        if (record?.type === 'log.transaction') {
-          return readLog({ dir: hydraDir({ hydraId }) })?.events[0] ?? null
-        }
-
-        return toEvent({
-          event: value,
-          offset: 0,
-        })
-      }
-
-      chunks.push(Buffer.from(chunk))
-    }
-  } finally {
-    closeSync(fd)
+  for (const [
+    keys,
+    index,
+  ] of entry.indexes) {
+    addToIndex({
+      index,
+      keys,
+      events,
+    })
   }
 }
 
-// The parsed log, extended with the lines appended since the last read.
-function parsedLog({ hydraId }: { hydraId: string }) {
-  const dir = hydraDir({ hydraId })
-  let file: string
+// The Hydra's events read so far, extended with the ones committed since. A held Hydra's own writes arrive through
+// rememberEvents, so reading it needs no query while it is current. A read inside a write stops at the last commit,
+// so the write's own events still arrive through rememberEvents once it commits.
+function eventLog({ hydraId }: { hydraId: string }) {
+  const key = homeScoped({ hydraId })
+  let entry = read.get(key)
 
-  try {
-    const {
-      dev,
-      ino,
-      birthtimeMs,
-    } = statSync(logPath({ dir }))
-    file = `${dev}:${ino}:${birthtimeMs}`
-  } catch {
-    parsed.delete(dir)
-
-    return undefined
+  if (!entry) {
+    entry = {
+      events: [],
+      through: 0,
+      indexes: new Map(),
+    }
+    read.set(
+      key,
+      entry,
+    )
   }
 
-  const cached = parsed.get(dir)
+  const held = heldHydra({ hydraId })?.committed
 
-  if (cached?.file === file) {
-    try {
-      const next = readLog({
-        dir,
-        from: cached.end,
-      })
+  if (held !== entry.through) {
+    const events = eventsAfter({
+      hydraId,
+      seq: entry.through,
+    })
+    extend({
+      entry,
+      events,
+    })
+    const lastRead = events.at(-1)?.seq
 
-      if (next) {
-        // Pushed one by one: a long tail would overflow a spread's argument limit.
-        for (const event of next.events) {
-          cached.events.push(event)
-        }
-
-        cached.end = next.end
-
-        for (const [
-          keys,
-          index,
-        ] of cached.indexes) {
-          addToIndex({
-            index,
-            keys,
-            events: next.events,
-          })
-        }
-
-        return cached
-      }
-    } catch {
-      // A repair marker for a line before `end` needs the whole log.
+    // A held Hydra is read up to its last commit; any other up to the last event the query found.
+    if (held !== undefined) {
+      entry.through = held
+    } else if (lastRead !== undefined) {
+      entry.through = lastRead
     }
   }
-
-  const log = readLog({ dir }) ?? {
-    events: [],
-    end: 0,
-  }
-  const entry = {
-    file,
-    events: log.events,
-    end: log.end,
-    indexes: new Map<EventKeys, Index>(),
-  }
-  parsed.set(
-    dir,
-    entry,
-  )
 
   return entry
 }
 
+// A committed write's events, so the reads that follow see them without a query.
+export function rememberEvents({
+  hydraId,
+  from,
+  events,
+}: {
+  hydraId: string
+  from: number
+  events: readonly HydraEvent[]
+}): void {
+  const entry = read.get(homeScoped({ hydraId }))
+
+  if (entry?.through === from) {
+    extend({
+      entry,
+      events,
+    })
+    // Only a write that appended events commits, so there is a last one.
+    entry.through = events.at(-1)!.seq
+  }
+}
+
 export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
-  return parsedLog({ hydraId })?.events.slice() ?? []
+  return eventLog({ hydraId }).events.slice()
+}
+
+// A Hydra's events, from its events.jsonl while it still waits to be imported, for the one-time moves of old values.
+export function eventsOrLegacy({ hydraId }: { hydraId: string }): HydraEvent[] {
+  if (hydraExists({ hydraId })) {
+    return readEvents({ hydraId })
+  }
+
+  return readLog({ dir: hydraDir({ hydraId }) }).events
 }
 
 // The events that `keys` lists under `key`, oldest first, without copying or scanning the rest of the log.
@@ -491,12 +182,7 @@ export function indexedEvents({
   keys: EventKeys
   key: string
 }): readonly HydraEvent[] {
-  const log = parsedLog({ hydraId })
-
-  if (!log) {
-    return []
-  }
-
+  const log = eventLog({ hydraId })
   let index = log.indexes.get(keys)
 
   if (!index) {
@@ -515,33 +201,43 @@ export function indexedEvents({
   return index.get(key) ?? []
 }
 
-// Complete events at or after byte `offset`, and the offset just past them.
-// Null when the log is now shorter than `offset`, so the reader must start over.
-export function readEventsFrom(
-  {
-    hydraId,
-    offset,
-    maxBytes,
-    through,
-  }: {
-    hydraId: string
-    offset: number
-    maxBytes?: number
-    through?: number
-  },
-): {
+// Events after seq `offset`, at most `limit` of them and none past seq `through`, and the seq of the last one read.
+export function readEventsFrom({
+  hydraId,
+  offset,
+  limit,
+  through,
+}: {
+  hydraId: string
+  offset: number
+  limit?: number
+  through?: number
+}): {
   events: HydraEvent[]
   end: number
-} | null {
-  const log = readLog({
-    dir: hydraDir({ hydraId }),
-    from: offset,
-    maxBytes,
+} {
+  const events = eventsAfter({
+    hydraId,
+    seq: offset,
     through,
+    limit,
   })
 
-  return log && {
-    events: log.events,
-    end: log.end,
+  return {
+    events,
+    end: events.at(-1)?.seq ?? offset,
   }
+}
+
+export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
+  const [rows] = query({
+    statements: [
+      {
+        text: 'select data from events where hydra_id = $1 order by seq limit 1',
+        values: [hydraId],
+      },
+    ],
+  }) as { data: HydraEvent }[][]
+
+  return rows?.[0]?.data ?? null
 }

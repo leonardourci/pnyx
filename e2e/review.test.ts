@@ -452,7 +452,7 @@ test(
         check: ({ state }) => state.seq >= groupedSeq,
       })
       assert.deepEqual(
-        page.queues.at(-1)?.waiting,
+        page.queue()?.waiting,
         [],
       )
       held.release()

@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
+import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { messageReference } from './message-reference.ts'
@@ -111,10 +112,14 @@ test(
         return writer.state
       },
     })
-    const card = state.cards.$hydra!
+    // The Hydra's session as a later read sees it, given to the reads only: the test never writes Hydra state by hand.
+    const shown: { agent?: Card['agent'] } = {}
 
     const pageAll = () => {
-      const card = state.cards.$hydra!
+      const card = shown.agent ? {
+        ...state.cards.$hydra!,
+        agent: shown.agent,
+      } : state.cards.$hydra!
       let page = readThread({
         hydraId: 'default',
         state,
@@ -145,18 +150,20 @@ test(
       return page.entries
     }
 
-    card.agent = {
-      provider: 'claude-code',
-      sessionId: 'old',
-      transcriptPath: join(
-        home,
-        'missing.jsonl',
-      ),
-    }
     const missing = readThread({
       hydraId: 'default',
       state,
-      card,
+      card: {
+        ...state.cards.$hydra!,
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'old',
+          transcriptPath: join(
+            home,
+            'missing.jsonl',
+          ),
+        },
+      },
       homes: [],
     })
     assert.equal(
@@ -171,7 +178,7 @@ test(
       missing.older,
       undefined,
     )
-    card.agent = {
+    shown.agent = {
       provider: 'claude-code',
       sessionId: 'old',
       transcriptPath: native,

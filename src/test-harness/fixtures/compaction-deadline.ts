@@ -1,8 +1,6 @@
 import { historyBoundary } from '#hydra/history.ts'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { mock } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 import { commands } from '#app/cli.ts'
@@ -35,12 +33,6 @@ const states = () => compaction()?.operations.map(operation => `${operation.trig
 const received = ({ text }: { text: string }) => native.incoming
   .some(message => JSON.stringify(message).includes(text))
 const finished = () => loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished'
-const writerLock = join(
-  process.env.PNYX_HOME!,
-  'hydras',
-  hydraId,
-  'writer.lock',
-)
 
 // The native fake counts a message delivered once the host asks for the next, so the host has handled it.
 async function send({ message }: { message: SDKMessage }) {
@@ -192,19 +184,9 @@ try {
     'each status from the agent restarts the deadline',
   )
 
-  // Another writer holds the lock as the deadline passes, so recording the failure must wait for it.
-  writeFileSync(
-    writerLock,
-    String(process.pid),
-  )
   mock.timers.tick(1)
-  assert.deepEqual(
-    states(),
-    ['manual:running'],
-  )
-  rmSync(writerLock)
   await settle({
-    what: 'the silent compaction to fail once the lock is free',
+    what: 'the silent compaction to fail at its deadline',
     check: () => compaction()?.operations[0]?.state === 'failed',
     tick: RELEASE_TICK_MS,
   })

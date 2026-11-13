@@ -367,7 +367,6 @@ export function hydraConversation({
           reason: event.reason,
           details: event.details,
           data: { ...event.data },
-          summary: '',
         },
         columns,
       })

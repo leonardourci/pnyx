@@ -14,6 +14,48 @@ export type Restore = {
   scroll?: Record<string, [number, number]>
 }
 
+// What the open Hydra shows: its page, whether the panel is open, the selected and opened cards and the revealed ones.
+export type PageView = {
+  page: string
+  panel: boolean
+  selected: string | null
+  expanded: string[]
+  revealed: NonNullable<Restore['revealed']>
+}
+
+// The view a Hydra opens with: the one it saved, unless its link opens a project or settings.
+export function openingView({ restored }: { restored: Restore }): PageView {
+  const search = new URLSearchParams(location.search)
+  const openProject = search.has('open-project')
+  const opened = restored.expanded ?? (restored.selected ? [restored.selected] : [])
+  const lastOpened = restored.expanded?.at(-1) ?? null
+
+  return {
+    page: search.has('settings') || restored.page === 'settings' ? 'settings' : 'hydra',
+    panel: restored.panel ?? true,
+    selected: openProject ? null : restored.selected ?? lastOpened,
+    expanded: openProject ? [] : opened,
+    revealed: restored.revealed ?? {
+      scope: '',
+      ids: [],
+    },
+  }
+}
+
+// Showing the page already shown keeps the view, so the board does not redraw.
+export function showingPage({
+  view,
+  page,
+}: {
+  view: PageView
+  page: string
+}): PageView {
+  return view.page === page ? view : {
+    ...view,
+    page,
+  }
+}
+
 export function restoreView({ key }: { key: string }): Restore {
   try {
     return JSON.parse(sessionStorage.getItem(key) ?? '{}') as Restore

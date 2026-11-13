@@ -20,24 +20,21 @@ import { resolveHome } from '#integrations/firstmate/home.ts'
 import { existsSync, rmSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { join } from 'node:path'
-import type { HydraEvent } from './model.ts'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
-import { saveSnapshot } from './writer.ts'
 import { readEventsFrom } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir } from '#store/storage.ts'
-import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, localToken, offerHost, socketPath } from './server-state.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import { createServerWorkers } from './server-workers.ts'
-import { RESUME_LIMIT, type HydraClient, type HydraSubscription, type MountedHydra } from './server-transport.ts'
+import { type HydraClient, type HydraSubscription, type MountedHydra } from './server-transport.ts'
 import { buildId } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
 import { healthFacts } from '#diagnostics/health.ts'
@@ -71,7 +68,6 @@ export async function mountOwnedHydra({
   hydrasChanged,
   upgradeRoot,
   restart,
-  upgradeStatus,
 }: {
   hydraId: string
   url: string
@@ -93,7 +89,6 @@ export async function mountOwnedHydra({
   hydrasChanged(): void
   upgradeRoot?: string
   restart?(): void | Promise<void>
-  upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   let homes = (given ?? []).map(path => resolveHome({ path }))
   // Set by close(): work already scheduled then must not open new watchers or timers.
@@ -111,10 +106,9 @@ export async function mountOwnedHydra({
     changed: () => kick(),
   })
   dropCopyLeases({ hydraId })
-  let {
-    state,
-    offset,
-  } = loadHydra({ hydraId })
+  let { state } = loadHydra({ hydraId })
+  // The seq of the last event this server has handled.
+  let offset = state.seq
   const catalogIndex = createCatalogIndex({ locations: catalogLocations })
   const {
     threadSubscriptions,
@@ -166,11 +160,9 @@ export async function mountOwnedHydra({
     }) : undefined
   }
 
-  let recent: HydraEvent[] = []
   const tabs = createServerClients({
     hydraId,
     state: () => state,
-    recent: () => recent,
     agents: () => agents,
     threadSubscriptions,
     bindThread,
@@ -179,23 +171,16 @@ export async function mountOwnedHydra({
   })
   const {
     clients,
-    hydraSubscribers,
     send,
-    queueMessage,
-    sendQueue,
-    sendSnapshot,
+    storeQueue,
+    sendLatest,
     broadcast,
     spend,
-    sendSettings,
-    resume,
   } = tabs
 
   const reload = () => {
-    ({
-      state,
-      offset,
-    } = loadHydra({ hydraId }))
-    recent = []
+    ({ state } = loadHydra({ hydraId }))
+    offset = state.seq
 
     if (recovered) {
       agents.reconcile({ state })
@@ -208,7 +193,7 @@ export async function mountOwnedHydra({
     followHome()
 
     for (const ws of clients) {
-      sendSnapshot({ ws })
+      sendLatest({ ws })
     }
 
     touchLatest({ ids: Object.keys(state.cards) })
@@ -263,11 +248,12 @@ export async function mountOwnedHydra({
       offset,
     })
 
-    if (!read) {
-      return reload()
-    }
-
     const live = heldHydra({ hydraId })
+
+    // A write that failed reads the held Hydra back into a new state, with no event to carry it here.
+    if (live) {
+      state = live.state
+    }
 
     for (const event of read.events) {
       // A held Hydra's writer has already applied the event to the state this server reads.
@@ -292,8 +278,6 @@ export async function mountOwnedHydra({
       if (linkedByOthers || declaredChange || event.type === 'task.copy') {
         tick.refreshLinks({ task: event.cardId })
       }
-
-      recent.push(event)
 
       if (event.type === 'hydra.project') {
         background({
@@ -336,10 +320,6 @@ export async function mountOwnedHydra({
       run: () => gitFollow.reconcile({ state }),
     })
     followHome()
-
-    if (recent.length > RESUME_LIMIT) {
-      recent = recent.slice(-RESUME_LIMIT)
-    }
   }
 
   const {
@@ -389,14 +369,7 @@ export async function mountOwnedHydra({
     restart,
     changed: () => kick(),
     queued: () => {
-      const queue = queueMessage()
-
-      for (const ws of clients) {
-        sendQueue({
-          ws,
-          queue,
-        })
-      }
+      storeQueue()
     },
     streamed,
     usageChanged: () => spend.count(),
@@ -556,7 +529,6 @@ export async function mountOwnedHydra({
     agents,
     catalogCommand,
     showPage: tabs.show,
-    hydraSubscribers,
     subscriptionMap,
     bindThread,
     threadPage,
@@ -564,7 +536,7 @@ export async function mountOwnedHydra({
   })
 
   // The page sends its open cards again as a page command once connected, which reports bad arguments and
-  // missing cards; here they only scope the first snapshot, so arguments that do not parse keep the default.
+  // missing cards; here they only scope the first latest batch, so arguments that do not parse keep the default.
   const openPage = ({
     ws,
     page,
@@ -593,11 +565,9 @@ export async function mountOwnedHydra({
 
   const connect = ({
     ws,
-    after,
     page,
   }: {
     ws: HydraClient
-    after: string | null
     page?: string[]
   }): HydraSubscription => {
     clients.add(ws)
@@ -614,28 +584,12 @@ export async function mountOwnedHydra({
         installation: hydraIdentity({ hydraId: '' }),
       },
     })
-    const upgrade = upgradeStatus()
-
-    if (upgrade) {
-      send({
-        ws,
-        message: {
-          type: 'upgrade',
-          upgrade,
-        },
-      })
-    }
-
-    sendSettings({ ws })
-    resume({
-      ws,
-      after,
-    })
+    sendLatest({ ws })
 
     return {
       receive({ message }) {
         if (message?.type === 'resync') {
-          sendSnapshot({ ws })
+          sendLatest({ ws })
           refreshThread({
             ws,
             resync: true,
@@ -662,7 +616,6 @@ export async function mountOwnedHydra({
         closeCommands({ ws })
         tabs.closeClient({ ws })
         clients.delete(ws)
-        hydraSubscribers.delete(ws)
         catalogReads.delete(ws)
         clearTimeout(threadTimers.get(ws))
         threadTimers.delete(ws)
@@ -725,22 +678,6 @@ export async function mountOwnedHydra({
     catalogIndex.close()
     agents.close()
     await spend.close()
-    const live = heldHydra({ hydraId })
-
-    // The log holds every change; a snapshot that cannot be written only makes the next start slower,
-    // so the rest of shutdown runs regardless.
-    if (live) {
-      try {
-        await saveSnapshot({ live })
-      } catch (error) {
-        log({
-          level: 'error',
-          operation: 'snapshot',
-          hydraId,
-          error,
-        })
-      }
-    }
 
     releaseHold()
 
@@ -827,6 +764,7 @@ export async function mountOwnedHydra({
   }
 
   kick()
+  storeQueue()
   touchLatest({ ids: Object.keys(state.cards) })
 
   return {
@@ -834,24 +772,8 @@ export async function mountOwnedHydra({
     socket: ingest && socketPath({ hydraId }),
     request,
     connect,
-    summaries({ hydras }) {
-      for (const ws of clients) {
-        if (hydraSubscribers.has(ws)) {
-          send({
-            ws,
-            message: {
-              type: 'hydras',
-              hydraId,
-              hydras,
-            },
-          })
-        }
-      }
-    },
     settings() {
       for (const ws of clients) {
-        sendSettings({ ws })
-
         // Focus mode and the detail switches decide what a thread page shows.
         for (const map of threadSubscriptions) {
           if (map.has(ws)) {
@@ -862,21 +784,6 @@ export async function mountOwnedHydra({
 
       // The Done deadline follows the shared hours.
       kick()
-    },
-    upgrade() {
-      const upgrade = upgradeStatus()
-
-      for (const ws of clients) {
-        if (upgrade) {
-          send({
-            ws,
-            message: {
-              type: 'upgrade',
-              upgrade,
-            },
-          })
-        }
-      }
     },
     async close() {
       if (closed) {

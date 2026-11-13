@@ -1099,6 +1099,24 @@ test(
       s.state().config?.hydra.session,
       `claude-code:${first.id}`,
     )
+    // A turn in the session already configured marks its delivery without writing the configuration again.
+    assert.deepEqual(
+      s.events().filter(e => e.id === 'first:hosted' || e.id === 'second:hosted')
+        .map(e => [
+          e.id,
+          e.type,
+        ]),
+      [
+        [
+          'first:hosted',
+          'board.configured',
+        ],
+        [
+          'second:hosted',
+          'hydra.delivered',
+        ],
+      ],
+    )
     assert.equal(
       s.received({ cwd: first.cwd }).filter(text => text.endsWith('Plan the release')).length,
       1,
@@ -1190,13 +1208,12 @@ test(
         name: 'card',
         args: [s.task({ key: 'fix' }).id],
       })
-      assert.ok(page.queues.length > 0)
-      const queuedWork = page.queues.flatMap(queue => [
-        ...queue.waiting,
-        ...queue.reading,
-      ])
+      const queue = page.queue()
       assert.deepEqual(
-        queuedWork,
+        [
+          ...queue!.waiting,
+          ...queue!.reading,
+        ],
         [],
       )
       assert.equal(
@@ -1318,7 +1335,7 @@ test(
       })
       await until({
         what: 'the page’s queue to show Hydra working',
-        check: () => page.queues.at(-1)?.chat?.working,
+        check: () => page.queue()?.chat?.working,
       })
       // A task message's Hydra part reaches no input that joins the turn, so taking one must not receive it.
       await s.owner({
@@ -1427,7 +1444,7 @@ test(
       })
       await until({
         what: 'four queued worker updates',
-        check: () => page.queues.at(-1)?.waiting.length === 4,
+        check: () => page.queue()?.waiting.length === 4,
       })
       assert.equal(
         agent.requests?.filter(method => method === 'turn/start').length,
@@ -1438,7 +1455,7 @@ test(
         1,
       )
       assert.deepEqual(
-        page.queues.at(-1)?.waiting.map(update => update.card),
+        page.queue()?.waiting.map(update => update.card),
         Array(4).fill(s.task({ key: 'fix' }).id),
       )
       held.release()
@@ -1449,7 +1466,7 @@ test(
       await until({
         what: 'Hydra to finish reading the batch',
         check: () => {
-          const queue = page.queues.at(-1)
+          const queue = page.queue()
 
           return queue?.reading.length === 0 && queue.waiting.length === 0
         },
@@ -1475,7 +1492,6 @@ test(
         batch,
         /hydra check --after \d+/,
       )
-      assert.ok(page.queues.some(queue => queue.reading.length === 4 && queue.waiting.length === 0))
       assert.equal(
         agent.requests?.filter(method => method === 'turn/start').length,
         2,
@@ -1779,13 +1795,17 @@ test(
         '1',
       ],
     })
-    const moved = await page.command({
+    await page.command({
       name: 'hydras',
       args: [
         'move',
         atlas,
         '2',
       ],
+    })
+    const moved = await page.command({
+      name: 'hydras',
+      args: [],
     }) as Listed
     assert.deepEqual(
       [

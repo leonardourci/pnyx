@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 
@@ -43,6 +44,19 @@ test(
     assert.match(
       `${leaking.stdout}\n${leaking.stderr}`,
       /MaxListenersExceededWarning/,
+    )
+    const diagnostic = /Postgres log retained at (.*postgres\.log):/.exec(leaking.stderr)?.[1]
+    assert.ok(
+      diagnostic,
+      leaking.stderr,
+    )
+    assert.ok(existsSync(diagnostic))
+    assert.match(
+      readFileSync(
+        diagnostic,
+        'utf8',
+      ),
+      /select pg_sleep\(1\) as launcher_sql_timeout/,
     )
     assert.notEqual(
       leaking.status,

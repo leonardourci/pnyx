@@ -104,6 +104,16 @@ export function appendNote(
   },
 ): number {
   const card = writer.state.cards[cardId]!
+  const id = noteId({
+    cardKey: card.key,
+    ref,
+  })
+
+  // A card moved in keeps the notes its old Hydra harvested, under the same ids.
+  if (card.notes?.some(held => held.id === id)) {
+    return 0
+  }
+
   const decision = decideNote({
     state: writer.state,
     ref: card.id,
@@ -111,10 +121,7 @@ export function appendNote(
     meta: {
       at,
       actor: 'harvest',
-      id: noteId({
-        cardKey: card.key,
-        ref,
-      }),
+      id,
     },
   })
 
@@ -340,9 +347,12 @@ export function harvestTranscripts({
   }
 
   if (moved) {
-    writeCursors({
-      dir: writer.dir,
-      cursors,
+    const saved = structuredClone(cursors)
+    writer.afterCommit({
+      run: () => writeCursors({
+        dir: writer.dir,
+        cursors: saved,
+      }),
     })
   }
 

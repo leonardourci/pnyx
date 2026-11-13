@@ -1427,3 +1427,41 @@ test(
     )
   },
 )
+
+test(
+  'a Hydra still kept in its events.jsonl gives its old agents to the one-time merge',
+  () => {
+    lab()
+    const dir = hydraDir({ hydraId: 'waiting' })
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        dir,
+        'events.jsonl',
+      ),
+      `${JSON.stringify({
+        v: 1,
+        seq: 1,
+        id: 'agents',
+        at: '2026-10-01T00:00:00Z',
+        actor: 'cli',
+        cardId: '$board',
+        type: 'board.agents',
+        data: {
+          agents: { review: { harness: 'codex' } },
+          before: {},
+        },
+      })}\n`,
+    )
+    assert.deepEqual(
+      effectiveDispatch().dispatch.rules.review,
+      {
+        when: 'Use for review work',
+        candidates: [{ harness: 'codex' }],
+      },
+    )
+  },
+)

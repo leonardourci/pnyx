@@ -1,4 +1,3 @@
-import type { PageState, PageUpdate } from './page-state.ts'
 import type { ThreadDelta } from '#hydra/thread-delta.ts'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -9,10 +8,6 @@ import { dispatchCommands } from '#workers/dispatch-cli.ts'
 import type { ThreadPage, LatestMessage } from '#hydra/transcripts-read.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import type { Settings } from '#settings/model.ts'
-import type { HydraSummary } from './server-hydras.ts'
-import type { UpgradeStatus } from '#upgrade/model.ts'
-import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ClientMessage } from './server-http.ts'
 
 export const commands = {
@@ -22,12 +17,9 @@ export const commands = {
   ...dispatchCommands,
 }
 
-// Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
-export const RESUME_LIMIT = 1000
-
 export const SOCKET_RETRY_MS = 100
 
-// A tab with more than this unsent is dropped from the event stream and resynced with a snapshot.
+// A tab with more than this unsent holds its latest batch until it drains and misses the messages it cannot get later.
 export const MAX_BUFFERED = 1 << 20
 
 export const MAX_BODY = 1 << 20
@@ -55,7 +47,7 @@ export const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 }
 
-// Server to browser. A snapshot replaces whatever the tab held; events then follow in sequence.
+// Server to browser: live agent activity and conversation pages, beside the Hydra data the page reads through Zero.
 // Each command gets a receipt or an error carrying its id.
 type ServerPayload =
   | {
@@ -73,15 +65,6 @@ type ServerPayload =
     type: 'thread.delta'
     delta: ThreadDelta
   }
-  | {
-    type: 'snapshot'
-    seq: number
-    state: PageState
-  }
-  | {
-    type: 'page.event'
-    update: PageUpdate
-  }
   // Last conversation messages and current actions by card: all of them on connect, then the ones that changed (null when gone).
   | {
     type: 'latest'
@@ -89,27 +72,6 @@ type ServerPayload =
     usage?: Record<string, import('#workers/provider.ts').AgentUsage>
     messages: Record<string, LatestMessage | null>
     actions: Record<string, CurrentAction | null>
-  }
-  | {
-    type: 'hydras'
-    hydraId: string
-    hydras: HydraSummary[]
-  }
-  // What the daily check found; sent on connect once known, then whenever it changes.
-  | {
-    type: 'upgrade'
-    upgrade: UpgradeStatus
-  }
-  // The settings every Hydra shares: on connect, then whenever they change.
-  | {
-    type: 'settings'
-    settings: Settings
-    revision: number
-  }
-  // Hydra's unread changes: after a snapshot when there are any, then again whenever they change.
-  | {
-    type: 'hydraQueue'
-    queue: HydraQueue
   }
   | {
     type: 'receipt'
@@ -157,6 +119,8 @@ export interface RunningServer {
   // Hydras that could not be loaded, with the reason; the others keep working.
   skipped: Record<string, string>
   open({ id }: { id: string }): Promise<string>
+  // The zero-cache child's pid while it runs; undefined when the server was started without it.
+  zeroCachePid(): number | undefined
   close(): Promise<void>
 }
 
@@ -171,15 +135,11 @@ export interface MountedHydra {
   }: HydraRequest): void | Promise<void>
   connect({
     ws,
-    after,
     page,
   }: {
     ws: HydraClient
-    after: string | null
     page?: string[]
   }): HydraSubscription
-  summaries({ hydras }: { hydras: HydraSummary[] }): void
-  upgrade(): void
   settings(): void
   close(): Promise<void>
 }
@@ -192,6 +152,9 @@ export type HydraRequest = {
 }
 
 export const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
+
+export { ZERO_OWNER, ZERO_PATH, zeroCookieName } from './server-protocol.ts'
+export const ZERO_QUERY_PATH = '/zero-query'
 
 // A target such as // reads as a URL with an empty host, which throws; take it as a path instead.
 export const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(

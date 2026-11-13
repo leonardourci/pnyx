@@ -2,6 +2,12 @@ import { CLONE_TIMEOUT_MS } from '#projects/limits.ts'
 import { repeatable, waitsOnAgent } from './command-registry.ts'
 
 export const MAX_MESSAGE_BYTES = 64 * 1024
+// A Hydra's page HTML sets the token cookie for this path only, so only the page reaches zero-cache.
+export const ZERO_PATH = '/zero'
+// Zero 1.x serves only named queries; every page reads as the one local owner.
+export const ZERO_OWNER = 'owner'
+// A browser sends a host's cookies to every port on it, so each server's page names its token cookie by its port.
+export const zeroCookieName = ({ port }: { port: number }) => `pnyx-token-${port}`
 const OWNER_COMMAND_TIMEOUT_MS = 60_000
 const REPLY_COMMAND_TIMEOUT_MS = 140_000
 const CLONE_CONFIRMATION_MS = 20_000

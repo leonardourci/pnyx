@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -9,6 +9,7 @@ import { hostRequest } from '#app/host-request.ts'
 import { offerHost } from '#app/server-state.ts'
 import { holdHydra, loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
+import { query } from '#store/postgres.ts'
 import { runForClient } from '#app/request-context.ts'
 import { readEvents } from '#app/event-log.ts'
 import { project } from '#projects/cli.ts'
@@ -537,18 +538,13 @@ test(
           'mcp:fresh',
         ],
       )
-      const claim = readFileSync(
-        join(
-          process.env.PNYX_HOME!,
-          'hydras',
-          'tools-start',
-          'events.jsonl',
-        ),
-        'utf8',
-      ).split('\n')
-        .filter(Boolean)
-        .map(line => JSON.parse(line))
-        .find(line => line.type === 'log.transaction' && line.id === 'concurrent-start:claim')
+      const [claim] = query({
+        statements: [
+          {
+            text: 'select receipt from transactions where hydra_id = \'tools-start\' and id = \'concurrent-start:claim\'',
+          },
+        ],
+      })[0] as { receipt: unknown }[]
       assert.deepEqual(
         claim?.receipt,
         {

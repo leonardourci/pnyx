@@ -2,7 +2,7 @@ import { AxiError } from 'axi-sdk-js'
 import { INHERITED } from '#workers/host.ts'
 import { AUTH_ENV } from '#workers/dispatch.ts'
 import { IDENTITY } from '#app/request-context.ts'
-import { infoPath, processStart, type ServerInfo } from '#app/server-state.ts'
+import { infoPath, processStart, startupRevision, type ServerInfo } from '#app/server-state.ts'
 import { PNYX_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
@@ -104,18 +104,28 @@ function running(): Running | undefined {
   }
 }
 
-async function waitFor({
+export async function waitFor({
   check,
   timeout,
+  progress,
 }: {
   check(): boolean | Promise<boolean>
   timeout: number
+  progress?(): string | undefined
 }) {
-  const deadline = Date.now() + timeout
+  let lastProgress: string | undefined
+  let deadline = Date.now() + timeout
 
   while (Date.now() < deadline) {
     if (await check()) {
       return true
+    }
+
+    const revision = progress?.()
+
+    if (revision !== undefined && revision !== lastProgress) {
+      deadline = Date.now() + timeout
+      lastProgress = revision
     }
 
     await delay(POLL_MS)
@@ -365,6 +375,7 @@ export async function restartPnyx() {
   const started = await waitFor({
     check: ready,
     timeout: START_MS,
+    progress: startupRevision,
   })
 
   if (!started) {
@@ -383,6 +394,7 @@ export async function restartPnyx() {
 export const RESTART_HELP = `usage: pnyx-axi restart
 Restart the application on its current code, or start it if stopped. Its agents stop with it; on start, a turn the restart cut resumes once from its saved session.
 A stuck application is stopped only when its process identity is verified; restart confirms the replacement is ready.
+Startup keeps waiting while verified legacy-import progress advances; stalled progress still times out.
 No upgrade, model call or agent instruction is involved. /restart in Hydra's composer does the same.
 `
 

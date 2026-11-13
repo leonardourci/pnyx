@@ -1,0 +1,13 @@
+diff --git a/out/zero-cache/src/services/http-service.js b/out/zero-cache/src/services/http-service.js
+index a427d426fc6836eba2e84f7a55ba0dbce51b8d57..2ae7e9b5cd60391916ba703b83824f814a65af67 100644
+--- a/out/zero-cache/src/services/http-service.js
++++ b/out/zero-cache/src/services/http-service.js
+@@ -45,7 +45,7 @@ var HttpService = class {
+ 		});
+ 		await this.#init(this.#fastify);
+ 		const address = await this.#fastify.listen({
+-			host: "::",
++			host: "127.0.0.1",
+ 			port: this.#port
+ 		});
+ 		this._lc.info?.(`${this.id} listening at ${address}`);
