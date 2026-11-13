@@ -1,6 +1,7 @@
 import { AxiError } from 'axi-sdk-js'
 import { guard, WRITE, parse, integer, required, meta, type Options, type Output } from '#app/cli-support.ts'
 import { setupCheckOutput } from './check.ts'
+import { setupPostgres } from './postgres.ts'
 import { requireSetupHome } from './home.ts'
 import { setupSkills } from './skills.ts'
 import { setupService } from './service.ts'
@@ -18,6 +19,7 @@ export const setup = guard({
       'allow-custom-home': { type: 'boolean' },
       home: { type: 'string' },
       port: { type: 'string' },
+      check: { type: 'boolean' },
     }
     const {
       values,
@@ -31,6 +33,10 @@ export const setup = guard({
 
     if (positionals[0] === 'check') {
       return setupCheckOutput({ hydraId })
+    }
+
+    if (positionals[0] === 'postgres') {
+      return setupPostgres({ check: !!values.check })
     }
 
     if (positionals[0] === undefined || [
@@ -81,7 +87,7 @@ export const setup = guard({
       throw new AxiError(
         `unknown setup target: ${positionals[0] ?? '(none)'}`,
         'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
+        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup postgres`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
       )
     }
 

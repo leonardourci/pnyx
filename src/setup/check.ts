@@ -11,6 +11,7 @@ import { projectsFor } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
 import { recordExitCode } from '#app/request-context.ts'
+import { postgresIssue } from './postgres.ts'
 
 export interface SetupItem {
   name: string
@@ -186,7 +187,9 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
 ] : []
 
 export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
-  const items = await setupCheck({
+  // Without Postgres no Hydra loads, so that is the one item to fix first.
+  const database = postgresIssue()
+  const items = database ? [database] : await setupCheck({
     hydraId,
     state: loadHydra({ hydraId }).state,
   })

@@ -47,7 +47,7 @@ commands:
   stop                                       Stop the application and the agents it runs
   restart                                    Restart the application; a turn it cut resumes from its saved session
   upgrade [--check] [--now] [--stop]         Pull, install and build the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
-  setup [check|skills|hooks]                 Install login services, list missing setup, or install skills or hooks
+  setup [check|postgres|skills|hooks]        Install login services, list missing setup, start Postgres, or install skills or hooks
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -411,11 +411,15 @@ Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup check [--hydra <id>]
+pnyx-axi setup postgres [--check]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
-setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
-project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup check lists what is still missing (Postgres, local config, logins, hooks, skills, quota-axi, the login
+service, project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup postgres starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and creates
+this home's database (pnyx for ~/.pnyx). Host, port and user come from PGHOST, PGPORT and PGUSER. --check changes
+nothing: it reports what is missing and imports each Hydra still kept in events.jsonl in a transaction it rolls back.
 setup installs the server's login service.
 setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
 setup refuses a port reserved by another Pnyx home; choose a different --port.
