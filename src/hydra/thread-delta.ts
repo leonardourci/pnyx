@@ -24,7 +24,8 @@ export interface ThreadDelta {
   } | null
 }
 
-// Unsorted, so every browser builds the same list; threadDelta sends a full page when it differs.
+// Keeps the existing order and appends new ids without sorting, so the server and the page build the same list;
+// threadDelta sends no delta when that order differs from the new page, and the page gets a full page instead.
 function applyItems<Value extends { id: string }>({
   before,
   changes,

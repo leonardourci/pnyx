@@ -209,7 +209,8 @@ export function hydraMessages({
     }
   }
 
-  // Hydra takes the owner's messages in order, so one sent before a received message no longer waits; with no recorded time, it shows no receipt.
+  // Hydra takes the owner's messages in order, so one sent before a received message no longer waits; with no
+  // recorded time, it shows no receipt.
   let laterReceived = false
 
   for (const {

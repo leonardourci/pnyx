@@ -108,7 +108,9 @@ function intakeOf({
   return undefined
 }
 
-// When Claude Code took each message, by its own transcript: the user line of a message that opens a turn, or the queue removal of one folded into a running turn (its queued_command attachment's time is when it was queued). Reads only what Claude Code appended since the message was handed over.
+// When Claude Code took each message, by its own transcript: the user line of a message that opens a turn, or the
+// queue removal of one folded into a running turn (its queued_command attachment's time is when it was queued).
+// Reads only what Claude Code appended since the message was handed over.
 export function watchIntake({ path }: { path: string }) {
   const pending = new Set<string>()
   let offset: number | undefined
