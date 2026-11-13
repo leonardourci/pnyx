@@ -758,20 +758,6 @@ export function createHydraConnection({
 
     message = normalized
 
-    // Zero brings Hydra data and each task's Updates; these whole-Hydra pushes are not read.
-    if (message.type === 'page.event' || message.type === 'snapshot') {
-      return
-    }
-
-    if ([
-      'hydras',
-      'settings',
-      'upgrade',
-      'hydraQueue',
-    ].includes(message.type)) {
-      return
-    }
-
     if (message.type === 'thread') {
       publish(); flush()
 
