@@ -87,6 +87,8 @@ export function createServerClients({
     .map(card => card.id))
   // The cards a tab shows without interests, so a card an event brings back gets its cached latest.
   let liveCards = liveCardIds()
+  // A card the previous state did not hold is new, not brought back, so it has no cached latest to send.
+  let knownCards = new Set(Object.keys(state().cards))
 
   const shownWithoutInterest = ({ id }: { id: string }) => {
     const card = state().cards[id]
@@ -483,8 +485,9 @@ export function createServerClients({
   const broadcast = ({ event }: { event: HydraEvent }) => {
     const queue = queueMessage()
     const live = liveCardIds()
-    const returned = [...live].filter(id => !liveCards.has(id))
+    const returned = [...live].filter(id => knownCards.has(id) && !liveCards.has(id))
     liveCards = live
+    knownCards = new Set(Object.keys(state().cards))
 
     for (const ws of clients) {
       if (recovery.get(ws)?.snapshot) {

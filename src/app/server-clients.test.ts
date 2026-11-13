@@ -70,6 +70,24 @@ test(
       automaticTask: false,
       hidden: false,
     }
+    state.cards.hidden = {
+      ...state.cards.other!,
+      id: 'hidden',
+      key: 'hidden',
+      hidden: true,
+      steering: [
+        {
+          id: 'history',
+          order: 1,
+          text: 'Private history',
+          source: 'fixture',
+          at: '2026-11-12T00:00:00Z',
+          actor: 'owner',
+          attempts: [],
+        },
+      ],
+    }
+    state.keys.hidden = 'hidden'
     const action: CurrentAction = {
       calls: [
         {
@@ -394,24 +412,6 @@ test(
       ],
       'recovery must read the current list instead of sending the stale payload',
     )
-    state.cards.hidden = {
-      ...state.cards.other!,
-      id: 'hidden',
-      key: 'hidden',
-      hidden: true,
-      steering: [
-        {
-          id: 'history',
-          order: 1,
-          text: 'Private history',
-          source: 'fixture',
-          at: '2026-11-12T00:00:00Z',
-          actor: 'owner',
-          attempts: [],
-        },
-      ],
-    }
-    state.keys.hidden = 'hidden'
     buffered = 0
     tabs.show({
       ws: client,
@@ -988,6 +988,43 @@ test(
     assert.equal(
       snapshots({ cards: [] }),
       1,
+    )
+  },
+)
+
+test(
+  'a card created after the tab opened is not a returning card, so it sends no cached latest',
+  t => {
+    let state = emptyHydra()
+    const {
+      tabs,
+      received,
+    } = openTab({
+      t,
+      state: () => state,
+    })
+    const created: HydraEvent = {
+      v: 1,
+      id: 'created',
+      seq: 1,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+      cardId: 'fresh',
+      type: 'task.created',
+      data: {
+        key: 'fresh',
+        title: 'fresh',
+      },
+    }
+    state = reduce({
+      state,
+      event: created,
+    })
+    tabs.broadcast({ event: created })
+    assert.ok(received.some(message => message.type === 'page.event'))
+    assert.equal(
+      received.some(message => message.type === 'latest'),
+      false,
     )
   },
 )
