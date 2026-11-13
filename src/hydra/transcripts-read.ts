@@ -240,8 +240,16 @@ export type SessionEntry = ThreadEntry & {
   reference: string
   session: string
 }
+const CACHED_TRANSCRIPTS = 16
+const parsedSessions = new Map<string, {
+  identity: string
+  end: number
+  entries: SessionEntry[]
+}>()
 
-// One session's whole native transcript, each entry with the reference its thread page gives it.
+// One session's messages from its whole native transcript, each with the reference its thread
+// page gives it. The parsed messages of recent transcripts are kept, so a later call parses
+// only the lines appended since.
 export function sessionEntries({
   path,
   session,
@@ -251,17 +259,27 @@ export function sessionEntries({
   session: string
   boundaries: boolean
 }): SessionEntry[] {
-  const lines = readTranscript({
+  const key = `${session}\n${boundaries}\n${path}`
+  const cached = parsedSessions.get(key)
+  const read = readTranscript({
     cursor: {
       source: path,
-      identity: '',
-      pos: 0,
+      identity: cached?.identity ?? '',
+      pos: cached?.end ?? 0,
     },
-  })?.lines ?? []
+  })
 
-  return lines.flatMap(line => recordEntries({
+  parsedSessions.delete(key)
+
+  if (!read) {
+    return []
+  }
+
+  const added = read.lines.flatMap(line => recordEntries({
     record: line.record,
     offset: line.pos,
+    tools: false,
+    thinking: false,
     boundaries,
   }).map(item => ({
     ...item,
@@ -272,6 +290,21 @@ export function sessionEntries({
     }),
     session,
   })))
+  const entries = cached && !read.reset ? cached.entries.concat(added) : added
+  parsedSessions.set(
+    key,
+    {
+      identity: read.identity,
+      end: read.end,
+      entries,
+    },
+  )
+
+  if (parsedSessions.size > CACHED_TRANSCRIPTS) {
+    parsedSessions.delete(parsedSessions.keys().next().value!)
+  }
+
+  return entries
 }
 
 export interface HydraSession {
