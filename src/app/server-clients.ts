@@ -488,6 +488,10 @@ export function createServerClients({
     const returned = [...live].filter(id => knownCards.has(id) && !liveCards.has(id))
     liveCards = live
     knownCards = new Set(Object.keys(state().cards))
+    // Hydra taking a task message is filed under Hydra's card but changes that task's thread.
+    const receivedTask = event.type === 'hydra.received'
+      ? state().hydraMessages?.find(message => message.id === event.data.message)?.task
+      : undefined
 
     for (const ws of clients) {
       if (recovery.get(ws)?.snapshot) {
@@ -537,11 +541,6 @@ export function createServerClients({
           queue,
         })
       }
-
-      // Hydra taking a task message is filed under Hydra's card but changes that task's thread.
-      const receivedTask = event.type === 'hydra.received'
-        ? state().hydraMessages?.find(message => message.id === event.data.message)?.task
-        : undefined
 
       for (const map of threadSubscriptions) {
         const sub = map.get(ws)
