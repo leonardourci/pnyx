@@ -26,8 +26,6 @@ import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 import { createPageZero } from './zero.ts'
 
-// Freezing deep-walks every new snapshot on its next event; snapshots stay unfrozen, so never write one in place.
-
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
 const TOKEN_REFRESH_TIMEOUT_MS = 5_000
@@ -645,6 +643,7 @@ export function createHydraConnection({
     scope: Scope
     state: HydraState
   }) => {
+    const handling = performance.now()
     const before = scope.resource.snapshot().confirmed
     confirmState({
       scope,
@@ -661,6 +660,14 @@ export function createHydraConnection({
     }
 
     publish(); flush()
+    // Zero's changes reach the page here, so this line is what one write costs it.
+    log({
+      operation: 'page.update',
+      detailed: true,
+      hydraId: scope.id,
+      name: 'zero',
+      ms: performance.now() - handling,
+    })
   }
 
   const confirmState = ({
@@ -1003,12 +1010,11 @@ export function createHydraConnection({
       try {
         const message = JSON.parse(event.data) as ServerMessage
         receive({ message })
-        // A snapshot replaces the whole Hydra, so each one gets a line; other messages are live updates. Each carries the
-        // reveal frames drawn since the last; the server's socket.send line has their size.
+        // Each line carries the reveal frames drawn since the last; the server's socket.send line has their size.
         const drawn = takeFrames()
         log({
-          operation: message.type === 'snapshot' ? 'page.snapshot' : 'page.update',
-          detailed: message.type !== 'snapshot',
+          operation: 'page.update',
+          detailed: true,
           hydraId: message.scope,
           name: message.type,
           ms: performance.now() - handling,
