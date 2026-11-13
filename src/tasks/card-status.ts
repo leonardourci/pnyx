@@ -209,11 +209,11 @@ export function waitStatus({
   cards?: Record<string, Card>
 }): CardStatus | undefined {
   if (card.wait) {
-    const dependency = cards?.[card.wait.task]
+    const title = cards?.[card.wait.task]?.title ?? card.facts?.waitTitle
 
     return {
       kind: 'waiting',
-      text: `waiting: ${dependency?.title ?? card.wait.task}`,
+      text: `waiting: ${title ?? card.wait.task}`,
       at: card.wait.at,
     }
   }
