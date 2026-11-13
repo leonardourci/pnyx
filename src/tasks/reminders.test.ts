@@ -7,8 +7,7 @@ import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents, readEventsFrom } from '#app/event-log.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
-import { storedHydra } from '#test-harness/database.ts'
-import { query } from '#store/postgres.ts'
+import { refuseEvents, storedHydra } from '#test-harness/database.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { taskMentions } from '#hydra/mentions.ts'
 import { fireReminders } from './fire-reminders.ts'
@@ -813,20 +812,15 @@ test(
     const sameTaskKey = `${task().id}:${sameTaskQuestion.ask}`
     // A fire whose grouped message fails to commit leaves no receipt or reminder behind either.
     const stored = storedHydra({ hydraId })
-    query({
-      statements: [
-        { text: 'create function refuse_message() returns trigger language plpgsql as $$ begin raise exception \'refused\'; end $$' },
-        { text: 'create trigger refuse_message before insert on events for each row when (new.type = \'hydra.message\') execute function refuse_message()' },
-      ],
-    })
+    const release = refuseEvents({ type: 'hydra.message' })
     assert.throws(
       () => fireReminders({
         hydraId,
         at: later,
       }),
-      /Postgres: refused/,
+      /Postgres: refused hydra.message/,
     )
-    query({ statements: [{ text: 'drop trigger refuse_message on events' }] })
+    release()
     assert.equal(
       storedHydra({ hydraId }),
       stored,
