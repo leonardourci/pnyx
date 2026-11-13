@@ -9,6 +9,7 @@ import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type Lo
 
 export type { LogLine, LogMode } from './log-line.ts'
 
+const MAX_PAYLOAD_CHARS = 16 * 1024
 const MAX_PENDING_LINES = 200
 const MAX_LINE_BYTES = 64 * 1024
 let pending = 0
@@ -242,7 +243,7 @@ export function writeLine({
     if (LOG_FIELDS.has(key)) {
       fields[key] = typeof value === 'string' ? value.slice(
         0,
-        TEXT_MAX,
+        key === 'payload' ? MAX_PAYLOAD_CHARS : TEXT_MAX,
       ) : value
     }
   }

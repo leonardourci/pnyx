@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
 import type { Meta } from '#app/command-meta.ts'
@@ -42,6 +43,11 @@ function ingest({
       code: 'VALIDATION_ERROR',
     })
   }
+
+  log({
+    operation: 'hook.push',
+    payload: JSON.stringify(entry),
+  })
 
   if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {

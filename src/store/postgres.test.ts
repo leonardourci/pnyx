@@ -354,3 +354,175 @@ test(
     }
   },
 )
+
+test(
+  'migration removes only debug repeats and transcript copies, preserves all other types and Activity, and is repeatable',
+  async t => {
+    const {
+      readFileSync,
+      readdirSync,
+    } = await import('node:fs')
+    const { randomUUID } = await import('node:crypto')
+    const { EVENT_TYPES } = await import('#app/model.ts')
+    const {
+      openLogs,
+      closeLogs,
+      flushLogs,
+      logsDir,
+    } = await import('#app/diagnostics.ts')
+    openLogs()
+    t.after(() => closeLogs())
+    const database = `prune_${randomUUID().replaceAll(
+      '-',
+      '',
+    )}`
+    const admin = new pg.Client({ database: 'postgres' })
+    await admin.connect()
+    await admin.query(`create database ${database}`)
+    const old = new pg.Client({ database })
+    await old.connect()
+    const backup = join(
+      process.env.PNYX_HOME!,
+      'original-events.jsonl',
+    )
+    writeFileSync(
+      backup,
+      'original JSONL backup stays unchanged\n',
+    )
+    const beforeBackup = readFileSync(backup)
+
+    try {
+      await old.query(readFileSync(
+        new URL(
+          './fixtures/postgres-v1.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ))
+
+      for (const hydraId of [
+        'lab',
+        'another',
+      ]) {
+        await old.query(
+          'insert into hydras (id, seq, summary) values ($1, $2, \'{}\')',
+          [
+            hydraId,
+            EVENT_TYPES.length,
+          ],
+        )
+
+        for (const [
+          index,
+          type,
+        ] of EVENT_TYPES.entries()) {
+          const event = {
+            id: `event-${index}`,
+            seq: index + 1,
+            type,
+            data: {
+              source: {
+                adapter: 'hooks',
+                objectId: 'worker',
+                generation: 2 ** 40,
+                observedAt: '2026-11-13T12:00:00.000Z',
+              },
+            },
+          }
+          await old.query(
+            'insert into events (hydra_id, seq, id, type, at, actor, card_id, data) values ($1,$2,$3,$4,$5,\'test\',$6,$7)',
+            [
+              hydraId,
+              event.seq,
+              event.id,
+              type,
+              '2026-11-13T12:00:00.000Z',
+              index % 2 ? 'task-a' : 'task-b',
+              event,
+            ],
+          )
+
+          if (type !== 'card.observed' && type !== 'chat.message') {
+            await old.query(
+              'insert into card_updates (hydra_id, card_id, seq) values ($1,$2,$3)',
+              [
+                hydraId,
+                index % 2 ? 'task-a' : 'task-b',
+                event.seq,
+              ],
+            )
+          }
+        }
+      }
+
+      const surviving = 'select * from events where type not in (\'card.observed\', \'chat.message\') order by hydra_id, seq'
+      const activity = 'select * from card_updates order by hydra_id, card_id, seq'
+      const beforeEvents = (await old.query(surviving)).rows
+      const beforeActivity = (await old.query(activity)).rows
+      const url = `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const results = query({
+          url,
+          statements: [
+            { text: surviving },
+            { text: activity },
+            { text: 'select count(*)::int as count from events where type in (\'card.observed\', \'chat.message\')' },
+          ],
+        })
+        assert.deepEqual(
+          results[0],
+          beforeEvents,
+        )
+        assert.deepEqual(
+          results[1],
+          beforeActivity,
+        )
+        assert.deepEqual(
+          results[2],
+          [{ count: 0 }],
+        )
+      }
+
+      await flushLogs()
+      const pruned = readdirSync(logsDir()).flatMap(name => readFileSync(
+        join(
+          logsDir(),
+          name,
+        ),
+        'utf8',
+      ).split('\n')
+        .filter(Boolean)
+        .map(line => JSON.parse(line)))
+        .filter(line => line.operation === 'events.pruned' && [
+          'lab',
+          'another',
+        ].includes(line.hydraId))
+      assert.deepEqual(
+        pruned.map(line => [
+          line.hydraId,
+          line.count,
+        ]).sort(),
+        [
+          [
+            'another',
+            2,
+          ],
+          [
+            'lab',
+            2,
+          ],
+        ],
+      )
+      assert.deepEqual(
+        readFileSync(backup),
+        beforeBackup,
+      )
+      assert.ok((await old.query('select generation from source_observations')).rows.every(row => row.generation === 2 ** 40))
+    } finally {
+      await old.end()
+      await admin.query(`drop database ${database} with (force)`)
+      await admin.end()
+    }
+  },
+)

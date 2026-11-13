@@ -377,7 +377,7 @@ card.json fields (all optional): title, autoTitle {from: session|prompt|agent|fo
   folder (absolute path, null to clear; a hook session started there reports to this card),
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored. A push that reports exactly what its
-source last reported, at a newer source.observedAt, is logged as a card.observed event holding only that time.
+source last reported advances its private observation watermark without recording an event. Raw reports go to the diagnostic log.
 `,
   card: `usage: pnyx-axi card <id|key> [--full] [--hydra <name>]
 Shows the card and its notes in three sections, summary, decisions and context, newest first:

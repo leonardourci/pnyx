@@ -1,3 +1,4 @@
+import { log } from '#app/diagnostics.ts'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -52,7 +53,13 @@ export type Outcome = {
   error: ErrorDetails
 }
 
-export type Reply = { id: number } & Outcome
+export type Reply = {
+  id: number
+  removedDebugRows?: {
+    hydraId: string
+    count: number
+  }[]
+} & Outcome
 
 interface Connection {
   worker: Worker
@@ -320,6 +327,15 @@ export function query({
       message: `Postgres did not answer within ${timeoutMs / 1000}s`,
       code: 'DATABASE_TIMEOUT',
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running'],
+    })
+  }
+
+  for (const removed of reply.removedDebugRows ?? []) {
+    log({
+      operation: 'events.pruned',
+      hydraId: removed.hydraId,
+      count: removed.count,
+      name: 'card.observed, chat.message',
     })
   }
 

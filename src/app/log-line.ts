@@ -18,6 +18,7 @@ interface AgentMemory {
 }
 
 interface LogFields {
+  payload?: string
   operation: string
   hydraId?: string
   taskId?: string
@@ -78,6 +79,7 @@ interface LogFields {
 const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | 'ms'>]-?: true } = {
   connectionWaitMs: true,
   commitMs: true,
+  payload: true,
   hydraId: true,
   taskId: true,
   sessionId: true,

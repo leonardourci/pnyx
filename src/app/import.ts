@@ -6,10 +6,14 @@ import { emptySaved, eventStatements, rowChanges } from './rows.ts'
 import { transactionStatement, type Transaction } from './transactions.ts'
 import { reloadHydra } from './store.ts'
 import { reportStartup } from './server-state.ts'
+import { observationStatement } from '#tasks/observations.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
 
 // Copies of agent transcripts stay out of Postgres; Pnyx reads transcripts where their harness wrote them.
-const TRANSCRIPT_COPY = 'chat.message'
+const DIAGNOSTIC_EVENTS = new Set([
+  'chat.message',
+  'card.observed',
+])
 // A busy Hydra's whole log goes in one transaction, far longer than an ordinary statement's wait.
 const IMPORT_TIMEOUT_MS = 10 * 60_000
 const REPLAY_BATCH_SIZE = 500
@@ -88,8 +92,17 @@ export function importHydra({
         hydraId,
         from: 0,
         to: state.seq,
-        events: applied({ events }).filter(event => event.type !== TRANSCRIPT_COPY),
+        events: applied({ events }).filter(event => !DIAGNOSTIC_EVENTS.has(event.type)),
       }),
+      ...Object.values(state.cards).flatMap(card =>
+        card.sourceRefs.map(source => observationStatement({
+          hydraId,
+          observation: {
+            cardId: card.id,
+            source,
+            at: source.observedAt ?? card.updatedAt,
+          },
+        }))),
       ...rowChanges({
         hydraId,
         state,

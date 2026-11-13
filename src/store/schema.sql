@@ -59,6 +59,19 @@ create table events (
   unique (hydra_id, id)
 );
 
+-- Latest source watermarks reject delayed reports across restarts without recording repeat events.
+create table source_observations (
+  hydra_id text not null references hydras (id) on delete cascade,
+  card_id text not null,
+  adapter text not null,
+  instance_id text not null,
+  object_id text not null,
+  generation double precision not null check (generation >= 0),
+  observed_at text not null,
+  seen_at text not null,
+  primary key (hydra_id, card_id, adapter, instance_id, object_id)
+);
+
 -- Each card's Updates tab: the events it lists, which can be listed by several cards, as a message to Hydra is by
 -- its task and every task it mentions.
 create table card_updates (
@@ -257,4 +270,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (2);
+insert into schema_version (version) values (3);
