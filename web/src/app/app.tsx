@@ -42,7 +42,7 @@ import { useHydraFavicon } from './hydra-favicon.ts'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
 import { hydraViews,restoreView,usePersistView } from './restore.ts'
-import { createHydraView } from './view-store.ts'
+import { createHydraView, showPage } from './view-store.ts'
 import { hydraTitle,pageTitle } from './view.ts'
 
 export function App() {
@@ -101,7 +101,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     expanded,
     revealed,
   } = useStore(viewStore)
-  const setPage = ({ page }: { page: string }) => viewStore.setState({ page })
+  const setPage = ({ page }: { page: string }) => showPage({
+    view: viewStore,
+    page,
+  })
   const [
       notice,
       setNotice,
@@ -776,13 +779,17 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                       selected={expandedIds.includes(item.id)}
                                       onEdit={cancelOpen}
                                       recoverSelection={({ id }) => {
-                                        viewStore.setState(({
+                                        const {
                                           selected,
                                           expanded,
-                                        }) => ({
-                                          selected: selected ?? id,
-                                          expanded: expanded.length ? expanded : [id],
-                                        }))
+                                        } = viewStore.getState()
+
+                                        if (!selected || !expanded.length) {
+                                          viewStore.setState({
+                                            selected: selected ?? id,
+                                            expanded: expanded.length ? expanded : [id],
+                                          })
+                                        }
                                       }}
                                       view={view}
                                       save={save}

@@ -1,7 +1,7 @@
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from 'zustand'
-import type { HydraViewStore } from '#web-app/view-store.ts'
+import { showPage, type HydraViewStore } from '#web-app/view-store.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -206,20 +206,20 @@ export function useTaskNavigation({
         return
       }
 
-      view.setState(({ expanded: ids }) => {
-        const next = expandedByColumn({
-          ids: ids.map(id => state.keys[id] ?? id),
-          cards: state.cards,
-          pending: pendingColumns.current,
-        })
-
-        return {
-          expanded: ids.length === next.length && ids.every((
-            id,
-            index,
-          ) => id === next[index]) ? ids : next,
-        }
+      const ids = view.getState().expanded
+      const next = expandedByColumn({
+        ids: ids.map(id => state.keys[id] ?? id),
+        cards: state.cards,
+        pending: pendingColumns.current,
       })
+      const unchanged = ids.length === next.length && ids.every((
+        id,
+        index,
+      ) => id === next[index])
+
+      if (!unchanged) {
+        view.setState({ expanded: next })
+      }
     },
     [
       state.cards,
@@ -292,7 +292,10 @@ export function useTaskNavigation({
   ]
 
   const openHydra = () => {
-    cancelOpen(); view.setState({ page: 'hydra' })
+    cancelOpen(); showPage({
+      view,
+      page: 'hydra',
+    })
     requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
   }
 
@@ -300,17 +303,21 @@ export function useTaskNavigation({
     const card = currentCards.current[id]
 
     if (card && liveTask({ card }) && !filteredCards.some(card => card.id === id)) {
-      view.setState(({ revealed: kept }) => ({
-        revealed: {
-          scope: filterScope,
-          ids: [
-            ...new Set([
-              ...(kept.scope === filterScope ? kept.ids : []),
-              id,
-            ]),
-          ],
-        },
-      }))
+      view.setState(({ revealed }) => {
+        const kept = revealed.scope === filterScope ? revealed.ids : []
+
+        return {
+          revealed: {
+            scope: filterScope,
+            ids: [
+              ...new Set([
+                ...kept,
+                id,
+              ]),
+            ],
+          },
+        }
+      })
     }
   }
 
@@ -389,7 +396,10 @@ export function useTaskNavigation({
     const controller = new AbortController()
     const { signal } = controller
     pendingOpen.current = controller
-    view.setState({ page: 'hydra' }); setRevealing(id)
+    showPage({
+      view,
+      page: 'hydra',
+    }); setRevealing(id)
 
     try {
       if (!currentCards.current[id]) {
@@ -508,10 +518,10 @@ export function useTaskNavigation({
     const remaining = expandedIds.filter(item => item !== id)
     const target = closing && liveTask({ card: closing }) ? closing
       : filteredCards.find(c => c.column === closing?.column) ?? filteredCards[0]
-    view.setState({
+    view.setState(selected === id ? {
       expanded: remaining,
-      selected: selected === id ? remaining.at(-1) ?? null : selectedRef,
-    })
+      selected: remaining.at(-1) ?? null,
+    } : { expanded: remaining })
 
     if (pendingFocus.current === id) {
       pendingFocus.current = null
