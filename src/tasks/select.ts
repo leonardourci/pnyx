@@ -12,7 +12,7 @@ export function isManagedTask({ card }: { card: Card }): boolean {
   return Boolean(card.automaticTask) || card.id === HYDRA_CARD
 }
 
-// Every card a lookup by id may name: on the page that adds the reference copies of hidden tasks.
+// Every card a lookup by id may name. On the page, this includes the reference copies of hidden tasks.
 export function knownCards({ state }: { state: HydraState }): Record<string, Card> {
   const references = state.references
 

@@ -64,11 +64,11 @@ flags:
 const COMMAND_HELP: Record<string, string> = {
   page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--full] [--hydra <id>]
 Summarize what a page receives: shown cards per column, opened cards, chat messages and unavailable refs.
---full prints the whole projection, without the event-id index, steering history or source captures.
+--full prints the whole projection, without the event-ID index, steering history or source captures.
 Repeat --card for opened cards.
 --hidden includes hidden and automatic cards.
 On a page connection, this also updates that tab's interests.
-Activity continues reading history through the history command.
+The Activity view still reads full history with the history command.
 `,
   debug: `usage: pnyx-axi debug timeline [--task <id|key>] [--message <id>] [--batch <id>] [--session <id>] [--since <ISO>] [--until <ISO>] [--cursor <token>] [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read event IDs and correlated structured service records, newest timestamp first; original sequence,

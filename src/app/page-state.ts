@@ -21,9 +21,9 @@ export interface PageUpdate {
 }
 export type PageState = Omit<HydraState, 'eventIds' | 'contextNotes' | 'questionReminders'>
 
-// Which tabs replay an event: every tab, a tab that shows its card (and then also
-// gets that card's sessions), or none, so a tab only gets the cards it changed.
-// A column or Hydra change can show or hide any card, so every tab gets a snapshot instead.
+// Which tabs replay an event: every tab, a tab that shows its card (optionally with that card's sessions),
+// or no tab ('cards only', where tabs get the changed cards without the event). A column or Hydra change can
+// show or hide any card, so every tab gets a snapshot instead.
 type PageReach = 'every tab' | 'shown card' | 'shown card and sessions' | 'cards only' | 'snapshot'
 
 const PAGE_REACH = {
@@ -111,7 +111,7 @@ export function pageCard({ card }: { card: Card }): Card {
   return visible
 }
 
-// A hidden task keeps what chips, prerequisites, waits and answer heads read: no histories,
+// A hidden task keeps what chips, prerequisites, waits and answer leads read: no histories,
 // texts or worker setup.
 function pageReference({ card }: { card: Card }): Card {
   const reference = pageCard({ card })
