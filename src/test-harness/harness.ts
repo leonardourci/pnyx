@@ -1,8 +1,8 @@
+// The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
+// `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
 import { applyPageUpdate } from '#app/page-state.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { randomUUID } from 'node:crypto'
-// The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
-// `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
