@@ -6,7 +6,7 @@ import { createServer } from 'node:net'
 const USER = 'pnyx'
 const MIN_VERSION = 15
 // The launcher deletes the cluster's folder on exit, so a failure carries the end of its log.
-const LOG_TAIL_LINES = 20
+export const POSTGRES_LOG_TAIL_LINES = 20
 // Homebrew's versioned kegs on Apple silicon and Intel, then the Ubuntu packages GitHub's runners carry.
 const ROOTS = [
   {
@@ -77,6 +77,7 @@ async function freePort(): Promise<number> {
 // A throwaway cluster for one test run, with the logical replication zero-cache needs.
 export async function startPostgres({ dir }: { dir: string }): Promise<{
   env: Record<'PGHOST' | 'PGPORT' | 'PGUSER', string>
+  logFile: string
   stop(): void
 }> {
   const bin = binaries()
@@ -124,7 +125,7 @@ export async function startPostgres({ dir }: { dir: string }): Promise<{
         'utf8',
       ).trimEnd()
         .split('\n')
-        .slice(-LOG_TAIL_LINES)
+        .slice(-POSTGRES_LOG_TAIL_LINES)
         .join('\n')
       : 'none written'
 
@@ -152,12 +153,13 @@ export async function startPostgres({ dir }: { dir: string }): Promise<{
       logFile,
       '--wait',
       '-o',
-      `-p ${port} -k ${dir} -c listen_addresses=127.0.0.1 -c wal_level=logical -c fsync=off -c max_connections=200`,
+      `-p ${port} -k ${dir} -c listen_addresses=127.0.0.1 -c wal_level=logical -c fsync=off -c max_connections=200 -c log_lock_waits=on -c log_parameter_max_length_on_error=0`,
       'start',
     ],
   })
 
   return {
+    logFile,
     env: {
       PGHOST: '127.0.0.1',
       PGPORT: String(port),

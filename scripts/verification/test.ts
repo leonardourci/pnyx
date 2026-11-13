@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { constants } from 'node:os'
+import { constants, tmpdir } from 'node:os'
+import { copyFileSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { discover, isFlow } from './discover.ts'
 import { holdRunLock } from './run-lock.ts'
 import { createTestEnvironment } from './test-environment.ts'
 import { installedFixture } from './installed-fixture.ts'
-import { startPostgres } from './postgres.ts'
+import { POSTGRES_LOG_TAIL_LINES, startPostgres } from './postgres.ts'
 
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
@@ -234,6 +235,25 @@ try {
       }
 
       if (result.status !== 0 && !stopSignal) {
+        const directory = mkdtempSync(join(
+          tmpdir(),
+          'pnyx-postgres-failure-',
+        ))
+        const retainedLog = join(
+          directory,
+          'postgres.log',
+        )
+        copyFileSync(
+          postgres.logFile,
+          retainedLog,
+        )
+        console.error(`Postgres log retained at ${retainedLog}:\n${readFileSync(
+          retainedLog,
+          'utf8',
+        ).trimEnd()
+          .split('\n')
+          .slice(-POSTGRES_LOG_TAIL_LINES)
+          .join('\n')}`)
         process.exitCode = result.status || 1
       }
     } catch (error) {
