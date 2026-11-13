@@ -1,6 +1,7 @@
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMentions } from '#hydra/mentions.ts'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createStore, useStore } from 'zustand'
 import type { ChatComment } from './chat.ts'
 import { commentChanges, commentPrefix, loadCommentRecords, readCommentRecord, saveCommentRecords } from './comment-storage.ts'
 
@@ -51,43 +52,25 @@ export function createChatDrafts({
     previous: ChatComment[]
   }): ChatComment[] | false
 }) {
-  let current = {
+  // The live draft changes on every key; the settled copy, which renders the chat, only at a pause or a structural edit.
+  const live = createStore(() => ({
     text,
     comments,
-  }
+  }))
+  const settled = createStore(() => live.getState())
   let persistedComments = comments
-  let settled = current
   let timer: ReturnType<typeof setTimeout> | undefined
-  const listeners = new Set<() => void>()
-  const settledListeners = new Set<() => void>()
 
-  // eslint-disable-next-line pnyx/object-params -- useSyncExternalStore subscription contract.
-  const subscribe = (listener: () => void) => {
-    listeners.add(listener)
-
-    return () => {
-      listeners.delete(listener)
-    }
-  }
-
-  // eslint-disable-next-line pnyx/object-params -- useSyncExternalStore subscription contract.
-  const subscribeSettled = (listener: () => void) => {
-    settledListeners.add(listener)
-
-    return () => {
-      settledListeners.delete(listener)
-    }
-  }
-
-  const publish = () => {
-    settled = current
-    settledListeners.forEach(listener => listener())
-  }
+  const publish = () => settled.setState(
+    live.getState(),
+    true,
+  )
 
   const flush = () => {
     clearTimeout(timer)
     timer = undefined
     publish()
+    const current = live.getState()
     const saved = save({
       ...current,
       previous: persistedComments,
@@ -102,11 +85,7 @@ export function createChatDrafts({
       persistedComments = saved
 
       if (JSON.stringify(comments) !== JSON.stringify(current.comments)) {
-        current = {
-          ...current,
-          comments,
-        }
-        listeners.forEach(listener => listener())
+        live.setState({ comments })
         publish()
       }
     }
@@ -121,11 +100,10 @@ export function createChatDrafts({
     comments: ChatComment[]
     structural?: boolean
   }) => {
-    current = {
+    live.setState({
       text,
       comments,
-    }
-    listeners.forEach(listener => listener())
+    })
 
     if (structural) {
       publish()
@@ -139,19 +117,20 @@ export function createChatDrafts({
   }
 
   return {
-    read: () => current,
-    readSettled: () => settled,
-    subscribe,
-    subscribeSettled,
+    read: live.getState,
+    readSettled: settled.getState,
+    subscribe: live.subscribe,
+    subscribeSettled: settled.subscribe,
+    settled,
     flush,
     // The chat shows the questions of the tasks a draft mentions, so a change to which tasks it names publishes at once.
     setDraft: ({ text }: { text: string }) => write({
       text,
-      comments: current.comments,
-      structural: mentionedTasks({ text }) !== mentionedTasks({ text: current.text }),
+      comments: live.getState().comments,
+      structural: mentionedTasks({ text }) !== mentionedTasks({ text: live.getState().text }),
     }),
     setComments: ({ items }: { items: ChatComment[] }) => write({
-      text: current.text,
+      text: live.getState().text,
       comments: items,
       structural: true,
     }),
@@ -174,13 +153,13 @@ export function createChatDrafts({
       }
 
       const comments = mergeComments({
-        current: current.comments,
+        current: live.getState().comments,
         previous: persistedComments,
         incoming,
       })
       persistedComments = incoming
       write({
-        text: current.text,
+        text: live.getState().text,
         comments,
         structural: true,
       })
@@ -192,8 +171,8 @@ export function createChatDrafts({
       id: string
       text: string
     }) => write({
-      text: current.text,
-      comments: current.comments.map(comment => comment.id === id ? {
+      text: live.getState().text,
+      comments: live.getState().comments.map(comment => comment.id === id ? {
         ...comment,
         text,
       } : comment),
@@ -204,10 +183,7 @@ export function createChatDrafts({
 export type ChatDrafts = ReturnType<typeof createChatDrafts>
 
 export function useDraftSnapshot({ drafts }: { drafts: ChatDrafts }) {
-  return useSyncExternalStore(
-    drafts.subscribeSettled,
-    drafts.readSettled,
-  )
+  return useStore(drafts.settled)
 }
 
 export function useChatDrafts({

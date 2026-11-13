@@ -27,13 +27,13 @@ test(
         return comments
       },
     })
-    const original = drafts.readSettled()
+    const original = drafts.settled.getState()
     let liveUpdates = 0
     let conversationUpdates = 0
     const unsubscribe = drafts.subscribe(() => {
       liveUpdates += 1
     })
-    drafts.subscribeSettled(() => {
+    drafts.settled.subscribe(() => {
       conversationUpdates += 1
     })
 
@@ -44,7 +44,7 @@ test(
       'Before the pause',
     )
     assert.equal(
-      drafts.readSettled(),
+      drafts.settled.getState(),
       original,
     )
     assert.equal(
@@ -77,7 +77,7 @@ test(
       ],
     )
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       'Latest text',
     )
     assert.equal(
@@ -98,10 +98,10 @@ test(
       ],
     })
     assert.equal(
-      drafts.readSettled().comments.length,
+      drafts.settled.getState().comments.length,
       1,
     )
-    const quoted = drafts.readSettled()
+    const quoted = drafts.settled.getState()
     drafts.editComment({
       id: 'quote',
       text: 'Unpublished comment',
@@ -111,7 +111,7 @@ test(
       'Unpublished comment',
     )
     assert.equal(
-      drafts.readSettled(),
+      drafts.settled.getState(),
       quoted,
     )
     assert.equal(
@@ -499,17 +499,17 @@ test(
     })}: `
     drafts.setDraft({ text: answer })
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       answer,
     )
     drafts.setDraft({ text: `${answer}yes` })
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       answer,
     )
     drafts.setDraft({ text: 'yes' })
     assert.equal(
-      drafts.readSettled().text,
+      drafts.settled.getState().text,
       'yes',
     )
   },
