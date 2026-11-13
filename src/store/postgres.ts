@@ -93,6 +93,9 @@ function connection({ url }: { url?: string }): Connection {
         } : { database },
       },
       transferList: [port2],
+      // The worker prints nothing; piping each home's worker into this process's output would add a listener per home.
+      stdout: true,
+      stderr: true,
     },
   )
   // The connection lives as long as the process and never keeps it running.
