@@ -5,16 +5,27 @@ import { configuredUrl, homeDatabase, query } from '#store/postgres.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { hydraExists, importLegacy } from '#app/store.ts'
 import type { Output } from '#app/cli-support.ts'
+import type { Meta } from '#app/command-meta.ts'
+import { saveSettings, shownSettings } from '#settings/store.ts'
 import type { SetupItem } from './check.ts'
 import { requireSetupHome } from './home.ts'
 
 // zero-cache replicates through logical decoding, which Postgres has since 10; Zero itself needs 15.
 const MIN_VERSION = 150_000
+// server_version_num holds the major version times 10000.
+const MAJOR_FACTOR = 10_000
 const FORMULA = 'postgresql@17'
 const READY_MS = 30_000
 const POLL_MS = 500
 // How a connection fails when no Postgres listens, over TCP or a socket file; any other failure has a running server.
 const NOT_RUNNING = /ECONNREFUSED|ENOENT|connection refused/i
+// A server that is starting, or restarting and dropped the connection, answers once it is up.
+const STARTING = /the database system is starting up|Connection terminated unexpectedly/i
+// Postgres refused the role or its password, which no start or restart changes.
+const SIGN_IN_REFUSED = /role ".*" does not exist|password authentication failed|no pg_hba\.conf entry/i
+const SETUP = 'pnyx-axi setup postgres'
+const CHANGE_URL = 'save a corrected URL with `pnyx-axi setup postgres --url <url>`, or clear it with `pnyx-axi setup postgres --url \'\'`, then run `pnyx-axi restart`'
+const MANUAL_START = 'start PostgreSQL 15 or newer with wal_level=logical where PGHOST and PGPORT point, then run `pnyx-axi setup check`'
 
 interface Server {
   wal_level: string
@@ -49,6 +60,11 @@ function server(): Server | HydraError {
 const notRunning = ({ found }: { found: Server | HydraError }) =>
   found instanceof HydraError && NOT_RUNNING.test(found.message)
 
+const starting = ({ found }: { found: Server | HydraError }) =>
+  found instanceof HydraError && STARTING.test(found.message)
+
+const onMac = () => process.platform === 'darwin'
+
 // The database Pnyx uses: the one the postgresUrl setting names, or this home's own.
 function targetDatabase(): string {
   const url = configuredUrl()
@@ -60,26 +76,63 @@ function targetDatabase(): string {
   return new URL(url).pathname.slice(1)
 }
 
-function issueOf({ found }: { found: Server | HydraError }): SetupItem | undefined {
+function unreachableFix({ error }: { error: HydraError }): string {
   const configured = configuredUrl() !== undefined
-  const setup = 'pnyx-axi setup postgres'
-  const fix = configured ? 'start the Postgres the postgresUrl setting names, with wal_level=logical' : setup
+  const refused = SIGN_IN_REFUSED.test(error.message)
 
-  if (found instanceof HydraError) {
-    return {
-      name: 'postgres',
-      missing: `cannot reach Postgres for database ${targetDatabase()}: ${found.message}`,
-      by: 'owner',
-      fix,
-    }
+  if (configured && refused) {
+    return `correct the role or password in the postgresUrl setting: ${CHANGE_URL}`
   }
 
+  if (configured) {
+    return `start the Postgres the postgresUrl setting names, with wal_level=logical, or ${CHANGE_URL}`
+  }
+
+  if (refused) {
+    return 'create the role PGUSER names (your login name when unset) on this Postgres, set PGUSER and PGPASSWORD to one that signs in, or save a postgresUrl with `pnyx-axi setup postgres --url <url>`'
+  }
+
+  return onMac() ? SETUP : MANUAL_START
+}
+
+function unreachable({ error }: { error: HydraError }): SetupItem {
+  return {
+    name: 'postgres',
+    missing: `cannot reach Postgres for database ${targetDatabase()}: ${error.message}`,
+    by: 'owner',
+    fix: unreachableFix({ error }),
+  }
+}
+
+function oldVersionFix({ major }: { major: number }): string {
+  if (configuredUrl() !== undefined) {
+    return 'point postgresUrl at PostgreSQL 15 or newer'
+  }
+
+  if (!onMac()) {
+    return `stop Postgres ${major}, then ${MANUAL_START}`
+  }
+
+  return `stop Postgres ${major} first, since ${FORMULA} cannot take its port while it runs, then run \`brew install ${FORMULA}\` and \`${SETUP}\``
+}
+
+function walLevelFix(): string {
+  if (configuredUrl() !== undefined) {
+    return 'set wal_level=logical on the Postgres the postgresUrl setting names, then restart it'
+  }
+
+  return onMac() ? SETUP : 'run `alter system set wal_level = logical` on this Postgres, restart it, then run `pnyx-axi setup check`'
+}
+
+function serverIssue({ found }: { found: Server }): SetupItem | undefined {
   if (found.version < MIN_VERSION) {
+    const major = Math.floor(found.version / MAJOR_FACTOR)
+
     return {
       name: 'postgres',
-      missing: `Postgres ${found.version} is older than 15, which Zero needs`,
+      missing: `Postgres ${major} is older than 15, which Zero needs`,
       by: 'owner',
-      fix: configured ? 'point postgresUrl at PostgreSQL 15 or newer' : `brew install ${FORMULA}, then ${setup}`,
+      fix: oldVersionFix({ major }),
     }
   }
 
@@ -88,27 +141,36 @@ function issueOf({ found }: { found: Server | HydraError }): SetupItem | undefin
       name: 'postgres',
       missing: `wal_level is ${found.wal_level}; zero-cache needs logical`,
       by: 'owner',
-      fix,
+      fix: walLevelFix(),
     }
   }
 }
 
+const issueOf = ({ found }: { found: Server | HydraError }) => found instanceof HydraError
+  ? unreachable({ error: found })
+  : serverIssue({ found })
+
 // What keeps Pnyx's database from working, as a setup item, or undefined when Postgres is ready for it.
 export const postgresIssue = () => issueOf({ found: server() })
 
-function requireReady({ found }: { found: Server | HydraError }): Server {
-  const issue = issueOf({ found })
+const unavailable = ({ issue }: { issue: SetupItem }) => new HydraError({
+  message: issue.missing,
+  code: 'POSTGRES_UNAVAILABLE',
+  help: [`Fix: ${issue.fix}`],
+})
 
-  if (issue) {
-    throw new HydraError({
-      message: issue.missing,
-      code: 'POSTGRES_UNAVAILABLE',
-      help: [`Fix: ${issue.fix}`],
-    })
+function requireReady({ found }: { found: Server | HydraError }): Server {
+  if (found instanceof HydraError) {
+    throw unavailable({ issue: unreachable({ error: found }) })
   }
 
-  // issueOf reports every failure, so what is left answered.
-  return found as Server
+  const issue = serverIssue({ found })
+
+  if (issue) {
+    throw unavailable({ issue })
+  }
+
+  return found
 }
 
 function brewService({ action }: { action: 'start' | 'restart' }): void {
@@ -143,7 +205,7 @@ async function started(): Promise<Server | HydraError> {
   const deadline = Date.now() + READY_MS
   let found = server()
 
-  while (notRunning({ found }) && Date.now() < deadline) {
+  while ((notRunning({ found }) || starting({ found })) && Date.now() < deadline) {
     await sleep(POLL_MS)
     found = server()
   }
@@ -180,15 +242,46 @@ function checkImports(): Output {
   }
 }
 
+// Saves postgresUrl straight into the settings log, without the server, which cannot start while the URL is wrong.
+function saveUrl({
+  url,
+  meta,
+}: {
+  url: string
+  meta: Meta
+}): Output {
+  const saved = saveSettings({
+    patch: { postgresUrl: url },
+    meta,
+  })
+  const shown = shownSettings({ settings: saved.settings }).postgresUrl
+
+  return {
+    postgresUrl: shown === '' ? 'none: this home\'s own database through PGHOST, PGPORT and PGUSER' : shown,
+    help: ['The server uses it from its next start: run `pnyx-axi restart`'],
+  }
+}
+
 // Starts the Homebrew Postgres with the logical replication zero-cache needs, and its first query creates this home's
 // database. A Postgres the postgresUrl setting names is only checked: Pnyx does not manage it.
 export async function setupPostgres({
   check,
   allowCustomHome,
+  url,
+  meta,
 }: {
   check: boolean
   allowCustomHome: boolean
+  url?: string
+  meta: Meta
 }): Promise<Output> {
+  if (url !== undefined) {
+    return saveUrl({
+      url,
+      meta,
+    })
+  }
+
   if (check) {
     return checkImports()
   }
@@ -197,21 +290,16 @@ export async function setupPostgres({
     return ready({ found: requireReady({ found: server() }) })
   }
 
-  // Homebrew's service serves every home on this machine.
-  requireSetupHome({ allowCustomHome })
   let found = server()
-
   const issue = issueOf({ found })
 
-  if (issue && process.platform !== 'darwin') {
-    throw new HydraError({
-      message: issue.missing,
-      code: 'POSTGRES_UNAVAILABLE',
-      help: ['Start PostgreSQL 15 or newer with wal_level=logical, then run `pnyx-axi setup check`'],
-    })
+  if (issue && !onMac()) {
+    throw unavailable({ issue })
   }
 
   if (notRunning({ found })) {
+    // Homebrew's service serves every home on this machine.
+    requireSetupHome({ allowCustomHome })
     brewService({ action: 'start' })
     found = await started()
   }
@@ -219,11 +307,24 @@ export async function setupPostgres({
   const running = found instanceof HydraError ? undefined : found
   const needsLogical = running && running.version >= MIN_VERSION && running.wal_level !== 'logical'
 
-  if (needsLogical) {
-    query({ statements: [{ text: 'alter system set wal_level = \'logical\'' }] })
-    brewService({ action: 'restart' })
-    found = await started()
+  if (!needsLogical) {
+    return ready({ found: requireReady({ found }) })
   }
 
-  return ready({ found: requireReady({ found }) })
+  requireSetupHome({ allowCustomHome })
+  query({ statements: [{ text: 'alter system set wal_level = \'logical\'' }] })
+  brewService({ action: 'restart' })
+  const restarted = await started()
+  // The restart reached another server than the one that took the setting, such as a Postgres not from Homebrew.
+  const stillReplica = !(restarted instanceof HydraError) && restarted.wal_level !== 'logical'
+
+  if (stillReplica) {
+    throw new HydraError({
+      message: `wal_level is still ${restarted.wal_level} after restarting ${FORMULA}`,
+      code: 'POSTGRES_UNAVAILABLE',
+      help: ['Fix: wal_level=logical is set; restart your Postgres to apply it'],
+    })
+  }
+
+  return ready({ found: requireReady({ found: restarted }) })
 }

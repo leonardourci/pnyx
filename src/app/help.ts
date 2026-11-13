@@ -28,7 +28,7 @@ commands:
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   apply --file <changes.json|-> [--check]    Validate and atomically apply local task changes
   push --key <key> --file <card.json|->      Create or update the card with this key
-  page [--card <id|key>] [--hidden] [--full] Summarize the page view; --full prints the whole projection
+  page [--card <id|key>] [--hidden] [--full] Summarize the server's page projection; --full prints all of it
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
   move <id> <column> [--before <id>]         Put a card in a column, above another card or at its end
@@ -62,8 +62,8 @@ flags:
 
 const COMMAND_HELP: Record<string, string> = {
   page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--full] [--hydra <id>]
-Summarize what a page receives: shown cards per column, opened cards, the owner's latest Hydra message and unavailable refs.
---full prints the whole projection, without the event-ID index, steering history, source captures, context notes or Hydra message history.
+Summarize the server's page projection of the Hydra: shown cards per column, opened cards, the owner's latest Hydra message and unavailable refs.
+--full prints the whole page projection, without the event-ID index, steering history, source captures, context notes or Hydra message history.
 Repeat --card for opened cards.
 --hidden includes hidden and automatic cards.
 On a page connection, this also updates that tab's interests.
@@ -415,20 +415,23 @@ Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup check [--hydra <id>]
-pnyx-axi setup postgres [--check] [--allow-custom-home]
+pnyx-axi setup postgres [--check | --url <url>] [--allow-custom-home]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (Postgres, local config, logins, hooks, skills, quota-axi, the login
 service, project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
-setup postgres starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and creates
-this home's database (pnyx for ~/.pnyx). Host, port and user come from PGHOST, PGPORT and PGUSER, unless the
-postgresUrl setting names the Postgres; then setup postgres only checks it and starts or changes nothing.
+setup postgres on macOS starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and
+creates this home's database (pnyx for ~/.pnyx); elsewhere it only checks. Host, port and user come from PGHOST,
+PGPORT and PGUSER, unless the postgresUrl setting names the Postgres; then setup postgres only checks it and starts
+or changes nothing.
 --check writes no Hydra data (it creates this home's empty database if missing): it reports what is missing and
 imports each Hydra still kept in events.jsonl in a transaction it rolls back.
+--url saves the postgresUrl setting without the server, which cannot start while that URL is wrong; --url '' clears
+it. The server applies it on its next start.
 setup installs the server's login service.
-setup, setup hooks, setup skills and setup postgres without --check refuse a non-default PNYX_HOME unless
---allow-custom-home is given.
+setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given, and so does
+setup postgres before it starts or changes Homebrew's service.
 setup refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.

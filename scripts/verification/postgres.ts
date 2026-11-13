@@ -1,10 +1,12 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
 
 const USER = 'pnyx'
 const MIN_VERSION = 15
+// The launcher deletes the cluster's folder on exit, so a failure carries the end of its log.
+const LOG_TAIL_LINES = 20
 // Homebrew's versioned kegs on Apple silicon and Intel, then the Ubuntu packages GitHub's runners carry.
 const ROOTS = [
   {
@@ -49,7 +51,7 @@ function binaries(): string {
     ) => b.version - a.version)[0]
 
   if (!found) {
-    throw new Error(`Tests need PostgreSQL ${MIN_VERSION} or newer: run \`brew install postgresql@17\``)
+    throw new Error(`Tests need PostgreSQL ${MIN_VERSION} or newer: run \`brew install postgresql@17\` on macOS or \`sudo apt-get install postgresql\` on Ubuntu`)
   }
 
   return found.bin
@@ -112,9 +114,21 @@ export async function startPostgres({ dir }: { dir: string }): Promise<{
       },
     )
 
-    if (result.status !== 0) {
-      throw new Error(`${command} failed: ${result.stderr || result.error?.message}; see ${logFile}`)
+    if (result.status === 0) {
+      return
     }
+
+    const log = existsSync(logFile)
+      ? readFileSync(
+        logFile,
+        'utf8',
+      ).trimEnd()
+        .split('\n')
+        .slice(-LOG_TAIL_LINES)
+        .join('\n')
+      : 'none written'
+
+    throw new Error(`${command} failed: ${result.stderr || result.error?.message}\nPostgres log:\n${log}`)
   }
 
   run({

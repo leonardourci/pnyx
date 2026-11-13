@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { constants } from 'node:os'
 import { join, resolve } from 'node:path'
 import { discover, isFlow } from './discover.ts'
 import { holdRunLock } from './run-lock.ts'
@@ -13,6 +14,13 @@ const FLOW_TIMEOUT_MS = 5 * MINUTE_MS
 const INSTALLED_FLOW = 'e2e/own-install.test.ts'
 // A lane past this is stuck outside any one test; the runner then names the file it interrupted.
 const LANE_TIMEOUT_MS = 60 * MINUTE_MS
+// A process a signal ended exits with 128 plus the signal's number, as a shell reports it.
+const SIGNAL_EXIT_BASE = 128
+const STOP_SIGNALS = [
+  'SIGINT',
+  'SIGTERM',
+  'SIGHUP',
+] as const
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
   'web/src/hydra/action-label.test.ts',
@@ -97,20 +105,69 @@ const lanes = [
 ]
 const isolated = createTestEnvironment()
 let postgres: Awaited<ReturnType<typeof startPostgres>> | undefined
+let runningLane: ChildProcess | undefined
+let stopSignal: NodeJS.Signals | undefined
 
-// A killed launcher still stops its cluster.
-for (const signal of [
-  'SIGINT',
-  'SIGTERM',
-] as const) {
-  process.once(
+// A stopped launcher ends its lane and runs no further ones, so the cleanup below still stops its cluster.
+for (const signal of STOP_SIGNALS) {
+  process.on(
     signal,
     () => {
-      postgres?.stop()
-      isolated.close()
-      process.exit(1)
+      // The test runner stops its test files on SIGINT and SIGTERM only.
+      const forwarded = signal === 'SIGHUP' ? 'SIGTERM' : signal
+      // A second signal means the lane ignored the first.
+      const laneSignal = stopSignal ? 'SIGKILL' : forwarded
+      stopSignal = signal
+      process.exitCode = SIGNAL_EXIT_BASE + constants.signals[signal]
+      runningLane?.kill(laneSignal)
     },
   )
+}
+
+async function runLane({
+  args,
+  env,
+}: {
+  args: string[]
+  env: NodeJS.ProcessEnv
+}): Promise<{
+  status: number | null
+  signal: NodeJS.Signals | null
+}> {
+  const child = spawn(
+    process.execPath,
+    args,
+    {
+      env,
+      stdio: 'inherit',
+      timeout: LANE_TIMEOUT_MS,
+    },
+  )
+  runningLane = child
+
+  try {
+    return await new Promise((
+      resolve,
+      reject,
+    ) => {
+      child.once(
+        'error',
+        reject,
+      )
+      child.once(
+        'exit',
+        (
+          status,
+          signal,
+        ) => resolve({
+          status,
+          signal,
+        }),
+      )
+    })
+  } finally {
+    runningLane = undefined
+  }
 }
 
 try {
@@ -122,6 +179,10 @@ try {
   })
 
   for (const lane of lanes) {
+    if (stopSignal) {
+      break
+    }
+
     if (!lane.files.length) {
       continue
     }
@@ -147,41 +208,44 @@ try {
       ]
     }
 
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--import',
-        new URL(
-          './test-preload.ts',
-          import.meta.url,
-        ).href,
-        '--conditions=source',
-        '--test',
-        `--test-concurrency=${lane.concurrency}`,
-        ...lane.nodeArgs,
-        // A test past its lane's cap fails by name, and a handle it left open cannot keep its file
-        // running.
-        `--test-timeout=${lane.testTimeout}`,
-        '--test-force-exit',
-        ...options,
-        ...testFiles,
-      ],
-      {
+    try {
+      const result = await runLane({
         env,
-        stdio: 'inherit',
-        timeout: LANE_TIMEOUT_MS,
-      },
-    )
+        args: [
+          '--import',
+          new URL(
+            './test-preload.ts',
+            import.meta.url,
+          ).href,
+          '--conditions=source',
+          '--test',
+          `--test-concurrency=${lane.concurrency}`,
+          ...lane.nodeArgs,
+          // A test past its lane's cap fails by name, and a handle it left open cannot keep its file
+          // running.
+          `--test-timeout=${lane.testTimeout}`,
+          '--test-force-exit',
+          ...options,
+          ...testFiles,
+        ],
+      })
 
-    if (result.error) {
-      console.error(result.error)
-    }
+      if (result.signal) {
+        console.error(`tests: ${lane.name} ended by ${result.signal}`)
+      }
 
-    if (result.status !== 0) {
-      process.exitCode = result.status || 1
+      if (result.status !== 0 && !stopSignal) {
+        process.exitCode = result.status || 1
+      }
+    } catch (error) {
+      console.error(error)
+      process.exitCode = 1
     }
   }
 } finally {
-  postgres?.stop()
-  isolated.close()
+  try {
+    postgres?.stop()
+  } finally {
+    isolated.close()
+  }
 }

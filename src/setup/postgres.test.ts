@@ -4,21 +4,72 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { beforeEach, test } from 'node:test'
-import { HydraError } from '#store/errors.ts'
-import { homeDatabase } from '#store/postgres.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { hydraExists } from '#app/store.ts'
 import { emptyHydra } from '#app/reducer.ts'
-import { saveSettings } from '#settings/store.ts'
+import type { Output } from '#app/cli-support.ts'
+import { readSettings, saveSettings } from '#settings/store.ts'
 import { STREAMS } from '#test-harness/streams.ts'
 import { setupCheck, setupCheckOutput } from './check.ts'
-import { setupPostgres } from './postgres.ts'
+import { setup } from './cli.ts'
 
-beforeEach(() => {
+const CHANGE_URL = 'save a corrected URL with `pnyx-axi setup postgres --url <url>`, or clear it with `pnyx-axi setup postgres --url \'\'`, then run `pnyx-axi restart`'
+
+const env = {
+  PATH: process.env.PATH,
+  PGPORT: process.env.PGPORT,
+  PGUSER: process.env.PGUSER,
+}
+
+const newHome = () => {
   process.env.PNYX_HOME = mkdtempSync(join(
     tmpdir(),
     'pnyx-postgres-',
   ))
+}
+
+beforeEach(() => {
+  newHome()
+  Object.assign(
+    process.env,
+    env,
+  )
+  onPlatform({ platform: realPlatform })
+  process.exitCode = 0
+})
+
+const run = async ({ args }: { args: string[] }) => await setup(args) as Output
+
+const realPlatform = process.platform
+
+// setup postgres starts Homebrew only on macOS; elsewhere it only checks.
+function onPlatform({ platform }: { platform: NodeJS.Platform }): void {
+  Object.defineProperty(
+    process,
+    'platform',
+    { value: platform },
+  )
+}
+
+async function closedPort(): Promise<number> {
+  const closed = createServer()
+  await new Promise<void>(resolve => closed.listen(
+    0,
+    '127.0.0.1',
+    resolve,
+  ))
+  const { port } = closed.address() as { port: number }
+  await new Promise(resolve => closed.close(resolve))
+
+  return port
+}
+
+const saveUrl = ({ url }: { url: string }) => saveSettings({
+  patch: { postgresUrl: url },
+  meta: {
+    at: new Date().toISOString(),
+    actor: 'cli',
+  },
 })
 
 const waitingLog = ({ dir }: { dir: string }) => {
@@ -76,57 +127,39 @@ function fakeBrew(): { calls: () => string } {
 test(
   'setup check and the digest name Postgres first when this home cannot reach it',
   async () => {
-    const closed = createServer()
-    await new Promise<void>(resolve => closed.listen(
-      0,
-      '127.0.0.1',
-      resolve,
-    ))
-    const { port } = closed.address() as { port: number }
-    await new Promise(resolve => closed.close(resolve))
-    const reachable = process.env.PGPORT
-    process.env.PGPORT = String(port)
+    process.env.PGPORT = String(await closedPort())
+    onPlatform({ platform: 'darwin' })
 
-    try {
-      const output = await setupCheckOutput({ hydraId: 'default' }) as {
-        missing: {
-          name: string
-          fix: string
-        }[]
-      }
-      assert.deepEqual(
-        output.missing.map(item => [
-          item.name,
-          item.fix,
-        ]),
-        [
-          [
-            'postgres',
-            'pnyx-axi setup postgres',
-          ],
-        ],
-      )
-      assert.equal(
-        process.exitCode,
-        1,
-      )
-      const digest = await setupCheck({
-        hydraId: 'default',
-        state: emptyHydra(),
-      })
-      assert.equal(
-        digest[0]?.name,
-        'postgres',
-      )
-    } finally {
-      if (reachable === undefined) {
-        delete process.env.PGPORT
-      } else {
-        process.env.PGPORT = reachable
-      }
-
-      process.exitCode = 0
+    const output = await setupCheckOutput({ hydraId: 'default' }) as {
+      missing: {
+        name: string
+        fix: string
+      }[]
     }
+    assert.deepEqual(
+      output.missing.map(item => [
+        item.name,
+        item.fix,
+      ]),
+      [
+        [
+          'postgres',
+          'pnyx-axi setup postgres',
+        ],
+      ],
+    )
+    assert.equal(
+      process.exitCode,
+      1,
+    )
+    const digest = await setupCheck({
+      hydraId: 'default',
+      state: emptyHydra(),
+    })
+    assert.equal(
+      digest[0]?.name,
+      'postgres',
+    )
   },
 )
 
@@ -159,9 +192,11 @@ test(
       '',
     )
 
-    const output = await setupPostgres({
-      check: true,
-      allowCustomHome: false,
+    const output = await run({
+      args: [
+        'postgres',
+        '--check',
+      ],
     })
 
     assert.deepEqual(
@@ -193,11 +228,13 @@ test(
     )
 
     await assert.rejects(
-      () => setupPostgres({
-        check: true,
-        allowCustomHome: false,
+      () => run({
+        args: [
+          'postgres',
+          '--check',
+        ],
       }),
-      (error: unknown) => error instanceof HydraError && error.code === 'LOG_CORRUPT',
+      { code: 'LOG_CORRUPT' },
     )
     assert.equal(
       hydraExists({ hydraId: 'broken' }),
@@ -207,79 +244,174 @@ test(
 )
 
 test(
-  'setup postgres leaves a ready Postgres alone, reports a refused login at once, and only checks a postgresUrl one',
+  'setup postgres leaves a ready Postgres alone, refuses to start Homebrew\'s for a custom home, and reports a refused login at once',
   async () => {
-    const path = process.env.PATH
-    const user = process.env.PGUSER
     const brew = fakeBrew()
+    onPlatform({ platform: 'darwin' })
 
-    try {
-      await assert.rejects(
-        () => setupPostgres({
-          check: false,
-          allowCustomHome: false,
-        }),
-        { code: 'CUSTOM_HOME_SETUP' },
-      )
-      const ready = await setupPostgres({
-        check: false,
-        allowCustomHome: true,
-      })
-      assert.equal(
-        ready.postgres,
+    const ready = await run({ args: ['postgres'] })
+    assert.equal(
+      ready.postgres,
+      'ready',
+      'a ready Postgres needs no change, so a custom home is not refused',
+    )
+
+    // A home keeps the connection it opened, so each Postgres below gets a home of its own.
+    newHome()
+    process.env.PGPORT = String(await closedPort())
+    await assert.rejects(
+      () => run({ args: ['postgres'] }),
+      { code: 'CUSTOM_HOME_SETUP' },
+    )
+    process.env.PGPORT = env.PGPORT
+
+    newHome()
+    process.env.PGUSER = 'pnyx_missing_role'
+    await assert.rejects(
+      () => run({
+        args: [
+          'postgres',
+          '--allow-custom-home',
+        ],
+      }),
+      {
+        code: 'POSTGRES_UNAVAILABLE',
+        suggestions: ['Fix: create the role PGUSER names (your login name when unset) on this Postgres, set PGUSER and PGPASSWORD to one that signs in, or save a postgresUrl with `pnyx-axi setup postgres --url <url>`'],
+      },
+    )
+    assert.equal(
+      brew.calls(),
+      '',
+    )
+  },
+)
+
+test(
+  'off macOS setup postgres only checks, and names what to start instead of itself',
+  async () => {
+    const brew = fakeBrew()
+    process.env.PGPORT = String(await closedPort())
+    onPlatform({ platform: 'linux' })
+
+    await assert.rejects(
+      () => run({ args: ['postgres'] }),
+      {
+        code: 'POSTGRES_UNAVAILABLE',
+        suggestions: ['Fix: start PostgreSQL 15 or newer with wal_level=logical where PGHOST and PGPORT point, then run `pnyx-axi setup check`'],
+      },
+    )
+    assert.equal(
+      brew.calls(),
+      '',
+    )
+  },
+)
+
+test(
+  'a postgresUrl Postgres is only checked, and one that cannot be reached is fixed or cleared with setup postgres --url',
+  async () => {
+    const brew = fakeBrew()
+    onPlatform({ platform: 'darwin' })
+    saveUrl({ url: `postgres://${env.PGUSER}:secret@${process.env.PGHOST}:${env.PGPORT}/pnyx_configured` })
+
+    const configured = await run({ args: ['postgres'] })
+    assert.deepEqual(
+      [
+        configured.postgres,
+        configured.database,
+      ],
+      [
         'ready',
-      )
+        'pnyx_configured',
+      ],
+    )
 
-      // The worker does not create a database postgresUrl names, so the URL names the one the first home made.
-      const named = homeDatabase()
+    // A home reads postgresUrl once, so each URL below gets a home of its own.
+    newHome()
+    saveUrl({ url: `postgres://pnyx_missing_role@${process.env.PGHOST}:${env.PGPORT}/pnyx_configured` })
+    await assert.rejects(
+      () => run({ args: ['postgres'] }),
+      { suggestions: [`Fix: correct the role or password in the postgresUrl setting: ${CHANGE_URL}`] },
+    )
 
-      // A running Postgres that refuses the role needs no start.
-      process.env.PNYX_HOME = mkdtempSync(join(
-        tmpdir(),
-        'pnyx-postgres-role-',
-      ))
-      process.env.PGUSER = 'pnyx_missing_role'
-      await assert.rejects(
-        () => setupPostgres({
-          check: false,
-          allowCustomHome: true,
-        }),
-        { code: 'POSTGRES_UNAVAILABLE' },
-      )
-      process.env.PGUSER = user
+    newHome()
+    saveUrl({ url: `postgres://${env.PGUSER}@127.0.0.1:${await closedPort()}/pnyx_configured` })
+    await assert.rejects(
+      () => run({ args: ['postgres'] }),
+      { suggestions: [`Fix: start the Postgres the postgresUrl setting names, with wal_level=logical, or ${CHANGE_URL}`] },
+    )
+    assert.equal(
+      brew.calls(),
+      '',
+    )
 
-      process.env.PNYX_HOME = mkdtempSync(join(
-        tmpdir(),
-        'pnyx-postgres-url-',
-      ))
-      saveSettings({
-        patch: { postgresUrl: `postgres://${process.env.PGUSER}:secret@${process.env.PGHOST}:${process.env.PGPORT}/${named}` },
-        meta: {
-          at: new Date().toISOString(),
-          actor: 'cli',
-        },
-      })
-      const configured = await setupPostgres({
-        check: false,
-        allowCustomHome: false,
-      })
-      assert.deepEqual(
-        [
-          configured.postgres,
-          configured.database,
+    await assert.rejects(
+      () => run({
+        args: [
+          'postgres',
+          '--url',
+          'https://127.0.0.1/pnyx_configured',
         ],
-        [
-          'ready',
-          named,
-        ],
-      )
-      assert.equal(
-        brew.calls(),
+      }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    const corrected = await run({
+      args: [
+        'postgres',
+        '--url',
+        'postgres://pnyx:secret@127.0.0.1:1/pnyx_configured',
+      ],
+    })
+    assert.equal(
+      corrected.postgresUrl,
+      'postgres://pnyx:***@127.0.0.1:1/pnyx_configured',
+    )
+    const cleared = await run({
+      args: [
+        'postgres',
+        '--url',
         '',
-      )
-    } finally {
-      process.env.PATH = path
-      process.env.PGUSER = user
-    }
+      ],
+    })
+    assert.deepEqual(
+      [
+        cleared.postgresUrl,
+        readSettings().settings.postgresUrl,
+      ],
+      [
+        'none: this home\'s own database through PGHOST, PGPORT and PGUSER',
+        '',
+      ],
+    )
+  },
+)
+
+test(
+  '--check and --url belong to setup postgres alone',
+  () => {
+    assert.throws(
+      () => setup([
+        'hooks',
+        '--check',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => setup([
+        'check',
+        '--url',
+        '',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => setup([
+        'postgres',
+        '--check',
+        '--url',
+        '',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
   },
 )

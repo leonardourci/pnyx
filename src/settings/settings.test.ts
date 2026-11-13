@@ -1017,6 +1017,15 @@ test(
       false,
       'the row the page reads never holds the database URL',
     )
+    const queryPassword = await commands.settings([
+      'set',
+      '--json',
+      '{"postgresUrl":"postgres://127.0.0.1:1/elsewhere?sslmode=disable&password=secret"}',
+    ]) as { settings: Settings }
+    assert.equal(
+      queryPassword.settings.postgresUrl,
+      'postgres://127.0.0.1:1/elsewhere?sslmode=disable&password=***',
+    )
     await commands.settings([
       'set',
       '--json',

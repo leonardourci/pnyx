@@ -390,18 +390,32 @@ export function pageSettings({ settings }: { settings: Settings }): PageSettings
   return shown as PageSettings
 }
 
+const MASK = '***'
+// libpq also reads a password from the URL's query, as in postgres://host/db?password=secret.
+const PASSWORD_PARAM = 'password'
+
 const maskedUrl = ({ url }: { url: string }) => {
   if (!URL.canParse(url)) {
     return url
   }
 
   const parsed = new URL(url)
+  const queryPassword = parsed.searchParams.has(PASSWORD_PARAM)
 
-  if (!parsed.password) {
+  if (!parsed.password && !queryPassword) {
     return url
   }
 
-  parsed.password = '***'
+  if (parsed.password) {
+    parsed.password = MASK
+  }
+
+  if (queryPassword) {
+    parsed.searchParams.set(
+      PASSWORD_PARAM,
+      MASK,
+    )
+  }
 
   return parsed.toString()
 }

@@ -111,7 +111,7 @@ export function pageOutput({
     ownerMessage: page.hydraOwnerMessage?.id ?? 'none: the owner has not messaged Hydra',
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
-      `Run \`pnyx-axi page --full --hydra ${hydraId}\` for the whole projection a page receives`,
+      `Run \`pnyx-axi page --full --hydra ${hydraId}\` for the server's whole page projection`,
       `Run \`pnyx-axi card <id> --hydra ${hydraId}\` or \`pnyx-axi task list --hydra ${hydraId}\` to read tasks`,
     ],
   }

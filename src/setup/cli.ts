@@ -20,6 +20,7 @@ export const setup = guard({
       home: { type: 'string' },
       port: { type: 'string' },
       check: { type: 'boolean' },
+      url: { type: 'string' },
     }
     const {
       values,
@@ -31,6 +32,27 @@ export const setup = guard({
       positionals: 1,
     })
 
+    const postgresOnly = [
+      'check',
+      'url',
+    ].filter(flag => values[flag] !== undefined)
+
+    if (postgresOnly.length && positionals[0] !== 'postgres') {
+      throw new AxiError(
+        `--${postgresOnly[0]} applies only to setup postgres`,
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi setup check` to list what is missing'],
+      )
+    }
+
+    if (postgresOnly.length > 1) {
+      throw new AxiError(
+        '--check and --url run separately',
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi setup postgres --url <url>`, then `pnyx-axi setup postgres --check`'],
+      )
+    }
+
     if (positionals[0] === 'check') {
       return setupCheckOutput({ hydraId })
     }
@@ -39,6 +61,8 @@ export const setup = guard({
       return setupPostgres({
         check: !!values.check,
         allowCustomHome: !!values['allow-custom-home'],
+        url: typeof values.url === 'string' ? values.url : undefined,
+        meta: meta({ values }),
       })
     }
 
