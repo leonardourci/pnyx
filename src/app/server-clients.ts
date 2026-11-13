@@ -20,6 +20,12 @@ import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
 
+// A tab that opened no cards and did not ask for hidden ones.
+const NO_INTEREST: PageInterest = {
+  cards: [],
+  hidden: false,
+}
+
 const shownTraces = ({
   view,
   card,
@@ -75,10 +81,7 @@ export function createServerClients({
 }) {
   const clients = new Set<HydraClient>()
   const interests = new WeakMap<HydraClient, PageInterest>()
-  const interestFor = ({ ws }: { ws: HydraClient }) => interests.get(ws) ?? {
-    cards: [],
-    hidden: false,
-  }
+  const interestFor = ({ ws }: { ws: HydraClient }) => interests.get(ws) ?? NO_INTEREST
   const hydraSubscribers = new WeakSet<HydraClient>()
   const liveCardIds = () => new Set(Object.values(state().cards).filter(card => liveTask({ card }))
     .map(card => card.id))
@@ -90,10 +93,7 @@ export function createServerClients({
 
     return card !== undefined && pageShows({
       card,
-      interest: {
-        cards: [],
-        hidden: false,
-      },
+      interest: NO_INTEREST,
     })
   }
 
