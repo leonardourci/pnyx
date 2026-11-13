@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cpSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commands } from '#app/cli.ts'
@@ -27,7 +27,7 @@ interface LookupOutput {
 }
 
 test(
-  'CLI resolves native message references and keeps owner records after the transcript is gone',
+  'CLI resolves native message references, keeps owner records and Hydra\'s earlier sessions after a replacement, and a task reads only its current session',
   async t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -517,10 +517,6 @@ test(
         },
       }),
     })
-    renameSync(
-      originalPath,
-      `${originalPath}.unavailable`,
-    )
 
     for (const reference of references) {
       attach({
@@ -559,10 +555,28 @@ test(
         owner.messages[0].text,
         reference.owner.text,
       )
-      await assert.rejects(
-        async () => lookup({ id: reference.id }),
-        /No recorded message matches/,
-      )
+
+      if (reference.card === HYDRA_CARD) {
+        assert.equal(
+          (await lookup({ id: reference.id })).messages[0].text,
+          reference.text,
+        )
+        assert.match(
+          String((await commands.hydra([
+            'history',
+            '--since',
+            'origin',
+            '--hydra',
+            'fixture',
+          ])).text),
+          /Keep the sample input unchanged/,
+        )
+      } else {
+        await assert.rejects(
+          async () => lookup({ id: reference.id }),
+          /No recorded message matches/,
+        )
+      }
     }
   },
 )
