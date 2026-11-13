@@ -291,7 +291,7 @@ test(
 )
 
 test(
-  'a hosted worker that finishes a turn archives its transcript messages in the log',
+  'a hosted worker that finishes a turn leaves its transcript out of the log',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'archive' })
@@ -317,22 +317,14 @@ test(
       ],
     })
     await s.agent({ cwd: folder })
-    const task = s.task({ key: 'archive' })
-    const archived = () => s.events().filter(event => event.type === 'chat.message'
-      && event.cardId === task.id)
-    const messages = await until({
-      what: 'the finished turn to be archived',
-      check: () => {
-        const found = archived()
-
-        return s.task({ key: 'archive' }).sessionActivity === 'finished' && found.length ? found : undefined
-      },
+    await until({
+      what: 'the worker turn to finish',
+      check: () => s.task({ key: 'archive' }).sessionActivity === 'finished',
     })
-    assert.ok(messages.some(event => event.type === 'chat.message' && event.data.text.includes('quillwort')))
-    assert.equal(
-      new Set(messages.map(event => event.type === 'chat.message' && event.data.nativeId)).size,
-      messages.length,
-      'each transcript line is archived once',
+    assert.deepEqual(
+      s.events().filter(event => event.type === 'chat.message'),
+      [],
+      'no transcript message is copied into the log',
     )
   },
 )
