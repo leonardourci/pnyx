@@ -175,12 +175,16 @@ export async function openPage({
   port,
   hydraId,
   page,
+  rawPage,
 }: {
   port: number
   hydraId: string
   page?: string[]
+  // The page parameter exactly as sent, such as one that is not JSON.
+  rawPage?: string
 }) {
-  const opened = page ? `&page=${encodeURIComponent(JSON.stringify(page))}` : ''
+  const pageParameter = rawPage ?? (page && JSON.stringify(page))
+  const opened = pageParameter === undefined ? '' : `&page=${encodeURIComponent(pageParameter)}`
   const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}${opened}`)
   let state: HydraState | undefined
   let snapshots = 0
