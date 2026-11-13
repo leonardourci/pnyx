@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { HydraEvent } from './model.ts'
+import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra, replayOwned } from './reducer.ts'
 import { applyPageUpdate, pageEvent, pageState } from './page-state.ts'
 import { pageInterest } from './page-cli.ts'
@@ -702,6 +702,127 @@ test(
     assert.deepEqual(
       resumedLeaving.movedOut,
       leaving.movedOut,
+    )
+  },
+)
+
+test(
+  'the page holds the owner’s latest Hydra message instead of the message history, and follows new ones',
+  () => {
+    const message = ({
+      seq,
+      actor,
+      text,
+      task,
+    }: {
+      seq: number
+      actor: string
+      text: string
+      task?: string
+    }): HydraEvent => ({
+      v: 1,
+      id: `message-${seq}`,
+      seq,
+      at: '2026-11-12T00:00:00Z',
+      actor,
+      cardId: '$hydra',
+      type: 'hydra.message',
+      data: {
+        action: 'send',
+        text,
+        hydra: 'default',
+        task,
+      },
+    })
+    const state = emptyHydra()
+    replayOwned({
+      state,
+      events: [
+        message({
+          seq: 1,
+          actor: 'web',
+          text: 'Explain the choice',
+          task: 'task',
+        }),
+        message({
+          seq: 2,
+          actor: 'hydra',
+          text: 'Hydra prose',
+        }),
+      ],
+    })
+    const page: HydraState = {
+      ...structuredClone(pageState({
+        state,
+        interest: {
+          cards: [],
+          hidden: false,
+        },
+      })),
+      eventIds: {},
+    }
+    assert.equal(
+      'hydraMessages' in page,
+      false,
+    )
+    assert.deepEqual(
+      page.hydraOwnerMessage,
+      {
+        id: 'message-1',
+        task: 'task',
+        text: 'Explain the choice',
+      },
+    )
+
+    for (const [
+      seq,
+      actor,
+      text,
+    ] of [
+        [
+          3,
+          'hydra',
+          'More Hydra prose',
+        ],
+        [
+          4,
+          'cli',
+          'How is everything else going?',
+        ],
+      ] as const) {
+      const event = message({
+        seq,
+        actor,
+        text,
+      })
+      replayOwned({
+        state,
+        events: [event],
+      })
+      applyPageUpdate({
+        state: page,
+        update: pageEvent({
+          event,
+          state,
+          interest: {
+            cards: [],
+            hidden: false,
+          },
+        }),
+      })
+      assert.equal(
+        page.hydraMessages,
+        undefined,
+      )
+    }
+
+    assert.deepEqual(
+      page.hydraOwnerMessage,
+      {
+        id: 'message-4',
+        task: undefined,
+        text: 'How is everything else going?',
+      },
     )
   },
 )
