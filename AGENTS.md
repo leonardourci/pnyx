@@ -6,7 +6,7 @@ Vocabulary: Pnyx is the app, a **Hydra** holds its tasks (always say Hydra, neve
 
 ## Build and test
 
-Node 22.13 or newer (for the built-in `node:sqlite`) and pnpm (the version is pinned in `package.json`).
+Node 22.13 or newer (for the built-in `node:sqlite`), pnpm (the version is pinned in `package.json`) and, for the tests, PostgreSQL 15 or newer (`brew install postgresql@17`).
 
 ```sh
 pnpm install

@@ -4,6 +4,7 @@ import { discover, isFlow } from './discover.ts'
 import { holdRunLock } from './run-lock.ts'
 import { createTestEnvironment } from './test-environment.ts'
 import { installedFixture } from './installed-fixture.ts'
+import { startPostgres } from './postgres.ts'
 
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
@@ -95,6 +96,12 @@ const lanes = [
   },
 ]
 const isolated = createTestEnvironment()
+const postgres = await startPostgres({
+  dir: join(
+    isolated.env.TMPDIR!,
+    'postgres',
+  ),
+})
 
 try {
   for (const lane of lanes) {
@@ -104,7 +111,10 @@ try {
 
     console.log(`tests: ${lane.name}, ${lane.files.length} files, concurrency ${lane.concurrency}`)
     let testFiles = lane.files
-    const env = { ...isolated.env }
+    const env: NodeJS.ProcessEnv = {
+      ...isolated.env,
+      ...postgres.env,
+    }
 
     if (lane.name === 'installed flows') {
       const install = installedFixture({
@@ -155,5 +165,6 @@ try {
     }
   }
 } finally {
+  postgres.stop()
   isolated.close()
 }

@@ -6,7 +6,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the issue, review and merge proces
 
 ## Build and test
 
-Use Node 22.13 or newer and the pnpm version pinned in `package.json`.
+Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`); the test launcher starts its own throwaway cluster on a random port and never uses a running one.
 
 ```sh
 pnpm install
