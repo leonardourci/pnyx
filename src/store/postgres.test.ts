@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import pg from 'pg'
 import { HydraError } from './errors.ts'
 import { homeDatabase, query } from './postgres.ts'
 
@@ -191,5 +192,29 @@ process.stdin.on('end', () => client.end())`,
         resolve,
       ))
     }
+  },
+)
+
+test(
+  'a database another build\'s schema made is refused by name instead of failing its writes',
+  async () => {
+    const database = `other_schema_${Date.now()}`
+    const admin = new pg.Client({ database: 'postgres' })
+    await admin.connect()
+    await admin.query(`create database ${database}`)
+    await admin.end()
+    const other = new pg.Client({ database })
+    await other.connect()
+    await other.query('create table hydras (id text primary key)')
+    await other.end()
+
+    assert.throws(
+      () => query({
+        url: `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`,
+        statements: [{ text: 'select 1' }],
+      }),
+      (error: unknown) => error instanceof HydraError
+        && error.message.includes(`database ${database} has another Pnyx build's schema`),
+    )
   },
 )

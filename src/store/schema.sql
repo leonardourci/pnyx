@@ -209,3 +209,9 @@ create table sessions (
   data json not null,
   primary key (hydra_id, id)
 );
+
+-- The digest of this file as it created the database, so a build with another schema refuses the database instead of
+-- failing its writes.
+create table schema_version (
+  digest text primary key
+);

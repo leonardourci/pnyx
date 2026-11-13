@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
@@ -9,6 +10,8 @@ const MISSING_DATABASE = '3D000'
 const SCHEMA_LOCK = 'select pg_advisory_lock(hashtext(\'pnyx schema\'))'
 const SCHEMA_UNLOCK = 'select pg_advisory_unlock(hashtext(\'pnyx schema\'))'
 const DUPLICATE_DATABASE = '42P04'
+// Not a Postgres code: a database whose schema this build did not make.
+const SCHEMA_MISMATCH = 'PNYX_SCHEMA'
 // Postgres cancels a statement, or its wait for a lock, after these, so a lock another session holds or a slow
 // statement answers the server with an error instead of freezing it for its whole wait.
 const STATEMENT_TIMEOUT_MS = 10_000
@@ -51,6 +54,33 @@ function adminConfig(): pg.ClientConfig {
     ...limits,
     connectionString: url.href,
   }
+}
+
+const SCHEMA = readFileSync(
+  new URL(
+    './schema.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const SCHEMA_DIGEST = createHash('sha256').update(SCHEMA)
+  .digest('hex')
+
+// A database another build's schema made would fail writes this build's statements make, so it is refused by name.
+async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
+  const versioned = await client.query<{ table: string | null }>('select to_regclass(\'public.schema_version\') as table')
+  const digests = versioned.rows[0]?.table
+    ? (await client.query<{ digest: string }>('select digest from schema_version')).rows
+    : []
+
+  if (digests.some(row => row.digest === SCHEMA_DIGEST)) {
+    return
+  }
+
+  throw Object.assign(
+    new Error(`database ${config.database} has another Pnyx build's schema; this build cannot use it. A database made before the first release can be dropped (\`dropdb ${config.database}\`), and the server imports every Hydra's events.jsonl again`),
+    { code: SCHEMA_MISMATCH },
+  )
 }
 
 // A home's database appears on its first use, with the folded migration applied once.
@@ -103,13 +133,13 @@ async function connect(): Promise<pg.Client> {
     const { rows } = await client.query<{ table: string | null }>('select to_regclass(\'public.hydras\') as table')
 
     if (!rows[0]?.table) {
-      await client.query(readFileSync(
-        new URL(
-          './schema.sql',
-          import.meta.url,
-        ),
-        'utf8',
-      ))
+      await client.query(SCHEMA)
+      await client.query(
+        'insert into schema_version (digest) values ($1)',
+        [SCHEMA_DIGEST],
+      )
+    } else {
+      await requireSchema({ client })
     }
   } finally {
     await client.query(SCHEMA_UNLOCK)
