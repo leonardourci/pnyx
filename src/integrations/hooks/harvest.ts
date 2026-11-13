@@ -5,9 +5,7 @@ import { decideNote, noteId } from '#tasks/notes.ts'
 import { decidePush } from '#tasks/push.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
-import { withWriter, type Writer } from '#app/writer.ts'
-import { upgradeUnderway } from '#upgrade/queue.ts'
-import { setImmediate } from 'node:timers/promises'
+import type { Writer } from '#app/writer.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
 import { codexThreadTitle } from '#workers/codex.ts'
 import type { FoundSettings } from '#workers/provider.ts'
@@ -348,41 +346,4 @@ export function harvestTranscripts({
   }
 
   return appended
-}
-
-// ponytail: the Oracle's index sync still calls this; the branch removing Oracle transcript indexing deletes that call and this stub.
-// eslint-disable-next-line no-empty-pattern -- the stub keeps the caller's signature until that call goes
-export function backfillConversations({}: {
-  writer: Writer
-  at: string
-}) {
-  return { progressed: false }
-}
-
-// Re-records Hydra conversations harvested by an older version, one batch per writer turn, yielding
-// between batches so a long history never holds the server.
-export async function backfillHydraConversations({
-  hydraId,
-  closed,
-}: {
-  hydraId: string
-  closed(): boolean
-}) {
-  await setImmediate()
-
-  while (!closed() && !upgradeUnderway()) {
-    const batch = withWriter({
-      hydraId,
-      fn: ({ writer }) => backfillConversations({
-        writer,
-        at: new Date().toISOString(),
-      }),
-    })
-
-    if (!batch.progressed) {
-      return
-    }
-
-    await setImmediate()
-  }
 }
