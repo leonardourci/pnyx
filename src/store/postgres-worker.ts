@@ -19,6 +19,13 @@ const {
 // A home's database appears on its first use, with the folded migration applied once.
 async function connect(): Promise<pg.Client> {
   const client = new pg.Client(config)
+  // A dropped connection, as when Postgres restarts, is replaced on the next request.
+  client.on(
+    'error',
+    () => {
+      ready = undefined
+    },
+  )
 
   try {
     await client.connect()
@@ -61,9 +68,20 @@ async function connect(): Promise<pg.Client> {
   return client
 }
 
-const ready = connect()
-// The main thread sees a failed connection on its next request, so the rejection is handled there.
-ready.catch(() => undefined)
+let ready: Promise<pg.Client> | undefined
+
+// A connection that failed to open is tried again on the next request, so Pnyx recovers once Postgres is up.
+async function connection(): Promise<pg.Client> {
+  const opening = ready ?? connect()
+  ready = opening
+
+  try {
+    return await opening
+  } catch (error) {
+    ready = undefined
+    throw error
+  }
+}
 
 async function execute({
   client,
@@ -89,7 +107,7 @@ async function execute({
 
 async function run({ request }: { request: Request }): Promise<Reply> {
   try {
-    const client = await ready
+    const client = await connection()
 
     if (!request.transaction) {
       const results = []
