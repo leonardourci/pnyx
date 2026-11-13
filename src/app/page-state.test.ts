@@ -4,6 +4,7 @@ import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra, replayOwned } from './reducer.ts'
 import { applyPageUpdate, pageCard, pageEvent, pageState } from './page-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { summarize } from './cli-support.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
 
@@ -1096,6 +1097,39 @@ test(
         task: undefined,
         text: 'How is everything else going?',
       },
+    )
+
+    // A conversation copy an older Pnyx logged reaches no tab and is listed without its text.
+    const copy: HydraEvent = {
+      v: 1,
+      id: 'copy-7',
+      seq: 7,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'harvest',
+      cardId: HYDRA_CARD,
+      type: 'chat.message',
+      data: {
+        session: 'claude-code:older',
+        nativeId: 'record:7',
+        role: 'assistant',
+        text: 'A copied reply',
+      },
+    }
+    replayOwned({
+      state,
+      events: [copy],
+    })
+    assert.equal(
+      pageEvent({
+        event: copy,
+        state,
+        interest,
+      }).event,
+      undefined,
+    )
+    assert.equal(
+      summarize({ event: copy }),
+      'Conversation copy from an older Pnyx',
     )
   },
 )

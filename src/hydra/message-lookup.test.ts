@@ -234,48 +234,50 @@ test(
       id: 'event-10',
       at: '2026-01-01T00:00:09.000Z',
     }
-    // A reply written after the newest event, before or after the next one, stays outside the cursor's snapshot.
-    const grown = [
-      {
-        events: lookupEvents,
-        snapshot: 9,
-      },
-      {
+    // A reply written after the newest event takes the next seq: a fresh read leaves it out
+    // until an event follows it, and a cursor issued before it never returns it.
+    const entries = [
+      ...lookupEntries,
+      laterReply,
+    ]
+    assert.equal(
+      read({ entries }).messages.some(message => message.id === laterReply.reference),
+      false,
+    )
+    assert.equal(
+      read({
+        entries,
         events: [
           ...lookupEvents,
           later,
         ],
         snapshot: 10,
-      },
-    ].map(({
-      events,
-      snapshot,
-    }) => read({
-      events,
-      entries: [
-        ...lookupEntries,
-        laterReply,
+      }).messages.some(message => message.id === laterReply.reference),
+      true,
+    )
+    const continued = read({
+      events: [
+        ...lookupEvents,
+        later,
       ],
-      snapshot,
+      entries,
+      snapshot: 10,
       selection: { cursor: newer.newer },
-    }))
+    })
     assert.deepEqual(
-      grown.map(page => [
-        sequences({ page }),
-        page.snapshot,
-        page.newer,
-      ]),
-      Array.from(
-        { length: 2 },
-        () => [
-          [
-            8,
-            9,
-          ],
+      [
+        sequences({ page: continued }),
+        continued.snapshot,
+        continued.newer,
+      ],
+      [
+        [
+          8,
           9,
-          undefined,
         ],
-      ),
+        9,
+        undefined,
+      ],
     )
 
     assert.deepEqual(

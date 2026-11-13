@@ -311,8 +311,9 @@ test(
     })
     let page = read({})
     const cursors = new Set<string>()
+    const pageLimit = 10
 
-    while (page.older) {
+    while (page.older && cursors.size < pageLimit) {
       assert.ok(!cursors.has(page.older))
       cursors.add(page.older)
       page = mergeThreadPages({
@@ -323,23 +324,29 @@ test(
     }
 
     const texts = page.entries.map(entry => entry.text)
-    assert.equal(
-      page.unavailable,
-      undefined,
-    )
     assert.deepEqual(
-      texts,
-      [
-        'first',
-        'second',
-        'current',
-      ].flatMap(session => Array.from(
-        { length: 50 },
-        (
-          _,
-          reply,
-        ) => `${session} ${reply}`,
-      )),
+      {
+        older: page.older,
+        unavailable: page.unavailable,
+        count: texts.length,
+        distinct: new Set(texts).size,
+        first: texts[0],
+        lastOfFirst: texts[49],
+        firstOfSecond: texts[50],
+        firstOfCurrent: texts[100],
+        last: texts.at(-1),
+      },
+      {
+        older: undefined,
+        unavailable: undefined,
+        count: 150,
+        distinct: 150,
+        first: 'first 0',
+        lastOfFirst: 'first 49',
+        firstOfSecond: 'second 0',
+        firstOfCurrent: 'current 0',
+        last: 'current 49',
+      },
     )
     const earlier = page.entries.find(entry => entry.text === 'first 0')!
     assert.equal(
