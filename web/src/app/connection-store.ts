@@ -592,7 +592,8 @@ export function createHydraConnection() {
         scope: scope.id,
         subscription: scope.subscription,
         ...(scope.hasSnapshot ? { after: String(scope.resource.snapshot().confirmed.seq) } : {}),
-        ...(scope.page ? { page: scope.page } : {}),
+        // JSON drops an undefined page, so a scope that opened no cards sends none.
+        page: scope.page,
       },
     })
   }
