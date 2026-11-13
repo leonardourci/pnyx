@@ -1,9 +1,14 @@
 import type { HydraState } from './model.ts'
 import { HydraError } from '#store/errors.ts'
-import { query } from '#store/postgres.ts'
+import { homeScoped, query } from '#store/postgres.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
 import { emptyHydra } from './reducer.ts'
 import { emptySaved, loadStatements, stateFromRows, type SavedRows } from './rows.ts'
+import { readLog } from './legacy-log.ts'
+import { importHydra } from './import.ts'
+import { log } from './diagnostics.ts'
+import { logPath } from '#store/storage.ts'
+import { existsSync } from 'node:fs'
 
 export interface HydraSnapshot {
   dir: string
@@ -23,7 +28,41 @@ export type Held = {
 const held = new Map<string, Held>()
 const loaded = new Map<string, Held>()
 
-export const heldHydra = ({ hydraId }: { hydraId: string }) => held.get(hydraId)
+export const heldHydra = ({ hydraId }: { hydraId: string }) => held.get(homeScoped({ hydraId }))
+
+const rowsOf = ({ hydraId }: { hydraId: string }) => stateFromRows({
+  hydraId,
+  results: query({ statements: loadStatements({ hydraId }) }),
+})
+
+// A Hydra still kept in its events.jsonl moves into Postgres the first time it is read, in one transaction; the file
+// stays as it was, as a backup.
+function importLegacy({
+  hydraId,
+  dir,
+}: {
+  hydraId: string
+  dir: string
+}): boolean {
+  const legacy = existsSync(logPath({ dir })) ? readLog({ dir }) : null
+
+  if (!legacy?.events.length) {
+    return false
+  }
+
+  importHydra({
+    hydraId,
+    events: legacy.events,
+    transactions: legacy.transactions,
+  })
+  log({
+    operation: 'hydra.import',
+    hydraId,
+    count: legacy.events.length,
+  })
+
+  return true
+}
 
 function readHydra({
   hydraId,
@@ -36,10 +75,14 @@ function readHydra({
     hydraId,
     migrate,
   })
-  const rows = stateFromRows({
+  let rows = rowsOf({ hydraId })
+
+  if (!rows && importLegacy({
     hydraId,
-    results: query({ statements: loadStatements({ hydraId }) }),
-  })
+    dir,
+  })) {
+    rows = rowsOf({ hydraId })
+  }
 
   return {
     dir,
@@ -64,22 +107,24 @@ export function holdHydra({
     }),
     changed,
   }
+  const key = homeScoped({ hydraId })
   held.set(
-    hydraId,
+    key,
     entry,
   )
 
   return () => {
-    if (held.get(hydraId) === entry) {
-      held.delete(hydraId)
+    if (held.get(key) === entry) {
+      held.delete(key)
     }
   }
 }
 
 // A write that failed after changing the state in memory reads the Hydra back from its committed rows.
 export function reloadHydra({ hydraId }: { hydraId: string }): void {
-  const live = held.get(hydraId)
-  loaded.delete(hydraId)
+  const key = homeScoped({ hydraId })
+  const live = held.get(key)
+  loaded.delete(key)
 
   if (!live) {
     return
@@ -101,13 +146,14 @@ export function writableHydra({
   hydraId: string
   migrate?: boolean
 }): Held {
-  const live = held.get(hydraId)
+  const key = homeScoped({ hydraId })
+  const live = held.get(key)
 
   if (live) {
     return live
   }
 
-  const known = loaded.get(hydraId)
+  const known = loaded.get(key)
   const [rows] = query({
     statements: [
       {
@@ -127,7 +173,7 @@ export function writableHydra({
     migrate,
   })
   loaded.set(
-    hydraId,
+    key,
     fresh,
   )
 
@@ -169,9 +215,12 @@ export function hydraExists({ hydraId }: { hydraId: string }): boolean {
   return Boolean(rows?.length)
 }
 
-// A Hydra exists once its first write committed; a bare folder, such as one a config write made, does not count.
+// A Hydra exists once its first write committed, or while its events.jsonl waits to be imported; a bare folder, such
+// as one a config write made, does not count.
 export function requireHydra({ hydraId }: { hydraId: string }): void {
-  if (hydraId !== DEFAULT_HYDRA && !held.has(hydraId) && !hydraExists({ hydraId })) {
+  const waiting = () => existsSync(logPath({ dir: hydraDir({ hydraId }) }))
+
+  if (hydraId !== DEFAULT_HYDRA && !heldHydra({ hydraId }) && !hydraExists({ hydraId }) && !waiting()) {
     throw new HydraError({
       message: `unknown Hydra: ${hydraId}`,
       code: 'NOT_FOUND',

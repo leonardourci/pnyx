@@ -64,6 +64,9 @@ export function homeDatabase({ home = pnyxHome() }: { home?: string } = {}): str
     )}`
 }
 
+// A key for caches of one home's Hydra, so a process that moves between homes, as tests do, never mixes them.
+export const homeScoped = ({ hydraId }: { hydraId: string }) => `${homeDatabase()}\u0000${hydraId}`
+
 function connection({ url }: { url?: string }): Connection {
   const database = homeDatabase()
   const key = url ?? database

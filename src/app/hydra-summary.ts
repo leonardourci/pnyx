@@ -3,24 +3,34 @@ import type { HydraSummary } from './server-hydras.ts'
 import { hydraIdentity } from './server-state.ts'
 import { hostedHydra, hydraConfig } from '#hydra/config.ts'
 import { readInitialEvent } from './event-log.ts'
+import { homeScoped } from '#store/postgres.ts'
 import { projectsFor } from '#projects/read.ts'
 import { liveTask } from '#tasks/select.ts'
 import { hydraWorking } from '#hydra/chat-queue.ts'
 
 export const CREATION_PREFIX = 'hydra-create:'
 
-// A Hydra's first event never changes, so each is read once.
-const firstEvents = new Map<string, HydraEvent | null>()
+// A Hydra's first event never changes, so each is read once it exists.
+const firstEvents = new Map<string, HydraEvent>()
 
 function firstEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
-  if (!firstEvents.has(hydraId)) {
+  const key = homeScoped({ hydraId })
+  const known = firstEvents.get(key)
+
+  if (known) {
+    return known
+  }
+
+  const event = readInitialEvent({ hydraId })
+
+  if (event) {
     firstEvents.set(
-      hydraId,
-      readInitialEvent({ hydraId }),
+      key,
+      event,
     )
   }
 
-  return firstEvents.get(hydraId) ?? null
+  return event
 }
 
 const creationAttempt = ({ event }: { event: HydraEvent | null }) => {

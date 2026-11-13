@@ -1,5 +1,5 @@
 import type { HydraEvent } from './model.ts'
-import { query } from '#store/postgres.ts'
+import { homeScoped, query } from '#store/postgres.ts'
 import { heldHydra } from './store.ts'
 
 // The tasks an event belongs to, under which an index lists it.
@@ -91,7 +91,8 @@ const extend = ({
 // The Hydra's events read so far, extended with the ones committed since. A held Hydra's own writes arrive through
 // rememberEvents, so reading it needs no query while it is current.
 function eventLog({ hydraId }: { hydraId: string }) {
-  let entry = read.get(hydraId)
+  const key = homeScoped({ hydraId })
+  let entry = read.get(key)
 
   if (!entry) {
     entry = {
@@ -99,7 +100,7 @@ function eventLog({ hydraId }: { hydraId: string }) {
       indexes: new Map(),
     }
     read.set(
-      hydraId,
+      key,
       entry,
     )
   }
@@ -129,7 +130,7 @@ export function rememberEvents({
   from: number
   events: readonly HydraEvent[]
 }): void {
-  const entry = read.get(hydraId)
+  const entry = read.get(homeScoped({ hydraId }))
 
   if (entry && (entry.events.at(-1)?.seq ?? 0) === from) {
     extend({
