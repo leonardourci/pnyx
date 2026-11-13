@@ -1,10 +1,15 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defaultClientConditions, defineConfig, type Plugin } from 'vite'
+import { ZERO_PATH, zeroCookieName } from '#app/server-protocol.ts'
 import { hydraIdentity, localToken } from '#app/server-state.ts'
 
 // `pnpm dev` runs `pnyx-axi serve --hydra dev` on this port; the dev server forwards the Hydra's WebSocket to it.
-const SERVER = `http://127.0.0.1:${process.env.PNYX_DEV_PORT ?? 4319}`
+const PORT = Number(process.env.PNYX_DEV_PORT ?? 4319)
+const SERVER = `http://127.0.0.1:${PORT}`
+
+// The dev page never gets the token cookie the Hydra server's page sets, so its Zero requests carry it here.
+const zeroCookie = () => `${zeroCookieName({ port: PORT })}=${localToken()}`
 
 // The dev page gets the same token meta the Hydra server injects into the built page.
 const devToken: Plugin = {
@@ -59,6 +64,27 @@ export default defineConfig({
     host: '127.0.0.1',
     strictPort: true,
     proxy: {
+      [ZERO_PATH]: {
+        target: SERVER,
+        ws: true,
+        changeOrigin: true,
+        configure: proxy => {
+          proxy.on(
+            'proxyReq',
+            proxyReq => proxyReq.setHeader(
+              'cookie',
+              zeroCookie(),
+            ),
+          )
+          proxy.on(
+            'proxyReqWs',
+            proxyReq => proxyReq.setHeader(
+              'cookie',
+              zeroCookie(),
+            ),
+          )
+        },
+      },
       '/folders': {
         target: SERVER,
         changeOrigin: true,

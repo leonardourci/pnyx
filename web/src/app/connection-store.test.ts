@@ -5,10 +5,10 @@ import { setImmediate } from 'node:timers/promises'
 import { test, type TestContext } from 'node:test'
 import { createHydraConnection } from './connection-store.ts'
 import { hydraSource, sharedSource } from '#web-app/fixtures/hydra-source.ts'
+import { emptyHydra } from '#app/reducer.ts'
 
 const hydras = hydraSource()
 const shared = sharedSource()
-import { emptyHydra } from '#app/reducer.ts'
 
 class TestSocket {
   static OPEN = 1
@@ -1237,6 +1237,72 @@ test(
     assert.deepEqual(
       socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)?.page,
       args,
+    )
+  },
+)
+
+test(
+  'a page stopped and started again, as React mounts it twice in development, still loads its Hydra',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
+    const stopFirst = connection.start()
+    open({ socket: TestSocket.current })
+    stopFirst()
+    const stop = connection.start()
+    open({ socket: TestSocket.current })
+    hydras.show({
+      state: {
+        ...emptyHydra(),
+        seq: 4,
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.seq,
+      4,
+    )
+  },
+)
+
+test(
+  'a Hydra list or shared settings Zero cannot read shows its error until they read again',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
+    const stop = connection.start()
+    open({ socket: TestSocket.current })
+    hydras.show({ state: emptyHydra() })
+    shared.failure({ message: 'query endpoint unreachable' })
+    assert.equal(
+      connection.snapshot().recovery?.message,
+      'query endpoint unreachable',
+    )
+    shared.failure({})
+    assert.equal(
+      connection.snapshot().recovery,
+      null,
     )
   },
 )

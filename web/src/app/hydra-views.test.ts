@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import type { Zero } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { watchHydra } from './hydra-views.ts'
+import { watchHydra, watchInstallation } from './hydra-views.ts'
 
 type View = {
   name: string
@@ -269,6 +269,321 @@ test(
     assert.deepEqual(
       failures,
       ['query endpoint unreachable'],
+    )
+    watched.close()
+  },
+)
+
+const boardCard = ({
+  id,
+  title = id,
+}: {
+  id: string
+  title?: string
+}) => ({
+  ...reference({
+    id,
+    key: id,
+  }),
+  hidden: false,
+  child_working: false,
+  wait_title: null,
+  unmet_prerequisites: [],
+  body: {
+    data: {
+      id,
+      title,
+    },
+  },
+  questions: [],
+  declarations: [],
+  links: [],
+})
+
+test(
+  'a Hydra with no row yet shows empty and answers every opened card as missing',
+  async () => {
+    const fake = fakeZero()
+    const states: HydraState[] = []
+    const watched = watchHydra({
+      zero: fake.zero,
+      hydraId: 'h',
+      publish: ({ state }) => states.push(state),
+      failed: () => {},
+    })
+    const opened = watched.open({ refs: ['ship'] })
+    answerAll({
+      fake,
+      references: [],
+    })
+    fake.live({ name: 'hydra.one' })[0]!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    await setImmediate()
+    fake.detail({ id: HYDRA_CARD })!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    await setImmediate()
+    assert.equal(
+      states.at(-1)?.seq,
+      0,
+    )
+    assert.deepEqual(
+      states.at(-1)?.cards,
+      {},
+    )
+    assert.deepEqual(
+      await opened,
+      { unavailable: ['ship'] },
+    )
+    watched.close()
+  },
+)
+
+test(
+  'an opened card whose detail fails or still loads leaves the board showing, and its request waits only for it',
+  async () => {
+    const fake = fakeZero()
+    const states: HydraState[] = []
+    const failures: string[] = []
+    const watched = watchHydra({
+      zero: fake.zero,
+      hydraId: 'h',
+      publish: ({ state }) => states.push(state),
+      failed: ({ message }) => failures.push(message),
+    })
+    const opened = watched.open({
+      refs: [
+        'broken',
+        'slow',
+      ],
+    })
+    answerAll({
+      fake,
+      references: [
+        reference({
+          id: 'broken',
+          key: 'broken',
+        }),
+        reference({
+          id: 'slow',
+          key: 'slow',
+        }),
+      ],
+    })
+    await setImmediate()
+    fake.detail({ id: HYDRA_CARD })!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    fake.detail({ id: 'broken' })!.answer({
+      data: undefined,
+      resultType: 'error',
+      message: 'detail query failed',
+    })
+    await setImmediate()
+    assert.equal(
+      states.at(-1)?.seq,
+      3,
+      'the board publishes while one detail failed and another still loads',
+    )
+    assert.deepEqual(
+      failures.at(-1),
+      'detail query failed',
+    )
+    assert.equal(
+      await Promise.race([
+        opened,
+        setImmediate('waiting'),
+      ]),
+      'waiting',
+      'the request waits for the card still loading',
+    )
+    fake.detail({ id: 'slow' })!.answer({
+      data: detailRow({ id: 'slow' }),
+      resultType: 'complete',
+    })
+    assert.deepEqual(
+      await opened,
+      { unavailable: [] },
+      'a card whose detail failed is not reported missing',
+    )
+    assert.ok(states.at(-1)?.cards.slow)
+    watched.close()
+  },
+)
+
+test(
+  'a write that changes one card keeps every other card, and one that changes only the Hydra row keeps the cards and config',
+  async () => {
+    const fake = fakeZero()
+    const published: {
+      state: HydraState
+      queue: unknown
+    }[] = []
+    const watched = watchHydra({
+      zero: fake.zero,
+      hydraId: 'h',
+      publish: ({
+        state,
+        queue,
+      }) => published.push({
+        state,
+        queue,
+      }),
+      failed: () => {},
+    })
+    const kept = boardCard({ id: 'task-kept' })
+    const changed = boardCard({ id: 'task-changed' })
+    const hydra = fake.live({ name: 'hydra.one' })[0]!
+    const cards = fake.live({ name: 'board.cards' })[0]!
+    answerAll({
+      fake,
+      references: [
+        kept,
+        changed,
+      ],
+    })
+    hydra.answer({
+      data: {
+        ...hydraRow,
+        config: { name: 'Eos' },
+        queue: {},
+      },
+      resultType: 'complete',
+    })
+    cards.answer({
+      data: [
+        kept,
+        changed,
+      ],
+      resultType: 'complete',
+    })
+    await setImmediate()
+    fake.detail({ id: HYDRA_CARD })!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    await setImmediate()
+    const first = published.at(-1)!
+    assert.deepEqual(
+      first.queue,
+      {
+        chat: undefined,
+        waiting: [],
+        reading: [],
+      },
+      'a queue the server has not written yet reads as empty',
+    )
+
+    hydra.answer({
+      data: {
+        ...hydraRow,
+        seq: 4,
+        config: { name: 'Eos' },
+        queue: {},
+      },
+      resultType: 'complete',
+    })
+    await setImmediate()
+    const second = published.at(-1)!.state
+    assert.equal(
+      second.seq,
+      4,
+    )
+    assert.equal(
+      second.cards,
+      first.state.cards,
+    )
+    assert.equal(
+      second.config,
+      first.state.config,
+    )
+
+    hydra.answer({
+      data: {
+        ...hydraRow,
+        seq: 5,
+        config: { name: 'Eos' },
+        queue: {},
+      },
+      resultType: 'complete',
+    })
+    cards.answer({
+      data: [
+        kept,
+        boardCard({
+          id: 'task-changed',
+          title: 'Renamed',
+        }),
+      ],
+      resultType: 'complete',
+    })
+    await setImmediate()
+    const third = published.at(-1)!.state
+    assert.equal(
+      third.cards['task-changed']?.title,
+      'Renamed',
+    )
+    assert.equal(
+      third.cards['task-kept'],
+      first.state.cards['task-kept'],
+    )
+    assert.equal(
+      third.config,
+      first.state.config,
+    )
+    watched.close()
+  },
+)
+
+test(
+  'the Hydra list skips a row with no summary yet, and its read error reaches the page until it reads again',
+  async () => {
+    const fake = fakeZero()
+    const lists: string[][] = []
+    const failures: (string | undefined)[] = []
+    const watched = watchInstallation({
+      zero: fake.zero,
+      hydras: ({ rows }) => lists.push(rows.map(row => row.id)),
+      settings: () => {},
+      upgrade: () => {},
+      failure: ({ message }) => failures.push(message),
+    })
+    const list = fake.live({ name: 'hydras.list' })[0]!
+    list.answer({
+      data: [],
+      resultType: 'error',
+      message: 'query endpoint unreachable',
+    })
+    list.answer({
+      data: [
+        {
+          id: 'default',
+          summary: {
+            id: 'default',
+            name: 'Eos',
+          },
+        },
+        {
+          id: 'new',
+          summary: {},
+        },
+      ],
+      resultType: 'complete',
+    })
+    assert.deepEqual(
+      failures,
+      [
+        'query endpoint unreachable',
+        undefined,
+      ],
+    )
+    assert.deepEqual(
+      lists,
+      [['default']],
     )
     watched.close()
   },

@@ -11,6 +11,8 @@ export interface CardHistory {
   error?: string
 }
 
+const NOT_CONNECTED = 'Updates load once the page connects.'
+
 const toTaskEvent = ({ event }: { event: HydraEvent }): TaskEvent => ({
   id: event.id,
   seq: event.seq,
@@ -29,7 +31,7 @@ export function useCardHistory({
 }: {
   hydraId: string
   cardId: string
-}): CardHistory {
+}): CardHistory & { retry(): void } {
   const [
     history,
     setHistory,
@@ -37,12 +39,23 @@ export function useCardHistory({
     events: [],
     loaded: false,
   })
+  // Each try builds the view again, on the page's current Zero client.
+  const [
+    attempt,
+    setAttempt,
+  ] = useState(0)
 
   useEffect(
     () => {
       const zero = pageZero()
 
       if (!zero) {
+        setHistory({
+          events: [],
+          loaded: false,
+          error: NOT_CONNECTED,
+        })
+
         return
       }
 
@@ -68,8 +81,12 @@ export function useCardHistory({
     [
       hydraId,
       cardId,
+      attempt,
     ],
   )
 
-  return history
+  return {
+    ...history,
+    retry: () => setAttempt(count => count + 1),
+  }
 }

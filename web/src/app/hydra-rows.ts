@@ -13,8 +13,25 @@ export type MessageRow = NonNullable<QueryResultType<typeof queries.hydra.ownerM
 // Rows keep their identity while unchanged, so each card does too.
 const built = new WeakMap<object, Card>()
 
-// A card leaves out an empty list it never had.
-const orNone = <Value>({ list }: { list: Value[] }) => list.length ? list : undefined
+// The server moves a list with items to its rows and keeps an empty one in the body, so a card tells empty from missing.
+function stored<Value>({
+  rows,
+  body,
+  name,
+}: {
+  rows: Value[]
+  body: object | undefined
+  name: string
+}): Value[] | undefined {
+  if (rows.length) {
+    return rows
+  }
+
+  return body && Array.isArray(Reflect.get(
+    body,
+    name,
+  )) ? [] : undefined
+}
 
 export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
   const cached = built.get(row)
@@ -23,10 +40,19 @@ export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
     return cached
   }
 
+  const body = row.body?.data
   const card = {
-    ...row.body?.data,
-    asks: orNone({ list: row.questions.map(question => question.data) }),
-    statusLog: orNone({ list: row.declarations.map(declaration => declaration.data) }),
+    ...body,
+    asks: stored({
+      rows: row.questions.map(question => question.data),
+      body,
+      name: 'asks',
+    }),
+    statusLog: stored({
+      rows: row.declarations.map(declaration => declaration.data),
+      body,
+      name: 'statusLog',
+    }),
     links: row.links.map(link => link.data),
     facts: {
       childWorking: row.child_working,
@@ -48,8 +74,10 @@ export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
         ]
       })),
     },
-    notes: 'notes' in row ? orNone({
-      list: row.notes.map(({
+    notes: 'notes' in row ? stored({
+      body,
+      name: 'notes',
+      rows: row.notes.map(({
         id,
         kind,
         source,

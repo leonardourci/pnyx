@@ -4,7 +4,6 @@ import { TaskUpdates } from './task-updates.tsx'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { columnsFor } from './view.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export function Detail({
@@ -12,11 +11,14 @@ export function Detail({
   state,
   command,
   connected,
+  hydraId,
 }: {
   card: Card
   state: HydraState
   command: Command
   connected: boolean
+  // The open Hydra's id, which its unconfigured state does not carry.
+  hydraId: string
 }) {
   useLinkRefresh({
     task: card.id,
@@ -30,7 +32,7 @@ export function Detail({
       <TaskUpdates
         card={card}
         columns={columnsFor({ state })}
-        hydraId={hydraConfig({ state }).id}
+        hydraId={hydraId}
       />
     </section>
   )

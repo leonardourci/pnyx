@@ -840,6 +840,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                           state={state}
                                           command={command}
                                           connected={connected}
+                                          hydraId={navigation.hydraId}
                                         />
                                       )}
                                     </HydraCard>

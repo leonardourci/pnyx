@@ -236,3 +236,36 @@ test(
     )
   },
 )
+
+test(
+  'a list the server stored empty stays empty on the card, and one the card never had stays missing',
+  () => {
+    const state = hydraFromRows({
+      hydra,
+      cards: [
+        {
+          ...boardRow,
+          body: {
+            ...boardRow.body,
+            data: {
+              ...boardRow.body?.data,
+              statusLog: [],
+            },
+          },
+          questions: [],
+        } as unknown as CardRow,
+      ],
+      opened: [],
+      references,
+    })
+
+    assert.deepEqual(
+      state.cards['task-1']?.statusLog,
+      [],
+    )
+    assert.equal(
+      state.cards['task-1']?.asks,
+      undefined,
+    )
+  },
+)

@@ -4,6 +4,7 @@ import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Settings } from '#settings/model.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
+import { emptyHydra } from '#app/reducer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { queries } from '#store/zero-schema.ts'
 import { hydraFromRows, type CardRow, type DetailRow, type HydraRow, type MessageRow, type ReferenceRow } from './hydra-rows.ts'
@@ -13,6 +14,41 @@ type Watched<Data> = {
   loaded: boolean
   error?: string
   destroy(): void
+}
+
+const HYDRA_ERROR = 'Zero could not read this Hydra'
+const INSTALLATION_ERROR = 'Zero could not read the Hydra list or shared settings'
+
+const loadedResult = ({ resultType }: { resultType: ResultType }) => resultType === 'complete' || resultType === 'cached'
+
+// A view has its answer once it loaded or failed.
+const settled = ({ view }: { view: Watched<unknown> }) => view.loaded || view.error !== undefined
+
+// The Hydra row's queue reads '{}' until the server first writes it.
+function queueOf({ stored }: { stored: unknown }): HydraQueue {
+  const field = ({ name }: { name: keyof HydraQueue }) =>
+    typeof stored === 'object' && stored !== null ? Reflect.get(
+      stored,
+      name,
+    ) : undefined
+  const waiting = field({ name: 'waiting' })
+  const reading = field({ name: 'reading' })
+
+  return {
+    chat: field({ name: 'chat' }) ?? undefined,
+    waiting: Array.isArray(waiting) ? waiting : [],
+    reading: Array.isArray(reading) ? reading : [],
+  }
+}
+
+// A row the server just inserted holds '{}' until it writes the summary, so only a row with an id lists a Hydra.
+function summaryOf({ stored }: { stored: unknown }): HydraSummary[] {
+  const listed = typeof stored === 'object' && stored !== null && typeof Reflect.get(
+    stored,
+    'id',
+  ) === 'string'
+
+  return listed ? [stored as HydraSummary] : []
 }
 
 // A view counts as loaded once Zero has its rows from this session or a cached one.
@@ -35,8 +71,8 @@ function watch<Data>({
     error?: ErroredQuery,
   ) => {
     watched.data = data as Data
-    watched.loaded = resultType === 'complete' || resultType === 'cached'
-    watched.error = resultType === 'error' ? error?.message ?? 'Zero could not read this Hydra' : undefined
+    watched.loaded = loadedResult({ resultType })
+    watched.error = resultType === 'error' ? error?.message ?? HYDRA_ERROR : undefined
     changed()
   })
 
@@ -44,7 +80,7 @@ function watch<Data>({
 }
 
 // The open Hydra's data on the page: its row, board cards, task references, the owner's latest message, Hydra's own card and
-// the cards opened outside the board. Changes from one write publish once.
+// the cards opened outside the board. Changes from one write publish once; an opened card joins once its detail loads.
 export function watchHydra({
   zero,
   hydraId,
@@ -66,6 +102,7 @@ export function watchHydra({
   let queue: HydraQueue | undefined
   let closed = false
   let state: HydraState | undefined
+  const missing = emptyHydra()
   // The cards the page opened, by id or key, and its requests waiting for Zero to load them.
   let opened: string[] = []
   let pending: {
@@ -127,60 +164,79 @@ export function watchHydra({
         sync()
       }
 
-      const watched = [
+      const board = [
         hydra,
         cards,
         references,
         ownerMessage,
-        ...details.values(),
       ]
+      const error = [
+        ...board,
+        ...details.values(),
+      ].find(view => view.error)?.error
+      const hydraCard = details.get(HYDRA_CARD)
+      const hydraCardSettled = hydraCard !== undefined && settled({ view: hydraCard })
+      const boardLoaded = board.every(view => view.loaded) && hydraCardSettled
 
-      const error = watched.find(view => view.error)?.error
+      if (boardLoaded) {
+        show()
+      }
 
+      // After the publish, which clears an earlier load error.
       if (error) {
         failed({ message: error })
       }
-
-      if (!hydra.data || watched.some(view => !view.loaded)) {
-        return
-      }
-
-      const answered = pending
-      pending = []
-
-      state = hydraFromRows({
-        hydra: hydra.data,
-        cards: cards.data,
-        opened: [...details.values()].flatMap(view => view.data ? [view.data] : []),
-        references: references.data,
-        ownerMessage: ownerMessage.data,
-        previous: state,
-      })
-      // The Hydra row changes with every write; its queue keeps its identity while it reads the same.
-      const next = hydra.data.queue as HydraQueue
-
-      if (queue !== next && JSON.stringify(queue) !== JSON.stringify(next)) {
-        queue = next
-      }
-
-      publish({
-        state,
-        queue: queue ?? next,
-      })
-
-      for (const {
-        refs,
-        resolve,
-      } of answered) {
-        resolve({
-          unavailable: refs.filter(ref => {
-            const id = resolved({ ref })
-
-            return !id || !details.get(id)?.data
-          }),
-        })
-      }
     })
+  }
+
+  const viewOf = ({ ref }: { ref: string }) => {
+    const id = resolved({ ref })
+
+    return id ? details.get(id) : undefined
+  }
+
+  // A Hydra with no row yet has had no events, so it shows empty.
+  const show = () => {
+    state = hydra.data ? hydraFromRows({
+      hydra: hydra.data,
+      cards: cards.data,
+      opened: [...details.values()].flatMap(view => view.loaded && view.data ? [view.data] : []),
+      references: references.data,
+      ownerMessage: ownerMessage.data,
+      previous: state,
+    }) : missing
+    // The Hydra row changes with every write; its queue keeps its identity while it reads the same.
+    const next = queueOf({ stored: hydra.data?.queue })
+
+    if (JSON.stringify(queue) !== JSON.stringify(next)) {
+      queue = next
+    }
+
+    publish({
+      state,
+      queue: queue ?? next,
+    })
+
+    const waiting = pending
+    pending = []
+
+    for (const request of waiting) {
+      const views = request.refs.flatMap(ref => viewOf({ ref }) ?? [])
+
+      if (!views.every(view => settled({ view }))) {
+        pending.push(request)
+        continue
+      }
+
+      // A card whose detail failed is reported as the Hydra's error, not as missing.
+      request.resolve({
+        unavailable: request.refs.filter(ref => {
+          const view = viewOf({ ref })
+
+          return !view?.data && view?.error === undefined
+        }),
+      })
+    }
   }
 
   const hydra = watch<HydraRow | undefined>({
@@ -246,6 +302,7 @@ export function watchInstallation({
   hydras,
   settings,
   upgrade,
+  failure,
 }: {
   zero: Zero
   hydras({ rows }: { rows: HydraSummary[] }): void
@@ -257,27 +314,88 @@ export function watchInstallation({
     settings: Settings
     revision: number
   }): void
+  // The first error these views have now, or none once they read again.
+  failure({ message }: { message?: string }): void
 }) {
+  const errors = new Map<string, string>()
+  let reported: string | undefined
+
+  const report = ({
+    name,
+    resultType,
+    error,
+  }: {
+    name: string
+    resultType: ResultType
+    error?: ErroredQuery
+  }) => {
+    if (resultType === 'error') {
+      errors.set(
+        name,
+        error?.message ?? INSTALLATION_ERROR,
+      )
+    } else {
+      errors.delete(name)
+    }
+
+    const message = errors.values().next().value
+
+    if (message !== reported) {
+      reported = message
+      failure({ message })
+    }
+  }
+
   const list = zero.materialize(queries.hydras.list())
   const shared = zero.materialize(queries.settings.shared())
   const checked = zero.materialize(queries.upgrade.status())
-  checked.addListener(row => upgrade({
-    status: row ? {
-      available: row.available,
-      checkedAt: row.checked_at,
-    } : undefined,
-  }))
+  checked.addListener((
+    row,
+    resultType: ResultType,
+    error?: ErroredQuery,
+  ) => {
+    report({
+      name: 'upgrade',
+      resultType,
+      error,
+    })
+
+    if (resultType !== 'error') {
+      upgrade({
+        status: row ? {
+          available: row.available,
+          checkedAt: row.checked_at,
+        } : undefined,
+      })
+    }
+  })
   list.addListener((
     rows,
     resultType: ResultType,
+    error?: ErroredQuery,
   ) => {
-    if (resultType === 'complete' || resultType === 'cached') {
-      // Zero types the json column as plain JSON; it holds the summary the server stored.
-      hydras({ rows: rows.map(row => row.summary) as HydraSummary[] })
+    report({
+      name: 'hydras',
+      resultType,
+      error,
+    })
+
+    if (loadedResult({ resultType })) {
+      hydras({ rows: rows.flatMap(row => summaryOf({ stored: row.summary })) })
     }
   })
-  shared.addListener(row => {
-    if (row) {
+  shared.addListener((
+    row,
+    resultType: ResultType,
+    error?: ErroredQuery,
+  ) => {
+    report({
+      name: 'settings',
+      resultType,
+      error,
+    })
+
+    if (row && resultType !== 'error') {
       settings({
         settings: row.value as Settings,
         revision: row.revision,

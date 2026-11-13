@@ -1,5 +1,4 @@
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
-import type { Zero } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
@@ -23,7 +22,7 @@ import { watchHydra, watchInstallation } from './hydra-views.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
-import { createPageZero } from './zero.ts'
+import { closePageZero, openPageZero } from './zero.ts'
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
@@ -88,6 +87,8 @@ export function createHydraConnection({
   let received = Date.now()
   let reconnect: ReturnType<typeof setTimeout> | undefined
   let upgrade: UpgradeStatus | undefined
+  // Why the Hydra list, shared settings or upgrade check could not be read.
+  let installationError = ''
   let watchdog: ReturnType<typeof setInterval> | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
@@ -208,10 +209,10 @@ export function createHydraConnection({
         args,
         onChecking,
       }) => {
-        // Zero loads the cards a tab opens, and the server sends their live activity.
         if (name === 'page') {
           scope.page = args
           // The answer comes from Zero; the server only learns which cards' activity to send.
+          // Losing this send is safe: every subscribe sends scope.page again.
           command({
             scope,
             name,
@@ -392,6 +393,8 @@ export function createHydraConnection({
       if (scope.failed) {
         recovery.action = 'retry'
       }
+    } else if (installationError) {
+      recovery = { message: installationError }
     }
 
     return {
@@ -655,16 +658,7 @@ export function createHydraConnection({
     })
   }
 
-  // The page's one Zero client, made once when the connection starts.
-  let pageZero: Zero | undefined
-
-  const zero = () => {
-    if (!pageZero) {
-      pageZero = createPageZero({ installation })
-    }
-
-    return pageZero
-  }
+  const zero = () => openPageZero({ installation })
 
   const receiveState = ({
     scope,
@@ -1235,6 +1229,10 @@ export function createHydraConnection({
           upgrade = status
           publish()
         },
+        failure: ({ message = '' }: { message?: string }) => {
+          installationError = message
+          publish()
+        },
       }
       const installationViews = watchShared ? watchShared(sharedOptions) : watchInstallation({
         ...sharedOptions,
@@ -1301,9 +1299,13 @@ export function createHydraConnection({
           clearTimeout(request.timer)
         }
 
-        scopes.forEach(scope => scope.views?.close())
+        for (const scope of scopes.values()) {
+          scope.views?.close()
+          scope.views = undefined
+        }
+
         installationViews.close()
-        pageZero?.close()
+        closePageZero()
         removeEventListener(
           'popstate',
           pop,

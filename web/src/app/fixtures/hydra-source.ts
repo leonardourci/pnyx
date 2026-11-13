@@ -173,6 +173,7 @@ export function sharedSource() {
       settings: Settings
       revision: number
     }): void
+    failure({ message }: { message?: string }): void
   } | undefined
 
   return {
@@ -180,11 +181,13 @@ export function sharedSource() {
       hydras,
       settings,
       upgrade,
+      failure,
     }: NonNullable<typeof shown>) => {
       shown = {
         hydras,
         settings,
         upgrade,
+        failure,
       }
 
       return {
@@ -195,6 +198,7 @@ export function sharedSource() {
     },
     hydras: ({ rows }: { rows: HydraSummary[] }) => shown?.hydras({ rows }),
     upgrade: ({ status }: { status: UpgradeStatus | undefined }) => shown?.upgrade({ status }),
+    failure: ({ message }: { message?: string }) => shown?.failure({ message }),
     settings: ({
       settings,
       revision,

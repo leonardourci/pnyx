@@ -20,6 +20,7 @@ export function TaskUpdates({
     events,
     loaded,
     error,
+    retry,
   } = useCardHistory({
     hydraId,
     cardId: card.id,
@@ -109,7 +110,7 @@ export function TaskUpdates({
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
       {!shown.length && !loading && !error && <p className="empty">No updates yet.</p>}
-      {error && <p role="alert">{error}</p>}
+      {error && <p role="alert">{error} <Button onClick={retry}>Try again</Button></p>}
     </div>
   )
 }
