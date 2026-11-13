@@ -156,7 +156,6 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi setup [check\|skills\|hooks]` | Install the login services, list missing setup, or install global skills and reporting hooks. |
 | `pnyx-axi integrations` | Show which integrations are ready and how to set each up. |
 | `pnyx-axi undo <event-id>` | Append the reverse of a manual edit, move, link or outcome. |
-| `pnyx-axi repair` | Set aside a torn log tail and rebuild the snapshot. |
 
 ### Flags
 

@@ -12,9 +12,6 @@ const LOCAL = new Set([
   'update',
 ])
 
-// Repairs a log the server cannot load, so it also runs here when no server is up: a torn log can be what stops one.
-const OFFLINE = new Set(['repair'])
-
 const argv = process.argv.slice(2)
 // The upgrade to stop runs in the server; with none up, the command answers here that nothing is running.
 const upgradeStop = argv[0] === 'upgrade' && argv.includes('--stop')
@@ -33,7 +30,7 @@ if (!tryFastPath(
   const local = own || argv.includes('--help') || argv[0]?.startsWith('-')
   const client = local ? undefined : await import('./client.ts')
 
-  if (!client || ((upgradeStop || OFFLINE.has(argv[0] ?? '')) && !client.serverRunning())) {
+  if (!client || (upgradeStop && !client.serverRunning())) {
     await import('./main.ts')
   } else {
     await client.forward({ argv })

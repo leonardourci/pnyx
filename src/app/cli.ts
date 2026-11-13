@@ -18,7 +18,6 @@ import { link, outcome } from '#tasks/delivery/cli.ts'
 import { columnCommandHandler, push, card, move, context } from '#tasks/cli.ts'
 import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
-import { repair } from './repair-cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
 
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })
@@ -216,7 +215,6 @@ export const commands = supervisedCommands({
     outcome,
     history,
     undo,
-    repair,
     setup,
     context,
   },

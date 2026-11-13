@@ -43,7 +43,6 @@ commands:
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   settings show|schema|set                   Pnyx-wide settings: theme, text sizes, Hide Done, review cadence, helper, Oracle filters, Hydra order, logs
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths
-  repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the application and the agents it runs
   restart                                    Restart the application; a turn it cut resumes from its saved session
@@ -434,10 +433,6 @@ It replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
 Firstmate's own files are not changed.
-`,
-  repair: `usage: pnyx-axi repair [--hydra <name>]
-A crash mid-append can leave a torn last line; writes refuse until it is repaired.
-Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
 `,
   serve: `usage: pnyx-axi serve [--port <n>] [--hydra <name>] [--home <Firstmate path>]...
 Serves every Hydra in PNYX_HOME on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
