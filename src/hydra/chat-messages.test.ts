@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { transcriptMessages } from '#workers/transcripts.ts'
+import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { hydraMessages, leadingTask } from './chat-messages.ts'
 import { hydraDelivery } from './hydra.ts'
 import { taskMention } from './mentions.ts'
@@ -627,7 +627,7 @@ test(
       user({ text: tagged }),
     ]
     assert.equal(
-      transcriptMessages({ record: records[1] })[0]?.text,
+      readTranscriptRecord({ record: records[1] }).messages[0]?.text,
       quoting,
     )
     assert.deepEqual(

@@ -16,7 +16,7 @@ The Claude SDK warning about a shadowed permission callback is logged at most on
 
 ## Transcript records
 
-`src/workers/claude.ts` and `src/workers/codex.ts` decode their own transcript formats into `TranscriptRecord`, defined in `src/workers/provider.ts`. `src/workers/transcripts.ts` selects the reader and exposes typed text through `transcriptMessages`. Records carry the message role and time, visible text, hidden wake boundaries, tool and thinking traces, calls and results, harvested notes and observed settings. Calls carry normalized command, file, query, URL, skill and description fields. Trace positions retain their original block indexes so thread entry IDs and pagination stay stable.
+`src/workers/claude.ts` and `src/workers/codex.ts` decode their own transcript formats into `TranscriptRecord`, defined in `src/workers/provider.ts`. `src/workers/transcripts.ts` selects the reader through `readTranscriptRecord`. Records carry the message role and time, visible text, hidden wake boundaries, tool and thinking traces, calls and results, harvested notes and observed settings. Calls carry normalized command, file, query, URL, skill and description fields. Trace positions retain their original block indexes so thread entry IDs and pagination stay stable.
 
 The thread reader, latest-message feed, reply confirmation and hook harvesting consume that neutral shape. Redaction and display limits stay in their consumers. The browser imports the shared text and call presentation helpers; its bundle does not load the provider adapters.
 

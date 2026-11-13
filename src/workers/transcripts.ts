@@ -32,15 +32,3 @@ export function readTranscriptRecord({
     notes: [],
   }
 }
-
-export function transcriptMessages({
-  record,
-  includeInternal = false,
-}: {
-  record: unknown
-  includeInternal?: boolean
-}) {
-  const parsed = readTranscriptRecord({ record })
-
-  return parsed.messages.filter(message => includeInternal || !message.internal)
-}
