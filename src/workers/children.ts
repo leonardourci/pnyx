@@ -244,14 +244,19 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
         await delay(SWEEP_POLL_MS)
       }
 
-      for (const child of read({ path }).filter(child => retained({ child }))) {
+      const recorded = read({ path })
+
+      for (const child of recorded.filter(child => retained({ child }))) {
         live.set(
           child.pid,
           child,
         )
       }
 
-      save()
+      // A durable write per Hydra adds up across a server start, so an unchanged record is left as it is.
+      if (live.size !== recorded.length) {
+        save()
+      }
 
       return true
     },

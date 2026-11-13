@@ -348,3 +348,40 @@ test(
     )
   },
 )
+
+test(
+  'a start with no recorded agents writes no agent record',
+  async t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-children-none-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      process.env.PNYX_HOME = previous
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    mkdirSync(
+      hydraDir({ hydraId: 'default' }),
+      { recursive: true },
+    )
+    assert.equal(
+      await trackChildren({ hydraId: 'default' }).sweep(),
+      true,
+    )
+    assert.equal(
+      existsSync(join(
+        hydraDir({ hydraId: 'default' }),
+        'children.json',
+      )),
+      false,
+    )
+  },
+)
