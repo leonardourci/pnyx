@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
+import { claimServer, startupRevision } from './server-state.ts'
 import { commands } from '#app/cli.ts'
 import { HydraError } from '#store/errors.ts'
 import { query } from '#store/postgres.ts'
@@ -390,6 +391,48 @@ test(
     assert.equal(
       Number(query({ statements: [{ text: "select count(*) from events where hydra_id = 'large'" }] })[0]![0]!.count),
       1200,
+    )
+  },
+)
+
+test(
+  'a server import advances the verified startup revision and releasing its claim removes it',
+  t => {
+    seedLog({
+      hydraId: 'starting',
+      lines: LEGACY_LOG,
+    })
+    let now = Date.now()
+    t.mock.method(
+      Date,
+      'now',
+      () => {
+        now += 1001
+
+        return now
+      },
+    )
+    const releaseServer = claimServer()
+
+    try {
+      const before = startupRevision()
+      assert.ok(before)
+      const release = holdHydra({
+        hydraId: 'starting',
+        changed: () => {},
+      })
+      release()
+      assert.notEqual(
+        startupRevision(),
+        before,
+      )
+    } finally {
+      releaseServer()
+    }
+
+    assert.equal(
+      startupRevision(),
+      undefined,
     )
   },
 )

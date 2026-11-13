@@ -5,12 +5,14 @@ import { emptyHydra, replayOwned } from './reducer.ts'
 import { emptySaved, eventStatements, rowChanges } from './rows.ts'
 import { transactionStatement, type Transaction } from './transactions.ts'
 import { reloadHydra } from './store.ts'
+import { reportStartup } from './server-state.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
 
 // Copies of agent transcripts stay out of Postgres; Pnyx reads transcripts where their harness wrote them.
 const TRANSCRIPT_COPY = 'chat.message'
 // A busy Hydra's whole log goes in one transaction, far longer than an ordinary statement's wait.
 const IMPORT_TIMEOUT_MS = 10 * 60_000
+const REPLAY_BATCH_SIZE = 500
 
 // The events the reducer applied: older logs could repeat an event or a seq, which the reducer skipped.
 function applied({ events }: { events: readonly HydraEvent[] }): HydraEvent[] {
@@ -38,10 +40,7 @@ export function importHydra({
   trial = false,
   transactions = [],
   bytes,
-  state = replayOwned({
-    state: emptyHydra(),
-    events,
-  }),
+  state,
 }: {
   hydraId: string
   events: readonly HydraEvent[]
@@ -51,6 +50,23 @@ export function importHydra({
   bytes: number
   state?: HydraState
 }): HydraState {
+  if (state === undefined) {
+    state = emptyHydra()
+
+    for (let offset = 0; offset < events.length; offset += REPLAY_BATCH_SIZE) {
+      reportStartup()
+      replayOwned({
+        state,
+        events: events.slice(
+          offset,
+          offset + REPLAY_BATCH_SIZE,
+        ),
+      })
+    }
+  }
+
+  reportStartup()
+
   if (state.seq === 0) {
     throw new HydraError({
       message: `Hydra ${hydraId} has no events to import`,
@@ -64,6 +80,7 @@ export function importHydra({
   })
   query({
     transaction: true,
+    progress: reportStartup,
     rollback: trial,
     timeoutMs: IMPORT_TIMEOUT_MS,
     statements: [

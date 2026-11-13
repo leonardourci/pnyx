@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from './home-migration.ts'
-import { pnyxHome, withRegistryLock } from '#store/storage.ts'
+import { pnyxHome, withRegistryLock, writeDurably } from '#store/storage.ts'
 
 // A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
 export const DEFAULT_PORT = 4747
@@ -245,6 +245,71 @@ export function processStart({
   }
 }
 
+let startup: {
+  pid: number
+  processStart: string
+  revision: number
+} | undefined
+let lastStartupWrite = 0
+const STARTUP_PULSE_MS = 1000
+const startupPath = () => join(
+  pnyxHome(),
+  'server.startup.json',
+)
+
+export function reportStartup(): void {
+  if (!startup || Date.now() - lastStartupWrite < STARTUP_PULSE_MS) {
+    return
+  }
+
+  startup.revision++
+  writeDurably({
+    path: `${startupPath()}.tmp`,
+    data: Buffer.from(JSON.stringify(startup)),
+    flag: 'w',
+  })
+  renameSync(
+    `${startupPath()}.tmp`,
+    startupPath(),
+  )
+  lastStartupWrite = Date.now()
+}
+
+export function startupRevision(): string | undefined {
+  try {
+    const progress = JSON.parse(readFileSync(
+      startupPath(),
+      'utf8',
+    )) as {
+      pid: number
+      processStart: string
+      revision: number
+    }
+    const claim = JSON.parse(readFileSync(
+      join(
+        pnyxHome(),
+        'server.lock',
+      ),
+      'utf8',
+    )) as {
+      pid: number
+      processStart: string
+    }
+
+    if (progress.pid === claim.pid && progress.processStart === claim.processStart
+      && Number.isSafeInteger(progress.pid) && progress.pid > 0
+      && processStart({ pid: progress.pid }) === progress.processStart) {
+      return `${progress.pid}:${progress.processStart}:${progress.revision}`
+    }
+  } catch (error) {
+    if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
+  }
+
+  return undefined
+}
+
 // One server per Pnyx home; a second start while the first is alive is refused.
 export function claimServer(): () => void {
   const path = join(
@@ -299,8 +364,32 @@ export function claimServer(): () => void {
     },
   })
 
+  startup = {
+    pid: process.pid,
+    processStart: started,
+    revision: 0,
+  }
+  lastStartupWrite = 0
+
+  try {
+    reportStartup()
+  } catch (error) {
+    startup = undefined
+    rmSync(
+      path,
+      { force: true },
+    )
+    throw error
+  }
+
   // A live owner cannot be replaced; releasing its claim does not write Hydra state.
   return () => {
+    startup = undefined
+    rmSync(
+      startupPath(),
+      { force: true },
+    )
+
     if (readFileSync(
       path,
       'utf8',
