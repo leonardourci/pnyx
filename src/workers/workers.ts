@@ -184,7 +184,10 @@ export async function hydraCheck({
         from,
         to,
       })
-      woken ||= typed.length > 0
+
+      if (typed.length) {
+        woken = true
+      }
     }
 
     if (woken || Date.now() >= deadline) {
@@ -259,6 +262,12 @@ export async function hydraCheck({
     )
   }
 
+  const typedHelp: string[] = []
+
+  if (typed.length) {
+    typedHelp.push(`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`)
+  }
+
   const row = ({ e }: { e: HydraEvent }) => ({
     seq: e.seq,
     id: e.id,
@@ -325,7 +334,7 @@ export async function hydraCheck({
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     help: [
       ...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []),
-      ...(typed.length ? [`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`] : []),
+      ...typedHelp,
       ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
       ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
       `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`,

@@ -803,21 +803,27 @@ function readNative({
               || offset < beforeOffset
               || (offset === beforeOffset && index < beforeItem)
             ) {
+              const entry: ThreadEntry = {
+                ...item,
+                reference: session ? messageReference({
+                  session,
+                  id: item.id,
+                  messageId: item.messageId,
+                }) : undefined,
+                ...(session ? { session } : {}),
+              }
+
+              if (renamed && session) {
+                entry.id = `${session}:${item.id}`
+
+                if (item.messageId) {
+                  entry.messageId = `${session}:${item.messageId}`
+                }
+              }
+
               window.push({
                 native: `${offset}:${index}`,
-                item: {
-                  ...item,
-                  ...(renamed && session ? {
-                    id: `${session}:${item.id}`,
-                    ...(item.messageId ? { messageId: `${session}:${item.messageId}` } : {}),
-                  } : {}),
-                  reference: session ? messageReference({
-                    session,
-                    id: item.id,
-                    messageId: item.messageId,
-                  }) : undefined,
-                  ...(session ? { session } : {}),
-                },
+                item: entry,
               })
             }
           })
