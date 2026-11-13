@@ -295,9 +295,11 @@ test(
     const previous = process.env.PNYX_HOME
     process.env.PNYX_HOME = home
     const stuck = idle()
-    t.after(() => {
+    t.after(async () => {
       mock.restoreAll()
       stuck.kill('SIGKILL')
+      // The tracker records the exit in children.json, so the home goes only after that.
+      await ended({ child: stuck })
       process.env.PNYX_HOME = previous
       rmSync(
         home,
