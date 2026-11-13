@@ -96,14 +96,31 @@ const lanes = [
   },
 ]
 const isolated = createTestEnvironment()
-const postgres = await startPostgres({
-  dir: join(
-    isolated.env.TMPDIR!,
-    'postgres',
-  ),
-})
+let postgres: Awaited<ReturnType<typeof startPostgres>> | undefined
+
+// A killed launcher still stops its cluster.
+for (const signal of [
+  'SIGINT',
+  'SIGTERM',
+] as const) {
+  process.once(
+    signal,
+    () => {
+      postgres?.stop()
+      isolated.close()
+      process.exit(1)
+    },
+  )
+}
 
 try {
+  postgres = await startPostgres({
+    dir: join(
+      isolated.env.TMPDIR!,
+      'postgres',
+    ),
+  })
+
   for (const lane of lanes) {
     if (!lane.files.length) {
       continue
@@ -165,6 +182,6 @@ try {
     }
   }
 } finally {
-  postgres.stop()
+  postgres?.stop()
   isolated.close()
 }
