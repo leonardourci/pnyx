@@ -1,6 +1,6 @@
 import { errorDetails } from '#store/error-details.ts'
 import { randomUUID } from 'node:crypto'
-import { closeSync, openSync, writeSync } from 'node:fs'
+import { appendFile } from 'node:fs'
 import { join } from 'node:path'
 import { inspect } from 'node:util'
 import { pnyxHome } from '#store/paths.ts'
@@ -8,6 +8,11 @@ import { privateDir } from '#store/storage.ts'
 import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type LogMode } from './log-line.ts'
 
 export type { LogLine, LogMode } from './log-line.ts'
+
+const MAX_PENDING_LINES = 200
+const MAX_LINE_BYTES = 64 * 1024
+let pending = 0
+const drained = new Set<() => void>()
 
 const FAILURE_INSPECT_DEPTH = 2
 const FAILURE_INSPECT_CHARS = 2000
@@ -28,7 +33,7 @@ let mode: LogMode = 'on'
 let toFiles = false
 let file: {
   day: string
-  fd: number
+  path: string
 } | undefined
 // The day whose file the last cleanup found past the size cap: until it ends that file takes only warnings and
 // errors, and once overfull nothing more, counting the warnings and errors it drops.
@@ -92,7 +97,6 @@ export function openLogs(): void {
 // The next line opens its day's file again, after cleanup deleted the current one.
 export function releaseLogFile(): void {
   if (file) {
-    closeSync(file.fd)
     file = undefined
   }
 }
@@ -154,25 +158,46 @@ function append({
       privateDir({ dir: logsDir() })
       file = {
         day,
-        fd: openSync(
-          join(
-            logsDir(),
-            dayFile({ day }),
-          ),
-          'a',
-          0o600,
+        path: join(
+          logsDir(),
+          dayFile({ day }),
         ),
       }
     }
 
-    // ponytail: one synchronous append per line; queue writes if lines ever reach thousands a second.
-    writeSync(
-      file.fd,
+    if (pending >= MAX_PENDING_LINES || Buffer.byteLength(text) > MAX_LINE_BYTES) {
+      dropped++
+
+      return
+    }
+
+    pending++
+    // Diagnostics can be lost on abrupt exit; they never delay the state change they describe.
+    appendFile(
+      file.path,
       `${text}\n`,
+      { mode: 0o600 },
+      // eslint-disable-next-line pnyx/object-params -- Node owns the filesystem callback signature.
+      error => {
+        pending--
+
+        if (error && severe) {
+          console.error(text)
+          console.error(String(error))
+        }
+
+        if (pending === 0) {
+          for (const resolve of drained) {
+            resolve()
+          }
+
+          drained.clear()
+        }
+      },
     )
   } catch (error) {
     // An unwritable log folder must not break the action being logged: a warning or error goes to stderr instead, with the write error.
-    dropLogFile()
+    releaseLogFile()
 
     if (severe) {
       console.error(text)
@@ -181,16 +206,11 @@ function append({
   }
 }
 
-// After a failed write the descriptor may be unusable, so closing it can fail as well; the write error is the one reported.
-function dropLogFile(): void {
-  const failed = file
-  file = undefined
-
-  try {
-    if (failed) {
-      closeSync(failed.fd)
-    }
-  } catch { /* reported as the write error */ }
+// Graceful shutdown and diagnostics readers can finish outstanding appends without delaying ordinary log calls.
+export async function flushLogs(): Promise<void> {
+  if (pending > 0) {
+    await new Promise<void>(resolve => drained.add(resolve))
+  }
 }
 
 export function writeLine({

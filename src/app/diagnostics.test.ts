@@ -3,7 +3,7 @@ import fs, { readdirSync, readFileSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { closeLogs, log, logsDir, openLogs, setLogMode, type LogLine } from './diagnostics.ts'
+import { closeLogs, flushLogs, log, logsDir, openLogs, setLogMode, type LogLine } from './diagnostics.ts'
 import { logged } from './log-line.ts'
 
 test(
@@ -124,10 +124,11 @@ test(
 
 test(
   'a log write that fails keeps no file open and sends the failure to stderr, and the next line lands in the file again',
-  t => {
+  async t => {
     openLogs()
     t.after(() => closeLogs())
     log({ operation: 'before the disk filled' })
+    await flushLogs()
     const descriptors = () => readdirSync('/dev/fd').length
     const open = descriptors()
     const errors = t.mock.method(
@@ -135,15 +136,21 @@ test(
       'error',
       () => {},
     )
-    const write = fs.writeSync
+    const write = fs.appendFile
     t.mock.method(
       fs,
-      'writeSync',
-      () => {
-        throw Object.assign(
+      'appendFile',
+      // eslint-disable-next-line pnyx/object-params -- Node owns the filesystem callback signature.
+      (
+        _path: unknown,
+        _text: unknown,
+        _options: unknown,
+        callback: fs.NoParamCallback,
+      ) => {
+        queueMicrotask(() => callback(Object.assign(
           new Error('no space left on device'),
           { code: 'ENOSPC' },
-        )
+        )))
       },
     )
     syncBuiltinESMExports()
@@ -158,10 +165,11 @@ test(
 
     t.mock.method(
       fs,
-      'writeSync',
+      'appendFile',
       write,
     )
     syncBuiltinESMExports()
+    await flushLogs()
     assert.ok(
       descriptors() <= open,
       'each failed write closed its file',
@@ -171,6 +179,7 @@ test(
       20,
     )
     log({ operation: 'after the disk freed' })
+    await flushLogs()
     const written = readdirSync(logsDir()).map(name => readFileSync(
       join(
         logsDir(),
@@ -188,7 +197,7 @@ test(
 
 test(
   'a written line keeps only the known fields, bounds their text, always describes an error, and leaves out what a reader can recover',
-  t => {
+  async t => {
     openLogs()
     t.after(() => closeLogs())
     const before = new Set(readdirSync(logsDir()).flatMap(name => readFileSync(
@@ -222,6 +231,7 @@ test(
       ms: 16.7,
     })
     setLogMode({ mode: 'on' })
+    await flushLogs()
     const written = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),
@@ -270,5 +280,51 @@ test(
       ],
       'Detailed lines leave out the flag, the process id and the memory',
     )
+  },
+)
+
+test(
+  'logging returns before disk completion and bounds outstanding writes',
+  async t => {
+    openLogs()
+    t.after(() => closeLogs())
+    await flushLogs()
+    const complete: (() => void)[] = []
+    t.mock.method(
+      fs,
+      'appendFile',
+      // eslint-disable-next-line pnyx/object-params -- Node owns the filesystem callback signature.
+      (
+        _path: unknown,
+        _text: unknown,
+        _options: unknown,
+        callback: fs.NoParamCallback,
+      ) => {
+        complete.push(() => callback(null))
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      t.mock.restoreAll(); syncBuiltinESMExports()
+    })
+
+    for (let index = 0; index < 1000; index++) {
+      log({
+        operation: 'disk stalled',
+        count: index,
+      })
+    }
+
+    assert.equal(
+      complete.length,
+      200,
+      'a stalled disk cannot grow the server queue without a bound',
+    )
+
+    for (const finish of complete) {
+      finish()
+    }
+
+    await flushLogs()
   },
 )
