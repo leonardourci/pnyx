@@ -1,5 +1,5 @@
 import type { HydraState } from '#app/model.ts'
-import { ownerActor } from '#app/actors.ts'
+import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import { askWording } from '#tasks/ask-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 
@@ -12,21 +12,25 @@ export interface AnswerLead {
   discussion: boolean
 }
 
+// Entries carry answers or discusses only for the owner's own messages.
 export function answerLeads({
-  messages = [],
+  entries = [],
   cards,
   previous,
 }: {
-  messages?: HydraState['hydraMessages']
+  entries?: ThreadEntry[]
   cards: HydraState['cards']
   previous?: ReadonlyMap<string, AnswerLead>
 }): Map<string, AnswerLead> {
-  return new Map(messages.flatMap(message => {
-    const discussion = !message.answers
-    const askId = discussion ? message.discusses : message.answers
-    const task = message.task
+  return new Map(entries.flatMap(entry => {
+    const discussion = !entry.answers
+    const askId = discussion ? entry.discusses : entry.answers
+    const {
+      task,
+      reference,
+    } = entry
 
-    if (!askId || !task || task === HYDRA_CARD || !ownerActor({ actor: message.actor })) {
+    if (!askId || !task || !reference || task === HYDRA_CARD) {
       return []
     }
 
@@ -40,12 +44,12 @@ export function answerLeads({
       task,
       question: askWording({ ask }).question,
       options: (ask.options ?? []).map(option => option.label),
-      choice: message.choice,
+      choice: entry.choice,
       recommended: ask.recommended,
       discussion,
     }
 
-    const before = previous?.get(message.id)
+    const before = previous?.get(reference)
     const unchanged = before && before.task === lead.task && before.question === lead.question
       && before.choice === lead.choice && before.recommended === lead.recommended
       && before.discussion === lead.discussion && before.options.length === lead.options.length
@@ -56,7 +60,7 @@ export function answerLeads({
 
     return [
       [
-        message.id,
+        reference,
         unchanged ? before : lead,
       ],
     ]

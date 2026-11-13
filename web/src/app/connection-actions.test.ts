@@ -673,16 +673,10 @@ test(
         question: 'Another question?',
       },
     ]
-    state.hydraMessages = [
-      {
-        id: 'earlier-message',
-        action: 'send',
-        text: 'Keep this message',
-        at: event.at,
-        actor: 'owner',
-        hydra: 'default',
-      },
-    ]
+    state.hydraOwnerMessage = {
+      id: 'earlier-message',
+      text: 'Keep this message',
+    }
     socket.receive({
       message: {
         type: 'snapshot',
@@ -748,12 +742,8 @@ test(
       'an unrelated event retains a card with live readings',
     )
     assert.equal(
-      connection.snapshot().state.hydraMessages,
-      beforeEvent.hydraMessages,
-    )
-    assert.equal(
-      connection.snapshot().state.hydraMessages?.[0],
-      beforeEvent.hydraMessages?.[0],
+      connection.snapshot().state.hydraOwnerMessage,
+      beforeEvent.hydraOwnerMessage,
     )
     assert.deepEqual(
       beforeEvent,
@@ -809,20 +799,17 @@ test(
       'a chat append retains all card views',
     )
     assert.equal(
-      afterMessage.hydraMessages?.[0],
-      beforeMessage.hydraMessages?.[0],
-    )
-    assert.notEqual(
-      afterMessage.hydraMessages,
-      beforeMessage.hydraMessages,
-    )
-    assert.equal(
-      afterMessage.hydraMessages?.[1]?.text,
+      afterMessage.hydraOwnerMessage?.text,
       'A new message',
     )
     assert.equal(
-      beforeMessage.hydraMessages?.length,
-      1,
+      beforeMessage.hydraOwnerMessage?.text,
+      'Keep this message',
+    )
+    assert.equal(
+      afterMessage.hydraMessages,
+      undefined,
+      'the page keeps only the latest owner message, not the history',
     )
     assert.doesNotThrow(() => structuredClone(afterMessage))
     socket.receive({

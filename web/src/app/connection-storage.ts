@@ -60,6 +60,7 @@ export function confirmedState({ state }: { state: PageState }): HydraState {
   }
   delete confirmed.contextNotes
   delete confirmed.questionReminders
+  delete confirmed.hydraMessages
 
   return confirmed
 }

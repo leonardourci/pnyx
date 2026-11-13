@@ -975,9 +975,8 @@ export function HydraChat({
   const previousLeads = useRef<ReturnType<typeof answerLeads> | undefined>(undefined)
   const leads = useMemo(
     () => {
-      const refs = new Set(conversation?.entries.map(entry => entry.reference) ?? [])
       const next = answerLeads({
-        messages: state.hydraMessages?.filter(message => refs.has(message.id)),
+        entries: conversation?.entries,
         cards: state.cards,
         previous: previousLeads.current,
       })
@@ -986,7 +985,6 @@ export function HydraChat({
       return next
     },
     [
-      state.hydraMessages,
       state.cards,
       conversation?.entries,
     ],
