@@ -3,7 +3,6 @@ import type { HydraState } from '#app/model.ts'
 import { randomUUID } from 'node:crypto'
 import { background } from '#app/background.ts'
 import { applyDecision } from '#app/decision.ts'
-import { readEvents } from '#app/event-log.ts'
 import { hydraAgentFolder } from '#app/home-migration.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { loadHydra } from '#app/store.ts'
@@ -25,7 +24,8 @@ import { HYDRA_CARD } from './identity.ts'
 import type { HydraAgentChange, HydraOperation } from './model.ts'
 import { operationEvent } from './operations.ts'
 import { recapText } from './wakes.ts'
-import { canSkipCompaction, compactionContext, historyCommand, inscribeSince, NEITHER_REASON, readHistory } from './history.ts'
+import { hydraHistoryPage } from './history-cli.ts'
+import { canSkipCompaction, compactionContext, historyCommand, inscribeSince, NEITHER_REASON } from './history.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { HostedSession, Provider } from '#workers/provider.ts'
 
@@ -207,9 +207,8 @@ export function createAgentSwitch({
     }
 
     if (choice === 'neither' && change.kind !== 'effort' && !canSkipCompaction({
-      tokens: readHistory({
-        state: loadHydra({ hydraId }).state,
-        events: readEvents({ hydraId }),
+      tokens: hydraHistoryPage({
+        hydraId,
         since: 'last-compaction',
       }).totalTokens,
     })) {
@@ -267,10 +266,8 @@ export function createAgentSwitch({
                   at: at(),
                 }),
               })
-              const state = loadHydra({ hydraId }).state
-              const history = readHistory({
-                state,
-                events: readEvents({ hydraId }),
+              const history = hydraHistoryPage({
+                hydraId,
                 since: 'last-compaction',
               })
 

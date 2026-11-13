@@ -194,9 +194,6 @@ export function eventText({ event }: { event: HydraEvent }): string {
   const parts: (string | undefined)[] = [event.reason]
 
   switch (event.type) {
-    case 'chat.message':
-      parts.push(event.data.text)
-      break
     case 'task.reminder':
       parts.push(event.data.after ?? 'Reminder cleared')
       break

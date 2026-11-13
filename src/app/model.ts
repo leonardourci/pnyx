@@ -477,8 +477,12 @@ export interface HydraState {
     flags?: string[]
   }
   hydraMessages?: HydraMessage[]
+  // The page's stand-in for hydraMessages: the owner's latest message to Hydra.
+  hydraOwnerMessage?: Pick<HydraMessage, 'id' | 'task' | 'text'>
   questionReminders?: Record<string, string>
   hydraAgent?: import('#workers/model.ts').AgentConfig
+  // Every session Hydra has been configured with, oldest first.
+  hydraSessions?: string[]
   hydraAgentChange?: import('#hydra/model.ts').HydraAgentChange
   historyMilestones?: import('#hydra/history.ts').HistoryMilestone[]
   hydraContext?: {

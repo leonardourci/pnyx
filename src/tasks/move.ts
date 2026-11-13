@@ -595,7 +595,8 @@ export async function moveTask({
   return withWriter({
     hydraId,
     fn: ({ writer: source }) => {
-      // The source records the transcript up to now, so the target reads on from the same place.
+      // The source records the transcript's notes up to now, so the target reads on from
+      // the same place.
       harvestTranscripts({
         writer: source,
         cardIds: [card.id],

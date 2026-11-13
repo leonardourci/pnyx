@@ -1,5 +1,5 @@
 import { cloneValue } from '#app/preimage.ts'
-import type { AgentRef, AgentSession, Attention, TerminalFacts, SessionEvent } from './model.ts'
+import type { AgentRef, AgentSession, Attention, TerminalFacts } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -321,29 +321,4 @@ export function observeSession({
       })
     }
   }
-}
-
-export function taskForMessage({
-  memberships,
-  at,
-  fallback,
-}: {
-  memberships: SessionEvent[]
-  at?: string
-  fallback: string
-}): string {
-  let task = memberships.find(e => e.data.after)?.data.after ?? fallback
-  const stamp = Date.parse(at ?? '')
-
-  if (!Number.isFinite(stamp)) {
-    return fallback
-  }
-
-  for (const event of memberships) {
-    if (Date.parse(event.at) <= stamp && event.data.after) {
-      task = event.data.after
-    }
-  }
-
-  return task
 }

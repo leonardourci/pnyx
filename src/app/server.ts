@@ -37,7 +37,6 @@ import { createServerWorkers } from './server-workers.ts'
 import { type HydraClient, type HydraSubscription, type MountedHydra } from './server-transport.ts'
 import { buildId } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
-import { backfillHydraConversations } from '#integrations/hooks/harvest.ts'
 import { healthFacts } from '#diagnostics/health.ts'
 import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
 import { HydraError } from '#store/errors.ts'
@@ -333,18 +332,6 @@ export async function mountOwnedHydra({
     hydraId,
     closed: () => closed,
   })
-  backfillHydraConversations({
-    hydraId,
-    closed: () => closed,
-  }).catch((error: unknown) => {
-    log({
-      level: 'error',
-      operation: 'harvest.backfill',
-      hydraId,
-      error,
-    })
-  })
-
   const tick = createServerTick({
     hydraId,
     state: () => state,

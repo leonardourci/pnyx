@@ -1,7 +1,5 @@
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { transcriptMessages } from '#workers/transcripts.ts'
 import assert from 'node:assert/strict'
-import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -10,6 +8,7 @@ import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readReport } from '#investigations/report.ts'
 import { decidePush } from '#tasks/push.ts'
+import { query } from '#store/postgres.ts'
 import { storedHydra } from '#test-harness/database.ts'
 import { search } from './search.ts'
 import { searchInBackground } from './search-background.ts'
@@ -37,15 +36,6 @@ const TRANSCRIPT = join(
   'transcripts',
   'claude-session.jsonl',
 )
-const CODEX = join(
-  import.meta.dirname,
-  '..',
-  'hydra',
-  'fixtures',
-  'transcripts',
-  'codex-session.jsonl',
-)
-
 test(
   'Oracle recovers task instructions, reports and helper results after edits',
   () => {
@@ -374,67 +364,6 @@ test(
 )
 
 test(
-  'only typed messages and assistant text are read from Claude Code and Codex transcripts',
-  () => {
-    const messages = ({ path }: { path: string }) => readFileSync(
-      path,
-      'utf8',
-    ).split('\n')
-      .slice(
-        0,
-        -1,
-      )
-      .flatMap(l => transcriptMessages({ record: JSON.parse(l) as unknown }))
-    const texts = messages({ path: TRANSCRIPT }).map(m => m.text)
-    assert.deepEqual(
-      texts.slice(
-        0,
-        2,
-      ),
-      [
-        'Why did the deploy get reverted after the migration?',
-        'The migration locked the orders table, so the deploy was rolled back.',
-      ],
-    )
-    const all = texts.join('\n')
-
-    for (const hidden of [
-      'toolinputword',
-      'tooloutputword',
-      'secretthought',
-      'metaskillbody',
-      'injectedreminder',
-      'summaryrecordword',
-    ]) {
-      assert.ok(
-        !all.includes(hidden),
-        hidden,
-      )
-    }
-
-    assert.match(
-      all,
-      /Use the token sk-/,
-    )
-    assert.deepEqual(
-      messages({ path: CODEX }),
-      [
-        {
-          at: '2026-10-12T10:00:03.000Z',
-          text: 'Why is the invoice export timing out?',
-          block: 0,
-        },
-        {
-          at: '2026-10-12T10:00:07.000Z',
-          text: 'The export query scans every invoice without an index.',
-          block: 0,
-        },
-      ],
-    )
-  },
-)
-
-test(
   'Oracle snippets preserve Markdown and center highlighted path matches',
   () => {
     process.env.PNYX_HOME = mkdtempSync(join(
@@ -547,63 +476,71 @@ test(
 )
 
 test(
-  'searches leave sources untouched, deduplicate archives and follow moved sessions',
+  'Oracle finds a task by its notes and events, never by its agent transcript, and searching leaves the Hydra untouched',
   async () => {
     const home = mkdtempSync(join(
       scratch,
-      'pnyx-oracle-reader-',
+      'pnyx-oracle-transcript-',
     ))
     process.env.PNYX_HOME = home
-    const transcriptPath = join(
-      home,
-      'reader.jsonl',
-    )
-    cpSync(
-      TRANSCRIPT,
-      transcriptPath,
-    )
+    const at = '2026-10-15T10:00:00Z'
     const card = withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'reader-created',
-            at: '2026-10-15T10:00:00Z',
-            actor: 'fixture',
-            cardId: 'reader',
-            type: 'task.created',
-            data: {
-              key: 'reader',
-              title: 'Saved conversation',
-            },
-          },
-        })
         const pushed = decidePush({
           state: writer.state,
-          key: 'reader',
+          key: 'deploy',
           input: {
+            title: 'Deploy previews',
             agent: {
               provider: 'claude-code',
-              sessionId: 'reader-session',
-              transcriptPath,
+              sessionId: 'worker-session',
+              transcriptPath: TRANSCRIPT,
             },
           },
           meta: {
-            at: '2026-10-15T10:00:00Z',
+            at,
             actor: 'fixture',
           },
         })
         assert.ok('event' in pushed)
         writer.append({ event: pushed.event })
-        harvestTranscripts({
-          writer,
-          cardIds: [pushed.event.cardId],
-          at: '2026-10-15T10:00:00Z',
-        })
+        const cardId = writer.state.keys.deploy!
 
-        return pushed.event.cardId
+        for (const event of [
+          {
+            id: 'noted',
+            type: 'card.noted',
+            data: {
+              kind: 'decision',
+              source: 'fixture',
+              text: 'Keep the saffron rollout behind a flag.',
+            },
+          },
+          {
+            id: 'copied',
+            type: 'chat.message',
+            data: {
+              session: 'worker-session',
+              nativeId: '0:m0',
+              role: 'assistant',
+              text: 'The copiedtranscriptword reply.',
+            },
+          },
+        ] as const) {
+          writer.append({
+            event: {
+              v: 1,
+              seq: writer.state.seq + 1,
+              at,
+              actor: 'fixture',
+              cardId,
+              ...event,
+            } as HydraEvent,
+          })
+        }
+
+        return cardId
       },
     })
     const dir = join(
@@ -612,38 +549,40 @@ test(
       'default',
     )
     const stored = storedHydra({ hydraId: 'default' })
-    const cursors = readFileSync(
-      join(
-        dir,
-        'harvest.json',
-      ),
-      'utf8',
-    )
-    const result = await searchInBackground({
+    const find = async ({ text }: { text: string }) => (await searchInBackground({
       hydraId: 'default',
       query: {
-        text: 'migration',
+        text,
         limit: 20,
+        highlight: false,
       },
-    })
+    })).hits.map(hit => hit.card)
 
-    assert.equal(
-      result.hits[0]?.card,
-      card,
+    assert.deepEqual(
+      await find({ text: 'saffron' }),
+      [card],
+      'a card note is found',
     )
-    assert.equal(
-      result.hits[0]?.snippets.length,
-      2,
-      'native lines already archived appear only once',
+    assert.deepEqual(
+      await find({ text: 'previews' }),
+      [card],
+      'its title is found',
     )
+
+    for (const word of [
+      'migration',
+      'orders',
+      'copiedtranscriptword',
+    ]) {
+      assert.deepEqual(
+        await find({ text: word }),
+        [],
+        `${word} is only in the agent transcript`,
+      )
+    }
+
     await assert.rejects(
-      searchInBackground({
-        hydraId: 'default',
-        query: {
-          text: '!!!',
-          limit: 20,
-        },
-      }),
+      find({ text: '!!!' }),
       { code: 'VALIDATION_ERROR' },
     )
     assert.equal(
@@ -653,286 +592,17 @@ test(
       )),
       false,
     )
-
-    assert.equal(
+    assert.deepEqual(
       storedHydra({ hydraId: 'default' }),
       stored,
     )
     assert.equal(
-      readFileSync(
-        join(
-          dir,
-          'harvest.json',
-        ),
-        'utf8',
-      ),
-      cursors,
-    )
-    withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => {
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'receiver-created',
-            cardId: 'receiver',
-            at: '2026-10-15T10:01:00Z',
-            actor: 'fixture',
-            type: 'task.created',
-            data: {
-              key: 'receiver',
-              title: 'Moved conversation',
-            },
-          },
-        })
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'reader-moved',
-            cardId: 'receiver',
-            at: '2026-10-15T10:01:00Z',
-            actor: 'fixture',
-            type: 'task.session',
-            data: {
-              session: 'claude-code:reader-session',
-              before: card,
-              after: 'receiver',
-            },
-          },
-        })
-      },
-    })
-    appendFileSync(
-      transcriptPath,
-      `\n${JSON.stringify({
-        type: 'user',
-        timestamp: '2026-10-15T10:02:00Z',
-        message: {
-          role: 'user',
-          content: 'unarchived relocationneedle',
-        },
-      })}\n`,
-    )
-    assert.deepEqual(
-      search({
-        hydraId: 'default',
-        query: {
-          text: 'relocationneedle',
-          limit: 20,
-        },
-      }).hits.map(hit => hit.card),
-      ['receiver'],
-    )
-    assert.deepEqual(
-      search({
-        hydraId: 'default',
-        query: {
-          text: 'relocationneedle',
-          card,
-          limit: 20,
-        },
-      }).hits,
-      [],
-    )
-    assert.equal(
-      search({
-        hydraId: 'default',
-        query: {
-          text: 'migration',
-          card,
-          limit: 20,
-        },
-      }).hits[0]?.snippets.length,
-      2,
-      'archived conversation remains on its recorded task after the move',
-    )
-  },
-)
-
-test(
-  'Oracle omits context notes from native transcripts and previously harvested messages',
-  () => {
-    const home = mkdtempSync(join(
-      scratch,
-      'pnyx-oracle-context-',
-    ))
-    process.env.PNYX_HOME = home
-    const transcriptPath = join(
-      home,
-      'context.jsonl',
-    )
-    cpSync(
-      new URL(
-        '../hydra/fixtures/transcripts/lookup-session.jsonl',
-        import.meta.url,
-      ),
-      transcriptPath,
-    )
-    writeFileSync(
-      transcriptPath,
-      `${`invalid-json${'x'.repeat(16_000)}\n`.repeat(20)}${readFileSync(
-        transcriptPath,
-        'utf8',
-      )}`,
-    )
-    withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => {
-        const pushed = decidePush({
-          state: writer.state,
-          key: HYDRA_CARD,
-          input: {
-            agent: {
-              provider: 'claude-code',
-              sessionId: 'context-session',
-              transcriptPath,
-            },
-          },
-          meta: {
-            at: '2026-01-01T00:00:00.000Z',
-            actor: 'fixture',
-          },
-        })
-        assert.ok('event' in pushed)
-        writer.append({ event: pushed.event })
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'legacy-context',
-            at: '2026-01-01T00:00:00.000Z',
-            actor: 'fixture',
-            cardId: HYDRA_CARD,
-            type: 'chat.message',
-            data: {
-              session: 'older-session',
-              nativeId: '0:m0',
-              role: 'user',
-              text: '<pnyx-context>harvestedcontextword</pnyx-context>\nRetain the archive.',
-            },
-          },
-        })
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'legacy-context-wake',
-            at: '2026-01-01T00:00:01.000Z',
-            actor: 'fixture',
-            cardId: HYDRA_CARD,
-            type: 'chat.message',
-            data: {
-              session: 'older-session',
-              nativeId: '1:m0',
-              role: 'user',
-              text: '<pnyx-context>Routine context</pnyx-context>\n<pnyx-wake>Check work</pnyx-wake>\narchivedwakeword',
-            },
-          },
-        })
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'archived-tool',
-            at: '2026-01-01T00:00:02Z',
-            actor: 'fixture',
-            cardId: HYDRA_CARD,
-            type: 'chat.message',
-            data: {
-              session: 'older-session',
-              nativeId: 'archived-tool',
-              role: 'assistant',
-              kind: 'tool',
-              hidden: false,
-              text: 'foxtrotspool',
-            },
-          },
-        })
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'archived-thinking',
-            at: '2026-01-01T00:00:02Z',
-            actor: 'fixture',
-            cardId: HYDRA_CARD,
-            type: 'chat.message',
-            data: {
-              session: 'older-session',
-              nativeId: 'archived-thinking',
-              role: 'assistant',
-              kind: 'thinking',
-              hidden: false,
-              text: 'kumquatinner',
-            },
-          },
-        })
-        writer.append({
-          event: {
-            v: 1,
-            seq: writer.state.seq + 1,
-            id: 'archived-hidden',
-            at: '2026-01-01T00:00:02Z',
-            actor: 'fixture',
-            cardId: HYDRA_CARD,
-            type: 'chat.message',
-            data: {
-              session: 'older-session',
-              nativeId: 'archived-hidden',
-              role: 'assistant',
-              kind: 'message',
-              hidden: true,
-              text: 'xylophoneinjected',
-            },
-          },
-        })
-      },
-    })
-    const find = ({ text }: { text: string }) => search({
-      hydraId: 'default',
-      query: {
-        text,
-        limit: 20,
-        highlight: false,
-      },
-    }).hits
-    assert.equal(
-      find({ text: 'sample' }).length,
-      1,
-    )
-    assert.equal(
-      find({ text: 'archive' }).length,
-      1,
-    )
-    assert.deepEqual(
-      find({ text: 'contextprefixedword' }),
-      [],
-    )
-    assert.deepEqual(
-      find({ text: 'contextonlyword' }),
-      [],
-    )
-    assert.deepEqual(
-      find({ text: 'harvestedcontextword' }),
-      [],
-    )
-    assert.deepEqual(
-      find({ text: 'archivedwakeword' }),
-      [],
-    )
-    assert.deepEqual(
-      find({ text: 'foxtrotspool' }),
-      [],
-    )
-    assert.deepEqual(
-      find({ text: 'kumquatinner' }),
-      [],
-    )
-    assert.deepEqual(
-      find({ text: 'xylophoneinjected' }),
-      [],
+      existsSync(join(
+        dir,
+        'harvest.json',
+      )),
+      false,
+      'searching harvests nothing',
     )
   },
 )
@@ -1027,62 +697,49 @@ test(
       'pnyx-oracle-long-',
     ))
     process.env.PNYX_HOME = home
-    const transcriptPath = join(
-      home,
-      'long.jsonl',
-    )
-    writeFileSync(
-      transcriptPath,
-      Array.from(
-        { length: LONG_HISTORY },
-        () => JSON.stringify({
-          type: 'user',
-          timestamp: '2026-10-15T10:00:00Z',
-          message: {
-            role: 'user',
-            content: 'zeppelin',
-          },
-        }),
-      ).join('\n'),
-    )
-    const card = withWriter({
+    withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
+        const base = {
+          v: 1 as const,
+          at: '2026-10-15T10:00:00Z',
+          actor: 'fixture',
+          cardId: 'long',
+        }
         writer.append({
           event: {
-            v: 1,
+            ...base,
             seq: writer.state.seq + 1,
             id: 'long-created',
-            at: '2026-10-15T10:00:00Z',
-            actor: 'fixture',
-            cardId: 'long',
             type: 'task.created',
             data: {
               key: 'long',
-              title: 'Long conversation',
+              title: 'Long history',
             },
           },
         })
-        const pushed = decidePush({
-          state: writer.state,
-          key: 'long',
-          input: {
-            agent: {
-              provider: 'claude-code',
-              sessionId: 'long-session',
-              transcriptPath,
-            },
-          },
-          meta: {
-            at: '2026-10-15T10:00:00Z',
-            actor: 'fixture',
-          },
-        })
-        assert.ok('event' in pushed)
-        writer.append({ event: pushed.event })
-
-        return pushed.event.cardId
       },
+    })
+    // Inserted directly: appending this many events one by one is slow.
+    query({
+      statements: [
+        {
+          text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+            select 'default', seq + n, 'long-' || n, 'task.intent', $2::text, 'fixture', 'long', json_build_object(
+              'v', 1, 'seq', seq + n, 'id', 'long-' || n, 'at', $2::text, 'actor', 'fixture', 'cardId', 'long',
+              'type', 'task.intent', 'data', json_build_object('text', 'zeppelin'))
+            from hydras, generate_series(1, $1::integer) as n where id = 'default'`,
+          values: [
+            LONG_HISTORY,
+            '2026-10-15T10:00:00Z',
+          ],
+        },
+        {
+          text: 'update hydras set seq = seq + $1 where id = \'default\'',
+          values: [LONG_HISTORY],
+        },
+      ],
+      transaction: true,
     })
     assert.deepEqual(
       search({
@@ -1092,7 +749,7 @@ test(
           limit: 20,
         },
       }).hits.map(hit => hit.card),
-      [card],
+      ['long'],
     )
   },
 )

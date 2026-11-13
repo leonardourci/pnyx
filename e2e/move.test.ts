@@ -1,16 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { HydraEvent } from '#app/model.ts'
 import { until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
-
-const chatTexts = ({
-  events,
-  card,
-}: {
-  events: HydraEvent[]
-  card: string
-}) => events.flatMap(event => (event.type === 'chat.message' && event.cardId === card ? [event.data.text] : []))
 
 test(
   'a paused worker moves to another Hydra with its task copy and resumes its own session there, once it is between turns and nothing is queued behind it',
@@ -215,19 +206,9 @@ test(
       agent.id,
     )
     await until({
-      what: 'the new Hydra to record the resumed turn',
-      check: () => chatTexts({
-        events: target.events(),
-        card: id,
-      }).some(text => text.includes('Carry on here')),
+      what: 'the resumed worker to get the reply sent on the new Hydra',
+      check: () => resumed.received.some(text => text.includes('Carry on here')),
     })
-    assert.equal(
-      chatTexts({
-        events: target.events(),
-        card: id,
-      }).some(text => text.includes('Keep going')),
-      false,
-    )
 
     // Guards the folder the moved worker still runs in: the old Hydra must not hand it to its next task.
     await s.owner({

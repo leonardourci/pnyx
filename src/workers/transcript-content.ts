@@ -1,6 +1,8 @@
 import { commandOf } from './tool-input.ts'
 import { object } from './transcript-usage.ts'
 import { visibleText, wakeInput } from '#oracle/text.ts'
+
+const WORKER_HEADER = /<pnyx-worker[\s>]/
 import type { FoundSettings, TranscriptMessage, TranscriptCall, TranscriptTrace } from './provider.ts'
 
 const TEXT_BLOCKS = [
@@ -112,6 +114,10 @@ export function transcriptText({
     }
 
     const message: TranscriptMessage = { text: visible }
+
+    if (WORKER_HEADER.test(text)) {
+      message.pnyx = true
+    }
 
     if (at) {
       message.at = at

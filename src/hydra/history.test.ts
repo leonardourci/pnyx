@@ -108,6 +108,7 @@ test(
     const first = readHistory({
       state,
       events,
+      native: [],
       since: 'origin',
       through: 3,
       budget: 1,
@@ -119,6 +120,7 @@ test(
     const second = readHistory({
       state,
       events,
+      native: [],
       since: 'origin',
       after: first.after,
       budget: 1,
@@ -130,6 +132,7 @@ test(
     const third = readHistory({
       state,
       events,
+      native: [],
       since: 'origin',
       after: second.after,
       budget: 1,
@@ -145,6 +148,7 @@ test(
     const last = readHistory({
       state,
       events,
+      native: [],
       since: 'origin',
       after: third.after,
       budget: 1,
@@ -164,6 +168,7 @@ test(
     const all = readHistory({
       state,
       events,
+      native: [],
       since: 'origin',
     })
     assert.equal(
@@ -354,59 +359,171 @@ test(
 )
 
 test(
-  'compaction history excludes assistant-prefixed traces while retaining legacy messages',
+  'history reads Hydra replies from its native transcript, bounded by the log around them',
   () => {
-    const events: HydraEvent[] = [
-      {
-        ...base,
-        seq: 1,
-        id: 'reply',
-        type: 'chat.message',
-        data: {
-          session: 'fixture',
-          nativeId: '0:m0',
-          role: 'assistant',
-          text: 'The release is ready.',
-        },
+    const owner = ({
+      seq,
+      second,
+      text,
+    }: {
+      seq: number
+      second: number
+      text: string
+    }): HydraEvent => ({
+      ...base,
+      seq,
+      id: `owner-${seq}`,
+      actor: 'web',
+      at: `2026-11-05T00:00:0${second}.000Z`,
+      type: 'hydra.message',
+      data: {
+        hydra: 'hydra',
+        action: 'send',
+        text,
       },
+    })
+    const events: HydraEvent[] = [
+      owner({
+        seq: 1,
+        second: 0,
+        text: 'Is the release ready?',
+      }),
       {
         ...base,
         seq: 2,
-        id: 'tool',
-        type: 'chat.message',
+        id: 'compacted',
+        at: '2026-11-05T00:00:02.000Z',
+        type: 'hydra.operation',
         data: {
-          session: 'fixture',
-          nativeId: '100:t0',
-          role: 'assistant_tool',
-          kind: 'tool',
-          text: 'Raw tool output.',
+          id: 'compacted',
+          kind: 'compaction',
+          state: 'finished',
+          through: 1,
         },
       },
-      {
-        ...base,
+      owner({
         seq: 3,
-        id: 'thinking',
-        type: 'chat.message',
-        data: {
-          session: 'fixture',
-          nativeId: '200:t0',
-          role: 'assistant_thinking',
-          kind: 'thinking',
-          text: 'Private reasoning.',
+        second: 4,
+        text: 'Ship it.',
+      }),
+    ]
+    const native = [
+      [
+        1,
+        'Checking the release.',
+      ],
+      [
+        3,
+        'The release is ready.',
+      ],
+      [
+        5,
+        'Shipped.',
+      ],
+    ].flatMap(([
+      second,
+      text,
+    ]) => recordEntries({
+      record: {
+        type: 'assistant',
+        timestamp: `2026-11-05T00:00:0${second}.000Z`,
+        message: {
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Private reasoning.',
+            },
+            {
+              type: 'tool_use',
+              id: `call-${second}`,
+              name: 'Bash',
+              input: { command: 'gh pr view' },
+            },
+            {
+              type: 'text',
+              text,
+            },
+          ],
         },
       },
-    ]
-    const history = readHistory({
-      state: replay({
-        state: emptyHydra(),
-        events,
-      }),
+      offset: Number(second),
+    }).map(entry => ({
+      ...entry,
+      reference: `fixture:${entry.id}`,
+      session: 'fixture',
+    })))
+    let state = replay({
+      state: emptyHydra(),
       events,
-      since: 'origin',
+    })
+    // A reply after the newest event falls outside the history until an event follows it.
+    assert.equal(
+      readHistory({
+        state,
+        events,
+        native,
+        since: 'origin',
+      }).text,
+      [
+        '[owner] Is the release ready?',
+        '[Hydra] Checking the release.',
+        '[Hydra] The release is ready.',
+        '[owner] Ship it.',
+      ].join('\n\n'),
+    )
+    events.push(owner({
+      seq: 4,
+      second: 6,
+      text: 'Thanks.',
+    }))
+    state = replay({
+      state: emptyHydra(),
+      events,
     })
     assert.equal(
-      history.text,
-      '[Hydra] The release is ready.',
+      readHistory({
+        state,
+        events,
+        native,
+        since: 'origin',
+      }).text,
+      [
+        '[owner] Is the release ready?',
+        '[Hydra] Checking the release.',
+        '[Hydra] The release is ready.',
+        '[owner] Ship it.',
+        '[Hydra] Shipped.',
+        '[owner] Thanks.',
+      ].join('\n\n'),
+    )
+    assert.equal(
+      readHistory({
+        state,
+        events,
+        native,
+        since: 'last-compaction',
+      }).text,
+      [
+        // Written after seq 1, so outside the compaction's snapshot through 1.
+        '[Hydra] Checking the release.',
+        '[Hydra] The release is ready.',
+        '[owner] Ship it.',
+        '[Hydra] Shipped.',
+        '[owner] Thanks.',
+      ].join('\n\n'),
+    )
+    assert.equal(
+      readHistory({
+        state,
+        events,
+        native,
+        since: 'origin',
+        through: 2,
+      }).text,
+      [
+        '[owner] Is the release ready?',
+        '[Hydra] Checking the release.',
+      ].join('\n\n'),
     )
   },
 )

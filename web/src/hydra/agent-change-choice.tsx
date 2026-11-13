@@ -1,5 +1,4 @@
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { ownerActor } from '#app/actors.ts'
 import { useEffect, useId, useState } from 'react'
 import { canSkipCompaction, NEITHER_REASON } from '#hydra/history.ts'
 import type { HydraState } from '#app/model.ts'
@@ -50,7 +49,7 @@ function HeldMessageCard({
   notify,
 }: {
   change: HydraAgentChange
-  revision: number
+  revision: string
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -69,7 +68,7 @@ function HeldMessageCard({
   ] = useState<{
     tokens?: number
     error?: string
-    revision?: number
+    revision?: string
   }>({})
 
   useEffect(
@@ -208,8 +207,8 @@ export function AgentChangeChoice({
     return null
   }
 
-  const ownerMessages = state.hydraMessages?.filter(message => ownerActor({ actor: message.actor }))
-  const revision = (state.cards[HYDRA_CARD]?.updatedSeq ?? 0) + (ownerMessages?.length ?? 0)
+  const cardSeq = state.cards[HYDRA_CARD]?.updatedSeq ?? 0
+  const revision = `${cardSeq}:${state.hydraOwnerMessage?.id ?? ''}`
 
   return (
     <HeldMessageCard

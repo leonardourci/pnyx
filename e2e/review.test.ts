@@ -443,9 +443,13 @@ test(
         }),
         [],
       )
+      const grouped = s.state().hydraMessages?.find(entry => entry.reminderQuestions?.length)
+      assert.ok(grouped)
+      const groupedSeq = s.events().find(event => event.id === grouped.id)?.seq
+      assert.ok(groupedSeq)
       await page.shows({
         what: 'the grouped message during the held turn',
-        check: ({ state }) => state.hydraMessages?.some(entry => entry.reminderQuestions?.length),
+        check: ({ state }) => state.seq >= groupedSeq,
       })
       assert.deepEqual(
         page.queue()?.waiting,

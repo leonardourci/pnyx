@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { readTranscriptRecord, transcriptMessages } from './transcripts.ts'
+import { readTranscriptRecord } from './transcripts.ts'
 
 const records = JSON.parse(readFileSync(
   new URL(
@@ -194,14 +194,14 @@ test(
 )
 
 test(
-  'image wrappers stay out of text and hidden wake boundaries remain opt-in',
+  'image wrappers stay out of text and hidden wake boundaries are marked internal',
   () => {
     assert.equal(
       readTranscriptRecord({ record: records.codexImage }).role,
       'user',
     )
     assert.deepEqual(
-      transcriptMessages({ record: records.codexImage }),
+      readTranscriptRecord({ record: records.codexImage }).messages,
       [
         {
           at,
@@ -211,14 +211,7 @@ test(
       ],
     )
     assert.deepEqual(
-      transcriptMessages({ record: records.codexWake }),
-      [],
-    )
-    assert.deepEqual(
-      transcriptMessages({
-        record: records.codexWake,
-        includeInternal: true,
-      }),
+      readTranscriptRecord({ record: records.codexWake }).messages,
       [
         {
           text: '',
@@ -228,16 +221,16 @@ test(
       ],
     )
     assert.deepEqual(
-      transcriptMessages({
+      readTranscriptRecord({
         record: {
           ...records.claude,
           isMeta: true,
         },
-      }),
+      }).messages,
       [],
     )
     assert.deepEqual(
-      transcriptMessages({ record: null }),
+      readTranscriptRecord({ record: null }).messages,
       [],
     )
   },
@@ -338,7 +331,8 @@ test(
       },
     })
     assert.deepEqual(
-      transcriptMessages({ record: claude({ text: `${context}\nExplain the result.` }) }),
+      readTranscriptRecord({ record: claude({ text: `${context}\nExplain the result.` }) })
+        .messages,
       [
         {
           at,
@@ -348,7 +342,8 @@ test(
       ],
     )
     assert.deepEqual(
-      transcriptMessages({ record: codex({ text: `${context}\nExplain the result.` }) }),
+      readTranscriptRecord({ record: codex({ text: `${context}\nExplain the result.` }) })
+        .messages,
       [
         {
           at,
@@ -358,27 +353,26 @@ test(
       ],
     )
     assert.deepEqual(
-      transcriptMessages({ record: claude({ text: context }) }),
+      readTranscriptRecord({ record: claude({ text: context }) }).messages,
       [],
     )
     assert.deepEqual(
-      transcriptMessages({ record: codex({ text: context }) }),
+      readTranscriptRecord({ record: codex({ text: context }) }).messages,
       [],
     )
     const wake = `${context}\n<pnyx-wake>Check pending work.</pnyx-wake>\nMemory changed; load owner memory.`
     assert.deepEqual(
-      transcriptMessages({ record: claude({ text: wake }) }),
-      [],
+      readTranscriptRecord({ record: claude({ text: wake }) }).messages,
+      [
+        {
+          text: '',
+          at,
+          internal: true,
+        },
+      ],
     )
     assert.deepEqual(
-      transcriptMessages({ record: codex({ text: wake }) }),
-      [],
-    )
-    assert.deepEqual(
-      transcriptMessages({
-        record: codex({ text: wake }),
-        includeInternal: true,
-      }),
+      readTranscriptRecord({ record: codex({ text: wake }) }).messages,
       [
         {
           text: '',

@@ -39,7 +39,7 @@ commands:
   debug cpu-profile --out <file>             Capture a CPU profile of the server's main thread
   logs [clean]                               Show the diagnostic log files, or delete them all now
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
-  oracle "<words>"                           Full-text search over titles, links, events and transcripts
+  oracle "<words>"                           Full-text search over titles, links, events and notes
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   settings show|schema|set                   Pnyx-wide settings: theme, text sizes, Hide Done, review cadence, helper, Oracle filters, Hydra order, logs
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths
@@ -62,8 +62,8 @@ flags:
 
 const COMMAND_HELP: Record<string, string> = {
   page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--full] [--hydra <id>]
-Summarize what a page receives: shown cards per column, opened cards, chat messages and unavailable refs.
---full prints the whole projection, without the event-ID index, steering history or source captures.
+Summarize what a page receives: shown cards per column, opened cards, the owner's latest Hydra message and unavailable refs.
+--full prints the whole projection, without the event-ID index, steering history, source captures, context notes or Hydra message history.
 Repeat --card for opened cards.
 --hidden includes hidden and automatic cards.
 On a page connection, this also updates that tab's interests.
@@ -160,12 +160,12 @@ pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
 pnyx-axi hydra message [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>]
 pnyx-axi hydra message [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
-Lookup reads recorded chat across agent switches and compactions. --direction excludes the selected message; ranges include both endpoints.
+Lookup reads Hydra's replies from its native transcripts and the owner's messages from the log; a task's lookup reads its current session's transcript and the owner's replies. A native reply takes the seq of the first event after it, or the next seq when none follows yet, so several replies can share a seq and one newer than a snapshot stays outside it. --direction excludes the selected message; ranges include both endpoints.
 No selector lists the oldest page. --id/--seq/--at alone returns one message; --budget alone with a selector grows surroundings to fit.
 Whole messages, at most ${MESSAGE_PAGE_LIMIT} and ${HISTORY_BUDGET} estimated tokens and ${MESSAGE_PAGE_BYTES} JSON bytes per page; a message over the budget fails explicitly.
-Use returned older/newer cursors with --cursor; they pin the Hydra, thread, range and log snapshot. --at needs a timezone; duplicate times require an id or seq.
+Use returned older/newer cursors with --cursor; they pin the Hydra, thread, range and log snapshot. --at needs a timezone; a time or seq several messages share requires an id.
 pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
-Read whole messages since a successful milestone, including task briefs, intents and helper results. Unchanged helper waits are omitted. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
+Read whole messages since a successful milestone: the owner's messages, Hydra's replies read from its native transcripts, task briefs, intents and helper results. Unchanged helper waits are omitted. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
 pnyx-axi hydra inscribe start|finish|fail [--key <milestone-id>] [--through <seq>] [--error <why>]
 start returns the pass ID, snapshot and history command; finish requires that snapshot after every page and memory save succeeds. Failed and started passes never advance the inscribe boundary.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
@@ -177,9 +177,10 @@ prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
-except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
-and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
-for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
+except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It returns
+a compact conversations digest of the owner's queued task replies (read them whole with task history --full) and of the words
+typed straight into the session of a worker Pnyx does not run, which carry their time, count once an event follows them, wake --wait
+and are read whole with task chat <task>. Pass the printed through as the next --after.
 `,
   owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
 pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <n>]
@@ -292,7 +293,7 @@ Hydra hands a worker's question to the owner under the same id; the worker's wor
 pnyx-axi task history <id> [--before <seq>|<hydra>:<seq>] [--limit <n>] [--full]
 A moved task's history continues into the Hydras it came from; those rows name their Hydra, and --before <hydra>:<seq> pages through them.
 pnyx-axi task messages <id> [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>] [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
-Uses the same bounded lookup as hydra message, across every recorded session on the task.
+Uses the same bounded lookup as hydra message over the task's current session and the owner's replies; read past sessions with task chat --session.
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
 pnyx-axi task permission <task> <request> allow|deny [--answer <json>] [--reason <text>]
 A question request is allowed with its answers, --answer '{"answers":[{"pick":[1]},{"text":"..."}]}' (one per question, picks

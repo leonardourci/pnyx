@@ -3,7 +3,6 @@ import type { Ask, Card } from '#tasks/model.ts'
 import { activeAsks, openAsks } from '#tasks/ask-state.ts'
 import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { ownerActor } from '#app/actors.ts'
 import { taskMentions } from '#hydra/mentions.ts'
 import { reviewRequests, type ReviewRequest } from '#web-tasks/review-requests.ts'
 
@@ -26,7 +25,7 @@ export function chatDecisions({
   selectedTask?: string | null
   draft?: string
 }): ChatDecision[] {
-  const latest = state.hydraMessages?.findLast(message => ownerActor({ actor: message.actor }) && message.action === 'send')
+  const latest = state.hydraOwnerMessage
   const context = new Set([
     selectedTask,
     latest?.task,

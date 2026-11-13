@@ -1,19 +1,17 @@
 import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
-import { loggedEntry } from './history.ts'
-import { chatRecordId } from './chat-records.ts'
-import { effectiveChatEvents } from './chat-events.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
+import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { ReplyState } from '#workers/model.ts'
+import type { AgentRef, ReplyState } from '#workers/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
+import { readTranscript } from '#workers/transcript-read.ts'
 import type { TranscriptRecord } from '#workers/provider.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
 import { traces } from '#preferences/view.ts'
@@ -44,7 +42,7 @@ export interface ThreadEntry {
   session?: string
   streaming?: boolean
   receipt?: ReplyState
-  // When the owner sent it; a transcript copy's at is when the agent read it.
+  // When the owner sent it; the transcript's at is when the agent read it.
   sent?: string
   // When the agent's harness confirmed it took this message.
   received?: string
@@ -63,9 +61,15 @@ export interface ThreadEntry {
     }
   }
   task?: string
+  // The owner's message answers or discusses this question on its task, choosing this option.
+  answers?: string
+  discusses?: string
+  choice?: string
   // Pairs a tool call with its result.
   call?: string
   initial?: boolean
+  // Pnyx wrote this user input, such as a worker's start prompt.
+  pnyx?: boolean
   replyId?: string
   messageId?: string
   part?: number
@@ -99,6 +103,8 @@ export interface ThreadPage {
   watching: 'unknown'
 }
 const MAX_BYTES = 10 * 1024 * 1024
+// How many transcripts' parsed messages the server keeps between reads.
+const CACHED_TRANSCRIPTS = 16
 // Parts bound each transport entry without cutting a logical message at a page boundary.
 const MAX_TEXT = 1000
 
@@ -186,16 +192,24 @@ export function transcriptEntries({
   const entries: ThreadEntry[] = messages.map((
     message,
     index,
-  ) => ({
-    id: `${offset}:m${index}`,
-    kind: 'message',
-    role: parsed.role,
-    text: message.text,
-    at: message.at,
-    hidden: message.internal,
-    final: parsed.final,
-    block: message.block,
-  }))
+  ) => {
+    const entry: ThreadEntry = {
+      id: `${offset}:m${index}`,
+      kind: 'message',
+      role: parsed.role,
+      text: message.text,
+      at: message.at,
+      hidden: message.internal,
+      final: parsed.final,
+      block: message.block,
+    }
+
+    if (message.pnyx) {
+      entry.pnyx = true
+    }
+
+    return entry
+  })
 
   for (const trace of parsed.traces) {
     if ((trace.kind === 'tool' && !tools) || (trace.kind === 'thinking' && !thinking)) {
@@ -224,7 +238,7 @@ export function transcriptEntries({
   ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({ entry }))
 }
 
-export function threadPath({ card }: { card: Card }): string | undefined {
+export function threadPath({ card }: { card: Pick<Card, 'agent'> }): string | undefined {
   const path = card.agent?.transcriptPath
 
   return path && isAbsolute(path) && path.endsWith('.jsonl') && [
@@ -232,6 +246,135 @@ export function threadPath({ card }: { card: Card }): string | undefined {
     'claude-code',
     'codex',
   ].includes(card.agent!.provider) ? path : undefined
+}
+
+export type SessionEntry = ThreadEntry & {
+  reference: string
+  session: string
+}
+const parsedSessions = new Map<string, {
+  identity: string
+  end: number
+  entries: SessionEntry[]
+}>()
+
+// One session's messages from its whole native transcript, each with the reference its thread
+// page gives it. The parsed messages of recent transcripts are kept, so a later call parses
+// only the lines appended since.
+export function sessionEntries({
+  path,
+  session,
+  boundaries,
+}: {
+  path: string
+  session: string
+  boundaries: boolean
+}): SessionEntry[] {
+  const key = `${session}\n${boundaries}\n${path}`
+  const cached = parsedSessions.get(key)
+  const read = readTranscript({
+    cursor: {
+      source: path,
+      identity: cached?.identity ?? '',
+      pos: cached?.end ?? 0,
+    },
+  })
+
+  parsedSessions.delete(key)
+
+  if (!read) {
+    return []
+  }
+
+  const added = read.lines.flatMap(line => recordEntries({
+    record: line.record,
+    offset: line.pos,
+    tools: false,
+    thinking: false,
+    boundaries,
+  }).map(item => ({
+    ...item,
+    reference: messageReference({
+      session,
+      id: item.id,
+      messageId: item.messageId,
+    }),
+    session,
+  })))
+  const entries = cached && !read.reset ? cached.entries.concat(added) : added
+  parsedSessions.set(
+    key,
+    {
+      identity: read.identity,
+      end: read.end,
+      entries,
+    },
+  )
+
+  const [oldest] = parsedSessions.keys()
+
+  if (parsedSessions.size > CACHED_TRANSCRIPTS && oldest !== undefined) {
+    parsedSessions.delete(oldest)
+  }
+
+  return entries
+}
+
+export interface HydraSession {
+  session: string
+  agent: AgentRef
+}
+
+// Every session Hydra has been configured with, oldest first; the card holds the current
+// session's latest agent.
+export function hydraSessions({ state }: { state: HydraState }): HydraSession[] {
+  const hydra = state.cards[HYDRA_CARD]
+  const current = hydra && cardSessionId({ card: hydra })
+  const ids = [...state.hydraSessions ?? []]
+
+  if (current && !ids.includes(current)) {
+    ids.push(current)
+  }
+
+  return ids.flatMap(session => {
+    const agent = session === current ? hydra!.agent : state.sessions?.[session]?.agent
+
+    return agent && !agent.agentId ? [
+      {
+        session,
+        agent,
+      },
+    ] : []
+  })
+}
+
+// The messages of every session Hydra has had, read from their native transcripts. A
+// transcript last written before `after` holds nothing later, so it is skipped.
+export function hydraEntries({
+  state,
+  after,
+}: {
+  state: HydraState
+  after?: string
+}): SessionEntry[] {
+  const written = ({ path }: { path: string }) => after === undefined
+    || (statSync(
+      path,
+      { throwIfNoEntry: false },
+    )?.mtimeMs ?? 0) >= Date.parse(after)
+
+  return hydraSessions({ state }).flatMap(({
+    session,
+    agent,
+  }) => {
+    const path = threadPath({ card: { agent } })
+
+    return path && written({ path }) ? sessionEntries({
+      path,
+      session,
+      boundaries: true,
+    }) : []
+  })
 }
 
 export interface LatestMessage {
@@ -402,7 +545,7 @@ export function latestMessage({
 
 // A cursor carries each sources position, so paging cannot skip transcript
 // chunks when reply receipts also fill the latest page.
-export const THREAD_CURSOR = /^n(\d+:\d+)?;r(\d+:\d+)?$/
+export const THREAD_CURSOR = /^n(?:(\d+)\.)?(\d+:\d+)?;r(\d+:\d+)?$/
 type LoggedMessage = HydraEvent
 const replyLogs = new Map<string, {
   end: number
@@ -431,7 +574,7 @@ function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
   }
 
   const added = (read?.events ?? []).filter((e): e is LoggedMessage =>
-    (e.type === 'card.replied' && !!e.data.text) || e.type === 'chat.message'
+    (e.type === 'card.replied' && !!e.data.text)
     || (e.actor === 'hydra' && e.type !== 'hydra.message'))
   log = {
     end: read?.end ?? 0,
@@ -448,8 +591,9 @@ function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
   return log.events
 }
 
-// A moved task's logged messages stay in each Hydra it passed through. They are numbered in order across
-// those Hydras, so the reply cursor stays one increasing number; a task that never moved keeps its seqs.
+// A moved task's owner replies stay in each Hydra it passed through. They are numbered in
+// order across those Hydras, so the reply cursor stays one increasing number; a task that
+// never moved keeps its seqs.
 function threadEvents({
   hydraId,
   card,
@@ -457,12 +601,11 @@ function threadEvents({
   hydraId: string
   card: Card
 }): LoggedMessage[] {
-  const session = cardSessionId({ card })
   const history = movedHistory({
     hydraId,
     task: card.id,
-    matches: ({ event }) => (event.type === 'card.replied' && Boolean(event.data.text) && event.cardId === card.id)
-      || (event.type === 'chat.message' && (event.cardId === card.id || event.data.session === session)),
+    matches: ({ event }) => event.type === 'card.replied' && Boolean(event.data.text)
+      && event.cardId === card.id,
   })
 
   if (!history.some(entry => entry.hydra !== hydraId)) {
@@ -487,8 +630,243 @@ export function threadAction({
 }): boolean {
   const task = state.cards[event.cardId]
 
-  return event.actor === 'hydra' && event.type !== 'hydra.message' && event.type !== 'chat.message'
+  return event.actor === 'hydra' && event.type !== 'hydra.message'
     && task !== undefined && !isManagedTask({ card: task })
+}
+
+type Candidate = {
+  item: ThreadEntry
+  native?: string
+  reply?: string
+}
+
+// A transcript a thread pages through, newest first. index names an earlier Hydra session in
+// the cursor. Hydra's current session pages back through the earlier ones; a task, or another
+// session the reader chose, has one source without an index.
+type ThreadSource = {
+  session?: string
+  path?: string
+  index?: number
+}
+
+function threadSources({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}): ThreadSource[] {
+  const session = cardSessionId({ card })
+  const hydra = state.cards[HYDRA_CARD]
+  const current = card.id === HYDRA_CARD && session !== undefined
+    && session === (hydra && cardSessionId({ card: hydra }))
+
+  if (!current) {
+    return [
+      {
+        session,
+        path: threadPath({ card }),
+      },
+    ]
+  }
+
+  const earlier = hydraSessions({ state }).filter(item => item.session !== session)
+
+  return [
+    {
+      session,
+      path: threadPath({ card }),
+    },
+    ...earlier.map(item => ({
+      session: item.session,
+      path: threadPath({ card: { agent: item.agent } }),
+      // Only the current session can be missing from hydraSessions, and earlier leaves it out.
+      index: state.hydraSessions!.indexOf(item.session),
+    })).reverse(),
+  ]
+}
+
+// The entries of one transcript before cursor, read back from its end in doubling windows
+// until wanted entries turn up, the file starts or MAX_BYTES is read. start is where the read
+// stopped, 0 at the start of the file.
+function readNative({
+  path,
+  session,
+  cursor,
+  wanted,
+  tools,
+  thinking,
+  boundaries,
+  excludedAt,
+  renamed,
+}: {
+  path: string
+  session?: string
+  cursor?: string
+  wanted: number
+  tools: boolean
+  thinking: boolean
+  boundaries: boolean
+  excludedAt: string[]
+  renamed: boolean
+}): {
+  found: Candidate[]
+  start: number
+} {
+  let fd: number | undefined
+
+  try {
+    fd = openSync(
+      path,
+      'r',
+    )
+    const stat = fstatSync(fd)
+
+    if (!stat.isFile()) {
+      throw new Error('not a regular file')
+    }
+
+    const [
+      offsetText,
+      itemText,
+    ] = (cursor ?? `${stat.size}`).split(':')
+    const beforeOffset = Number(offsetText)
+    const beforeItem = itemText === undefined ? undefined : Number(itemText)
+    let end = Math.min(
+      beforeOffset,
+      stat.size,
+    )
+
+    // Include the record containing a chunk cursor, then exclude chunks at or
+    // after that ordinal below. A single read stays within the 10 MB window.
+    if (beforeItem !== undefined) {
+      const tail = Buffer.alloc(Math.min(
+        MAX_BYTES,
+        stat.size - end,
+      ))
+      readSync(
+        fd,
+        tail,
+        0,
+        tail.length,
+        end,
+      )
+      const newline = tail.indexOf(10)
+      end += newline < 0 ? tail.length : newline + 1
+    }
+
+    let start = end, parsed = end
+    let found: Candidate[] = []
+
+    // Each doubling parses only the bytes before the lines already parsed.
+    for (let size = 64 * 1024; ; size *= 2) {
+      start = Math.max(
+        0,
+        end - Math.min(
+          size,
+          MAX_BYTES,
+        ),
+      )
+      const buf = Buffer.alloc(parsed - start)
+      readSync(
+        fd,
+        buf,
+        0,
+        buf.length,
+        start,
+      )
+      const first = start ? buf.indexOf(10) + 1 : 0
+      const window: Candidate[] = []
+      let position = first
+
+      while (position >= 0 && position < buf.length) {
+        const newline = buf.indexOf(
+          10,
+          position,
+        )
+
+        if (newline < 0) {
+          break
+        }
+
+        try {
+          const offset = start + position
+          const record = JSON.parse(buf.subarray(
+            position,
+            newline,
+          ).toString())
+
+          const decoded = readTranscriptRecord({ record })
+
+          if (beforeItem !== undefined && offset === beforeOffset && decoded.at !== undefined) {
+            excludedAt.push(decoded.at)
+          }
+
+          // Hidden traces must not use up the conversation page.
+          transcriptEntries({
+            parsed: decoded,
+            offset,
+            tools,
+            thinking,
+            boundaries,
+          }).forEach((
+            item,
+            index,
+          ) => {
+            if (
+              beforeItem === undefined
+              || offset < beforeOffset
+              || (offset === beforeOffset && index < beforeItem)
+            ) {
+              const entry: ThreadEntry = {
+                ...item,
+                reference: session ? messageReference({
+                  session,
+                  id: item.id,
+                  messageId: item.messageId,
+                }) : undefined,
+                ...(session ? { session } : {}),
+              }
+
+              if (renamed && session) {
+                entry.id = `${session}:${item.id}`
+
+                if (item.messageId) {
+                  entry.messageId = `${session}:${item.messageId}`
+                }
+              }
+
+              window.push({
+                native: `${offset}:${index}`,
+                item: entry,
+              })
+            }
+          })
+        } catch { /* Unsupported or incomplete records are not messages. */ }
+
+        position = newline + 1
+      }
+
+      found = window.concat(found)
+
+      if (first || !start) {
+        parsed = start + first
+      }
+
+      if (!start || found.length >= wanted || size >= MAX_BYTES) {
+        break
+      }
+    }
+
+    return {
+      found,
+      start,
+    }
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd)
+    }
+  }
 }
 
 type ThreadRead = {
@@ -553,171 +931,84 @@ function readThreadPage(
     watching: 'unknown',
   }
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
-  const nativeCursor = match?.[1], replyCursor = match?.[2]
+  const sourceCursor = match?.[1] === undefined ? undefined : Number(match[1])
+  const nativeCursor = match?.[2], replyCursor = match?.[3]
   const excludedAt: string[] = []
-  let candidates: {
-    item: ThreadEntry
-    native?: string
-    reply?: string
-  }[] = []
+  let candidates: Candidate[] = []
   let earlierNative = false, emptyNativeCursor: string | undefined
-  const path = threadPath({ card })
   const selected = traces({
     view: effectiveView({ state }),
     card: card.id,
   })
   const tools = card.id === HYDRA_CARD || selected.tools
   const thinking = selected.thinking
+  const sources = threadSources({
+    state,
+    card,
+  })
+  const named = sources.findIndex(source => source.index === sourceCursor)
+  // A cursor naming a session this thread no longer pages reads no transcript.
+  const first = sourceCursor === undefined ? 0 : named < 0 ? sources.length : named
 
-  if (path) {
-    let fd: number | undefined
+  for (let position = first; position < sources.length; position++) {
+    const source = sources[position]!
+    const current = position === 0
+    const label = source.index === undefined ? '' : `${source.index}.`
+
+    if (!source.path) {
+      if (current) {
+        result.unavailable = 'No supported transcript is recorded for this session.'
+      }
+
+      continue
+    }
+
+    let read: ReturnType<typeof readNative>
 
     try {
-      fd = openSync(
-        path,
-        'r',
-      )
-      const stat = fstatSync(fd)
-
-      if (!stat.isFile()) {
-        throw new Error('not a regular file')
-      }
-
-      const [
-        offsetText,
-        itemText,
-      ] = (nativeCursor ?? `${stat.size}`).split(':')
-      const beforeOffset = Number(offsetText)
-      const beforeItem = itemText === undefined ? undefined : Number(itemText)
-      let end = Math.min(
-        beforeOffset,
-        stat.size,
-      )
-
-      // Include the record containing a chunk cursor, then exclude chunks at or
-      // after that ordinal below. A single read stays within the 10 MB window.
-      if (beforeItem !== undefined) {
-        const tail = Buffer.alloc(Math.min(
-          MAX_BYTES,
-          stat.size - end,
-        ))
-        readSync(
-          fd,
-          tail,
-          0,
-          tail.length,
-          end,
-        )
-        const newline = tail.indexOf(10)
-        end += newline < 0 ? tail.length : newline + 1
-      }
-
-      let start = end, parsed = end
-
-      // Each doubling parses only the bytes before the lines already parsed.
-      for (let size = 64 * 1024; ; size *= 2) {
-        start = Math.max(
-          0,
-          end - Math.min(
-            size,
-            MAX_BYTES,
-          ),
-        )
-        const buf = Buffer.alloc(parsed - start)
-        readSync(
-          fd,
-          buf,
-          0,
-          buf.length,
-          start,
-        )
-        const first = start ? buf.indexOf(10) + 1 : 0
-        const found: typeof candidates = []
-        let cursor = first
-
-        while (cursor >= 0 && cursor < buf.length) {
-          const newline = buf.indexOf(
-            10,
-            cursor,
-          )
-
-          if (newline < 0) {
-            break
-          }
-
-          try {
-            const offset = start + cursor
-            const record = JSON.parse(buf.subarray(
-              cursor,
-              newline,
-            ).toString())
-
-            const decoded = readTranscriptRecord({ record })
-
-            if (beforeItem !== undefined && offset === beforeOffset && decoded.at !== undefined) {
-              excludedAt.push(decoded.at)
-            }
-
-            // Hidden traces must not use up the conversation page.
-            transcriptEntries({
-              parsed: decoded,
-              offset,
-              tools,
-              thinking,
-              boundaries: card.id === HYDRA_CARD,
-            }).forEach((
-              item,
-              index,
-            ) => {
-              if (
-                beforeItem === undefined
-                || offset < beforeOffset
-                || (offset === beforeOffset && index < beforeItem)
-              ) {
-                found.push({
-                  native: `${offset}:${index}`,
-                  item: {
-                    ...item,
-                    reference: session ? messageReference({
-                      session,
-                      id: item.id,
-                      messageId: item.messageId,
-                    }) : undefined,
-                    ...(session ? { session } : {}),
-                  },
-                })
-              }
-            })
-          } catch { /* Unsupported or incomplete records are not messages. */ }
-
-          cursor = newline + 1
-        }
-
-        candidates = found.concat(candidates)
-
-        if (first || !start) {
-          parsed = start + first
-        }
-
-        if (!start || candidates.length >= THREAD_PAGE_LIMIT || size >= MAX_BYTES) {
-          break
-        }
-      }
-
-      earlierNative = start > 0
-
-      if (!candidates.length && start > 0) {
-        emptyNativeCursor = `${start}:0`
-      }
+      read = readNative({
+        path: source.path,
+        session: source.session,
+        cursor: position === first ? nativeCursor : undefined,
+        wanted: THREAD_PAGE_LIMIT - candidates.length,
+        tools,
+        thinking,
+        boundaries: card.id === HYDRA_CARD,
+        excludedAt,
+        // Offsets repeat across transcripts, so an earlier session's entries carry its id.
+        renamed: !current,
+      })
     } catch {
-      result.unavailable = 'The recorded transcript is unavailable.'
-    } finally {
-      if (fd !== undefined) {
-        closeSync(fd)
+      if (current) {
+        result.unavailable = 'The recorded transcript is unavailable.'
       }
+
+      continue
     }
-  } else {
-    result.unavailable = 'No supported transcript is recorded for this session.'
+
+    candidates = [
+      ...read.found.map(candidate => ({
+        ...candidate,
+        native: `${label}${candidate.native}`,
+      })),
+      ...candidates,
+    ]
+
+    if (read.start > 0) {
+      earlierNative = true
+
+      if (!candidates.length) {
+        emptyNativeCursor = `${label}${read.start}:0`
+      }
+
+      break
+    }
+
+    if (candidates.length >= THREAD_PAGE_LIMIT) {
+      earlierNative = position + 1 < sources.length
+
+      break
+    }
   }
 
   const [
@@ -727,10 +1018,7 @@ function readThreadPage(
     Infinity,
     Infinity,
   ]
-  let archived = false
-
   const seenReplies = new Set<string>()
-  const seenChats = new Set<string>()
   // A moved task's events are renumbered across the Hydras it passed through, so the cursor's boundary is looked up in the same list.
   const logged = threadEvents({
     hydraId,
@@ -749,60 +1037,15 @@ function readThreadPage(
       return event.seq < replySeq!
     }
 
-    let time = event.at.localeCompare(replyBoundary.at)
-
-    if (event.type === 'chat.message' && replyBoundary.type === 'chat.message') {
-      time = threadEntryOrder({
-        first: loggedEntry({ event }),
-        second: loggedEntry({ event: replyBoundary }),
-      })
-    }
+    const time = event.at.localeCompare(replyBoundary.at)
 
     return time < 0 || time === 0 && (event.seq < replySeq!
       || event.seq === replySeq && index < replyPart!)
   }
 
-  for (const e of effectiveChatEvents({ events: logged })) {
+  for (const e of logged) {
     if (e.seq === replySeq) {
       excludedAt.push(e.at)
-    }
-
-    if (e.type === 'chat.message') {
-      const identity = chatRecordId(e.data)
-
-      if (seenChats.has(identity)) {
-        continue
-      }
-
-      const session = cardSessionId({ card })
-
-      const sameSession = session && e.data.session === session
-      const participant = e.cardId === card.id || sameSession
-
-      if ((!result.unavailable && sameSession) || !participant) {
-        continue
-      }
-
-      seenChats.add(identity)
-
-      splitEntry({
-        entry: loggedEntry({ event: e }),
-      }).forEach((
-        item,
-        index,
-      ) => {
-        if (beforeReply({
-          event: e,
-          index,
-        })) {
-          candidates.push({
-            item,
-            reply: `${e.seq}:${index}`,
-          })
-          archived = true
-        }
-      })
-      continue
     }
 
     if (e.type !== 'card.replied') {
@@ -847,10 +1090,6 @@ function readThreadPage(
         })
       }
     })
-  }
-
-  if (archived) {
-    result.unavailable = 'Showing stored messages; the native transcript is unavailable.'
   }
 
   const positions = new Map(candidates.map((
@@ -916,8 +1155,10 @@ function readThreadPage(
     })
   }
 
+  const carried = `${sourceCursor === undefined ? '' : `${sourceCursor}.`}${nativeCursor ?? ''}`
+
   if (candidates.length > page.length || earlierNative) {
-    result.older = `n${firstNative ?? emptyNativeCursor ?? nativeCursor ?? ''};r${firstReply ?? replyCursor ?? ''}`
+    result.older = `n${firstNative ?? emptyNativeCursor ?? carried};r${firstReply ?? replyCursor ?? ''}`
   }
 
   return result

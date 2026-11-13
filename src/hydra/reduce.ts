@@ -138,6 +138,15 @@ export function applyHydra({
   if (event.type === 'board.configured') {
     state.config = structuredClone(event.data)
     state.configured = true
+    const session = event.data.hydra.session
+
+    if (session && !state.hydraSessions?.includes(session)) {
+      state.hydraSessions = [
+        ...state.hydraSessions ?? [],
+        session,
+      ]
+    }
+
     state.configRevision = (state.configRevision ?? 0) + 1
     state.cards[HYDRA_CARD] ??= {
       id: HYDRA_CARD,
