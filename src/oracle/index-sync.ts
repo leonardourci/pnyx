@@ -1,8 +1,5 @@
-import { setImmediate } from 'node:timers/promises'
 import { join } from 'node:path'
 import { log } from '#app/diagnostics.ts'
-import { withWriter } from '#app/writer.ts'
-import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
 import { upgradeUnderway } from '#upgrade/queue.ts'
 import { indexRuns } from './index-runs.ts'
 
@@ -58,120 +55,52 @@ export function createIndexSync({
   }): void
 }) {
   let stopped = false
-  let backfilling: Promise<void> | undefined
-
-  // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
-  const harvestForIndex = () => {
-    try {
-      withWriter({
-        hydraId,
-        fn: ({ writer }) => harvestTranscripts({
-          writer,
-          cardIds: Object.keys(writer.state.cards),
-          at: new Date().toISOString(),
-        }),
-      })
-    } catch (error) {
-      log({
-        level: 'error',
-        operation: 'oracle.harvest',
-        hydraId,
-        error,
-      })
-    }
-  }
-
-  const backfillForIndex = async (): Promise<void> => {
-    let progressed = false
-
-    try {
-      await setImmediate()
-
-      while (!stopped && !upgradeUnderway()) {
-        const batch = withWriter({
-          hydraId,
-          fn: ({ writer }) => backfillConversations({
-            writer,
-            at: new Date().toISOString(),
-          }),
-        })
-
-        if (!batch.progressed) {
-          break
-        }
-
-        progressed = true
-        await setImmediate()
-      }
-    } catch (error) {
-      log({
-        level: 'error',
-        operation: 'oracle.backfill',
-        hydraId,
-        error,
-      })
-    } finally {
-      backfilling = undefined
-
-      if (progressed && !stopped && !upgradeUnderway()) {
-        historyIndex.changed()
-      }
-    }
-  }
 
   const historyIndex = indexRuns({
-    start: () => {
-      harvestForIndex()
+    start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
+      // The next change, or the restarted server, catches the index up.
+      if (stopped || upgradeUnderway()) {
+        resolve(undefined)
 
-      return new Promise<ReturnType<typeof workerError>>(resolve => {
-        // The next change, or the restarted server, catches the index up.
-        if (stopped || upgradeUnderway()) {
-          resolve(undefined)
+        return
+      }
 
-          return
-        }
+      const started = performance.now()
+      startWorker({
+        file: INDEX_WORKER,
+        timeout: INDEX_WORKER_TIMEOUT_MS,
+        args: [hydraId],
+        done: ({
+          error,
+          stdout,
+        }) => {
+          let failure: ReturnType<typeof workerError>
 
-        const started = performance.now()
-        startWorker({
-          file: INDEX_WORKER,
-          timeout: INDEX_WORKER_TIMEOUT_MS,
-          args: [hydraId],
-          done: ({
-            error,
-            stdout,
-          }) => {
-            let failure: ReturnType<typeof workerError>
-
-            if (error) {
-              failure = workerError({ stdout }) ?? {
-                message: error.message,
-                code: 'UNKNOWN',
-              }
-              log({
-                level: 'error',
-                operation: 'oracle.index',
-                hydraId,
-                code: failure.code,
-                error: failure.message,
-                ms: performance.now() - started,
-              })
-            } else {
-              log({
-                operation: 'oracle.index',
-                hydraId,
-                ms: performance.now() - started,
-              })
+          if (error) {
+            failure = workerError({ stdout }) ?? {
+              message: error.message,
+              code: 'UNKNOWN',
             }
+            log({
+              level: 'error',
+              operation: 'oracle.index',
+              hydraId,
+              code: failure.code,
+              error: failure.message,
+              ms: performance.now() - started,
+            })
+          } else {
+            log({
+              operation: 'oracle.index',
+              hydraId,
+              ms: performance.now() - started,
+            })
+          }
 
-            resolve(failure)
-
-            if (!backfilling && !stopped && !upgradeUnderway()) {
-              backfilling = backfillForIndex()
-            }
-          },
-        })
+          resolve(failure)
+        },
       })
-    },
+    }),
   })
 
   return {

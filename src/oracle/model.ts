@@ -1,13 +1,11 @@
 export const KINDS = [
   'event',
   'note',
-  'transcript',
 ] as const
 export type Kind = (typeof KINDS)[number]
 
 export interface IndexResult {
   events: number
-  transcripts: number
   docs: number
 }
 
@@ -51,10 +49,6 @@ export interface Hit {
 export interface IndexStatus {
   builtThrough: number
   docs: Record<Kind, number>
-  transcripts: {
-    tracked: number
-    missing: number
-  }
   bytes: number
   current: boolean
 }

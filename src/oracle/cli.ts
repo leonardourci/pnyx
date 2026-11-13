@@ -54,7 +54,6 @@ function status({ hydraId }: { hydraId: string }): Output {
     index: s.builtThrough === seq ? `current through seq ${seq}` : `behind: through seq ${s.builtThrough} of ${seq}; the next search catches up`,
     synonyms: `v${SYNONYMS_VERSION}, ${SYNONYMS.length} groups`,
     docs: s.docs,
-    transcripts: s.transcripts,
     bytes: s.bytes,
   }
 }
@@ -236,14 +235,14 @@ export const oracleCommands = {
   oracle: oracleCommand,
 }
 
-export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
+export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
        pnyx-axi oracle status | rebuild [--hydra <name>]
 Search includes saved task briefs, intents, owner asks, investigation reports and helper results.
 Earlier versions remain searchable. \`task report <task>\` reads the latest stored report.
 Helper results match their tasks; unchanged helper waits are omitted.
 Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
-Full-text search over card titles, links, event text, harvested notes and the session transcripts
-hooks recorded. Every word must match somewhere on one card: its title, link titles or any entry.
+Full-text search over card titles, links, event text and harvested notes; agent transcripts are not
+searched. Every word must match somewhere on one card: its title, link titles or any entry.
 With --card or --kind, every word must match in one entry of that card or kind. Words match by
 stem, ignoring case and accents ("deploying" finds "deploy", "migracao" finds "migração"), and with
 their synonyms:
@@ -253,8 +252,7 @@ End a word with * to match a prefix; \`oracle -- status\` searches for that word
 Results are ranked by BM25, best first, one per card with its ${SNIPPETS} best-matching entries as
 snippets (with --card, its matching entries up to --limit); ${LIMIT} cards by default (max ${MAX}).
 A harvested note (a summary, decision or context; see \`pnyx-axi harvest\`) counts double.
-Each search first indexes what the log and transcripts gained. The index, search.db in the Hydra's
-folder, is a derived cache: \`oracle rebuild\` deletes and rebuilds it from the log and transcripts,
-after harvesting every card's transcript.
-Tool calls and output, thinking and injected text are not indexed; secret-shaped strings are redacted.
+Each search first indexes what the log gained. The index, search.db in the Hydra's folder, is a
+derived cache: \`oracle rebuild\` deletes and rebuilds it from the log.
+Secret-shaped strings are redacted.
 `

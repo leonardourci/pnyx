@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
-import { EVENTS, isCurrent, openReader, searchPath, type Cursor } from './index.ts'
+import { EVENTS, isCurrent, openReader, searchPath } from './index.ts'
 import type { IndexStatus, Kind } from './model.ts'
 
 // Reads the index without writing it. Null when it has not been built.
@@ -21,11 +21,6 @@ export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | nul
         docs: {
           event: 0,
           note: 0,
-          transcript: 0,
-        },
-        transcripts: {
-          tracked: 0,
-          missing: 0,
         },
         bytes,
         current: false,
@@ -33,19 +28,13 @@ export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | nul
     }
 
     const count = ({ kind }: { kind: Kind }) => (db.prepare('SELECT count(*) AS n FROM docs WHERE kind = ?').get(kind) as { n: number }).n
-    const cursors = db.prepare('SELECT * FROM cursors').all() as unknown as Cursor[]
-    const transcripts = cursors.filter(c => c.source !== EVENTS)
+    const events = db.prepare('SELECT seq FROM cursors WHERE source = ?').get(EVENTS) as { seq: number } | undefined
 
     return {
-      builtThrough: cursors.find(c => c.source === EVENTS)?.seq ?? 0,
+      builtThrough: events?.seq ?? 0,
       docs: {
         event: count({ kind: 'event' }),
         note: count({ kind: 'note' }),
-        transcript: count({ kind: 'transcript' }),
-      },
-      transcripts: {
-        tracked: transcripts.length,
-        missing: transcripts.filter(c => !existsSync(c.source)).length,
       },
       bytes,
       current: true,
