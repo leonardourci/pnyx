@@ -1,8 +1,7 @@
-import { applyPageUpdate } from '#app/page-state.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
+import type { Zero } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
-import { Immer } from 'immer'
 import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
@@ -13,19 +12,20 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { readSettingsSaves,saveSettingsSaves } from '#web-hydra/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
-import { noteUpdate,staleUpdates } from '#web-tasks/updates-cache.ts'
+import { staleUpdates } from '#web-tasks/updates-cache.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
 import { createConnectionRequests } from './connection-requests.ts'
-import { confirmedState,removeStored,save,stored } from './connection-storage.ts'
+import { save } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
+import { watchHydra } from './hydra-views.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
+import { createPageZero } from './zero.ts'
 
 // Freezing deep-walks every new snapshot on its next event; snapshots stay unfrozen, so never write one in place.
-const pageEvents = new Immer({ autoFreeze: false })
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
@@ -46,7 +46,16 @@ const emptyQueue = (): HydraQueue => ({
   reading: [],
 })
 
-export function createHydraConnection() {
+type WatchHydra = ({
+  hydraId,
+  publish,
+}: {
+  hydraId: string
+  publish({ state }: { state: HydraState }): void
+}) => ReturnType<typeof watchHydra>
+
+// The page reads each Hydra through Zero; tests pass their own source of states.
+export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
   const origin = location.origin
   const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
     ?? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? ''
@@ -91,7 +100,6 @@ export function createHydraConnection() {
       }) => state.some(hydra => hydra.creationAttempt === intent.patch.creationAttempt),
     },
   })
-  const keyFor = ({ id }: { id: string }) => `pnyx:${namespace}/hydra/${id}/:hydra-state`
 
   // Arrows reach functions declared below; accessors share the live socket, selection and listing.
   const {
@@ -160,13 +168,6 @@ export function createHydraConnection() {
     const summary = hydras.snapshot().view.find(hydra => hydra.id === id)
     const identity = summary?.identity ?? (id === initialId
       ? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? id : id)
-    removeStored({ key: `pnyx:${identity}:hydra-state` })
-    const restored = stored({
-      key: keyFor({ id }),
-      fallback: emptyHydra(),
-    })
-    const usable = restored?.v === 1 && restored.cards
-    const confirmed = usable ? confirmedState({ state: restored }) : emptyHydra()
     const threads = createThreadReceiver()
     const scope: Scope = {
       id,
@@ -174,9 +175,9 @@ export function createHydraConnection() {
       viewKey: id,
       resource: pendingHydra({
         scope: `${namespace}/hydra/${id}/`,
-        confirmed,
+        confirmed: emptyHydra(),
       }),
-      hasSnapshot: !!confirmed.config,
+      hasSnapshot: false,
       ready: false,
       subscribed: false,
       subscription: null,
@@ -202,6 +203,12 @@ export function createHydraConnection() {
       }) => {
         if (name === 'page') {
           scope.page = args
+          scope.views?.open({
+            ids: args.filter((
+              _,
+              index,
+            ) => args[index - 1] === '--card'),
+          })
         }
 
         return command({
@@ -448,25 +455,6 @@ export function createHydraConnection() {
     listeners.forEach(listener => listener())
   }
 
-  const persist = ({ scope }: { scope: Scope }) => {
-    if (!scope.hasSnapshot) {
-      return
-    }
-
-    save({
-      key: keyFor({ id: scope.id }),
-      value: scope.resource.snapshot().confirmed,
-    })
-  }
-
-  const persistSoon = ({ scope }: { scope: Scope }) => {
-    clearTimeout(scope.persistTimer)
-    scope.persistTimer = setTimeout(
-      () => persist({ scope }),
-      250,
-    )
-  }
-
   const saveCommand = ({ request }: { request: Request }): SaveCommand => ({
     type: 'command',
     id: request.id,
@@ -543,6 +531,8 @@ export function createHydraConnection() {
       }
 
       clearTimeout(scope.subscriptionTimer)
+      scope.views?.close()
+      scope.views = undefined
       scope.subscription = null
       scope.subscribed = false
       scope.ready = false
@@ -576,6 +566,24 @@ export function createHydraConnection() {
     )
   }
 
+  const readData = ({ scope }: { scope: Scope }) => {
+    if (scope.views) {
+      return
+    }
+
+    const options = {
+      hydraId: scope.id,
+      publish: ({ state }: { state: HydraState }) => receiveState({
+        scope,
+        state,
+      }),
+    }
+    scope.views = watch ? watch(options) : watchHydra({
+      ...options,
+      zero: zero(),
+    })
+  }
+
   const subscribe = ({ scope }: { scope: Scope }) => {
     if (scope.id.startsWith('pending-') || scope.subscribed || scope.failed || !physicalHydra || socket?.readyState !== WebSocket.OPEN) {
       return
@@ -583,6 +591,9 @@ export function createHydraConnection() {
 
     scope.subscribed = true
     scope.subscription = crypto.randomUUID()
+
+    readData({ scope })
+
     scope.ready = false
     scope.actions = {}
     watchSubscription({ scope })
@@ -596,6 +607,45 @@ export function createHydraConnection() {
         page: scope.page,
       },
     })
+  }
+
+  // The page's one Zero client, made when a Hydra first subscribes.
+  let pageZero: Zero | undefined
+
+  const zero = () => {
+    if (!pageZero) {
+      pageZero = createPageZero({
+        installation,
+        token: document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content ?? '',
+      })
+    }
+
+    return pageZero
+  }
+
+  const receiveState = ({
+    scope,
+    state,
+  }: {
+    scope: Scope
+    state: HydraState
+  }) => {
+    const before = scope.resource.snapshot().confirmed
+    confirmState({
+      scope,
+      state,
+    })
+    scope.hasSnapshot = true
+    confirmSaves({ scope })
+    const changed = Object.values(state.cards)
+      .filter(card => before.cards[card.id]?.updatedSeq !== card.updatedSeq)
+      .map(card => card.id)
+
+    if (selected === scope.id && changed.length) {
+      staleUpdates({ ids: changed })
+    }
+
+    publish(); flush()
   }
 
   const confirmState = ({
@@ -683,6 +733,7 @@ export function createHydraConnection() {
       if (!physicalHydra) {
         physicalHydra = scope.id
         scope.subscribed = true
+        readData({ scope })
         scope.subscription = message.subscription ?? null
         watchSubscription({ scope })
         subscribe({ scope: selection() })
@@ -731,67 +782,6 @@ export function createHydraConnection() {
         scope.loadError = `${message.error}. Retrying automatically.`
         retrySubscription({ scope })
       }
-    } else if (message.type === 'snapshot') {
-      confirmState({
-        scope,
-        state: confirmedState({ state: message.state }),
-      })
-      scope.actions = {}
-      scope.hasSnapshot = true
-      confirmSaves({ scope })
-      // The shown queue stays until the one the server sends after every snapshot arrives.
-
-      if (selected === scope.id) {
-        staleUpdates()
-      }
-
-      persistSoon({ scope })
-    } else if (message.type === 'page.event') {
-      const seq = message.update.seq
-      const state = scope.resource.snapshot().confirmed
-
-      if (seq <= state.seq) {
-        return
-      }
-
-      if (seq !== state.seq + 1) {
-        scope.ready = false
-        watchSubscription({ scope })
-        send({
-          message: {
-            type: 'resync',
-            scope: scope.id,
-          },
-        })
-        publish()
-
-        return
-      }
-
-      confirmState({
-        scope,
-        state: pageEvents.produce(
-          state,
-          // eslint-disable-next-line pnyx/object-params -- Immer owns the recipe callback signature.
-          draft => {
-            applyPageUpdate({
-              state: draft,
-              update: message.update,
-            })
-          },
-        ),
-      })
-
-      confirmSaves({ scope })
-
-      const changed = message.update.event
-
-      // An update without its event is a hidden card's or a private one, and adds no row to a shown task's Updates.
-      if (selected === scope.id && changed) {
-        noteUpdate({ event: changed })
-      }
-
-      persistSoon({ scope })
     } else if (message.type === 'latest') {
       scope.spend = withChanges({
         current: scope.spend,
@@ -1139,8 +1129,6 @@ export function createHydraConnection() {
     })
   }
 
-  const persistAll = () => scopes.forEach(scope => persist({ scope }))
-
   const wake = () => {
     if (!active || document.visibilityState === 'hidden') {
       return
@@ -1236,10 +1224,6 @@ export function createHydraConnection() {
         pop,
       )
       addEventListener(
-        'pagehide',
-        persistAll,
-      )
-      addEventListener(
         'pageshow',
         wake,
       )
@@ -1259,7 +1243,6 @@ export function createHydraConnection() {
         generation++
         clearTimeout(reconnect)
         clearInterval(watchdog)
-        persistAll()
         socket?.close()
         socket = null
         disconnected()
@@ -1268,14 +1251,11 @@ export function createHydraConnection() {
           clearTimeout(request.timer)
         }
 
-        scopes.forEach(scope => clearTimeout(scope.persistTimer))
+        scopes.forEach(scope => scope.views?.close())
+        pageZero?.close()
         removeEventListener(
           'popstate',
           pop,
-        )
-        removeEventListener(
-          'pagehide',
-          persistAll,
         )
         removeEventListener(
           'pageshow',

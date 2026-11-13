@@ -7,6 +7,7 @@ import type { LatestMessage,ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import { createPendingResource } from '#web-shared/pending-intents.ts'
 import type { Command,Receipt } from './connection.ts'
+import type { watchHydra } from './hydra-views.ts'
 import { type HydraResource } from './pending-state.ts'
 
 export interface Creation {
@@ -46,7 +47,7 @@ export interface Scope {
   command: Command
   leases: number
   creation?: Creation
-  persistTimer?: ReturnType<typeof setTimeout>
+  views?: ReturnType<typeof watchHydra>
 }
 export interface Request {
   id: string
