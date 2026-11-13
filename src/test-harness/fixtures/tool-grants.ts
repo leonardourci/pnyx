@@ -853,6 +853,11 @@ try {
     summaries[1]!.options()?.plugins,
     [],
   )
+  assert.doesNotMatch(
+    JSON.stringify(summaries[1]!.options()?.systemPrompt),
+    /ask Hydra with pnyx-axi task ask/,
+    'a summary gets no worker instructions',
+  )
   summaries[1]!.send({
     message: {
       ...result,

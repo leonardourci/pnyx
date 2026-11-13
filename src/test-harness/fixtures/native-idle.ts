@@ -172,6 +172,7 @@ for (const ending of [
   'archive',
   'release',
   'idle-release',
+  'idle',
   'starting',
   'opening',
 ]) {
@@ -342,6 +343,43 @@ for (const ending of [
         ),
         true,
         'ordinary release preserves detached work',
+      )
+      await taskHost.release({
+        task: task.id,
+        permanent: true,
+      })
+    } else if (ending === 'idle') {
+      mock.timers.enable({ apis: ['setTimeout'] })
+
+      try {
+        worker.send({
+          message: {
+            ...recordedResult,
+            uuid: randomUUID(),
+            user_message_uuid: worker.incoming[0]!.uuid,
+            queued_turn_count: 0,
+          },
+        })
+        await settle({
+          what: 'worker turn finishes',
+          check: () => loadHydra({ hydraId }).state.cards[task.id]?.sessionActivity === 'finished',
+        })
+        mock.timers.tick(IDLE_MS)
+        await settle({
+          what: 'idle worker closes',
+          check: () => worker.closed(),
+        })
+      } finally {
+        mock.timers.reset()
+      }
+
+      assert.equal(
+        process.kill(
+          -childPid,
+          0,
+        ),
+        true,
+        'idle closure preserves detached work',
       )
       await taskHost.release({
         task: task.id,

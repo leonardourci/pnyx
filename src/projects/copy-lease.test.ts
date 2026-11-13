@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { startServer } from '#app/server-daemon.ts'
 import type { RunningServer } from '#app/server-transport.ts'
-import { taskLease } from '#routine-helper/leases.ts'
+import { taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
 import { COPY_LEASE_PREFIX, copySettling } from './copy-lease.ts'
 
 test(
@@ -49,6 +49,12 @@ test(
       actor: `${COPY_LEASE_PREFIX}crashed`,
       pid: unrelated.pid,
     })
+    const releaseOther = taskLease({
+      hydraId: 'default',
+      task: 'task-working',
+      actor: 'main',
+      pid: unrelated.pid,
+    })
     // A pid now held by another user's process, which this one may not signal.
     taskLease({
       hydraId: 'default',
@@ -79,5 +85,14 @@ test(
       }),
       false,
     )
+    assert.equal(
+      taskLeasePresent({
+        hydraId: 'default',
+        task: 'task-working',
+      }),
+      true,
+      'a lease that is not a settlement stays',
+    )
+    releaseOther()
   },
 )

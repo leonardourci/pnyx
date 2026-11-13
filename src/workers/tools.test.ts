@@ -246,6 +246,18 @@ test(
       ),
       '{ "enabledPlugins": {}, }',
     )
+    mkdirSync(join(
+      lab.home,
+      'plugins',
+    ))
+    writeFileSync(
+      join(
+        lab.home,
+        'plugins',
+        'installed_plugins.json',
+      ),
+      '{',
+    )
     const offered = await claudeTools(lab)
     assert.deepEqual(
       offered.catalog,

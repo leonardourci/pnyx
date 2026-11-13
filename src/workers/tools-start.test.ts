@@ -628,6 +628,56 @@ test(
         ['browser'],
         'granting only browser to a task with no agent needs no harness',
       )
+      await assert.rejects(
+        commands.task([
+          'tools',
+          card({ key: 'unstarted' }).id,
+          '--grant',
+          'mcp:local',
+          '--hydra',
+          'tools-start',
+        ]),
+        {
+          code: 'VALIDATION_ERROR',
+          message: /--harness/,
+        },
+      )
+
+      const removedCopy = join(
+        root,
+        'removed-copy',
+      )
+      create({ key: 'removed-copy' })
+      withWriter({
+        hydraId: 'tools-start',
+        fn: ({ writer }) => {
+          const attached = decidePush({
+            state: writer.state,
+            key: 'removed-copy',
+            input: {
+              agent: {
+                provider: 'claude-code',
+                sessionId: 'removed-copy',
+                cwd: removedCopy,
+                host: 'pnyx',
+              },
+            },
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in attached)
+          writer.append({ event: attached.event })
+        },
+      })
+      assert.ok(
+        (await host.toolCatalog({
+          task: card({ key: 'removed-copy' }).id,
+          harness: 'claude',
+        })).includes('mcp:local'),
+        'an earlier agent folder that is gone falls back to the project for its servers',
+      )
     } finally {
       unoffer()
       host.close()
