@@ -61,7 +61,7 @@ flags:
 
 const COMMAND_HELP: Record<string, string> = {
   page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--hydra <id>]
-Read the page projection without the event-id index, steering history or source captures.
+Read the page projection without the event-id index, steering history, source captures, context notes or Hydra message history.
 Repeat --card for opened cards. --hidden includes
 hidden and automatic cards. On a page connection, this also updates that tab's interests.
 Activity continues reading history through the history command.
