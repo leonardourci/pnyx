@@ -1,4 +1,5 @@
-import { readLog } from '#app/event-log.ts'
+import { basename } from 'node:path'
+import { readEventsFrom } from '#app/event-log.ts'
 import { noteId } from '#tasks/notes.ts'
 import { chatPosition, rememberChat } from './chat-events.ts'
 import type { ChatEvent } from './model.ts'
@@ -33,17 +34,12 @@ const recorded = new Map<string, {
 }>()
 
 export function recordedChats({ dir }: { dir: string }): Map<string, ChatEvent> {
-  let previous = recorded.get(dir)
-  let tail = readLog({
-    dir,
-    from: previous?.end,
+  const previous = recorded.get(dir)
+  // A Hydra's folder is named by its id.
+  const tail = readEventsFrom({
+    hydraId: basename(dir),
+    offset: previous?.end ?? 0,
   })
-
-  if (!tail) {
-    previous = undefined
-    // A read from zero returns a log or throws, even when the file is absent.
-    tail = readLog({ dir })!
-  }
 
   const events = previous?.events ?? new Map<string, ChatEvent>()
 

@@ -13,9 +13,9 @@ import { PNYX_ROOT, runUpgrade, upgradeAvailable } from './runner.ts'
 import { COMMIT_LENGTH, STEP_WORDS, type UpgradeOperation, type UpgradeStep } from './model.ts'
 
 export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check] [--now] [--stop] [--hydra <id>]
-Pulls main into the Pnyx folder, installs and builds, then restarts the server once no agent is mid-turn, or after 15 minutes at most; --now restarts right after the build. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting. An upgrade cut before it ended leaves the previous build working, and the next upgrade finishes it.
+Pulls main into the Pnyx folder, installs and builds, checks that the new build can import every Hydra still kept in events.jsonl (\`setup postgres --check\`), then restarts the server once no agent is mid-turn, or after 15 minutes at most; --now restarts right after the build. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting. An upgrade cut before it ended leaves the previous build working, and the next upgrade finishes it.
 The running server does the upgrade, as it does for /upgrade in Hydra's chat, and this command waits for it, printing each step as it goes; the Hydra's chat (--hydra, else the default one) shows it too. Ctrl-C only stops the waiting. With no server running, the upgrade runs here, and Ctrl-C stops it and goes back to the previous version. A server that runs but does not answer, or does not run the named Hydra, refuses it; \`pnyx-axi restart\` replaces a stuck server.
---stop stops the upgrade the server is pulling, installing or building, whichever Hydra asked for it, and goes back to the previous version; a built upgrade waiting to restart cannot be stopped.
+--stop stops the upgrade the server is pulling, installing, building or checking, whichever Hydra asked for it, and goes back to the previous version; a built upgrade waiting to restart cannot be stopped.
 A folder off main or with local changes is refused. --check only says whether there is something to upgrade: a newer main, or an upgrade cut after its pull.
 `
 
@@ -396,7 +396,7 @@ export async function upgradeIn({
   // The server runs this for a terminal; in a terminal no server is up, so nothing is there to stop.
   if (values.stop) {
     return stopUpgrade() ? { stopped: 'upgrade' } : {
-      stopped: 'none: the Pnyx server is not pulling, installing or building an upgrade',
+      stopped: 'none: the Pnyx server is not pulling, installing, building or checking an upgrade',
       help: ['Ctrl-C stops an upgrade that runs in a terminal; a built upgrade waiting to restart cannot be stopped'],
     }
   }

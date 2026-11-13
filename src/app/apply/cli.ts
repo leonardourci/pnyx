@@ -98,10 +98,7 @@ export const apply = guard({
       },
     })))
       .digest('hex')
-    requireHydra({
-      hydraId,
-      migrate: false,
-    })
+    requireHydra({ hydraId })
     const landing = await landingGaps({
       hydraId,
       refs: document.changes.flatMap(change => change.op === 'task.status' && change.status === 'done'
@@ -113,7 +110,6 @@ export const apply = guard({
         hydraId,
         id,
         digest,
-        migrate: false,
       })
 
       if (duplicate) {

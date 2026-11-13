@@ -863,15 +863,7 @@ test(
       check: () => hydra.received.some(text => text.includes('prerequisite: waiting for first')),
     })
 
-    rmSync(
-      join(
-        process.env.PNYX_HOME!,
-        'hydras',
-        s.hydraId,
-        'snapshot.json',
-      ),
-      { force: true },
-    )
+    await pnyx.restart()
     assert.equal(
       taskReadiness({
         state: s.state(),

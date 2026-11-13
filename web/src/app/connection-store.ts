@@ -12,6 +12,7 @@ import type { HydraQueue } from '#hydra/wakes.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { readSettingsSaves,saveSettingsSaves } from '#web-hydra/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
+import type { Settings } from '#settings/model.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
 import { noteUpdate,staleUpdates } from '#web-tasks/updates-cache.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
@@ -846,7 +847,8 @@ export function createHydraConnection() {
       setLogMode({ mode: message.settings.logs })
       sharedSettings().receive({
         state: {
-          settings: message.settings,
+          // The page never reads postgresUrl, which the server keeps from it.
+          settings: message.settings as Settings,
           revision: message.revision,
         },
       })

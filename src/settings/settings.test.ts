@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
@@ -8,6 +8,7 @@ import { after, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { commit } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { HydraConfig } from '#hydra/model.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -18,6 +19,7 @@ import type { Card } from '#tasks/model.ts'
 import { settingsLogPath } from './store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { acquireLock } from '#store/storage.ts'
+import { query } from '#store/postgres.ts'
 import type { Settings } from './model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { writeDocument } from '#workers/dispatch-config.ts'
@@ -585,6 +587,43 @@ test(
 )
 
 test(
+  'a Hydra still kept in events.jsonl gives the shared settings its old view on the first read',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    legacyView({
+      hydraId: 'alpha',
+      at: '2026-01-01T00:00:00.000Z',
+      patch: { theme: 'dark' },
+    })
+    const log = `${readEvents({ hydraId: 'alpha' }).map(event => JSON.stringify(event))
+      .join('\n')}\n`
+    // A second home holding only that log, as one an older release left, with no settings log yet.
+    home()
+    const dir = hydraDir({ hydraId: 'alpha' })
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        dir,
+        'events.jsonl',
+      ),
+      log,
+    )
+
+    assert.equal(
+      (await settings()).settings.theme,
+      'dark',
+    )
+  },
+)
+
+test(
   'an old reset to the default counts as the Hydra changing that value, so the newest change across Hydras wins',
   async () => {
     home()
@@ -914,6 +953,71 @@ test(
         '0',
       ]),
       { code: 'REVISION_CONFLICT' },
+    )
+  },
+)
+
+test(
+  'postgresUrl takes a postgres URL naming its database or an empty string, applies after a restart, and prints masked',
+  async () => {
+    home()
+    // This home's first query reads postgresUrl, so the URL saved after it changes nothing until a restart.
+    query({ statements: [{ text: 'select 1' }] })
+
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        '{"postgresUrl":"https://127.0.0.1/elsewhere"}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        '{"postgresUrl":"postgres://pnyx@127.0.0.1:1"}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+
+    const receipt = await commands.settings([
+      'set',
+      '--json',
+      '{"postgresUrl":"postgres://pnyx:secret@127.0.0.1:1/elsewhere"}',
+    ]) as {
+      changed: Partial<Settings>
+      settings: Settings
+    }
+    const masked = 'postgres://pnyx:***@127.0.0.1:1/elsewhere'
+    const [answered] = query({ statements: [{ text: 'select 1 as answer' }] })
+
+    assert.deepEqual(
+      answered,
+      [{ answer: 1 }],
+      'this home keeps the database it opened',
+    )
+
+    assert.deepEqual(
+      [
+        receipt.changed.postgresUrl,
+        receipt.settings.postgresUrl,
+        (await settings()).settings.postgresUrl,
+      ],
+      [
+        masked,
+        masked,
+        masked,
+      ],
+    )
+    await commands.settings([
+      'set',
+      '--json',
+      '{"postgresUrl":""}',
+    ])
+    assert.equal(
+      (await settings()).settings.postgresUrl,
+      '',
     )
   },
 )

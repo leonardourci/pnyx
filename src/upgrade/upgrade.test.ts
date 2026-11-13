@@ -69,7 +69,48 @@ test(
         'pull:done install:done',
         'pull:done install:done build:running',
         'pull:done install:done build:done',
+        'pull:done install:done build:done data:running',
+        'pull:done install:done build:done data:done',
       ],
+    )
+  },
+)
+
+test(
+  'a data check that fails goes back to the previous commit and its build',
+  async () => {
+    const from = repo.head()
+    repo.publish({
+      files: {
+        'build.sh': building({
+          version: 'two',
+          dataExit: 1,
+        }),
+      },
+      message: 'import would fail',
+    })
+
+    const result = await runUpgrade({ root: repo.install })
+
+    assert.equal(
+      result.state,
+      'failed',
+    )
+    assert.equal(
+      result.failed,
+      'data',
+    )
+    assert.match(
+      result.error!,
+      /data check 1/,
+    )
+    assert.equal(
+      repo.head(),
+      from,
+    )
+    assert.equal(
+      repo.built(),
+      'one',
     )
   },
 )

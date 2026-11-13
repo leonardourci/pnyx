@@ -8,8 +8,11 @@ import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
+import { loadHydra } from './store.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { usageFor } from '#workers/usage.ts'
+import { mirrorSettings, readSettings, saveSettings } from '#settings/store.ts'
+import { query } from '#store/postgres.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
@@ -634,6 +637,97 @@ test(
 )
 
 test(
+  'a page gets the shared settings without postgresUrl, in its settings message and in the row Zero reads',
+  t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-page-settings-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    // postgresUrl is read at this home's first query, so this home keeps its own database.
+    query({ statements: [{ text: 'select 1' }] })
+    saveSettings({
+      patch: {
+        postgresUrl: 'postgres://pnyx:secret@127.0.0.1:1/elsewhere',
+        theme: 'dark',
+      },
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'cli',
+      },
+    })
+    const tabs = createServerClients({
+      hydraId: 'default',
+      state: () => emptyHydra(),
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting: [],
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+    t.after(() => tabs.close())
+    const received: ServerMessage[] = []
+    tabs.sendSettings({
+      ws: {
+        OPEN: 1,
+        readyState: 1,
+        bufferedAmount: 0,
+        send({ message }) {
+          received.push(message)
+        },
+        terminate() {},
+      },
+    })
+    const read = readSettings()
+    mirrorSettings(read)
+    const [rows] = query({ statements: [{ text: 'select value from settings where id = \'shared\'' }] })
+    const sent = received[0] as Extract<ServerMessage, { type: 'settings' }>
+    const mirrored = rows![0]!.value as Record<string, unknown>
+
+    assert.deepEqual(
+      [
+        sent.settings.theme,
+        'postgresUrl' in sent.settings,
+        mirrored.theme,
+        'postgresUrl' in mirrored,
+      ],
+      [
+        'dark',
+        false,
+        'dark',
+        false,
+      ],
+    )
+  },
+)
+
+test(
   'a tab held over its socket budget has a warning when it starts being held and a line when it drains',
   t => {
     openLogs()
@@ -1025,6 +1119,79 @@ test(
     assert.equal(
       received.some(message => message.type === 'latest'),
       false,
+    )
+  },
+)
+
+test(
+  'the queue box the page reads through Zero holds the updates waiting for Hydra with the chat queue',
+  t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-client-queue-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const hydraId = createHydra({ name: 'Queue' })
+    const waiting = [
+      {
+        seq: 3,
+        card: 'waiting-task',
+      },
+    ]
+    const tabs = createServerClients({
+      hydraId,
+      state: () => loadHydra({ hydraId }).state,
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting,
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+
+    const message = tabs.queueMessage()
+
+    assert.ok(message.type === 'hydraQueue')
+    const [stored] = query({
+      statements: [
+        {
+          text: 'select queue from hydras where id = $1',
+          values: [hydraId],
+        },
+      ],
+    })[0] as { queue: unknown }[]
+    assert.deepEqual(
+      stored?.queue,
+      JSON.parse(JSON.stringify(message.queue)),
+    )
+    assert.deepEqual(
+      (stored?.queue as { waiting: unknown }).waiting,
+      waiting,
     )
   },
 )

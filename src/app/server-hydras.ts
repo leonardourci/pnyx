@@ -1,21 +1,15 @@
-import { statSync } from 'node:fs'
-import { join } from 'node:path'
 import { commands } from './cli.ts'
-import { hydraIdentity } from './server-state.ts'
-import { hostedHydra, hydraConfig } from '#hydra/config.ts'
-import { hydraDir, hydraIds } from './home-migration.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { hydraIds } from './home-migration.ts'
 import { loadHydra } from './store.ts'
+import { CREATION_PREFIX, summarize, unreadableSummary } from './hydra-summary.ts'
+import { homeScoped } from '#store/postgres.ts'
+import type { HydraState } from './model.ts'
 import { readInitialEvent } from './event-log.ts'
-import type { HydraEvent } from './model.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { projectsFor } from '#projects/read.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
-import { liveTask } from '#tasks/select.ts'
-import { hydraWorking } from '#hydra/chat-queue.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
-
-const CREATION_PREFIX = 'hydra-create:'
 
 export interface HydraProjectSummary {
   name: string
@@ -38,7 +32,7 @@ export interface HydraSummary {
   projects: HydraProjectSummary[]
 }
 
-// A summary is reused until the Hydra's log, or the projects of its Firstmate home, change.
+// A summary is reused until the Hydra's seq, or the projects of its Firstmate home, change.
 type Cached = {
   log: string
   home?: string
@@ -58,40 +52,36 @@ function projectStamp({ home }: { home?: string }): string {
   }
 }
 
-function logStamp({ id }: { id: string }): string {
-  try {
-    const {
-      ino,
-      size,
-      mtimeMs,
-    } = statSync(join(
-      hydraDir({ hydraId: id }),
-      'events.jsonl',
-    ))
-
-    return `${ino}:${size}:${mtimeMs}`
-  } catch {
-    return ''
-  }
-}
-
 // Unreadable Hydras remain reachable so opening one reports the error.
 export function listHydras(): HydraSummary[] {
   return hydraIds().map(id => {
-    const log = logStamp({ id }), known = summaries.get(id)
+    let state: HydraState
 
-    if (log && known?.log === log && known.projects === projectStamp({ home: known.home })) {
+    try {
+      state = loadHydra({ hydraId: id }).state
+    } catch {
+      return unreadableSummary({ id })
+    }
+
+    const key = homeScoped({ hydraId: id })
+    const seq = String(state.seq)
+    const known = summaries.get(key)
+
+    if (known?.log === seq && known.projects === projectStamp({ home: known.home })) {
       return known.summary
     }
 
     const {
       summary,
       home,
-    } = summarize({ id })
-    summaries.set(
+    } = summarize({
       id,
+      state,
+    })
+    summaries.set(
+      key,
       {
-        log,
+        log: seq,
         home,
         projects: projectStamp({ home }),
         summary,
@@ -107,85 +97,6 @@ export function listHydras(): HydraSummary[] {
 }
 
 const creationEventId = ({ attempt }: { attempt: string }) => `${CREATION_PREFIX}${attempt}`
-
-const creationAttempt = ({ event }: { event: HydraEvent | null }) => {
-  if (!event?.id.startsWith(CREATION_PREFIX)) {
-    return undefined
-  }
-
-  return event.id.slice(CREATION_PREFIX.length)
-}
-
-// A Hydra whose log has no readable first event sorts last.
-const createdAt = ({ event }: { event: HydraEvent | null }) => Date.parse(event?.at ?? '')
-  || Number.MAX_SAFE_INTEGER
-
-function summarize({ id }: { id: string }): {
-  summary: HydraSummary
-  home?: string
-} {
-  try {
-    const state = loadHydra({ hydraId: id }).state
-    const config = hydraConfig({
-      state,
-      id,
-    })
-    const cards = Object.values(state.cards).filter(c => liveTask({ card: c }))
-    const projects = projectsFor({
-      state,
-      aliases: true,
-    }).filter(p => !p.detached)
-      .map(p => {
-        const references = [
-          p.path,
-          ...(config.hydra.kind === 'firstmate' ? [
-            p.name,
-            ...p.aliases ?? [],
-          ] : []),
-        ]
-        const tasks = cards.filter(c => c.project && references.includes(c.project))
-
-        const live = tasks.filter(c => c.agent && (c.sessionActivity ?? c.activity) === 'working')
-        const asks = tasks.flatMap(c => c.attention).filter(a => !a.answered)
-
-        return {
-          name: p.name,
-          path: p.path,
-          references,
-          live: live.length,
-          asks: asks.length,
-        }
-      })
-
-    const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
-    const initial = readInitialEvent({ hydraId: id })
-
-    return {
-      home,
-      summary: {
-        id,
-        identity: hydraIdentity({ hydraId: id }),
-        creationAttempt: creationAttempt({ event: initial }),
-        name: config.name,
-        icon: config.icon,
-        order: config.position ?? createdAt({ event: initial }),
-        hydra: home ? `Firstmate ${home}` : config.hydra.name,
-        working: hostedHydra({ state }) ? hydraWorking({ state }) : undefined,
-        projects,
-      },
-    }
-  } catch {
-    return {
-      summary: {
-        id,
-        name: id,
-        order: Number.MAX_SAFE_INTEGER,
-        hydra: 'could not be loaded',
-        projects: [],
-      },
-    }
-  }
-}
 
 export function createHydra({
   name,

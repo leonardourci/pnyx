@@ -8,9 +8,10 @@ create table hydras (
   seq bigint not null default 0 check (seq >= 0),
   -- HydraConfig without its columns, which have their own table. Null until Hydra is configured.
   config json,
-  -- Facts the server derives for the page: the Hydra list's entry and the queue box.
+  -- Facts the server derives for the page: the Hydra list's entry, and the queue box with the updates waiting for
+  -- Hydra and the batch it is reading, which the server writes whenever they change.
   summary json not null,
-  queue json not null
+  queue json not null default '{}'
 );
 
 -- The settings every Hydra shares, as the server last applied them.
@@ -18,6 +19,13 @@ create table settings (
   id text primary key check (id = 'shared'),
   revision integer not null check (revision >= 0),
   value json not null
+);
+
+-- The last upgrade check, so the page's upgrade notice survives a restart.
+create table upgrade_status (
+  id text primary key check (id = 'current'),
+  available boolean not null,
+  checked_at text not null
 );
 
 -- The HydraState fields without a table of their own, one row each. keys and eventIds are rebuilt from cards and

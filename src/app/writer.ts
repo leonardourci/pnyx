@@ -1,14 +1,12 @@
 import type { Output } from './cli-support.ts'
-import { transactionReceipt } from './transactions.ts'
-import { EVENT_VERSION } from '#store/events.ts'
+import { transactionReceipt, transactionStatement } from './transactions.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
+import { requireHydra, writableHydra, reloadHydra } from './store.ts'
+import { query } from '#store/postgres.ts'
+import { privateDir } from '#store/storage.ts'
 import { hydraDir } from './home-migration.ts'
-import { requireHydra, loadTail, heldHydra, type Held } from './store.ts'
-import { readLog } from './event-log.ts'
-import { existsSync, statSync } from 'node:fs'
-import { privateDir, acquireLock, writeDurably, logPath } from '#store/storage.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { agentActor } from '#hydra/hydra.ts'
@@ -16,47 +14,15 @@ import { isHelper, guardTaskLease, deliveringMessage } from '#routine-helper/lea
 import { helperGrant } from '#routine-helper/route.ts'
 import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
-import { emptyHydra, replayOwned } from './reducer.ts'
-import { preimage, type PreimageObserver } from './preimage.ts'
+import { replayOwned } from './reducer.ts'
+import { preimage, type PreimageObserver, type Touched } from './preimage.ts'
 import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
-import { writeSnapshot } from './snapshot.ts'
-import { snapshotInBackground } from './snapshot-background.ts'
+import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
+import { rememberEvents } from './event-log.ts'
 import { log } from './diagnostics.ts'
-
-// Returns the bytes appended, which move the log's offset.
-function appendLine({
-  path,
-  line,
-  hydraId,
-  name,
-  eventSeq,
-}: {
-  path: string
-  line: string
-  hydraId: string
-  name: string
-  eventSeq?: number
-}): number {
-  const started = performance.now()
-  const data = Buffer.from(line)
-  writeDurably({
-    path,
-    data,
-    flag: 'a',
-  })
-  log({
-    operation: 'events.write',
-    hydraId,
-    name,
-    eventSeq,
-    bytes: data.length,
-    ms: performance.now() - started,
-  })
-
-  return data.length
-}
+import { rememberFirstEvent } from './hydra-summary.ts'
 
 const MESSAGE_EVENTS = new Set<string>([
   'card.replied',
@@ -67,6 +33,8 @@ const MESSAGE_EVENTS = new Set<string>([
 export interface Writer {
   readonly state: HydraState
   readonly dir: string
+  // Work outside Postgres, such as removing an ingested spool file, that must happen only once the write commits.
+  afterCommit({ run }: { run(): void }): void
   append({
     event,
     effects,
@@ -76,10 +44,36 @@ export interface Writer {
   }): void
 }
 
+// Tests set this, so every write in the suite proves that comparing every row finds nothing the touched rows missed.
+const CHECK_ROWS = 'PNYX_CHECK_ROWS'
+
+function checkTouched({
+  hydraId,
+  state,
+  saved,
+}: {
+  hydraId: string
+  state: HydraState
+  saved: SavedRows
+}): void {
+  if (!process.env[CHECK_ROWS]) {
+    return
+  }
+
+  const missed = rowChanges({
+    hydraId,
+    state,
+    saved,
+  }).statements
+
+  if (missed.length) {
+    throw new Error(`a write changed rows it did not mark: ${missed.map(statement => statement.text.split('\n')[0]).join('; ')}`)
+  }
+}
+
 interface WriterOptions<T> {
   hydraId: string
   create?: boolean
-  lockTimeout?: number
   transaction?: {
     id: string
     digest: string
@@ -96,218 +90,37 @@ export function withWriter({ fn }: WriterOptions<Output> & {
   }
 }): Output
 
-// A transaction stages all derived events before appending its one durable line.
+// One command's write: its events and the rows they changed commit in one Postgres transaction, which moves the
+// Hydra's seq only from the value this write started at. The state in memory changes as the events apply; a write
+// that throws or fails to commit reads the Hydra back from its committed rows.
 export function withWriter<T>({
   hydraId,
   fn,
   create = false,
-  lockTimeout,
   transaction,
   migrate = true,
 }: WriterOptions<T>): T | Output {
-  const live = heldHydra({ hydraId })
-
-  if (live) {
-    return heldWrite({
-      live,
-      hydraId,
-      fn,
-      transaction,
-      migrate,
-    })
+  if (!create) {
+    requireHydra({ hydraId })
   }
 
-  const dir = hydraDir({
+  const live = writableHydra({
     hydraId,
     migrate,
   })
-
-  if (!create) {
-    requireHydra({
+  // Leases and locks keep their files in the Hydra's folder, which no other write creates.
+  privateDir({
+    dir: hydraDir({
       hydraId,
       migrate,
-    })
-  }
-
-  privateDir({ dir })
-  const release = acquireLock({
-    dir,
-    timeout: lockTimeout,
+    }),
   })
-
-  try {
-    let {
-      state,
-      offset,
-    } = loadTail({
-      hydraId,
-      migrate,
-    })
-
-    if (transaction) {
-      const previous = transactionReceipt({
-        hydraId,
-        ...transaction,
-        migrate,
-      })
-
-      if (previous) {
-        // A complete record may come from a writer killed before its fsync.
-        writeDurably({
-          path: logPath({ dir }),
-          data: '',
-          flag: 'a',
-        })
-
-        return previous
-      }
-    }
-
-    let dirty = false
-    let current: Writer | undefined
-
-    try {
-      const pending: HydraEvent[] = []
-      const writer = eventWriter({
-        state,
-        dir,
-        hydraId,
-        owned: true,
-        transaction: transaction?.id,
-        onAppend: ({ event }) => {
-          if (transaction) {
-            pending.push(event)
-
-            return
-          }
-
-          const line = `${JSON.stringify(event)}\n`
-          offset += appendLine({
-            path: logPath({ dir }),
-            line,
-            hydraId,
-            name: event.type,
-            eventSeq: event.seq,
-          })
-          dirty = true
-        },
-      })
-      current = writer
-      // A Hydra still on an older layout moves onto the default columns before its next write.
-      const migrated = migrate ? migrateColumns({
-        state,
-        meta: {
-          at: new Date().toISOString(),
-          actor: 'pnyx',
-        },
-      }) : { skipped: 'unchanged' }
-
-      if ('event' in migrated) {
-        writer.append({ event: migrated.event })
-      }
-
-      const result = fn({ writer })
-
-      if (transaction) {
-        const line = `${JSON.stringify({
-          v: EVENT_VERSION,
-          type: 'log.transaction',
-          ...transaction,
-          events: pending,
-          receipt: result,
-        })}\n`
-        offset += appendLine({
-          path: logPath({ dir }),
-          line,
-          hydraId,
-          name: 'log.transaction',
-          eventSeq: pending.at(-1)?.seq,
-        })
-        dirty = true
-      }
-
-      state = writer.state
-
-      return result
-    } finally {
-      if (dirty) {
-        writeSnapshot({
-          dir,
-          state: current?.state ?? state,
-          offset,
-        })
-      }
-    }
-  } finally {
-    release()
-  }
-}
-
-// A dirty Hydra saves its snapshot at most once per interval; the log already holds every change.
-const SNAPSHOT_INTERVAL_MS = 60_000
-const snapshotTimers = new WeakMap<Held, ReturnType<typeof setTimeout>>()
-
-// Saves a held Hydra's snapshot now; the server calls it when it lets the Hydra go.
-export async function saveSnapshot({ live }: { live: Held }): Promise<void> {
-  clearTimeout(snapshotTimers.get(live))
-  snapshotTimers.delete(live)
-  await snapshotInBackground({ dir: live.dir })
-}
-
-// A write to a Hydra the server holds: no lock and no reload. Each line is fsynced before it applies; a transaction
-// works on a copy that replaces the live state only once its line is on disk.
-function heldWrite<T>({
-  live,
-  hydraId,
-  fn,
-  transaction,
-  migrate,
-}: {
-  live: Held
-  hydraId: string
-  fn({ writer }: { writer: Writer }): T
-  transaction?: {
-    id: string
-    digest: string
-  }
-  migrate: boolean
-}): T | Output {
-  const path = logPath({ dir: live.dir })
-
-  // Another process (a CLI that ran while the server was down) appended; take its lines first.
-  if ((existsSync(path) ? statSync(path).size : 0) !== live.offset) {
-    // A log that no longer starts where it did, as after repair, is read again from its start.
-    let tail = readLog({
-      dir: live.dir,
-      from: live.offset,
-    }) ?? readLog({ dir: live.dir })!
-
-    // New lines that do not follow the held state mean the log changed under it: rebuild from the start.
-    if (tail.events[0] && tail.events[0].seq !== live.state.seq + 1) {
-      live.state = emptyHydra()
-      tail = readLog({ dir: live.dir })!
-    }
-
-    if (tail.size !== tail.end) {
-      throw new HydraError({
-        message: `events.jsonl ends with ${tail.size - tail.end} bytes of a torn append`,
-        code: 'TORN_TAIL',
-        help: ['Run `pnyx-axi repair` to set them aside and continue'],
-      })
-    }
-
-    replayOwned({
-      state: live.state,
-      events: tail.events,
-    })
-    live.offset = tail.end
-  }
 
   if (transaction) {
     const previous = transactionReceipt({
       hydraId,
       ...transaction,
-      migrate,
+      eventIds: live.state.eventIds,
     })
 
     if (previous) {
@@ -315,34 +128,29 @@ function heldWrite<T>({
     }
   }
 
-  let dirty = false
+  const from = live.state.seq
   const pending: HydraEvent[] = []
+  const committed: (() => void)[] = []
+  const touched: Touched = {
+    cards: new Set(),
+    fields: new Set(),
+  }
   const writer = eventWriter({
-    state: transaction ? structuredClone(live.state) : live.state,
+    state: live.state,
+    owned: true,
     dir: live.dir,
     hydraId,
-    owned: true,
     transaction: transaction?.id,
+    touched,
+    committed,
     onAppend: ({ event }) => {
-      if (transaction) {
-        pending.push(event)
-
-        return
-      }
-
-      const line = `${JSON.stringify(event)}\n`
-      live.offset += appendLine({
-        path,
-        line,
-        hydraId,
-        name: event.type,
-        eventSeq: event.seq,
-      })
-      dirty = true
+      pending.push(event)
     },
   })
+  let result: T
 
   try {
+    // A Hydra still on an older layout moves onto the default columns before its next write.
     const migrated = migrate ? migrateColumns({
       state: writer.state,
       meta: {
@@ -355,56 +163,81 @@ function heldWrite<T>({
       writer.append({ event: migrated.event })
     }
 
-    const result = fn({ writer })
+    result = fn({ writer })
 
-    if (transaction) {
-      const line = `${JSON.stringify({
-        v: EVENT_VERSION,
-        type: 'log.transaction',
-        ...transaction,
-        events: pending,
-        receipt: result,
-      })}\n`
-      live.offset += appendLine({
-        path,
-        line,
-        hydraId,
-        name: 'log.transaction',
-        eventSeq: pending.at(-1)?.seq,
-      })
-      live.state = writer.state
-      dirty = true
-    }
+    if (pending.length) {
+      const started = performance.now()
 
-    return result
-  } finally {
-    if (dirty) {
-      if (!snapshotTimers.has(live)) {
-        snapshotTimers.set(
-          live,
-          setTimeout(
-            async () => {
-              // The log holds the change; a snapshot that cannot be written is only a slower next start.
-              try {
-                await saveSnapshot({ live })
-              } catch (error) {
-                log({
-                  level: 'error',
-                  operation: 'snapshot',
-                  error,
-                  hydraId,
-                  eventSeq: live.state.seq,
-                })
-              }
-            },
-            SNAPSHOT_INTERVAL_MS,
-          ).unref(),
-        )
+      if (from === 0) {
+        rememberFirstEvent({
+          hydraId,
+          event: pending[0]!,
+        })
       }
 
-      live.changed()
+      // A Hydra's first write saves every row, including the fields its empty state starts with.
+      const changes = rowChanges({
+        hydraId,
+        state: live.state,
+        saved: live.saved,
+        touched: from === 0 ? undefined : touched,
+      })
+      checkTouched({
+        hydraId,
+        state: live.state,
+        saved: changes.next,
+      })
+      query({
+        transaction: true,
+        statements: [
+          ...eventStatements({
+            hydraId,
+            from,
+            to: live.state.seq,
+            events: pending,
+          }),
+          ...changes.statements,
+          ...transaction ? [
+            transactionStatement({
+              hydraId,
+              ...transaction,
+              receipt: result as Output,
+            }),
+          ] : [],
+        ],
+      })
+      live.saved = changes.next
+      rememberEvents({
+        hydraId,
+        from,
+        events: pending,
+      })
+      log({
+        operation: 'events.write',
+        hydraId,
+        name: pending.at(-1)!.type,
+        eventSeq: live.state.seq,
+        count: pending.length,
+        ms: performance.now() - started,
+      })
     }
+  } catch (error) {
+    if (pending.length) {
+      reloadHydra({ hydraId })
+    }
+
+    throw error
   }
+
+  for (const run of committed) {
+    run()
+  }
+
+  if (pending.length) {
+    live.changed()
+  }
+
+  return result
 }
 
 export function eventWriter({
@@ -413,6 +246,8 @@ export function eventWriter({
   dir,
   hydraId,
   transaction,
+  touched,
+  committed = [],
   onAppend,
 }: {
   state: HydraState
@@ -420,6 +255,8 @@ export function eventWriter({
   dir: string
   hydraId: string
   transaction?: string
+  touched?: Touched
+  committed?: (() => void)[]
   onAppend({ event }: { event: HydraEvent }): void
 }): Writer {
   const state = owned ? initial : structuredClone(initial)
@@ -428,6 +265,9 @@ export function eventWriter({
     dir,
     get state() {
       return state
+    },
+    afterCommit: ({ run }) => {
+      committed.push(run)
     },
     append({
       event,
@@ -462,14 +302,21 @@ export function eventWriter({
         }
       }
 
-      if (transaction && Object.hasOwn(
+      const known = Object.hasOwn(
         state.eventIds,
         event.id,
-      )) {
+      )
+
+      if (transaction && known) {
         throw new HydraError({
           message: `event id ${event.id} already exists`,
           code: 'IDEMPOTENCY_CONFLICT',
         })
+      }
+
+      // The reducer skips an event it has already applied, so it is not sent again for the events table to refuse.
+      if (known) {
+        return
       }
 
       if (event.seq !== state.seq + 1) {
@@ -554,6 +401,7 @@ export function eventWriter({
       } = preimage({
         state,
         observers,
+        touched,
         change: ({ state: draft }) => replayOwned({
           state: draft,
           events: [event],

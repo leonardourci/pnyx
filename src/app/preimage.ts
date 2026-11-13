@@ -33,15 +33,24 @@ export function cloneValue<T>({ value }: { value: T }): T {
   return value
 }
 
-// The writer owns its loaded state; derivations retain only properties changed by this event.
+// What a change wrote to: the ids of the cards under state.cards, and the other top-level fields of the state.
+export interface Touched {
+  cards: Set<string>
+  fields: Set<string>
+}
+
+// The writer owns its loaded state; derivations retain only properties changed by this event. touched collects what
+// this change wrote to, so a save rewrites only those rows; replacing the whole cards record touches the cards field.
 export function preimage<T extends object>({
   state,
   change,
   observers,
+  touched,
 }: {
   state: T
   change({ state }: { state: T }): void
   observers: Set<PreimageObserver>
+  touched?: Touched
 }): {
   before: T
   release(): void
@@ -49,6 +58,54 @@ export function preimage<T extends object>({
   const changed = new WeakMap<object, Map<string | symbol, PropertyDescriptor | undefined>>()
   const readers = new WeakMap<object, object>()
   const writers = new WeakMap<object, object>()
+  // What each written object belongs to: a card, a top-level field, or the cards record itself.
+  const CARDS = Symbol('cards')
+  type Owner = typeof CARDS | {
+    card?: string
+    field?: string
+  }
+  const owners = new WeakMap<object, Owner>()
+
+  const ownerOf = ({
+    target,
+    key,
+  }: {
+    target: object
+    key: string | symbol
+  }): Owner | undefined => {
+    if (target === state) {
+      return key === 'cards' ? CARDS : { field: String(key) }
+    }
+
+    const owner = owners.get(target)
+
+    return owner === CARDS ? { card: String(key) } : owner
+  }
+
+  const touch = ({
+    target,
+    key,
+  }: {
+    target: object
+    key: string | symbol
+  }) => {
+    const owner = target === state && key === 'cards' ? { field: 'cards' } : ownerOf({
+      target,
+      key,
+    })
+
+    if (owner === CARDS || !owner) {
+      return
+    }
+
+    if (owner.card !== undefined) {
+      touched?.cards.add(owner.card)
+    }
+
+    if (owner.field !== undefined) {
+      touched?.fields.add(owner.field)
+    }
+  }
 
   const remember = ({
     target,
@@ -111,12 +168,21 @@ export function preimage<T extends object>({
   const wrap = ({
     value,
     reading,
+    owner,
   }: {
     value: unknown
     reading: boolean
+    owner?: Owner
   }): unknown => {
     if (value === null || typeof value !== 'object') {
       return value
+    }
+
+    if (!reading && owner !== undefined && !owners.has(value)) {
+      owners.set(
+        value,
+        owner,
+      )
     }
 
     const cache = reading ? readers : writers
@@ -144,6 +210,10 @@ export function preimage<T extends object>({
           return wrap({
             value: child,
             reading,
+            owner: ownerOf({
+              target,
+              key,
+            }),
           })
         },
         // eslint-disable-next-line pnyx/object-params -- ProxyHandler owns this signature.
@@ -226,6 +296,11 @@ export function preimage<T extends object>({
             })
           }
 
+          touch({
+            target,
+            key,
+          })
+
           if (Array.isArray(target)) {
             for (const observe of observers) {
               observe({
@@ -271,6 +346,11 @@ export function preimage<T extends object>({
                 key,
               })
             }
+
+            touch({
+              target,
+              key,
+            })
           }
 
           return Reflect.deleteProperty(

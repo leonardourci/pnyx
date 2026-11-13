@@ -362,32 +362,16 @@ export function createRoutineHelper({
       return {}
     }
 
-    try {
-      if (transaction) {
-        withWriter({
-          hydraId,
-          lockTimeout: 0,
-          transaction,
-          fn: save,
-        })
-      } else {
-        withWriter({
-          hydraId,
-          lockTimeout: 0,
-          fn: save,
-        })
-      }
-    } catch (error) {
-      // Snapshot replacement can fail after the append has already committed.
-      if (!(id in loadHydra({ hydraId }).state.eventIds)) {
-        throw error
-      }
-
-      log({
-        level: 'error',
-        operation: 'helper.snapshot',
+    if (transaction) {
+      withWriter({
         hydraId,
-        error,
+        transaction,
+        fn: save,
+      })
+    } else {
+      withWriter({
+        hydraId,
+        fn: save,
       })
     }
 

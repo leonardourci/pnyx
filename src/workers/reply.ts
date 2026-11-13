@@ -1,3 +1,4 @@
+import { copySettling } from '#projects/copy-lease.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
 import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
 import { notificationReceipt } from './inbox-notice.ts'
@@ -466,7 +467,19 @@ export async function sendReply({
     }
   }
 
-  // Sent outside the writer lock: a send can take a while and must not block other writers.
+  if (queued.steering && copySettling({
+    hydraId,
+    task: queued.card,
+  })) {
+    return {
+      card: queued.card,
+      reply: queued.reply,
+      state: 'queued',
+      sent: false,
+    }
+  }
+
+  // Sent outside a write: a send can take a while and must not hold up other writes.
   const {
     card,
     reply,

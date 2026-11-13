@@ -31,7 +31,7 @@ export const isUpgradeSuggestion = ({ item }: { item?: Suggestion }): boolean =>
 
 export const upgradeCommand = ({ text }: { text: string }) => text.trim() === UPGRADE_COMMAND
 
-export type UpgradeStepName = 'pull' | 'install' | 'build' | 'restart'
+export type UpgradeStepName = 'pull' | 'install' | 'build' | 'data' | 'restart'
 
 // Each step's name before, while and after it runs.
 export const STEP_WORDS: Record<UpgradeStepName, [string, string, string]> = {
@@ -49,6 +49,11 @@ export const STEP_WORDS: Record<UpgradeStepName, [string, string, string]> = {
     'Build',
     'Building',
     'Built',
+  ],
+  data: [
+    'Check data',
+    'Checking data',
+    'Checked data',
   ],
   restart: [
     'Restart',

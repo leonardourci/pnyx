@@ -243,7 +243,8 @@ export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'fa
 
 let busy = false
 
-// Pulls main, installs and builds; a failed or stopped step puts the folder back on the commit it started from.
+// Pulls main, installs, builds and checks the new build can import the data; a failed or stopped step puts the folder
+// back on the commit it started from.
 // The caller restarts the server, and only after this reports upgraded.
 // The busy flag guards one process: a CLI and a server upgrading at once can still race.
 export async function runUpgrade({
@@ -465,6 +466,23 @@ async function upgrade({
         signal,
       }),
     })
+    // The new build checks Postgres and imports every Hydra still kept in events.jsonl in a transaction it rolls back;
+    // if that fails, the folder goes back and the running server keeps its files.
+    await step({
+      name: 'data',
+      work: () => run({
+        root,
+        command: process.execPath,
+        args: [
+          'dist/cli/pnyx-axi.js',
+          'setup',
+          'postgres',
+          '--check',
+        ],
+        timeout: BUILD_MS,
+        signal,
+      }),
+    })
 
     return ended({
       result: {
@@ -529,7 +547,9 @@ async function rollback({
     ],
   })
 
-  if (failed === 'install' || failed === 'build') {
+  const rebuilt = failed === 'build' || failed === 'data'
+
+  if (failed === 'install' || rebuilt) {
     await pnpm({
       root,
       args: [
@@ -539,7 +559,7 @@ async function rollback({
     })
   }
 
-  if (failed === 'build') {
+  if (rebuilt) {
     await pnpm({
       root,
       args: [

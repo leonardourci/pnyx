@@ -5,7 +5,7 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { threadPath, type LatestMessage } from '#hydra/transcripts-read.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
-import { effectiveView, readSettings } from '#settings/store.ts'
+import { effectiveView, pageSettings, readSettings } from '#settings/store.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { AgentUsage } from '#workers/provider.ts'
@@ -19,6 +19,8 @@ import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } f
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
+import { heldHydra } from './store.ts'
+import { query } from '#store/postgres.ts'
 
 // A tab that opened no cards and did not ask for hidden ones.
 const NO_INTEREST: PageInterest = {
@@ -313,6 +315,14 @@ export function createServerClients({
       })
     }
 
+    // A receipt carries the Hydra's committed seq, so the page knows its change is in once Zero has synced that far.
+    if (message.type === 'receipt') {
+      message = {
+        ...message,
+        seq: heldHydra({ hydraId })?.state.seq ?? state().seq,
+      }
+    }
+
     ws.send({ message })
     dropping.delete(ws)
 
@@ -336,18 +346,38 @@ export function createServerClients({
     return true
   }
 
+  // The queue the page last read through Zero, so an unchanged one is not written again.
+  let storedQueue = ''
+
   const queueMessage = (): ServerMessage => {
     const queued = agents().queue()
     const chat = hydraChatQueue({ state: state() })
-
     // The batch Hydra reads shows only while its turn runs.
+    const queue = {
+      waiting: queued.waiting,
+      reading: chat.working ? queued.reading : [],
+      chat,
+    }
+    const json = JSON.stringify(queue)
+
+    if (json !== storedQueue) {
+      storedQueue = json
+      query({
+        statements: [
+          {
+            text: 'update hydras set queue = $2 where id = $1',
+            values: [
+              hydraId,
+              json,
+            ],
+          },
+        ],
+      })
+    }
+
     return {
       type: 'hydraQueue',
-      queue: {
-        waiting: queued.waiting,
-        reading: chat.working ? queued.reading : [],
-        chat,
-      },
+      queue,
     }
   }
 
@@ -625,7 +655,7 @@ export function createServerClients({
       ws,
       message: {
         type: 'settings',
-        settings: read.settings,
+        settings: pageSettings({ settings: read.settings }),
         revision: read.revision,
       },
     })

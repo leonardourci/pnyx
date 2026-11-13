@@ -24,7 +24,6 @@ import type { HydraEvent } from './model.ts'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
-import { saveSnapshot } from './writer.ts'
 import { readEventsFrom } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { background } from './background.ts'
@@ -44,6 +43,7 @@ import { backfillHydraConversations } from '#integrations/hooks/harvest.ts'
 import { healthFacts } from '#diagnostics/health.ts'
 import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
 import { HydraError } from '#store/errors.ts'
+import { dropCopyLeases } from '#routine-helper/leases.ts'
 import { pageInterest, parsePage } from './page-cli.ts'
 
 export const RETRY_MS = 60_000
@@ -98,6 +98,8 @@ export async function mountOwnedHydra({
   let homes = (given ?? []).map(path => resolveHome({ path }))
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
+  // Until recovery has stopped the previous server's agents, nothing may reopen a session.
+  let recovered = false
 
   const dir = hydraDir({ hydraId })
   privateDir({ dir: spoolDir({ dir }) })
@@ -108,10 +110,10 @@ export async function mountOwnedHydra({
     hydraId,
     changed: () => kick(),
   })
-  let {
-    state,
-    offset,
-  } = loadHydra({ hydraId })
+  dropCopyLeases({ hydraId })
+  let { state } = loadHydra({ hydraId })
+  // The seq of the last event this server has pushed.
+  let offset = state.seq
   const catalogIndex = createCatalogIndex({ locations: catalogLocations })
   const {
     threadSubscriptions,
@@ -188,12 +190,14 @@ export async function mountOwnedHydra({
   } = tabs
 
   const reload = () => {
-    ({
-      state,
-      offset,
-    } = loadHydra({ hydraId }))
+    ({ state } = loadHydra({ hydraId }))
+    offset = state.seq
     recent = []
-    agents.reconcile({ state })
+
+    if (recovered) {
+      agents.reconcile({ state })
+    }
+
     background({
       name: 'follow git refs',
       run: () => gitFollow.reconcile({ state }),
@@ -256,11 +260,12 @@ export async function mountOwnedHydra({
       offset,
     })
 
-    if (!read) {
-      return reload()
-    }
-
     const live = heldHydra({ hydraId })
+
+    // A write that failed reads the held Hydra back into a new state, with no event to carry it here.
+    if (live) {
+      state = live.state
+    }
 
     for (const event of read.events) {
       // A held Hydra's writer has already applied the event to the state this server reads.
@@ -319,7 +324,11 @@ export async function mountOwnedHydra({
     offset = read.end
 
     hydrasChanged()
-    agents.reconcile({ state })
+
+    if (recovered) {
+      agents.reconcile({ state })
+    }
+
     background({
       name: 'follow git refs',
       run: () => gitFollow.reconcile({ state }),
@@ -726,22 +735,6 @@ export async function mountOwnedHydra({
     catalogIndex.close()
     agents.close()
     await spend.close()
-    const live = heldHydra({ hydraId })
-
-    // The log holds every change; a snapshot that cannot be written only makes the next start slower,
-    // so the rest of shutdown runs regardless.
-    if (live) {
-      try {
-        await saveSnapshot({ live })
-      } catch (error) {
-        log({
-          level: 'error',
-          operation: 'snapshot',
-          hydraId,
-          error,
-        })
-      }
-    }
 
     releaseHold()
 
@@ -823,6 +816,8 @@ export async function mountOwnedHydra({
       hydraId,
       error,
     })
+  } finally {
+    recovered = true
   }
 
   kick()

@@ -133,8 +133,8 @@ test(
 )
 
 test(
-  'a failed background snapshot is logged without killing the daemon or losing a completed helper batch',
-  async t => {
+  'a completed helper batch is neither lost nor taken again when the server restarts',
+  async () => {
     const s = await pnyx.scenario()
     await s.owner({
       args: [
@@ -200,50 +200,6 @@ test(
       check: () => !fs.existsSync(`${process.env.PNYX_HOME}/hydras/${s.hydraId}/helper-lease-${encodeURIComponent(task.id)}.json`),
     })
     await pnyx.restart()
-    const cache = join(
-      hydraDir({ hydraId: s.hydraId }),
-      'snapshot.json',
-    )
-    assert.ok(fs.existsSync(cache))
-    fs.rmSync(cache)
-    fs.mkdirSync(cache)
-    t.after(() => fs.rmSync(
-      cache,
-      {
-        recursive: true,
-        force: true,
-      },
-    ))
-    t.mock.timers.enable({ apis: ['setTimeout'] })
-    withWriter({
-      hydraId: s.hydraId,
-      fn: ({ writer }) => writer.append({
-        event: {
-          v: 1,
-          seq: writer.state.seq + 1,
-          id: 'snapshot-checkpoint',
-          cardId: task.id,
-          at: new Date().toISOString(),
-          actor: 'cli',
-          type: 'card.noted',
-          data: {
-            text: 'Snapshot checkpoint.',
-            kind: 'context',
-            source: 'test',
-          },
-        },
-      }),
-    })
-    t.mock.timers.tick(60_000)
-    t.mock.timers.reset()
-    await until({
-      what: 'the background snapshot failure to be logged',
-      check: () => logLines().some(record => record.operation === 'snapshot' && record.hydraId === s.hydraId),
-    })
-    fs.rmSync(
-      cache,
-      { recursive: true },
-    )
     assert.equal(
       s.events().filter(event => event.type === 'hydra.helper-started').length,
       1,
@@ -260,29 +216,6 @@ test(
     )
     const declared = s.events().find(event => event.type === 'task.declared' && event.data.note === 'Blocked behind a busy writer.')!
     assert.ok(grants[0]!.data.seqs.includes(declared.seq))
-    const snapshotFailure = logLines()
-      .find(record => record.level === 'error' && record.operation === 'snapshot' && record.hydraId === s.hydraId)
-    assert.ok(
-      snapshotFailure,
-      'the snapshot failure must identify its Hydra in a log line',
-    )
-    assert.equal(
-      snapshotFailure.error?.code,
-      'EISDIR',
-    )
-    assert.equal(
-      Number.isNaN(Date.parse(snapshotFailure.at)),
-      false,
-    )
-    assert.equal(
-      typeof snapshotFailure.operationId,
-      'string',
-    )
-    assert.ok(Number(snapshotFailure.eventSeq) >= grants[0]!.seq)
-    assert.equal(
-      (await fetch(`http://127.0.0.1:${pnyx.port()}/health`)).status,
-      200,
-    )
   },
 )
 
@@ -925,66 +858,6 @@ test(
     assert.equal(
       s.received({ cwd: worker.folder }).filter(text => text.includes('/review Codex refuses')).length,
       0,
-    )
-  },
-)
-
-test(
-  'a snapshot save that fails at shutdown still lets the server stop and start again with every change',
-  async () => {
-    const s = await pnyx.scenario()
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Kept through a failed snapshot',
-        '--key',
-        'kept-snapshot',
-      ],
-    })
-    const cache = join(
-      hydraDir({ hydraId: s.hydraId }),
-      'snapshot.json',
-    )
-    fs.rmSync(
-      cache,
-      { force: true },
-    )
-    fs.mkdirSync(cache)
-
-    try {
-      await pnyx.restart()
-    } finally {
-      fs.rmSync(
-        cache,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    }
-
-    const failures = logLines().filter(record => record.level === 'error' && record.hydraId === s.hydraId)
-    assert.ok(failures.some(record => record.operation === 'snapshot' && record.error?.code === 'EISDIR'))
-    // The rest of the Hydra's shutdown (its hold, hook socket and timers) ran after the failed save.
-    assert.equal(
-      logLines().some(record => record.operation === 'hydra.close' && record.hydraId === s.hydraId),
-      false,
-    )
-    assert.equal(
-      s.task({ key: 'kept-snapshot' }).title,
-      'Kept through a failed snapshot',
-    )
-    assert.match(
-      await s.owner({
-        args: [
-          'task',
-          'show',
-          'kept-snapshot',
-        ],
-      }),
-      /Kept through a failed snapshot/,
     )
   },
 )

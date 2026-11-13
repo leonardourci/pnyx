@@ -8,6 +8,7 @@ const STEPS: UpgradeStepName[] = [
   'pull',
   'install',
   'build',
+  'data',
   'restart',
 ]
 
