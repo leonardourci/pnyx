@@ -111,3 +111,19 @@ test(
     )
   },
 )
+
+test(
+  'a database a connection string names is created on its first use',
+  () => {
+    const database = `named_${Date.now()}`
+    const url = `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`
+    const [rows] = query({
+      url,
+      statements: [{ text: 'select current_database() as name' }],
+    }) as { name: string }[][]
+    assert.equal(
+      rows?.[0]?.name,
+      database,
+    )
+  },
+)

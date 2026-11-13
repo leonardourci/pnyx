@@ -20,6 +20,21 @@ const {
   config: pg.ClientConfig & { database: string }
 }
 
+// The same server's maintenance database, which can create this one; a connection string names its database itself.
+function adminConfig(): pg.ClientConfig {
+  if (!config.connectionString) {
+    return {
+      ...config,
+      database: 'postgres',
+    }
+  }
+
+  const url = new URL(config.connectionString)
+  url.pathname = '/postgres'
+
+  return { connectionString: url.href }
+}
+
 // A home's database appears on its first use, with the folded migration applied once.
 async function connect(): Promise<pg.Client> {
   const client = new pg.Client(config)
@@ -45,10 +60,7 @@ async function connect(): Promise<pg.Client> {
       throw error
     }
 
-    const admin = new pg.Client({
-      ...config,
-      database: 'postgres',
-    })
+    const admin = new pg.Client(adminConfig())
     await admin.connect()
 
     try {
