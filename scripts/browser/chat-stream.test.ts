@@ -853,6 +853,7 @@ test(
     }
 
     let releaseHeld = () => {}
+    let releasePreparing = () => {}
     const hydraRow = `.hydras-panel [data-hydra="${s.hydraId}"] .hydra-running`
 
     try {
@@ -874,14 +875,19 @@ test(
         condition: `document.querySelector('${hydraRow}:not([data-running])')`,
       })
 
+      const preparing = pnyx.claude.plan({
+        text: 'Prepare the status fixture',
+        hold: true,
+      })
+      releasePreparing = preparing.release
       await run({
         args: ['run'],
         input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Prepare the status fixture\'); await page.click(\'[aria-label="Send reply"]\');',
       })
       const previousAgent = await s.agent({ hydra: true })
       await until({
-        what: 'the previous turn to finish',
-        check: () => s.answered({ cwd: previousAgent.cwd }) === 1,
+        what: 'the fixture turn to start',
+        check: () => s.state().cards.$hydra?.sessionActivity === 'working',
       })
       const path = s.state().cards.$hydra!.agent!.transcriptPath!
       appendFileSync(
@@ -915,6 +921,11 @@ test(
           },
         })}\n`,
       )
+      preparing.release()
+      await until({
+        what: 'the fixture turn to finish',
+        check: () => s.answered({ cwd: previousAgent.cwd }) === 1 && s.state().cards.$hydra?.sessionActivity === 'finished',
+      })
       await until({
         what: 'the older native action to reach the socket',
         check: () => wire.actions.$hydra?.at === '2000-01-01T00:00:00Z',
@@ -1153,6 +1164,7 @@ test(
     } finally {
       finishTools()
       releaseHeld()
+      releasePreparing()
       await s.owner({
         args: [
           'settings',
@@ -1420,6 +1432,13 @@ Again: [image: ${src}]`
         ],
       })
       const task = s.task({ key: 'image-worker' })
+      const linkRefreshes = () => logLines().filter(line => line.operation === 'command.page'
+        && line.hydraId === s.hydraId && line.name === 'task refresh-links').length
+      assert.equal(
+        linkRefreshes(),
+        0,
+        'the board and chat read no pull requests before a task shows its activity',
+      )
       await run({
         args: ['run'],
         input: `await page.click('[data-task="${task.id}"]');`,
@@ -1440,6 +1459,16 @@ Again: [image: ${src}]`
       }`,
       })
       await capture({ name: 'worker-images' })
+      await evaluate({
+        script: `() => {
+        [...document.querySelectorAll('[data-task="${task.id}"] [role=tab]')].find(tab => tab.textContent === 'Activity').click();
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await until({
+        what: 'opening the task activity to read its pull requests once',
+        check: () => linkRefreshes() === 1,
+      })
     } finally {
       await run({ args: ['stop'] })
     }

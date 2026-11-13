@@ -10,9 +10,11 @@ import { AnsweredQuestions, recordedAnswers } from './answered-questions.tsx'
 import type { HydraState } from '#app/model.ts'
 import { taskQuestions } from './task-question.ts'
 import { ReviewReadiness } from './review-readiness.tsx'
+import { useLinkRefresh } from './link-refresh.ts'
 
 export function TaskQuestion({
   card,
+  connected,
   state,
   command,
   notify,
@@ -20,6 +22,7 @@ export function TaskQuestion({
 }: {
   card: Card
   state?: HydraState
+  connected: boolean
   command: Command
   notify({ text }: { text: string }): void
   answer({ card }: { card: Card }): void
@@ -34,6 +37,11 @@ export function TaskQuestion({
     card,
   })
   const prompts = genericPrompts({ card })
+  useLinkRefresh({
+    task: card.id,
+    command,
+    connected: connected && reviews.length > 0,
+  })
 
   if (!questions.length && !recordedAnswers({ card }).length && !reviews.length) {
     return null

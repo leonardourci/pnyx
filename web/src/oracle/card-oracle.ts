@@ -55,7 +55,9 @@ const keyOf = ({ search }: { search: Search }) => `${search.text}${search.filter
 export function searchSchedule({
   find,
   show,
+  cancel,
 }: {
+  cancel?(): void
   find({ search }: { search: Search }): Promise<Hit[]>
   show({
     key,
@@ -70,14 +72,17 @@ export function searchSchedule({
   let current: Search | null = null
   let waiting: ReturnType<typeof setTimeout> | undefined
   let refreshing: ReturnType<typeof setTimeout> | undefined
-  let running = false
+  let running = 0
   let shown = ''
+  let identity = {}
 
   // Never rejects: a failed refresh keeps the shown results, and the next query or event tries again.
   const send = async ({ search }: { search: Search }) => {
     const key = keyOf({ search })
-    const stillCurrent = () => !!current && keyOf({ search: current }) === key
-    running = true
+    const request = identity
+    const stillCurrent = () => request === identity && !!current
+      && keyOf({ search: current }) === key
+    running += 1
 
     try {
       const hits = await find({ search })
@@ -101,7 +106,7 @@ export function searchSchedule({
         })
       }
     } finally {
-      running = false
+      running -= 1
     }
   }
 
@@ -139,8 +144,13 @@ export function searchSchedule({
       }
 
       current = search
+      identity = {}
       clearTimeout(waiting); clearTimeout(refreshing)
       waiting = undefined; refreshing = undefined
+
+      if (running) {
+        cancel?.()
+      }
 
       if (!search) {
         return
@@ -157,7 +167,12 @@ export function searchSchedule({
     changed,
     stop() {
       current = null
+      identity = {}
       clearTimeout(waiting); clearTimeout(refreshing)
+
+      if (running) {
+        cancel?.()
+      }
     },
   }
 }
@@ -196,7 +211,22 @@ export function useFoundCards({
   const schedule = useRef<ReturnType<typeof searchSchedule> | null>(null)
   useEffect(
     () => {
+      const cancel = async () => {
+        try {
+          await command({
+            name: 'oracle',
+            args: [],
+          })
+        } catch (error) {
+          console.warn(
+            'Oracle cancellation failed',
+            error,
+          )
+        }
+      }
+
       const next = searchSchedule({
+        cancel,
         find: ({ search }) => findCards({
           command,
           query: search.text,

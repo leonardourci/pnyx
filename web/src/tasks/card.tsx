@@ -555,6 +555,7 @@ export function HydraCard({
               <TaskQuestion
                 card={card}
                 state={state}
+                connected={connected}
                 command={command}
                 notify={notify}
                 answer={answer}

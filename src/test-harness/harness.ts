@@ -82,14 +82,15 @@ export async function until<T>({
   what: string
   check: () => T | undefined | false
 }): Promise<T> {
-  for (const end = Date.now() + TIMEOUT_MS; ;) {
+  // The monotonic clock keeps the bound when a flow holds Date.
+  for (const end = performance.now() + TIMEOUT_MS; ;) {
     const value = check()
 
     if (value !== undefined && value !== false) {
       return value
     }
 
-    if (Date.now() > end) {
+    if (performance.now() > end) {
       throw new Error(`timed out waiting for ${what}`)
     }
 

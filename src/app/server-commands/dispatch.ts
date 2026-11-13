@@ -2,7 +2,6 @@ import { pageInterest, parsePage } from '#app/page-cli.ts'
 import { AxiError } from 'axi-sdk-js'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
-import type { createIndexSync } from '#oracle/index-sync.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import type { createHost } from '#app/host.ts'
@@ -53,7 +52,6 @@ export function createServerCommands({
   kick,
   agents,
   catalogCommand,
-  historyIndex,
   hydraSubscribers,
   showPage,
   subscriptionMap,
@@ -77,7 +75,6 @@ export function createServerCommands({
     fail,
     send,
   }: CommandRequest): void
-  historyIndex: ReturnType<typeof createIndexSync>
   hydraSubscribers: WeakSet<HydraClient>
   showPage: ReturnType<typeof createServerClients>['show']
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
@@ -85,6 +82,7 @@ export function createServerCommands({
   threadPage: ThreadSubscriptions['threadPage']
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
 }) {
+  const oracleSearches = new WeakMap<HydraClient, AbortController>()
   const runCommand = ({
     ws,
     message,
@@ -273,8 +271,7 @@ export function createServerCommands({
             fail,
             send,
             hydraId,
-            state,
-            historyIndex,
+            searches: oracleSearches,
           })
         } else if (name === 'hydra-agent-change') {
           hydraAgentChangeCommand({
@@ -385,5 +382,11 @@ export function createServerCommands({
     })
   }
 
-  return { runCommand }
+  return {
+    runCommand,
+    closeClient({ ws }: { ws: HydraClient }) {
+      oracleSearches.get(ws)?.abort()
+      oracleSearches.delete(ws)
+    },
+  }
 }
