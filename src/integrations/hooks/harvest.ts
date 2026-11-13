@@ -59,7 +59,8 @@ function writeCursors({
   )
 }
 
-// A task moving to another Hydra reads its transcripts on from where this Hydra stopped, so no note is recorded twice.
+// A task moving to another Hydra reads its transcripts on from where this Hydra stopped,
+// so no note is recorded twice.
 export function carryCursors({
   from,
   to,
@@ -241,6 +242,7 @@ export function harvestTranscripts({
     const live = (LIVE_HOOK_SETTINGS[agent!.provider] ?? [])
       .filter(name => held?.[name] !== undefined)
     const subagent = agent!.agentId !== undefined
+    const session = cardSessionId({ card: writer.state.cards[id]! })
     // The session title the transcript named last before this read.
     let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
 
@@ -249,7 +251,6 @@ export function harvestTranscripts({
         record: line.record,
         subagent,
       })
-      const session = cardSessionId({ card: writer.state.cards[id]! })
 
       for (const note of parsed.notes) {
         if (id === '$hydra' && note.kind === 'summary' && /^(compact:|compacted:)/.test(note.ref)) {
