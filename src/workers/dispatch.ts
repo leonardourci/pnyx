@@ -164,7 +164,14 @@ interface PlanUsage {
   windows: PlanWindow[]
 }
 
-// The account's plan windows for the composer's usage panel: a cached quota-axi read, so a hover never waits on the vendor.
+const USAGE_CACHE_MS = 5 * 60_000
+// The composer's plan windows: one quota-axi read per login every USAGE_CACHE_MS, shared by every
+// tab and Hydra, so a hover never waits on the vendor. A failed read is not kept.
+const usageCache = new Map<string, {
+  at: number
+  result: Promise<PlanUsage | undefined>
+}>()
+
 export async function readUsage({
   account,
   refresh = false,
@@ -176,6 +183,37 @@ export async function readUsage({
     return undefined
   }
 
+  const key = `${account.provider}\n${loginFolder({ account })}\n${process.env.QUOTA_AXI_SNAPSHOT ?? ''}`
+  const cached = usageCache.get(key)
+
+  if (!refresh && cached && Date.now() - cached.at < USAGE_CACHE_MS) {
+    return cached.result
+  }
+
+  const result = usageReading({ account })
+  const entry = {
+    at: Date.now(),
+    result,
+  }
+  usageCache.set(
+    key,
+    entry,
+  )
+  let successful = false
+
+  try {
+    const usage = await result
+    successful = usage !== undefined
+
+    return usage
+  } finally {
+    if (!successful && usageCache.get(key) === entry) {
+      usageCache.delete(key)
+    }
+  }
+}
+
+async function usageReading({ account }: { account: Account }): Promise<PlanUsage | undefined> {
   const env = accountEnvironment({ account })
 
   try {
@@ -188,8 +226,9 @@ export async function readUsage({
         ...(env[loginVariable({ provider: account.provider })] && !env.QUOTA_AXI_SNAPSHOT
           ? ['--profile-only'] : []),
         '--no-credential-refresh',
+        // The server cache above is the only one, so a reading is never older than it.
         '--max-age',
-        refresh ? '0' : '5m',
+        '0',
         '--json',
       ],
       options: {

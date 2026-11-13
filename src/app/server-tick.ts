@@ -2,10 +2,10 @@ import type { startReviewTimer } from '#hydra/review-timer.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import { settleDone, settles } from '#projects/copies.ts'
 import { readSettings } from '#settings/store.ts'
-import { spoolFiles } from '#store/storage.ts'
 import type { createSourceRunner } from '#task-sources/runner.ts'
 import { sourceDeadline } from '#task-sources/state.ts'
-import { followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
+import { followSchedule } from '#tasks/delivery/follow-schedule.ts'
+import { followPullRequests, followedLinks, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { resumeWaits, waitResumesPending, notifyWaitResumes } from '#tasks/resume-waits.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
@@ -24,13 +24,13 @@ import type { createServerWorkers } from './server-workers.ts'
 
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
+export const SPOOL_RETRY_MS = 1000
 
 type ServerWorkers = ReturnType<typeof createServerWorkers>
 
 // The one coalesced scheduler tick of a mounted Hydra: read the log, run what is due, and set the next wake.
 export function createServerTick({
   hydraId,
-  dir,
   state,
   closed,
   pump,
@@ -45,7 +45,6 @@ export function createServerTick({
   recover,
 }: {
   hydraId: string
-  dir: string
   state(): HydraState
   closed(): boolean
   pump(): void
@@ -59,6 +58,7 @@ export function createServerTick({
   review(): ReturnType<typeof startReviewTimer>
   recover(): void
 }) {
+  const followChecks = followSchedule({ interval: followDelay })
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let cancelReminder = () => {}
   let queueRun: Promise<void> | undefined
@@ -71,6 +71,8 @@ export function createServerTick({
   let replyCheckedAt = 0
   const waitResumeRetryAfter = new Map<string, number>()
   let scheduled = false
+  let spoolDirty = true
+  let spoolRetryAt = 0
   let lastSuccessAt: string | undefined
   let lastSuccessSeq: number | undefined
   let lastFailureAt: string | undefined
@@ -91,8 +93,14 @@ export function createServerTick({
       let repliesPending = false
 
       try {
-        if (spoolFiles({ dir }).length > 0) {
-          ingestSpool({ hydraId })
+        if (spoolDirty && Date.now() >= spoolRetryAt) {
+          try {
+            ingestSpool({ hydraId })
+            spoolDirty = false
+          } catch (error) {
+            spoolRetryAt = Date.now() + SPOOL_RETRY_MS
+            throw error
+          }
         }
 
         pump()
@@ -127,6 +135,7 @@ export function createServerTick({
           })()
         }
 
+        followChecks.prune({ links: followedLinks({ state: state() }) })
         const following = needsPullRequestFollow({ state: state() })
 
         if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
@@ -136,6 +145,7 @@ export function createServerTick({
               await followPullRequests({
                 hydraId,
                 active: () => !closed(),
+                schedule: followChecks,
               })
             } catch (error) {
               log({
@@ -299,6 +309,10 @@ export function createServerTick({
         ]
           .filter((at): at is number => at !== undefined)
 
+        if (spoolDirty) {
+          deadlines.push(spoolRetryAt)
+        }
+
         if (!followRun && needsPullRequestFollow({ state: state() })) {
           deadlines.push(followCheckedAt + followDelay)
         }
@@ -328,6 +342,25 @@ export function createServerTick({
   }
 
   return {
+    spooled() {
+      spoolDirty = true
+      spoolRetryAt = 0
+      kick()
+    },
+    refreshLinks({
+      task,
+      restart,
+    }: {
+      task: string
+      restart?: boolean
+    }) {
+      followChecks.touch({
+        task,
+        restart,
+      })
+      followCheckedAt = 0
+      kick()
+    },
     health: () => ({
       lastSuccessAt,
       lastSuccessSeq,

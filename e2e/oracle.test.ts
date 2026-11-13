@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { chmodSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { hydraDir } from '#app/home-migration.ts'
+import { join } from 'node:path'
 import { test } from 'node:test'
-import { searchPath } from '#oracle/index.ts'
 import type { Hit } from '#oracle/model.ts'
-import { indexStatus } from '#oracle/status.ts'
+import { observeSearchWorkers } from '#oracle/fixtures/search-workers.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
@@ -46,7 +47,7 @@ const createTask = ({
 })
 
 test(
-  'Oracle serves fresh results, catches up after changes and reports a failed catch-up',
+  'Oracle catches up new tasks on query without background indexing',
   async t => {
     const s = await pnyx.scenario()
     await createTask({
@@ -66,7 +67,7 @@ test(
         words: 'billing',
       })).map(hit => hit.card),
       [s.task({ key: 'billing' }).id],
-      'a first query waits for the first build',
+      'the first query builds its derived cache',
     )
 
     await createTask({
@@ -84,7 +85,7 @@ test(
         words: 'refund',
       })).map(hit => hit.card),
       [s.task({ key: 'refunds' }).id],
-      'a query on an index behind the log waits for it to catch up',
+      'a query sees the newest durable event',
     )
 
     await createTask({
@@ -92,20 +93,6 @@ test(
       title: 'Rotate the invoice signing keys',
       key: 'keys',
     })
-    const created = s.state().seq
-    await until({
-      what: 'the index to catch up with the new task without a query',
-      check: () => {
-        const index = indexStatus({ hydraId: s.hydraId })
-
-        return index !== null && index.builtThrough >= created
-      },
-    })
-    chmodSync(
-      searchPath({ hydraId: s.hydraId }),
-      0o400,
-    )
-
     await createTask({
       s,
       title: 'Audit the payment logs',
@@ -115,16 +102,75 @@ test(
       what: 'the new task on the page',
       check: ({ state }) => !!state.cards[s.task({ key: 'audit' }).id],
     })
-    const refusal = await page.refusal(oracle({ words: 'audit' }))
     assert.deepEqual(
-      {
-        error: refusal.error,
-        code: refusal.code,
-      },
-      {
-        error: 'Oracle index could not catch up: attempt to write a readonly database',
-        code: 'UNKNOWN',
-      },
+      (await ask({
+        page,
+        words: 'audit',
+      })).map(hit => hit.card),
+      [s.task({ key: 'audit' }).id],
+    )
+    const observer = observeSearchWorkers({
+      hydraId: s.hydraId,
+      folder: hydraDir({ hydraId: s.hydraId }),
+    })
+    t.after(() => observer.close())
+    const gate = observer.gateNext()
+    const superseded = page.refusal(oracle({ words: 'billing' }))
+    await gate.ready()
+    const latest = page.command(oracle({ words: 'audit' }))
+    const [
+      cancelled,
+      found,
+    ] = await Promise.all([
+      superseded,
+      latest,
+    ])
+    assert.equal(
+      cancelled.code,
+      'CANCELLED',
+    )
+    assert.deepEqual(
+      (found.hits as Hit[]).map(hit => hit.card),
+      [s.task({ key: 'audit' }).id],
+    )
+
+    const otherPage = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => otherPage.close())
+    const clearGate = observer.gateNext()
+    const clearing = page.refusal(oracle({ words: 'billing' }))
+    await clearGate.ready()
+    const otherSearch = otherPage.command(oracle({ words: 'audit' }))
+    const cleared = await page.command({
+      name: 'oracle',
+      args: [],
+    })
+    assert.equal(
+      cleared.cancelled,
+      true,
+    )
+    assert.equal(
+      (await clearing).code,
+      'CANCELLED',
+    )
+    assert.deepEqual(
+      ((await otherSearch).hits as Hit[]).map(hit => hit.card),
+      [s.task({ key: 'audit' }).id],
+    )
+
+    const invalid = await page.refusal(oracle({ words: '!!!' }))
+    assert.equal(
+      invalid.code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      existsSync(join(
+        hydraDir({ hydraId: s.hydraId }),
+        'oracle.db',
+      )),
+      true,
     )
   },
 )
@@ -240,6 +286,53 @@ test(
         ],
       }),
       /results: "none: no matches for \\"billing\\""/,
+    )
+  },
+)
+
+test(
+  'a hosted worker that finishes a turn archives its transcript messages in the log',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'archive' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Archive the turn',
+        '--key',
+        'archive',
+        '--folder',
+        folder,
+        '--brief',
+        'Polish the quillwort ledger.',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'archive',
+      ],
+    })
+    await s.agent({ cwd: folder })
+    const task = s.task({ key: 'archive' })
+    const archived = () => s.events().filter(event => event.type === 'chat.message'
+      && event.cardId === task.id)
+    const messages = await until({
+      what: 'the finished turn to be archived',
+      check: () => {
+        const found = archived()
+
+        return s.task({ key: 'archive' }).sessionActivity === 'finished' && found.length ? found : undefined
+      },
+    })
+    assert.ok(messages.some(event => event.type === 'chat.message' && event.data.text.includes('quillwort')))
+    assert.equal(
+      new Set(messages.map(event => event.type === 'chat.message' && event.data.nativeId)).size,
+      messages.length,
+      'each transcript line is archived once',
     )
   },
 )

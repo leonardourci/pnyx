@@ -21,6 +21,7 @@ import { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
 import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
+import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { clip } from '#hydra/digest.ts'
@@ -74,6 +75,7 @@ export function createHost({
   spawnCodex,
   changed,
   streamed = () => {},
+  usageChanged = () => {},
   queued = () => {},
   wakeDelay = WAKE_MS,
   stallDelay = STALL_MS,
@@ -102,6 +104,8 @@ export function createHost({
     session: string
     text?: boolean
   }): void
+  // A login's plan limits changed, so every session's usage view is rebuilt.
+  usageChanged?(): void
   // Hydra's queue of unread changes grew, or its check turn took or finished them.
   queued?(): void
   wakeDelay?: number
@@ -133,6 +137,7 @@ export function createHost({
   const usageTracker = createUsageTracker({
     hydraId,
     streamed,
+    usageChanged,
   })
 
   let closing = false
@@ -297,6 +302,7 @@ export function createHost({
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
     const card = session && writer.state.cards[session.taskId ?? session.originCardId]
+    const finished = input.activity === 'finished' && card?.sessionActivity !== 'finished'
 
     applyDecision({
       writer,
@@ -319,6 +325,14 @@ export function createHost({
         },
       }),
     })
+
+    if (finished && card) {
+      harvestTranscripts({
+        writer,
+        cardIds: [card.id],
+        at: at(),
+      })
+    }
   }
 
   const hosted = ({
@@ -1083,6 +1097,7 @@ export function createHost({
 
     close: () => {
       closing = true
+      usageTracker.close()
       midTurnChecks.delete(midTurn)
       helper.close()
       stopWake()

@@ -87,9 +87,13 @@ function toEvent({
 export function readLog({
   dir,
   from = 0,
+  maxBytes,
+  through,
 }: {
   dir: string
   from?: number
+  maxBytes?: number
+  through?: number
 }): LogRead | null {
   const path = logPath({ dir })
 
@@ -108,13 +112,21 @@ export function readLog({
   )
 
   try {
-    const size = fstatSync(fd).size
+    const fileSize = fstatSync(fd).size
+    const size = Math.min(
+      fileSize,
+      through ?? fileSize,
+    )
 
     if (from > size) {
       return null
     }
 
-    const buf = Buffer.alloc(size - from)
+    const available = size - from
+    let buf = Buffer.alloc(Math.min(
+      available,
+      maxBytes ?? available,
+    ))
     readSync(
       fd,
       buf,
@@ -122,7 +134,48 @@ export function readLog({
       buf.length,
       from,
     )
-    const complete = buf.lastIndexOf(10) + 1
+
+    // A repair marker applies to the preceding record, so a batch needs one record of lookahead.
+    while (buf.indexOf(
+      10,
+      buf.indexOf(10) + 1,
+    ) < 0 && buf.length < available) {
+      buf = Buffer.alloc(Math.min(
+        available,
+        Math.max(
+          1,
+          buf.length * 2,
+        ),
+      ))
+      readSync(
+        fd,
+        buf,
+        0,
+        buf.length,
+        from,
+      )
+    }
+
+    let complete = buf.lastIndexOf(10) + 1
+
+    if (maxBytes !== undefined && buf.length < available && complete > 0) {
+      const lastStart = buf.lastIndexOf(
+        10,
+        complete - 2,
+      ) + 1
+      const last = parseLine({
+        line: buf.toString(
+          'utf8',
+          lastStart,
+          complete - 1,
+        ),
+      })
+
+      if (!repairMarker({ value: last })) {
+        complete = lastStart
+      }
+    }
+
     const events: HydraEvent[] = []
     const transactions: Transaction[] = []
     let previous: {
@@ -468,9 +521,13 @@ export function readEventsFrom(
   {
     hydraId,
     offset,
+    maxBytes,
+    through,
   }: {
     hydraId: string
     offset: number
+    maxBytes?: number
+    through?: number
   },
 ): {
   events: HydraEvent[]
@@ -479,6 +536,8 @@ export function readEventsFrom(
   const log = readLog({
     dir: hydraDir({ hydraId }),
     from: offset,
+    maxBytes,
+    through,
   })
 
   return log && {
