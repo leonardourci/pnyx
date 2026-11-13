@@ -234,7 +234,11 @@ export function HydraChat({
 
       let cancelled = false
       const retained = retainedPage.current
-      const args = retained?.entries.length ? retainArgs({ page: retained }) : [HYDRA_CARD]
+      const oldest = retained?.entries[0]
+      const args = retained && oldest ? retainArgs({
+        page: retained,
+        oldest,
+      }) : [HYDRA_CARD]
 
       void command({
         name: 'thread',
@@ -537,12 +541,18 @@ export function HydraChat({
         HYDRA_CARD,
         '--recent',
       ]
+      // A retaining read only comes for a page that holds entries.
+      const oldest = page.entries[0]
+      const args = mode === 'retain' && oldest ? retainArgs({
+        page,
+        oldest,
+      }) : recentArgs
 
       const read = async () => {
         try {
           const result = await command({
             name: 'thread',
-            args: mode === 'retain' ? retainArgs({ page }) : recentArgs,
+            args,
           })
 
           const current = historyRequest.current?.id === id
@@ -591,10 +601,15 @@ export function HydraChat({
     const session = threadSession.current
     let current = page
 
-    if (page?.entries[0] && serverTrims()) {
+    const oldest = page?.entries[0]
+
+    if (page && oldest && serverTrims()) {
       const restored = await command({
         name: 'thread',
-        args: retainArgs({ page }),
+        args: retainArgs({
+          page,
+          oldest,
+        }),
       })
       current = restored.thread as ThreadPage
     }

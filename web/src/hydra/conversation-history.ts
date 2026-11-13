@@ -165,13 +165,19 @@ export function historyRead({
 }
 
 // The thread arguments that restore the range a page holds, by its session and oldest entry.
-export function retainArgs({ page }: { page: ThreadPage }): string[] {
+export function retainArgs({
+  page,
+  oldest,
+}: {
+  page: ThreadPage
+  oldest: ThreadEntry
+}): string[] {
   return [
     HYDRA_CARD,
     '--retain',
     JSON.stringify({
       session: page.session,
-      oldest: page.entries[0]!.id,
+      oldest: oldest.id,
     }),
   ]
 }
