@@ -19,6 +19,7 @@ import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } f
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
+import { heldHydra } from './store.ts'
 
 // A tab that opened no cards and did not ask for hidden ones.
 const NO_INTEREST: PageInterest = {
@@ -311,6 +312,14 @@ export function createServerClients({
         ws,
         message,
       })
+    }
+
+    // A receipt carries the Hydra's committed seq, so the page knows its change is in once Zero has synced that far.
+    if (message.type === 'receipt') {
+      message = {
+        ...message,
+        seq: heldHydra({ hydraId })?.state.seq ?? state().seq,
+      }
     }
 
     ws.send({ message })
