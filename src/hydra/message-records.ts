@@ -2,7 +2,7 @@ import type { HydraEvent } from '#app/model.ts'
 import { ownerActor } from '#app/actors.ts'
 import { redact } from '#oracle/text.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { joinMessageParts, loggedEntry } from './history.ts'
+import { joinMessageParts, placeEntries } from './history.ts'
 import { reportActor } from './hydra.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 
@@ -16,30 +16,48 @@ export interface MessageRecord {
   sequences: number[]
 }
 
+// entries are the thread's native transcript entries, each with its reference.
 export function messageRecords({
   events,
+  entries: native = [],
   card = HYDRA_CARD,
 }: {
   events: HydraEvent[]
+  entries?: ThreadEntry[]
   card?: string
 }): MessageRecord[] {
   const groups = new Map<string, ThreadEntry[]>()
-  const sources = new Map<string, HydraEvent[]>()
+  const sources = new Map<string, {
+    seq: number
+    alias?: string
+  }[]>()
   const parts = new Set<string>()
+  const messages = native.filter(entry => entry.kind === 'message'
+    && (card !== HYDRA_CARD || entry.role.startsWith('assistant')))
+  const recorded: {
+    seq: number
+    entry: ThreadEntry
+    alias?: string
+  }[] = placeEntries({
+    events,
+    entries: messages,
+  }).map(({
+    seq,
+    entry,
+  }) => ({
+    seq,
+    entry: {
+      ...entry,
+      messageId: entry.reference,
+      part: entry.part ?? 0,
+    },
+  }))
 
   for (const event of events) {
     const actorRole = ownerActor({ actor: event.actor }) ? 'owner' : event.actor
     let entry: ThreadEntry
 
-    if (event.type === 'chat.message' && event.cardId === card) {
-      if (card === HYDRA_CARD && !event.data.role.startsWith('assistant')) {
-        continue
-      }
-
-      entry = loggedEntry({ event })
-      entry.messageId = entry.reference
-      entry.part = entry.part ?? 0
-    } else if (card === HYDRA_CARD && event.type === 'hydra.message'
+    if (card === HYDRA_CARD && event.type === 'hydra.message'
       && event.data.kind !== 'divider' && !reportActor({ actor: event.actor })) {
       entry = {
         id: event.id,
@@ -63,9 +81,24 @@ export function messageRecords({
       continue
     }
 
+    recorded.push({
+      seq: event.seq,
+      entry,
+      alias: event.id,
+    })
+  }
+
+  for (const {
+    seq,
+    entry,
+    alias,
+  } of recorded) {
     const id = entry.messageId ?? entry.id
     const previous = sources.get(id) ?? []
-    previous.push(event)
+    previous.push({
+      seq,
+      alias,
+    })
     sources.set(
       id,
       previous,
@@ -100,8 +133,8 @@ export function messageRecords({
       at: entry.at!,
       role: entry.role,
       text: redact({ text: entry.text }),
-      aliases: source.map(event => event.id),
-      sequences: source.map(event => event.seq),
+      aliases: source.flatMap(item => item.alias ?? []),
+      sequences: source.map(item => item.seq),
     }
   }).sort((
     a,

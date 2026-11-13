@@ -102,7 +102,6 @@ const HYDRA_THREAD_PREFIXES = [
   'board.',
 ]
 const HYDRA_THREAD_EVENTS: readonly EventType[] = [
-  'chat.message',
   'session.compaction',
   'pnyx.upgrade',
 ]

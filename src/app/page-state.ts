@@ -101,7 +101,8 @@ const PAGE_REACH = {
   'hydra.dispatch-resolved': 'every tab',
   'hydra.dispatch-progress': 'every tab',
   'hydra.project': 'every tab',
-  'chat.message': 'every tab',
+  // Conversation copies an older Pnyx logged: replayed, never shown.
+  'chat.message': 'cards only',
   'task.launched': 'shown card',
   'task.permission': 'shown card',
   'task.project': 'shown card',

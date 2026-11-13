@@ -1,9 +1,6 @@
 import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
-import { loggedEntry } from './history.ts'
-import { chatRecordId } from './chat-records.ts'
-import { effectiveChatEvents } from './chat-events.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -14,6 +11,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
+import { readTranscript } from '#workers/transcript-read.ts'
 import type { TranscriptRecord } from '#workers/provider.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
 import { traces } from '#preferences/view.ts'
@@ -44,7 +42,7 @@ export interface ThreadEntry {
   session?: string
   streaming?: boolean
   receipt?: ReplyState
-  // When the owner sent it; a transcript copy's at is when the agent read it.
+  // When the owner sent it; the transcript's at is when the agent read it.
   sent?: string
   // When the agent's harness confirmed it took this message.
   received?: string
@@ -228,7 +226,7 @@ export function transcriptEntries({
   ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({ entry }))
 }
 
-export function threadPath({ card }: { card: Card }): string | undefined {
+export function threadPath({ card }: { card: Pick<Card, 'agent'> }): string | undefined {
   const path = card.agent?.transcriptPath
 
   return path && isAbsolute(path) && path.endsWith('.jsonl') && [
@@ -236,6 +234,71 @@ export function threadPath({ card }: { card: Card }): string | undefined {
     'claude-code',
     'codex',
   ].includes(card.agent!.provider) ? path : undefined
+}
+
+// One session's whole native transcript, each entry with the reference its thread page gives it.
+export function sessionEntries({
+  path,
+  session,
+  boundaries,
+}: {
+  path: string
+  session: string
+  boundaries: boolean
+}): ThreadEntry[] {
+  const lines = readTranscript({
+    cursor: {
+      source: path,
+      identity: '',
+      pos: 0,
+    },
+  })?.lines ?? []
+
+  return lines.flatMap(line => recordEntries({
+    record: line.record,
+    offset: line.pos,
+    boundaries,
+  }).map(item => ({
+    ...item,
+    reference: messageReference({
+      session,
+      id: item.id,
+      messageId: item.messageId,
+    }),
+    session,
+  })))
+}
+
+// Every session Hydra has had, read from their native transcripts; the card holds the current session's latest agent.
+export function hydraEntries({ state }: { state: HydraState }): ThreadEntry[] {
+  const agents = new Map(Object.values(state.sessions ?? {})
+    .filter(session => session.originCardId === HYDRA_CARD && !session.agent.agentId)
+    .map(session => [
+      session.id,
+      session.agent,
+    ]))
+  const hydra = state.cards[HYDRA_CARD]
+  const current = hydra && cardSessionId({ card: hydra })
+
+  if (current && hydra.agent) {
+    agents.set(
+      current,
+      hydra.agent,
+    )
+  }
+
+  return [...agents].flatMap(([
+    session,
+    agent,
+  ]) => {
+    const path = threadPath({ card: { agent } })
+
+    return path ? sessionEntries({
+      path,
+      session,
+      boundaries: true,
+    }) : []
+  })
 }
 
 export interface LatestMessage {
@@ -435,7 +498,7 @@ function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
   }
 
   const added = (read?.events ?? []).filter((e): e is LoggedMessage =>
-    (e.type === 'card.replied' && !!e.data.text) || e.type === 'chat.message'
+    (e.type === 'card.replied' && !!e.data.text)
     || (e.actor === 'hydra' && e.type !== 'hydra.message'))
   log = {
     end: read?.end ?? 0,
@@ -452,7 +515,7 @@ function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
   return log.events
 }
 
-// A moved task's logged messages stay in each Hydra it passed through. They are numbered in order across
+// A moved task's owner replies stay in each Hydra it passed through. They are numbered in order across
 // those Hydras, so the reply cursor stays one increasing number; a task that never moved keeps its seqs.
 function threadEvents({
   hydraId,
@@ -461,12 +524,10 @@ function threadEvents({
   hydraId: string
   card: Card
 }): LoggedMessage[] {
-  const session = cardSessionId({ card })
   const history = movedHistory({
     hydraId,
     task: card.id,
-    matches: ({ event }) => (event.type === 'card.replied' && Boolean(event.data.text) && event.cardId === card.id)
-      || (event.type === 'chat.message' && (event.cardId === card.id || event.data.session === session)),
+    matches: ({ event }) => event.type === 'card.replied' && Boolean(event.data.text) && event.cardId === card.id,
   })
 
   if (!history.some(entry => entry.hydra !== hydraId)) {
@@ -491,7 +552,7 @@ export function threadAction({
 }): boolean {
   const task = state.cards[event.cardId]
 
-  return event.actor === 'hydra' && event.type !== 'hydra.message' && event.type !== 'chat.message'
+  return event.actor === 'hydra' && event.type !== 'hydra.message'
     && task !== undefined && !isManagedTask({ card: task })
 }
 
@@ -731,10 +792,7 @@ function readThreadPage(
     Infinity,
     Infinity,
   ]
-  let archived = false
-
   const seenReplies = new Set<string>()
-  const seenChats = new Set<string>()
   // A moved task's events are renumbered across the Hydras it passed through, so the cursor's boundary is looked up in the same list.
   const logged = threadEvents({
     hydraId,
@@ -753,60 +811,15 @@ function readThreadPage(
       return event.seq < replySeq!
     }
 
-    let time = event.at.localeCompare(replyBoundary.at)
-
-    if (event.type === 'chat.message' && replyBoundary.type === 'chat.message') {
-      time = threadEntryOrder({
-        first: loggedEntry({ event }),
-        second: loggedEntry({ event: replyBoundary }),
-      })
-    }
+    const time = event.at.localeCompare(replyBoundary.at)
 
     return time < 0 || time === 0 && (event.seq < replySeq!
       || event.seq === replySeq && index < replyPart!)
   }
 
-  for (const e of effectiveChatEvents({ events: logged })) {
+  for (const e of logged) {
     if (e.seq === replySeq) {
       excludedAt.push(e.at)
-    }
-
-    if (e.type === 'chat.message') {
-      const identity = chatRecordId(e.data)
-
-      if (seenChats.has(identity)) {
-        continue
-      }
-
-      const session = cardSessionId({ card })
-
-      const sameSession = session && e.data.session === session
-      const participant = e.cardId === card.id || sameSession
-
-      if ((!result.unavailable && sameSession) || !participant) {
-        continue
-      }
-
-      seenChats.add(identity)
-
-      splitEntry({
-        entry: loggedEntry({ event: e }),
-      }).forEach((
-        item,
-        index,
-      ) => {
-        if (beforeReply({
-          event: e,
-          index,
-        })) {
-          candidates.push({
-            item,
-            reply: `${e.seq}:${index}`,
-          })
-          archived = true
-        }
-      })
-      continue
     }
 
     if (e.type !== 'card.replied') {
@@ -851,10 +864,6 @@ function readThreadPage(
         })
       }
     })
-  }
-
-  if (archived) {
-    result.unavailable = 'Showing stored messages; the native transcript is unavailable.'
   }
 
   const positions = new Map(candidates.map((

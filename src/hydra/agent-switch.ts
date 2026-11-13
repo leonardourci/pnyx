@@ -25,6 +25,7 @@ import { HYDRA_CARD } from './identity.ts'
 import type { HydraAgentChange, HydraOperation } from './model.ts'
 import { operationEvent } from './operations.ts'
 import { recapText } from './wakes.ts'
+import { hydraEntries } from './transcripts-read.ts'
 import { canSkipCompaction, compactionContext, historyCommand, inscribeSince, NEITHER_REASON, readHistory } from './history.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { HostedSession, Provider } from '#workers/provider.ts'
@@ -210,6 +211,7 @@ export function createAgentSwitch({
       tokens: readHistory({
         state: loadHydra({ hydraId }).state,
         events: readEvents({ hydraId }),
+        native: hydraEntries({ state: loadHydra({ hydraId }).state }),
         since: 'last-compaction',
       }).totalTokens,
     })) {
@@ -271,6 +273,7 @@ export function createAgentSwitch({
               const history = readHistory({
                 state,
                 events: readEvents({ hydraId }),
+                native: hydraEntries({ state }),
                 since: 'last-compaction',
               })
 

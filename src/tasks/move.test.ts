@@ -11,7 +11,6 @@ import { project } from '#projects/cli.ts'
 import { withWriter } from '#app/writer.ts'
 import { appendNote } from '#integrations/hooks/harvest.ts'
 import { offerHost } from '#app/server-state.ts'
-import { base } from '#app/command-meta.ts'
 
 const INHERITED = [
   'PNYX_HOME',
@@ -996,57 +995,6 @@ test(
       'NOT_FOUND',
     )
     assert.ok(refused.fix.includes(`pnyx-axi project add ${ship.project} --hydra dst`))
-  },
-)
-
-test(
-  'the moved task\'s chat keeps messages logged on the Hydra it came from',
-  async t => {
-    const { app } = await setup({ t })
-    await attach({
-      path: app,
-      hydraId: 'dst',
-    })
-    const ship = await create({
-      key: 'ship',
-      flags: [
-        '--project',
-        app,
-      ],
-    })
-    withWriter({
-      hydraId: 'src',
-      fn: ({ writer }) => writer.append({
-        event: {
-          ...base({
-            state: writer.state,
-            meta: {
-              at: new Date().toISOString(),
-              actor: 'harvest',
-            },
-            cardId: ship.id,
-          }),
-          type: 'chat.message',
-          data: {
-            session: 'claude:gone',
-            nativeId: 'before-move',
-            role: 'assistant',
-            text: 'Logged before the move',
-          },
-        },
-      }),
-    })
-    await task({ args: move({ id: ship.id }) })
-
-    const chat = await task({
-      args: [
-        'chat',
-        ship.id,
-        '--hydra',
-        'dst',
-      ],
-    }) as { thread: { entries: { text?: string }[] } }
-    assert.ok(chat.thread.entries.some(entry => entry.text?.includes('Logged before the move')))
   },
 )
 

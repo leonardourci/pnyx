@@ -39,19 +39,9 @@ Thread-delta tests cover entry additions, updates and removals, retained object 
 
 Page-projection checks cover omitted histories and event IDs, explicit hidden-card interests, closing an interest, hidden-origin worker activity, Hydra's own session on its hidden hook card, hidden tasks kept as references for prerequisites and answer leads, session attachment changes and removal, hidden compaction bodies, detached move-session payloads and moved-out records, cached reply and usage recovery when a card comes back, snapshots for column changes and for interests that change the shown cards, and resume matching a fresh projection. Socket page commands reject Hydra overrides. A projected card update without an event, such as activity from a hidden hook card, leaves the task's Updates current; an event its Updates list shows marks it stale. Request tests hold confirmation ahead of the page sequence so a task edit and Hydra agent selection keep their previews. The focused streaming browser flow also opens a hidden task from a chat chip and restores its expanded detail after reload, then checks the refusal after the referenced task moves away. Chat-queue checks cover started receipts, kept only for the owner's messages and capped at the newest 32.
 
-Oracle regressions check that a query reads only new event and transcript lines, that interrupted batches resume, that a replaced transcript is not indexed twice, that a cache version change or a replaced event log rebuilds the cache, that corrections cached by another process apply, and that searches cancel. Searches from separate processes share the cursors, and an unchanged query succeeds while another connection holds the cache write lock. Historical recovery checks that legacy transcript backfill finishes without rewriting the log. Compaction history checks exclude tool and thinking records even when their role names start with `assistant`.
+Oracle regressions check that a query reads only new event and transcript lines, that interrupted batches resume, that a replaced transcript is not indexed twice, that a cache version change or a replaced event log rebuilds the cache, that corrections cached by another process apply, and that searches cancel. Searches from separate processes share the cursors, and an unchanged query succeeds while another connection holds the cache write lock.
 
-For an archived home, run the read-only replay against an evidence copy:
-
-```sh
-node --conditions=source scripts/verification/replay-chat.ts --archive /path/to/evidence-copy
-```
-
-The copy must contain `hydras/<id>/events.jsonl`, `snapshot.json` and `harvest.json`. Only native sessions identified by its Hydra harvest cursors are read, bounded at those cursors. The default permitted roots are the current user's Claude projects and Codex sessions; override them with `--claude-transcripts <folder>` and `--codex-transcripts <folder>` for relocated or synthetic evidence.
-
-The check copies inputs into a temporary home, runs normal historical harvesting there, pages the entire conversation, and compares visible and folded records against the native inputs and owner messages. It reports missing messages, duplicate identities, changed text, ordering, missing tools or progress, hidden rows and unexpected rows. Successful output contains counts and hashed references, never transcript text. Mismatches produce a nonzero exit status. The input files are never changed, and the temporary home is removed on exit.
-
-An `undated` count identifies records whose timestamps are absent. Their identity and text are checked, but cross-source ordering is checked only for dated records. The owner's messages are also checked in the order they were sent. An owner message that keeps an earlier time than one sent before it (Claude Code records a message read mid-turn at its send time) is checked only against that send order, not by time. The page and replay share native decoders; synthetic format fixtures assert expected text separately. Replay checks saved history, while the browser regression checks streaming and rendering.
+History checks read Hydra's replies from its native transcript, exclude its tool and thinking records, and bound each reply by the log events around it.
 
 ## Native clipboard regression
 

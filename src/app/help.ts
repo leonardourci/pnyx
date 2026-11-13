@@ -161,12 +161,12 @@ pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
 --inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
 pnyx-axi hydra message [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>]
 pnyx-axi hydra message [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
-Lookup reads recorded chat across agent switches and compactions. --direction excludes the selected message; ranges include both endpoints.
+Lookup reads Hydra's replies from its native transcripts and the owner's messages from the log; a task's lookup reads its current session's transcript and the owner's replies. A native reply takes the seq of the event before it, so several replies can share a seq. --direction excludes the selected message; ranges include both endpoints.
 No selector lists the oldest page. --id/--seq/--at alone returns one message; --budget alone with a selector grows surroundings to fit.
 Whole messages, at most ${MESSAGE_PAGE_LIMIT} and ${HISTORY_BUDGET} estimated tokens and ${MESSAGE_PAGE_BYTES} JSON bytes per page; a message over the budget fails explicitly.
-Use returned older/newer cursors with --cursor; they pin the Hydra, thread, range and log snapshot. --at needs a timezone; duplicate times require an id or seq.
+Use returned older/newer cursors with --cursor; they pin the Hydra, thread, range and log snapshot. --at needs a timezone; a time or seq several messages share requires an id.
 pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
-Read whole messages since a successful milestone, including task briefs, intents and helper results. Unchanged helper waits are omitted. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
+Read whole messages since a successful milestone: the owner's messages, Hydra's replies read from its native transcripts, task briefs, intents and helper results. Unchanged helper waits are omitted. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
 pnyx-axi hydra inscribe start|finish|fail [--key <milestone-id>] [--through <seq>] [--error <why>]
 start returns the pass ID, snapshot and history command; finish requires that snapshot after every page and memory save succeeds. Failed and started passes never advance the inscribe boundary.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
@@ -178,9 +178,9 @@ prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
-except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
-and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
-for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
+except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It returns
+a compact conversations digest of the owner's queued task replies. Read task history --full
+for complete messages. Pass the printed through as the next --after.
 `,
   owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
 pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <n>]
