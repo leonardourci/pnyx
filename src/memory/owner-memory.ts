@@ -260,7 +260,7 @@ export function migrateOwnerMemory(): void {
         throw new HydraError({
           message: `Owner memory could not move from ${failed.join('; ')}`,
           code: 'MIGRATION_INCOMPLETE',
-          help: ['Fix or `pnyx-axi repair` those Hydras; the next read retries the move'],
+          help: ['Fix the error named for those Hydras; the next read retries the move'],
         })
       }
 
