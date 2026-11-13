@@ -136,9 +136,9 @@ test(
     })
     t.after(() => session.close())
     const config = native.sessions[0]!.config
-    assert.equal(
-      config?.['mcp_servers."unrelated.server".enabled'],
-      false,
+    assert.deepEqual(
+      config?.mcp_servers,
+      { 'unrelated.server': { enabled: false } },
     )
     assert.deepEqual(
       config?.['skills.config'],
@@ -195,9 +195,9 @@ test(
     })
     t.after(() => regular.close())
     const normal = native.sessions[1]!.config
-    assert.equal(
-      normal?.['mcp_servers."unrelated.server".enabled'],
-      false,
+    assert.deepEqual(
+      normal?.mcp_servers,
+      { 'unrelated.server': { enabled: false } },
     )
     assert.equal(
       normal?.['skills.config'],
