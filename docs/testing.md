@@ -13,6 +13,8 @@ node scripts/verification/test.ts scenarios
 
 `pnpm test` and `pnpm verify` use the same isolated launcher. Each test file has its own temporary HOME, PNYX_HOME and harness directories, disabled external integrations and a guarded executable PATH. Actor, Hydra, task, port and model settings from the calling shell are discarded. Nothing else is inherited; PATH contains the guard scripts, the running Node installation and system tools. Checked pure files run four at a time and process and Git files two at a time, each file in its own process. The flows in `e2e/` run one at a time in a single process, so they share one server. The own-install flows run separately from a disposable installed checkout, using static imports of its built server and a throwaway Git origin. Each test fails by name after its lane's cap, and only one full run at a time holds the machine-wide lock.
 
+On macOS a Chrome started with that temporary HOME finds no login keychain, and macOS then asks the owner on screen to create one. The launcher and the scenario harness therefore add `--use-mock-keychain` and `--password-store=basic` to every Chrome their process starts with `spawn`, `execFile`, `spawnSync` or `execFileSync` without a shell. They leave a Chrome started through a shell (`exec`, `execSync` or `shell: true`) untouched and cannot see one started by another program, such as the `chrome-devtools-axi` bridge; those callers add `KEYCHAIN_FLAGS` from `src/test-harness/chrome-keychain.ts` to the browser's arguments themselves.
+
 For a small batch, pass explicit paths: `node scripts/verification/test.ts src/tasks/reminders.test.ts`.
 
 The launcher fails a suite on `MaxListenersExceededWarning`, including warnings from the shared flow server. A passing run must release its listeners rather than raise their limit.
@@ -49,7 +51,7 @@ The copy must contain `hydras/<id>/events.jsonl`, `snapshot.json` and `harvest.j
 
 The check copies inputs into a temporary home, runs normal historical harvesting there, pages the entire conversation, and compares visible and folded records against the native inputs and owner messages. It reports missing messages, duplicate identities, changed text, ordering, missing tools or progress, hidden rows and unexpected rows. Successful output contains counts and hashed references, never transcript text. Mismatches produce a nonzero exit status. The input files are never changed, and the temporary home is removed on exit.
 
-An `undated` count identifies records whose timestamps are absent. Their identity and text are checked, but cross-source ordering is checked only for dated records. The page and replay share native decoders; synthetic format fixtures assert expected text separately. Replay checks saved history, while the browser regression checks streaming and rendering.
+An `undated` count identifies records whose timestamps are absent. Their identity and text are checked, but cross-source ordering is checked only for dated records. The owner's messages are also checked in the order they were sent. An owner message that keeps an earlier time than one sent before it (Claude Code records a message read mid-turn at its send time) is checked only against that send order, not by time. The page and replay share native decoders; synthetic format fixtures assert expected text separately. Replay checks saved history, while the browser regression checks streaming and rendering.
 
 ## Native clipboard regression
 

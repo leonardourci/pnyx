@@ -1507,6 +1507,128 @@ test(
 )
 
 test(
+  'owner messages join the running turn while Pnyx wakes wait for it to end, and the wakes keep their order',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    const held = pnyx.codex.plan({
+      text: 'Take a long look',
+      hold: true,
+    })
+    const firstWake = pnyx.codex.plan({
+      text: 'Pnyx wake one',
+      hold: true,
+    })
+
+    try {
+      await page.command({
+        name: 'hydra-agent',
+        args: [JSON.stringify({ harness: 'codex' })],
+      })
+      await send({
+        s,
+        text: 'Take a long look',
+        id: 'long',
+      })
+      const agent = await s.agent({ hydra: true })
+      await until({
+        what: 'Codex to start the held turn',
+        check: () => agent.received.length === 1 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
+      })
+      const pnyxActor = s.as({
+        agent: {
+          ...agent,
+          env: {
+            ...process.env,
+            PNYX_ACTOR: 'pnyx',
+          },
+        },
+      })
+
+      for (const [
+        text,
+        id,
+      ] of [
+          [
+            'Pnyx wake one',
+            'wake-one',
+          ],
+          [
+            'Pnyx wake two',
+            'wake-two',
+          ],
+        ]) {
+        await pnyxActor.run({
+          args: [
+            'hydra',
+            'send',
+            '--text',
+            text,
+            '--event-id',
+            id,
+          ],
+        })
+      }
+
+      await send({
+        s,
+        text: 'Also check the docs',
+        id: 'steer',
+      })
+      await until({
+        what: 'the owner message inside the running turn',
+        check: () => agent.received.includes('Also check the docs'),
+      })
+      assert.equal(
+        agent.received.some(text => text.includes('Pnyx wake')),
+        false,
+      )
+      held.release()
+      await until({
+        what: 'the first Pnyx wake after the turn ends',
+        check: () => agent.received.at(-1)?.includes('Pnyx wake one'),
+      })
+      await send({
+        s,
+        text: 'And the changelog',
+        id: 'steer-wake',
+      })
+      await until({
+        what: 'the owner message inside the first wake’s turn',
+        check: () => agent.received.includes('And the changelog'),
+      })
+      assert.equal(
+        agent.received.some(text => text.includes('Pnyx wake two')),
+        false,
+      )
+      firstWake.release()
+      await until({
+        what: 'the second Pnyx wake last',
+        check: () => agent.received.at(-1)?.includes('Pnyx wake two'),
+      })
+      // Each wake opened a turn of its own once the one before it ended; each owner message joined a running turn.
+      assert.deepEqual(
+        agent.requests?.filter(request => request === 'turn/start' || request === 'turn/steer'),
+        [
+          'turn/start',
+          'turn/steer',
+          'turn/start',
+          'turn/steer',
+          'turn/start',
+        ],
+      )
+    } finally {
+      held.release()
+      firstWake.release()
+      page.close()
+    }
+  },
+)
+
+test(
   'a Hydra with no projects offers built-ins before a session and delivers the selected shipped skill',
   async () => {
     const s = await pnyx.scenario()

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
@@ -13,6 +13,7 @@ import { hydraDir, hydraIds } from './home-migration.ts'
 import { holdHydra, loadHydra } from './store.ts'
 import { readEvents } from './event-log.ts'
 import { repairHydra } from './repair.ts'
+import { writeSnapshot } from './snapshot.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { acquireLock } from '#store/storage.ts'
 import { STREAMS, assertGolden, readStream } from '#test-harness/streams.ts'
@@ -62,6 +63,93 @@ function seedLog({ stream }: { stream: string }): string {
 
   return dir
 }
+
+test(
+  'failed snapshot writes remove their stage and keep the original error, with a failed cleanup as its cause',
+  t => {
+    const dir = seedLog({ stream: 'lifecycle' })
+    const loaded = loadHydra({ hydraId: 'default' })
+    const input = {
+      dir,
+      state: loaded.state,
+      offset: loaded.offset,
+    }
+    writeSnapshot(input)
+    const cache = readFileSync(
+      join(
+        dir,
+        'snapshot.json',
+      ),
+      'utf8',
+    )
+    const writeFailure = new Error('snapshot sync refused')
+    const publishFailure = new Error('snapshot rename refused')
+    const cleanupFailure = new Error('snapshot cleanup refused')
+    t.after(() => {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    })
+    t.mock.method(
+      fs,
+      'fsyncSync',
+      () => {
+        throw writeFailure
+      },
+    )
+    syncBuiltinESMExports()
+    assert.throws(
+      () => writeSnapshot(input),
+      error => error === writeFailure,
+    )
+    assert.deepEqual(
+      readdirSync(dir).sort(),
+      [
+        'events.jsonl',
+        'snapshot.json',
+      ],
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          dir,
+          'snapshot.json',
+        ),
+        'utf8',
+      ),
+      cache,
+    )
+    t.mock.restoreAll()
+    t.mock.method(
+      fs,
+      'renameSync',
+      () => {
+        throw publishFailure
+      },
+    )
+    t.mock.method(
+      fs,
+      'rmSync',
+      () => {
+        throw cleanupFailure
+      },
+    )
+    syncBuiltinESMExports()
+    assert.throws(
+      () => writeSnapshot(input),
+      error => error === publishFailure && publishFailure.cause === cleanupFailure,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          dir,
+          'snapshot.json',
+        ),
+        'utf8',
+      ),
+      cache,
+    )
+  },
+)
 
 test(
   'appends are durable lines and the snapshot matches a full replay',

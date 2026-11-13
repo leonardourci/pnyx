@@ -5,7 +5,7 @@ import { splitEntry } from '#hydra/transcripts-read.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { commentReply, commentUpdates, copiedText, keepStreamedKeys, orderedComments, type ChatComment } from './chat.ts'
+import { commentReply, commentUpdates, copiedText, keepStreamedKeys, orderedComments, withTimedRows, type ChatComment } from './chat.ts'
 import { hasPendingImage, pendingImage, settleImage } from './draft.ts'
 import { imageLine } from '#hydra/images.ts'
 
@@ -457,6 +457,63 @@ test(
         })} found the cause.`,
       })?.task,
       undefined,
+    )
+  },
+)
+
+test(
+  'page rows go in by time while the conversation keeps its own order',
+  () => {
+    const row = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      at: `2026-11-11T15:5${minute}:00.000Z`,
+    })
+    assert.deepEqual(
+      withTimedRows({
+        // The server put the late owner message after the one sent before it.
+        rows: [
+          row({
+            id: 'comments',
+            minute: 4,
+          }),
+          row({
+            id: '/inscribe',
+            minute: 3,
+          }),
+          row({
+            id: 'reply',
+            minute: 6,
+          }),
+        ],
+        timed: [
+          row({
+            id: 'sending',
+            minute: 7,
+          }),
+          row({
+            id: 'question',
+            minute: 5,
+          }),
+          row({
+            id: 'compaction',
+            minute: 1,
+          }),
+        ],
+      }).map(entry => entry.id),
+      [
+        'compaction',
+        'comments',
+        '/inscribe',
+        'question',
+        'reply',
+        'sending',
+      ],
     )
   },
 )

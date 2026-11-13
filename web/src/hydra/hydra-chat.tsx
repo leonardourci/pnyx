@@ -32,7 +32,7 @@ import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { hydraDown,keepStreamedKeys,quoteInto,type ChatComment } from './chat.ts'
+import { hydraDown,keepStreamedKeys,quoteInto,withTimedRows,type ChatComment } from './chat.ts'
 import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
 import { MESSAGE_SCROLL, centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
@@ -416,43 +416,42 @@ export function HydraChat({
     )
   }
 
-  const listed: ChatEntry[] = [
-    ...compactOperations.map(operation => ({
-      id: `compact:${operation.id}`,
-      kind: 'message' as const,
-      role: 'Pnyx',
-      text: '',
-      at: operation.startedAt,
-    })),
-    ...shownUpgrades.map(operation => ({
-      id: `upgrade:${operation.id}`,
-      kind: 'message' as const,
-      role: 'Pnyx',
-      text: '',
-      at: operation.startedAt ?? operation.queuedAt,
-    })),
-    ...chat.entries,
-    ...shownDecisions.map(decision => ({
-      id: decision.id,
-      kind: 'message' as const,
-      role: 'Hydra question',
-      task: decision.card.id,
-      text: '',
-      at: decision.at,
-    })),
-    ...shownSends.map(s => ({
-      id: s.id,
-      kind: 'message' as const,
-      role: 'user',
-      text: s.text,
-      at: s.at,
-      sending: !s.confirmed && s.failed === undefined,
-      unsent: s.failed,
-    })),
-  ].sort((
-    a,
-    b,
-  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  const listed: ChatEntry[] = withTimedRows({
+    rows: chat.entries,
+    timed: [
+      ...compactOperations.map(operation => ({
+        id: `compact:${operation.id}`,
+        kind: 'message' as const,
+        role: 'Pnyx',
+        text: '',
+        at: operation.startedAt,
+      })),
+      ...shownUpgrades.map(operation => ({
+        id: `upgrade:${operation.id}`,
+        kind: 'message' as const,
+        role: 'Pnyx',
+        text: '',
+        at: operation.startedAt ?? operation.queuedAt,
+      })),
+      ...shownDecisions.map(decision => ({
+        id: decision.id,
+        kind: 'message' as const,
+        role: 'Hydra question',
+        task: decision.card.id,
+        text: '',
+        at: decision.at,
+      })),
+      ...shownSends.map(s => ({
+        id: s.id,
+        kind: 'message' as const,
+        role: 'user',
+        text: s.text,
+        at: s.at,
+        sending: !s.confirmed && s.failed === undefined,
+        unsent: s.failed,
+      })),
+    ],
+  })
   const entries = keepStreamedKeys({
     entries: listed,
     previous: previousEntries.current,
