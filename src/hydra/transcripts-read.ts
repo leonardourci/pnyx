@@ -101,6 +101,8 @@ export interface ThreadPage {
   watching: 'unknown'
 }
 const MAX_BYTES = 10 * 1024 * 1024
+// How many transcripts' parsed messages the server keeps between reads.
+const CACHED_TRANSCRIPTS = 16
 // Parts bound each transport entry without cutting a logical message at a page boundary.
 const MAX_TEXT = 1000
 
@@ -240,7 +242,6 @@ export type SessionEntry = ThreadEntry & {
   reference: string
   session: string
 }
-const CACHED_TRANSCRIPTS = 16
 const parsedSessions = new Map<string, {
   identity: string
   end: number
@@ -300,8 +301,10 @@ export function sessionEntries({
     },
   )
 
-  if (parsedSessions.size > CACHED_TRANSCRIPTS) {
-    parsedSessions.delete(parsedSessions.keys().next().value!)
+  const [oldest] = parsedSessions.keys()
+
+  if (parsedSessions.size > CACHED_TRANSCRIPTS && oldest !== undefined) {
+    parsedSessions.delete(oldest)
   }
 
   return entries
@@ -628,7 +631,8 @@ type Candidate = {
 }
 
 // A transcript a thread pages through, newest first. index names an earlier Hydra session in
-// the cursor; a task, or a session the reader chose, has one source without one.
+// the cursor. Hydra's current session pages back through the earlier ones; a task, or another
+// session the reader chose, has one source without an index.
 type ThreadSource = {
   session?: string
   path?: string
@@ -666,6 +670,7 @@ function threadSources({
     ...earlier.map(item => ({
       session: item.session,
       path: threadPath({ card: { agent: item.agent } }),
+      // Only the current session can be missing from hydraSessions, and earlier leaves it out.
       index: state.hydraSessions!.indexOf(item.session),
     })).reverse(),
   ]
