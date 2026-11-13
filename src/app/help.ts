@@ -450,8 +450,8 @@ Each Hydra lives at /hydra/<id>/; / opens the --hydra Hydra. A Hydra that fails 
 while the server runs is served once its folder appears. --hydra names the Hydra whose address is printed (default: default); it and
 the default Hydra must load. A Hydra run by a Firstmate home watches that home and replies through it. Each --home is a Firstmate home
 for the --hydra Hydra instead: replies to its cards go through it, and its tasks are folded in as \`pnyx-axi firstmate watch\` would.
-Hook events arrive on each Hydra's server.sock or through its spool. Browsers get one WebSocket per Hydra at /hydra/<id>/ws:
-a snapshot on connect, then events by sequence; ?after=<seq> resumes, a gap gets a fresh snapshot.
+Hook events arrive on each Hydra's server.sock or through its spool. Browsers read Hydra data through Zero at /zero and get one
+WebSocket per Hydra at /hydra/<id>/ws for live agent activity, conversation pages and commands.
 The handshake needs ?token=<token>: each Hydra page served here carries it, local programs read $PNYX_HOME/token.
 Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|rule|account","args":[...]}
 gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write that socket's Hydra;
