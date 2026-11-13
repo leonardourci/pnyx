@@ -12,7 +12,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { HydraError } from '#store/errors.ts'
 import { projectsFor } from '#projects/read.ts'
 import { matchesProject, sameProjectPath } from '#projects/identity.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { taskSessions } from '#workers/cli.ts'
 import { workerQueue } from '#workers/queue.ts'
 import { fallbackColumn } from './column-rules.ts'
@@ -602,6 +602,14 @@ export async function moveTask({
         cardIds: [card.id],
         at: meta.at,
       })
+      // After the harvest's own cursors are saved, which happens once this write commits.
+      source.afterCommit({
+        run: () => carryCursors({
+          from: source.dir,
+          to: hydraDir({ hydraId: to }),
+          card: card.id,
+        }),
+      })
       const current = source.state.cards[card.id]
 
       if (!current) {
@@ -655,11 +663,6 @@ export async function moveTask({
           target.append({
             event,
             effects: false,
-          })
-          carryCursors({
-            from: source.dir,
-            to: target.dir,
-            card: current.id,
           })
 
           return event

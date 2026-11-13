@@ -222,6 +222,12 @@ export function applyCardEvent({
         at,
         text,
       } = event.data
+
+      // A note a moved card already holds, under the id its old Hydra gave it, is not listed twice.
+      if (card.notes?.some(note => note.id === event.id)) {
+        return false
+      }
+
       card.notes = [
         ...(card.notes ?? []),
         {

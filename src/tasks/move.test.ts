@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict'
 import { refuseEvents } from '#test-harness/database.ts'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { test, type TestContext } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { project } from '#projects/cli.ts'
 import { withWriter } from '#app/writer.ts'
-import { appendNote } from '#integrations/hooks/harvest.ts'
+import { appendNote, harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { decidePush } from './push.ts'
 import { offerHost } from '#app/server-state.ts'
 import { readEvents } from '#app/event-log.ts'
 import { decideReply } from '#workers/reply-rules.ts'
@@ -1189,6 +1191,92 @@ test(
         key: 'ship',
       }),
       undefined,
+    )
+  },
+)
+
+test(
+  'a moved task\'s notes are harvested once: the target reads its transcript on from where the source stopped',
+  async t => {
+    const { dir } = await setup({ t })
+    await create({ key: 'noted' })
+    const transcript = join(
+      dir,
+      'session.jsonl',
+    )
+    copyFileSync(
+      fileURLToPath(new URL(
+        '../hydra/fixtures/transcripts/claude-notes.jsonl',
+        import.meta.url,
+      )),
+      transcript,
+    )
+    withWriter({
+      hydraId: 'src',
+      fn: ({ writer }) => {
+        const pushed = decidePush({
+          state: writer.state,
+          key: 'noted',
+          input: {
+            agent: {
+              provider: 'claude',
+              sessionId: 'noted-session',
+              host: 'pnyx',
+              transcriptPath: transcript,
+            },
+            activity: 'finished',
+          },
+          meta: {
+            actor: 'web',
+            at: '2026-10-11T09:00:00.000Z',
+          },
+        })
+        assert.ok('event' in pushed)
+        writer.append({ event: pushed.event })
+      },
+    })
+    const id = card({
+      hydraId: 'src',
+      key: 'noted',
+    })!.id
+    const withdraw = offerHost({
+      hydraId: 'src',
+      ask: async () => ({ released: 1 }),
+    })
+
+    try {
+      await task({ args: move({ id }) })
+    } finally {
+      withdraw()
+    }
+
+    const moved = loadHydra({ hydraId: 'dst' }).state.cards[id]!.notes!.map(note => note.id)
+    assert.ok(moved.length)
+    assert.equal(
+      withWriter({
+        hydraId: 'dst',
+        fn: ({ writer }) => harvestTranscripts({
+          writer,
+          cardIds: [id],
+          at: '2026-10-11T10:00:00.000Z',
+        }),
+      }),
+      0,
+    )
+    await task({
+      args: [
+        'status',
+        id,
+        'working',
+        '--note',
+        'after the move',
+        '--hydra',
+        'dst',
+      ],
+    })
+    assert.deepEqual(
+      loadHydra({ hydraId: 'dst' }).state.cards[id]!.notes!.map(note => note.id),
+      moved,
     )
   },
 )
