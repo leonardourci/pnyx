@@ -395,12 +395,13 @@ test(
     )
 
     const first = {
-        ...owner,
-        id: 'first',
-      }, second = {
-        ...reply,
-        id: 'second',
-      }
+      ...owner,
+      id: 'first',
+    }
+    const second = {
+      ...reply,
+      id: 'second',
+    }
     const unordered = {
       ...worker,
       entries: [
@@ -417,6 +418,121 @@ test(
           entries: [
             second,
             first,
+          ],
+        },
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'a delta keeps the held order of equal-time entries that the entry order cannot rank',
+  () => {
+    const at = '2026-11-12T00:00:00.000Z'
+    const entry = ({
+      id,
+      text,
+    }: {
+      id: string
+      text: string
+    }): ThreadEntry => ({
+      id,
+      at,
+      session: 'fixture',
+      kind: 'message',
+      role: 'assistant',
+      text,
+    })
+    const before: ThreadPage = {
+      card: '$hydra',
+      session: 'fixture',
+      stream: 'connection',
+      version: 1,
+      entries: [
+        entry({
+          id: '5:m0',
+          text: 'Five',
+        }),
+        entry({
+          id: '7:m0',
+          text: 'Seven',
+        }),
+        entry({
+          id: 'evt-1',
+          text: 'Event',
+        }),
+        entry({
+          id: '3:m0',
+          text: 'Three',
+        }),
+      ],
+      route: true,
+      watching: 'unknown',
+    }
+    const after: ThreadPage = {
+      ...before,
+      version: 2,
+      entries: before.entries.map(item => item.id === '7:m0' ? {
+        ...item,
+        text: 'Seven, edited',
+      } : item),
+    }
+    const delta = threadDelta({
+      before,
+      after,
+    })
+    assert.ok(delta)
+    assert.deepEqual(
+      applyThreadDelta({
+        before,
+        delta,
+      }),
+      after,
+    )
+  },
+)
+
+test(
+  'a page with a repeated entry id goes as a full page',
+  () => {
+    const kept: ThreadEntry = {
+      id: '0:m0',
+      kind: 'message',
+      role: 'user',
+      text: 'Hello',
+    }
+    const repeated: ThreadEntry = {
+      id: '100:m0',
+      kind: 'message',
+      role: 'assistant',
+      text: 'Partial',
+    }
+    const before: ThreadPage = {
+      card: '$hydra',
+      session: 'fixture',
+      stream: 'connection',
+      version: 1,
+      entries: [
+        kept,
+        repeated,
+      ],
+      route: true,
+      watching: 'unknown',
+    }
+    assert.equal(
+      threadDelta({
+        before,
+        after: {
+          ...before,
+          version: 2,
+          entries: [
+            kept,
+            repeated,
+            {
+              ...repeated,
+              text: 'Complete',
+            },
           ],
         },
       }),

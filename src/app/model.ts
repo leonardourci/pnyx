@@ -487,6 +487,8 @@ export interface HydraState {
   v: typeof EVENT_VERSION
   seq: number
   cards: Record<string, Card>
+  // Only on the page: hidden tasks without their histories, for the cards and messages that name them.
+  references?: Record<string, Card>
   // Cards this Hydra handed to another one; the source log keeps their earlier events.
   movedOut?: Record<string, import('#tasks/move-state.ts').MovedOut>
   sessions?: Record<string, AgentSession>

@@ -50,13 +50,8 @@ export function answerLeads({
     }
 
     const before = previous?.get(reference)
-    const unchanged = before && before.task === lead.task && before.question === lead.question
-      && before.choice === lead.choice && before.recommended === lead.recommended
-      && before.discussion === lead.discussion && before.options.length === lead.options.length
-      && lead.options.every((
-        option,
-        index,
-      ) => option === before.options[index])
+    // Both are built by the literal above, so their serialized forms compare every field in one order.
+    const unchanged = before && JSON.stringify(before) === JSON.stringify(lead)
 
     return [
       [

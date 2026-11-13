@@ -93,6 +93,8 @@ export type ClientMessage = {
   scope?: unknown
   subscription?: unknown
   after?: unknown
+  // A subscribing page's open cards, as page command arguments.
+  page?: unknown
   // A page's batch of log lines.
   lines?: unknown
 }

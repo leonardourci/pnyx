@@ -902,3 +902,349 @@ test(
     )
   },
 )
+
+test(
+  'an owner message the agent took mid-turn shows after the owner message sent before it',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'comments',
+          minute: 1,
+        }),
+        sent({
+          id: '/inscribe',
+          minute: 2,
+        }),
+      ],
+      // Claude Code records the second, which joins the first one's turn, as an attachment rather than a user message.
+      transcript: [
+        {
+          ...entry({
+            id: 'native-comments',
+            minute: 3,
+            role: 'user',
+            text: 'comments',
+          }),
+          session: 'hydra-session',
+        },
+        {
+          ...entry({
+            id: 'reply',
+            minute: 4,
+          }),
+          session: 'hydra-session',
+          final: true,
+        },
+      ],
+      actions: [
+        action({
+          minute: 2,
+          task: 'task-before',
+        }),
+        action({
+          minute: 4,
+          task: 'task-during',
+        }),
+      ],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'comments',
+        '/inscribe',
+        'reply',
+      ],
+    )
+    assert.equal(
+      result.entries[1]?.at,
+      at({ minute: 2 }),
+    )
+    assert.equal(
+      result.timings.get('reply')?.start,
+      at({ minute: 3 }),
+    )
+    // Hydra's work before the first message was read belongs to the earlier turn, not the late message's.
+    assert.deepEqual(
+      [...result.folds].map(([
+        id,
+        fold,
+      ]) => [
+        id,
+        fold.tasks.map(task => task.task),
+      ]),
+      [
+        [
+          'reply',
+          ['task-during'],
+        ],
+      ],
+    )
+  },
+)
+
+test(
+  'owner messages read later than ones sent after them keep the order they were sent in',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    // The first message's transcript copy is at 10:05; the two sent after it were taken mid-turn and keep their send times.
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 4,
+        }),
+        sent({
+          id: 'third',
+          minute: 3,
+        }),
+      ],
+      transcript: [
+        {
+          ...entry({
+            id: 'native-first',
+            minute: 5,
+            role: 'user',
+            text: 'first',
+          }),
+          session: 'hydra-session',
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'second',
+        'third',
+      ],
+    )
+  },
+)
+
+test(
+  'an owner message sent at the time a late one shows at stays after it',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    // The second shows at the first's 10:05, the third's own send time.
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 4,
+        }),
+        sent({
+          id: 'third',
+          minute: 5,
+        }),
+      ],
+      transcript: [
+        {
+          ...entry({
+            id: 'native-first',
+            minute: 5,
+            role: 'user',
+            text: 'first',
+          }),
+          session: 'hydra-session',
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'second',
+        'third',
+      ],
+    )
+  },
+)
+
+test(
+  'a page that starts at the place a late owner message takes keeps that message',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 4,
+        }),
+      ],
+      transcript: [
+        {
+          ...entry({
+            id: 'native-first',
+            minute: 5,
+            role: 'user',
+            text: 'first',
+          }),
+          session: 'hydra-session',
+        },
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+      oldest: at({ minute: 5 }),
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'second',
+      ],
+    )
+  },
+)
+
+test(
+  'owner messages the agent read in order keep their own times between the replies',
+  () => {
+    const sent = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      actor: 'web',
+      text: id,
+      at: at({ minute }),
+      action: 'send' as const,
+      hydra: 'hydra',
+    })
+    const reply = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      ...entry({
+        id,
+        minute,
+      }),
+      session: 'hydra-session',
+      final: true,
+    })
+    const result = hydraConversation({
+      messages: [
+        sent({
+          id: 'first',
+          minute: 1,
+        }),
+        sent({
+          id: 'second',
+          minute: 3,
+        }),
+      ],
+      transcript: [
+        reply({
+          id: 'reply one',
+          minute: 2,
+        }),
+        reply({
+          id: 'reply two',
+          minute: 4,
+        }),
+      ],
+      actions: [],
+      columns: [],
+      working: false,
+      tools: false,
+      thinking: false,
+    })
+    assert.deepEqual(
+      result.entries.map(item => item.text),
+      [
+        'first',
+        'reply one',
+        'second',
+        'reply two',
+      ],
+    )
+  },
+)

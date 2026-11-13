@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { closeLogs, logsDir, openLogs } from '#app/diagnostics.ts'
 import { watchIntake } from './claude-intake.ts'
 
 const OPENS = '11111111-1111-4111-8111-111111111111'
@@ -121,6 +122,126 @@ test(
     assert.deepEqual(
       intake.taken().map(found => found.uuid),
       [OPENS],
+    )
+  },
+)
+
+test(
+  'a transcript Pnyx cannot read is logged and gives no intake, never failing the agent’s turn',
+  t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'claude-intake-home-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    openLogs()
+    const folder = mkdtempSync(join(
+      tmpdir(),
+      'claude-intake-',
+    ))
+    t.after(() => {
+      closeLogs()
+
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+      chmodSync(
+        folder,
+        0o700,
+      )
+      rmSync(
+        folder,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const path = join(
+      folder,
+      'session.jsonl',
+    )
+    writeFileSync(
+      path,
+      '',
+    )
+    const replaced = watchIntake({ path })
+    replaced.expect({ uuid: OPENS })
+    // Replaced between the size check and the read, so the read fails.
+    rmSync(path)
+    mkdirSync(path)
+    assert.deepEqual(
+      replaced.taken(),
+      [],
+    )
+    // A folder Pnyx may not search is not a transcript that has yet to appear.
+    chmodSync(
+      folder,
+      0o000,
+    )
+    const hidden = watchIntake({
+      path: join(
+        folder,
+        'other.jsonl',
+      ),
+    })
+    hidden.expect({ uuid: OPENS })
+    assert.deepEqual(
+      hidden.taken(),
+      [],
+    )
+    // Once the folder can be searched again, the next message is timed from where the transcript ends then.
+    chmodSync(
+      folder,
+      0o700,
+    )
+    writeFileSync(
+      join(
+        folder,
+        'other.jsonl',
+      ),
+      '',
+    )
+    hidden.expect({ uuid: OPENS })
+    appendFileSync(
+      join(
+        folder,
+        'other.jsonl',
+      ),
+      `${line({ starts: '{"parentUuid":null' })}\n`,
+    )
+    assert.deepEqual(
+      hidden.taken().map(found => found.uuid),
+      [OPENS],
+    )
+    closeLogs()
+    const warned = readdirSync(logsDir()).flatMap(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ).split('\n'))
+      .filter(Boolean)
+      .map(text => JSON.parse(text) as Record<string, unknown>)
+      .filter(line => line.operation === 'claude.intake')
+    assert.deepEqual(
+      warned.map(line => line.level),
+      [
+        'warn',
+        'warn',
+      ],
     )
   },
 )

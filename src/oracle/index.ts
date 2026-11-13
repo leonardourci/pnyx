@@ -1,199 +1,550 @@
-import { transcriptMessages } from '#workers/transcripts.ts'
+import { chmodSync, existsSync, rmSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { liveTask } from '#tasks/select.ts'
-import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
+import { createRequire } from 'node:module'
+import type { HydraState } from '#app/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
 import { readEventsFrom } from '#app/event-log.ts'
-import { privateDir } from '#store/storage.ts'
-import type { IndexResult, Kind } from './model.ts'
-import { words } from './query.ts'
-import { CHUNKER_VERSION, chunk, eventText, redact, visibleText } from './text.ts'
-
-// Bump when the tables change; the index rebuilds on mismatch.
-export const SCHEMA_VERSION = 8
-
-export const EVENTS = 'events'
-const BUSY_TIMEOUT = 'PRAGMA busy_timeout = 5000'
-// Readers keep answering during a catch-up, and a killed writer leaves no hot journal that blocks read-only opens.
-const WAL = 'PRAGMA journal_mode = WAL'
-
-// Chunks key by event seq or native line offset; session identity deduplicates copied messages.
-// card_fts holds one row per card, keyed by cards.n: its title and link titles, its
-// notes and all its other chunks, so the words of one query can match anywhere on a card. Both
-// stem words (Porter) and fold case and accents, so "deploying" finds "deploy".
-// terms holds every distinct word indexed, unstemmed and folded; terms_tri splits
-// them into trigrams so a query word with a typo or cut short finds the real word.
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS docs (
-  id INTEGER PRIMARY KEY,
-  card TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  source TEXT NOT NULL,
-  pos INTEGER NOT NULL,
-  part INTEGER NOT NULL,
-  at TEXT NOT NULL,
-  body TEXT NOT NULL,
-  content_hash TEXT NOT NULL,
-  session TEXT NOT NULL DEFAULT '',
-  line INTEGER NOT NULL DEFAULT -1,
-  UNIQUE (source, pos, part)
-);
-CREATE INDEX IF NOT EXISTS docs_card ON docs (card);
-CREATE INDEX IF NOT EXISTS docs_line ON docs (session, line);
-CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, content='docs', content_rowid='id', tokenize='porter unicode61 remove_diacritics 2');
-CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON docs BEGIN
-  INSERT INTO docs_fts (rowid, body) VALUES (new.id, new.body);
-END;
-CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON docs BEGIN
-  INSERT INTO docs_fts (docs_fts, rowid, body) VALUES ('delete', old.id, old.body);
-END;
-CREATE TABLE IF NOT EXISTS cards (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, workspace TEXT NOT NULL, context TEXT NOT NULL, live INTEGER NOT NULL);
-CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5 (context, notes, body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2');
-CREATE TABLE IF NOT EXISTS terms (term TEXT PRIMARY KEY) WITHOUT ROWID;
-CREATE VIRTUAL TABLE IF NOT EXISTS terms_tri USING fts5 (term, tokenize='trigram');
-CREATE TRIGGER IF NOT EXISTS terms_ai AFTER INSERT ON terms BEGIN
-  INSERT INTO terms_tri (term) VALUES (new.term);
-END;
-CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, card TEXT NOT NULL, identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL, session TEXT NOT NULL DEFAULT '');
-`
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { HydraError } from '#store/errors.ts'
+import { log } from '#app/diagnostics.ts'
+import { logPath, privateDir } from '#store/storage.ts'
+import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
+import { recordEntries } from '#hydra/transcripts-read.ts'
+import { readTranscript } from '#workers/transcript-read.ts'
+import { documentChunks, eventDocuments, type Document } from './documents.ts'
+import { fold, inflection, matches, tokens, type Term } from './query.ts'
+import { visibleText } from './text.ts'
 
 const require = createRequire(import.meta.url)
 
-// Node 22 prints an ExperimentalWarning to stderr when node:sqlite loads; it is the
-// only experimental module Pnyx uses, so warnings are muted for that one load.
-export function sqlite(): typeof import('node:sqlite') {
-  const emit = process.emitWarning
+function sqlite(): typeof import('node:sqlite') {
+  const warning = process.emitWarning
+  // Node 22 warns when its built-in SQLite module loads; CLI output stays structured.
   process.emitWarning = () => {}
 
   try {
     return require('node:sqlite') as typeof import('node:sqlite')
   } finally {
-    process.emitWarning = emit
+    process.emitWarning = warning
   }
+}
+
+// Bump when the schema, stored text, visibility or tokenization changes.
+const INDEX_VERSION = 3
+const CATCH_UP_BATCH_BYTES = 256 * 1024
+const EVENTS = 'events'
+// The full-text index an earlier version kept beside each Hydra.
+const RETIRED_INDEX_FILES = [
+  'search.db',
+  'search.db-wal',
+  'search.db-shm',
+]
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS cursors (
+  source TEXT PRIMARY KEY, card TEXT NOT NULL, session TEXT NOT NULL,
+  identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL, event TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS archived (id TEXT PRIMARY KEY, seq INTEGER NOT NULL, session TEXT NOT NULL, digest TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS archived_text ON archived(session, digest);
+CREATE TABLE IF NOT EXISTS docs (
+  id INTEGER PRIMARY KEY, card TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL,
+  text TEXT NOT NULL,
+  source TEXT NOT NULL, pos INTEGER NOT NULL, part INTEGER NOT NULL,
+  session TEXT NOT NULL, line TEXT NOT NULL, UNIQUE(source, pos, part)
+);
+CREATE INDEX IF NOT EXISTS docs_card_at ON docs(card, at);
+CREATE INDEX IF NOT EXISTS docs_source ON docs(source);
+CREATE INDEX IF NOT EXISTS docs_session_line ON docs(session, line);
+CREATE VIRTUAL TABLE IF NOT EXISTS words USING fts5(terms, stems, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');
+CREATE TRIGGER IF NOT EXISTS docs_delete AFTER DELETE ON docs BEGIN
+  DELETE FROM words WHERE rowid=old.id;
+END;
+CREATE VIRTUAL TABLE IF NOT EXISTS vocabulary USING fts5vocab(words, 'col');
+`
+
+interface Cursor {
+  source: string
+  card: string
+  session: string
+  identity: string
+  pos: number
+  seq: number
+  event: string
 }
 
 export const searchPath = ({ hydraId }: { hydraId: string }) => join(
   hydraDir({ hydraId }),
-  'search.db',
+  'oracle.db',
 )
 
-function removeIndex({ path }: { path: string }): void {
-  for (const suffix of [
-    '',
-    '-journal',
-    '-wal',
-    '-shm',
-  ]) {
+export function openIndex({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state: HydraState
+}) {
+  privateDir({ dir: hydraDir({ hydraId }) })
+
+  for (const leftover of RETIRED_INDEX_FILES) {
     rmSync(
-      `${path}${suffix}`,
+      join(
+        hydraDir({ hydraId }),
+        leftover,
+      ),
       { force: true },
     )
   }
-}
 
-function metaValue({
-  db,
-  key,
-}: {
-  db: DatabaseSync
-  key: string
-}): string | undefined {
-  const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined
-
-  return row?.value
-}
-
-export function isCurrent({ db }: { db: DatabaseSync }): boolean {
-  try {
-    return metaValue({
-      db,
-      key: 'index_schema_version',
-    }) === String(SCHEMA_VERSION) && metaValue({
-      db,
-      key: 'chunker_version',
-    }) === String(CHUNKER_VERSION)
-  } catch {
-    return false
-  }
-}
-
-// Opens the index for writing, creating it, or deleting and recreating it when it
-// was built by another schema or chunker version. A new index first harvests every
-// card's transcript, so what a transcript holds as a note is a note before it is indexed.
-// ponytail: a rebuild deletes the file under any concurrent reader; it reopens on its next query.
-function openWriter(
-  {
-    hydraId,
-    fresh = false,
-  }: {
-    hydraId: string
-    fresh?: boolean
-  },
-): DatabaseSync {
-  const { DatabaseSync } = sqlite()
   const path = searchPath({ hydraId })
-  privateDir({ dir: hydraDir({ hydraId }) })
+  const { DatabaseSync } = sqlite()
+  const db = new DatabaseSync(path)
 
-  if (fresh) {
-    removeIndex({ path })
-  }
+  try {
+    chmodSync(
+      path,
+      0o600,
+    )
+    db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;')
+    const version = db.prepare('PRAGMA user_version').get() as { user_version: number }
 
-  if (existsSync(path)) {
-    const db = new DatabaseSync(path)
-    db.exec(BUSY_TIMEOUT)
+    if (version.user_version !== INDEX_VERSION) {
+      transaction({
+        db,
+        fn: () => {
+          const current = db.prepare('PRAGMA user_version').get() as { user_version: number }
 
-    if (isCurrent({ db })) {
-      db.exec(WAL)
+          if (current.user_version === INDEX_VERSION) {
+            return
+          }
 
-      return db
+          recreate({ db })
+        },
+      })
     }
 
+    catchUp({
+      db,
+      hydraId,
+      state,
+    })
+  } catch (error) {
     db.close()
-    removeIndex({ path })
+    throw error
   }
 
-  // The server harvests transcripts before it starts a build; this process writes only the search index.
-  const db = new DatabaseSync(path)
-  // Transcript text is as private as the transcripts.
-  chmodSync(
-    path,
-    0o600,
-  )
-  db.exec(BUSY_TIMEOUT)
-  db.exec(WAL)
-  // IF NOT EXISTS lets two first runs race to create the same file.
-  db.exec(`BEGIN IMMEDIATE; ${SCHEMA}
-    INSERT OR REPLACE INTO meta (key, value) VALUES ('index_schema_version', '${SCHEMA_VERSION}'), ('chunker_version', '${CHUNKER_VERSION}');
-    COMMIT;`)
+  const latest = db.prepare('SELECT max((julianday(at) - 2440587.5) * 86400000) AS at FROM docs WHERE card=?')
 
-  return db
+  return {
+    newestAt({ card }: { card: string }) {
+      const row = latest.get(card) as { at: number | null }
+
+      return Math.round(row.at ?? 0)
+    },
+    documents({
+      terms,
+      fuzzy,
+    }: {
+      terms: Term[]
+      fuzzy: boolean
+    }): Document[] {
+      const quoted = ({ text }: { text: string }) => `"${text.replaceAll(
+        '"',
+        '""',
+      )}"`
+      const expressions = terms.flatMap(term => term.alts.flatMap(alt => {
+        const words = tokens({ text: fold({ text: alt }) })
+        const phrase = words.join(' ')
+
+        if (!phrase) {
+          return []
+        }
+
+        const body = `terms : ${quoted({ text: phrase })}${term.prefix ? '*' : ''}`
+
+        if (words.length !== 1 || term.prefix) {
+          return [body]
+        }
+
+        return [
+          body,
+          `stems : ${quoted({ text: `s${inflection({ word: phrase })}` })}`,
+        ]
+      }))
+
+      if (fuzzy) {
+        const vocabulary = db.prepare("SELECT term FROM vocabulary WHERE col = 'terms'").all() as {term: string}[]
+
+        for (const row of vocabulary) {
+          if (terms.some(term => matches({
+            word: row.term,
+            term,
+            fuzzy: true,
+          }))) {
+            expressions.push(`terms : ${quoted({ text: row.term })}`)
+          }
+        }
+      }
+
+      if (!expressions.length) {
+        return []
+      }
+
+      return db.prepare('SELECT d.card, d.kind, d.at, d.text FROM words JOIN docs d ON d.id=words.rowid WHERE words MATCH ? ORDER BY d.id')
+        .all(expressions.join(' OR ')) as unknown as Document[]
+    },
+    close: () => db.close(),
+  }
 }
 
-export function openReader({ path }: { path: string }): DatabaseSync {
-  const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(
-    path,
-    { readOnly: true },
-  )
-  db.exec(BUSY_TIMEOUT)
+function catchUp({
+  db,
+  hydraId,
+  state,
+}: {
+  db: DatabaseSync
+  hydraId: string
+  state: HydraState
+}) {
+  const getCursor = db.prepare('SELECT * FROM cursors WHERE source=?')
+  const putCursor = db.prepare(`INSERT INTO cursors(source, card, session, identity, pos, seq, event)
+    VALUES(:source, :card, :session, :identity, :pos, :seq, :event)
+    ON CONFLICT(source) DO UPDATE SET card=:card, session=:session, identity=:identity, pos=:pos, seq=:seq, event=:event`)
+  const track = db.prepare("INSERT OR IGNORE INTO cursors VALUES(?, ?, ?, '', 0, 0, '')")
+  const insert = db.prepare('INSERT INTO docs(card, kind, at, text, source, pos, part, session, line) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  const putWords = db.prepare('INSERT INTO words(rowid, terms, stems) VALUES(?, ?, ?)')
+  const archive = db.prepare('INSERT OR IGNORE INTO archived VALUES(?, ?, ?, ?)')
+  const archived = db.prepare('SELECT 1 FROM archived WHERE session=? AND digest=?')
+  const predecessor = db.prepare('SELECT seq FROM archived WHERE id=?')
+  const removeNative = db.prepare('DELETE FROM docs WHERE session=? AND line=? AND source<>?')
+  const removeEvent = db.prepare('DELETE FROM docs WHERE source=? AND pos=?')
 
-  return db
+  const add = ({
+    entry,
+    source,
+    pos,
+    part,
+    session = '',
+    line = '',
+  }: {
+    entry: Document
+    source: string
+    pos: number
+    part: number
+    session?: string
+    line?: string
+  }) => {
+    const words = tokens({ text: fold({ text: entry.text }) })
+    const inserted = insert.run(
+      entry.card,
+      entry.kind,
+      entry.at,
+      entry.text,
+      source,
+      pos,
+      part,
+      session,
+      line,
+    )
+    putWords.run(
+      inserted.lastInsertRowid,
+      words.join(' '),
+      words.map(word => `s${inflection({ word })}`).join(' '),
+    )
+  }
+
+  const eventLog = logPath({ dir: hydraDir({ hydraId }) })
+  const throughEvents = existsSync(eventLog) ? statSync(eventLog).size : 0
+  let pendingEvents = true
+
+  while (pendingEvents) {
+    const cursor = (getCursor.get(EVENTS) as unknown as Cursor | undefined) ?? {
+      source: EVENTS,
+      card: '',
+      session: '',
+      identity: '',
+      pos: 0,
+      seq: 0,
+      event: '',
+    }
+    const read = readEventsFrom({
+      hydraId,
+      offset: cursor.pos,
+      maxBytes: CATCH_UP_BATCH_BYTES,
+      through: throughEvents,
+    })
+    const captured = !cursor.event || state.eventIds[cursor.event] === cursor.seq
+    const belongs = captured || cursor.seq > state.seq
+
+    const continues = !read?.events.length || read.events[0]!.seq === cursor.seq + 1
+
+    if (!read || !belongs || !continues) {
+      if (cursor.pos === 0) {
+        throw new HydraError({
+          code: 'LOG_CORRUPT',
+          message: 'Event log does not start at its first event',
+        })
+      }
+
+      // A restored or replaced events.jsonl leaves the derived cache behind; rebuild it from the log.
+      transaction({
+        db,
+        fn: () => {
+          const current = getCursor.get(EVENTS) as unknown as Cursor | undefined
+
+          if (current?.pos === cursor.pos && current.event === cursor.event) {
+            recreate({ db })
+          }
+        },
+      })
+      log({
+        level: 'warn',
+        operation: 'oracle.rebuild',
+        hydraId,
+        status: 'cursor does not belong to the event log',
+      })
+      continue
+    }
+
+    if (read.end === cursor.pos) {
+      break
+    }
+
+    let superseded = false
+    transaction({
+      db,
+      fn: () => {
+        const current = getCursor.get(EVENTS) as unknown as Cursor | undefined
+
+        if (current && current.pos !== cursor.pos) {
+          superseded = true
+
+          return
+        }
+
+        for (const event of read.events) {
+          let session = ''
+          let line = ''
+
+          if (event.type === 'chat.message') {
+            session = event.data.session
+            const position = /^(\d+)(?::[mt]\d+(?:\.\d+)?)?$/.exec(event.data.nativeId)
+            line = position ? position[1]! : event.data.nativeId
+
+            if ((event.data.kind ?? 'message') === 'message') {
+              archive.run(
+                event.id,
+                event.seq,
+                session,
+                textDigest({ text: event.data.text }),
+              )
+            }
+
+            removeNative.run(
+              session,
+              line,
+              EVENTS,
+            )
+            let replaced: number | undefined
+
+            if (event.data.replaces) {
+              replaced = state.eventIds[event.data.replaces]
+
+              if (replaced === undefined) {
+                const known = predecessor.get(event.data.replaces) as { seq: number } | undefined
+                replaced = known?.seq
+              }
+            }
+
+            if (replaced !== undefined) {
+              removeEvent.run(
+                EVENTS,
+                replaced,
+              )
+            }
+          }
+
+          let part = 0
+
+          for (const entry of eventDocuments({ event })) {
+            add({
+              entry,
+              source: EVENTS,
+              pos: event.seq,
+              part,
+              session,
+              line,
+            })
+            part++
+          }
+
+          const agent = event.type === 'card.pushed' ? event.data.agent : undefined
+          const path = agent?.transcriptPath
+
+          if (agent && path && isAbsolute(path) && path.endsWith('.jsonl')) {
+            track.run(
+              path,
+              event.cardId,
+              sessionId({ agent }),
+            )
+          }
+        }
+
+        putCursor.run({
+          ...cursor,
+          pos: read.end,
+          seq: read.events.at(-1)?.seq ?? cursor.seq,
+          event: read.events.at(-1)?.id ?? cursor.event,
+        })
+      },
+    })
+    pendingEvents = superseded || read.end < throughEvents
+  }
+
+  const hydra = state.cards[HYDRA_CARD]
+  const hydraSession = hydra && cardSessionId({ card: hydra })
+
+  for (const cursor of db.prepare('SELECT * FROM cursors WHERE source<>?').all(EVENTS) as unknown as Cursor[]) {
+    const current = state.sessions?.[cursor.session]?.taskId ?? cursor.card
+    const card = current === HYDRA_CARD || cursor.session === hydraSession ? '$board' : current
+
+    if (cursor.card !== card) {
+      transaction({
+        db,
+        fn: () => {
+          db.prepare('UPDATE docs SET card=? WHERE source=?').run(
+            card,
+            cursor.source,
+          )
+          putCursor.run({
+            ...cursor,
+            card,
+          })
+        },
+      })
+    }
+
+    let through: number
+    let identity: string
+
+    try {
+      const stat = statSync(cursor.source)
+      through = stat.size
+      identity = `${stat.dev}:${stat.ino}`
+    } catch {
+      // Native files may disappear; archived messages remain indexed.
+      continue
+    }
+
+    const sameSource = cursor.identity === '' || cursor.identity === identity
+
+    if (cursor.pos === through && sameSource) {
+      continue
+    }
+
+    let next = {
+      ...cursor,
+      card,
+    }
+    let pending = true
+    let firstBatch = true
+
+    while (pending) {
+      pending = transaction({
+        db,
+        fn: () => {
+          const committed = getCursor.get(next.source) as unknown as Cursor
+
+          if (committed.pos !== next.pos || committed.identity !== next.identity) {
+            next = {
+              ...committed,
+              card,
+            }
+            firstBatch = false
+
+            return true
+          }
+
+          const tail = readTranscript({
+            cursor: next,
+            maxBytes: CATCH_UP_BATCH_BYTES,
+            through,
+          })
+
+          if (!tail || (!tail.reset && tail.end === next.pos)) {
+            return false
+          }
+
+          if (tail.reset && !firstBatch) {
+            return false
+          }
+
+          firstBatch = false
+
+          if (tail.reset) {
+            db.prepare('DELETE FROM docs WHERE source=?').run(next.source)
+          }
+
+          for (const line of tail.lines) {
+            let part = 0
+
+            for (const message of recordEntries({
+              record: line.record,
+              offset: line.pos,
+              tools: false,
+              thinking: false,
+            })) {
+              if (message.kind !== 'message' || message.hidden || archived.get(
+                cursor.session,
+                textDigest({ text: message.text }),
+              )) {
+                continue
+              }
+
+              for (const entry of documentChunks({
+                card,
+                kind: 'transcript',
+                at: message.at ?? '',
+                text: visibleText({ text: message.text }),
+              })) {
+                add({
+                  entry,
+                  source: cursor.source,
+                  pos: line.pos,
+                  part,
+                  session: cursor.session,
+                  line: String(line.pos),
+                })
+                part++
+              }
+            }
+          }
+
+          next = {
+            ...next,
+            identity: tail.identity,
+            pos: tail.end,
+          }
+          putCursor.run(next)
+
+          return tail.end < through
+        },
+      })
+    }
+  }
 }
 
-export interface Cursor {
-  source: string
-  card: string
-  identity: string
-  pos: number
-  seq: number
-  session: string
+function recreate({ db }: { db: DatabaseSync }) {
+  db.exec('DROP TABLE IF EXISTS vocabulary; DROP TABLE IF EXISTS words; DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS archived; DROP TABLE IF EXISTS cursors;')
+  db.exec(SCHEMA)
+  db.exec(`PRAGMA user_version=${INDEX_VERSION}`)
+}
+
+function textDigest({ text }: { text: string }) {
+  return createHash('sha256').update(text)
+    .digest('hex')
 }
 
 function transaction<T>({
@@ -201,533 +552,17 @@ function transaction<T>({
   fn,
 }: {
   db: DatabaseSync
-  fn: () => T
+  fn(): T
 }): T {
   db.exec('BEGIN IMMEDIATE')
 
   try {
-    const result = fn()
+    const value = fn()
     db.exec('COMMIT')
 
-    return result
+    return value
   } catch (error) {
     db.exec('ROLLBACK')
     throw error
-  }
-}
-
-// Folds what the log and the recorded transcripts gained since the cursors into
-// the index, in one transaction. SQLite's write lock keeps two indexers apart.
-function catchUp({
-  db,
-  hydraId,
-}: {
-  db: DatabaseSync
-  hydraId: string
-}): IndexResult {
-  const insert = db.prepare(
-    'INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash, session, line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  )
-  const archived = db.prepare('SELECT 1 FROM docs WHERE session = ? AND line = ? AND source = ? LIMIT 1')
-  const nativeCopies = db.prepare('SELECT id, card FROM docs WHERE session = ? AND line = ? AND source <> ?')
-  const dropDoc = db.prepare('DELETE FROM docs WHERE id = ?')
-  const dropEvent = db.prepare('DELETE FROM docs WHERE source = ? AND pos = ?')
-  const state = loadHydra({ hydraId }).state
-  // Cards whose card_fts row no longer matches their chunks, title or link titles.
-  const dirty = new Set<string>()
-  // ponytail: words of dropped chunks stay in terms; a typo may expand to a word that no longer matches.
-  const putTerm = db.prepare('INSERT OR IGNORE INTO terms (term) VALUES (?)')
-  const seen = new Set<string>()
-
-  const addTerms = ({ text }: { text: string }) => {
-    for (const term of words({ text })) {
-      if (seen.has(term)) {
-        continue
-      }
-
-      seen.add(term)
-      putTerm.run(term)
-    }
-  }
-
-  let docs = 0
-
-  const add = (
-    {
-      card,
-      kind,
-      source,
-      pos,
-      at,
-      text,
-      firstPart = 0,
-      session = '',
-      line = -1,
-    }: {
-      card: string
-      kind: Kind
-      source: string
-      pos: number
-      at: string
-      text: string
-      firstPart?: number
-      session?: string
-      line?: number
-    },
-  ): number => {
-    card = card === HYDRA_CARD ? '$board' : card
-    let part = firstPart
-
-    if (session && source !== EVENTS && archived.get(
-      session,
-      line,
-      EVENTS,
-    )) {
-      return part
-    }
-
-    if (session && source === EVENTS) {
-      const copies = nativeCopies.all(
-        session,
-        line,
-        EVENTS,
-      ) as {
-        id: number
-        card: string
-      }[]
-
-      for (const copy of copies) {
-        dropDoc.run(copy.id)
-        dirty.add(copy.card)
-      }
-    }
-
-    for (const body of chunk({ text: redact({ text }) })) {
-      const hash = createHash('sha256').update(body)
-        .digest('hex')
-      const row = [
-        card,
-        kind,
-        source,
-        pos,
-        part,
-        at,
-        body,
-        hash,
-        session,
-        line,
-      ] as const
-      const changes = Number(insert.run(...row).changes)
-
-      if (changes) {
-        dirty.add(card)
-        addTerms({ text: body })
-      }
-
-      docs += changes
-      part += 1
-    }
-
-    return part
-  }
-
-  const getCursor = db.prepare('SELECT * FROM cursors WHERE source = ?')
-  const putCursor = db.prepare(
-    'INSERT INTO cursors (source, card, identity, pos, seq, session) VALUES (:source, :card, :identity, :pos, :seq, :session) ' +
-      'ON CONFLICT (source) DO UPDATE SET identity = :identity, pos = :pos, seq = :seq',
-  )
-  const track = db.prepare("INSERT OR IGNORE INTO cursors (source, card, identity, pos, seq, session) VALUES (?, ?, '', 0, 0, ?)")
-
-  return transaction({
-    db,
-    fn: () => {
-      let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? {
-        source: EVENTS,
-        card: '',
-        identity: '',
-        pos: 0,
-        seq: 0,
-        session: '',
-      }
-      let read = readEventsFrom({
-        hydraId,
-        offset: cursor.pos,
-      })
-
-      // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
-      if (!read || (read.events.length > 0 && read.events[0]!.seq !== cursor.seq + 1)) {
-        db.exec('DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts; DELETE FROM terms; DELETE FROM terms_tri;')
-        cursor = {
-          ...cursor,
-          pos: 0,
-          seq: 0,
-        }
-        read = readEventsFrom({
-          hydraId,
-          offset: 0,
-        })!
-      }
-
-      for (const event of read.events) {
-        if (event.type === 'hydra.helper-finished') {
-          let part = 0
-
-          for (const outcome of event.data.outcomes) {
-            // Handled results already have a routine chat message; unchanged waits carry no new result.
-            if (outcome.status === 'handled' || outcome.status === 'still_waiting') {
-              continue
-            }
-
-            part = add({
-              card: outcome.task,
-              kind: 'event',
-              source: EVENTS,
-              pos: event.seq,
-              at: event.at,
-              text: outcome.summary,
-              firstPart: part,
-            })
-          }
-        } else if (event.type === 'chat.message') {
-          const replaced = event.data.replaces ? state.eventIds[event.data.replaces] : undefined
-
-          if (replaced !== undefined) {
-            dropEvent.run(
-              EVENTS,
-              replaced,
-            )
-            dirty.add(event.cardId === HYDRA_CARD ? '$board' : event.cardId)
-          }
-
-          add({
-            card: event.cardId,
-            kind: 'transcript',
-            source: EVENTS,
-            pos: event.seq,
-            at: event.at,
-            text: visibleText({ text: event.data.text }),
-            session: event.data.session,
-            line: Number.parseInt(event.data.nativeId),
-          })
-        } else if (event.type === 'card.noted') {
-          add({
-            card: event.cardId,
-            kind: 'note',
-            source: EVENTS,
-            pos: event.seq,
-            at: event.data.at ?? event.at,
-            text: eventText({ event }),
-          })
-        } else {
-          add({
-            card: event.cardId,
-            kind: 'event',
-            source: EVENTS,
-            pos: event.seq,
-            at: event.at,
-            text: eventText({ event }),
-          })
-        }
-
-        const agent = event.type === 'card.pushed' ? event.data.agent : undefined
-        const path = agent?.transcriptPath
-
-        if (agent && path && isAbsolute(path) && path.endsWith('.jsonl')) {
-          track.run(
-            path,
-            event.cardId,
-            sessionId({ agent }),
-          )
-        }
-      }
-
-      putCursor.run({
-        ...cursor,
-        pos: read.end,
-        seq: read.events.at(-1)?.seq ?? cursor.seq,
-      })
-
-      const hydra = state.cards[HYDRA_CARD]
-      const hydraSession = hydra ? cardSessionId({ card: hydra }) : undefined
-      let transcripts = 0
-      const dropSource = db.prepare('DELETE FROM docs WHERE source = ?')
-
-      for (const t of db.prepare('SELECT * FROM cursors WHERE source <> ?').all(EVENTS) as unknown as Cursor[]) {
-        const target = t.card === HYDRA_CARD || (hydraSession && t.session === hydraSession) ? '$board' : t.card
-
-        if (target !== t.card) {
-          db.prepare('UPDATE docs SET card = ? WHERE source = ?').run(
-            target,
-            t.source,
-          )
-          dirty.add(t.card); dirty.add(target)
-        }
-
-        const tail = readTranscript({ cursor: t })
-
-        if (!tail) {
-          continue
-        }
-
-        if (tail.reset && Number(dropSource.run(t.source).changes)) {
-          dirty.add(target)
-        }
-
-        for (const line of tail.lines) {
-          let part = 0
-
-          for (const m of transcriptMessages({ record: line.record })) {
-            part = add({
-              card: target,
-              kind: 'transcript',
-              source: t.source,
-              pos: line.pos,
-              at: m.at ?? '',
-              text: m.text,
-              firstPart: part,
-              session: t.session,
-              line: line.pos,
-            })
-          }
-        }
-
-        putCursor.run({
-          ...t,
-          identity: tail.identity,
-          pos: tail.end,
-          seq: 0,
-        })
-        transcripts += tail.lines.length > 0 ? 1 : 0
-      }
-
-      const getContext = db.prepare('SELECT context FROM cards WHERE id = ?')
-      const putCard = db.prepare(
-        'INSERT INTO cards (id, title, workspace, context, live) VALUES (:id, :title, :workspace, :context, :live) ' +
-        'ON CONFLICT (id) DO UPDATE SET title = :title, workspace = :workspace, context = :context, live = :live',
-      )
-
-      const targets = [
-        ...Object.values(state.cards).filter(card => card.id !== HYDRA_CARD)
-          .map(card => ({
-            ...card,
-            live: liveTask({ card }) ? 1 : 0,
-          })),
-        {
-          id: '$board',
-          title: 'Hydra',
-          workspace: '',
-          links: [],
-          live: 1,
-          project: undefined,
-        },
-      ]
-
-      for (const card of targets) {
-        const context = card.id === '$board' ? '' : redact({
-          text: [
-            card.title,
-            card.project,
-            ...card.links.map(l => l.title),
-          ].filter(Boolean).join('\n'),
-        })
-
-        if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) {
-          dirty.add(card.id)
-          addTerms({ text: context })
-        }
-
-        putCard.run({
-          id: card.id,
-          title: card.title,
-          workspace: card.workspace,
-          context,
-          live: card.live,
-        })
-      }
-
-      const getCard = db.prepare('SELECT n, context FROM cards WHERE id = ?')
-      const cardBody = db.prepare(
-        "SELECT coalesce(group_concat(body, char(10)), '') AS body FROM (SELECT body FROM docs WHERE card = ? AND (kind = 'note') = ? ORDER BY id)",
-      )
-      const dropCard = db.prepare('DELETE FROM card_fts WHERE rowid = ?')
-      const putCardText = db.prepare('INSERT INTO card_fts (rowid, context, notes, body) VALUES (?, ?, ?, ?)')
-
-      for (const id of dirty) {
-        const card = getCard.get(id) as {
-          n: number
-          context: string
-        } | undefined
-
-        if (!card) {
-          continue
-        }
-
-        dropCard.run(BigInt(card.n))
-        const text = ({ notes }: {
-          notes: boolean
-        }) =>
-          (cardBody.get(
-            id,
-            notes ? 1 : 0,
-          ) as {
-            body: string
-          }).body
-        putCardText.run(
-          BigInt(card.n),
-          card.context,
-          text({ notes: true }),
-          text({ notes: false }),
-        )
-      }
-
-      return {
-        events: read.events.length,
-        transcripts,
-        docs,
-      }
-    },
-  })
-}
-
-export interface TranscriptRead {
-  identity: string
-  // The cursor no longer fits the file: drop what was indexed from it and read it again.
-  reset: boolean
-  lines: {
-    pos: number
-    record: unknown
-  }[]
-  end: number
-}
-
-// Complete JSONL lines after the cursor. A replaced file (another device and
-// inode) or one shorter than the cursor is read again from the start. Null when
-// the file is missing or unreadable, so the cursor waits for it.
-// ponytail: reads the unread tail in one buffer; stream it if transcripts grow past memory.
-export function readTranscript({
-  cursor,
-  through,
-  maxBytes,
-}: {
-  cursor: Pick<Cursor, 'source' | 'identity' | 'pos'>
-  through?: number
-  maxBytes?: number
-}): TranscriptRead | null {
-  let fd: number
-
-  try {
-    fd = openSync(
-      cursor.source,
-      'r',
-    )
-  } catch {
-    return null
-  }
-
-  try {
-    const stat = fstatSync(fd)
-    const identity = `${stat.dev}:${stat.ino}`
-    const reset = (cursor.identity !== '' && cursor.identity !== identity) || stat.size < cursor.pos
-    const from = reset ? 0 : cursor.pos
-    const admittedEnd = through ?? stat.size
-    const available = Math.max(
-      0,
-      Math.min(
-        stat.size,
-        admittedEnd,
-      ) - from,
-    )
-    let buf = Buffer.alloc(Math.min(
-      available,
-      maxBytes ?? available,
-    ))
-    readSync(
-      fd,
-      buf,
-      0,
-      buf.length,
-      from,
-    )
-
-    // A batch can exceed its byte budget only to finish its first native record.
-    while (!buf.includes(10) && buf.length < available) {
-      buf = Buffer.alloc(Math.min(
-        available,
-        Math.max(
-          1,
-          buf.length * 2,
-        ),
-      ))
-      readSync(
-        fd,
-        buf,
-        0,
-        buf.length,
-        from,
-      )
-    }
-
-    const complete = buf.lastIndexOf(10) + 1
-    const lines: TranscriptRead['lines'] = []
-
-    for (let start = 0; start < complete; ) {
-      const end = buf.indexOf(
-        10,
-        start,
-      )
-
-      try {
-        lines.push({
-          pos: from + start,
-          record: JSON.parse(buf.toString(
-            'utf8',
-            start,
-            end,
-          )),
-        })
-      } catch {
-        // Not JSON: nothing to index on this line.
-      }
-
-      start = end + 1
-    }
-
-    return {
-      identity,
-      reset,
-      lines,
-      end: from + complete,
-    }
-  } finally {
-    closeSync(fd)
-  }
-}
-
-export function updateIndex({ hydraId }: { hydraId: string }): IndexResult {
-  const db = openWriter({ hydraId })
-
-  try {
-    return catchUp({
-      db,
-      hydraId,
-    })
-  } finally {
-    db.close()
-  }
-}
-
-export function rebuildIndex({ hydraId }: { hydraId: string }): IndexResult {
-  const db = openWriter({
-    hydraId,
-    fresh: true,
-  })
-
-  try {
-    return catchUp({
-      db,
-      hydraId,
-    })
-  } finally {
-    db.close()
   }
 }

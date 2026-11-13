@@ -5,6 +5,23 @@ import type { HydraMessage } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { withoutInjected } from '#oracle/text.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
+
+// One of the owner's messages shown in the thread.
+interface Owned {
+  message: HydraMessage
+  entry: ThreadEntry
+  // The words a transcript copy of this message can have.
+  copies: Set<string>
+  // The words of the transcript copy shown for it.
+  copy?: string
+}
+
+// An owned message shown by its transcript copy, which has a time.
+type ShownCopy = Owned & {
+  entry: ThreadEntry & { at: string }
+  copy: string
+}
 
 export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
   if (!entry.task || entry.task === HYDRA_CARD) {
@@ -76,11 +93,7 @@ export function hydraMessages({
     ' ',
   )
   const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
-  const owned: {
-    message: HydraMessage
-    entry: ThreadEntry
-    copied: boolean
-  }[] = []
+  const owned: Owned[] = []
   const rewritten = new Map<ThreadEntry, ThreadEntry>()
   const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
     entry,
@@ -147,7 +160,8 @@ export function hydraMessages({
           owned.push({
             message,
             entry: copy,
-            copied: true,
+            copies,
+            copy: ownCopies.get(entry!),
           })
         }
 
@@ -174,7 +188,7 @@ export function hydraMessages({
         owned.push({
           message,
           entry,
-          copied: false,
+          copies,
         })
       }
     }
@@ -197,18 +211,49 @@ export function hydraMessages({
     }
   }
 
-  // Hydra takes the owner's messages in order, so one sent before a received message no longer waits; with no recorded time, it shows no receipt.
+  // A copy found by its words is the newest unclaimed message with those words sent before it, so an older message
+  // cannot take a newer one's copy when its own copy is on another page.
+  const copyTimes = new Map<HydraMessage, string>()
+  const shownCopies = owned
+    .filter((item): item is ShownCopy => item.copy !== undefined && !!item.entry.at)
+    .toSorted((
+      a,
+      b,
+    ) => b.entry.at.localeCompare(a.entry.at))
+
+  for (const {
+    entry,
+    copy,
+  } of shownCopies) {
+    const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy)
+      && item.message.at <= entry.at)
+
+    if (taker) {
+      copyTimes.set(
+        taker.message,
+        entry.at,
+      )
+    }
+  }
+
+  // Hydra takes the owner's messages in order, so one sent before a received message no longer waits; with no
+  // recorded time, it shows no receipt.
   let laterReceived = false
 
   for (const {
     message,
     entry,
-    copied,
   } of receipts ? owned.toReversed() : []) {
     entry.sent = message.at
+    // Pnyx runs /restart and /upgrade itself, so they never reach the harness.
+    const pnyxCommand = restartCommand({ text: message.text })
+      || upgradeCommand({ text: message.text })
 
-    // A transcript copy found by its text counts only when it comes after the send; an older message with the same words cannot take it.
-    const copyTime = copied && entry.at && entry.at >= message.at ? entry.at : undefined
+    if (pnyxCommand) {
+      continue
+    }
+
+    const copyTime = copyTimes.get(message)
     const received = message.received ?? copyTime
 
     if (received) {

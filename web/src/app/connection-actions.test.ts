@@ -8,6 +8,15 @@ import type { ServerMessage } from '#app/server-transport.ts'
 import { loadUpdates, updatesOf } from '#web-tasks/updates-cache.ts'
 import { createHydraConnection } from './connection-store.ts'
 
+const forwarded = ({ event }: { event: HydraEvent }) => ({
+  type: 'page.event' as const,
+  update: {
+    seq: event.seq,
+    event,
+    cards: {},
+  },
+})
+
 class BrowserSocket {
   static OPEN = 1
   static instances: BrowserSocket[] = []
@@ -139,8 +148,7 @@ test(
     )
     t.mock.timers.tick(3 * 60 * 60_000)
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...created,
           seq: 3,
@@ -151,7 +159,7 @@ test(
             title: 'Other work',
           },
         },
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
@@ -176,8 +184,7 @@ test(
       '2099-10-16T13:00:00.000Z',
     )
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           v: 1,
           seq: 4,
@@ -191,7 +198,7 @@ test(
             until: '2099-10-16T13:00:00.000Z',
           },
         },
-      },
+      }),
     })
     socket.receive({
       message: {
@@ -235,8 +242,7 @@ test(
     )
     const clearRequest = socket.sent.find(message => message.args?.includes('clear-attempt'))!
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...created,
           seq: 5,
@@ -247,15 +253,14 @@ test(
             title: 'Another update',
           },
         },
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state.cards.task?.asks?.[0]?.deferredUntil,
       undefined,
     )
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           v: 1,
           seq: 6,
@@ -269,7 +274,7 @@ test(
             until: null,
           },
         },
-      },
+      }),
     })
     socket.receive({
       message: {
@@ -324,6 +329,60 @@ test(
       },
     })
     await agentSave
+    assert.equal(
+      connection.snapshot().state.config?.hydra.agent?.model,
+      'next-model',
+    )
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
+      'confirmed',
+    )
+  },
+)
+
+test(
+  'activity from a hidden origin card leaves the task\'s Updates current, and an event its Updates list shows marks it stale',
+  async t => {
+    const { connection } = browserFixture({ t })
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'created',
+        at: '2099-10-16T11:00:00Z',
+        actor: 'web',
+        cardId: 'task',
+        type: 'task.created',
+        data: {
+          key: 'task',
+          title: 'Choose the schema',
+        },
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: state.seq,
+        state,
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'latest',
+        messages: {},
+        actions: {},
+      },
+    })
     const readTask = loadUpdates({
       command: connection.commandFor({ id: 'default' }),
       id: 'task',
@@ -356,15 +415,47 @@ test(
       message: {
         type: 'page.event',
         update: {
-          seq: 8,
+          seq: 2,
           cards: {
+            origin: null,
             task: {
               ...connection.snapshot().state.cards.task!,
-              revision: 8,
+              revision: 2,
             },
           },
         },
       },
+    })
+    assert.equal(
+      updatesOf({ id: 'task' }).stale,
+      false,
+    )
+    socket.receive({
+      message: forwarded({
+        event: {
+          v: 1,
+          id: 'outcome',
+          seq: 3,
+          at: '2099-10-16T15:00:00Z',
+          actor: 'owner',
+          cardId: 'task',
+          type: 'card.outcome',
+          data: {
+            before: null,
+            after: {
+              state: 'done',
+              source: 'owner',
+              note: 'Shipped',
+            },
+            card: {
+              title: 'Task',
+              workspace: '',
+              tags: [],
+              links: [],
+            },
+          },
+        },
+      }),
     })
     assert.equal(
       updatesOf({ id: 'task' }).stale,
@@ -373,15 +464,6 @@ test(
     assert.equal(
       updatesOf({ id: 'unaffected' }).stale,
       false,
-    )
-
-    assert.equal(
-      connection.snapshot().state.config?.hydra.agent?.model,
-      'next-model',
-    )
-    assert.equal(
-      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
-      'confirmed',
     )
   },
 )
@@ -610,7 +692,7 @@ test(
 )
 
 test(
-  'live spend and usage survive events and same-session snapshots without entering persisted state',
+  'socket events keep untouched cards, messages and the previous snapshot, and live spend and usage survive them without entering persisted state',
   t => {
     const {
       connection,
@@ -714,8 +796,7 @@ test(
     const beforeEvent = connection.snapshot().state
     const previousValue = structuredClone(beforeEvent)
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...event,
           seq: 2,
@@ -726,7 +807,7 @@ test(
             title: 'Other',
           },
         },
-      },
+      }),
     })
     assert.deepEqual(
       connection.snapshot().state.cards.task!.spend,
@@ -787,10 +868,9 @@ test(
       },
     }
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: messageEvent,
-      },
+      }),
     })
     const afterMessage = connection.snapshot().state
     assert.equal(
@@ -813,10 +893,9 @@ test(
     )
     assert.doesNotThrow(() => structuredClone(afterMessage))
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: messageEvent,
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state,
@@ -825,8 +904,7 @@ test(
     )
     const beforeReopen = connection.snapshot().state
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...event,
           id: 'reopened',
@@ -837,7 +915,7 @@ test(
             answer: 'answer',
           },
         },
-      },
+      }),
     })
     const reopened = connection.snapshot().state.cards.task!
     assert.deepEqual(
@@ -876,8 +954,7 @@ test(
     const beforeConfig = connection.snapshot().state
     const previousConfig = structuredClone(beforeConfig.config)
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: {
           ...event,
           id: 'agents',
@@ -888,7 +965,7 @@ test(
             before: {},
           },
         },
-      },
+      }),
     })
     const configured = connection.snapshot().state
     assert.deepEqual(
@@ -952,10 +1029,9 @@ test(
       },
     }
     socket.receive({
-      message: {
-        type: 'event',
+      message: forwarded({
         event: replacementEvent,
-      },
+      }),
     })
     assert.equal(
       connection.snapshot().state.cards.task!.spend,
@@ -1265,8 +1341,7 @@ for (const when of [
       )
       t.mock.timers.tick(3 * 60 * 60_000)
       socket.receive({
-        message: {
-          type: 'event',
+        message: forwarded({
           event: {
             ...created,
             id: 'other',
@@ -1277,7 +1352,7 @@ for (const when of [
               title: 'Other work',
             },
           },
-        },
+        }),
       })
       assert.equal(
         connection.snapshot().state.cards.task?.reminder?.at,

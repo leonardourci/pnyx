@@ -5,12 +5,16 @@ import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as wait } from 'node:timers/promises'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { followPullRequests } from '#tasks/delivery/follow.ts'
 import { refreshProject } from '#projects/refresh.ts'
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import { git, openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
+
+// Long enough for a read a change asked for to land, so its absence means none was asked for.
+const UNREAD_MS = 1000
 
 const change = ({
   copy,
@@ -565,15 +569,131 @@ test(
       what: 'Pnyx to read the open pull request',
       check: () => s.task({ key: 'pr-fix' }).links[0]?.state === 'open',
     })
+    // With Date held the minute poll never comes due, so each read below is one a change asked for.
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.now(),
+    })
+    t.after(() => t.mock.timers.reset())
+    // A read already in flight keeps its answer, so let it land before GitHub changes.
+    await wait(UNREAD_MS)
+    const comments = () => s.task({ key: 'pr-fix' }).links[0]?.comments
+    const status = ({
+      state,
+      note,
+    }: {
+      state: string
+      note: string
+    }) => prWorker.run({
+      args: [
+        'task',
+        'status',
+        'pr-fix',
+        state,
+        '--note',
+        note,
+      ],
+    })
+    s.pullRequest({
+      number: 3,
+      comments: 1,
+    })
+    await status({
+      state: 'blocked',
+      note: 'Waiting on review',
+    })
+    await until({
+      what: 'leaving work to read the pull request',
+      check: () => comments() === 1,
+    })
+    s.pullRequest({
+      number: 3,
+      comments: 2,
+    })
+    await status({
+      state: 'blocked',
+      note: 'Still waiting on review',
+    })
+    await wait(UNREAD_MS)
+    assert.equal(
+      comments(),
+      1,
+      'a status note that keeps the task out of work reads nothing',
+    )
+    await status({
+      state: 'working',
+      note: 'Back on it',
+    })
+    await until({
+      what: 'returning to work to read the pull request',
+      check: () => comments() === 2,
+    })
+    s.pullRequest({
+      number: 3,
+      comments: 3,
+    })
+    await pnyx.restart()
+    await until({
+      what: 'the restarted server to read the pull request',
+      check: () => comments() === 3,
+    })
+    s.pullRequest({
+      number: 3,
+      comments: 4,
+    })
+    await status({
+      state: 'working',
+      note: 'Still on it',
+    })
+    await wait(UNREAD_MS)
+    assert.equal(
+      comments(),
+      3,
+      'the first status note after a restart that keeps the task working reads nothing',
+    )
+    s.pullRequest({
+      number: 3,
+      comments: 5,
+    })
+    change({
+      copy: copies[1]!,
+      file: 'review.txt',
+    })
+    commitAll({ copy: copies[1]! })
+    await until({
+      what: 'a commit on the task branch to read the pull request',
+      check: () => comments() === 5,
+    })
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'copy-fix',
+        ],
+      }),
+      /refreshing: "none: task has no open pull request links"/,
+    )
     // Merged on GitHub, not through task merge.
     s.pullRequest({
       number: 3,
       state: 'merged',
     })
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'pr-fix',
+        ],
+      }),
+      /refreshing: pull requests/,
+    )
     await until({
-      what: 'the merge on GitHub to finish the task',
+      what: 'the public refresh to observe the merge while the poll clock is held',
       check: () => s.task({ key: 'pr-fix' }).status?.state === 'done',
     })
+    t.mock.timers.reset()
     assert.deepEqual(
       [
         s.task({ key: 'pr-fix' }).status?.note,

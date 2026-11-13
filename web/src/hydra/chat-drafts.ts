@@ -1,9 +1,13 @@
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { taskMentions } from '#hydra/mentions.ts'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ChatComment } from './chat.ts'
-import { commentPrefix, loadCommentRecords, readCommentRecord, saveCommentRecords } from './comment-storage.ts'
+import { commentChanges, commentPrefix, loadCommentRecords, readCommentRecord, saveCommentRecords } from './comment-storage.ts'
 
 const SAVE_PAUSE_MS = 500
+
+const mentionedTasks = ({ text }: { text: string }) =>
+  [...new Set(taskMentions({ text }).map(mention => mention.id))].sort().join('\n')
 
 function mergeComments({
   current,
@@ -14,9 +18,13 @@ function mergeComments({
   previous: ChatComment[]
   incoming: ChatComment[]
 }): ChatComment[] {
-  const dirty = current.filter(comment => JSON.stringify(comment)
-    !== JSON.stringify(previous.find(saved => saved.id === comment.id)))
-  const removed = previous.filter(saved => !current.some(comment => comment.id === saved.id))
+  const {
+    changed: dirty,
+    removed,
+  } = commentChanges({
+    comments: current,
+    previous,
+  })
   const merged = incoming.filter(item => !removed.some(saved => saved.id === item.id))
     .map(item => dirty.find(comment => comment.id === item.id) ?? item)
   const added = dirty.filter(comment => !incoming.some(item => item.id === comment.id))
@@ -136,9 +144,11 @@ export function createChatDrafts({
     subscribe,
     subscribeSettled,
     flush,
+    // The chat shows the questions of the tasks a draft mentions, so a change to which tasks it names publishes at once.
     setDraft: ({ text }: { text: string }) => write({
       text,
       comments: current.comments,
+      structural: mentionedTasks({ text }) !== mentionedTasks({ text: current.text }),
     }),
     setComments: ({ items }: { items: ChatComment[] }) => write({
       text: current.text,
@@ -193,16 +203,10 @@ export function createChatDrafts({
 
 export type ChatDrafts = ReturnType<typeof createChatDrafts>
 
-export function useDraftSnapshot({
-  drafts,
-  settled = false,
-}: {
-  drafts: ChatDrafts
-  settled?: boolean
-}) {
+export function useDraftSnapshot({ drafts }: { drafts: ChatDrafts }) {
   return useSyncExternalStore(
-    settled ? drafts.subscribeSettled : drafts.subscribe,
-    settled ? drafts.readSettled : drafts.read,
+    drafts.subscribeSettled,
+    drafts.readSettled,
   )
 }
 

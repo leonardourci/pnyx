@@ -83,15 +83,13 @@ export function sendableRequest({ text }: { text: string }): {
 
 export function projectRequestActions({
   input,
-  view,
-  draft,
+  read,
   write,
   trackMention,
   setGoal,
 }: {
   input: RefObject<HTMLTextAreaElement | null>
-  view: ReturnType<typeof draftView>
-  draft: string
+  read(): string
   write({
     text,
     caret,
@@ -123,7 +121,8 @@ export function projectRequestActions({
   const fillGoal = ({ text }: { text: string }) => {
     // The goal the caret is on, so a second request never fills the first one's blank.
     const caret = input.current?.selectionStart ?? 0
-    const slots = view.chips.filter(chip => chip.kind === 'slot')
+    const draft = read()
+    const slots = draftView({ text: draft }).chips.filter(chip => chip.kind === 'slot')
     const onCaret = slots.find(chip => chip.from <= caret && caret <= chip.to)
     const slot = onCaret ?? slots.find(chip => chip.from >= caret)
 

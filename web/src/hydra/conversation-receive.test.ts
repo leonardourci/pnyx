@@ -1,9 +1,8 @@
 import { needsRecentThread } from '#hydra/thread-history.ts'
-import { receiveConversation, loadEarlierMessages } from './conversation-history.ts'
+import { historyRead, receiveConversation, loadEarlierMessages, stillFailed, type FailedRead } from './conversation-history.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { receivedThread } from '#hydra/thread-delta.ts'
 
 const page = ({
   stream,
@@ -29,33 +28,12 @@ const page = ({
 })
 
 test(
-  'an older response cannot replace a newer server conversation, and a reconnect can',
+  'a read range survives a trimmed page, a restored page replaces it, a comment loads its earlier message and a trimmed long reply needs no recent read',
   async () => {
-    const newer = page({
+    const current = page({
       stream: 'connection-1',
       version: 3,
     })
-    assert.equal(
-      receivedThread({
-        before: newer,
-        latest: page({
-          stream: 'connection-1',
-          version: 2,
-        }),
-      }),
-      newer,
-    )
-    const reconnected = page({
-      stream: 'connection-2',
-      version: 1,
-    })
-    assert.equal(
-      receivedThread({
-        before: newer,
-        latest: reconnected,
-      }),
-      reconnected,
-    )
     const old = {
       id: '0:m0.0',
       messageId: '0:m0',
@@ -70,14 +48,14 @@ test(
       text: 'A recent passage',
     }
     const reading = {
-      ...newer,
+      ...current,
       entries: [
         old,
         latest,
       ],
     }
     const trimmed = {
-      ...newer,
+      ...current,
       version: 4,
       recent: true,
       entries: [latest],
@@ -156,6 +134,194 @@ test(
         },
       }),
       true,
+    )
+  },
+)
+
+test(
+  'a comment source stops loading once pages are older than its message, and needs no load when the page holds it',
+  async () => {
+    const source = page({
+      stream: 'connection-1',
+      version: 1,
+    })
+    const pageAt = ({
+      index,
+    }: {
+      index: number
+    }): ThreadPage => ({
+      ...source,
+      older: index > 0 ? `p${index - 1}` : undefined,
+      entries: [
+        {
+          id: `entry-${index}`,
+          kind: 'message',
+          role: 'assistant',
+          text: `Reply ${index}`,
+          at: `2026-11-06T00:00:0${index}Z`,
+        },
+      ],
+    })
+    const loads: string[] = []
+    const earlier = await loadEarlierMessages({
+      past: pageAt({ index: 9 }),
+      cursor: 'p8',
+      until: '2026-11-06T00:00:06Z',
+      message: 'gone',
+      load: async ({ before }) => {
+        loads.push(before)
+
+        return pageAt({ index: Number(before.slice(1)) })
+      },
+    })
+    assert.deepEqual(
+      loads,
+      [
+        'p8',
+        'p7',
+        'p6',
+        'p5',
+      ],
+    )
+    assert.equal(
+      earlier?.entries[0]!.id,
+      'entry-5',
+    )
+    loads.length = 0
+    const held = pageAt({ index: 9 })
+    assert.equal(
+      await loadEarlierMessages({
+        past: held,
+        cursor: 'p8',
+        until: '2026-11-06T00:00:09Z',
+        message: 'entry-9',
+        load: async ({ before }) => {
+          loads.push(before)
+
+          return pageAt({ index: Number(before.slice(1)) })
+        },
+      }),
+      held,
+    )
+    assert.deepEqual(
+      loads,
+      [],
+    )
+  },
+)
+
+test(
+  'a window read is not sent again while one is on its way or after it failed in the same reading state',
+  () => {
+    const full: ThreadPage = {
+      ...page({
+        stream: 'connection-1',
+        version: 1,
+      }),
+      pages: 4,
+      entries: [
+        {
+          id: 'oldest',
+          kind: 'message',
+          role: 'assistant',
+          text: 'An old passage',
+        },
+      ],
+    }
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: false,
+        serverTrims: false,
+      }),
+      'recent',
+    )
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: false,
+        serverTrims: false,
+        failed: 'recent',
+      }),
+      undefined,
+    )
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: true,
+        serverTrims: true,
+        pending: 'recent',
+        failed: 'recent',
+      }),
+      'retain',
+    )
+    assert.equal(
+      historyRead({
+        page: full,
+        reading: true,
+        serverTrims: true,
+        failed: 'retain',
+      }),
+      undefined,
+    )
+    assert.equal(
+      historyRead({
+        page: {
+          ...full,
+          entries: [],
+        },
+        reading: true,
+        serverTrims: true,
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'a failed window read stays failed until the owner’s reading state or the connection changes',
+  () => {
+    const failed: FailedRead = {
+      mode: 'retain',
+      away: true,
+      selected: false,
+      connected: true,
+    }
+    assert.equal(
+      stillFailed({
+        failed,
+        away: true,
+        selected: false,
+        connected: true,
+      }),
+      failed,
+    )
+    assert.equal(
+      stillFailed({
+        failed,
+        away: false,
+        selected: false,
+        connected: true,
+      }),
+      undefined,
+    )
+    assert.equal(
+      stillFailed({
+        failed,
+        away: true,
+        selected: true,
+        connected: true,
+      }),
+      undefined,
+    )
+    assert.equal(
+      stillFailed({
+        failed,
+        away: true,
+        selected: false,
+        connected: false,
+      }),
+      undefined,
     )
   },
 )

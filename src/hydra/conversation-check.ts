@@ -1,3 +1,5 @@
+import { lateOwnerMessages, ownerMessagesInSendOrder } from './conversation.ts'
+import type { HydraMessage } from './model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
 
 export interface ConversationMismatch {
@@ -21,10 +23,13 @@ export function checkConversation({
   expected,
   conversation,
   ordered = expected,
+  sent = [],
 }: {
   expected: ThreadEntry[]
   conversation: NonNullable<ThreadPage['conversation']>
   ordered?: ThreadEntry[]
+  // The owner's messages in the order they were sent.
+  sent?: ThreadEntry[]
 }): ConversationMismatch[] {
   const actual = conversationEntries({ conversation })
   const positions = new Map<string, {
@@ -106,28 +111,57 @@ export function checkConversation({
     }
   }
 
-  let previous = -1
+  for (const list of [
+    ordered,
+    sent,
+  ]) {
+    let previous = -1
 
-  for (const entry of ordered) {
-    const key = reference({ entry })
-    const found = positions.get(key)?.[0]
+    for (const entry of list) {
+      const key = reference({ entry })
+      const found = positions.get(key)?.[0]
 
-    if (!found) {
-      continue
+      if (!found) {
+        continue
+      }
+
+      // An owner message out of both time and send order is reported once.
+      const reported = mismatches.some(mismatch => mismatch.kind === 'order' && mismatch.reference === key)
+
+      if (found.index < previous && !reported) {
+        mismatches.push({
+          kind: 'order',
+          reference: key,
+        })
+      }
+
+      previous = Math.max(
+        previous,
+        found.index,
+      )
     }
-
-    if (found.index < previous) {
-      mismatches.push({
-        kind: 'order',
-        reference: key,
-      })
-    }
-
-    previous = Math.max(
-      previous,
-      found.index,
-    )
   }
 
   return mismatches
+}
+
+// The checkers' order rule: entries follow time, except that an owner message the chat counts as late is checked
+// only against the order the owner sent them in, read from the saved messages rather than from the chat's sort.
+export function ownerSendOrder({
+  messages,
+  expected,
+}: {
+  messages: HydraMessage[]
+  expected: ThreadEntry[]
+}) {
+  return {
+    late: lateOwnerMessages({
+      messages,
+      entries: expected,
+    }),
+    sent: ownerMessagesInSendOrder({
+      messages,
+      entries: expected,
+    }).map(({ entry }) => entry),
+  }
 }

@@ -2,7 +2,7 @@ import type { ServerMessage } from '#app/server-transport.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import { reminderTime } from '#tasks/time.ts'
-import { saveEventId, savedReceipt } from '#app/save-receipts.ts'
+import { saveEventId, savedReply } from '#app/save-receipts.ts'
 import { commandTimeout, retryable } from './connection-protocol.ts'
 import { argument, currentRevision, optimisticState } from '#web-tasks/optimistic.ts'
 import { commandArguments, editTargets } from './pending-state.ts'
@@ -196,7 +196,8 @@ export function createConnectionRequests({
       }
 
       const id = savedId ?? crypto.randomUUID()
-      const confirmed = savedReceipt({
+      // The page keeps no event ids, so a Hydra message or agent change confirms only from its receipt.
+      const confirmed = savedReply({
         command: {
           type: 'command',
           id,
@@ -373,7 +374,12 @@ export function createConnectionRequests({
         })
       }
 
-      scope.error = message.error
+      const cancelledSearch = request.name === 'oracle' && message.code === 'CANCELLED'
+
+      if (!cancelledSearch) {
+        scope.error = message.error
+      }
+
       request.reject({ error })
     } else {
       if (request.optimistic) {

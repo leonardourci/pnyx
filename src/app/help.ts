@@ -9,6 +9,7 @@ import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
 import { HISTORY_LIMIT, HISTORY_MAX } from './cli-support.ts'
 import { DEBUG_LIMIT, DEBUG_MAX, LOG_BYTES } from '#diagnostics/timeline.ts'
 import { SLOWEST_LIMIT, SLOWEST_MAX } from '#diagnostics/performance.ts'
+import { PROFILE_MAX_SECONDS, PROFILE_SECONDS } from '#diagnostics/cpu-profile.ts'
 import { MAX_LOG_DAYS, MAX_LOG_MB } from '#settings/settings.ts'
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
@@ -27,7 +28,7 @@ commands:
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   apply --file <changes.json|-> [--check]    Validate and atomically apply local task changes
   push --key <key> --file <card.json|->      Create or update the card with this key
-  page [--card <id|key>] [--hidden]           Read the page view; include opened or hidden cards on demand
+  page [--card <id|key>] [--hidden] [--full] Summarize the page view; --full prints the whole projection
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
   move <id> <column> [--before <id>]         Put a card in a column, above another card or at its end
@@ -35,9 +36,10 @@ commands:
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
   debug timeline|health|performance          Read correlated history, runtime health facts, or action durations and memory from the logs
+  debug cpu-profile --out <file>             Capture a CPU profile of the server's main thread
   logs [clean]                               Show the diagnostic log files, or delete them all now
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
-  oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
+  oracle "<words>"                           Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   settings show|schema|set                   Pnyx-wide settings: theme, text sizes, Hide Done, review cadence, helper, Oracle filters, Hydra order, logs
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths
@@ -60,11 +62,13 @@ flags:
 `
 
 const COMMAND_HELP: Record<string, string> = {
-  page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--hydra <id>]
-Read the page projection without the event-id index, steering history, source captures, context notes or Hydra message history.
-Repeat --card for opened cards. --hidden includes
-hidden and automatic cards. On a page connection, this also updates that tab's interests.
-Activity continues reading history through the history command.
+  page: `usage: pnyx-axi page [--card <id|key>] [--hidden] [--full] [--hydra <id>]
+Summarize what a page receives: shown cards per column, opened cards, the owner's latest Hydra message and unavailable refs.
+--full prints the whole projection, without the event-ID index, steering history, source captures, context notes or Hydra message history.
+Repeat --card for opened cards.
+--hidden includes hidden and automatic cards.
+On a page connection, this also updates that tab's interests.
+The Activity view still reads full history with the history command.
 `,
   debug: `usage: pnyx-axi debug timeline [--task <id|key>] [--message <id>] [--batch <id>] [--session <id>] [--since <ISO>] [--until <ISO>] [--cursor <token>] [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read event IDs and correlated structured service records, newest timestamp first; original sequence,
@@ -73,6 +77,10 @@ Filters intersect. Times include their timezone and endpoints are inclusive. Def
 Pass the returned cursor with the same filters for older matches. Service records are the warnings
 and errors in the last ${LOG_BYTES / 1024 / 1024} MiB of the log files, newest day first, then service.log;
 serviceTailTruncated identifies an incomplete window. Legacy text is not guessed.
+pnyx-axi debug cpu-profile [--seconds <1..${PROFILE_MAX_SECONDS}>] --out <file> [--hydra <id>]
+Capture CPU samples of the server's main thread (${PROFILE_SECONDS} seconds by default), save a private .cpuprofile,
+and show the top functions. Existing output files and missing or unwritable folders are refused
+before sampling. Only one profile runs at a time; shutdown cancels it with CANCELLED.
 pnyx-axi debug health [--limit <1..${DEBUG_MAX}>] [--hydra <id>]
 Read unfinished helper batches and their observed native ownership/deadline, unsettled inputs,
 sessions retained during settings retirement, pending helper completions, eligible spool age,
@@ -220,6 +228,8 @@ pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
 pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
+pnyx-axi task refresh-links <id>
+Reads the task's open pull requests now instead of at their next poll, discarding a read in flight; task show lists what was read.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.

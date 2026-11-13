@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { readTranscript } from './index.ts'
+import { readTranscript } from './transcript-read.ts'
 
 test(
   'an admitted transcript boundary excludes later records without changing normal tail reads',

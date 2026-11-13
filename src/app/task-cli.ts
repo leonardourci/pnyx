@@ -154,6 +154,19 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     return local
   }
 
+  if (action === 'refresh-links') {
+    return askHost({
+      hydraId,
+      body: {
+        action: 'refresh-links',
+        task: required({
+          value: positionals[1],
+          what: 'task',
+        }),
+      },
+    })
+  }
+
   if (action === 'report-review') {
     return reportReviewCommand({
       hydraId,

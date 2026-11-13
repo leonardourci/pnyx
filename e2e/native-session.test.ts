@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
@@ -21,6 +21,17 @@ const permission = async () => ({
   message: 'unused',
 })
 const result = claudeRecording.turn.find(message => message.type === 'result')
+// Claude Code transcript lines of a turn-opening message and one folded into the running turn, as it writes them.
+const intakeLines = readFileSync(
+  join(
+    import.meta.dirname,
+    '../src/workers/fixtures/claude-intake.jsonl',
+  ),
+  'utf8',
+).trim()
+  .split('\n')
+const INTAKE_OPENS = '11111111-1111-4111-8111-111111111111'
+const INTAKE_FOLDED = '22222222-2222-4222-8222-222222222222'
 
 function terminal({
   input,
@@ -309,6 +320,139 @@ test(
     assert.equal(
       nativeIdle({ work: session.snapshot().work }),
       false,
+    )
+  },
+)
+
+test(
+  'Claude confirms a message it folds into a running turn when its transcript records the fold, timed by that record, and the result does not repeat it',
+  async t => {
+    const native = claudeNative()
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'claude-intake-',
+    ))
+    const session = await claudeProvider({ query: native.query }).open({
+      cwd: tmpdir(),
+      settings: {},
+      env: { CLAUDE_CONFIG_DIR: home },
+      signal: new AbortController().signal,
+    })
+    const input = inbox()
+    const observed = observe({
+      session,
+      input,
+    })
+    t.after(async () => {
+      input.end(); session.close(); await observed.done
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const receipts = () => observed.events.flatMap((
+      event,
+      index,
+    ) => typeof event === 'object' && event.type === 'input'
+      && event.receipt.phase === 'confirmed' ? [
+        {
+          index,
+          ...event.receipt,
+        },
+      ] : [])
+    const transcript = session.path
+    assert.ok(transcript)
+    const [
+      dequeue,
+      opening,
+    ] = intakeLines
+    input.push({
+      id: 'opens',
+      text: 'Comments on your plan',
+    })
+    await until({
+      what: 'the opening input',
+      check: () => native.incoming.length === 1,
+    })
+    mkdirSync(
+      dirname(transcript),
+      { recursive: true },
+    )
+    appendFileSync(
+      transcript,
+      `${[
+        dequeue,
+        opening!.replace(
+          INTAKE_OPENS,
+          native.incoming[0]!.uuid!,
+        ),
+      ].join('\n')}\n`,
+    )
+    const start = claudeRecording.turn.find(message => message.type === 'stream_event')
+    assert.ok(start)
+    native.send({ message: start })
+    await until({
+      what: 'the turn to start',
+      check: () => observed.events.includes('working'),
+    })
+    input.push({
+      id: 'folded',
+      text: '/inscribe',
+    })
+    await until({
+      what: 'the folded input',
+      check: () => native.incoming.length === 2,
+    })
+    // Claude Code queued it, then folded it in between steps: the removal's time is when it took it.
+    appendFileSync(
+      transcript,
+      `${intakeLines.slice(2).join('\n')
+        .replaceAll(
+          INTAKE_FOLDED,
+          native.incoming[1]!.uuid!,
+        )}\n`,
+    )
+    native.send({ message: start })
+    const early = await until({
+      what: 'the folded message confirmed before the turn ends',
+      check: () => receipts().find(receipt => receipt.inputId === 'folded'),
+    })
+    assert.equal(
+      early.at,
+      '2026-11-11T15:55:11.710Z',
+    )
+    assert.equal(
+      observed.outcomes().length,
+      0,
+    )
+    native.send({
+      message: {
+        ...terminal({}),
+        user_message_uuids: native.incoming.map(message => message.uuid!),
+      } as SDKMessage,
+    })
+    await until({
+      what: 'the turn to end',
+      check: () => observed.outcomes().length === 1,
+    })
+    assert.deepEqual(
+      receipts().map(receipt => [
+        receipt.inputId,
+        receipt.at,
+      ]),
+      [
+        [
+          'folded',
+          '2026-11-11T15:55:11.710Z',
+        ],
+        [
+          'opens',
+          '2026-11-11T15:54:58.074Z',
+        ],
+      ],
     )
   },
 )

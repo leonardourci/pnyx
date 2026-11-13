@@ -5,7 +5,7 @@ import { splitEntry } from '#hydra/transcripts-read.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { commentReply, commentUpdates, copiedText, keepStreamedKeys, type ChatComment } from './chat.ts'
+import { commentReply, commentUpdates, copiedText, keepStreamedKeys, orderedComments, withTimedRows, type ChatComment } from './chat.ts'
 import { hasPendingImage, pendingImage, settleImage } from './draft.ts'
 import { imageLine } from '#hydra/images.ts'
 
@@ -273,6 +273,93 @@ const note = ({
   at: '2026-10-29T15:05:10.536Z',
 })
 
+test(
+  'comments that start at the same place, and replies with no time, keep one numbering whatever order storage returns them in',
+  () => {
+    const passage = ({
+      id,
+      position,
+    }: {
+      id: string
+      position: number
+    }): ChatComment => ({
+      ...note({
+        id,
+        text: id,
+      }),
+      start: 0,
+      end: {
+        offset: 0,
+        position,
+      },
+    })
+    const comments = [
+      passage({
+        id: 'longer',
+        position: 20,
+      }),
+      passage({
+        id: 'twin',
+        position: 7,
+      }),
+      passage({
+        id: 'short',
+        position: 7,
+      }),
+    ]
+    const order = [
+      'short',
+      'twin',
+      'longer',
+    ]
+    assert.deepEqual(
+      orderedComments({ comments }).map(comment => comment.id),
+      order,
+    )
+    assert.deepEqual(
+      orderedComments({ comments: comments.toReversed() }).map(comment => comment.id),
+      order,
+    )
+    const undated = [
+      '10:m0',
+      '9:m0',
+    ].map(messageId => ({
+      ...note({
+        id: messageId,
+        text: messageId,
+      }),
+      messageId,
+      at: undefined,
+    }))
+    assert.deepEqual(
+      orderedComments({ comments: undated }).map(comment => comment.id),
+      [
+        '9:m0',
+        '10:m0',
+      ],
+    )
+    // A reply with a time keeps its place ahead of those without one.
+    const mixed = [
+      ...undated,
+      {
+        ...note({
+          id: 'dated',
+          text: 'dated',
+        }),
+        messageId: 'dated',
+      },
+    ]
+    assert.deepEqual(
+      orderedComments({ comments: mixed }).map(comment => comment.id),
+      [
+        'dated',
+        '9:m0',
+        '10:m0',
+      ],
+    )
+  },
+)
+
 // The comments as their owner holds them; handlers are made once, like a render's, and used later.
 
 const store = ({ items }: { items: ChatComment[] }) => {
@@ -288,76 +375,6 @@ const store = ({ items }: { items: ChatComment[] }) => {
     }),
   }
 }
-
-test(
-  'a note that clears its upload after its comment was removed does not bring the comment back',
-  () => {
-    const pending = imageLine({ path: pendingImage({ id: 'a' }) })
-    const {
-      held,
-      updates,
-    } = store({
-      items: [
-        note({
-          id: 'a',
-          text: `a ${pending}`,
-        }),
-        note({
-          id: 'b',
-          text: 'b',
-        }),
-      ],
-    })
-    updates.remove({ id: 'a' })
-    updates.change({
-      id: 'a',
-      text: 'a',
-    })
-    assert.deepEqual(
-      held.items.map(comment => comment.id),
-      ['b'],
-    )
-  },
-)
-
-test(
-  'two notes clearing their uploads one after the other both land, so Send is not left waiting',
-  () => {
-    const first = imageLine({ path: pendingImage({ id: 'a' }) }), second = imageLine({ path: pendingImage({ id: 'b' }) })
-    const {
-      held,
-      updates,
-    } = store({
-      items: [
-        note({
-          id: 'a',
-          text: `a ${first}`,
-        }),
-        note({
-          id: 'b',
-          text: `b ${second}`,
-        }),
-      ],
-    })
-    updates.change({
-      id: 'a',
-      text: 'a',
-    })
-    updates.change({
-      id: 'b',
-      text: 'b',
-    })
-    assert.equal(
-      hasPendingImage({
-        text: commentReply({
-          draft: '',
-          comments: held.items,
-        }),
-      }),
-      false,
-    )
-  },
-)
 
 test(
   'an image pasted over a passage keeps the reply waiting until its upload settles into the comment',
@@ -459,6 +476,63 @@ test(
         })} found the cause.`,
       })?.task,
       undefined,
+    )
+  },
+)
+
+test(
+  'page rows go in by time while the conversation keeps its own order',
+  () => {
+    const row = ({
+      id,
+      minute,
+    }: {
+      id: string
+      minute: number
+    }) => ({
+      id,
+      at: `2026-11-11T15:5${minute}:00.000Z`,
+    })
+    assert.deepEqual(
+      withTimedRows({
+        // The server put the late owner message after the one sent before it.
+        rows: [
+          row({
+            id: 'comments',
+            minute: 4,
+          }),
+          row({
+            id: '/inscribe',
+            minute: 3,
+          }),
+          row({
+            id: 'reply',
+            minute: 6,
+          }),
+        ],
+        timed: [
+          row({
+            id: 'sending',
+            minute: 7,
+          }),
+          row({
+            id: 'question',
+            minute: 5,
+          }),
+          row({
+            id: 'compaction',
+            minute: 1,
+          }),
+        ],
+      }).map(entry => entry.id),
+      [
+        'compaction',
+        'comments',
+        '/inscribe',
+        'question',
+        'reply',
+        'sending',
+      ],
     )
   },
 )

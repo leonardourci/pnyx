@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { ServerResponse } from 'node:http'
-import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -59,6 +58,33 @@ test(
       pnyx.codex.control.refuse = undefined
     }
 
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export notes',
+        '--key',
+        'export',
+      ],
+    })
+    await s.owner({
+      args: [
+        'reply',
+        'export',
+        '--text',
+        'Note the export while Hydra is down',
+        '--idempotency-key',
+        'export-note',
+        '--task-message',
+      ],
+    })
+    const exportTask = s.task({ key: 'export' }).id
+    // The task's own thread, open on the page, follows its Hydra part.
+    await page.command({
+      name: 'thread',
+      args: [exportTask],
+    })
     await say({ text: 'back yet?' })
     // The resumed session only exists once a start works.
     await until({
@@ -84,12 +110,30 @@ test(
       hydra.received.filter(text => text.includes('back after outage')).length,
       1,
     )
+    // The recap lists the owner's words no turn took, so taking the recap receives them, the task message among them.
+    assert.ok(recap.includes('Note the export while Hydra is down'))
+    const receivedAt = ({ id }: { id: string }) =>
+      s.state().hydraMessages?.find(message => message.id === id)?.received
+    const backYet = s.state().hydraMessages?.find(message => message.text === 'back yet?')
+    const missed = s.state().hydraMessages?.find(message => message.text === unanswered)
+    assert.ok(backYet?.received && missed)
+    const recapTaken = receivedAt({ id: missed.id })
+    assert.ok(recapTaken && recapTaken >= backYet.received)
+    assert.equal(
+      s.state().hydraMessages?.find(message => message.task === exportTask)?.received,
+      recapTaken,
+    )
+    await until({
+      what: 'the task thread to show Hydra received the task message',
+      check: () => page.threads.findLast(thread => thread.card === exportTask)?.entries
+        .find(entry => entry.replyId === 'export-note')?.delivery?.hydra?.received === recapTaken,
+    })
     page.close()
   },
 )
 
 test(
-  'a failed snapshot save during a helper grant is logged without killing the daemon or losing the batch',
+  'a failed background snapshot is logged without killing the daemon or losing a completed helper batch',
   async t => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -130,30 +174,6 @@ test(
         ],
       }),
     })
-    let blocked = false
-    const rename = fs.renameSync
-    t.mock.method(
-      fs,
-      'renameSync',
-      // eslint-disable-next-line pnyx/object-params -- Node owns fs.renameSync's signature.
-      (...args: Parameters<typeof fs.renameSync>) => {
-        // The server saves the snapshot in the background after writes; fail the first save after the grant.
-        if (!blocked && String(args[1]).endsWith(`/${s.hydraId}/snapshot.json`)
-          && s.events().some(event => event.type === 'hydra.helper-started')) {
-          blocked = true
-          throw Object.assign(
-            new Error('snapshot replace failed'),
-            { code: 'EIO' },
-          )
-        }
-
-        return rename(...args)
-      },
-    )
-    syncBuiltinESMExports()
-    t.after(() => {
-      t.mock.restoreAll(); syncBuiltinESMExports()
-    })
     withWriter({
       hydraId: s.hydraId,
       fn: ({ writer }) => {
@@ -179,10 +199,51 @@ test(
       what: 'the helper lease to release',
       check: () => !fs.existsSync(`${process.env.PNYX_HOME}/hydras/${s.hydraId}/helper-lease-${encodeURIComponent(task.id)}.json`),
     })
-    await until({
-      what: 'the background snapshot save to fail once',
-      check: () => blocked,
+    await pnyx.restart()
+    const cache = join(
+      hydraDir({ hydraId: s.hydraId }),
+      'snapshot.json',
+    )
+    assert.ok(fs.existsSync(cache))
+    fs.rmSync(cache)
+    fs.mkdirSync(cache)
+    t.after(() => fs.rmSync(
+      cache,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    withWriter({
+      hydraId: s.hydraId,
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'snapshot-checkpoint',
+          cardId: task.id,
+          at: new Date().toISOString(),
+          actor: 'cli',
+          type: 'card.noted',
+          data: {
+            text: 'Snapshot checkpoint.',
+            kind: 'context',
+            source: 'test',
+          },
+        },
+      }),
     })
+    t.mock.timers.tick(60_000)
+    t.mock.timers.reset()
+    await until({
+      what: 'the background snapshot failure to be logged',
+      check: () => logLines().some(record => record.operation === 'snapshot' && record.hydraId === s.hydraId),
+    })
+    fs.rmSync(
+      cache,
+      { recursive: true },
+    )
     assert.equal(
       s.events().filter(event => event.type === 'hydra.helper-started').length,
       1,
@@ -207,11 +268,7 @@ test(
     )
     assert.equal(
       snapshotFailure.error?.code,
-      'EIO',
-    )
-    assert.equal(
-      snapshotFailure.error?.message,
-      'snapshot replace failed',
+      'EISDIR',
     )
     assert.equal(
       Number.isNaN(Date.parse(snapshotFailure.at)),
@@ -874,7 +931,7 @@ test(
 
 test(
   'a snapshot save that fails at shutdown still lets the server stop and start again with every change',
-  async t => {
+  async () => {
     const s = await pnyx.scenario()
     await s.owner({
       args: [
@@ -886,33 +943,30 @@ test(
         'kept-snapshot',
       ],
     })
-    const rename = fs.renameSync
-    t.mock.method(
-      fs,
-      'renameSync',
-      // eslint-disable-next-line pnyx/object-params -- Node owns fs.renameSync's signature.
-      (...args: Parameters<typeof fs.renameSync>) => {
-        if (String(args[1]).endsWith(`/${s.hydraId}/snapshot.json`)) {
-          throw Object.assign(
-            new Error('snapshot replace failed'),
-            { code: 'EIO' },
-          )
-        }
-
-        return rename(...args)
-      },
+    const cache = join(
+      hydraDir({ hydraId: s.hydraId }),
+      'snapshot.json',
     )
-    syncBuiltinESMExports()
+    fs.rmSync(
+      cache,
+      { force: true },
+    )
+    fs.mkdirSync(cache)
 
     try {
       await pnyx.restart()
     } finally {
-      t.mock.restoreAll()
-      syncBuiltinESMExports()
+      fs.rmSync(
+        cache,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
     }
 
     const failures = logLines().filter(record => record.level === 'error' && record.hydraId === s.hydraId)
-    assert.ok(failures.some(record => record.operation === 'snapshot' && record.error?.message === 'snapshot replace failed'))
+    assert.ok(failures.some(record => record.operation === 'snapshot' && record.error?.code === 'EISDIR'))
     // The rest of the Hydra's shutdown (its hold, hook socket and timers) ran after the failed save.
     assert.equal(
       logLines().some(record => record.operation === 'hydra.close' && record.hydraId === s.hydraId),

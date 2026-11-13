@@ -115,6 +115,30 @@ test(
 )
 
 test(
+  'an unreadable legacy list is removed so later saves stop reading it',
+  () => {
+    const storage = commentStorage()
+    storage.setItem(
+      key,
+      'invalid-json',
+    )
+    assert.deepEqual(
+      saveCommentRecords({
+        storage,
+        key,
+        comments: [first],
+        previous: [],
+      }),
+      [first],
+    )
+    assert.equal(
+      storage.getItem(key),
+      null,
+    )
+  },
+)
+
+test(
   'independent tab saves retain edits and a stale tab cannot restore an untouched deleted comment',
   () => {
     const storage = commentStorage()

@@ -9,7 +9,7 @@ import { replayOwned } from '#app/reducer.ts'
 import { withWriter } from '#app/writer.ts'
 import { writeSnapshot } from '#app/snapshot.ts'
 import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
-import { checkConversation } from '#hydra/conversation-check.ts'
+import { checkConversation, ownerSendOrder } from '#hydra/conversation-check.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -344,12 +344,20 @@ export function replayChat({
         pages++
       }
 
-      const expected = hydraMessages({
+      const shown = hydraMessages({
         messages: repaired.hydraMessages ?? [],
         transcript: joinMessageParts({ entries: expectedNative }),
         provider: card.agent?.provider,
         boundaries: true,
       })
+      const {
+        late,
+        sent,
+      } = ownerSendOrder({
+        messages: repaired.hydraMessages ?? [],
+        expected: shown,
+      })
+      const expected = shown
         .filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY')
         .sort((
           a,
@@ -361,11 +369,12 @@ export function replayChat({
         tools: true,
         thinking: true,
       }).conversation
-      const ordered = expected.filter(entry => entry.at !== undefined)
+      const ordered = expected.filter(entry => entry.at !== undefined && !late.has(entry))
       const mismatches = checkConversation({
         expected,
         conversation,
         ordered,
+        sent: sent.filter(entry => expected.includes(entry)),
       })
       const counts = {
         missing: 0,
@@ -387,7 +396,7 @@ export function replayChat({
         inventory,
         pages,
         expected: expected.length,
-        undated: expected.length - ordered.length,
+        undated: expected.filter(entry => entry.at === undefined).length,
         counts,
         examples: mismatches.slice(
           0,
