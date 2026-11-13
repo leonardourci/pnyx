@@ -105,14 +105,15 @@ export function summarize({
       },
     }
   } catch {
-    return {
-      summary: {
-        id,
-        name: id,
-        order: Number.MAX_SAFE_INTEGER,
-        hydra: 'could not be loaded',
-        projects: [],
-      },
-    }
+    return { summary: unreadableSummary({ id }) }
   }
 }
+
+// A Hydra that cannot be read stays in the list, last, so opening it reports why.
+export const unreadableSummary = ({ id }: { id: string }): HydraSummary => ({
+  id,
+  name: id,
+  order: Number.MAX_SAFE_INTEGER,
+  hydra: 'could not be loaded',
+  projects: [],
+})

@@ -14,6 +14,7 @@ import { hydraDir, hydraIds } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra, reloadHydra } from './store.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { withWriter } from './writer.ts'
+import { listHydras } from './server-hydras.ts'
 import { acquireLock } from '#store/storage.ts'
 import { STREAMS, readStream } from '#test-harness/streams.ts'
 
@@ -304,6 +305,39 @@ test(
         second,
       ],
     )
+  },
+)
+
+test(
+  'a Hydra whose old log cannot be read stays in the Hydra list beside the others',
+  () => {
+    appendAll({ events: readStream({ name: 'lifecycle' }) })
+    const broken = hydraDir({ hydraId: 'broken' })
+    mkdirSync(
+      broken,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        broken,
+        'events.jsonl',
+      ),
+      '{"v":1,"seq":1,"id":"odd","type":"not.an.event","cardId":"x"}\n',
+    )
+    assert.deepEqual(
+      listHydras().map(summary => [
+        summary.id,
+        summary.hydra,
+      ])
+        .filter(([id]) => id === 'broken'),
+      [
+        [
+          'broken',
+          'could not be loaded',
+        ],
+      ],
+    )
+    assert.ok(listHydras().some(summary => summary.id === 'default'))
   },
 )
 
