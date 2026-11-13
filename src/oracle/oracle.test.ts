@@ -10,6 +10,7 @@ import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readReport } from '#investigations/report.ts'
 import { decidePush } from '#tasks/push.ts'
+import { storedHydra } from '#test-harness/database.ts'
 import { search } from './search.ts'
 import { searchInBackground } from './search-background.ts'
 import { redact } from './text.ts'
@@ -610,14 +611,7 @@ test(
       'hydras',
       'default',
     )
-    const log = readFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
-
+    const stored = storedHydra({ hydraId: 'default' })
     const cursors = readFileSync(
       join(
         dir,
@@ -661,14 +655,8 @@ test(
     )
 
     assert.equal(
-      readFileSync(
-        join(
-          dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
     assert.equal(
       readFileSync(
