@@ -18,6 +18,7 @@ const ZERO_TYPES: Record<string, string> = {
 const SERVER_ONLY = [
   'card_bodies.private',
   'sessions.*',
+  'transactions.*',
 ]
 
 test(

@@ -44,6 +44,15 @@ create table events (
 
 create index events_card on events (hydra_id, card_id, seq);
 
+-- An applied plan's receipt under its id, so the same plan sent again returns it instead of applying twice.
+create table transactions (
+  hydra_id text not null references hydras (id) on delete cascade,
+  id text not null,
+  digest text not null,
+  receipt json not null,
+  primary key (hydra_id, id)
+);
+
 create table columns (
   hydra_id text not null references hydras (id) on delete cascade,
   id text not null,
@@ -147,7 +156,8 @@ create table links (
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
--- A card's notes; each note's text is in the event that wrote it, which has the note's id.
+-- A card's notes. Each note's text is in the event that wrote it, which has the note's id; a card moved in from
+-- another Hydra keeps notes whose events stay in that Hydra.
 create table notes (
   hydra_id text not null,
   card_id text not null,
@@ -157,8 +167,7 @@ create table notes (
   source text not null,
   at text,
   primary key (hydra_id, id),
-  foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade,
-  foreign key (hydra_id, id) references events (hydra_id, id)
+  foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
 -- The conversation with Hydra: the owner's messages, workers' reports and Pnyx's lines, with each one's receipt.
