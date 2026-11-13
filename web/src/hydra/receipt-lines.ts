@@ -75,9 +75,12 @@ function line({
   }
 }
 
+// A transcript copy's time is when the agent read it; the owner's message shows when it was sent.
+export const sentTime = ({ entry }: { entry: Pick<ThreadEntry, 'sent' | 'at'> }) => entry.sent ?? entry.at
+
 // Received means the agent's harness confirmed it took the message, never that Pnyx handed it over.
 export function receiptLines({ entry }: { entry: ThreadEntry }): ReceiptLine[] {
-  const sent = entry.sent ?? entry.at
+  const sent = sentTime({ entry })
 
   const { delivery } = entry
 

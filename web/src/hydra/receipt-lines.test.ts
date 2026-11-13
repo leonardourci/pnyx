@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
-import { receiptLines } from './receipt-lines.ts'
+import { receiptLines, sentTime } from './receipt-lines.ts'
 
 const sent: ThreadEntry = {
   id: 'reply',
@@ -105,6 +105,26 @@ test(
           undefined,
         ],
       ],
+    )
+  },
+)
+
+test(
+  'a transcript copy of the owner’s message shows when it was sent, not when the agent read it',
+  () => {
+    assert.equal(
+      sentTime({
+        entry: {
+          ...sent,
+          at: '2026-11-12T12:03:00.000Z',
+          sent: '2026-11-12T12:00:00.000Z',
+        },
+      }),
+      '2026-11-12T12:00:00.000Z',
+    )
+    assert.equal(
+      sentTime({ entry: sent }),
+      sent.at,
     )
   },
 )

@@ -41,6 +41,7 @@ import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,p
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
 import { MessageReceipt } from './message-receipt.tsx'
+import { sentTime } from './receipt-lines.ts'
 import {
   MESSAGE_DECORATIONS,blockPassage,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
   selectedPassage,type CommentPassage,
@@ -194,8 +195,7 @@ const MessageRow = memo(function MessageRow({
 }) {
   const canResend = canSendAgain && entry.task
     && (entry.delivery?.agent?.state ?? entry.receipt) === 'delivery_unknown'
-  // A transcript copy's time is when the agent read it; the owner's message shows when it was sent.
-  const sentAt = entry.sent ?? entry.at
+  const sentAt = sentTime({ entry })
 
   return entry.kind === 'divider' ? (
     <div
