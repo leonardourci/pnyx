@@ -122,6 +122,7 @@ export async function startServer({
     noServer: true,
     maxPayload: MAX_MESSAGE_BYTES,
   })
+  let importing = true
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
   const pendingLogs = new Map<string, () => void>()
@@ -778,6 +779,10 @@ export async function startServer({
 
   // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
   const mountAll = () => {
+    if (importing) {
+      return
+    }
+
     for (const id of hydraIds()) {
       const before = skipped[id]
 
@@ -940,6 +945,19 @@ export async function startServer({
   try {
     named = await mount({ id: hydraId })
     await mount({ id: 'default' })
+
+    for (const id of hydraIds()) {
+      await mount({ id }).catch((error: Error) => {
+        log({
+          level: 'warn',
+          operation: 'hydra.skipped',
+          hydraId: id,
+          error,
+        })
+      })
+    }
+
+    importing = false
     const startSettings = readSettings()
     mirrorSettings(startSettings)
     mirroredRevision = startSettings.revision
@@ -951,7 +969,7 @@ export async function startServer({
       UPGRADE_CHECK_MS,
     ).unref()
 
-    // After the first mount, which creates the home's database that zero-cache replicates.
+    // All legacy imports finish before Zero starts building its first replica.
     if (zeroCache) {
       zero = startZeroCache({
         queryUrl: `http://127.0.0.1:${bound}${ZERO_QUERY_PATH}`,
@@ -984,7 +1002,6 @@ export async function startServer({
     ms: performance.now() - starting,
   })
 
-  await Promise.allSettled(hydraIds().map(id => mount({ id })))
   background({
     name: 'name Hydras',
     run: nameUnnamedHydras,

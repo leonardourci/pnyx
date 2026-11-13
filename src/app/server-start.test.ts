@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync } from 'node:fs'
+import fs, { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
+import { hydraDir } from './home-migration.ts'
+import { infoPath } from './server-state.ts'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -109,6 +112,69 @@ test(
     assert.equal(
       summary({ hydraId: 'default' })?.id,
       'default',
+    )
+  },
+)
+
+test(
+  'startup imports every Hydra before publishing the running server',
+  async t => {
+    for (const hydraId of [
+      'default',
+      'late-a',
+      'late-b',
+    ]) {
+      const dir = hydraDir({ hydraId })
+      mkdirSync(
+        dir,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          dir,
+          'events.jsonl',
+        ),
+        readStream({ name: 'lifecycle' }).map(event => JSON.stringify(event))
+          .join('\n') + '\n',
+      )
+    }
+
+    const rename = fs.renameSync
+    let imported: string[] | undefined
+    t.mock.method(
+      fs,
+      'renameSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns the rename signature.
+      (
+        source: fs.PathLike,
+        destination: fs.PathLike,
+      ) => {
+        if (String(destination) === infoPath()) {
+          imported = query({ statements: [{ text: 'select id from hydras order by id' }] })[0]!.map(row => String(row.id))
+        }
+
+        return rename(
+          source,
+          destination,
+        )
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      t.mock.restoreAll(); syncBuiltinESMExports()
+    })
+    const server = await startServer({
+      port: 0,
+      ...quiet,
+    })
+    t.after(() => server.close())
+    assert.deepEqual(
+      imported,
+      [
+        'default',
+        'late-a',
+        'late-b',
+      ],
     )
   },
 )
