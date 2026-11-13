@@ -1315,6 +1315,13 @@ Again: [image: ${src}]`
         ],
       })
       const task = s.task({ key: 'image-worker' })
+      const linkRefreshes = () => logLines().filter(line => line.operation === 'command.page'
+        && line.hydraId === s.hydraId && line.name === 'task refresh-links').length
+      assert.equal(
+        linkRefreshes(),
+        0,
+        'the board and chat read no pull requests before a task shows its activity',
+      )
       await run({
         args: ['run'],
         input: `await page.click('[data-task="${task.id}"]');`,
@@ -1335,6 +1342,16 @@ Again: [image: ${src}]`
       }`,
       })
       await capture({ name: 'worker-images' })
+      await evaluate({
+        script: `() => {
+        [...document.querySelectorAll('[data-task="${task.id}"] [role=tab]')].find(tab => tab.textContent === 'Activity').click();
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await until({
+        what: 'opening the task activity to read its pull requests once',
+        check: () => linkRefreshes() === 1,
+      })
     } finally {
       await run({ args: ['stop'] })
     }
