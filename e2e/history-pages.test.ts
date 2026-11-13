@@ -124,6 +124,16 @@ test(
         summary,
         /page --full/,
       )
+      assert.match(
+        await s.owner({
+          args: [
+            'page',
+            '--card',
+            'task-missing',
+          ],
+        }),
+        /unavailable.*task-missing/,
+      )
       const full = await s.owner({
         args: [
           'page',
