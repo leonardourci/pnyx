@@ -194,9 +194,11 @@ function catchUp({
   state: HydraState
 }) {
   const getCursor = db.prepare('SELECT * FROM cursors WHERE source=?')
-  const putCursor = db.prepare(`INSERT INTO cursors(source, pos, seq, event) VALUES(:source, :pos, :seq, :event)
+  const putCursor = db.prepare(`INSERT INTO cursors(source, pos, seq, event)
+    VALUES(:source, :pos, :seq, :event)
     ON CONFLICT(source) DO UPDATE SET pos=:pos, seq=:seq, event=:event`)
-  const insert = db.prepare('INSERT INTO docs(card, kind, at, text, pos, part) VALUES(?, ?, ?, ?, ?, ?)')
+  const insert = db.prepare(`INSERT INTO docs(card, kind, at, text, pos, part)
+    VALUES(?, ?, ?, ?, ?, ?)`)
   const putWords = db.prepare('INSERT INTO words(rowid, terms, stems) VALUES(?, ?, ?)')
 
   const add = ({
