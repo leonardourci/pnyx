@@ -8,9 +8,7 @@ import type { Statement } from '#store/postgres.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
-import { currentState } from '#tasks/card-status.ts'
 import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
-import { pendingPermissions } from '#workers/permission-rules.ts'
 import { agentActivity } from '#workers/activity.ts'
 import type { Touched } from './preimage.ts'
 import { summarize } from './hydra-summary.ts'
@@ -84,6 +82,22 @@ const PRIVATE_FIELDS = [
   'steering',
   'externalSources',
 ] as const
+// What a hidden task's reference leaves out: histories, texts and worker setup. It keeps what chips, prerequisites,
+// waits and answer leads read.
+const UNREFERENCED = [
+  ...PRIVATE_FIELDS,
+  'statusLog',
+  'notes',
+  'replies',
+  'brief',
+  'initialPrompt',
+  'intent',
+  'progress',
+  'projectRefresh',
+  'launch',
+  'settings',
+  'copy',
+] as const satisfies readonly (keyof Card)[]
 
 // HydraState fields with a table of their own, or derived on load.
 const STRUCTURED = new Set<string>([
@@ -233,7 +247,6 @@ function cardSummary({
     hidden: card.hidden === true,
     automatic_task: card.automaticTask === true,
     done_at: nullable({ value: card.doneAt }),
-    open_permissions: pendingPermissions({ card }).length,
     created_seq: card.createdSeq,
     updated_seq: card.updatedSeq,
     updated_at: card.updatedAt,
@@ -243,8 +256,18 @@ function cardSummary({
       state,
       card,
     }),
-    current_state: nullable({ value: currentState({ card }) }),
+    reference: cardReference({ card }),
   }
+}
+
+function cardReference({ card }: { card: Card }): Partial<Card> {
+  const reference: Partial<Card> = { ...card }
+
+  for (const field of UNREFERENCED) {
+    delete reference[field]
+  }
+
+  return reference
 }
 
 // Every row a Hydra's state holds, each tagged with the group it is rebuilt with. The hydras, cards and links rows

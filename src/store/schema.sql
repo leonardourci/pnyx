@@ -99,7 +99,6 @@ create table cards (
   hidden boolean not null,
   automatic_task boolean not null,
   done_at text,
-  open_permissions integer not null check (open_permissions >= 0),
   created_seq bigint not null,
   updated_seq bigint not null,
   updated_at text not null,
@@ -107,7 +106,8 @@ create table cards (
   child_working boolean not null,
   wait_title text,
   unmet_prerequisites json not null,
-  current_state json,
+  -- What a hidden task's chips, waits and answer leads read: the card without its histories, texts and worker setup.
+  reference json not null,
   primary key (hydra_id, id),
   unique (hydra_id, key)
 );

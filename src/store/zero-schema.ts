@@ -9,7 +9,6 @@ import type { HydraSummary } from '#app/server-hydras.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { Settings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
-import type { currentState } from '#tasks/card-status.ts'
 
 // The page's view of src/store/schema.sql. zero-cache replicates only the tables of the pnyx_page publication, whole
 // rows, and the page reads them only through the queries below.
@@ -112,14 +111,13 @@ const cards = table('cards')
     hidden: boolean(),
     automatic_task: boolean(),
     done_at: string().optional(),
-    open_permissions: number(),
     created_seq: number(),
     updated_seq: number(),
     updated_at: string(),
     child_working: boolean(),
     wait_title: string().optional(),
     unmet_prerequisites: json<Stored<ReturnType<typeof unmetPrerequisites>>>(),
-    current_state: json<Stored<NonNullable<ReturnType<typeof currentState>>>>().optional(),
+    reference: json<Stored<Card>>(),
   })
   .primaryKey(
     'hydra_id',
@@ -330,23 +328,6 @@ const updateRelationships = relationships(
   }),
 )
 
-const noteRelationships = relationships(
-  notes,
-  ({ one }) => ({
-    event: one({
-      sourceField: [
-        'hydra_id',
-        'id',
-      ],
-      destField: [
-        'hydra_id',
-        'id',
-      ],
-      destSchema: events,
-    }),
-  }),
-)
-
 const hydraRelationships = relationships(
   hydras,
   ({ many }) => ({
@@ -384,7 +365,6 @@ export const schema = createSchema({
     cardRelationships,
     questionRelationships,
     linkRelationships,
-    noteRelationships,
     updateRelationships,
     hydraRelationships,
   ],
@@ -606,7 +586,7 @@ export const queries = defineQueries({
           query => query.orderBy(
             'position',
             'asc',
-          ).related('event'),
+          ),
         )
         .one(),
     ),
@@ -637,42 +617,6 @@ export const queries = defineQueries({
         'hydra_id',
         args.hydraId,
       ),
-    ),
-  },
-  questions: {
-    open: defineQuery(
-      hydraArgs,
-      ({ args }) => zql.questions
-        .where(
-          'hydra_id',
-          args.hydraId,
-        )
-        .where(
-          'closed',
-          false,
-        )
-        .where(
-          'answered',
-          'IS',
-          null,
-        )
-        .related('card'),
-    ),
-  },
-  permissions: {
-    open: defineQuery(
-      hydraArgs,
-      ({ args }) => zql.cards
-        .where(
-          'hydra_id',
-          args.hydraId,
-        )
-        .where(
-          'open_permissions',
-          '>',
-          0,
-        )
-        .related('body'),
     ),
   },
   settings: {
