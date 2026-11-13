@@ -161,6 +161,19 @@ function connection({ url }: { url?: string }): Connection {
   return opened
 }
 
+// Setup owns these clients; await their exit before Homebrew's smart shutdown waits for them.
+export async function closePostgres(): Promise<void> {
+  const opened = [...connections.values()]
+  connections.clear()
+  await Promise.all(opened.map(async ({
+    worker,
+    port,
+  }) => {
+    port.close()
+    await worker.terminate()
+  }))
+}
+
 const configuredUrls = new Map<string, string>()
 
 // The postgresUrl setting, read once per home: zero-cache and the held Hydras keep the connection they opened, so a

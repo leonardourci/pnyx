@@ -259,3 +259,29 @@ test(
     )
   },
 )
+
+test(
+  'releasing setup connections removes its idle sessions before a service restart and permits reconnecting',
+  async () => {
+    const { closePostgres } = await import('./postgres.ts')
+    const pid = query({ statements: [{ text: 'select pg_backend_pid() as pid' }] })[0]![0]!.pid
+    await closePostgres()
+    const sessions = query({
+      statements: [
+        {
+          text: 'select pid from pg_stat_activity where pid = $1',
+          values: [pid],
+        },
+      ],
+    })[0]
+    assert.deepEqual(
+      sessions,
+      [],
+    )
+    assert.notEqual(
+      query({ statements: [{ text: 'select pg_backend_pid() as pid' }] })[0]![0]!.pid,
+      pid,
+    )
+  },
+)
+

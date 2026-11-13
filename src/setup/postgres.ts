@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
-import { configuredUrl, homeDatabase, query } from '#store/postgres.ts'
+import { closePostgres, configuredUrl, homeDatabase, query } from '#store/postgres.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { hydraExists, importLegacy, loadHydra } from '#app/store.ts'
 import { recordExitCode } from '#app/request-context.ts'
@@ -387,6 +387,7 @@ export async function setupPostgres({
       { text: `alter system set max_slot_wal_keep_size = '${MAX_SLOT_WAL}'` },
     ],
   })
+  await closePostgres()
   brewService({ action: 'restart' })
   const restarted = await started()
   // The restart reached another server than the one that took the setting, such as a Postgres not from Homebrew.
