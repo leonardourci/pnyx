@@ -35,17 +35,19 @@ The reporting hooks print nothing, except at session start: in a folder inside a
 
 ## Install
 
-Needs Node 22.13 or newer and pnpm (the version pinned in `package.json`).
+Needs Node 22.13 or newer, pnpm (the version pinned in `package.json`) and PostgreSQL 15 or newer with `wal_level=logical`, which holds Pnyx's data and which zero-cache replicates to the page. On macOS, `brew install postgresql@17` and then `pnyx-axi setup postgres`: it starts the Homebrew service, sets `wal_level=logical` and creates the home's database (`pnyx` for `~/.pnyx`, a name derived from the path for any other `PNYX_HOME`, so the dev home never shares the live one). Elsewhere, start any PostgreSQL 15 or newer with `wal_level=logical`; Pnyx connects with the usual `PGHOST`, `PGPORT` and `PGUSER`. `pnyx-axi setup postgres --check` changes nothing: it reports what is missing and imports every Hydra still kept in an `events.jsonl` in a transaction it rolls back. `pnyx-axi upgrade` runs that check after its build, so an import that would fail stops the upgrade before the restart and the running server keeps its files.
 
 To run agents, install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both. Configure the [dispatch rules](#starting-workers-and-hydra) for the harnesses and models you use. GitHub integration needs [GitHub CLI](https://cli.github.com/) (`gh auth login`) and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH; account quota ranking uses [quota-axi](https://github.com/kunchenguid/quota-axi). The login service (macOS or Linux) and terminal integrations are optional; the foreground server does not need them.
 
 ```sh
+brew install postgresql@17
 git clone https://github.com/leonardourci/pnyx.git
 cd pnyx
 pnpm install
 pnpm run build
 pnpm add -g "$PWD"
 pnyx-axi --version
+pnyx-axi setup postgres
 pnyx-axi setup skills
 ```
 
@@ -59,7 +61,7 @@ Every Hydra offers the `inscribe` and `pnyx-set-up` skills and the `/upgrade` an
 
 User data lives in `~/.pnyx` by default. Set `PNYX_HOME` to keep it anywhere else; the clone holds only code.
 
-You do not have to set everything up before the first Hydra. Each time a Hydra session opens, Pnyx checks the local dispatch config, Claude and Codex logins, hooks, global skills, quota-axi, the login service and a profile for each attached project, and puts only what is missing in Hydra's digest as a short "Setup needed" list (a complete setup adds nothing). Hydra creates the local config and writes project profiles itself, and raises the owner-only steps (hooks, skills and the login service) as questions in its chat that run only when you Confirm. `pnyx-axi setup check` prints the same list in a terminal and exits 1 while anything is missing.
+You do not have to set everything up before the first Hydra. Each time a Hydra session opens, Pnyx checks Postgres, the local dispatch config, Claude and Codex logins, hooks, global skills, quota-axi, the login service and a profile for each attached project, and puts only what is missing in Hydra's digest as a short "Setup needed" list (a complete setup adds nothing). Hydra creates the local config and writes project profiles itself, and raises the owner-only steps (hooks, skills and the login service) as questions in its chat that run only when you Confirm. `pnyx-axi setup check` prints the same list in a terminal and exits 1 while anything is missing.
 
 For a trial with separate data, run `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0`; `0` picks a free port and the output gives its URL. Use that same `PNYX_HOME` for later commands, including `stop`. A separate data home still uses your normal harness logins and global skill folders; setup previews show which user-wide files would change. See [Run](#run) to start your everyday Hydra and [CONTRIBUTING.md](../CONTRIBUTING.md) to work on Pnyx itself.
 
