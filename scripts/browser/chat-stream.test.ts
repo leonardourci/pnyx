@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { logLines, scenarioGroup, until, openPage } from '#test-harness/harness.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
+import { KEYCHAIN_FLAGS } from '#test-harness/chrome-keychain.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { installChatContract, assertChatContract, PAINT_TIMEOUT_MS } from '#test-harness/chat-contract.ts'
 
@@ -66,7 +67,13 @@ async function browser({
     CHROME_DEVTOOLS_AXI_SESSION: `${session}-${process.pid}`,
     CHROME_DEVTOOLS_AXI_MCP_PATH: mcp,
     CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS: '1',
-    CHROME_DEVTOOLS_AXI_CHROME_ARGS: '--no-sandbox --disable-background-networking --disable-component-update',
+    // The browser runs in the bridge's own process, outside this process's spawn guard.
+    CHROME_DEVTOOLS_AXI_CHROME_ARGS: [
+      '--no-sandbox',
+      '--disable-background-networking',
+      '--disable-component-update',
+      ...KEYCHAIN_FLAGS,
+    ].join(' '),
   }
 
   const run = async ({
