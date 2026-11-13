@@ -12,6 +12,7 @@ import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 import { agentActivity } from '#workers/activity.ts'
 import { hydraChatQueue } from '#hydra/chat-queue.ts'
+import type { Touched } from './preimage.ts'
 import { summarize } from './hydra-summary.ts'
 
 type Row = Record<string, unknown>
@@ -67,14 +68,6 @@ const TABLES = {
 
 type Table = keyof typeof TABLES
 
-// The tables a card's own change rewrites; every other table is compared whole on each write.
-const CARD_TABLES = new Set<Table>([
-  'card_bodies',
-  'questions',
-  'declarations',
-  'notes',
-])
-
 // Card arrays held as rows of their own table, and the fields the page never reads.
 const CARD_LISTS = [
   'asks',
@@ -99,11 +92,11 @@ const STRUCTURED = new Set<string>([
   'config',
 ])
 
-// The rows last committed for one Hydra, as JSON, so a write sends only what changed. A row of a card table names
-// its card, so a write that rebuilds only some cards keeps the others' rows.
+// The rows last committed for one Hydra, as JSON, so a write sends only what changed. A row names the group it is
+// rebuilt with, so a write that rebuilds only some groups keeps the others' rows.
 export type SavedRows = Map<string, {
   json: string
-  card?: string
+  group?: string
 }>
 
 export const emptySaved = (): SavedRows => new Map()
@@ -243,102 +236,175 @@ function cardSummary({
   }
 }
 
-// Every row a Hydra's state holds. Card tables are built only for the cards named, or for all of them.
+// Every row a Hydra's state holds, each tagged with the group it is rebuilt with. The hydras, cards and links rows
+// read across cards, so they are rebuilt on every write; any other group only when its part of the state changed, or
+// always without touched.
 function stateRows({
   hydraId,
   state,
-  cards,
+  touched,
 }: {
   hydraId: string
   state: HydraState
-  cards?: Set<string>
-}): Record<Table, Row[]> {
+  touched?: Touched
+}): {
+  rows: Record<Table, Row[]>
+  groups: Map<Row, string>
+  built: Set<string>
+} {
   const rows = Object.fromEntries(Object.keys(TABLES).map(table => [
     table,
     [],
   ])) as unknown as Record<Table, Row[]>
+  const groups = new Map<Row, string>()
+  const built = new Set<string>()
+  const allCards = !touched || touched.fields.has('cards')
+  const changed = ({ field }: { field: string }) => !touched || touched.fields.has(field)
+
+  const add = ({
+    table,
+    row,
+    group,
+  }: {
+    table: Table
+    row: Row
+    group?: string
+  }) => {
+    rows[table].push(row)
+
+    if (group !== undefined) {
+      groups.set(
+        row,
+        group,
+      )
+    }
+  }
+
   const { config } = state
   const configRest: Record<string, unknown> | null = config ? { ...config } : null
   delete configRest?.columns
-  rows.hydras.push({
-    id: hydraId,
-    config: configRest,
-    // ponytail: a Firstmate home's projects change without an event; the row catches up on the next write.
-    summary: summarize({
+  add({
+    table: 'hydras',
+    row: {
       id: hydraId,
-      state,
-    }).summary,
-    queue: hydraChatQueue({ state }),
+      config: configRest,
+      // ponytail: a Firstmate home's projects change without an event; the row catches up on the next write.
+      summary: summarize({
+        id: hydraId,
+        state,
+      }).summary,
+      queue: hydraChatQueue({ state }),
+    },
   })
 
-  for (const [
-    key,
-    value,
-  ] of Object.entries(state)) {
-    if (!STRUCTURED.has(key) && value !== undefined) {
-      rows.hydra_values.push({
-        hydra_id: hydraId,
-        key,
-        value,
+  for (const key of touched ? touched.fields : Object.keys(state)) {
+    const value = (state as unknown as Record<string, unknown>)[key]
+
+    if (STRUCTURED.has(key)) {
+      continue
+    }
+
+    built.add(`value:${key}`)
+
+    if (value !== undefined) {
+      add({
+        table: 'hydra_values',
+        row: {
+          hydra_id: hydraId,
+          key,
+          value,
+        },
+        group: `value:${key}`,
       })
     }
   }
 
-  for (const [
-    position,
-    column,
-  ] of (config?.columns ?? []).entries()) {
-    rows.columns.push({
-      hydra_id: hydraId,
-      id: column.id,
+  if (changed({ field: 'config' })) {
+    built.add('columns')
+
+    for (const [
       position,
-      title: column.title,
-      role: nullable({ value: column.role }),
-      data: column,
-    })
+      column,
+    ] of (config?.columns ?? []).entries()) {
+      add({
+        table: 'columns',
+        row: {
+          hydra_id: hydraId,
+          id: column.id,
+          position,
+          title: column.title,
+          role: nullable({ value: column.role }),
+          data: column,
+        },
+        group: 'columns',
+      })
+    }
   }
 
   const all = Object.values(state.cards)
   const working = new Set(all.flatMap(card => card.agent?.agentId && agentActivity({ card }) === 'working'
     ? [`${card.agent.provider}:${card.agent.sessionId}`]
     : []))
+  // Each pull request's merge questions are read from the cards that ask about it, not from every card.
+  const asking = new Map<string, Record<string, Card>>()
 
   for (const card of all) {
-    rows.cards.push(cardSummary({
-      hydraId,
-      state,
-      card,
-      working,
-    }))
-    rows.links.push(...card.links.map((
-      link,
-      position,
-    ) => {
-      const merge = link.kind === 'github_pr' ? canonicalMergeQuestion({
+    for (const ask of card.asks ?? []) {
+      if (ask.kind === 'merge' && ask.url) {
+        const cards = asking.get(ask.url) ?? {}
+        cards[card.id] = card
+        asking.set(
+          ask.url,
+          cards,
+        )
+      }
+    }
+  }
+
+  for (const card of all) {
+    add({
+      table: 'cards',
+      row: cardSummary({
+        hydraId,
         state,
+        card,
+        working,
+      }),
+    })
+
+    for (const [
+      position,
+      link,
+    ] of card.links.entries()) {
+      const merge = link.kind === 'github_pr' ? canonicalMergeQuestion({
+        cards: asking.get(link.url) ?? {},
         card,
         url: link.url,
       }) : undefined
+      add({
+        table: 'links',
+        row: {
+          hydra_id: hydraId,
+          card_id: card.id,
+          url: link.url,
+          position,
+          kind: link.kind,
+          number: nullable({ value: link.number }),
+          title: nullable({ value: link.title }),
+          state: nullable({ value: link.state }),
+          draft: nullable({ value: link.draft }),
+          merge_question_card: nullable({ value: merge?.card.id }),
+          merge_question: nullable({ value: merge?.ask.id }),
+          data: link,
+        },
+      })
+    }
 
-      return {
-        hydra_id: hydraId,
-        card_id: card.id,
-        url: link.url,
-        position,
-        kind: link.kind,
-        number: nullable({ value: link.number }),
-        title: nullable({ value: link.title }),
-        state: nullable({ value: link.state }),
-        draft: nullable({ value: link.draft }),
-        merge_question_card: nullable({ value: merge?.card.id }),
-        merge_question: nullable({ value: merge?.ask.id }),
-        data: link,
-      }
-    }))
-
-    if (cards && !cards.has(card.id)) {
+    if (!allCards && !touched?.cards.has(card.id)) {
       continue
     }
+
+    built.add(`card:${card.id}`)
 
     for (const [
       table,
@@ -347,39 +413,65 @@ function stateRows({
         hydraId,
         card,
       }))) {
-      rows[table as Table].push(...list)
+      for (const row of list) {
+        add({
+          table: table as Table,
+          row,
+          group: `card:${card.id}`,
+        })
+      }
     }
   }
 
-  for (const [
-    position,
-    message,
-  ] of (state.hydraMessages ?? []).entries()) {
-    rows.messages.push({
-      hydra_id: hydraId,
-      id: message.id,
+  if (changed({ field: 'hydraMessages' })) {
+    built.add('messages')
+
+    for (const [
       position,
-      task_id: nullable({ value: message.task }),
-      action: message.action,
-      kind: nullable({ value: message.kind }),
-      text: message.text,
-      at: message.at,
-      actor: message.actor,
-      received: nullable({ value: message.received }),
-      data: message,
-    })
+      message,
+    ] of (state.hydraMessages ?? []).entries()) {
+      add({
+        table: 'messages',
+        row: {
+          hydra_id: hydraId,
+          id: message.id,
+          position,
+          task_id: nullable({ value: message.task }),
+          action: message.action,
+          kind: nullable({ value: message.kind }),
+          text: message.text,
+          at: message.at,
+          actor: message.actor,
+          received: nullable({ value: message.received }),
+          data: message,
+        },
+        group: 'messages',
+      })
+    }
   }
 
-  for (const session of Object.values(state.sessions ?? {})) {
-    rows.sessions.push({
-      hydra_id: hydraId,
-      id: session.id,
-      task_id: nullable({ value: session.taskId }),
-      data: session,
-    })
+  if (changed({ field: 'sessions' })) {
+    built.add('sessions')
+
+    for (const session of Object.values(state.sessions ?? {})) {
+      add({
+        table: 'sessions',
+        row: {
+          hydra_id: hydraId,
+          id: session.id,
+          task_id: nullable({ value: session.taskId }),
+          data: session,
+        },
+        group: 'sessions',
+      })
+    }
   }
 
-  return rows
+  return {
+    rows,
+    groups,
+    built,
+  }
 }
 
 const upsert = ({
@@ -415,8 +507,8 @@ const remove = ({
   values: [JSON.stringify(rows)],
 })
 
-// The statements that bring the saved rows to this state, and the saved rows once they commit. touched names the
-// cards whose own rows may have changed; without it every card is compared.
+// The statements that bring the saved rows to this state, and the saved rows once they commit. touched names what
+// the write changed; without it every row is compared.
 export function rowChanges({
   hydraId,
   state,
@@ -426,16 +518,19 @@ export function rowChanges({
   hydraId: string
   state: HydraState
   saved: SavedRows
-  touched?: Set<string>
+  touched?: Touched
 }): {
   statements: Statement[]
   next: SavedRows
 } {
-  const cards = touched && new Set([...touched].filter(id => state.cards[id]))
-  const rows = stateRows({
+  const {
+    rows,
+    groups,
+    built,
+  } = stateRows({
     hydraId,
     state,
-    cards,
+    touched,
   })
   const next: SavedRows = new Map(saved)
   const writes: Partial<Record<Table, Row[]>> = {}
@@ -455,12 +550,13 @@ export function rowChanges({
         continue
       }
 
+      const group = groups.get(row)
       next.set(
         key,
-        CARD_TABLES.has(table) ? {
+        group === undefined ? { json } : {
           json,
-          card: String(row.card_id),
-        } : { json },
+          group,
+        },
       )
       writes[table] = [
         ...writes[table] ?? [],
@@ -469,15 +565,15 @@ export function rowChanges({
     }
   }
 
-  // A card's rows stay unless this write rebuilt that card or the card is gone.
-  const rebuilt = ({ card }: { card?: string }) => card === undefined || !state.cards[card]
-    || !cards || cards.has(card)
+  // A saved row this write could have rebuilt but did not is gone; so are the rows of a card that left.
+  const rebuilt = ({ group }: { group?: string }) => group === undefined || built.has(group)
+    || (group.startsWith('card:') && !state.cards[group.slice('card:'.length)])
 
   for (const [
     key,
     entry,
   ] of saved) {
-    if (present.has(key) || !rebuilt({ card: entry.card })) {
+    if (present.has(key) || !rebuilt({ group: entry.group })) {
       continue
     }
 

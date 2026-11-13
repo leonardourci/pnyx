@@ -13,7 +13,7 @@ import { helperGrant } from '#routine-helper/route.ts'
 import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
 import { replayOwned } from './reducer.ts'
-import { ALL_CARDS, preimage, type PreimageObserver } from './preimage.ts'
+import { preimage, type PreimageObserver, type Touched } from './preimage.ts'
 import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
@@ -90,7 +90,10 @@ export function withWriter<T>({
 
   const from = live.state.seq
   const pending: HydraEvent[] = []
-  const touched = new Set<string>()
+  const touched: Touched = {
+    cards: new Set(),
+    fields: new Set(),
+  }
   const writer = eventWriter({
     state: live.state,
     owned: true,
@@ -126,7 +129,7 @@ export function withWriter<T>({
         hydraId,
         state: live.state,
         saved: live.saved,
-        touched: touched.has(ALL_CARDS) ? undefined : touched,
+        touched,
       })
       query({
         transaction: true,
@@ -191,7 +194,7 @@ export function eventWriter({
   dir: string
   hydraId: string
   transaction?: string
-  touched?: Set<string>
+  touched?: Touched
   onAppend({ event }: { event: HydraEvent }): void
 }): Writer {
   const state = owned ? initial : structuredClone(initial)

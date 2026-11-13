@@ -34,10 +34,14 @@ export function cloneValue<T>({ value }: { value: T }): T {
 }
 
 // The writer owns its loaded state; derivations retain only properties changed by this event.
-// Marks a write that replaced the whole cards record, so every card counts as touched.
-export const ALL_CARDS = '*'
+// What a change wrote to: the ids of the cards under state.cards, and the other top-level fields of the state.
+export interface Touched {
+  cards: Set<string>
+  fields: Set<string>
+}
 
-// touched collects the ids of the cards under state.cards this change wrote to, so a save rewrites only their rows.
+// touched collects what this change wrote to, so a save rewrites only those rows. Replacing the whole cards record
+// counts as touching the cards field.
 export function preimage<T extends object>({
   state,
   change,
@@ -47,7 +51,7 @@ export function preimage<T extends object>({
   state: T
   change({ state }: { state: T }): void
   observers: Set<PreimageObserver>
-  touched?: Set<string>
+  touched?: Touched
 }): {
   before: T
   release(): void
@@ -55,9 +59,13 @@ export function preimage<T extends object>({
   const changed = new WeakMap<object, Map<string | symbol, PropertyDescriptor | undefined>>()
   const readers = new WeakMap<object, object>()
   const writers = new WeakMap<object, object>()
-  // The card id each written object belongs to; the cards record itself maps to CARDS.
+  // What each written object belongs to: a card, a top-level field, or the cards record itself.
   const CARDS = Symbol('cards')
-  const owners = new WeakMap<object, string | typeof CARDS>()
+  type Owner = typeof CARDS | {
+    card?: string
+    field?: string
+  }
+  const owners = new WeakMap<object, Owner>()
 
   const ownerOf = ({
     target,
@@ -65,14 +73,14 @@ export function preimage<T extends object>({
   }: {
     target: object
     key: string | symbol
-  }): string | typeof CARDS | undefined => {
+  }): Owner | undefined => {
     if (target === state) {
-      return key === 'cards' ? CARDS : undefined
+      return key === 'cards' ? CARDS : { field: String(key) }
     }
 
     const owner = owners.get(target)
 
-    return owner === CARDS ? String(key) : owner
+    return owner === CARDS ? { card: String(key) } : owner
   }
 
   const touch = ({
@@ -82,15 +90,21 @@ export function preimage<T extends object>({
     target: object
     key: string | symbol
   }) => {
-    const owner = ownerOf({
+    const owner = target === state && key === 'cards' ? { field: 'cards' } : ownerOf({
       target,
       key,
     })
 
-    if (owner === CARDS) {
-      touched?.add(ALL_CARDS)
-    } else if (owner !== undefined) {
-      touched?.add(owner)
+    if (owner === CARDS || !owner) {
+      return
+    }
+
+    if (owner.card !== undefined) {
+      touched?.cards.add(owner.card)
+    }
+
+    if (owner.field !== undefined) {
+      touched?.fields.add(owner.field)
     }
   }
 
@@ -159,7 +173,7 @@ export function preimage<T extends object>({
   }: {
     value: unknown
     reading: boolean
-    owner?: string | typeof CARDS
+    owner?: Owner
   }): unknown => {
     if (value === null || typeof value !== 'object') {
       return value
