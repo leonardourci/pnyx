@@ -1,4 +1,14 @@
+import { realpathSync, symlinkSync } from 'node:fs'
+import { join } from 'node:path'
+import { hydraEvent } from '#hydra/hydra.ts'
+import type { QueryFn } from '#workers/claude.ts'
+import { planTaskChange } from '#tasks/plans.ts'
+import { declareTask } from '#tasks/declarations.ts'
+import { readEvents } from '#app/event-log.ts'
+import { withWriter } from '#app/writer.ts'
+import { decidePush } from '#tasks/push.ts'
 import assert from 'node:assert/strict'
+import { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mock } from 'node:test'
 import { commands } from '#app/cli.ts'
@@ -155,4 +165,521 @@ try {
 } finally {
   host.close()
   mock.timers.reset()
+}
+
+for (const ending of [
+  'done',
+  'archive',
+  'release',
+  'idle-release',
+  'idle',
+  'starting',
+  'opening',
+]) {
+  const worker = claudeNative()
+  let childPid: number | undefined
+
+  const query: QueryFn = ({ ...request }) => {
+    assert.ok(request.options)
+
+    if (request.options.persistSession !== false) {
+      assert.ok(request.options.spawnClaudeCodeProcess)
+      const child = request.options.spawnClaudeCodeProcess({
+        command: process.execPath,
+        args: [
+          '-e',
+          'setInterval(() => {}, 1000)',
+        ],
+        cwd: process.env.HOME,
+        env: process.env,
+        signal: new AbortController().signal,
+      })
+      assert.ok(child instanceof ChildProcess)
+      childPid = child.pid
+    }
+
+    return worker.query(request)
+  }
+
+  const taskHost = createHost({
+    hydraId,
+    query,
+    changed: () => {},
+    wakeDelay: QUIET_HOST_MS,
+  })
+  const task = withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const created = planTaskChange({
+        hydraId,
+        landing: new Map(),
+        state: writer.state,
+        operation: {
+          op: 'task.create',
+          key: `worker-${ending}`,
+          title: 'Worker fixture',
+        },
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in created)
+      writer.append({ event: created.event })
+
+      if (ending !== 'starting') {
+        const decision = decidePush({
+          state: writer.state,
+          key: `worker-${ending}`,
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: `worker-${ending}`,
+              host: 'pnyx',
+              cwd: process.env.HOME,
+            },
+          },
+          meta: {
+            actor: 'cli',
+            at: new Date().toISOString(),
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      }
+
+      return Object.values(writer.state.cards).find(card => card.key === `worker-${ending}`)!
+    },
+  })
+
+  try {
+    if (ending === 'starting') {
+      const alias = join(
+        process.env.HOME!,
+        'start-alias',
+      )
+      symlinkSync(
+        process.env.HOME!,
+        alias,
+        'dir',
+      )
+      const start = taskHost.start({
+        task: task.id,
+        prompt: 'Work',
+        folder: `${alias}/./`,
+        settings: { provider: 'claude-code' },
+        actor: 'cli',
+        id: 'pending-start',
+      })
+      assert.deepEqual(
+        await taskHost.release({
+          task: task.id,
+          permanent: true,
+        }),
+        { busy: 'starting' },
+        'a permanent release refuses cleanup before a pending start settles',
+      )
+      await start
+      assert.equal(
+        loadHydra({ hydraId }).state.cards[task.id]?.agent?.cwd,
+        realpathSync(process.env.HOME!),
+      )
+    } else {
+      taskHost.send({
+        card: task.id,
+        text: 'Work',
+        actor: 'cli',
+        direct: true,
+        inputId: `input-${ending}`,
+      })
+
+      if (ending === 'opening') {
+        assert.deepEqual(
+          await taskHost.release({
+            task: task.id,
+            permanent: true,
+          }),
+          { busy: 'starting' },
+          'a permanent release refuses cleanup before a lazy opening settles',
+        )
+      }
+    }
+
+    await settle({
+      what: 'worker input',
+      check: () => worker.incoming.length === 1,
+    })
+    assert.ok(childPid)
+    const pid = childPid
+    assert.equal(
+      process.kill(
+        -childPid,
+        0,
+      ),
+      true,
+    )
+
+    if (ending === 'idle-release') {
+      worker.send({
+        message: {
+          ...recordedResult,
+          uuid: randomUUID(),
+          user_message_uuid: worker.incoming[0]!.uuid,
+          queued_turn_count: 0,
+        },
+      })
+      await settle({
+        what: 'worker completion',
+        check: () => worker.delivered() === 1,
+      })
+      assert.deepEqual(
+        await taskHost.release({ task: task.id }),
+        { released: 1 },
+      )
+      assert.equal(
+        process.kill(
+          -childPid,
+          0,
+        ),
+        true,
+        'ordinary release preserves detached work',
+      )
+      await taskHost.release({
+        task: task.id,
+        permanent: true,
+      })
+    } else if (ending === 'idle') {
+      mock.timers.enable({ apis: ['setTimeout'] })
+
+      try {
+        worker.send({
+          message: {
+            ...recordedResult,
+            uuid: randomUUID(),
+            user_message_uuid: worker.incoming[0]!.uuid,
+            queued_turn_count: 0,
+          },
+        })
+        await settle({
+          what: 'worker turn finishes',
+          check: () => loadHydra({ hydraId }).state.cards[task.id]?.sessionActivity === 'finished',
+        })
+        mock.timers.tick(IDLE_MS)
+        await settle({
+          what: 'idle worker closes',
+          check: () => worker.closed(),
+        })
+      } finally {
+        mock.timers.reset()
+      }
+
+      assert.equal(
+        process.kill(
+          -childPid,
+          0,
+        ),
+        true,
+        'idle closure preserves detached work',
+      )
+      await taskHost.release({
+        task: task.id,
+        permanent: true,
+      })
+    } else if (ending === 'release' || ending === 'starting' || ending === 'opening') {
+      assert.deepEqual(
+        await taskHost.release({ task: task.id }),
+        { busy: 'mid-turn' },
+      )
+      assert.deepEqual(
+        await taskHost.release({
+          task: task.id,
+          permanent: true,
+        }),
+        { released: 1 },
+      )
+    } else {
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          const decision = ending === 'archive' ? hydraEvent({
+            state: writer.state,
+            cardId: task.id,
+            change: {
+              type: 'task.visibility',
+              data: {
+                before: false,
+                after: true,
+                automatic: false,
+              },
+            },
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          }) : declareTask({
+            state: writer.state,
+            ref: task.id,
+            status: 'done',
+            note: 'Complete',
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in decision)
+          writer.append({ event: decision.event })
+        },
+      })
+      const state = loadHydra({ hydraId }).state
+      const card = state.cards[task.id]!
+      assert.equal(
+        ending === 'archive' ? card.hidden : card.status?.state === 'done',
+        true,
+      )
+      taskHost.reconcile({ state })
+    }
+
+    await settle({
+      what: `${ending} closes worker`,
+      check: () => worker.closed(),
+    })
+    await settle({
+      what: `${ending} reaps worker group`,
+      check: () => {
+        try {
+          process.kill(
+            -pid,
+            0,
+          )
+
+          return false
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+
+          if (code === 'EPERM') {
+            return false
+          }
+
+          assert.equal(
+            code,
+            'ESRCH',
+          )
+
+          return true
+        }
+      },
+    })
+
+    if (ending === 'release') {
+      const folder = realpathSync(process.env.HOME!)
+      const alias = join(
+        folder,
+        'released-alias',
+      )
+      symlinkSync(
+        folder,
+        alias,
+        'dir',
+      )
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          const card = writer.state.cards[task.id]!
+          const attached = decidePush({
+            state: writer.state,
+            key: card.key,
+            input: {
+              agent: {
+                ...card.agent!,
+                cwd: `${alias}/./`,
+              },
+            },
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in attached)
+          writer.append({ event: attached.event })
+          const removed = hydraEvent({
+            state: writer.state,
+            cardId: task.id,
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+            change: {
+              type: 'task.copy',
+              data: {
+                before: card.copy ?? null,
+                after: {
+                  path: folder,
+                  project: folder,
+                  via: 'command',
+                  state: 'removed',
+                  reason: 'released while its folder stays available',
+                },
+              },
+            },
+          })
+          assert.ok('event' in removed)
+          writer.append({ event: removed.event })
+        },
+      })
+      assert.throws(
+        () => taskHost.send({
+          card: task.id,
+          text: 'Reply to a released alias',
+          actor: 'cli',
+          direct: true,
+        }),
+        { code: 'FOLDER_MISSING' },
+      )
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          const card = writer.state.cards[task.id]!
+          const attached = decidePush({
+            state: writer.state,
+            key: card.key,
+            input: {
+              agent: {
+                ...card.agent!,
+                cwd: folder,
+              },
+            },
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+          })
+          assert.ok('event' in attached)
+          writer.append({ event: attached.event })
+          const aliased = hydraEvent({
+            state: writer.state,
+            cardId: task.id,
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+            change: {
+              type: 'task.copy',
+              data: {
+                before: card.copy ?? null,
+                after: {
+                  ...card.copy!,
+                  path: alias,
+                },
+              },
+            },
+          })
+          assert.ok('event' in aliased)
+          writer.append({ event: aliased.event })
+        },
+      })
+      assert.throws(
+        () => taskHost.send({
+          card: task.id,
+          text: 'Reply to a copy saved under an alias',
+          actor: 'cli',
+          direct: true,
+        }),
+        { code: 'FOLDER_MISSING' },
+        'a copy saved under an older alias still counts as released',
+      )
+    }
+  } finally {
+    if (childPid) {
+      try {
+        process.kill(
+          -childPid,
+          'SIGKILL',
+        )
+      } catch (error) {
+        assert.equal(
+          (error as NodeJS.ErrnoException).code,
+          'ESRCH',
+          `${ending} child group ${childPid}`,
+        )
+      }
+    }
+
+    taskHost.close()
+  }
+}
+
+console.log('Task completion, archive and release close their hosted sessions')
+
+const recoveryWorker = claudeNative()
+const recoveryHost = createHost({
+  hydraId,
+  query: recoveryWorker.query,
+  changed: () => {},
+  wakeDelay: QUIET_HOST_MS,
+})
+
+try {
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const created = planTaskChange({
+        hydraId,
+        landing: new Map(),
+        state: writer.state,
+        operation: {
+          op: 'task.create',
+          key: 'completed-before-restart',
+          title: 'Completed worker fixture',
+        },
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in created)
+      writer.append({ event: created.event })
+      const started = decidePush({
+        state: writer.state,
+        key: 'completed-before-restart',
+        input: {
+          activity: 'working',
+          agent: {
+            provider: 'claude-code',
+            sessionId: 'completed-before-restart',
+            host: 'pnyx',
+            cwd: process.env.HOME,
+          },
+        },
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in started)
+      writer.append({ event: started.event })
+      const task = writer.state.keys['completed-before-restart']!
+      const completed = declareTask({
+        state: writer.state,
+        ref: task,
+        status: 'done',
+        note: 'Complete',
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in completed)
+      writer.append({ event: completed.event })
+    },
+  })
+  const turn = readEvents({ hydraId }).findLast(event => event.type === 'card.pushed' && event.data.agent?.sessionId === 'completed-before-restart' && event.data.activity === 'working')!
+  assert.ok(turn)
+  await recoveryHost.recover()
+  assert.equal(
+    `resume:${turn.seq}` in loadHydra({ hydraId }).state.eventIds,
+    false,
+    'restart must not resume a completed worker',
+  )
+} finally {
+  recoveryHost.close()
 }

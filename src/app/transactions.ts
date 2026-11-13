@@ -24,12 +24,22 @@ export function transactionReceipt({
   id,
   digest,
   migrate = true,
+  eventIds,
 }: {
   hydraId: string
   id: string
   digest: string
   migrate?: boolean
+  // The Hydra's known event ids: an id it lacks was never used, so the whole log need not be read.
+  eventIds?: Record<string, unknown>
 }): Output | undefined {
+  if (eventIds && !Object.hasOwn(
+    eventIds,
+    id,
+  )) {
+    return undefined
+  }
+
   const log = readLog({
     dir: hydraDir({
       hydraId,

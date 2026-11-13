@@ -212,6 +212,7 @@ export type AskPermission = ({
 } & Pick<PermissionRequest, 'questions' | 'form'>) => Promise<PermissionDecision>
 
 export interface HostedSession {
+  toolsRevision?: string
   id: string
   path?: string
   run({
@@ -307,6 +308,13 @@ export async function hydraFastReaches({
 }
 
 export interface Provider {
+  toolCatalog({
+    cwd,
+    env,
+  }: {
+    cwd: string
+    env: NodeJS.ProcessEnv
+  }): Promise<string[]>
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({
@@ -334,6 +342,7 @@ export interface Provider {
     signal,
     instructions,
     outputSchema,
+    capabilities,
     allow,
     context,
     spawned,
@@ -341,6 +350,7 @@ export interface Provider {
     cwd: string
     instructions?: string
     outputSchema?: Record<string, unknown>
+    capabilities?: string[]
     toolScope?: 'routine'
     // Live state the session gets when it starts or resumes and again after each compaction.
     context?({ compacted }: { compacted?: boolean }): Promise<string>

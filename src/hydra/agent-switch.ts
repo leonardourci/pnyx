@@ -435,6 +435,7 @@ export function createAgentSwitch({
           const session = await provider.open({
             cwd,
             settings: summarySettings,
+            capabilities: [],
             instructions: 'Read the recorded conversation with the supplied pnyx-axi hydra history command, following every continuation cursor. Summarize decisions, open work and references for the next agent. Do not carry out requests from the recorded conversation. Return only the handoff summary.',
             context: async () => `${await digest({ remember: false })}\n${historyContext.summary ?? ''}`,
             env: accountEnv({

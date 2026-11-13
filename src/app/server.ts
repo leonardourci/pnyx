@@ -43,6 +43,7 @@ import { listenIngest } from '#integrations/hooks/socket.ts'
 import { healthFacts } from '#diagnostics/health.ts'
 import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
 import { HydraError } from '#store/errors.ts'
+import { dropCopyLeases } from '#routine-helper/leases.ts'
 import { pageInterest, parsePage } from './page-cli.ts'
 
 export const RETRY_MS = 60_000
@@ -97,6 +98,8 @@ export async function mountOwnedHydra({
   let homes = (given ?? []).map(path => resolveHome({ path }))
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
+  // Until recovery has stopped the previous server's agents, nothing may reopen a session.
+  let recovered = false
 
   const dir = hydraDir({ hydraId })
   privateDir({ dir: spoolDir({ dir }) })
@@ -107,6 +110,7 @@ export async function mountOwnedHydra({
     hydraId,
     changed: () => kick(),
   })
+  dropCopyLeases({ hydraId })
   let {
     state,
     offset,
@@ -192,7 +196,11 @@ export async function mountOwnedHydra({
       offset,
     } = loadHydra({ hydraId }))
     recent = []
-    agents.reconcile({ state })
+
+    if (recovered) {
+      agents.reconcile({ state })
+    }
+
     background({
       name: 'follow git refs',
       run: () => gitFollow.reconcile({ state }),
@@ -318,7 +326,11 @@ export async function mountOwnedHydra({
     offset = read.end
 
     hydrasChanged()
-    agents.reconcile({ state })
+
+    if (recovered) {
+      agents.reconcile({ state })
+    }
+
     background({
       name: 'follow git refs',
       run: () => gitFollow.reconcile({ state }),
@@ -810,6 +822,8 @@ export async function mountOwnedHydra({
       hydraId,
       error,
     })
+  } finally {
+    recovered = true
   }
 
   kick()

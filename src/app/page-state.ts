@@ -105,6 +105,8 @@ const PAGE_REACH = {
   'chat.message': 'cards only',
   'task.launched': 'shown card',
   'task.permission': 'shown card',
+  'task.tools': 'shown card',
+  'task.tools-applied': 'shown card',
   'task.project': 'shown card',
   'task.reminder': 'shown card',
   'task.reminder-due': 'every tab',

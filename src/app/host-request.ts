@@ -1,3 +1,5 @@
+import { requireCopyAvailable } from '#projects/copy-lease.ts'
+import { toolNames } from '#workers/tools.ts'
 import type { Host, UsageInputs } from './host-types.ts'
 import { isHelper, taskLease } from '#routine-helper/leases.ts'
 import { HydraError } from '#store/errors.ts'
@@ -74,8 +76,58 @@ export async function hostRequestUnlocked({
         now: body.now === true,
       })
 
+    case 'tool-catalog': {
+      const folder = field({
+        body,
+        name: 'folder',
+        optional: true,
+      })
+
+      if (folder !== undefined && !isAbsolute(folder)) {
+        throw new HydraError({
+          message: 'folder must be an absolute path',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      return {
+        tools: await host.toolCatalog({
+          task: field({
+            body,
+            name: 'task',
+          })!,
+          harness: field({
+            body,
+            name: 'harness',
+            optional: true,
+          }),
+          account: field({
+            body,
+            name: 'account',
+            optional: true,
+          }),
+          folder,
+        }),
+      }
+    }
+
+    case 'tools-changed': {
+      const failed = host.toolsChanged({
+        task: field({
+          body,
+          name: 'task',
+        })!,
+      })
+
+      return failed ? {
+        applied: `deferred: ${failed.message}`,
+        help: failed instanceof HydraError ? failed.help : [],
+      } : { applied: 'at the next safe turn boundary' }
+    }
+
     case 'release':
       return host.release({
+        permanent: body.permanent === true,
         task: field({
           body,
           name: 'task',
@@ -103,6 +155,16 @@ export async function hostRequestUnlocked({
       })
 
     case 'start': {
+      if (body.tools !== undefined && (!Array.isArray(body.tools) || !body.tools.every(name => typeof name === 'string'))) {
+        throw new HydraError({
+          message: 'tools must be a list of capability names',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      const tools = body.tools === undefined ? undefined : toolNames({
+        names: body.tools as string[],
+      })
       const folder = field({
         body,
         name: 'folder',
@@ -206,6 +268,7 @@ export async function hostRequestUnlocked({
       }
 
       return host.start({
+        tools,
         dispatch,
         task,
         prompt: field({
@@ -451,6 +514,11 @@ export async function hostRequest({
         code: 'MAIN_ONLY',
       })
     }
+
+    requireCopyAvailable({
+      hydraId: host.hydraId,
+      task: card.id,
+    })
 
     release = taskLease({
       hydraId: host.hydraId,
