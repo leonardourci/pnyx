@@ -1,7 +1,8 @@
 import type { HydraState } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
-import { readFileSync, renameSync } from 'node:fs'
+import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { basename } from 'node:path'
+import { threadId } from 'node:worker_threads'
 import { snapshotPath, writeDurably } from '#store/storage.ts'
 import { log } from './diagnostics.ts'
 
@@ -41,30 +42,63 @@ export function writeSnapshot({
   dir: string
   state: HydraState
   offset: number
-}): void {
+}): {
+  bytes: number
+  ms: number
+  eventSeq: number
+} {
   const started = performance.now()
-  const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
+  const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}-${threadId}`
   const data = Buffer.from(JSON.stringify({
     v: EVENT_VERSION,
     rules: RULES,
     offset,
     state,
   } satisfies Snapshot))
-  writeDurably({
-    path: tmp,
-    data,
-    flag: 'w',
-  })
-  renameSync(
-    tmp,
-    snapshotPath({ dir }),
-  )
-  log({
-    operation: 'snapshot.write',
-    // A Hydra's folder is named by its id.
-    hydraId: basename(dir),
+
+  try {
+    writeDurably({
+      path: tmp,
+      data,
+      flag: 'w',
+    })
+    renameSync(
+      tmp,
+      snapshotPath({ dir }),
+    )
+  } catch (error) {
+    try {
+      rmSync(
+        tmp,
+        { force: true },
+      )
+    } catch (cleanupError) {
+      log({
+        level: 'error',
+        operation: 'snapshot.cleanup',
+        hydraId: basename(dir),
+        error: cleanupError,
+      })
+
+      // A worker thread's log line reaches only stderr, so the cause carries it to the thread that logs to the files.
+      if (error instanceof Error && error.cause === undefined) {
+        error.cause = cleanupError
+      }
+    }
+
+    throw error
+  }
+
+  const result = {
     eventSeq: state.seq,
     bytes: data.length,
     ms: performance.now() - started,
+  }
+  log({
+    operation: 'snapshot.write',
+    hydraId: basename(dir),
+    ...result,
   })
+
+  return result
 }

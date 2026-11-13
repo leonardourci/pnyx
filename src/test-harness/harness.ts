@@ -20,6 +20,7 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { scriptPullRequest, type FakePullRequest } from './github.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
+import { keepChromeOffKeychain } from './chrome-keychain.ts'
 import { upgradeRepo } from './upgrade-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
 import type { Settings } from '#settings/model.ts'
@@ -422,6 +423,8 @@ export function scenarioGroup({
       ),
     },
   )
+
+  keepChromeOffKeychain()
 
   // A worker or Hydra running these tests must not lend them its identity.
   for (const name of [
