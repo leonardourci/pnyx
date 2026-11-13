@@ -336,7 +336,7 @@ export function hydraSessions({ state }: { state: HydraState }): HydraSession[] 
 }
 
 // The messages of every session Hydra has had, read from their native transcripts. A
-// transcript last written before after holds nothing later, so it is skipped.
+// transcript last written before `after` holds nothing later, so it is skipped.
 export function hydraEntries({
   state,
   after,

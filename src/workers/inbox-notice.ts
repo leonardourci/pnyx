@@ -26,7 +26,7 @@ export function notificationReceipt({ result }: NotificationResult): ReplyState 
 const NOTICE = 'Pnyx steering inbox has pending instruction IDs '
 const MESSAGES = /^New instructions for task \S+, in order \(Pnyx inbox IDs /
 
-// Text Pnyx itself sent a worker to steer it, not words from the owner.
+// Text Pnyx sent a worker to steer it; the instructions it carries are already recorded as replies.
 export const steeringText = ({ text }: { text: string }) =>
   text.startsWith(NOTICE) || MESSAGES.test(text)
 
