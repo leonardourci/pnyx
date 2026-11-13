@@ -1,3 +1,4 @@
+import { copySettling } from '#projects/copy-lease.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
 import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
 import { notificationReceipt } from './inbox-notice.ts'
@@ -462,6 +463,18 @@ export async function sendReply({
       card: queued.card,
       reply: queued.reply,
       state: queued.state,
+      sent: false,
+    }
+  }
+
+  if (queued.steering && copySettling({
+    hydraId,
+    task: queued.card,
+  })) {
+    return {
+      card: queued.card,
+      reply: queued.reply,
+      state: 'queued',
       sent: false,
     }
   }

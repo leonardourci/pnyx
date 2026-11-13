@@ -18,6 +18,19 @@ export type UsageInputs = {
 export interface Host {
   diagnostics(): Pick<RuntimeHealth, 'sessions' | 'helper'>
   hydraId: string
+  // The reopen failure, when the grant could not reach its agent now.
+  toolsChanged({ task }: { task: string }): Error | undefined
+  toolCatalog({
+    task,
+    harness,
+    account,
+    folder,
+  }: {
+    task: string
+    harness?: string
+    account?: string
+    folder?: string
+  }): Promise<string[]>
   catalogCommands({
     card,
     provider,
@@ -102,11 +115,13 @@ export interface Host {
     reason,
     replacement,
     dispatch,
+    tools,
   }: {
     task: string
     prompt: string
     folder?: string
     dispatch?: DispatchChoice
+    tools?: string[]
     replacement?: string
     settings: AgentSettings
     id: string
@@ -174,7 +189,13 @@ export interface Host {
   }): Record<string, unknown>
   reconcile({ state }: { state: HydraState }): void
   // Ends a task's idle live session before the task moves to another Hydra; reports busy while it starts or is mid-turn.
-  release({ task }: { task: string }): Record<string, unknown>
+  release({
+    task,
+    permanent,
+  }: {
+    task: string
+    permanent?: boolean
+  }): Promise<Record<string, unknown>>
   // Queues a check turn for a hosted Hydra once a change it tracks lands at seq on that card.
   wake({
     seq,
@@ -242,6 +263,8 @@ export interface Live {
   sentAt?: number
   // A setting this process could not take: it is replaced once its turn is over.
   stale?: boolean
+  toolResume?: string
+  toolsRevision?: string
   // The owner stopped the running turn, so a new message waits for it to end.
   stopping?: boolean
   idle?: ReturnType<typeof setTimeout>

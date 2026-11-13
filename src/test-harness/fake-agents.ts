@@ -438,7 +438,13 @@ export function replayClaude({ hydra }: { hydra(): string }) {
 
 // An app-server in this process: each request gets its recorded result, followed by the notifications
 // recorded after it, under the session's own thread id. thread/resume answers as thread/start did.
-export function replayCodex({ hydra }: { hydra(): string }) {
+export function replayCodex({
+  hydra,
+  configuration = { mcp_servers: { 'unrelated.server': { command: 'synthetic-mcp' } } },
+}: {
+  hydra(): string
+  configuration?: Record<string, unknown>
+}) {
   const sessions: AgentSession[] = []
   const turns = plannedTurns({ hydra })
   // refuse: a method answered with an error while set, as a harness that cannot open a thread; refused counts them.
@@ -602,7 +608,7 @@ export function replayCodex({ hydra }: { hydra(): string }) {
           send({
             message: {
               id: message.id,
-              result: { config: { mcp_servers: { 'unrelated.server': { command: 'synthetic-mcp' } } } },
+              result: { config: configuration },
             },
           })
 

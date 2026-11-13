@@ -1,3 +1,4 @@
+import { claudeTools } from './claude-tools.ts'
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
 import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
@@ -152,7 +153,19 @@ export const transcriptPath = ({
     `${session}.jsonl`,
   )
 
-function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options> {
+function sdkOptions({
+  settings,
+  enabledPlugins,
+}: {
+  settings: AgentSettings
+  enabledPlugins: Record<string, boolean>
+}): Partial<Options> {
+  const sessionSettings: Settings = { enabledPlugins }
+
+  if (settings.fast !== undefined) {
+    sessionSettings.fastMode = settings.fast === 'true'
+  }
+
   const {
     model,
     effort,
@@ -161,7 +174,7 @@ function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options>
 
   return {
     ...(model ? { model } : {}),
-    ...(settings.fast !== undefined ? { settings: { fastMode: settings.fast === 'true' } } : {}),
+    settings: sessionSettings,
     ...(effort && EFFORTS.includes(effort) ? { effort: effort as EffortLevel } : {}),
     ...(mode && MODES.includes(mode) ? { permissionMode: mode as PermissionMode } : {}),
     // A running session can only switch to bypass permissions if it started allowed to.
@@ -222,6 +235,15 @@ export function claudeProvider({
 }): Provider {
   return {
     compact: true,
+    async toolCatalog({
+      cwd,
+      env,
+    }) {
+      return (await claudeTools({
+        cwd,
+        env,
+      })).catalog
+    },
     async models({
       cwd,
       env,
@@ -232,6 +254,10 @@ export function claudeProvider({
         () => abortController.abort(),
         CATALOG_TIMEOUT_MS,
       ).unref()
+      const restricted = await claudeTools({
+        cwd,
+        env,
+      })
       const catalog = run({
         prompt: (async function* () {})(),
         options: {
@@ -240,6 +266,9 @@ export function claudeProvider({
           abortController,
           pathToClaudeCodeExecutable: 'claude',
           persistSession: false,
+          strictMcpConfig: true,
+          mcpServers: {},
+          settings: { enabledPlugins: restricted.enabledPlugins },
           settingSources: [
             'user',
             'project',
@@ -284,10 +313,16 @@ export function claudeProvider({
       instructions,
       outputSchema,
       toolScope,
+      capabilities: grants = [],
       allow,
       context,
       spawned,
     }) {
+      const restricted = await claudeTools({
+        cwd,
+        env,
+        grants,
+      })
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
         cwd,
@@ -397,12 +432,14 @@ export function claudeProvider({
             type: 'preset',
             preset: 'claude_code',
           }
-          const capabilities: Pick<Options, 'skills' | 'strictMcpConfig' | 'mcpServers' | 'agents'> = {}
+          const capabilities: Pick<Options, 'skills' | 'strictMcpConfig' | 'mcpServers' | 'agents'> = {
+            strictMcpConfig: true,
+            mcpServers: restricted.mcpServers,
+          }
 
           if (toolScope === 'routine') {
             tools = ['Bash']
             capabilities.skills = []
-            capabilities.strictMcpConfig = true
             capabilities.mcpServers = {}
             capabilities.agents = {}
           }
@@ -432,6 +469,7 @@ export function claudeProvider({
                 ...(instructions ? { append: instructions } : {}),
               },
               tools,
+              plugins: restricted.localPlugins,
               ...capabilities,
               ...(allow?.length ? { allowedTools: allow.map(command => `Bash(${command}:*)`) } : {}),
               // After a compaction, even mid-turn, the context comes back.
@@ -506,7 +544,10 @@ export function claudeProvider({
                   : { behavior: 'allow' }
               },
               env,
-              ...sdkOptions({ settings }),
+              ...sdkOptions({
+                settings,
+                enabledPlugins: restricted.enabledPlugins,
+              }),
             },
           })
 

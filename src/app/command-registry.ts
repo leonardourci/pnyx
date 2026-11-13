@@ -60,6 +60,7 @@ export const COMMAND_REGISTRY = {
     page: true,
     worker: [
       'show',
+      'tools',
       'refresh-links',
       'history',
       'status',
