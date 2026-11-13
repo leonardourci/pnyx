@@ -134,6 +134,19 @@ test(
       }).cards[HYDRA_CARD]?.asks?.find(ask => ask.id === id)?.closed,
       closed,
     )
+    await assert.rejects(
+      l.task({
+        args: [
+          'reopen-question',
+          HYDRA_CARD,
+          id,
+          '--answer',
+          closed!.id,
+        ],
+        actor: 'web',
+      }),
+      /only the owner can undo/,
+    )
   },
 )
 
