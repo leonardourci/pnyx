@@ -588,6 +588,46 @@ test(
           ])).text),
           /Keep the sample input unchanged/,
         )
+        const earlier = ({ thread }: {
+          thread: {
+            entries: {
+              reference?: string
+              text: string
+            }[]
+          }
+        }) =>
+          thread.entries.find(entry => entry.reference === reference.id)?.text
+        assert.equal(
+          earlier({
+            thread: readThread({
+              hydraId: 'fixture',
+              state: state(),
+              card: state().cards[HYDRA_CARD]!,
+              homes: [],
+            }),
+          }),
+          reference.text,
+          'Hydra\'s chat pages into its earlier session',
+        )
+        const chat = await commands.task([
+          'chat',
+          HYDRA_CARD,
+          '--session',
+          'claude-code:main-original',
+          '--hydra',
+          'fixture',
+        ]) as unknown as {
+          thread: {
+            entries: {
+              reference?: string
+              text: string
+            }[]
+          }
+        }
+        assert.equal(
+          earlier({ thread: chat.thread }),
+          reference.text,
+        )
       } else {
         await assert.rejects(
           async () => lookup({ id: reference.id }),

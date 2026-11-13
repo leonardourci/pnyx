@@ -36,6 +36,7 @@ import { readEvents } from './event-log.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { askRows, askCommand } from '#tasks/asks.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { moveTask } from '#tasks/move.ts'
 import { requestEnv } from './request-context.ts'
@@ -726,7 +727,10 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       ref: String(values.session),
     }) : undefined
 
-    if (session && !taskSessions({
+    const hydraSession = task.id === HYDRA_CARD && session !== undefined
+      && Boolean(state.hydraSessions?.includes(session.id))
+
+    if (session && !hydraSession && !taskSessions({
       hydraId,
       ids: new Set([task.id]),
     }).has(session.id)) {

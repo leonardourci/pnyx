@@ -499,7 +499,7 @@ export function latestMessage({
 
 // A cursor carries each sources position, so paging cannot skip transcript
 // chunks when reply receipts also fill the latest page.
-export const THREAD_CURSOR = /^n(\d+:\d+)?;r(\d+:\d+)?$/
+export const THREAD_CURSOR = /^n(?:(\d+)\.)?(\d+:\d+)?;r(\d+:\d+)?$/
 type LoggedMessage = HydraEvent
 const replyLogs = new Map<string, {
   end: number
@@ -588,6 +588,233 @@ export function threadAction({
     && task !== undefined && !isManagedTask({ card: task })
 }
 
+type Candidate = {
+  item: ThreadEntry
+  native?: string
+  reply?: string
+}
+
+// A transcript a thread pages through, newest first. index names an earlier Hydra session in
+// the cursor; a task, or a session the reader chose, has one source without one.
+type ThreadSource = {
+  session?: string
+  path?: string
+  index?: number
+}
+
+function threadSources({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}): ThreadSource[] {
+  const session = cardSessionId({ card })
+  const hydra = state.cards[HYDRA_CARD]
+  const current = card.id === HYDRA_CARD && session !== undefined
+    && session === (hydra && cardSessionId({ card: hydra }))
+
+  if (!current) {
+    return [
+      {
+        session,
+        path: threadPath({ card }),
+      },
+    ]
+  }
+
+  const earlier = hydraSessions({ state }).filter(item => item.session !== session)
+
+  return [
+    {
+      session,
+      path: threadPath({ card }),
+    },
+    ...earlier.map(item => ({
+      session: item.session,
+      path: threadPath({ card: { agent: item.agent } }),
+      index: state.hydraSessions!.indexOf(item.session),
+    })).reverse(),
+  ]
+}
+
+// The entries of one transcript before cursor, read back from its end in doubling windows
+// until wanted entries turn up, the file starts or MAX_BYTES is read. start is where the read
+// stopped, 0 at the start of the file.
+function readNative({
+  path,
+  session,
+  cursor,
+  wanted,
+  tools,
+  thinking,
+  boundaries,
+  excludedAt,
+  renamed,
+}: {
+  path: string
+  session?: string
+  cursor?: string
+  wanted: number
+  tools: boolean
+  thinking: boolean
+  boundaries: boolean
+  excludedAt: string[]
+  renamed: boolean
+}): {
+  found: Candidate[]
+  start: number
+} {
+  let fd: number | undefined
+
+  try {
+    fd = openSync(
+      path,
+      'r',
+    )
+    const stat = fstatSync(fd)
+
+    if (!stat.isFile()) {
+      throw new Error('not a regular file')
+    }
+
+    const [
+      offsetText,
+      itemText,
+    ] = (cursor ?? `${stat.size}`).split(':')
+    const beforeOffset = Number(offsetText)
+    const beforeItem = itemText === undefined ? undefined : Number(itemText)
+    let end = Math.min(
+      beforeOffset,
+      stat.size,
+    )
+
+    // Include the record containing a chunk cursor, then exclude chunks at or
+    // after that ordinal below. A single read stays within the 10 MB window.
+    if (beforeItem !== undefined) {
+      const tail = Buffer.alloc(Math.min(
+        MAX_BYTES,
+        stat.size - end,
+      ))
+      readSync(
+        fd,
+        tail,
+        0,
+        tail.length,
+        end,
+      )
+      const newline = tail.indexOf(10)
+      end += newline < 0 ? tail.length : newline + 1
+    }
+
+    let start = end, parsed = end
+    let found: Candidate[] = []
+
+    // Each doubling parses only the bytes before the lines already parsed.
+    for (let size = 64 * 1024; ; size *= 2) {
+      start = Math.max(
+        0,
+        end - Math.min(
+          size,
+          MAX_BYTES,
+        ),
+      )
+      const buf = Buffer.alloc(parsed - start)
+      readSync(
+        fd,
+        buf,
+        0,
+        buf.length,
+        start,
+      )
+      const first = start ? buf.indexOf(10) + 1 : 0
+      const window: Candidate[] = []
+      let position = first
+
+      while (position >= 0 && position < buf.length) {
+        const newline = buf.indexOf(
+          10,
+          position,
+        )
+
+        if (newline < 0) {
+          break
+        }
+
+        try {
+          const offset = start + position
+          const record = JSON.parse(buf.subarray(
+            position,
+            newline,
+          ).toString())
+
+          const decoded = readTranscriptRecord({ record })
+
+          if (beforeItem !== undefined && offset === beforeOffset && decoded.at !== undefined) {
+            excludedAt.push(decoded.at)
+          }
+
+          // Hidden traces must not use up the conversation page.
+          transcriptEntries({
+            parsed: decoded,
+            offset,
+            tools,
+            thinking,
+            boundaries,
+          }).forEach((
+            item,
+            index,
+          ) => {
+            if (
+              beforeItem === undefined
+              || offset < beforeOffset
+              || (offset === beforeOffset && index < beforeItem)
+            ) {
+              window.push({
+                native: `${offset}:${index}`,
+                item: {
+                  ...item,
+                  ...(renamed && session ? {
+                    id: `${session}:${item.id}`,
+                    ...(item.messageId ? { messageId: `${session}:${item.messageId}` } : {}),
+                  } : {}),
+                  reference: session ? messageReference({
+                    session,
+                    id: item.id,
+                    messageId: item.messageId,
+                  }) : undefined,
+                  ...(session ? { session } : {}),
+                },
+              })
+            }
+          })
+        } catch { /* Unsupported or incomplete records are not messages. */ }
+
+        position = newline + 1
+      }
+
+      found = window.concat(found)
+
+      if (first || !start) {
+        parsed = start + first
+      }
+
+      if (!start || found.length >= wanted || size >= MAX_BYTES) {
+        break
+      }
+    }
+
+    return {
+      found,
+      start,
+    }
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd)
+    }
+  }
+}
+
 type ThreadRead = {
   hydraId: string
   state: HydraState
@@ -650,171 +877,84 @@ function readThreadPage(
     watching: 'unknown',
   }
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
-  const nativeCursor = match?.[1], replyCursor = match?.[2]
+  const sourceCursor = match?.[1] === undefined ? undefined : Number(match[1])
+  const nativeCursor = match?.[2], replyCursor = match?.[3]
   const excludedAt: string[] = []
-  let candidates: {
-    item: ThreadEntry
-    native?: string
-    reply?: string
-  }[] = []
+  let candidates: Candidate[] = []
   let earlierNative = false, emptyNativeCursor: string | undefined
-  const path = threadPath({ card })
   const selected = traces({
     view: effectiveView({ state }),
     card: card.id,
   })
   const tools = card.id === HYDRA_CARD || selected.tools
   const thinking = selected.thinking
+  const sources = threadSources({
+    state,
+    card,
+  })
+  const named = sources.findIndex(source => source.index === sourceCursor)
+  // A cursor naming a session this thread no longer pages reads no transcript.
+  const first = sourceCursor === undefined ? 0 : named < 0 ? sources.length : named
 
-  if (path) {
-    let fd: number | undefined
+  for (let position = first; position < sources.length; position++) {
+    const source = sources[position]!
+    const current = position === 0
+    const label = source.index === undefined ? '' : `${source.index}.`
+
+    if (!source.path) {
+      if (current) {
+        result.unavailable = 'No supported transcript is recorded for this session.'
+      }
+
+      continue
+    }
+
+    let read: ReturnType<typeof readNative>
 
     try {
-      fd = openSync(
-        path,
-        'r',
-      )
-      const stat = fstatSync(fd)
-
-      if (!stat.isFile()) {
-        throw new Error('not a regular file')
-      }
-
-      const [
-        offsetText,
-        itemText,
-      ] = (nativeCursor ?? `${stat.size}`).split(':')
-      const beforeOffset = Number(offsetText)
-      const beforeItem = itemText === undefined ? undefined : Number(itemText)
-      let end = Math.min(
-        beforeOffset,
-        stat.size,
-      )
-
-      // Include the record containing a chunk cursor, then exclude chunks at or
-      // after that ordinal below. A single read stays within the 10 MB window.
-      if (beforeItem !== undefined) {
-        const tail = Buffer.alloc(Math.min(
-          MAX_BYTES,
-          stat.size - end,
-        ))
-        readSync(
-          fd,
-          tail,
-          0,
-          tail.length,
-          end,
-        )
-        const newline = tail.indexOf(10)
-        end += newline < 0 ? tail.length : newline + 1
-      }
-
-      let start = end, parsed = end
-
-      // Each doubling parses only the bytes before the lines already parsed.
-      for (let size = 64 * 1024; ; size *= 2) {
-        start = Math.max(
-          0,
-          end - Math.min(
-            size,
-            MAX_BYTES,
-          ),
-        )
-        const buf = Buffer.alloc(parsed - start)
-        readSync(
-          fd,
-          buf,
-          0,
-          buf.length,
-          start,
-        )
-        const first = start ? buf.indexOf(10) + 1 : 0
-        const found: typeof candidates = []
-        let cursor = first
-
-        while (cursor >= 0 && cursor < buf.length) {
-          const newline = buf.indexOf(
-            10,
-            cursor,
-          )
-
-          if (newline < 0) {
-            break
-          }
-
-          try {
-            const offset = start + cursor
-            const record = JSON.parse(buf.subarray(
-              cursor,
-              newline,
-            ).toString())
-
-            const decoded = readTranscriptRecord({ record })
-
-            if (beforeItem !== undefined && offset === beforeOffset && decoded.at !== undefined) {
-              excludedAt.push(decoded.at)
-            }
-
-            // Hidden traces must not use up the conversation page.
-            transcriptEntries({
-              parsed: decoded,
-              offset,
-              tools,
-              thinking,
-              boundaries: card.id === HYDRA_CARD,
-            }).forEach((
-              item,
-              index,
-            ) => {
-              if (
-                beforeItem === undefined
-                || offset < beforeOffset
-                || (offset === beforeOffset && index < beforeItem)
-              ) {
-                found.push({
-                  native: `${offset}:${index}`,
-                  item: {
-                    ...item,
-                    reference: session ? messageReference({
-                      session,
-                      id: item.id,
-                      messageId: item.messageId,
-                    }) : undefined,
-                    ...(session ? { session } : {}),
-                  },
-                })
-              }
-            })
-          } catch { /* Unsupported or incomplete records are not messages. */ }
-
-          cursor = newline + 1
-        }
-
-        candidates = found.concat(candidates)
-
-        if (first || !start) {
-          parsed = start + first
-        }
-
-        if (!start || candidates.length >= THREAD_PAGE_LIMIT || size >= MAX_BYTES) {
-          break
-        }
-      }
-
-      earlierNative = start > 0
-
-      if (!candidates.length && start > 0) {
-        emptyNativeCursor = `${start}:0`
-      }
+      read = readNative({
+        path: source.path,
+        session: source.session,
+        cursor: position === first ? nativeCursor : undefined,
+        wanted: THREAD_PAGE_LIMIT - candidates.length,
+        tools,
+        thinking,
+        boundaries: card.id === HYDRA_CARD,
+        excludedAt,
+        // Offsets repeat across transcripts, so an earlier session's entries carry its id.
+        renamed: !current,
+      })
     } catch {
-      result.unavailable = 'The recorded transcript is unavailable.'
-    } finally {
-      if (fd !== undefined) {
-        closeSync(fd)
+      if (current) {
+        result.unavailable = 'The recorded transcript is unavailable.'
       }
+
+      continue
     }
-  } else {
-    result.unavailable = 'No supported transcript is recorded for this session.'
+
+    candidates = [
+      ...read.found.map(candidate => ({
+        ...candidate,
+        native: `${label}${candidate.native}`,
+      })),
+      ...candidates,
+    ]
+
+    if (read.start > 0) {
+      earlierNative = true
+
+      if (!candidates.length) {
+        emptyNativeCursor = `${label}${read.start}:0`
+      }
+
+      break
+    }
+
+    if (candidates.length >= THREAD_PAGE_LIMIT) {
+      earlierNative = position + 1 < sources.length
+
+      break
+    }
   }
 
   const [
@@ -961,8 +1101,10 @@ function readThreadPage(
     })
   }
 
+  const carried = `${sourceCursor === undefined ? '' : `${sourceCursor}.`}${nativeCursor ?? ''}`
+
   if (candidates.length > page.length || earlierNative) {
-    result.older = `n${firstNative ?? emptyNativeCursor ?? nativeCursor ?? ''};r${firstReply ?? replyCursor ?? ''}`
+    result.older = `n${firstNative ?? emptyNativeCursor ?? carried};r${firstReply ?? replyCursor ?? ''}`
   }
 
   return result

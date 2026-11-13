@@ -8,6 +8,7 @@ import { emptyHydra, reduce } from '#app/reducer.ts'
 import { readThread, recordEntries, splitEntry, type ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveReplies } from '#workers/streaming.ts'
+import type { AgentSession } from '#workers/model.ts'
 import { joinMessageParts } from './history.ts'
 
 test(
@@ -383,6 +384,29 @@ test(
     assert.equal(
       wire.conversation!.folds.reply!.notes[0]!.text,
       'Checking now',
+    )
+    // After a switch to Claude, an earlier Codex session's instructions stay hidden.
+    state.cards[HYDRA_CARD]!.agent = {
+      provider: 'claude-code',
+      sessionId: 'current',
+    }
+    state.sessions = { 'codex:fixture': { agent: { provider: 'codex' } } as AgentSession }
+    assert.equal(
+      hydraThreadView({
+        state,
+        page: {
+          ...page,
+          entries: [
+            {
+              ...page.entries[0]!,
+              session: 'codex:fixture',
+            },
+          ],
+        },
+        tools: true,
+        thinking: true,
+      }).entries[0]!.hidden,
+      true,
     )
     const chunks = splitEntry({
       entry: {

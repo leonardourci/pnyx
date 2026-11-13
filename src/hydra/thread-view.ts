@@ -22,9 +22,13 @@ export function hydraThreadView({
 }): ThreadPage & { conversation: NonNullable<ThreadPage['conversation']> } {
   const config = hydraConfig({ state })
   const card = state.cards[HYDRA_CARD]
+  // An earlier session's entries may come from another provider.
+  const provider = ({ session }: { session?: string }) => (session === undefined
+    ? undefined
+    : state.sessions?.[session]?.agent.provider) ?? card?.agent?.provider
   const entries = page.entries.map(entry => injectedInstructions({
     entry,
-    provider: card?.agent?.provider,
+    provider: provider({ session: entry.session }),
   }) ? {
       ...entry,
       hidden: true,
