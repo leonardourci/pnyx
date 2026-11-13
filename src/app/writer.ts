@@ -116,13 +116,6 @@ export function withWriter<T>({
     hydraId,
     migrate,
   })
-  // Leases and locks keep their files in the Hydra's folder, which no other write creates.
-  privateDir({
-    dir: hydraDir({
-      hydraId,
-      migrate,
-    }),
-  })
 
   if (transaction) {
     const previous = transactionReceipt({
@@ -150,7 +143,12 @@ export function withWriter<T>({
       hydraId: id,
       migrate,
     })
-    privateDir({ dir: held.dir })
+    privateDir({
+      dir: hydraDir({
+        hydraId: id,
+        migrate,
+      }),
+    })
     const pending: HydraEvent[] = []
     const committed: (() => void)[] = []
     const touched: Touched = {
