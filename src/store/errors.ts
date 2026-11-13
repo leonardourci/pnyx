@@ -1,3 +1,6 @@
+// What the Postgres worker reports when a conditional write matched another row count.
+export const CONFLICT_CODE = 'PNYX_CONFLICT'
+
 export class HydraError extends Error {
   code: string
   help: string[]

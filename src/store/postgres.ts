@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { MessageChannel, receiveMessageOnPort, Worker, type MessagePort } from 'node:worker_threads'
-import { HydraError } from './errors.ts'
+import { CONFLICT_CODE, HydraError } from './errors.ts'
+import { configuredPostgres } from '#settings/store.ts'
 import { pnyxHome } from './paths.ts'
 
 // Its own entry file, so the worker runs only the connection.
@@ -13,8 +14,6 @@ const WORKER_ENTRY = new URL(
 // A statement the server waits on longer than this has a stuck connection behind it.
 const QUERY_TIMEOUT_MS = 30_000
 const LIVE_DATABASE = 'pnyx'
-// What the worker reports when a conditional write matched another row count.
-export const CONFLICT_CODE = 'PNYX_CONFLICT'
 
 export interface Statement {
   text: string
@@ -126,7 +125,7 @@ export function query({
   rollback?: boolean
   url?: string
 }): Record<string, unknown>[][] {
-  const open = connection({ url })
+  const open = connection({ url: url ?? (configuredPostgres() || undefined) })
   Atomics.store(
     open.signal,
     0,

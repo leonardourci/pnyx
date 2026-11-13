@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   logs: 'on',
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
+  postgresUrl: '',
 }
 
 export function pickView({ view }: { view: SharedView }): SharedView {
@@ -156,6 +157,25 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
   return helper
 }
 
+const POSTGRES_PROTOCOLS = [
+  'postgres:',
+  'postgresql:',
+]
+
+function postgresUrl({ value }: { value: unknown }): string {
+  if (value === '') {
+    return value
+  }
+
+  const url = typeof value === 'string' && URL.canParse(value) ? new URL(value) : undefined
+
+  if (!url || !POSTGRES_PROTOCOLS.includes(url.protocol) || url.pathname.length < 2) {
+    return invalid({ detail: 'postgresUrl takes a postgres:// URL that names its database, or an empty string' })
+  }
+
+  return value as string
+}
+
 export function patchSettings({
   current,
   input,
@@ -234,6 +254,10 @@ export function patchSettings({
     }
 
     next.logDays = days
+  }
+
+  if ('postgresUrl' in patch) {
+    next.postgresUrl = postgresUrl({ value: patch.postgresUrl })
   }
 
   if ('logMaxMB' in patch) {

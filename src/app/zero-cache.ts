@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { handleQueryRequest } from '@rocicorp/zero/server'
 import { mustGetQuery, type ReadonlyJSONValue } from '@rocicorp/zero'
 import { homeDatabase } from '#store/postgres.ts'
+import { configuredPostgres } from '#settings/store.ts'
 import { pnyxHome, privateDir } from '#store/storage.ts'
 import { queries, schema } from '#store/zero-schema.ts'
 import { log } from './diagnostics.ts'
@@ -69,8 +70,14 @@ const zeroTarget = ({ url = '/' }: { url?: string }) => {
   return rest.startsWith('/') ? rest : `/${rest}`
 }
 
-// Host, port and user follow the same PG* variables and defaults as the server's own connection.
+// The postgresUrl setting, or host, port and user from the same PG* variables and defaults as the server's own connection.
 function upstreamUrl(): string {
+  const configured = configuredPostgres()
+
+  if (configured) {
+    return configured
+  }
+
   const host = process.env.PGHOST || 'localhost'
   const port = process.env.PGPORT || DEFAULT_PG_PORT
   const user = encodeURIComponent(process.env.PGUSER || userInfo().username)

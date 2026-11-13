@@ -374,8 +374,11 @@ export function saveSettings({
   })
 }
 
-// The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
-// stays their record, since it also names the database.
+// The Postgres URL set for this home, read without the move from older per-Hydra values, which itself needs Postgres.
+export const configuredPostgres = () => readFolded().settings.postgresUrl
+
+// The page reads the shared settings through Zero, so their newest revision is copied into Postgres, without the URL
+// that may hold a password; the settings log stays their record, since it also names the database.
 export function mirrorSettings({
   settings,
   revision,
@@ -383,6 +386,9 @@ export function mirrorSettings({
   settings: Settings
   revision: number
 }): void {
+  const shown: Partial<Settings> = { ...settings }
+  delete shown.postgresUrl
+
   query({
     statements: [
       {
@@ -390,7 +396,7 @@ export function mirrorSettings({
           do update set revision = excluded.revision, value = excluded.value where settings.revision < excluded.revision`,
         values: [
           revision,
-          JSON.stringify(settings),
+          JSON.stringify(shown),
         ],
       },
     ],
