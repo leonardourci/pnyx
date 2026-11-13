@@ -465,6 +465,23 @@ async function upgrade({
         signal,
       }),
     })
+    // The new build checks Postgres and imports every Hydra still kept in events.jsonl in a transaction it rolls back;
+    // if that fails, the folder goes back and the running server keeps its files.
+    await step({
+      name: 'data',
+      work: () => run({
+        root,
+        command: process.execPath,
+        args: [
+          'dist/cli/pnyx-axi.js',
+          'setup',
+          'postgres',
+          '--check',
+        ],
+        timeout: BUILD_MS,
+        signal,
+      }),
+    })
 
     return ended({
       result: {
@@ -529,7 +546,9 @@ async function rollback({
     ],
   })
 
-  if (failed === 'install' || failed === 'build') {
+  const rebuilt = failed === 'build' || failed === 'data'
+
+  if (failed === 'install' || rebuilt) {
     await pnpm({
       root,
       args: [
@@ -539,7 +558,7 @@ async function rollback({
     })
   }
 
-  if (failed === 'build') {
+  if (rebuilt) {
     await pnpm({
       root,
       args: [
