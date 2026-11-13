@@ -11,6 +11,7 @@ import { project } from '#projects/cli.ts'
 import { withWriter } from '#app/writer.ts'
 import { appendNote } from '#integrations/hooks/harvest.ts'
 import { offerHost } from '#app/server-state.ts'
+import { decideReply } from '#workers/reply-rules.ts'
 
 const INHERITED = [
   'PNYX_HOME',
@@ -501,6 +502,27 @@ test(
         at: new Date().toISOString(),
       }),
     })
+    withWriter({
+      hydraId: 'src',
+      fn: ({ writer }) => {
+        const decision = decideReply({
+          state: writer.state,
+          ref: before.id,
+          data: {
+            reply: 'before-move',
+            state: 'delivered',
+            route: 'pnyx',
+            text: 'Replied before the move',
+          },
+          meta: {
+            actor: 'web',
+            at: new Date().toISOString(),
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      },
+    })
     const working = card({
       hydraId: 'src',
       key: 'ship',
@@ -599,6 +621,17 @@ test(
         'dst',
       ])),
       /Use the shared lock/,
+    )
+    assert.match(
+      JSON.stringify(await task({
+        args: [
+          'chat',
+          before.id,
+          '--hydra',
+          'dst',
+        ],
+      })),
+      /Replied before the move/,
     )
 
     const again = await refusal({ args: move({ id: before.id }) })
