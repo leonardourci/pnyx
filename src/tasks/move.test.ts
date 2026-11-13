@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { refuseEvents } from '#test-harness/database.ts'
+import { refuseEvents, storedHydra } from '#test-harness/database.ts'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,7 +14,6 @@ import { withWriter } from '#app/writer.ts'
 import { appendNote, harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { decidePush } from './push.ts'
 import { offerHost } from '#app/server-state.ts'
-import { readEvents } from '#app/event-log.ts'
 import { decideReply } from '#workers/reply-rules.ts'
 
 const INHERITED = [
@@ -826,73 +825,61 @@ test(
   },
 )
 
-// Runs a move whose source write fails after the target's committed, as a crash between the two would leave it.
-async function cutMove({ id }: { id: string }) {
-  const release = refuseEvents({ type: 'task.moved-out' })
-
-  try {
-    await assert.rejects(
-      task({ args: move({ id }) }),
-      /Postgres: refused task.moved-out/,
-    )
-  } finally {
-    release()
-  }
-
-  // The target's arrival, which the cut left committed.
-  return readEvents({ hydraId: 'dst' }).findLast(event => event.type === 'task.moved-in' && event.cardId === id)
-}
-
 test(
-  'a move cut after the target wrote its line finishes when run again, carrying source edits made since, and refuses once the target copy changed',
+  'a refused move commits neither Hydra, and retry moves the task once',
   async t => {
     const { app } = await setup({ t })
     await attach({
       path: app,
       hydraId: 'dst',
     })
-    const [
-      ship,
-      other,
-    ] = [
-      await create({
-        key: 'ship',
-        flags: [
-          '--project',
-          app,
-        ],
-      }),
-      await create({
-        key: 'other',
-        flags: [
-          '--project',
-          app,
-        ],
-      }),
-    ]
-
-    const arrival = await cutMove({ id: ship.id })
-    assert.ok(arrival)
-    assert.ok(card({
-      hydraId: 'src',
+    const ship = await create({
       key: 'ship',
-    }))
-    await task({
-      args: [
-        'brief',
-        ship.id,
-        '--brief',
-        'Edited after the cut',
-        '--hydra',
-        'src',
+      flags: [
+        '--project',
+        app,
       ],
     })
+    const beforeSource = storedHydra({ hydraId: 'src' })
+    const beforeTarget = storedHydra({ hydraId: 'dst' })
 
-    const finished = await task({ args: move({ id: ship.id }) })
-    assert.notEqual(
-      finished.event,
-      arrival.id,
-    )
+    for (const type of [
+      'task.moved-in',
+      'task.moved-out',
+    ]) {
+      const release = refuseEvents({ type })
+
+      try {
+        await assert.rejects(
+          task({ args: move({ id: ship.id }) }),
+          /Postgres: refused task.moved-/,
+        )
+      } finally {
+        release()
+      }
+
+      assert.equal(
+        storedHydra({ hydraId: 'src' }),
+        beforeSource,
+      )
+      assert.equal(
+        storedHydra({ hydraId: 'dst' }),
+        beforeTarget,
+      )
+      assert.ok(card({
+        hydraId: 'src',
+        key: 'ship',
+      }))
+      assert.equal(
+        card({
+          hydraId: 'dst',
+          key: 'ship',
+        }),
+        undefined,
+      )
+    }
+
+    await task({ args: move({ id: ship.id }) })
     assert.equal(
       card({
         hydraId: 'src',
@@ -900,57 +887,9 @@ test(
       }),
       undefined,
     )
-    assert.equal(
-      card({
-        hydraId: 'dst',
-        key: 'ship',
-      })?.brief,
-      'Edited after the cut',
-    )
-    const history = await task({
-      args: [
-        'history',
-        ship.id,
-        '--hydra',
-        'dst',
-      ],
-    }) as {
-      events: {
-        hydra: string
-        type: string
-      }[]
-    }
-    assert.deepEqual(
-      history.events.slice(
-        0,
-        2,
-      ).map(e => `${e.hydra} ${e.type}`),
-      [
-        'dst task.moved-in',
-        'src task.moved-out',
-      ],
-    )
-
-    await cutMove({ id: other.id })
-    await task({
-      args: [
-        'brief',
-        other.id,
-        '--brief',
-        'Edited on the target',
-        '--hydra',
-        'dst',
-      ],
-    })
-    const both = await refusal({ args: move({ id: other.id }) })
-    assert.match(
-      both.message,
-      /was cut short, and its copy on Hydra dst has changed since/,
-    )
-    assert.ok(both.fix.includes(`pnyx-axi task hide ${other.id}`))
     assert.ok(card({
-      hydraId: 'src',
-      key: 'other',
+      hydraId: 'dst',
+      key: 'ship',
     }))
   },
 )
@@ -1110,7 +1049,7 @@ test(
 )
 
 test(
-  'finishing an interrupted move releases the source worker first and waits while it is busy',
+  'a move releases the source worker first and waits while it is busy',
   async t => {
     const {
       dir,
@@ -1162,9 +1101,6 @@ test(
       },
     })
     t.after(withdraw)
-
-    await cutMove({ id: ship.id })
-    released.length = 0
 
     answer = { busy: 'mid-turn' }
     assert.match(
