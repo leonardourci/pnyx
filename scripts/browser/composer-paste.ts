@@ -9,7 +9,7 @@ import { scenarioGroup, until } from '#test-harness/harness.ts'
 const browserEnv = { ...process.env }
 const browser = promisify(execFile)
 const session = `composer-paste-${process.pid}`
-const pnyx = scenarioGroup()
+const pnyx = scenarioGroup({ zeroCache: true })
 const script = fileURLToPath(new URL(
   './fixtures/composer-paste.js',
   import.meta.url,
