@@ -32,6 +32,8 @@ const MESSAGE_EVENTS = new Set<string>([
 export interface Writer {
   readonly state: HydraState
   readonly dir: string
+  // Work outside Postgres, such as removing an ingested spool file, that must happen only once the write commits.
+  afterCommit({ run }: { run(): void }): void
   append({
     event,
     effects,
@@ -99,6 +101,7 @@ export function withWriter<T>({
 
   const from = live.state.seq
   const pending: HydraEvent[] = []
+  const committed: (() => void)[] = []
   const touched: Touched = {
     cards: new Set(),
     fields: new Set(),
@@ -110,6 +113,7 @@ export function withWriter<T>({
     hydraId,
     transaction: transaction?.id,
     touched,
+    committed,
     onAppend: ({ event }) => {
       pending.push(event)
     },
@@ -182,6 +186,10 @@ export function withWriter<T>({
     throw error
   }
 
+  for (const run of committed) {
+    run()
+  }
+
   if (pending.length) {
     live.changed()
   }
@@ -196,6 +204,7 @@ export function eventWriter({
   hydraId,
   transaction,
   touched,
+  committed = [],
   onAppend,
 }: {
   state: HydraState
@@ -204,6 +213,7 @@ export function eventWriter({
   hydraId: string
   transaction?: string
   touched?: Touched
+  committed?: (() => void)[]
   onAppend({ event }: { event: HydraEvent }): void
 }): Writer {
   const state = owned ? initial : structuredClone(initial)
@@ -212,6 +222,9 @@ export function eventWriter({
     dir,
     get state() {
       return state
+    },
+    afterCommit: ({ run }) => {
+      committed.push(run)
     },
     append({
       event,
