@@ -3,7 +3,7 @@ import { readUsage, usageReader, type RecordedUsage, type UsageReader } from '#i
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { UsageReading } from './provider.ts'
 import type { AgentRef } from './model.ts'
-import { readTranscript } from '#oracle/index.ts'
+import { readTranscript } from '#workers/transcript-read.ts'
 
 export interface TaskSpend {
   worker?: number

@@ -1,6 +1,5 @@
 import type { HydraEvent } from '#app/model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
-import { threadEntryOrder } from './thread-order.ts'
 
 interface ItemChanges<Value> {
   upsert: Value[]
@@ -9,6 +8,7 @@ interface ItemChanges<Value> {
 
 type Conversation = NonNullable<ThreadPage['conversation']>
 type RecordChanges<Value> = Record<string, Value | null>
+type ThreadIdentity = Pick<ThreadPage, 'card' | 'session' | 'stream'>
 
 export interface ThreadDelta {
   base: number
@@ -24,20 +24,14 @@ export interface ThreadDelta {
   } | null
 }
 
+// Keeps the existing order and appends new ids without sorting, so the server and the page build the same list;
+// threadDelta sends no delta when that order differs from the new page, and the page gets a full page instead.
 function applyItems<Value extends { id: string }>({
   before,
   changes,
-  order,
 }: {
   before: Value[]
   changes: ItemChanges<Value>
-  order({
-    first,
-    second,
-  }: {
-    first: Value
-    second: Value
-  }): number
 }): Value[] {
   if (!changes.upsert.length && !changes.remove.length) {
     return before
@@ -56,29 +50,15 @@ function applyItems<Value extends { id: string }>({
     )
   }
 
-  return [...entries.values()].sort((
-    first,
-    second,
-  ) => order({
-    first,
-    second,
-  }))
+  return [...entries.values()]
 }
 
 function changedItems<Value extends { id: string }>({
   before,
   after,
-  order,
 }: {
   before: Value[]
   after: Value[]
-  order({
-    first,
-    second,
-  }: {
-    first: Value
-    second: Value
-  }): number
 }): ItemChanges<Value> | undefined {
   const saved = new Map(before.map(entry => [
     entry.id,
@@ -89,17 +69,16 @@ function changedItems<Value extends { id: string }>({
     upsert: after.filter(entry => JSON.stringify(entry) !== JSON.stringify(saved.get(entry.id))),
     remove: before.filter(entry => !current.has(entry.id)).map(entry => entry.id),
   }
-  const ordered = applyItems({
+  const applied = applyItems({
     before,
     changes,
-    order,
   })
-
-  // Equal-time entries without transcript positions retain the server's order through a snapshot.
-  return ordered.some((
+  const sameOrder = applied.length === after.length && applied.every((
     entry,
     index,
-  ) => entry.id !== after[index]?.id) ? undefined : changes
+  ) => entry.id === after[index].id)
+
+  return sameOrder ? changes : undefined
 }
 
 function changedRecord<Value>({
@@ -168,13 +147,16 @@ function applyRecord<Value>({
   return Object.fromEntries(result)
 }
 
-const actionOrder = ({
-  first,
-  second,
+function sameThread({
+  before,
+  page,
 }: {
-  first: HydraEvent
-  second: HydraEvent
-}) => first.seq - second.seq
+  before: ThreadIdentity
+  page: ThreadIdentity
+}) {
+  return before.card === page.card && before.session === page.session
+    && before.stream === page.stream
+}
 
 export function threadDelta({
   before,
@@ -183,8 +165,10 @@ export function threadDelta({
   before: ThreadPage | undefined
   after: ThreadPage
 }): ThreadDelta | undefined {
-  if (!before || before.version === undefined || !before.stream || before.stream !== after.stream
-    || before.card !== after.card || before.session !== after.session) {
+  if (!before?.stream || before.version === undefined || !sameThread({
+    before,
+    page: after,
+  })) {
     return undefined
   }
 
@@ -197,20 +181,19 @@ export function threadDelta({
   const changed = changedItems({
     before: before.entries,
     after: entries,
-    order: threadEntryOrder,
   })
   const changedActions = actions && changedItems({
     before: before.actions ?? [],
     after: actions,
-    order: actionOrder,
   })
   const changedConversation = conversation && changedItems({
     before: before.conversation?.entries ?? [],
     after: conversation.entries,
-    order: threadEntryOrder,
   })
+  const actionsLost = actions !== undefined && !changedActions
+  const conversationLost = conversation !== undefined && !changedConversation
 
-  if (!changed || actions && !changedActions || conversation && !changedConversation) {
+  if (!changed || actionsLost || conversationLost) {
     return undefined
   }
 
@@ -245,10 +228,14 @@ export function receivedThread({
   before: ThreadPage | null
   latest: ThreadPage
 }): ThreadPage {
-  const same = before?.card === latest.card && before.session === latest.session
-    && before.stream === latest.stream
+  if (!before || !sameThread({
+    before,
+    page: latest,
+  })) {
+    return latest
+  }
 
-  return same && (before.version ?? 0) > (latest.version ?? 0) ? before : latest
+  return (before.version ?? 0) > (latest.version ?? 0) ? before : latest
 }
 
 export function applyThreadDelta({
@@ -258,15 +245,23 @@ export function applyThreadDelta({
   before: ThreadPage | null
   delta: ThreadDelta
 }): ThreadPage | null {
-  const same = before?.card === delta.page.card && before.session === delta.page.session
-    && before.stream === delta.page.stream
+  if (!before || !sameThread({
+    before,
+    page: delta.page,
+  })) {
+    return null
+  }
 
-  if (same && before.version !== undefined && delta.page.version !== undefined
-    && before.version >= delta.page.version) {
+  const alreadyApplied = before.version !== undefined && delta.page.version !== undefined
+    && before.version >= delta.page.version
+
+  if (alreadyApplied) {
     return before
   }
 
-  if (!same || before.version !== delta.base || delta.page.version !== delta.base + 1) {
+  const continuesBase = before.version === delta.base && delta.page.version === delta.base + 1
+
+  if (!continuesBase) {
     return null
   }
 
@@ -275,7 +270,6 @@ export function applyThreadDelta({
     entries: applyItems({
       before: before.entries,
       changes: delta.entries,
-      order: threadEntryOrder,
     }),
   }
 
@@ -283,7 +277,6 @@ export function applyThreadDelta({
     page.actions = applyItems({
       before: before.actions ?? [],
       changes: delta.actions,
-      order: actionOrder,
     })
   }
 
@@ -294,7 +287,6 @@ export function applyThreadDelta({
       entries: applyItems({
         before: old?.entries ?? [],
         changes: delta.conversation.entries,
-        order: threadEntryOrder,
       }),
       folds: applyRecord({
         before: old?.folds ?? {},

@@ -29,40 +29,50 @@ export function saveEventId({ command }: { command: SaveCommand }): string | und
   }
 }
 
-export function savedReceipt({
+// A reply already recorded on its card, found the same way on the server and on the page.
+export function savedReply({
   command,
   state,
 }: {
   command: SaveCommand
   state: HydraState
 }): Record<string, unknown> | undefined {
-  if ([
+  if (![
     'reply',
     'task-message',
     'answer',
     'agent',
   ].includes(command.name)) {
-    const ref = command.args[0] ?? ''
-    const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
-    const attempt = command.args[command.name === 'answer' || command.name === 'agent' ? 3 : 2]
-    const reply = card?.replies?.find(reply => reply.id === attempt)
-
-    if (reply && reply.state !== 'failed') {
-      return {
-        type: 'receipt',
-        id: command.id,
-        saved: true,
-        reply: {
-          card: card.id,
-          reply: reply.id,
-          state: reply.state,
-        },
-      }
-    }
-
     return
   }
 
+  const ref = command.args[0] ?? ''
+  const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
+  const attempt = command.args[command.name === 'answer' || command.name === 'agent' ? 3 : 2]
+  const reply = card?.replies?.find(reply => reply.id === attempt)
+
+  if (reply && reply.state !== 'failed') {
+    return {
+      type: 'receipt',
+      id: command.id,
+      saved: true,
+      reply: {
+        card: card.id,
+        reply: reply.id,
+        state: reply.state,
+      },
+    }
+  }
+}
+
+// A Hydra message or agent change the log already holds; only the server keeps event ids.
+export function savedEvent({
+  command,
+  state,
+}: {
+  command: SaveCommand
+  state: HydraState
+}): Record<string, unknown> | undefined {
   const id = saveEventId({ command })
   const seq = id && state.eventIds[id]
 

@@ -292,7 +292,7 @@ export function createAgentSwitch({
             await host().hydra({
               id: `operation:${operationId}`,
               actor: 'pnyx',
-              text: recapText({
+              ...recapText({
                 state: loadHydra({ hydraId }).state,
                 since: at(),
                 after: (loadHydra({ hydraId }).state.eventIds[id] ?? 1) - 1,

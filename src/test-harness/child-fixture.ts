@@ -10,7 +10,7 @@ import { promisify } from 'node:util'
 
 const run = promisify(execFile)
 const FIXTURE_TIMEOUT_MS = 20_000
-const SETTLE_MS = 5000
+export const SETTLE_MS = 5000
 
 // Runs the named fixture with its own homes and resolves with what it printed.
 export async function runFixture({
@@ -75,11 +75,12 @@ export async function settle({
   check(): unknown
   tick?: number
 }) {
-  const until = Date.now() + SETTLE_MS
+  const now = () => tick ? Date.now() : performance.now()
+  const until = now() + SETTLE_MS
 
   while (!check()) {
     assert.ok(
-      Date.now() < until,
+      now() < until,
       what,
     )
 

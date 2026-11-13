@@ -77,6 +77,11 @@ export function loadHydra({
     hydraId,
     migrate,
   })
+
+  return loadHydraDirectory({ dir })
+}
+
+export function loadHydraDirectory({ dir }: { dir: string }): HydraSnapshot {
   const snap = readSnapshot({ dir })
   let log = snap ? readLog({
     dir,

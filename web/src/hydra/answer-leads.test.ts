@@ -4,6 +4,9 @@ import type { Ask, Card } from '#tasks/model.ts'
 import type { HydraMessage } from '#hydra/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { answerLeads, questionPreview } from './answer-leads.ts'
+import { emptyHydra } from '#app/reducer.ts'
+import { pageState } from '#app/page-state.ts'
+import { knownCards } from '#tasks/select.ts'
 
 const at = '2026-11-01T12:00:00.000Z'
 const merge: Ask = {
@@ -233,6 +236,50 @@ test(
     assert.equal(
       questionPreview({ question: 'Rebuild **in the background**?\n\n- **Block**: simpler\n- **Background**: usable' }),
       'Rebuild **in the background**?',
+    )
+  },
+)
+
+test(
+  'an answer keeps its question on the page after the answered task is hidden',
+  () => {
+    const answer = message({
+      text: 'Merge it.',
+      answers: merge.id,
+      choice: 'Merge',
+    })
+    const state = {
+      ...emptyHydra(),
+      cards: {
+        [card.id]: {
+          ...card,
+          hidden: true,
+          statusLog: [],
+        },
+      },
+      keys: { [card.key]: card.id },
+      hydraMessages: [answer],
+    }
+    const page = {
+      ...pageState({
+        state,
+        interest: {
+          cards: [],
+          hidden: false,
+        },
+      }),
+      eventIds: {},
+    }
+    assert.equal(
+      page.cards[card.id],
+      undefined,
+    )
+    assert.equal(
+      answerLeads({
+        messages: page.hydraMessages,
+        cards: knownCards({ state: page }),
+      }).get(answer.id)?.question,
+      merge.question,
     )
   },
 )

@@ -1,4 +1,3 @@
-import { workerError } from '#oracle/index-sync.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { replyRoute } from '#workers/reply-route.ts'
@@ -169,4 +168,23 @@ export function replyCommand({
       }
     },
   })
+}
+
+// A page command that fails knowingly prints { error: { message, code, help } }.
+function workerError({ stdout }: { stdout: string }): {
+  message: string
+  code: string
+  help?: string[]
+} | undefined {
+  try {
+    const known = JSON.parse(stdout).error
+
+    if (typeof known?.message === 'string' && typeof known.code === 'string') {
+      return known
+    }
+  } catch {
+    // Not JSON: the command failed before it could say why.
+  }
+
+  return undefined
 }

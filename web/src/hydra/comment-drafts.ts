@@ -9,7 +9,7 @@ import { flushSync } from 'react-dom'
 import {
   enterNote,
 } from './caret.ts'
-import { commentUpdates,sendableComment,type ChatComment } from './chat.ts'
+import { commentUpdates,sendableComment } from './chat.ts'
 import { pendingImage,settleImage } from './draft.ts'
 import { checkImages,pastedImages,uploadImage } from './image-upload.ts'
 import {
@@ -23,24 +23,21 @@ import type { RefObject } from 'react'
 export function useCommentDrafts({
   root,
   drafts,
-  setComments,
   notify,
   clearSelection,
   blocks,
 }: {
   drafts: ChatDrafts
   root: RefObject<HTMLDivElement | null>
-  setComments({ items }: { items: ChatComment[] }): void
   notify({ text }: { text: string }): void
   clearSelection(): void
   blocks(): HTMLElement[]
 }) {
   const read = () => drafts.read().comments
-  const update = setComments
 
   const updates = commentUpdates({
     read,
-    write: update,
+    write: drafts.setComments,
   })
   const remove = updates.remove
 
@@ -75,7 +72,7 @@ export function useCommentDrafts({
       text,
     }
     flushSync(() => {
-      update({
+      drafts.setComments({
         items: same ? read().map(c => c.id === same.id ? comment : c) : [
           ...read(),
           comment,
@@ -218,7 +215,7 @@ export function useCommentDrafts({
     })
 
     if (moved) {
-      setComments({ items })
+      drafts.setComments({ items })
     }
   })
 

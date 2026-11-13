@@ -151,6 +151,7 @@ export const outageMinutes = ({
 )
 
 // The first turn after Hydra could not start: the owner's messages no turn took, and how much more waits for the next wake.
+// carried names the owner's messages the text lists, which Hydra takes with it.
 export function recapText({
   state,
   since,
@@ -164,7 +165,10 @@ export function recapText({
   now: number
   // Why Hydra was stopped; an outage when not given.
   why?: string
-}): string {
+}): {
+  text: string
+  carried: string[]
+} {
   const minutes = outageMinutes({
     since,
     now,
@@ -174,22 +178,22 @@ export function recapText({
   // A message whose turn started has been read; worker reports reach Hydra in their own wake.
   const unread = sent.filter(message => ownerActor({ actor: message.actor })
     && !(`${message.id}:hosted` in state.eventIds))
-    .map(message => {
-      const card = message.task ? state.cards[message.task] : undefined
-      const task = card ? ` on ${taskMention({
-        id: card.id,
-        title: card.title,
-      })}` : ''
+  const unreadLines = unread.map(message => {
+    const card = message.task ? state.cards[message.task] : undefined
+    const task = card ? ` on ${taskMention({
+      id: card.id,
+      title: card.title,
+    })}` : ''
 
-      return `- ${message.at}${task}:\n${sealed({ text: message.text })}`
-    })
+    return `- ${message.at}${task}:\n${sealed({ text: message.text })}`
+  })
   const reports = sent.filter(message => reportActor({ actor: message.actor }) && message.kind !== 'progress').length
 
-  return `<pnyx-wake>${[
+  const text = `<pnyx-wake>${[
     why ?? `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
-    ...unread.length ? [
+    ...unreadLines.length ? [
       'The owner wrote to you meanwhile and has had no reply; answer these:',
-      ...unread,
+      ...unreadLines,
     ] : ['The owner sent you nothing meanwhile.'],
     ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from meanwhile reach you in your next wake.`] : [],
     decisionsText({
@@ -199,6 +203,11 @@ export function recapText({
     `If none of this needs the owner, reply only ${QUIET_REPLY}.`,
     REPLY_RULES,
   ].join('\n')}</pnyx-wake>`
+
+  return {
+    text,
+    carried: unread.map(message => message.id),
+  }
 }
 
 // The highest change a wake id matching pattern covers, or 0.

@@ -1,4 +1,5 @@
 import type { HydraState } from '#app/model.ts'
+import { knownCards } from '#tasks/select.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { QueuedUpdate } from '#hydra/wakes.ts'
 import { LiveLabel } from '#web-shared/ui/live-label.tsx'
@@ -45,6 +46,7 @@ export function Running({
     waiting: waiting.length,
     tasks: new Set(reading.map(update => update.card).filter(card => card !== HYDRA_CARD)).size,
   })
+  const cards = knownCards({ state })
 
   return (
     <div
@@ -84,7 +86,7 @@ export function Running({
                     <strong>{group.label} {group.updates.length} {group.updates.length === 1 ? 'update' : 'updates'}</strong>
                     {group.updates.map(update => (
                       <span key={update.seq}>
-                        {state.cards[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
+                        {cards[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
                       </span>
                     ))}
                   </TooltipSection>

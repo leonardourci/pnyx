@@ -3,8 +3,42 @@ import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 
+const known = new WeakMap<Record<string, Card>, {
+  references: Record<string, Card>
+  cards: Record<string, Card>
+}>()
+
 export function isManagedTask({ card }: { card: Card }): boolean {
   return Boolean(card.automaticTask) || card.id === HYDRA_CARD
+}
+
+// Every card a lookup by id may name. On the page, this includes the reference copies of hidden tasks.
+export function knownCards({ state }: { state: HydraState }): Record<string, Card> {
+  const references = state.references
+
+  if (!references) {
+    return state.cards
+  }
+
+  const cached = known.get(state.cards)
+
+  if (cached?.references === references) {
+    return cached.cards
+  }
+
+  const cards = {
+    ...references,
+    ...state.cards,
+  }
+  known.set(
+    state.cards,
+    {
+      references,
+      cards,
+    },
+  )
+
+  return cards
 }
 
 export function liveTask({ card }: { card: Card }): boolean {

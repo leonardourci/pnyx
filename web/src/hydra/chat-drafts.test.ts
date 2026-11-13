@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { imageLine } from '#hydra/images.ts'
+import { taskMention } from '#hydra/mentions.ts'
 import { createChatDrafts } from './chat-drafts.ts'
-import type { ChatComment } from './chat.ts'
+import { commentReply, type ChatComment } from './chat.ts'
+import { hasPendingImage, pendingImage } from './draft.ts'
 
 test(
   'typing stays live for sending while conversation updates and storage wait for a pause',
@@ -399,6 +402,115 @@ test(
         },
         added,
       ],
+    )
+  },
+)
+
+const note = ({
+  id,
+  text,
+}: {
+  id: string
+  text: string
+}): ChatComment => ({
+  id,
+  messageId: 'm1',
+  block: 0,
+  offset: 0,
+  quote: 'passage',
+  text,
+  at: '2026-10-29T15:05:10.536Z',
+})
+
+test(
+  'a note that clears its upload after its comment was removed does not bring the comment back',
+  t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const drafts = createChatDrafts({
+      comments: [
+        note({
+          id: 'a',
+          text: `a ${imageLine({ path: pendingImage({ id: 'a' }) })}`,
+        }),
+        note({
+          id: 'b',
+          text: 'b',
+        }),
+      ],
+      save: ({ comments }) => comments,
+    })
+    drafts.setComments({ items: drafts.read().comments.filter(comment => comment.id !== 'a') })
+    drafts.editComment({
+      id: 'a',
+      text: 'a',
+    })
+    assert.deepEqual(
+      drafts.read().comments.map(comment => comment.id),
+      ['b'],
+    )
+  },
+)
+
+test(
+  'two notes clearing their uploads one after the other both land, so Send is not left waiting',
+  t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const drafts = createChatDrafts({
+      comments: [
+        note({
+          id: 'a',
+          text: `a ${imageLine({ path: pendingImage({ id: 'a' }) })}`,
+        }),
+        note({
+          id: 'b',
+          text: `b ${imageLine({ path: pendingImage({ id: 'b' }) })}`,
+        }),
+      ],
+      save: ({ comments }) => comments,
+    })
+    drafts.editComment({
+      id: 'a',
+      text: 'a',
+    })
+    drafts.editComment({
+      id: 'b',
+      text: 'b',
+    })
+    assert.equal(
+      hasPendingImage({
+        text: commentReply({
+          draft: '',
+          comments: drafts.read().comments,
+        }),
+      }),
+      false,
+    )
+  },
+)
+
+test(
+  'answering a task in chat shows its question at once, while the words after the mention wait for the pause',
+  t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const drafts = createChatDrafts({ save: ({ comments }) => comments })
+    const answer = `For ${taskMention({
+      id: 't1',
+      title: 'Fix the login',
+    })}: `
+    drafts.setDraft({ text: answer })
+    assert.equal(
+      drafts.readSettled().text,
+      answer,
+    )
+    drafts.setDraft({ text: `${answer}yes` })
+    assert.equal(
+      drafts.readSettled().text,
+      answer,
+    )
+    drafts.setDraft({ text: 'yes' })
+    assert.equal(
+      drafts.readSettled().text,
+      'yes',
     )
   },
 )

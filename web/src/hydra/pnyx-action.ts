@@ -1,4 +1,5 @@
 import type { HydraState } from '#app/model.ts'
+import { knownCards } from '#tasks/select.ts'
 import { firstLine, obj } from '#hydra/calls.ts'
 import { commandOf } from '#workers/tool-input.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -29,7 +30,8 @@ export function pnyxLookup({ state }: { state(): HydraState }): PnyxLookup {
   return {
     task: ({ ref }) => {
       const current = state()
-      const card = current.cards[ref] ?? current.cards[current.keys[ref] ?? '']
+      const cards = knownCards({ state: current })
+      const card = cards[ref] ?? cards[current.keys[ref] ?? '']
 
       return card ? {
         id: card.id,

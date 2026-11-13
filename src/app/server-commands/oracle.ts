@@ -1,14 +1,11 @@
 import { readSearchFilters } from '#oracle/filters.ts'
-import type { createIndexSync } from '#oracle/index-sync.ts'
-import { search as oracleSearch } from '#oracle/search.ts'
-import { indexedThrough } from '#oracle/status.ts'
+import { searchInBackground } from '#oracle/search-background.ts'
 import { HydraError } from '#store/errors.ts'
-import type { HydraState } from '#app/model.ts'
 import type { CommandRequest } from './dispatch.ts'
 
 const ORACLE_LIMIT = 100
 
-// `oracle <text> [<workspace>] [hydra]`: searches the history once the index has caught up.
+// `oracle <text> [<workspace>] [hydra] [<filters>]` searches on demand; with no arguments it cancels this socket's search.
 export function oracleCommand({
   ws,
   id,
@@ -16,13 +13,27 @@ export function oracleCommand({
   fail,
   send,
   hydraId,
-  state,
-  historyIndex,
+  searches,
 }: CommandRequest & {
   hydraId: string
-  state(): HydraState
-  historyIndex: ReturnType<typeof createIndexSync>
+  searches: WeakMap<CommandRequest['ws'], AbortController>
 }) {
+  if (!args.length) {
+    const controller = searches.get(ws)
+    controller?.abort()
+    searches.delete(ws)
+    send({
+      ws,
+      message: {
+        type: 'receipt',
+        id,
+        cancelled: Boolean(controller),
+      },
+    })
+
+    return
+  }
+
   if (args.length > 4 || (args[2] !== undefined && args[2] !== 'hydra' && args[2] !== '')) {
     throw new HydraError({
       message: 'oracle expects text, optional workspace, Hydra scope and filters',
@@ -40,34 +51,25 @@ export function oracleCommand({
     highlight: true,
   }
 
+  searches.get(ws)?.abort()
+  const controller = new AbortController()
+  searches.set(
+    ws,
+    controller,
+  )
+
   // Never rejects, so nothing is lost by not awaiting it.
   const answer = async () => {
     try {
-      const indexed = indexedThrough({ hydraId })
-      const behind = indexed === null || indexed < state().seq
-
-      if (behind) {
-        const failure = await historyIndex.ready()
-
-        if (failure) {
-          return fail({
-            error: `Oracle index could not catch up: ${failure.message}`,
-            code: failure.code,
-          })
-        }
-      } else {
-        historyIndex.changed()
-      }
-
       send({
         ws,
         message: {
           type: 'receipt',
           id,
-          ...oracleSearch({
+          ...await searchInBackground({
             hydraId,
             query,
-            state: state(),
+            signal: controller.signal,
           }),
         },
       })
@@ -76,6 +78,10 @@ export function oracleCommand({
         error: (error as Error).message,
         code: error instanceof HydraError ? error.code : 'UNKNOWN',
       })
+    } finally {
+      if (searches.get(ws) === controller) {
+        searches.delete(ws)
+      }
     }
   }
 

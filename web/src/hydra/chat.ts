@@ -46,16 +46,6 @@ export function commentUpdates({
 
   return {
     edit,
-    change: ({
-      id,
-      text,
-    }: {
-      id: string
-      text: string
-    }) => edit({
-      id,
-      update: () => text,
-    }),
     remove: ({ id }: { id: string }) => write({
       items: read().filter(comment => comment.id !== id),
     }),
@@ -171,7 +161,6 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
     }
   }
 
-  // A key whose live entry is back on the page stays with it, so keys never collide.
   for (const [
     id,
     key,
@@ -181,6 +170,7 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
     }
   }
 
+  // A key whose live entry is back on the page stays with it, so keys never collide.
   return entries.map(entry => {
     const mapped = keys.get(entry.id)
     const renderKey = mapped !== undefined && !ids.has(mapped) ? mapped : undefined
@@ -255,12 +245,16 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
     at: comments.find(comment => comment.messageId === id && comment.at)?.at || '',
   }))
 
-  if (replies.every(reply => reply.at)) {
-    replies.sort((
-      a,
-      b,
-    ) => a.at.localeCompare(b.at))
-  }
+  // Dated replies come first by time; a reply without a time follows them by its id (transcript line numbers,
+  // compared as numbers), never by storage order.
+  replies.sort((
+    a,
+    b,
+  ) => Number(!a.at) - Number(!b.at) || a.at.localeCompare(b.at) || a.id.localeCompare(
+    b.id,
+    undefined,
+    { numeric: true },
+  ))
 
   const positions = new Map(replies.map((
     reply,
@@ -274,7 +268,12 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
       0,
       comment.paragraph?.indexOf(comment.quote) ?? 0,
     )
+  const end = ({ comment }: { comment: ChatComment }) => comment.end ?? {
+    offset: comment.offset,
+    position: start({ comment }) + comment.quote.length,
+  }
 
+  // Ties end on the id, so storage order never renumbers comments between reloads or tabs.
   return [...comments].sort((
     a,
     b,
@@ -284,6 +283,9 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
     }
 
     return a.offset - b.offset || start({ comment: a }) - start({ comment: b })
+      || end({ comment: a }).offset - end({ comment: b }).offset
+      || end({ comment: a }).position - end({ comment: b }).position
+      || a.id.localeCompare(b.id)
   })
 }
 
@@ -412,3 +414,35 @@ export const clock = ({
 export const hydraDown = ({ status }: { status?: HydraStatus }) => status?.state === 'down'
   ? `Down since ${clock({ at: status.since })} · retrying`
   : undefined
+
+// The server orders the conversation's rows; a late owner message may carry an earlier time than the row before it.
+export function withTimedRows<Row extends Pick<ThreadEntry, 'at'>>({
+  rows,
+  timed,
+}: {
+  rows: Row[]
+  timed: Row[]
+}): Row[] {
+  const pending = timed.toSorted((
+    a,
+    b,
+  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  const merged: Row[] = []
+
+  for (const row of rows) {
+    const later = pending.findIndex(item => (item.at ?? '') >= (row.at ?? ''))
+    const earlier = later === -1 ? pending.length : later
+    merged.push(
+      ...pending.splice(
+        0,
+        earlier,
+      ),
+      row,
+    )
+  }
+
+  return [
+    ...merged,
+    ...pending,
+  ]
+}

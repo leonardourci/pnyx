@@ -98,7 +98,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
       selectedRef,
       setActive,
-    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? restored.expanded?.at(-1) ?? null), [drafts] = useState<Record<string,string>>(restored.drafts ?? {}), [
+    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? restored.expanded?.at(-1) ?? null), [
       notice,
       setNotice,
     ] = useState<{ text: string } | null>(null), [
@@ -132,11 +132,13 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     scope: '',
     ids: [],
   })
+  // The view persistence reads the same record the chat's saves write into.
+  const drafts = useRef<Record<string, string>>(restored.drafts ?? {})
   const chatDrafts = useChatDrafts({
-    text: drafts[HYDRA_CARD] ?? '',
+    text: drafts.current[HYDRA_CARD] ?? '',
     commentsKey,
     saveText: ({ text }) => {
-      drafts[HYDRA_CARD] = text
+      drafts.current[HYDRA_CARD] = text
 
       try {
         const saved = restoreView({ key: restoreKey })
@@ -144,7 +146,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           restoreKey,
           JSON.stringify({
             ...saved,
-            drafts,
+            drafts: drafts.current,
           }),
         )
       } catch { /* The mounted chat retains the draft when storage is blocked. */ }
@@ -294,7 +296,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     revealed,
     page,
     panel,
-    drafts,
+    drafts: drafts.current,
     scroll: restored.scroll,
     seq: state.seq,
   })

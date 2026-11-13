@@ -815,6 +815,21 @@ test(
           }),
           at: '2026-10-20T10:02:00Z',
         },
+        // Pnyx runs /upgrade and /restart itself, so they never wait for Hydra.
+        {
+          ...message({
+            id: 'upgrade',
+            text: '/upgrade',
+          }),
+          at: '2026-10-20T10:03:00Z',
+        },
+        {
+          ...message({
+            id: 'restart',
+            text: '/restart',
+          }),
+          at: '2026-10-20T10:04:00Z',
+        },
       ],
       transcript: [],
       waiting: 'Hydra is in the middle of a step',
@@ -844,6 +859,18 @@ test(
           'queued',
           undefined,
           'Hydra is in the middle of a step',
+        ],
+        [
+          'upgrade',
+          undefined,
+          undefined,
+          undefined,
+        ],
+        [
+          'restart',
+          undefined,
+          undefined,
+          undefined,
         ],
       ],
     )
@@ -919,6 +946,51 @@ test(
           'delivered',
           '2026-10-20T10:03:00Z',
           '2026-10-20T10:01:00Z',
+        ],
+      ],
+    )
+    // With only the newer "OK" copy on this page, it is the newer message's receipt; the older one, taken before, shows none.
+    const twice: HydraMessage[] = [
+      {
+        ...message({
+          id: 'first-ok',
+          text: 'OK',
+        }),
+        at: '2026-10-20T10:00:00Z',
+      },
+      {
+        ...message({
+          id: 'second-ok',
+          text: 'OK',
+        }),
+        at: '2026-10-20T10:05:00Z',
+      },
+    ]
+    assert.deepEqual(
+      hydraMessages({
+        messages: twice,
+        transcript: [
+          copy({
+            id: 'native-second-ok',
+            text: 'OK',
+            at: '2026-10-20T10:05:02Z',
+          }),
+        ],
+      }).map(entry => [
+        entry.reference,
+        entry.receipt,
+        entry.received,
+      ]),
+      [
+        [
+          'second-ok',
+          'delivered',
+          '2026-10-20T10:05:02Z',
+        ],
+        [
+          'first-ok',
+          undefined,
+          undefined,
         ],
       ],
     )

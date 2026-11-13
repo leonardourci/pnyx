@@ -1,3 +1,4 @@
+import { keepChromeOffKeychain } from '#test-harness/chrome-keychain.ts'
 import { createTestEnvironment } from './test-environment.ts'
 
 process.on(
@@ -10,6 +11,7 @@ process.on(
 )
 
 const isolated = createTestEnvironment()
+keepChromeOffKeychain()
 
 // Preserve Node's private test transport, the disposable install path and the run's Postgres from the isolated
 // launcher.

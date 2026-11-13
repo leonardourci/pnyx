@@ -4,7 +4,7 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
-import { checkConversation } from '#hydra/conversation-check.ts'
+import { checkConversation, ownerSendOrder } from '#hydra/conversation-check.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { threadEntryOrder } from '#hydra/thread-order.ts'
@@ -24,14 +24,26 @@ export function assertConversation({
   const oldest = page.older ? transcript[0]?.at : undefined
   const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id
     && !held.includes(message.id) && (state.eventIds[message.id] ?? 0) <= conversation.through)
-  const expected = hydraMessages({
+  const shown = hydraMessages({
     messages,
     transcript,
     provider: state.cards[HYDRA_CARD]?.agent?.provider,
     boundaries: true,
   })
-    .filter(entry => (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY'
-      && (oldest === undefined || entry.at === undefined || entry.at >= oldest))
+  const {
+    late,
+    sent,
+  } = ownerSendOrder({
+    messages,
+    expected: shown,
+  })
+  const expected = shown.filter(entry => {
+    // A late owner message is on the page when the place it takes is.
+    const shownAt = late.get(entry)?.at ?? entry.at
+
+    return (!entry.hidden || entry.role === 'Pnyx') && entry.text.trim() !== 'NO_REPLY'
+      && (oldest === undefined || shownAt === undefined || shownAt >= oldest)
+  })
     .sort((
       first,
       second,
@@ -43,7 +55,8 @@ export function assertConversation({
     checkConversation({
       expected,
       conversation,
-      ordered: expected.filter(entry => entry.at !== undefined),
+      ordered: expected.filter(entry => entry.at !== undefined && !late.has(entry)),
+      sent: sent.filter(entry => expected.includes(entry)),
     }),
     [],
   )

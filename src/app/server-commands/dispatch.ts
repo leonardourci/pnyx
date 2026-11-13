@@ -1,13 +1,12 @@
-import { pageInterest } from '#app/page-cli.ts'
+import { pageInterest, parsePage } from '#app/page-cli.ts'
 import { AxiError } from 'axi-sdk-js'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
-import type { createIndexSync } from '#oracle/index-sync.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import type { createHost } from '#app/host.ts'
 import type { HydraState } from '#app/model.ts'
-import { saveEventId, savedReceipt, type SaveCommand } from '#app/save-receipts.ts'
+import { saveEventId, savedEvent, type SaveCommand } from '#app/save-receipts.ts'
 import type { createServerClients } from '#app/server-clients.ts'
 import type { HydraClient } from '#app/server-transport.ts'
 import type { createServerWorkers } from '#app/server-workers.ts'
@@ -53,7 +52,6 @@ export function createServerCommands({
   kick,
   agents,
   catalogCommand,
-  historyIndex,
   hydraSubscribers,
   showPage,
   subscriptionMap,
@@ -77,7 +75,6 @@ export function createServerCommands({
     fail,
     send,
   }: CommandRequest): void
-  historyIndex: ReturnType<typeof createIndexSync>
   hydraSubscribers: WeakSet<HydraClient>
   showPage: ReturnType<typeof createServerClients>['show']
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
@@ -85,6 +82,7 @@ export function createServerCommands({
   threadPage: ThreadSubscriptions['threadPage']
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
 }) {
+  const oracleSearches = new WeakMap<HydraClient, AbortController>()
   const runCommand = ({
     ws,
     message,
@@ -167,7 +165,7 @@ export function createServerCommands({
 
         if (saveEventId({ command })) {
           try {
-            const receipt = savedReceipt({
+            const receipt = savedEvent({
               command,
               state: loadHydra({ hydraId }).state,
             })
@@ -273,8 +271,7 @@ export function createServerCommands({
             fail,
             send,
             hydraId,
-            state,
-            historyIndex,
+            searches: oracleSearches,
           })
         } else if (name === 'hydra-agent-change') {
           hydraAgentChangeCommand({
@@ -315,9 +312,12 @@ export function createServerCommands({
             })
           }
 
-          const interest = pageInterest({
+          const {
+            interest,
+            unavailable,
+          } = pageInterest({
             state: state(),
-            args,
+            values: parsePage({ args }).values,
           })
           showPage({
             ws,
@@ -328,7 +328,7 @@ export function createServerCommands({
             message: {
               type: 'receipt',
               id,
-              unavailable: interest.unavailable ?? [],
+              unavailable,
             },
           })
         } else if (name === 'thread') {
@@ -382,5 +382,11 @@ export function createServerCommands({
     })
   }
 
-  return { runCommand }
+  return {
+    runCommand,
+    closeClient({ ws }: { ws: HydraClient }) {
+      oracleSearches.get(ws)?.abort()
+      oracleSearches.delete(ws)
+    },
+  }
 }

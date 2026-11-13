@@ -6,7 +6,7 @@ import { cardState } from './view.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
-import { isManagedTask } from '#tasks/select.ts'
+import { isManagedTask, knownCards } from '#tasks/select.ts'
 
 export function taskReferences({
   state,
@@ -23,7 +23,7 @@ export function taskReferences({
 }) {
   const config = hydraConfig({ state })
 
-  return Object.fromEntries(Object.values(state.cards)
+  return Object.fromEntries(Object.values(knownCards({ state }))
     .filter(c => !isManagedTask({ card: c }))
     .map(c => {
       const column = config.columns.find(column => column.id === c.column)
@@ -91,12 +91,7 @@ export function useTaskReferences({
       const same = saved && Object.keys(saved).length === entries.length && entries.every(([
         id,
         value,
-      ]) => {
-        const before = saved[id]
-
-        return before && before.title === value.title && before.state === value.state
-          && before.kind === value.kind && before.column === value.column
-      })
+      ]) => JSON.stringify(saved[id]) === JSON.stringify(value))
 
       if (same) {
         return saved

@@ -1,4 +1,4 @@
-import { pageEvent, pageState, pageShows, type PageInterest } from './page-state.ts'
+import { pageEvent, pageShows, pageSnapshotEvent, pageState, type PageInterest } from './page-state.ts'
 import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -7,6 +7,7 @@ import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
 import { effectiveView, readSettings } from '#settings/store.ts'
 import type { Card } from '#tasks/model.ts'
+import { liveTask } from '#tasks/select.ts'
 import type { AgentUsage } from '#workers/provider.ts'
 import { spendCounter } from '#workers/spend-counter.ts'
 import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
@@ -18,6 +19,12 @@ import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } f
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
+
+// A tab that opened no cards and did not ask for hidden ones.
+const NO_INTEREST: PageInterest = {
+  cards: [],
+  hidden: false,
+}
 
 const shownTraces = ({
   view,
@@ -74,11 +81,23 @@ export function createServerClients({
 }) {
   const clients = new Set<HydraClient>()
   const interests = new WeakMap<HydraClient, PageInterest>()
-  const interestFor = ({ ws }: { ws: HydraClient }) => interests.get(ws) ?? {
-    cards: [],
-    hidden: false,
-  }
+  const interestFor = ({ ws }: { ws: HydraClient }) => interests.get(ws) ?? NO_INTEREST
   const hydraSubscribers = new WeakSet<HydraClient>()
+  const liveCardIds = () => new Set(Object.values(state().cards).filter(card => liveTask({ card }))
+    .map(card => card.id))
+  // The cards a tab shows without interests, so a card an event brings back gets its cached latest.
+  let liveCards = liveCardIds()
+  // A card the previous state did not hold is new, not brought back, so it has no cached latest to send.
+  let knownCards = new Set(Object.keys(state().cards))
+
+  const shownWithoutInterest = ({ id }: { id: string }) => {
+    const card = state().cards[id]
+
+    return card !== undefined && pageShows({
+      card,
+      interest: NO_INTEREST,
+    })
+  }
 
   let derivedThrough = -1
   let derivedHistory: HydraEvent[] = []
@@ -186,7 +205,7 @@ export function createServerClients({
       since: performance.now(),
     }
 
-    if (message.type === 'event' || message.type === 'page.event' || message.type === 'snapshot' || message.type === 'hydras') {
+    if (message.type === 'page.event' || message.type === 'snapshot' || message.type === 'hydras') {
       pending.snapshot = true
     } else if (message.type === 'latest') {
       pending.latest = mergeLatest({
@@ -465,9 +484,24 @@ export function createServerClients({
 
   const broadcast = ({ event }: { event: HydraEvent }) => {
     const queue = queueMessage()
+    const live = liveCardIds()
+    const returned = [...live].filter(id => knownCards.has(id) && !liveCards.has(id))
+    liveCards = live
+    knownCards = new Set(Object.keys(state().cards))
+    // Hydra taking a task message is filed under Hydra's card but changes that task's thread.
+    const receivedTask = event.type === 'hydra.received'
+      ? state().hydraMessages?.find(message => message.id === event.data.message)?.task
+      : undefined
 
     for (const ws of clients) {
-      if (!recovery.get(ws)?.snapshot) {
+      if (recovery.get(ws)?.snapshot) {
+        flush({ ws })
+      } else if (pageSnapshotEvent({ event })) {
+        sendSnapshot({
+          ws,
+          queue,
+        })
+      } else {
         send({
           ws,
           message: {
@@ -480,7 +514,7 @@ export function createServerClients({
           },
         })
 
-        if (event.type === 'task.visibility' && !event.data.after) {
+        if (returned.length) {
           send({
             ws,
             message: {
@@ -490,8 +524,14 @@ export function createServerClients({
                 spend: spendNow.spend,
                 readings: readingsNow,
               }),
-              messages: { [event.cardId]: feed().latest[event.cardId] ?? null },
-              actions: { [event.cardId]: feed().actions[event.cardId] ?? null },
+              messages: Object.fromEntries(returned.map(id => [
+                id,
+                feed().latest[id] ?? null,
+              ])),
+              actions: Object.fromEntries(returned.map(id => [
+                id,
+                feed().actions[id] ?? null,
+              ])),
             },
           })
         }
@@ -500,8 +540,6 @@ export function createServerClients({
           ws,
           queue,
         })
-      } else {
-        flush({ ws })
       }
 
       for (const map of threadSubscriptions) {
@@ -512,7 +550,7 @@ export function createServerClients({
           event,
           sub,
           state: state(),
-        })) || sub.card === event.cardId
+        })) || sub.card === event.cardId || sub.card === receivedTask
         || (event.type === 'task.session' && sub.card === event.data.before)
         || (event.type === 'board.view' &&
           shownTraces({
@@ -606,7 +644,8 @@ export function createServerClients({
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
     const first = recent()[0]?.seq ?? state().seq + 1
 
-    if (seq === undefined || seq > state().seq || seq < first - 1) {
+    if (seq === undefined || seq > state().seq || seq < first - 1
+      || recent().some(event => event.seq > seq && pageSnapshotEvent({ event }))) {
       return sendSnapshot({ ws })
     }
 
@@ -649,7 +688,8 @@ export function createServerClients({
     queueMessage,
     sendQueue,
     sendSnapshot,
-    show({
+    // A tab that names its cards when it subscribes gets its first snapshot or resume already scoped.
+    open({
       ws,
       interest,
     }: {
@@ -660,7 +700,30 @@ export function createServerClients({
         ws,
         interest,
       )
-      sendSnapshot({ ws })
+    },
+    show({
+      ws,
+      interest,
+    }: {
+      ws: HydraClient
+      interest: PageInterest
+    }) {
+      const before = interestFor({ ws })
+      interests.set(
+        ws,
+        interest,
+      )
+      // Only an added or released card the tab would not show anyway changes what it holds.
+      const toggled = ({ id }: { id: string }) =>
+        before.cards.includes(id) !== interest.cards.includes(id)
+      const changed = before.hidden !== interest.hidden || (!interest.hidden && [
+        ...before.cards,
+        ...interest.cards,
+      ].some(id => toggled({ id }) && !shownWithoutInterest({ id })))
+
+      if (changed) {
+        sendSnapshot({ ws })
+      }
     },
     broadcast,
     spend,

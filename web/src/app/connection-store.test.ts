@@ -18,9 +18,11 @@ class TestSocket {
   sent: Record<string, unknown>[] = []
 
   token: string | null
+  page: unknown
   // eslint-disable-next-line pnyx/object-params -- WebSocket owns the constructor signature.
   constructor(url: URL) {
     this.token = url.searchParams.get('token')
+    this.page = JSON.parse(url.searchParams.get('page') ?? 'null')
     TestSocket.current = this
   }
 
@@ -210,20 +212,24 @@ test(
 
     socket.receive({
       message: {
-        type: 'event',
+        type: 'page.event',
         subscription: 'fixture',
-        event: {
-          v: 1,
-          id: 'after-gap',
+        update: {
           seq: 2,
-          at: '2026-10-22T10:00:00Z',
-          actor: 'web',
-          cardId: 'synthetic-task',
-          type: 'task.created',
-          data: {
-            key: 'synthetic-task',
-            title: 'Synthetic task',
+          event: {
+            v: 1,
+            id: 'after-gap',
+            seq: 2,
+            at: '2026-10-22T10:00:00Z',
+            actor: 'web',
+            cardId: 'synthetic-task',
+            type: 'task.created',
+            data: {
+              key: 'synthetic-task',
+              title: 'Synthetic task',
+            },
           },
+          cards: {},
         },
       },
     })
@@ -984,6 +990,28 @@ test(
   async t => {
     const { connection } = recoveryPage({ t })
     const socket = TestSocket.current
+    const search = connection.commandFor({ id: 'default' })({
+      name: 'oracle',
+      args: ['billing'],
+    })
+    const cancelled = assert.rejects(
+      search,
+      { code: 'CANCELLED' },
+    )
+    const scan = socket.sent.find(message => message.name === 'oracle')!
+    socket.receive({
+      message: {
+        type: 'error',
+        id: scan.id,
+        code: 'CANCELLED',
+        error: 'Oracle search cancelled',
+      },
+    })
+    await cancelled
+    assert.equal(
+      connection.snapshot().error,
+      '',
+    )
     const catalog = connection.commandFor({ id: 'default' })({
       name: 'models',
       args: ['codex'],
@@ -1202,3 +1230,66 @@ for (const scenario of [
     },
   )
 }
+
+test(
+  'a reconnecting page names the cards it last opened in its socket address',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection()
+    const stop = connection.start()
+    const socket = TestSocket.current
+    open({ socket })
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    const request = connection.commandFor({ id: 'default' })({
+      name: 'page',
+      args,
+    })
+    // The socket closes before the server answers, so this command's outcome is not under test.
+    request.catch(() => {})
+
+    socket.onclose?.()
+    window.dispatchEvent(new Event('online'))
+    assert.notEqual(
+      TestSocket.current,
+      socket,
+    )
+    assert.deepEqual(
+      TestSocket.current.page,
+      args,
+    )
+  },
+)
+
+test(
+  'switching to another Hydra subscribes with the cards that Hydra last opened',
+  async t => {
+    const { connection } = recoveryPage({ t })
+    const socket = TestSocket.current
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    const request = connection.commandFor({ id: 'second' })({
+      name: 'page',
+      args,
+    })
+    // The server never answers here; only the subscribe frame is under test.
+    request.catch(() => {})
+    await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
+    assert.deepEqual(
+      socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)?.page,
+      args,
+    )
+  },
+)

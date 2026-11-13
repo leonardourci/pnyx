@@ -1,4 +1,4 @@
-import { recentThreadPages } from '#hydra/thread-history.ts'
+import { recentThreadPages, RECENT_THREAD_ENTRIES, THREAD_PAGE_LIMIT } from '#hydra/thread-history.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -21,6 +21,9 @@ import { threadCommand } from '#app/server-commands/thread.ts'
 import { mountOwnedHydra } from './server.ts'
 import { hydraDir } from './home-migration.ts'
 import { writeSnapshot } from './snapshot.ts'
+
+// Copies of the two-record fixture that make a transcript longer than the recent pages.
+const RECENT_WINDOW_COPIES = 120
 
 test(
   'a rejected final conversation is delivered after drain without another content change',
@@ -677,7 +680,7 @@ function deferred<T>() {
 }
 
 test(
-  'a Hydra subscription assembles a turn across pages and retains it on refresh',
+  'a Hydra subscription assembles a turn across pages, retains it on refresh, and keeps a recent window bounded',
   async t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -935,11 +938,14 @@ test(
     let blocked = false
     const recentRequested = deferred<void>()
     const recentRelease = deferred<ThreadPage>()
+    const archiveReads: string[] = []
     const archive: Subscription = {
       card: HYDRA_CARD,
       client,
       native: Promise.resolve({
         read: async ({ before }) => {
+          archiveReads.push(before ?? 'latest')
+
           if (blocked && before === 'p5') {
             recentRequested.resolve()
 
@@ -1021,12 +1027,26 @@ test(
       index: 5,
       older: 'p4',
     })
+    archiveReads.length = 0
+    pushed.length = 0
     threads.refreshThread({ ws: client })
     t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
     assert.deepEqual(
-      archive.history?.entries.map(entry => entry.id),
+      archiveReads,
+      ['latest'],
+      'one arrival rereads no older page',
+    )
+    const arrival = pushed.at(-1)
+    assert.ok(arrival?.type === 'thread')
+    assert.equal(
+      arrival.thread.recent,
+      true,
+    )
+    assert.deepEqual(
+      arrival.thread.entries.map(entry => entry.id),
       [
+        'entry-2',
         'entry-3',
         'entry-4',
         'entry-5',
@@ -1126,7 +1146,7 @@ test(
 )
 
 test(
-  'live refreshes retain history and pick up native bytes, settings, explicit reads and session changes',
+  'live refreshes retain history and pick up native bytes, settings, explicit reads, session changes and recent window arrivals',
   async t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -1219,6 +1239,7 @@ test(
       terminate() {},
     }
     const pushed: ThreadPage[] = []
+    const wire: ServerMessage['type'][] = []
     const receiver = createThreadReceiver()
     const threads = createThreadSubscriptions({
       hydraId: 'default',
@@ -1227,6 +1248,7 @@ test(
       closed: () => false,
       agents: () => ({ thread: ({ page }) => live.page({ page }) }),
       send: ({ message }) => {
+        wire.push(message.type)
         const normalized = receiver.receive({ message })
 
         if (normalized?.type === 'thread') {
@@ -1576,5 +1598,126 @@ test(
       ['A live page keeps growing.'],
     )
     assert.ok(grownPage.conversation!.entries.some(entry => entry.text === 'A live page keeps growing.'))
+    live.start({
+      offset: 0,
+      ownerStarted: true,
+    })
+    card.agent = {
+      provider: 'claude-code',
+      sessionId: 'windowed',
+      transcriptPath: path,
+    }
+    writeFileSync(
+      path,
+      readFileSync(
+        join(
+          import.meta.dirname,
+          'fixtures',
+          'live-thread.jsonl',
+        ),
+        'utf8',
+      ).repeat(RECENT_WINDOW_COPIES),
+    )
+    threads.bindThread({
+      ws,
+      card,
+    })
+    const windowSub = threads.subscriptionMap({ card: HYDRA_CARD }).get(ws)!
+    const window = await threads.threadPage({
+      sub: windowSub,
+      card,
+      recent: true,
+      receipt: 'recent-window',
+    })
+    assert.equal(
+      window.recent,
+      true,
+    )
+    assert.equal(
+      window.pages,
+      3,
+    )
+    assert.ok(window.older)
+    const oldest = window.entries[0]!.id
+
+    const appendReplies = ({
+      count,
+      text,
+    }: {
+      count: number
+      text: string
+    }) => appendFileSync(
+      path,
+      Array.from(
+        { length: count },
+        () => JSON.stringify({
+          type: 'assistant',
+          timestamp: '2026-11-06T00:00:03Z',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text,
+              },
+            ],
+          },
+        }) + '\n',
+      ).join(''),
+    )
+
+    appendReplies({
+      count: 1,
+      text: 'One more reply',
+    })
+    wire.length = 0
+    refresh()
+    const grown = pushed.at(-1)!
+    assert.deepEqual(
+      wire,
+      ['thread.delta'],
+      'an arrival in a recent window is sent as a delta',
+    )
+    assert.equal(
+      grown.recent,
+      true,
+    )
+    assert.equal(
+      grown.entries[0]!.id,
+      oldest,
+      'one arrival keeps the window without rereading it',
+    )
+    assert.equal(
+      grown.entries.at(-1)!.text,
+      'One more reply',
+    )
+    appendReplies({
+      count: THREAD_PAGE_LIMIT,
+      text: 'A page of replies',
+    })
+    wire.length = 0
+    refresh()
+    const reset = pushed.at(-1)!
+    assert.deepEqual(
+      wire,
+      ['thread.delta'],
+    )
+    assert.equal(
+      reset.recent,
+      true,
+    )
+    assert.equal(
+      reset.pages,
+      3,
+    )
+    assert.ok(
+      !reset.entries.some(entry => entry.id === oldest),
+      'a page of arrivals resets the window to its recent pages',
+    )
+    assert.equal(
+      reset.entries.at(-1)!.text,
+      'A page of replies',
+    )
+    assert.ok(reset.entries.length <= RECENT_THREAD_ENTRIES)
   },
 )

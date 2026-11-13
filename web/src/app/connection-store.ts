@@ -3,7 +3,7 @@ import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { Immer } from 'immer'
-import { saveEventId,savedReceipt,type SaveCommand } from '#app/save-receipts.ts'
+import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -24,6 +24,7 @@ import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 
+// Freezing deep-walks every new snapshot on its next event; snapshots stay unfrozen, so never write one in place.
 const pageEvents = new Immer({ autoFreeze: false })
 
 const HEARTBEAT_INTERVAL_MS = 10_000
@@ -198,12 +199,18 @@ export function createHydraConnection() {
         name,
         args,
         onChecking,
-      }) => command({
-        scope,
-        name,
-        args,
-        onChecking,
-      }),
+      }) => {
+        if (name === 'page') {
+          scope.page = args
+        }
+
+        return command({
+          scope,
+          name,
+          args,
+          onChecking,
+        })
+      },
     }
 
     scope.command.retain = () => {
@@ -293,13 +300,15 @@ export function createHydraConnection() {
     scope: Scope
     view: HydraState
   }): HydraState => {
-    if (shown?.view === view && shown.spend === scope.spend && shown.usage === scope.usage) {
-      return shown.state
+    const previous = shown
+    const sameReadings = previous !== undefined && previous.spend === scope.spend
+      && previous.usage === scope.usage
+
+    if (sameReadings && previous.view === view) {
+      return previous.state
     }
 
-    const previous = shown
-    const sameCards = previous !== undefined && previous.view.cards === view.cards
-      && previous.spend === scope.spend && previous.usage === scope.usage
+    const sameCards = sameReadings && previous.view.cards === view.cards
     const cards = sameCards ? previous.state.cards : { ...view.cards }
 
     if (!sameCards) {
@@ -478,7 +487,8 @@ export function createHydraConnection() {
       }
 
       const state = scope.resource.snapshot().confirmed
-      const receipt = savedReceipt({
+      // The page keeps no event ids, so a Hydra message or agent change confirms only from its receipt.
+      const receipt = savedReply({
         command: saveCommand({ request }),
         state,
       })
@@ -582,6 +592,8 @@ export function createHydraConnection() {
         scope: scope.id,
         subscription: scope.subscription,
         ...(scope.hasSnapshot ? { after: String(scope.resource.snapshot().confirmed.seq) } : {}),
+        // JSON drops an undefined page, so a scope that opened no cards sends none.
+        page: scope.page,
       },
     })
   }
@@ -734,8 +746,8 @@ export function createHydraConnection() {
       }
 
       persistSoon({ scope })
-    } else if (message.type === 'event' || message.type === 'page.event') {
-      const seq = message.type === 'event' ? message.event.seq : message.update.seq
+    } else if (message.type === 'page.event') {
+      const seq = message.update.seq
       const state = scope.resource.snapshot().confirmed
 
       if (seq <= state.seq) {
@@ -762,35 +774,21 @@ export function createHydraConnection() {
           state,
           // eslint-disable-next-line pnyx/object-params -- Immer owns the recipe callback signature.
           draft => {
-            if (message.type === 'page.event') {
-              applyPageUpdate({
-                state: draft,
-                update: message.update,
-              })
-            } else {
-              applyPageUpdate({
-                state: draft,
-                update: {
-                  seq: message.event.seq,
-                  event: message.event,
-                  cards: {},
-                },
-              })
-            }
+            applyPageUpdate({
+              state: draft,
+              update: message.update,
+            })
           },
         ),
       })
 
       confirmSaves({ scope })
 
-      const changed = message.type === 'event' ? message.event : message.update.event
+      const changed = message.update.event
 
-      if (selected === scope.id) {
-        if (changed) {
-          noteUpdate({ event: changed })
-        } else if (message.type === 'page.event') {
-          staleUpdates({ ids: Object.keys(message.update.cards) })
-        }
+      // An update without its event is a hidden card's or a private one, and adds no row to a shown task's Updates.
+      if (selected === scope.id && changed) {
+        noteUpdate({ event: changed })
       }
 
       persistSoon({ scope })
@@ -912,10 +910,20 @@ export function createHydraConnection() {
       'subscription',
       crypto.randomUUID(),
     )
+    const primary = selection().creation && selected.startsWith('pending-') ? selection().creation!.from : selected
     url.searchParams.set(
       'scope',
-      selection().creation && selected.startsWith('pending-') ? selection().creation!.from : selected,
+      primary,
     )
+    const page = scopes.get(primary)?.page
+
+    if (page) {
+      url.searchParams.set(
+        'page',
+        JSON.stringify(page),
+      )
+    }
+
     const ws = new WebSocket(url)
     let opened = false
     socket = ws

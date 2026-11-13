@@ -7,7 +7,6 @@ import { approval } from './confirmations.ts'
 import { project } from '#projects/cli.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
 import type { ThreadPage, LatestMessage } from '#hydra/transcripts-read.ts'
-import type { HydraEvent } from './model.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { Settings } from '#settings/model.ts'
@@ -82,10 +81,6 @@ type ServerPayload =
   | {
     type: 'page.event'
     update: PageUpdate
-  }
-  | {
-    type: 'event'
-    event: HydraEvent
   }
   // Last conversation messages and current actions by card: all of them on connect, then the ones that changed (null when gone).
   | {
@@ -177,9 +172,11 @@ export interface MountedHydra {
   connect({
     ws,
     after,
+    page,
   }: {
     ws: HydraClient
     after: string | null
+    page?: string[]
   }): HydraSubscription
   summaries({ hydras }: { hydras: HydraSummary[] }): void
   upgrade(): void

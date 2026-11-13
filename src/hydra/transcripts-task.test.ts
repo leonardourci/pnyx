@@ -203,5 +203,28 @@ test(
       }),
       { receipt: 'queued' },
     )
+    // Sent to Hydra with no record that its queue took it: nothing confirmed a failure, so it is unsure.
+    card.replies = [
+      {
+        id: 'r1',
+        state: 'queued',
+        route: 'hydra',
+      },
+    ]
+    assert.deepEqual(
+      taskReceipt({
+        card,
+        reply: 'r1',
+      }),
+      {
+        receipt: 'queued',
+        delivery: {
+          hydra: {
+            state: 'delivery_unknown',
+            detail: 'Hydra queue was not confirmed',
+          },
+        },
+      },
+    )
   },
 )

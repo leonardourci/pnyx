@@ -32,16 +32,18 @@ function commentValue({ value }: { value: unknown }): ChatComment | undefined {
     comment.at,
   ]
 
-  if (typeof comment.id !== 'string' || !comment.id || typeof comment.messageId !== 'string'
-    || typeof comment.text !== 'string' || typeof comment.quote !== 'string'
-    || !Number.isSafeInteger(comment.block) || !Number.isSafeInteger(comment.offset)
-    || indices.some(index => index !== undefined && (!Number.isSafeInteger(index) || index < 0))
-    || strings.some(text => text !== undefined && typeof text !== 'string')
-    || (comment.end !== undefined && (!comment.end || typeof comment.end !== 'object'
-      || !Number.isSafeInteger(comment.end.position) || !Number.isSafeInteger(comment.end.offset)))
-    || (comment.images !== undefined && (!Array.isArray(comment.images)
-      || !comment.images.every(path => typeof path === 'string')))
-    || !sendableComment({ comment })) {
+  const validIdentity = typeof comment.id === 'string' && !!comment.id && typeof comment.messageId === 'string'
+    && typeof comment.text === 'string' && typeof comment.quote === 'string'
+  const validIndices = Number.isSafeInteger(comment.block) && Number.isSafeInteger(comment.offset)
+    && indices.every(index => index === undefined || (Number.isSafeInteger(index) && index >= 0))
+  const validStrings = strings.every(text => text === undefined || typeof text === 'string')
+  const validEnd = comment.end === undefined || (!!comment.end && typeof comment.end === 'object'
+    && Number.isSafeInteger(comment.end.position) && Number.isSafeInteger(comment.end.offset))
+  const validImages = comment.images === undefined
+    || (Array.isArray(comment.images) && comment.images.every(path => typeof path === 'string'))
+  const valid = validIdentity && validIndices && validStrings && validEnd && validImages
+
+  if (!valid || !sendableComment({ comment })) {
     return
   }
 
@@ -62,26 +64,29 @@ function migrateComments({
     return
   }
 
-  let cards: Record<string, unknown>
+  let value: unknown
 
   try {
-    const value: unknown = JSON.parse(raw)
-
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return
-    }
-
-    cards = value as Record<string, unknown>
+    value = JSON.parse(raw)
   } catch {
+    // Unreadable JSON leaves value undefined, so it is removed below like a list that holds no cards.
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    // Nothing can be recovered from it, and leaving it would parse it again on every save.
+    storage.removeItem(key)
+
     return
   }
 
+  const cards = value as Record<string, unknown>
+
   const entries = Object.entries(cards).flatMap(([
     card,
-    value,
-  ]) => Array.isArray(value)
-    ? value.flatMap(value => {
-      const comment = commentValue({ value })
+    list,
+  ]) => Array.isArray(list)
+    ? list.flatMap(item => {
+      const comment = commentValue({ value: item })
 
       return comment ? [
         {
@@ -209,6 +214,20 @@ export function loadCommentRecords({
   return [...comments.values()]
 }
 
+export function commentChanges({
+  comments,
+  previous,
+}: {
+  comments: ChatComment[]
+  previous: ChatComment[]
+}) {
+  return {
+    changed: comments.filter(comment => JSON.stringify(comment)
+      !== JSON.stringify(previous.find(saved => saved.id === comment.id))),
+    removed: previous.filter(saved => !comments.some(comment => comment.id === saved.id)),
+  }
+}
+
 export function saveCommentRecords({
   storage,
   key,
@@ -220,10 +239,13 @@ export function saveCommentRecords({
   comments: ChatComment[]
   previous: ChatComment[]
 }) {
-  const current = comments.filter(comment => sendableComment({ comment }))
-  const changed = current.filter(comment => JSON.stringify(comment)
-    !== JSON.stringify(previous.find(saved => saved.id === comment.id)))
-  const removed = previous.filter(saved => !current.some(comment => comment.id === saved.id))
+  const {
+    changed,
+    removed,
+  } = commentChanges({
+    comments: comments.filter(comment => sendableComment({ comment })),
+    previous,
+  })
 
   if (!changed.length && !removed.length) {
     return previous

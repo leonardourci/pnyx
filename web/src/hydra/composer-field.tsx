@@ -43,6 +43,16 @@ export interface ComposerFieldHandle {
   closePickers(): void
 }
 
+const sameChip = ({
+  before,
+  after,
+}: {
+  before: PlacedChip
+  after?: PlacedChip
+}) => !!after && before.kind === after.kind && before.value === after.value
+  && before.label === after.label && before.name === after.name
+  && before.attached === after.attached
+
 // An owner-typed field with the Hydra composer's chips, mentions, skills and images.
 export function ComposerField({
   value,
@@ -139,7 +149,7 @@ export function ComposerField({
   const suggestionList = `suggestions-${fieldKey}`
   const input = useRef<HTMLTextAreaElement>(null)
   const mirror = useRef<HTMLDivElement>(null)
-  // Programmatic chip writes restore the selection after their mirror mounts.
+  // Where the selection goes after a write: at once for plain text, after the mirror renders when chips changed.
   const caretNext = useRef<{
     anchor: number
     focus: number
@@ -288,13 +298,10 @@ export function ComposerField({
       || view.chips.some((
         chip,
         index,
-      ) => {
-        const after = next.chips[index]
-
-        return !after || chip.kind !== after.kind || chip.value !== after.value
-          || chip.label !== after.label || chip.name !== after.name
-          || chip.attached !== after.attached
-      })
+      ) => !sameChip({
+        before: chip,
+        after: next.chips[index],
+      }))
     current.current = text
     draft = text
     view = next
@@ -408,8 +415,7 @@ export function ComposerField({
     fillGoal,
   } = projectRequestActions({
     input,
-    view,
-    draft,
+    read: () => current.current,
     write,
     trackMention,
     setGoal,
@@ -508,9 +514,7 @@ export function ComposerField({
     prefix,
     onCatalogOpen,
     input,
-    display,
-    view,
-    draft,
+    read: () => current.current,
     projectRequests,
     dismissSlash,
     setActive,
@@ -1029,8 +1033,20 @@ export function ComposerField({
             paths={paths}
             uploads={uploads}
             labelColors={labelColors}
-            removeCard={({ index }) => removeCard({ chip: view.chips[index]! })}
-            openChip={({ index }) => openChip({ chip: view.chips[index]! })}
+            removeCard={({ index }) => {
+              const chip = view.chips[index]
+
+              if (chip) {
+                removeCard({ chip })
+              }
+            }}
+            openChip={({ index }) => {
+              const chip = view.chips[index]
+
+              if (chip) {
+                openChip({ chip })
+              }
+            }}
             chipLook={chipLook}
             mirror={mirror}
           />

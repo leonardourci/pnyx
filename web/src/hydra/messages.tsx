@@ -14,7 +14,7 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
 import {
-  Fragment,memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,
+  memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,
   type ComponentProps,type RefObject,type ReactNode,
   type KeyboardEvent as KeyEvent,
 } from 'react'
@@ -41,9 +41,10 @@ import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,p
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
 import { MessageReceipt } from './message-receipt.tsx'
+import { sentTime } from './receipt-lines.ts'
 import {
-  MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
-  type CommentPassage,
+  MESSAGE_DECORATIONS,blockPassage,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
+  selectedPassage,type CommentPassage,
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
@@ -194,10 +195,10 @@ const MessageRow = memo(function MessageRow({
 }) {
   const canResend = canSendAgain && entry.task
     && (entry.delivery?.agent?.state ?? entry.receipt) === 'delivery_unknown'
+  const sentAt = sentTime({ entry })
 
   return entry.kind === 'divider' ? (
     <div
-      key={entry.renderKey ?? entry.id}
       className="chat-divider"
       role="separator"
       aria-label={entry.text}
@@ -206,7 +207,7 @@ const MessageRow = memo(function MessageRow({
       <span>{entry.text}</span>
     </div>
   ) : (
-    <Fragment key={entry.renderKey ?? entry.id}>
+    <>
       {fold?.notes.length ? (
         <TurnActionsFold
           fold={{
@@ -348,14 +349,14 @@ const MessageRow = memo(function MessageRow({
               Retry
             </InlineButton>
           )}
-          {entry.at && (
+          {sentAt && (
             <time
-              dateTime={entry.at}
-              title={`Sent ${new Date(entry.at).toLocaleDateString()}, ${clock({
-                at: entry.at,
+              dateTime={sentAt}
+              title={`Sent ${new Date(sentAt).toLocaleDateString()}, ${clock({
+                at: sentAt,
                 seconds: true,
               })}`}
-            >{clock({ at: entry.at })}
+            >{clock({ at: sentAt })}
             </time>
           )}
           <CopyButton
@@ -391,7 +392,7 @@ const MessageRow = memo(function MessageRow({
       {timing !== undefined && (
         <TurnFooter turn={timing} taskTitle={timingTitle} />
       )}
-    </Fragment>
+    </>
   )
 })
 
@@ -399,7 +400,6 @@ export function Messages({
   entries,
   lookup,
   comments,
-  setComments,
   drafts,
   quote,
   toolDetails = true,
@@ -445,7 +445,6 @@ export function Messages({
   entries: ChatEntry[]
   lookup: PnyxLookup
   comments: ChatComment[]
-  setComments({ items }: { items: ChatComment[] }): void
   drafts: ChatDrafts
   quote({ text }: { text: string }): void
 }) {
@@ -540,7 +539,6 @@ export function Messages({
     release,
   } = useCommentDrafts({
     root,
-    setComments,
     drafts,
     notify,
     clearSelection: () => setSelection(null),
@@ -1087,7 +1085,10 @@ export function Messages({
       >
         {entries.map(entry => {
           const messageId = entry.messageId ?? entry.id
-          const activeHere = active?.startsWith(`${messageId}/block-`) ? active : null
+          const activeHere = isMessageBlockKey({
+            key: active,
+            messageId,
+          }) ? active : null
           const task = leadingTask({ entry })
           const timedTask = timings.get(entry.id)?.task
 

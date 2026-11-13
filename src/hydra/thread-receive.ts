@@ -18,10 +18,11 @@ export function createThreadReceiver() {
   return {
     read,
     receive({ message }: { message: ServerMessage }): ServerMessage | undefined {
+      let incoming = message
+
       if (message.type === 'thread.delta') {
-        const before = read({ card: message.delta.page.card })
         const thread = applyThreadDelta({
-          before,
+          before: read({ card: message.delta.page.card }),
           delta: message.delta,
         })
 
@@ -29,42 +30,32 @@ export function createThreadReceiver() {
           return undefined
         }
 
-        message = {
+        incoming = {
           ...message,
           type: 'thread',
           thread,
         }
       }
 
-      let incoming: ThreadPage | undefined
-
-      if (message.type === 'thread') {
-        incoming = message.thread
-      } else if (message.type === 'receipt') {
-        incoming = message.thread
+      if ((incoming.type !== 'thread' && incoming.type !== 'receipt') || !incoming.thread) {
+        return incoming
       }
 
-      if (incoming) {
-        const thread = receivedThread({
-          before: read({ card: incoming.card }),
-          latest: incoming,
-        })
+      const thread = receivedThread({
+        before: read({ card: incoming.thread.card }),
+        latest: incoming.thread,
+      })
 
-        if (thread.card === HYDRA_CARD) {
-          hydra = thread
-        } else {
-          worker = thread
-        }
-
-        if (message.type === 'thread' || message.type === 'receipt') {
-          message = {
-            ...message,
-            thread,
-          }
-        }
+      if (thread.card === HYDRA_CARD) {
+        hydra = thread
+      } else {
+        worker = thread
       }
 
-      return message
+      return {
+        ...incoming,
+        thread,
+      }
     },
   }
 }

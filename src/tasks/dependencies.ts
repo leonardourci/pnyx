@@ -5,6 +5,7 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from './model.ts'
 import { cardLanding } from '#tasks/delivery/model.ts'
+import { knownCards } from '#tasks/select.ts'
 import { touch } from './touch.ts'
 import { waitReadiness } from './waits.ts'
 
@@ -159,7 +160,7 @@ export function unmetPrerequisites({
   ancestors.add(card.id)
 
   return (card.prerequisites ?? []).flatMap(id => {
-    const prerequisite = state.cards[id]
+    const prerequisite = knownCards({ state })[id]
 
     if (!prerequisite) {
       return [

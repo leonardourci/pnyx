@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { harnessAccount } from './account-choice.ts'
 import { readUsage } from './dispatch.ts'
 import { defaultLogin, effectiveDispatch } from './dispatch-config.ts'
@@ -11,21 +12,34 @@ import { findCard } from '#tasks/push-rules.ts'
 import { loadHydra } from '#app/store.ts'
 import type { Host } from '#app/host-types.ts'
 
+const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
+const planReads = new Map<string, number>()
+let nextPlanRead = 0
+// Each Hydra's usage views, rebuilt when a login's plan limits change.
+const trackers = new Set<() => void>()
+
 // What each hosted session and login reported about its usage, and the usage views built from it.
 export function createUsageTracker({
   hydraId,
   streamed,
+  usageChanged,
 }: {
   hydraId: string
   streamed({ session }: { session: string }): void
+  // Rebuilds and pushes the usage of every session in the Hydra, once for all of them.
+  usageChanged(): void
 }) {
   // The latest size and spend each session reported, kept after its process idles out.
   const usages = new Map<string, Omit<HostedUsage, 'type'>>()
-  const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
 
-  const usageAccount = ({ agent }: { agent: AgentRef }) => {
+  const usageAccount = ({
+    agent,
+    effective = effectiveDispatch(),
+  }: {
+    agent: AgentRef
+    effective?: ReturnType<typeof effectiveDispatch>
+  }) => {
     const harness = harnessOf({ provider: agent.provider })
-    const effective = effectiveDispatch()
     const name = agent.account ?? harnessAccount({
       effective,
       harness,
@@ -41,6 +55,8 @@ export function createUsageTracker({
       key: `${harness}:${folder}`,
     }
   }
+
+  trackers.add(usageChanged)
 
   const mergeUsage = ({
     key,
@@ -83,6 +99,7 @@ export function createUsageTracker({
     readings = {},
   }) => {
     const state = loadHydra({ hydraId }).state
+    const effective = effectiveDispatch()
 
     return Object.fromEntries(Object.values(state.cards).flatMap(card => {
       const agent = card.agent
@@ -92,7 +109,10 @@ export function createUsageTracker({
       }
 
       const key = sessionId({ agent })
-      const account = usageAccount({ agent })
+      const account = usageAccount({
+        agent,
+        effective,
+      })
 
       return [
         [
@@ -158,6 +178,11 @@ export function createUsageTracker({
     }
 
     const account = usageAccount({ agent: card.agent })
+    const generation = ++nextPlanRead
+    planReads.set(
+      account.key,
+      generation,
+    )
     const plan = await readUsage({
       refresh: force,
       account: {
@@ -165,16 +190,41 @@ export function createUsageTracker({
         folder: account.folder,
       },
     })
-    plans.set(
-      account.key,
+
+    if (planReads.get(account.key) !== generation) {
+      return { refreshed: 'cached plan limits' }
+    }
+
+    const changed = !plans.has(account.key) || !isDeepStrictEqual(
+      plans.get(account.key),
       plan,
     )
-    streamed({ session: sessionId({ agent: card.agent }) })
 
-    return { refreshed: 'plan limits' }
+    if (changed) {
+      plans.set(
+        account.key,
+        plan,
+      )
+
+      for (const notify of trackers) {
+        notify()
+      }
+
+      return { refreshed: 'plan limits' }
+    }
+
+    return { refreshed: 'cached plan limits' }
   }
 
   return {
+    close() {
+      trackers.delete(usageChanged)
+
+      if (trackers.size === 0) {
+        plans.clear()
+        planReads.clear()
+      }
+    },
     mergeUsage,
     usageViews,
     usage,

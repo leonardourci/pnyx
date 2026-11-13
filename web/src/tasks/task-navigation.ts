@@ -69,7 +69,8 @@ export function useTaskNavigation({
     selectedRef,
     revealing,
   ].filter((id): id is string => id !== null)
-  const interested = JSON.stringify(page === 'hydra' ? [...new Set(interestRefs)] : [])
+  const interestIds = page === 'hydra' ? [...new Set(interestRefs)] : []
+  const interestKey = JSON.stringify(interestIds)
   const hadInterest = useRef(false)
   const [
     loadedInterest,
@@ -85,8 +86,13 @@ export function useTaskNavigation({
     request: ReturnType<Command>
   } | null>(null)
 
-  const readInterest = async ({ ids }: { ids: string[] }) => {
-    const key = JSON.stringify(ids)
+  const readInterest = async ({
+    ids,
+    key,
+  }: {
+    ids: string[]
+    key: string
+  }) => {
     const pending = pendingInterest.current
 
     if (pending?.key === key && pending.command === command) {
@@ -119,15 +125,18 @@ export function useTaskNavigation({
 
   useEffect(
     () => {
-      if (!connected || (!hadInterest.current && interested === '[]')) {
+      if (!connected || (!hadInterest.current && !interestIds.length)) {
         return
       }
 
       let active = true
 
       const read = async () => {
-        const ids: string[] = JSON.parse(interested)
-        const request = readInterest({ ids })
+        const ids = interestIds
+        const request = readInterest({
+          ids,
+          key: interestKey,
+        })
         const generation = interestGeneration.current
 
         try {
@@ -136,7 +145,7 @@ export function useTaskNavigation({
 
           if (active && unavailable.length) {
             // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-            setExpanded(ids => ids.filter(id => !unavailable.includes(id)))
+            setExpanded(expanded => expanded.filter(id => !unavailable.includes(id)))
 
             // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
             setActive(current => current && unavailable.includes(current) ? null : current)
@@ -148,7 +157,7 @@ export function useTaskNavigation({
         } finally {
           if (active) {
             setLoadedInterest({
-              key: interested,
+              key: interestKey,
               generation,
             })
           }
@@ -164,7 +173,7 @@ export function useTaskNavigation({
     [
       connected,
       command,
-      interested,
+      interestKey,
     ],
   )
 
@@ -199,7 +208,7 @@ export function useTaskNavigation({
         return
       }
 
-      if (loadedInterest?.key !== interested
+      if (loadedInterest?.key !== interestKey
         || loadedInterest.generation !== interestGeneration.current) {
         return
       }
@@ -221,7 +230,7 @@ export function useTaskNavigation({
     [
       state.cards,
       loadedInterest,
-      interested,
+      interestKey,
       connected,
       page,
     ],
@@ -385,18 +394,20 @@ export function useTaskNavigation({
 
     try {
       if (!currentCards.current[id]) {
+        const ids = [
+          ...new Set([
+            ...interestRefs,
+            id,
+          ]),
+        ]
         const receipt = await readInterest({
-          ids: [
-            ...new Set([
-              ...interestRefs,
-              id,
-            ]),
-          ],
+          ids,
+          key: JSON.stringify(ids),
         })
 
-        const unavailable = Array.isArray(receipt.unavailable) && receipt.unavailable.includes(id)
+        const missing = Array.isArray(receipt.unavailable) && receipt.unavailable.includes(id)
 
-        if (!signal.aborted && unavailable) {
+        if (!signal.aborted && missing) {
           notify({ text: 'Task unavailable in this Hydra' })
 
           return false

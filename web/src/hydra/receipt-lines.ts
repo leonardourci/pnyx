@@ -13,10 +13,16 @@ const ICONS: Partial<Record<ReplyState, string>> = {
   delivery_unknown: 'error',
   failed: 'error',
 }
-const ROUTES: Record<string, string> = {
-  hydra: 'Hydra',
+type Route = 'agent' | 'hydra'
+const ROUTES: Record<Route, string> = {
   agent: 'Agent',
+  hydra: 'Hydra',
 }
+// The agent's part shows before Hydra's, whatever order the delivery record lists them in.
+const ROUTE_ORDER: Route[] = [
+  'agent',
+  'hydra',
+]
 
 export interface ReceiptLine {
   key: string
@@ -40,21 +46,19 @@ function line({
   received?: string
   sent?: string
   why?: string
-  route?: string
+  route?: Route
 }): ReceiptLine {
-  const prefix = route ? `${ROUTES[route] ?? route}: ` : ''
+  const prefix = route ? `${ROUTES[route]}: ` : ''
   const failed = state === 'failed' || state === 'delivery_unknown'
 
   if (received) {
-    const waited = sent ? Date.parse(received) - Date.parse(sent) : undefined
-
     return {
       key,
       text: `${prefix}Received ${clock({ at: received })}`,
       tone: 'received',
       icon: 'check',
-      hint: waited !== undefined && sent
-        ? `Sent ${clock({ at: sent })}, received ${duration({ ms: waited })} later`
+      hint: sent
+        ? `Sent ${clock({ at: sent })}, received ${duration({ ms: Date.parse(received) - Date.parse(sent) })} later`
         : undefined,
     }
   }
@@ -71,23 +75,31 @@ function line({
   }
 }
 
+// A transcript copy's time is when the agent read it; the owner's message shows when it was sent.
+export const sentTime = ({ entry }: { entry: Pick<ThreadEntry, 'sent' | 'at'> }) => entry.sent ?? entry.at
+
 // Received means the agent's harness confirmed it took the message, never that Pnyx handed it over.
 export function receiptLines({ entry }: { entry: ThreadEntry }): ReceiptLine[] {
-  const sent = entry.sent ?? entry.at
+  const sent = sentTime({ entry })
 
-  if (entry.delivery) {
-    return Object.entries(entry.delivery).map(([
-      route,
-      delivery,
-    ]) => line({
-      key: route,
-      route,
-      state: delivery.state,
-      received: delivery.received,
-      sent,
-      // The agent's wait is the task's own; Hydra's part has only its delivery detail.
-      why: delivery.detail ?? (route === 'agent' ? entry.waiting : undefined),
-    }))
+  const { delivery } = entry
+
+  if (delivery) {
+    return ROUTE_ORDER.flatMap(route => {
+      const part = delivery[route]
+
+      return part ? [
+        line({
+          key: route,
+          route,
+          state: part.state,
+          received: part.received,
+          sent,
+          // The agent's wait is the task's own; Hydra's part has only its delivery detail.
+          why: part.detail ?? (route === 'agent' ? entry.waiting : undefined),
+        }),
+      ] : []
+    })
   }
 
   if (!entry.receipt) {

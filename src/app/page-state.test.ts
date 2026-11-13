@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { HydraEvent } from './model.ts'
 import { emptyHydra, replayOwned } from './reducer.ts'
-import { applyPageUpdate, pageEvent, pageState } from './page-state.ts'
-import { pageInterest } from './page-cli.ts'
+import { applyPageUpdate, pageCard, pageEvent, pageState } from './page-state.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { unmetPrerequisites } from '#tasks/dependencies.ts'
 
 test(
   'page views exclude history and hidden cards, load explicit interests and retain durable state',
@@ -130,7 +132,18 @@ test(
     )
     assert.deepEqual(
       snapshot.keys,
-      { task: 'task' },
+      {
+        task: 'task',
+        hidden: 'hidden',
+      },
+    )
+    assert.deepEqual(
+      Object.keys(snapshot.references!),
+      ['hidden'],
+    )
+    assert.equal(
+      'statusLog' in snapshot.references!.hidden!,
+      false,
     )
     assert.equal(
       'eventIds' in snapshot,
@@ -159,13 +172,10 @@ test(
     assert.deepEqual(
       Object.keys(pageState({
         state,
-        interest: pageInterest({
-          state,
-          args: [
-            '--card',
-            'hidden',
-          ],
-        }),
+        interest: {
+          cards: ['hidden'],
+          hidden: false,
+        },
       }).cards),
       [
         'task',
@@ -273,8 +283,12 @@ test(
       undefined,
     )
     assert.equal(
+      browser.references?.task?.title,
+      'Visible',
+    )
+    assert.equal(
       browser.keys.task,
-      undefined,
+      'task',
     )
     assert.equal(
       browser.sessions?.['codex:visible'],
@@ -583,22 +597,6 @@ test(
         interest,
       }),
     )
-    assert.deepEqual(
-      pageInterest({
-        state,
-        args: [
-          '--card',
-          'missing',
-          '--card',
-          'hidden',
-        ],
-      }),
-      {
-        cards: ['hidden'],
-        unavailable: ['missing'],
-        hidden: false,
-      },
-    )
     const detachedSession = {
       ...state.sessions!['codex:hidden']!,
       taskId: null,
@@ -702,6 +700,261 @@ test(
     assert.deepEqual(
       resumedLeaving.movedOut,
       leaving.movedOut,
+    )
+    const back: HydraEvent = {
+      ...create,
+      id: 'moved-back',
+      seq: 4,
+      type: 'task.moved-in',
+      data: {
+        card: structuredClone(moved.data.card),
+        sessions: [],
+        from: 'other-hydra',
+        column: 'queued',
+      },
+    }
+    replayOwned({
+      state: leaving,
+      events: [back],
+    })
+    applyPageUpdate({
+      state: resumedLeaving,
+      update: pageEvent({
+        state: leaving,
+        event: back,
+        interest,
+      }),
+    })
+    assert.deepEqual(
+      resumedLeaving.movedOut ?? {},
+      leaving.movedOut ?? {},
+      'a hidden card that moves back clears its moved-out record on the page too',
+    )
+  },
+)
+
+test(
+  'the page keeps Hydra\'s own session on its hidden hook card, so Hydra keeps its agent',
+  () => {
+    const state = emptyHydra()
+    const base = {
+      v: 1 as const,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base,
+          id: 'hydra',
+          seq: 1,
+          cardId: HYDRA_CARD,
+          type: 'task.created',
+          data: {
+            key: 'hydra',
+            title: 'Hydra',
+          },
+        },
+        {
+          ...base,
+          id: 'task',
+          seq: 2,
+          cardId: 'task',
+          type: 'task.created',
+          data: {
+            key: 'task',
+            title: 'Visible',
+          },
+        },
+        {
+          ...base,
+          id: 'hook',
+          seq: 3,
+          cardId: 'hook',
+          type: 'card.pushed',
+          data: {
+            key: 'hook',
+            agent: {
+              provider: 'claude',
+              sessionId: 'hydra',
+              host: 'pnyx',
+            },
+            activity: 'working',
+          },
+        },
+      ],
+    })
+    state.cards.hook!.automaticTask = true
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base,
+          id: 'configured',
+          seq: 4,
+          cardId: HYDRA_CARD,
+          type: 'board.configured',
+          data: {
+            ...hydraConfig({ state }),
+            hydra: {
+              ...hydraConfig({ state }).hydra,
+              session: 'claude:hydra',
+            },
+          },
+        },
+      ],
+    })
+    assert.equal(
+      state.cards[HYDRA_CARD]!.agent?.host,
+      'pnyx',
+    )
+    const interest = {
+      cards: [],
+      hidden: false,
+    }
+    const page = {
+      ...pageState({
+        state,
+        interest,
+      }),
+      eventIds: {},
+    }
+    const moved: HydraEvent = {
+      ...base,
+      id: 'moved',
+      seq: 5,
+      cardId: 'task',
+      type: 'card.moved',
+      data: {
+        before: 'queued',
+        after: 'parked',
+      },
+    }
+    const idle: HydraEvent = {
+      ...base,
+      id: 'idle',
+      seq: 6,
+      cardId: 'hook',
+      type: 'card.pushed',
+      data: {
+        key: 'hook',
+        agent: {
+          provider: 'claude',
+          sessionId: 'hydra',
+          host: 'pnyx',
+        },
+        activity: 'idle',
+      },
+    }
+
+    for (const event of [
+      moved,
+      idle,
+    ]) {
+      replayOwned({
+        state,
+        events: [event],
+      })
+      applyPageUpdate({
+        state: page,
+        update: pageEvent({
+          state,
+          event,
+          interest,
+        }),
+      })
+      assert.deepEqual(
+        page.cards[HYDRA_CARD],
+        pageCard({ card: state.cards[HYDRA_CARD]! }),
+        event.id,
+      )
+    }
+
+    assert.equal(
+      page.cards[HYDRA_CARD]!.activity,
+      'idle',
+    )
+  },
+)
+
+test(
+  'a shown task whose finished prerequisite was hidden stays ready on the page',
+  () => {
+    const state = emptyHydra()
+    const base = {
+      v: 1 as const,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base,
+          id: 'first',
+          seq: 1,
+          cardId: 'first',
+          type: 'task.created',
+          data: {
+            key: 'first',
+            title: 'First step',
+          },
+        },
+        {
+          ...base,
+          id: 'next',
+          seq: 2,
+          cardId: 'next',
+          type: 'task.created',
+          data: {
+            key: 'next',
+            title: 'Next step',
+          },
+        },
+      ],
+    })
+    state.cards.first!.status = {
+      id: 'done',
+      at: base.at,
+      actor: 'worker',
+      state: 'done',
+      note: 'Finished',
+    }
+    state.cards.first!.hidden = true
+    state.cards.first!.expired = true
+    state.cards.next!.prerequisites = ['first']
+    const page = pageState({
+      state,
+      interest: {
+        cards: [],
+        hidden: false,
+      },
+    })
+    assert.equal(
+      page.cards.first,
+      undefined,
+    )
+    assert.deepEqual(
+      unmetPrerequisites({
+        state,
+        card: state.cards.next!,
+      }),
+      [],
+    )
+    assert.deepEqual(
+      unmetPrerequisites({
+        state: {
+          ...page,
+          eventIds: {},
+        },
+        card: page.cards.next!,
+      }),
+      [],
+    )
+    assert.equal(
+      page.keys.first,
+      'first',
     )
   },
 )

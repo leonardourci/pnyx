@@ -3,7 +3,7 @@ import { threadDelta, type ThreadDelta } from '#hydra/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
-import { mergeThreadPages, retainThreadPages, recentThreadPages, threadSize, RECENT_THREAD_ENTRIES, RECENT_THREAD_PAGES, type ThreadBoundary } from '#hydra/thread-history.ts'
+import { mergeThreadPages, nextRecentCursor, pageCount, retainThreadPages, recentThreadPages, threadSize, RECENT_THREAD_ENTRIES, THREAD_PAGE_LIMIT, type ThreadBoundary } from '#hydra/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
@@ -48,13 +48,31 @@ export type Subscription = {
   paseo?: string
   watcher?: { close(): unknown }
   native?: Promise<PaseoConversation>
-  // The Hydra thread last sent: its card titles, and the page apart from the seq it was read at.
+  // The card titles the Hydra thread was last built from.
   titles?: Record<string, string>
+  // The last page the tab accepted, apart from the seq it was read at.
   sent?: string
-  page?: ThreadPage
+  // The last page versioned for the tab, which the next delta is computed from.
+  versioned?: ThreadPage
+  // Whether Hydra's window keeps only its recent pages, how many entries its last reset kept, and a count of
+  // explicit reads, so a read or refresh that a newer read overtook is dropped.
   recent?: boolean
   recentLimit?: number
   readVersion?: number
+}
+
+// A recent window resets once arrivals have grown it a page past what its last reset kept,
+// so each reset rereads the recent pages once per page of arrivals, not on every one.
+function overRecentLimit({
+  sub,
+  page,
+}: {
+  sub: Subscription
+  page: ThreadPage
+}): boolean {
+  const limit = (sub.recentLimit ?? RECENT_THREAD_ENTRIES) + THREAD_PAGE_LIMIT
+
+  return sub.recent === true && threadSize({ page }) > limit
 }
 
 // The events that can change what hydraThreadView shows: anything on Hydra's own card, its messages,
@@ -141,11 +159,11 @@ export function createThreadSubscriptions({
     key: sub,
     ws,
     thread: prepared.thread,
-    delta: threadDelivery.has({ key: sub }) ? undefined : prepared.delta,
+    delta: prepared.delta,
     receipt,
     current: () => subscriptionMap({ card: sub.card }).get(ws) === sub,
     accepted: () => {
-      if (prepared.signature !== undefined && sub.page === prepared.thread) {
+      if (prepared.signature !== undefined && sub.versioned === prepared.thread) {
         sub.sent = prepared.signature
       }
     },
@@ -236,10 +254,12 @@ export function createThreadSubscriptions({
       return undefined
     }
 
-    sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
-      card.id,
-      card.title,
-    ]))
+    if (prepared.card === HYDRA_CARD) {
+      sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
+        card.id,
+        card.title,
+      ]))
+    }
 
     if (!sub.view) {
       sub.view = {
@@ -252,7 +272,7 @@ export function createThreadSubscriptions({
       ...prepared,
       stream: sub.view.id,
       version: ++sub.view.version,
-      pages: prepared.pages ?? 1,
+      pages: pageCount({ page: prepared }),
       recent: sub.recent === true,
     }
 
@@ -263,11 +283,13 @@ export function createThreadSubscriptions({
       }
     }
 
-    const delta = sub.sent === undefined ? undefined : threadDelta({
-      before: sub.page,
+    // Only a push with nothing pending goes as a delta; a read is answered with a full page.
+    const asDelta = push && sub.sent !== undefined && !threadDelivery.has({ key: sub })
+    const delta = asDelta ? threadDelta({
+      before: sub.versioned,
       after: thread,
-    })
-    sub.page = thread
+    }) : undefined
+    sub.versioned = thread
 
     return {
       signature: sent,
@@ -314,27 +336,38 @@ export function createThreadSubscriptions({
           latest: page,
         })
 
-        const limit = sub.recentLimit ?? RECENT_THREAD_ENTRIES
+        if (overRecentLimit({
+          sub,
+          page: sub.history,
+        })) {
+          let recent = page
+          const seen = new Set<string>()
 
-        if (sub.recent && threadSize({ page: sub.history }) > limit) {
-          sub.history = page
+          let cursor = nextRecentCursor({
+            page: recent,
+            seen,
+          })
 
-          for (let count = 1; count < RECENT_THREAD_PAGES && sub.history.older; count++) {
-            const older = readThread({
-              hydraId,
-              state: state(),
-              card,
-              homes: homes(),
-              before: sub.history.older,
-            })
-            sub.history = mergeThreadPages({
-              before: sub.history,
-              latest: older,
+          while (cursor) {
+            recent = mergeThreadPages({
+              before: recent,
+              latest: readThread({
+                hydraId,
+                state: state(),
+                card,
+                homes: homes(),
+                before: cursor,
+              }),
               olderPage: true,
+            })
+            cursor = nextRecentCursor({
+              page: recent,
+              seen,
             })
           }
 
-          sub.recentLimit = threadSize({ page: sub.history })
+          sub.history = recent
+          sub.recentLimit = threadSize({ page: recent })
         }
       }
 
@@ -379,7 +412,7 @@ export function createThreadSubscriptions({
 
           if (resync) {
             sub.sent = undefined
-            sub.page = undefined
+            sub.versioned = undefined
           }
         }
       }
@@ -461,8 +494,10 @@ export function createThreadSubscriptions({
                 before: sub.history ?? null,
                 latest: page,
               })
-              const limit = sub.recentLimit ?? RECENT_THREAD_ENTRIES
-              const recent = sub.recent && threadSize({ page: merged }) > limit
+              const recent = overRecentLimit({
+                sub,
+                page: merged,
+              })
 
               if (recent) {
                 page = await recentThreadPages({
@@ -721,7 +756,7 @@ export function createThreadSubscriptions({
 
       if (recent) {
         sub.history = undefined
-        sub.page = undefined
+        sub.versioned = undefined
         sub.sent = undefined
         sub.recentLimit = threadSize({ page })
       }
