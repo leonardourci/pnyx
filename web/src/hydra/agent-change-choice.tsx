@@ -207,7 +207,8 @@ export function AgentChangeChoice({
     return null
   }
 
-  const revision = `${state.cards[HYDRA_CARD]?.updatedSeq ?? 0}:${state.hydraOwnerMessage?.id ?? ''}`
+  const cardSeq = state.cards[HYDRA_CARD]?.updatedSeq ?? 0
+  const revision = `${cardSeq}:${state.hydraOwnerMessage?.id ?? ''}`
 
   return (
     <HeldMessageCard

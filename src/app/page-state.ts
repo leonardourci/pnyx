@@ -1,4 +1,5 @@
 import type { HydraEvent, HydraState } from './model.ts'
+import type { HydraMessage } from '#hydra/model.ts'
 import { replayOwned } from './reducer.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
@@ -23,8 +24,12 @@ export interface PageUpdate {
 type ServerOnly = 'eventIds' | 'contextNotes' | 'questionReminders' | 'hydraMessages'
 export type PageState = Omit<HydraState, ServerOnly>
 
-function ownerMessage({ messages }: { messages: HydraState['hydraMessages'] }): HydraState['hydraOwnerMessage'] {
-  const latest = messages?.findLast(message => ownerActor({ actor: message.actor }) && message.action === 'send')
+function ownerMessage({ messages }: {
+  messages: HydraState['hydraMessages']
+}): HydraState['hydraOwnerMessage'] {
+  const ownerSend = ({ message }: { message: HydraMessage }) =>
+    ownerActor({ actor: message.actor }) && message.action === 'send'
+  const latest = messages?.findLast(message => ownerSend({ message }))
 
   return latest && {
     id: latest.id,

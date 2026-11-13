@@ -60,6 +60,7 @@ export function confirmedState({ state }: { state: PageState }): HydraState {
   }
   delete confirmed.contextNotes
   delete confirmed.questionReminders
+  // A cache saved by an older build still holds the message history.
   delete confirmed.hydraMessages
 
   return confirmed
