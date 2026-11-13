@@ -115,6 +115,29 @@ function connection({ url }: { url?: string }): Connection {
   return opened
 }
 
+const configuredUrls = new Map<string, string>()
+
+// The postgresUrl setting, read once per home: zero-cache and the held Hydras keep the connection they opened, so a
+// change applies when the server restarts.
+export function configuredUrl(): string | undefined {
+  const database = homeDatabase()
+
+  if (!configuredUrls.has(database)) {
+    configuredUrls.set(
+      database,
+      configuredPostgres(),
+    )
+  }
+
+  const url = configuredUrls.get(database)
+
+  if (url === '') {
+    return undefined
+  }
+
+  return url
+}
+
 // Runs statements on the home's database and waits for them: the writer and the reducer stay synchronous, as they
 // were over fsynced files. A transaction commits all of them or none.
 export function query({
@@ -128,7 +151,7 @@ export function query({
   rollback?: boolean
   url?: string
 }): Record<string, unknown>[][] {
-  const open = connection({ url: url ?? (configuredPostgres() || undefined) })
+  const open = connection({ url: url ?? configuredUrl() })
   Atomics.store(
     open.signal,
     0,

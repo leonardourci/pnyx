@@ -9,8 +9,7 @@ import type { Duplex } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { handleQueryRequest } from '@rocicorp/zero/server'
 import { mustGetQuery, type ReadonlyJSONValue } from '@rocicorp/zero'
-import { homeDatabase } from '#store/postgres.ts'
-import { configuredPostgres } from '#settings/store.ts'
+import { configuredUrl, homeDatabase } from '#store/postgres.ts'
 import { pnyxHome, privateDir } from '#store/storage.ts'
 import { queries, schema } from '#store/zero-schema.ts'
 import { log } from './diagnostics.ts'
@@ -72,7 +71,7 @@ const zeroTarget = ({ url = '/' }: { url?: string }) => {
 
 // The postgresUrl setting, or host, port and user from the same PG* variables and defaults as the server's own connection.
 function upstreamUrl(): string {
-  const configured = configuredPostgres()
+  const configured = configuredUrl()
 
   if (configured) {
     return configured
