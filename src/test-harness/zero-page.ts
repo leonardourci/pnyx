@@ -6,10 +6,13 @@ import { schema } from '#store/zero-schema.ts'
 const ANSWER_MS = 20_000
 
 const decoded = ({ data }: { data: Buffer | ArrayBuffer | Buffer[] }) => {
-  const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data
-  const parts = Array.isArray(data) ? data : [Buffer.from(bytes)]
+  if (Array.isArray(data)) {
+    return Buffer.concat(data).toString('utf8')
+  }
 
-  return Buffer.concat(parts).toString('utf8')
+  const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data
+
+  return Buffer.from(bytes).toString('utf8')
 }
 
 // zero-cache's first start copies the home's tables into its replica before it reports ready.
