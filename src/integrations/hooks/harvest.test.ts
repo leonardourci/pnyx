@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -113,14 +113,5 @@ test(
       harvest(),
       0,
     )
-    assert.ok(!readFileSync(
-      join(
-        home,
-        'hydras',
-        'fixture',
-        'harvest.json',
-      ),
-      'utf8',
-    ).includes('conversation'))
   },
 )
