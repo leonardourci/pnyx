@@ -1,6 +1,6 @@
 import type { HydraState } from './model.ts'
 import { HydraError } from '#store/errors.ts'
-import { homeScoped, query, withoutNul } from '#store/postgres.ts'
+import { homeScoped, query, storable } from '#store/postgres.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
 import { emptyHydra } from './reducer.ts'
 import { emptySaved, loadStatements, stateFromRows, type SavedRows } from './rows.ts'
@@ -83,7 +83,7 @@ export function importLegacy({
     return false
   }
 
-  withoutNul({ value: legacy })
+  storable({ value: legacy })
   importHydra({
     hydraId,
     events: legacy.events,

@@ -13,7 +13,8 @@ const WORKER_ENTRY = new URL(
 )
 // A statement the server waits on longer than this has a stuck connection behind it.
 const QUERY_TIMEOUT_MS = 30_000
-// Postgres refuses U+0000 even in json columns, so one stored value holding it would fail every later write.
+// Postgres refuses U+0000 and a lone UTF-16 surrogate even in json columns, so one stored value holding either would
+// fail every later write.
 const NUL = '\u0000'
 const REPLACEMENT = '\ufffd'
 const LIVE_DATABASE = 'pnyx'
@@ -166,20 +167,21 @@ export function configuredUrl(): string | undefined {
   return url
 }
 
-// Replaces U+0000 in every string of a record headed for Postgres, in place, so memory and rows keep the same text.
-export function withoutNul<Value>({ value }: { value: Value }): Value {
+// Replaces U+0000 and lone surrogates with U+FFFD in every string of a record headed for Postgres, in place, so memory
+// and rows keep the same text.
+export function storable<Value>({ value }: { value: Value }): Value {
   if (typeof value === 'string') {
-    return (value.includes(NUL) ? value.replaceAll(
+    return value.toWellFormed().replaceAll(
       NUL,
       REPLACEMENT,
-    ) : value) as Value
+    ) as Value
   }
 
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
 
     for (const key of Object.keys(record)) {
-      record[key] = withoutNul({ value: record[key] })
+      record[key] = storable({ value: record[key] })
     }
   }
 

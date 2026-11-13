@@ -8,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
@@ -20,7 +21,7 @@ import { PR_COMMANDS, attend, observe, type HookEnvelope } from './observe.ts'
 import { readEvents } from '#app/event-log.ts'
 import { spoolWrite } from '#app/spool.ts'
 import { spoolFiles } from '#store/storage.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadHydra, reloadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { runForRequest } from '#app/api-run.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -649,6 +650,104 @@ test(
     )
     ingestSpool({ hydraId: 'default' })
     assert.ok(readEvents({ hydraId: 'default' }).some(event => event.id === 'hook-7-7'))
+  },
+)
+
+const NUL_SESSION = 'aaaaaaaa-0000-4000-8000-000000000001'
+const EMOJI_SESSION = 'aaaaaaaa-0000-4000-8000-000000000002'
+
+const promptHook = ({
+  id,
+  session,
+  prompt,
+}: {
+  id: string
+  session: string
+  prompt: string
+}) => spoolWrite({
+  hydraId: 'default',
+  entry: {
+    v: 1,
+    id,
+    at: '2026-11-13T09:00:00.000Z',
+    harness: 'claude',
+    event: 'UserPromptSubmit',
+    payload: {
+      session_id: session,
+      transcript_path: `/work/home/.claude/projects/-work-repo/${session}.jsonl`,
+      cwd: '/work/repo',
+      permission_mode: 'default',
+      hook_event_name: 'UserPromptSubmit',
+      prompt,
+    },
+  },
+})
+
+test(
+  'a hook prompt holding a NUL, a lone surrogate or an emoji at the title cut is stored, and later writes still succeed',
+  async () => {
+    const { home } = sandbox()
+    process.env.PNYX_HOME = home
+    promptHook({
+      id: 'hook-nul',
+      session: NUL_SESSION,
+      prompt: 'Fix the\u0000 build \ud83d now',
+    })
+    promptHook({
+      id: 'hook-emoji',
+      session: EMOJI_SESSION,
+      prompt: `${'a'.repeat(98)}😀 and more`,
+    })
+    ingestSpool({ hydraId: 'default' })
+    assert.deepEqual(
+      readdirSync(join(
+        home,
+        'hydras',
+        'default',
+        'spool',
+      )),
+      [],
+      'both events left the spool, none set aside',
+    )
+
+    const titleOf = ({ session }: { session: string }) => Object.values(loadHydra({ hydraId: 'default' }).state.cards)
+      .find(card => card.agent?.sessionId === session)?.title
+    assert.equal(
+      titleOf({ session: NUL_SESSION }),
+      'Fix the� build � now',
+    )
+    assert.equal(
+      titleOf({ session: EMOJI_SESSION }),
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀…',
+    )
+
+    const created = await runForRequest({
+      body: {
+        argv: [
+          'task',
+          'create',
+          '--title',
+          'After the odd prompts',
+          '--key',
+          'after-odd-prompts',
+        ],
+        cwd: '/work/repo',
+        env: {},
+      },
+    })
+    assert.equal(
+      created.exitCode,
+      0,
+      created.stdout,
+    )
+
+    const inMemory = JSON.parse(JSON.stringify(loadHydra({ hydraId: 'default' }).state))
+    reloadHydra({ hydraId: 'default' })
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(loadHydra({ hydraId: 'default' }).state)),
+      inMemory,
+      'the Hydra read back from its rows equals the one in memory',
+    )
   },
 )
 
