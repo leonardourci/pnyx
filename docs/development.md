@@ -6,7 +6,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the issue, review and merge proces
 
 ## Build and test
 
-Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`); the test launcher starts its own throwaway cluster on a random port and never uses a running one.
+Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); the test launcher starts its own throwaway cluster on a random port and never uses a running one.
 
 ```sh
 pnpm install
@@ -27,7 +27,7 @@ See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conve
 
 Owner actions in the app run in the server, which holds each Hydra in memory and is its only writer, so no command waits on another writer's lock. A validation or permission refusal returns its reason at once. The writer applies a command's events to its loaded state, retains changed properties for the lifecycle rules' before-state and records which cards they touched. It then commits the events, those cards' rows and the small rows that read across cards in one Postgres transaction, which updates the Hydra's `seq` only from the value it read. A command that throws or loses that race commits nothing, and the Hydra is read back from its rows. Rows reloaded from Postgres must match a cold replay of the events.
 
-The writer and reducer are synchronous, so Postgres statements run on a worker thread's connection and the caller waits for the answer, as it waited for an fsync before. A home's database is created and migrated with `src/store/schema.sql` on first use. Page command receipts carry the Hydra's committed `seq`.
+The writer and reducer are synchronous, so Postgres statements run on a worker thread's connection and the caller waits for the answer. A home's database is created and migrated with `src/store/schema.sql` on first use. The schema is applied only to a database without Pnyx's tables, so drop a database a pre-release build of the Postgres storage created (`dropdb <database>`) before using it again.
 
 The page reads Pnyx's data through Zero's named queries in `src/store/zero-schema.ts`: the open Hydra's row (configuration, columns, page values and queue), its live board cards with their questions, declarations and links, every card as a small reference for chips and mentions, Hydra's messages, the Hydra list, the shared settings and the upgrade check. Zero keeps its rows in the browser per installation, so a reload shows the last rows at once while it catches up. The page builds the Hydra it shows from those rows; an unchanged row keeps its card, so a write redraws only the cards it touched. Facts that read across cards (a working child session, the waited-for task's title, unmet prerequisites and each pull request's deciding merge question) come with each card from the server, so the page needs only the cards it shows.
 

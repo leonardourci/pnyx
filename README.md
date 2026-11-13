@@ -33,7 +33,7 @@ pnyx-axi setup postgres
 
 If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/pnyx-axi.js` directly from the clone.
 
-The global install links this clone; keep it in place. To upgrade, run `pnyx-axi upgrade` or send `/upgrade` in Hydra's chat; both pull `main`, install, build, check that the new build can import the data, and restart the server.
+The global install links this clone; keep it in place. To upgrade, run `pnyx-axi upgrade` or send `/upgrade` in Hydra's chat; both pull `main`, install, build, check that the new build can import the data, and restart the server. The first upgrade onto a Pnyx that keeps its data in Postgres runs the installed release's upgrade, which has no such check, so prepare it with the first-move steps in [Upgrade](docs/pnyx-axi.md#upgrade).
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
