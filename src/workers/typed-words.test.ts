@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, rmSync, utimesSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -8,6 +8,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideReply } from './reply-rules.ts'
+import type { AgentRef } from './model.ts'
 import { hydraCheck } from './workers.ts'
 
 // Seconds after the test starts, so the events the commands record at the real time come first.
@@ -98,22 +99,26 @@ test(
     const push = ({
       title,
       at,
+      key = 'terminal',
+      agent = {
+        provider: 'claude-code',
+        sessionId: 'terminal',
+        transcriptPath: path,
+      },
     }: {
       title: string
       at: number
+      key?: string
+      agent?: AgentRef
     }) => withWriter({
       hydraId: 'fixture',
       fn: ({ writer }) => {
         const decision = decidePush({
           state: writer.state,
-          key: 'terminal',
+          key,
           input: {
             title,
-            agent: {
-              provider: 'claude-code',
-              sessionId: 'terminal',
-              transcriptPath: path,
-            },
+            agent,
           },
           meta: {
             actor: 'hooks',
@@ -149,6 +154,44 @@ test(
         writer.append({ event: decision.event })
       },
     })
+    // A worker Pnyx runs has no terminal: its transcript's inputs are Pnyx's own.
+    const hosted = join(
+      home,
+      'hosted.jsonl',
+    )
+    writeFileSync(
+      hosted,
+      record({
+        role: 'user',
+        at: 30,
+        text: 'Input Pnyx gave its own worker.',
+      }),
+    )
+    utimesSync(
+      hosted,
+      new Date(time({ seconds: 30 })),
+      new Date(time({ seconds: 30 })),
+    )
+    await commands.task([
+      'create',
+      '--hydra',
+      'fixture',
+      '--key',
+      'hosted',
+      '--title',
+      'Hosted work',
+    ])
+    push({
+      key: 'hosted',
+      title: 'Hosted work',
+      at: 1,
+      agent: {
+        provider: 'claude-code',
+        sessionId: 'hosted',
+        transcriptPath: hosted,
+        host: 'pnyx',
+      },
+    })
     const after = loadHydra({ hydraId: 'fixture' }).state.seq
     write({
       records: [
@@ -156,6 +199,11 @@ test(
           role: 'user',
           at: 20,
           text: 'Use the staging database.',
+        },
+        {
+          role: 'user',
+          at: 22,
+          text: '<pnyx-worker task="terminal" hydra="fixture">\nScope and authority.\n</pnyx-worker>\n\nYou are the Pnyx worker for task terminal.',
         },
         {
           role: 'user',
@@ -255,5 +303,53 @@ test(
       Date.now() - waited < 15_000,
       'the typed words wake the waiting check',
     )
+
+    // A page cut at the check limit keeps words written after its last change for the next page.
+    const paged = (await waiting).through
+    const limit = 20
+
+    for (let reply = 0; reply <= limit; reply++) {
+      withWriter({
+        hydraId: 'fixture',
+        fn: ({ writer }) => {
+          const decision = decideReply({
+            state: writer.state,
+            ref: 'terminal',
+            data: {
+              reply: `later-${reply}`,
+              state: 'queued',
+              route: 'pnyx',
+              text: `Later reply ${reply}.`,
+            },
+            meta: {
+              actor: 'web',
+              at: time({ seconds: 200 + reply }),
+            },
+          })
+          assert.ok('event' in decision)
+          writer.append({ event: decision.event })
+        },
+      })
+    }
+
+    write({
+      records: [
+        {
+          role: 'user',
+          at: 220.5,
+          text: 'Words after the page.',
+        },
+      ],
+    })
+    push({
+      title: 'Terminal work, paged',
+      at: 230,
+    })
+    const cut = await check({ from: paged })
+    assert.equal(
+      words({ result: cut })?.includes('Words after the page.'),
+      false,
+    )
+    assert.ok(words({ result: await check({ from: cut.through }) })?.includes('Words after the page.'))
   },
 )

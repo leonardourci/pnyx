@@ -68,6 +68,8 @@ export interface ThreadEntry {
   // Pairs a tool call with its result.
   call?: string
   initial?: boolean
+  // Pnyx wrote this user input, such as a worker's start prompt.
+  pnyx?: boolean
   replyId?: string
   messageId?: string
   part?: number
@@ -190,16 +192,24 @@ export function transcriptEntries({
   const entries: ThreadEntry[] = messages.map((
     message,
     index,
-  ) => ({
-    id: `${offset}:m${index}`,
-    kind: 'message',
-    role: parsed.role,
-    text: message.text,
-    at: message.at,
-    hidden: message.internal,
-    final: parsed.final,
-    block: message.block,
-  }))
+  ) => {
+    const entry: ThreadEntry = {
+      id: `${offset}:m${index}`,
+      kind: 'message',
+      role: parsed.role,
+      text: message.text,
+      at: message.at,
+      hidden: message.internal,
+      final: parsed.final,
+      block: message.block,
+    }
+
+    if (message.pnyx) {
+      entry.pnyx = true
+    }
+
+    return entry
+  })
 
   for (const trace of parsed.traces) {
     if ((trace.kind === 'tool' && !tools) || (trace.kind === 'thinking' && !thinking)) {

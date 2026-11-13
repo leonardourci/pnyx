@@ -5,7 +5,6 @@ import { sessionEntries, splitEntry, threadPath } from '#hydra/transcripts-read.
 import { isManagedTask } from '#tasks/select.ts'
 import { steeringText } from './inbox-notice.ts'
 import { cardSessionId } from './session-attachments.ts'
-import { workerStartText } from './worker-brief.ts'
 
 export interface TypedWords {
   task: string
@@ -15,7 +14,7 @@ export interface TypedWords {
 
 // The owner's words typed straight into a worker's session, in its terminal or the Paseo app:
 // the user messages of the task's transcript that echo no reply Pnyx queued for it and are none
-// of Pnyx's own inputs. Only words written from `from` and before `to` count. A worker Pnyx runs
+// of Pnyx's own inputs: start prompts and steering notices. Only words written from `from` and before `to` count. A worker Pnyx runs
 // has no terminal to type into, so its transcript is not read.
 export function typedWords({
   state,
@@ -31,12 +30,18 @@ export function typedWords({
   return Object.values(state.cards).flatMap(card => {
     const path = threadPath({ card })
     const session = cardSessionId({ card })
-    const modified = path ? statSync(
+    const pnyxRuns = card.agent?.host === 'pnyx'
+
+    if (isManagedTask({ card }) || pnyxRuns || !path || !session) {
+      return []
+    }
+
+    const written = statSync(
       path,
       { throwIfNoEntry: false },
-    )?.mtimeMs ?? 0 : 0
+    )?.mtimeMs
 
-    if (isManagedTask({ card }) || card.agent?.host === 'pnyx' || !path || !session || modified < from) {
+    if (written === undefined || written < from) {
       return []
     }
 
@@ -72,7 +77,7 @@ export function typedWords({
       session,
       boundaries: false,
     }).filter(entry => {
-      if (entry.role !== 'user') {
+      if (entry.role !== 'user' || entry.pnyx) {
         return false
       }
 
@@ -93,7 +98,7 @@ export function typedWords({
     })
 
     return joinMessageParts({ entries: typed })
-      .filter(({ text }) => !workerStartText({ text }) && !steeringText({ text }))
+      .filter(({ text }) => !steeringText({ text }))
       .map(entry => ({
         task: card.id,
         at: entry.at!,
