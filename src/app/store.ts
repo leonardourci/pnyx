@@ -20,6 +20,8 @@ export type Held = {
   dir: string
   state: HydraState
   saved: SavedRows
+  // The seq of the last committed write; state.seq runs ahead of it while a write appends.
+  committed: number
   // Set when a failed write could not read the Hydra back; the next read or write tries again.
   stale?: boolean
   // Called after each committed write, and after a failed one is read back, so the server shows the change.
@@ -126,6 +128,7 @@ function readHydra({
     dir,
     state: rows?.state ?? emptyHydra(),
     saved: rows?.saved ?? emptySaved(),
+    committed: rows?.state.seq ?? 0,
     changed: () => undefined,
   }
 }
@@ -175,6 +178,7 @@ export function reloadHydra({ hydraId }: { hydraId: string }): void {
     })
     live.state = fresh.state
     live.saved = fresh.saved
+    live.committed = fresh.committed
     live.stale = false
   } catch (error) {
     // The state in memory still holds the refused write, so the server is not told to show it; the next read retries.
@@ -210,6 +214,7 @@ export function writableHydra({
     })
     live.state = fresh.state
     live.saved = fresh.saved
+    live.committed = fresh.committed
     live.stale = false
   }
 

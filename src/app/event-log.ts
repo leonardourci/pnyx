@@ -92,7 +92,8 @@ const extend = ({
 }
 
 // The Hydra's events read so far, extended with the ones committed since. A held Hydra's own writes arrive through
-// rememberEvents, so reading it needs no query while it is current.
+// rememberEvents, so reading it needs no query while it is current. A read inside a write stops at the last commit,
+// so the write's own events still arrive through rememberEvents once it commits.
 function eventLog({ hydraId }: { hydraId: string }) {
   const key = homeScoped({ hydraId })
   let entry = read.get(key)
@@ -109,7 +110,7 @@ function eventLog({ hydraId }: { hydraId: string }) {
     )
   }
 
-  const held = heldHydra({ hydraId })?.state.seq
+  const held = heldHydra({ hydraId })?.committed
 
   if (held !== entry.through) {
     const events = eventsAfter({
@@ -122,7 +123,7 @@ function eventLog({ hydraId }: { hydraId: string }) {
     })
     const lastRead = events.at(-1)?.seq
 
-    // A held Hydra is read up to its own seq; any other up to the last event the query found.
+    // A held Hydra is read up to its last commit; any other up to the last event the query found.
     if (held !== undefined) {
       entry.through = held
     } else if (lastRead !== undefined) {

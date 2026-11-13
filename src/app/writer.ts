@@ -210,6 +210,7 @@ export function withWriter<T>({
         statements,
       })
       live.saved = changes.next
+      live.committed = live.state.seq
       rememberEvents({
         hydraId,
         from,

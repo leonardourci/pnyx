@@ -297,6 +297,46 @@ test(
 )
 
 test(
+  'a read of the event log inside a write keeps that write\'s events once it commits',
+  () => {
+    const events = readStream({ name: 'lifecycle' })
+    const half = Math.floor(events.length / 2)
+    appendAll({
+      events: events.slice(
+        0,
+        half,
+      ),
+    })
+    const release = holdHydra({
+      hydraId: 'default',
+      changed: () => undefined,
+    })
+
+    try {
+      assert.equal(
+        readEvents({ hydraId: 'default' }).length,
+        half,
+      )
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          writer.append({ event: events[half]! })
+          // As a retried page command reads the log after drainSpool appended spooled hook events.
+          readEvents({ hydraId: 'default' })
+          events.slice(half + 1).forEach(event => writer.append({ event }))
+        },
+      })
+      assert.deepEqual(
+        readEvents({ hydraId: 'default' }).map(event => event.id),
+        events.map(event => event.id),
+      )
+    } finally {
+      release()
+    }
+  },
+)
+
+test(
   'event reads after a seq stop at their limit and at through',
   () => {
     const events = readStream({ name: 'lifecycle' })
