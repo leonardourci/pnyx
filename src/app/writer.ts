@@ -20,7 +20,6 @@ import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
-import { rememberEvents } from './event-log.ts'
 import { log } from './diagnostics.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
 
@@ -263,11 +262,6 @@ export function withWriter<T>({
       })
       stage.held.saved = rows.next
       stage.held.committed = stage.held.state.seq
-      rememberEvents({
-        hydraId: stage.id,
-        from: stage.from,
-        events: stage.pending,
-      })
 
       if (stage.from === 0) {
         rememberFirstEvent({

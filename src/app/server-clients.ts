@@ -92,11 +92,21 @@ export function createServerClients({
   }
 
   let derivedThrough = -1
-  let derivedHistory: HydraEvent[] = []
+  const derivedHistory: HydraEvent[] = []
 
   const derivationEvents = () => {
     if (state().seq !== derivedThrough) {
-      derivedHistory = readEvents({ hydraId })
+      derivedHistory.push(...readEvents({
+        hydraId,
+        after: Math.max(
+          0,
+          derivedThrough,
+        ),
+        types: [
+          'board.configured',
+          'task.session',
+        ],
+      }))
       derivedThrough = state().seq
     }
 

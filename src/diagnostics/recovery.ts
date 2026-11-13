@@ -97,6 +97,7 @@ export function createDiagnosticRecovery({
   }) => indexedEvents({
     hydraId,
     keys: replyKeys,
+    cardId: task,
     key: recoveryKey({
       task,
       message,
