@@ -15,7 +15,17 @@ const LOCK_ANSWER_MS = 15_000
 test(
   'a home gets its own migrated database, and a failed transaction leaves nothing behind',
   () => {
-    const [tables] = query({ statements: [{ text: 'select count(*)::int as count from information_schema.tables where table_name = \'hydras\'' }] })
+    let progress = 0
+    const [tables] = query({
+      progress: () => {
+        progress++
+      },
+      statements: [{ text: 'select count(*)::int as count from information_schema.tables where table_name = \'hydras\'' }],
+    })
+    assert.equal(
+      progress,
+      1,
+    )
     assert.deepEqual(
       tables,
       [{ count: 1 }],

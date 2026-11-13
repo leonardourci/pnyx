@@ -178,6 +178,12 @@ async function execute({
     )
   }
 
+  Atomics.add(
+    signal,
+    1,
+    1,
+  )
+
   return result.rows
 }
 

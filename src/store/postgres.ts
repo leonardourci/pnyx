@@ -13,6 +13,7 @@ const WORKER_ENTRY = new URL(
 )
 // A request the server waits on longer than this has a stuck connection behind it; Postgres cancels a slow statement
 // itself well before (STATEMENT_TIMEOUT_MS in the worker).
+const PROGRESS_POLL_MS = 1000
 const QUERY_TIMEOUT_MS = 30_000
 // Postgres refuses U+0000 and a lone UTF-16 surrogate even in json columns, so one stored value holding either would
 // fail every later write.
@@ -115,7 +116,7 @@ function connection({ url }: { url?: string }): Connection {
     port1,
     port2,
   } = new MessageChannel()
-  const signal = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
+  const signal = new Int32Array(new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT))
   const worker = new Worker(
     WORKER_ENTRY,
     {
@@ -223,6 +224,7 @@ export function query({
   rollback = false,
   url,
   timeoutMs = QUERY_TIMEOUT_MS,
+  progress,
 }: {
   statements: Statement[]
   transaction?: boolean
@@ -230,6 +232,7 @@ export function query({
   url?: string
   // An import writes a whole Hydra in one transaction, which can outlast an ordinary statement's wait.
   timeoutMs?: number
+  progress?(): void
 }): Record<string, unknown>[][] {
   const target = url ?? configuredUrl()
   const open = connection({ url: target })
@@ -252,12 +255,38 @@ export function query({
   }
 
   open.port.postMessage(request)
-  const waited = Atomics.wait(
+  const deadline = performance.now() + timeoutMs
+  let observed = Atomics.load(
     open.signal,
-    0,
-    0,
-    timeoutMs,
+    1,
   )
+  let waited: 'ok' | 'not-equal' | 'timed-out'
+
+  do {
+    const remaining = Math.max(
+      0,
+      deadline - performance.now(),
+    )
+    waited = Atomics.wait(
+      open.signal,
+      0,
+      0,
+      progress ? Math.min(
+        PROGRESS_POLL_MS,
+        remaining,
+      ) : remaining,
+    )
+    const advanced = Atomics.load(
+      open.signal,
+      1,
+    )
+
+    if (progress && observed !== advanced) {
+      progress()
+      observed = advanced
+    }
+  } while (waited === 'timed-out' && performance.now() < deadline)
+
   const reply = receiveMessageOnPort(open.port)?.message as Reply | undefined
 
   // A request left running past its wait could still answer later; that worker goes, so its reply never answers the
