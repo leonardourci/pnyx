@@ -379,6 +379,12 @@ declare module '@rocicorp/zero' {
   }
 }
 
+// How many rows each query syncs at most, so none grows with the Hydra's history.
+const HYDRA_LIMIT = 200
+const BOARD_LIMIT = 1_000
+const REFERENCE_LIMIT = 1_000
+const LIST_LIMIT = 100
+
 // The Hydra-wide fields the page reads; the rest of hydra_values is the server's.
 const PAGE_VALUES = [
   'configured',
@@ -446,10 +452,15 @@ const cardArgs = strings<OfCard>({
 })
 
 // The only reads zero-cache serves, so they are the page's permissions: the page asks for one by name and the
-// server's query endpoint builds it. Every write stays a server command.
+// server's query endpoint builds it. Every write stays a server command. Every query is bounded, so the page never
+// syncs a history that grows with time: each list a card relates holds its newest LIST_LIMIT rows, which the page
+// puts back in order.
 export const queries = defineQueries({
   hydras: {
-    list: defineQuery(() => zql.hydras),
+    list: defineQuery(() => zql.hydras.orderBy(
+      'id',
+      'asc',
+    ).limit(HYDRA_LIMIT)),
   },
   hydra: {
     one: defineQuery(
@@ -464,7 +475,7 @@ export const queries = defineQueries({
           query => query.orderBy(
             'position',
             'asc',
-          ),
+          ).limit(LIST_LIMIT),
         )
         .related(
           'values',
@@ -501,7 +512,7 @@ export const queries = defineQueries({
     ),
   },
   board: {
-    // The live cards, as liveTask in src/tasks/select.ts decides them.
+    // The live cards, as liveTask in src/tasks/select.ts decides them, most recently changed first.
     cards: defineQuery(
       hydraArgs,
       ({ args }) => zql.cards
@@ -517,30 +528,36 @@ export const queries = defineQueries({
           'automatic_task',
           false,
         )
+        .orderBy(
+          'updated_seq',
+          'desc',
+        )
+        .limit(BOARD_LIMIT)
         .related('body')
         .related(
           'questions',
           query => query.orderBy(
             'position',
-            'asc',
-          ),
+            'desc',
+          ).limit(LIST_LIMIT),
         )
         .related(
           'declarations',
           query => query.orderBy(
             'position',
-            'asc',
-          ),
+            'desc',
+          ).limit(LIST_LIMIT),
         )
         .related(
           'links',
           query => query.orderBy(
             'position',
-            'asc',
-          ).related(
-            'mergeQuestion',
-            question => question.related('card'),
-          ),
+            'desc',
+          ).limit(LIST_LIMIT)
+            .related(
+              'mergeQuestion',
+              question => question.related('card'),
+            ),
         ),
     ),
   },
@@ -561,32 +578,33 @@ export const queries = defineQueries({
           'questions',
           query => query.orderBy(
             'position',
-            'asc',
-          ),
+            'desc',
+          ).limit(LIST_LIMIT),
         )
         .related(
           'declarations',
           query => query.orderBy(
             'position',
-            'asc',
-          ),
+            'desc',
+          ).limit(LIST_LIMIT),
         )
         .related(
           'links',
           query => query.orderBy(
             'position',
-            'asc',
-          ).related(
-            'mergeQuestion',
-            question => question.related('card'),
-          ),
+            'desc',
+          ).limit(LIST_LIMIT)
+            .related(
+              'mergeQuestion',
+              question => question.related('card'),
+            ),
         )
         .related(
           'notes',
           query => query.orderBy(
             'position',
-            'asc',
-          ),
+            'desc',
+          ).limit(LIST_LIMIT),
         )
         .one(),
     ),
@@ -610,13 +628,19 @@ export const queries = defineQueries({
     ),
   },
   cards: {
-    // Every card, hidden ones included, for mentions and task chips.
+    // The most recently changed cards, hidden ones included, for mentions and task chips.
     references: defineQuery(
       hydraArgs,
-      ({ args }) => zql.cards.where(
-        'hydra_id',
-        args.hydraId,
-      ),
+      ({ args }) => zql.cards
+        .where(
+          'hydra_id',
+          args.hydraId,
+        )
+        .orderBy(
+          'updated_seq',
+          'desc',
+        )
+        .limit(REFERENCE_LIMIT),
     ),
   },
   settings: {
