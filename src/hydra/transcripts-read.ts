@@ -6,7 +6,7 @@ import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { ReplyState } from '#workers/model.ts'
+import type { AgentRef, ReplyState } from '#workers/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { redact } from '#oracle/text.ts'
@@ -274,9 +274,36 @@ export function sessionEntries({
   })))
 }
 
-// Every session Hydra has had, read from their native transcripts; the card holds the current
-// session's latest agent. A transcript last written before after holds nothing later, so it
-// is skipped.
+export interface HydraSession {
+  session: string
+  agent: AgentRef
+}
+
+// Every session Hydra has been configured with, oldest first; the card holds the current
+// session's latest agent.
+export function hydraSessions({ state }: { state: HydraState }): HydraSession[] {
+  const hydra = state.cards[HYDRA_CARD]
+  const current = hydra && cardSessionId({ card: hydra })
+  const ids = [...state.hydraSessions ?? []]
+
+  if (current && !ids.includes(current)) {
+    ids.push(current)
+  }
+
+  return ids.flatMap(session => {
+    const agent = session === current ? hydra!.agent : state.sessions?.[session]?.agent
+
+    return agent && !agent.agentId ? [
+      {
+        session,
+        agent,
+      },
+    ] : []
+  })
+}
+
+// The messages of every session Hydra has had, read from their native transcripts. A
+// transcript last written before after holds nothing later, so it is skipped.
 export function hydraEntries({
   state,
   after,
@@ -284,34 +311,16 @@ export function hydraEntries({
   state: HydraState
   after?: string
 }): SessionEntry[] {
-  const agents = new Map(Object.values(state.sessions ?? {})
-    .filter(session => session.originCardId === HYDRA_CARD && !session.agent.agentId)
-    .map(session => [
-      session.id,
-      session.agent,
-    ]))
-  const hydra = state.cards[HYDRA_CARD]
-  const current = hydra && cardSessionId({ card: hydra })
-
-  if (current && hydra.agent) {
-    agents.set(
-      current,
-      hydra.agent,
-    )
-  }
-
-  // ponytail: every transcript written since after is still read whole and synchronously on
-  // each call; an index of entries per session would bound that.
   const written = ({ path }: { path: string }) => after === undefined
     || (statSync(
       path,
       { throwIfNoEntry: false },
     )?.mtimeMs ?? 0) >= Date.parse(after)
 
-  return [...agents].flatMap(([
+  return hydraSessions({ state }).flatMap(({
     session,
     agent,
-  ]) => {
+  }) => {
     const path = threadPath({ card: { agent } })
 
     return path && written({ path }) ? sessionEntries({

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cpSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commands } from '#app/cli.ts'
@@ -76,9 +76,11 @@ test(
     }) => withWriter({
       hydraId: 'fixture',
       fn: ({ writer }) => {
+        const hydra = card === HYDRA_CARD
         const previous = writer.state.cards[card]?.sessionIds?.[0]
 
-        if (previous) {
+        // Hooks first see each Hydra session on a hidden card of its own; hydra set then makes it Hydra's.
+        if (previous && !hydra) {
           const detached = decideSession({
             state: writer.state,
             ref: previous,
@@ -96,9 +98,9 @@ test(
 
         const decision = decidePush({
           state: writer.state,
-          key: writer.state.cards[card]?.key ?? card,
+          key: hydra ? `hook-${session}` : writer.state.cards[card]!.key,
           input: {
-            title: card === HYDRA_CARD ? 'Hydra' : 'Sample change',
+            title: hydra ? 'Hydra' : 'Sample change',
             agent: {
               host: 'pnyx',
               provider: 'claude-code',
@@ -113,10 +115,15 @@ test(
         })
         assert.ok('event' in decision)
         writer.append({ event: decision.event })
+
+        if (hydra) {
+          return
+        }
+
         const attached = decideSession({
           state: writer.state,
           ref: `claude-code:${session}`,
-          task: card === HYDRA_CARD ? null : card,
+          task: card,
           meta: {
             actor: 'web',
             at: '2026-01-02T00:00:00.000Z',
@@ -518,10 +525,20 @@ test(
       }),
     })
 
+    const replacementPath = join(
+      home,
+      'replacement.jsonl',
+    )
+    writeFileSync(
+      replacementPath,
+      '',
+    )
+
     for (const reference of references) {
       attach({
         card: reference.card,
         session: `replacement-${reference.card}`,
+        path: reference.card === HYDRA_CARD ? replacementPath : undefined,
       })
 
       if (reference.card === HYDRA_CARD) {
