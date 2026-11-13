@@ -120,7 +120,7 @@ test(
     const recapTaken = receivedAt({ id: missed.id })
     assert.ok(recapTaken && recapTaken >= backYet.received)
     assert.equal(
-      receivedAt({ id: `task-context:${exportTask}:export-note` }),
+      s.state().hydraMessages?.find(message => message.task === exportTask)?.received,
       recapTaken,
     )
     await until({
