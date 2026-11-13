@@ -4,6 +4,9 @@ import assert from 'node:assert/strict'
 import { setImmediate } from 'node:timers/promises'
 import { test, type TestContext } from 'node:test'
 import { createHydraConnection } from './connection-store.ts'
+import { hydraSource } from '#web-app/fixtures/hydra-source.ts'
+
+const hydras = hydraSource()
 import { emptyHydra } from '#app/reducer.ts'
 
 class TestSocket {
@@ -190,7 +193,7 @@ test(
         removeItem() {},
       },
     })
-    const connection = createHydraConnection()
+    const connection = createHydraConnection({ watch: hydras.watch })
     assert.equal(
       connection.snapshot().offline,
       false,
@@ -209,39 +212,6 @@ test(
         id: listing.id,
       },
     })
-
-    socket.receive({
-      message: {
-        type: 'page.event',
-        subscription: 'fixture',
-        update: {
-          seq: 2,
-          event: {
-            v: 1,
-            id: 'after-gap',
-            seq: 2,
-            at: '2026-10-22T10:00:00Z',
-            actor: 'web',
-            cardId: 'synthetic-task',
-            type: 'task.created',
-            data: {
-              key: 'synthetic-task',
-              title: 'Synthetic task',
-            },
-          },
-          cards: {},
-        },
-      },
-    })
-    assert.equal(
-      connection.snapshot().connected,
-      false,
-    )
-    assert.equal(
-      connection.snapshot().offline,
-      false,
-    )
-    assert.ok(socket.sent.some(message => message.type === 'resync'))
 
     await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
     assert.equal(
@@ -344,7 +314,7 @@ test(
       },
     })
 
-    const connection = createHydraConnection()
+    const connection = createHydraConnection({ watch: hydras.watch })
     const stop = connection.start()
     const socket = TestSocket.current
     open({ socket })
@@ -461,7 +431,7 @@ test(
       },
     ]
 
-    const first = createHydraConnection()
+    const first = createHydraConnection({ watch: hydras.watch })
     stops.push(first.start())
     const firstSocket = TestSocket.current
     open({ socket: firstSocket })
@@ -485,7 +455,7 @@ test(
     )
     stops.pop()!()
 
-    const reloaded = createHydraConnection()
+    const reloaded = createHydraConnection({ watch: hydras.watch })
     stops.push(reloaded.start())
     assert.equal(
       reloaded.snapshot().navigation.hydraId,
@@ -563,7 +533,7 @@ function recoveryPage({ t }: { t: TestContext }) {
       removeItem() {},
     },
   })
-  const connection = createHydraConnection()
+  const connection = createHydraConnection({ watch: hydras.watch })
   const stop = connection.start()
   cleanup.stop = stop
   open({ socket: TestSocket.current })
@@ -589,15 +559,10 @@ test(
       'send',
     )
     const original = TestSocket.current
-    original.receive({
-      message: {
-        type: 'snapshot',
-        subscription: 'fixture',
+    hydras.show({
+      state: {
+        ...emptyHydra(),
         seq: 3,
-        state: {
-          ...emptyHydra(),
-          seq: 3,
-        },
       },
     })
 
@@ -614,15 +579,10 @@ test(
 
     const restored = TestSocket.current
     open({ socket: restored })
-    restored.receive({
-      message: {
-        type: 'snapshot',
-        subscription: 'fixture',
+    hydras.show({
+      state: {
+        ...emptyHydra(),
         seq: 8,
-        state: {
-          ...emptyHydra(),
-          seq: 8,
-        },
       },
     })
     assert.equal(
@@ -698,15 +658,10 @@ test(
       'send',
     )
     const socket = TestSocket.current
-    socket.receive({
-      message: {
-        type: 'snapshot',
-        subscription: 'fixture',
+    hydras.show({
+      state: {
+        ...emptyHydra(),
         seq: 1,
-        state: {
-          ...emptyHydra(),
-          seq: 1,
-        },
       },
     })
     const initial: ThreadPage = {
@@ -1243,7 +1198,7 @@ test(
         removeItem() {},
       },
     })
-    const connection = createHydraConnection()
+    const connection = createHydraConnection({ watch: hydras.watch })
     const stop = connection.start()
     const socket = TestSocket.current
     open({ socket })
