@@ -31,17 +31,27 @@ export function pageInterest({
   values: ReturnType<typeof parsePage>['values']
 }): {
   interest: PageInterest
+  opened: {
+    id: string
+    title: string
+  }[]
   unavailable: string[]
 } {
   const refs = Array.isArray(values.card) ? values.card : []
-  const cards: string[] = []
+  const opened: {
+    id: string
+    title: string
+  }[] = []
   const unavailable: string[] = []
 
   for (const ref of refs) {
     const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
     if (card) {
-      cards.push(card.id)
+      opened.push({
+        id: card.id,
+        title: card.title,
+      })
     } else {
       unavailable.push(ref)
     }
@@ -49,9 +59,10 @@ export function pageInterest({
 
   return {
     interest: {
-      cards,
+      cards: opened.map(card => card.id),
       hidden: values.hidden === true,
     },
+    opened,
     unavailable,
   }
 }
@@ -69,6 +80,7 @@ export function pageOutput({
   } = parsePage({ args })
   const {
     interest,
+    opened,
     unavailable,
   } = pageInterest({
     state,
@@ -94,10 +106,7 @@ export function pageOutput({
       column: column.id,
       cards: cards.filter(card => liveTask({ card }) && card.column === column.id).length,
     })),
-    opened: interest.cards.length ? interest.cards.map(id => ({
-      id,
-      title: state.cards[id]!.title,
-    })) : 'none: no --card given',
+    opened: opened.length ? opened : 'none: no --card given',
     hidden: interest.hidden ? cards.filter(card => !liveTask({ card })).length : 'not included; pass --hidden',
     messages: page.hydraMessages?.length ?? 0,
     unavailable: unavailable.length ? unavailable : 'none: every card found',

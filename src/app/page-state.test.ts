@@ -620,6 +620,12 @@ test(
           cards: ['hidden'],
           hidden: false,
         },
+        opened: [
+          {
+            id: 'hidden',
+            title: 'Visible',
+          },
+        ],
         unavailable: ['missing'],
       },
     )
