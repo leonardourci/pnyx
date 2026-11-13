@@ -1,4 +1,8 @@
+import { similarity } from './fuzzy.ts'
 import { synonymGroup } from './synonyms.ts'
+
+const FUZZY_SIMILARITY = 0.4
+const SHORT_WORD = 2
 
 export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(
@@ -6,25 +10,13 @@ export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize
     '',
   )
 
-// The distinct words of a text, folded, as typo matching looks them up. Words under
-// three letters have no trigram; longer than 32 are mostly hashes and ids.
-export function words({ text }: { text: string }): Set<string> {
-  return new Set(tokens({ text: fold({ text }) }).filter(w => w.length >= 3 && w.length <= 32))
-}
-
-export const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(
-  /"/g,
-  '""',
-)}"`
-
 export const bare = ({ token }: { token: string }) => token.replace(
   /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,
   '',
 )
 
 // One query word, or a synonym phrase, and what it may match: its synonym group,
-// or the word itself. A trailing * matches the word as a prefix, and the indexed
-// words starting with it, and skips synonyms and typos.
+// or the word itself. A trailing * matches words starting with it and skips synonyms and typos.
 export interface Term {
   alts: readonly string[]
   prefix: boolean
@@ -114,13 +106,161 @@ export function queryTerms({ text }: { text: string }): Term[] {
   return terms
 }
 
-// A term as an FTS5 expression, each phrase quoted so punctuation is never read as
-// query syntax. A prefix term's first alternative is the prefix.
-export function termExpr({ term }: { term: Term }): string {
-  const alts = term.alts.map((
-    alt,
-    i,
-  ) => `${quote({ phrase: alt })}${term.prefix && i === 0 ? '*' : ''}`)
+// Porter's steps 1a, 1b and 1c and its final-e step: plurals, -ed and -ing with the e-restore and
+// double-consonant rules. A word ending in -us keeps its s, so status and statuses share a stem.
+export function inflection({ word }: { word: string }): string {
+  if (word.length <= SHORT_WORD) {
+    return word
+  }
 
-  return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
+  return finalE({ stem: yToI({ stem: endings({ stem: plural({ word }) }) }) })
+}
+
+const shape = ({ stem }: { stem: string }) => [...stem].reduce(
+  (
+    form,
+    letter,
+  ) => {
+    const vowel = 'aeiou'.includes(letter) || letter === 'y' && form.at(-1) === 'c'
+
+    return form + (vowel ? 'v' : 'c')
+  },
+  '',
+)
+
+const measure = ({ stem }: { stem: string }) => shape({ stem }).match(/v+c+/g)?.length ?? 0
+
+const hasVowel = ({ stem }: { stem: string }) => shape({ stem }).includes('v')
+
+const endsShort = ({ stem }: { stem: string }) => shape({ stem }).endsWith('cvc') && !/[wxy]$/.test(stem)
+
+const withoutLast = ({
+  stem,
+  count,
+}: {
+  stem: string
+  count: number
+}) => stem.slice(
+  0,
+  -count,
+)
+
+function plural({ word }: { word: string }) {
+  if (/(?:sses|ies)$/.test(word)) {
+    return withoutLast({
+      stem: word,
+      count: 2,
+    })
+  }
+
+  const singular = /(?:ss|us)$/.test(word) || !word.endsWith('s')
+
+  return singular ? word : withoutLast({
+    stem: word,
+    count: 1,
+  })
+}
+
+function endings({ stem }: { stem: string }) {
+  if (stem.endsWith('eed')) {
+    const agreed = measure({
+      stem: withoutLast({
+        stem,
+        count: 3,
+      }),
+    }) > 0
+
+    return agreed ? withoutLast({
+      stem,
+      count: 1,
+    }) : stem
+  }
+
+  const suffix = /(?:ed|ing)$/.exec(stem)?.[0]
+
+  if (!suffix) {
+    return stem
+  }
+
+  const base = withoutLast({
+    stem,
+    count: suffix.length,
+  })
+
+  if (!hasVowel({ stem: base })) {
+    return stem
+  }
+
+  if (/(?:at|bl|iz)$/.test(base)) {
+    return `${base}e`
+  }
+
+  if (/([^aeiouylsz])\1$/.test(base)) {
+    return withoutLast({
+      stem: base,
+      count: 1,
+    })
+  }
+
+  const restoresE = measure({ stem: base }) === 1 && endsShort({ stem: base })
+
+  return restoresE ? `${base}e` : base
+}
+
+function yToI({ stem }: { stem: string }) {
+  const base = withoutLast({
+    stem,
+    count: 1,
+  })
+
+  return stem.endsWith('y') && hasVowel({ stem: base }) ? `${base}i` : stem
+}
+
+function finalE({ stem }: { stem: string }) {
+  if (!stem.endsWith('e')) {
+    return stem
+  }
+
+  const base = withoutLast({
+    stem,
+    count: 1,
+  })
+  const size = measure({ stem: base })
+  const dropped = size > 1 || size === 1 && !endsShort({ stem: base })
+
+  return dropped ? base : stem
+}
+
+export function matches({
+  word,
+  term,
+  fuzzy,
+}: {
+  word: string
+  term: Term
+  fuzzy: boolean
+}): boolean {
+  return term.alts.some(alt => {
+    const alternative = fold({ text: alt })
+
+    if (term.prefix) {
+      return word.startsWith(alternative)
+    }
+
+    if (word === alternative || inflection({ word }) === inflection({ word: alternative })) {
+      return true
+    }
+
+    if (!fuzzy || !term.typo || alternative.length < 3) {
+      return false
+    }
+
+    const contains = alternative.length >= 4 && word.includes(alternative)
+    const similar = similarity({
+      a: word,
+      b: alternative,
+    }) >= FUZZY_SIMILARITY
+
+    return contains || similar
+  })
 }

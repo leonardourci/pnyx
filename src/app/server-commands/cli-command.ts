@@ -1,6 +1,5 @@
-import { commandTimeout } from '#app/server-protocol.ts'
 import { CLI_COMMANDS } from '#app/server-transport.ts'
-import { COMMAND_WORKER, type createServerWorkers } from '#app/server-workers.ts'
+import { type createServerWorkers } from '#app/server-workers.ts'
 import type { CommandRequest } from './dispatch.ts'
 
 // Any other CLI command the page may run, as the web actor and only on this Hydra.
@@ -49,11 +48,6 @@ export function cliCommand({
   ]
 
   startWorker({
-    file: COMMAND_WORKER,
-    timeout: commandTimeout({
-      name,
-      args,
-    }),
     args: [
       name,
       ...args,

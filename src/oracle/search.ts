@@ -1,29 +1,195 @@
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
-import type { DatabaseSync } from 'node:sqlite'
+import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
-import { nearest, prefixed } from './fuzzy.ts'
-import { openReader, searchPath } from './index.ts'
-import type { Hit, Kind, Match, Query, Snippet } from './model.ts'
-import { MATCH_END, MATCH_START, markedParts } from './snippet.ts'
-import { queryTerms, termExpr, type Term } from './query.ts'
-
-const NOTE_WEIGHT = 2
-// A chunk's BM25 rank, lower is better, with notes weighted up.
-const RANK = `bm25(docs_fts) * CASE d.kind WHEN 'note' THEN ${NOTE_WEIGHT} ELSE 1 END`
+import type { Hit, Match, Query, Snippet } from './model.ts'
+import { queryTerms, fold, tokens, matches, type Term } from './query.ts'
+import type { Document } from './documents.ts'
+import { openIndex } from './index.ts'
+import { redact } from './text.ts'
 
 export const SNIPPETS = 3
+const NOTE_WEIGHT = 2
+// A term in the card's title, project or link titles outweighs that term in any one entry, so the
+// card a query names ranks above cards that only mention it, however long their history.
+const CONTEXT_WEIGHT = NOTE_WEIGHT + 1
+const SNIPPET_CHARS = 180
 
-// One hit per card, best first by BM25. Without --card or --kind every word must
-// match somewhere on the card: its title, link titles, notes or any chunk, the
-// title and link titles weighing half and the notes double; the snippets are its
-// chunks matching the most words. With --card or --kind every word must match in one chunk of that card or kind.
-// Words match stemmed, case and accent folded, and with their synonyms; when that
-// finds nothing, words also match the indexed words nearest them.
+const count = ({ found }: { found: boolean[] }) => found.filter(Boolean).length
+
+const entryWeight = ({
+  entry,
+  found,
+}: {
+  entry: Document
+  found: boolean[]
+}) => count({ found }) * (entry.kind === 'note' ? NOTE_WEIGHT : 1)
+
+function wordMatches({
+  text,
+  term,
+  fuzzy,
+}: {
+  text: string
+  term: Term
+  fuzzy: boolean
+}): boolean {
+  if (term.alts.some(alt => alt.includes(' '))) {
+    const phrases = ` ${tokens({ text: fold({ text }) }).join(' ')} `
+
+    return term.alts.some(alt => phrases.includes(` ${fold({ text: alt })}${term.prefix ? '' : ' '}`))
+  }
+
+  return tokens({ text: fold({ text }) }).some(word => matches({
+    word,
+    term,
+    fuzzy,
+  }))
+}
+
+function snippet({
+  entry,
+  terms,
+  query,
+  fuzzy,
+}: {
+  entry: Document
+  terms: Term[]
+  query: Query
+  fuzzy: boolean
+}): Snippet {
+  const text = query.highlight === false ? entry.text : entry.text.replace(
+    /\s+/g,
+    ' ',
+  )
+  const words = [...text.matchAll(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu)]
+  const marked = new Set<number>()
+
+  for (const [
+    index,
+    found,
+  ] of words.entries()) {
+    if (terms.some(term => matches({
+      word: fold({ text: found[0] }),
+      term,
+      fuzzy,
+    }))) {
+      marked.add(index)
+    }
+
+    for (const term of terms) {
+      for (const alternative of term.alts) {
+        const phrase = tokens({ text: fold({ text: alternative }) })
+
+        if (phrase.length < 2 || index + phrase.length > words.length) {
+          continue
+        }
+
+        const found = phrase.every((
+          word,
+          offset,
+        ) => {
+          const candidate = fold({ text: words[index + offset]![0] })
+
+          if (term.prefix && offset === phrase.length - 1) {
+            return candidate.startsWith(word)
+          }
+
+          return candidate === word
+        })
+
+        if (found) {
+          phrase.forEach((
+            _,
+            offset,
+          ) => marked.add(index + offset))
+        }
+      }
+    }
+  }
+
+  const ranges = words.filter((
+    _,
+    index,
+  ) => marked.has(index))
+  const first = ranges[0]?.index ?? 0
+  const start = Math.max(
+    0,
+    first - Math.floor(SNIPPET_CHARS / 3),
+  )
+  const end = Math.min(
+    text.length,
+    start + SNIPPET_CHARS,
+  )
+  const parts: {
+    text: string
+    matched: boolean
+  }[] = []
+  let through = start
+
+  if (start > 0) {
+    parts.push({
+      text: '…',
+      matched: false,
+    })
+  }
+
+  for (const found of ranges) {
+    if (found.index < start || found.index + found[0].length > end) {
+      continue
+    }
+
+    if (found.index > through) {
+      parts.push({
+        text: text.slice(
+          through,
+          found.index,
+        ),
+        matched: false,
+      })
+    }
+
+    parts.push({
+      text: found[0],
+      matched: true,
+    })
+    through = found.index + found[0].length
+  }
+
+  if (through < end) {
+    parts.push({
+      text: text.slice(
+        through,
+        end,
+      ),
+      matched: false,
+    })
+  }
+
+  if (end < text.length) {
+    parts.push({
+      text: '…',
+      matched: false,
+    })
+  }
+
+  const result: Snippet = {
+    kind: entry.kind,
+    at: entry.at || 'unknown',
+    snippet: parts.map(part => part.matched && query.highlight !== false ? `[${part.text}]` : part.text).join(''),
+  }
+
+  if (query.highlight === true) {
+    result.parts = parts
+  }
+
+  return result
+}
+
 export function search({
   hydraId,
   query,
-  state,
+  state = loadHydra({ hydraId }).state,
 }: {
   hydraId: string
   query: Query
@@ -33,9 +199,9 @@ export function search({
   total: number
   match: Match
 } {
-  const typed = queryTerms({ text: query.text })
+  const terms = queryTerms({ text: query.text })
 
-  if (!typed.length) {
+  if (!terms.length) {
     throw new HydraError({
       message: 'query has no words to search for',
       code: 'VALIDATION_ERROR',
@@ -43,199 +209,192 @@ export function search({
     })
   }
 
-  const scopedQuery = Boolean(query.columns?.length || query.projects?.length || query.since)
-  const scope = scopedQuery ? state ?? loadHydra({ hydraId }).state : undefined
-  const hasCardFilters = Boolean(query.columns?.length || query.projects?.length)
-  const eligible = scope && hasCardFilters ? Object.values(scope.cards).filter(card => {
-    const inColumn = !query.columns?.length || query.columns.includes(card.column)
-    const inProject = !query.projects?.length || query.projects.includes(card.project ?? '')
-
-    return inColumn && inProject
+  const index = openIndex({
+    hydraId,
+    state,
   })
-    .map(card => card.id) : null
-  const cutoff = query.since
-  const recent = scope && cutoff ? Object.values(scope.cards)
-    .filter(card => Date.parse(card.updatedAt) >= Date.parse(cutoff))
-    .map(card => card.id) : []
 
-  const db = openReader({ path: searchPath({ hydraId }) })
+  const run = ({ fuzzy }: { fuzzy: boolean }) => {
+    const grouped = new Map<string, Document[]>()
 
-  try {
-    const terms = typed.map(t => (
-      t.prefix ? {
-        ...t,
-        alts: [
-          ...t.alts,
-          ...prefixed({
-            db,
-            prefix: t.alts[0]!,
-          }),
-        ],
-      } : t
-    ))
-    const lexical = run({
-      db,
-      query,
-      eligible,
-      recent,
+    for (const document of index.documents({
       terms,
-      mode: 'lexical',
-    })
+      fuzzy,
+    })) {
+      if (!terms.some(term => wordMatches({
+        text: document.text,
+        term,
+        fuzzy,
+      }))) {
+        continue
+      }
 
-    if (lexical.hits.length) {
-      return lexical
+      const entries = grouped.get(document.card)
+
+      if (entries) {
+        entries.push(document)
+      } else {
+        grouped.set(
+          document.card,
+          [document],
+        )
+      }
     }
 
-    const fuzzy = terms.map(t => (
-      t.typo ? {
-        ...t,
-        alts: [
-          ...t.alts,
-          ...nearest({
-            db,
-            word: t.alts[0]!,
-          }),
-        ],
-      } : t
-    ))
+    const mode: Match = fuzzy ? 'fuzzy' : 'lexical'
+    const ranked: {
+      hit: Hit
+      score: number
+      latest: number
+    }[] = []
+    const candidates = [
+      ...Object.values(state.cards).filter(card => card.id !== '$hydra'),
+      {
+        id: '$board',
+        title: 'Hydra',
+        workspace: '',
+        project: undefined,
+        column: '',
+        updatedAt: '',
+        links: [],
+      },
+    ]
 
-    return fuzzy.some((
-      t,
-      i,
-    ) => t.alts.length !== terms[i]!.alts.length) ? run({
-        db,
-        query,
-        eligible,
-        recent,
-        terms: fuzzy,
-        mode: 'fuzzy',
-      }) : lexical
-  } finally {
-    db.close()
-  }
-}
+    for (const card of candidates) {
+      if (query.card && query.card !== card.id) {
+        continue
+      }
 
-function run(
-  {
-    db,
-    query,
-    eligible,
-    recent,
-    terms,
-    mode,
-  }: {
-    db: DatabaseSync
-    query: Query
-    eligible: string[] | null
-    recent: string[]
-    terms: Term[]
-    mode: Match
-  },
-): {
-  hits: Hit[]
-  total: number
-  match: Match
-} {
-  const exprs = terms.map(term => termExpr({ term }))
-  const match = exprs.join(' AND ')
-  const filters = {
-    match,
-    workspace: query.workspace ?? null,
-    live: query.live ? 1 : 0,
-    eligible: eligible === null ? null : JSON.stringify(eligible),
-    recent: JSON.stringify(recent),
-    since: query.since ?? null,
-  }
-  const scoped = '(:eligible IS NULL OR c.id IN (SELECT value FROM json_each(:eligible))) AND (:since IS NULL OR c.id IN (SELECT value FROM json_each(:recent)) OR EXISTS (SELECT 1 FROM docs recent_doc WHERE recent_doc.card = c.id AND julianday(recent_doc.at) >= julianday(:since)))'
-  const chunks = `SELECT d.id, d.card, ${RANK} AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
-    WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) AND ${scoped}`
-  type Row = {
-    card: string
-    title: string
-    total: number
-  }
-  const cards = (
-    query.card
-      ? db
-        .prepare(`WITH h AS MATERIALIZED (${chunks} AND d.card = :card) SELECT h.card, c.title, count(*) AS total FROM h JOIN cards c ON c.id = h.card GROUP BY h.card`)
-        .all({
-          ...filters,
-          kind: query.kind ?? null,
-          card: query.card,
-        })
-      : query.kind
-        ? db
-          .prepare(
-            `WITH h AS MATERIALIZED (${chunks}) SELECT h.card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.id = h.card
-               GROUP BY h.card ORDER BY min(h.rank), min(h.id) LIMIT :limit`,
-          )
-          .all({
-            ...filters,
-            kind: query.kind,
-            limit: query.limit,
-          })
-        : db
-          .prepare(
-            `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, ${NOTE_WEIGHT}, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
-               SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
-               WHERE (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) AND ${scoped} ORDER BY h.rank, c.n LIMIT :limit`,
-          )
-          .all({
-            ...filters,
-            limit: query.limit,
-          })
-  ) as Row[]
-  const top = db.prepare(
-    `SELECT d.kind, d.at, snippet(docs_fts, 0, :startMark, :endMark, '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
-     WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY ${RANK}, d.id LIMIT :n`,
-  )
-  const snippetMatch = query.card || query.kind ? match : exprs.join(' OR ')
-  const hits = cards.map(r => ({
-    card: r.card,
-    title: r.title,
-    ...(r.card === '$board' ? { kind: 'hydra' as const } : {}),
-    match: mode,
-    snippets: (
-      top.all({
-        match: snippetMatch,
-        startMark: query.highlight === false ? '' : MATCH_START,
-        endMark: query.highlight === false ? '' : MATCH_END,
-        card: r.card,
-        kind: query.kind ?? null,
-        n: query.card ? query.limit : SNIPPETS,
-      }) as {
-        kind: Kind
-        at: string
-        s: string
-      }[]
-    ).map(t => {
-      const text = query.highlight === false ? t.s : t.s.replace(
-        /\s+/g,
-        ' ',
-      )
-      const found: Snippet = {
-        kind: t.kind,
-        at: t.at || 'unknown',
-        snippet: text.replaceAll(
-          MATCH_START,
-          '[',
-        ).replaceAll(
-          MATCH_END,
-          ']',
+      if (query.workspace && query.workspace !== card.workspace) {
+        continue
+      }
+
+      if (query.live && card.id !== '$board' && !liveTask({ card: state.cards[card.id]! })) {
+        continue
+      }
+
+      if (query.columns?.length && !query.columns.includes(card.column)) {
+        continue
+      }
+
+      if (query.projects?.length && !query.projects.includes(card.project ?? '')) {
+        continue
+      }
+
+      const entries = grouped.get(card.id) ?? []
+
+      if (query.since) {
+        const cutoff = Date.parse(query.since)
+        const recentCard = Date.parse(card.updatedAt) >= cutoff
+        const recent = recentCard || index.newestAt({ card: card.id }) >= cutoff
+
+        if (!recent) {
+          continue
+        }
+      }
+
+      const selected = entries.filter(entry => !query.kind || entry.kind === query.kind)
+      const context = redact({
+        text: [
+          card.title,
+          card.project,
+          ...card.links.map(link => link.title),
+        ].join(' '),
+      })
+      const contextFound = terms.map(term => wordMatches({
+        text: context,
+        term,
+        fuzzy,
+      }))
+      const scored = selected.map(entry => ({
+        entry,
+        found: terms.map(term => wordMatches({
+          text: entry.text,
+          term,
+          fuzzy,
+        })),
+      }))
+      const scoped = Boolean(query.kind || query.card)
+      const everyTermFound = terms.every((
+        _,
+        index,
+      ) => {
+        const inContext = !scoped && contextFound[index]!
+
+        return inContext || scored.some(entry => entry.found[index])
+      })
+      const scopedMatch = scored.some(entry => entry.found.every(Boolean))
+
+      if (!everyTermFound || scoped && !scopedMatch) {
+        continue
+      }
+
+      const snippets = scored.filter(entry => {
+        return scoped ? entry.found.every(Boolean) : entry.found.some(Boolean)
+      })
+        .sort((
+          a,
+          b,
+        ) => entryWeight(b) - entryWeight(a))
+      const bestEntry = snippets[0] ? entryWeight(snippets[0]) : 0
+      const score = count({ found: contextFound }) * CONTEXT_WEIGHT + bestEntry
+      // A spread of every entry would exceed the argument limit on a long history.
+      const latest = snippets.reduce(
+        (
+          newest,
+          { entry },
+        ) => Math.max(
+          newest,
+          Date.parse(entry.at) || 0,
         ),
+        Date.parse(card.updatedAt) || 0,
+      )
+      const hit: Hit = {
+        card: card.id,
+        title: card.title,
+        match: mode,
+        snippets: snippets.slice(
+          0,
+          query.card ? query.limit : SNIPPETS,
+        ).map(({ entry }) => snippet({
+          entry,
+          terms,
+          query,
+          fuzzy,
+        })),
       }
 
-      if (query.highlight === true) {
-        found.parts = markedParts({ text })
+      if (card.id === '$board') {
+        hit.kind = 'hydra'
       }
 
-      return found
-    }),
-  }))
+      ranked.push({
+        hit,
+        score,
+        latest,
+      })
+    }
 
-  return {
-    hits,
-    total: cards[0]?.total ?? 0,
-    match: mode,
+    ranked.sort((
+      a,
+      b,
+    ) => b.score - a.score || b.latest - a.latest)
+
+    return {
+      hits: ranked.slice(
+        0,
+        query.limit,
+      ).map(entry => entry.hit),
+      total: ranked.length,
+      match: mode,
+    }
+  }
+
+  try {
+    const lexical = run({ fuzzy: false })
+
+    return lexical.hits.length ? lexical : run({ fuzzy: true })
+  } finally {
+    index.close()
   }
 }

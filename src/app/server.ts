@@ -1,5 +1,8 @@
+import { captureCpuProfile } from '#diagnostics/cpu-profile.ts'
+import { followGit } from '#tasks/delivery/follow-git.ts'
+import { findCard } from '#tasks/push-rules.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { FOLLOW_POLL_MS } from '#tasks/delivery/follow.ts'
+import { FOLLOW_POLL_MS, followedLinks } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
 import { systemReminderScheduler, type ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { createLatestFeed } from './latest-feed.ts'
@@ -12,7 +15,6 @@ import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
-import { createIndexSync } from '#oracle/index-sync.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { existsSync, rmSync } from 'node:fs'
@@ -38,6 +40,7 @@ import { createServerWorkers } from './server-workers.ts'
 import { RESUME_LIMIT, type HydraClient, type HydraSubscription, type MountedHydra } from './server-transport.ts'
 import { buildId } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
+import { backfillHydraConversations } from '#integrations/hooks/harvest.ts'
 import { healthFacts } from '#diagnostics/health.ts'
 import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
 import { HydraError } from '#store/errors.ts'
@@ -198,6 +201,10 @@ export async function mountOwnedHydra({
       agents.reconcile({ state })
     }
 
+    background({
+      name: 'follow git refs',
+      run: () => gitFollow.reconcile({ state }),
+    })
     followHome()
 
     for (const ws of clients) {
@@ -216,7 +223,6 @@ export async function mountOwnedHydra({
     threadSubscriptions,
     refreshThread,
     refreshLiveThread,
-    historyIndex: () => historyIndex,
     agents: () => agents,
     spend,
   })
@@ -228,6 +234,29 @@ export async function mountOwnedHydra({
     streamed,
   } = feed
 
+  // Each task's declared working state as the pump last saw it; a held Hydra's writer has already
+  // changed the state before the pump reads the event, so the state alone cannot tell a change.
+  // ponytail: one entry per task, seeded at mount; prune if Hydras get huge.
+  const declaredWork = new Map<string, boolean>(Object.entries(state.cards).map(([
+    task,
+    card,
+  ]) => [
+    task,
+    card.status?.state === 'working',
+  ]))
+
+  const workChanged = ({ task }: { task: string }) => {
+    const working = state.cards[task]?.status?.state === 'working'
+    const changed = declaredWork.get(task) !== working
+    declaredWork.set(
+      task,
+      working,
+    )
+
+    return changed
+  }
+
+  // Only events that change what GitHub reports or how often it is read make a task's links due.
   const pump = () => {
     const read = readEventsFrom({
       hydraId,
@@ -255,6 +284,13 @@ export async function mountOwnedHydra({
           state,
           event,
         })
+      }
+
+      const linkedByOthers = event.type === 'card.linked' && event.actor !== 'pnyx'
+      const declaredChange = workChanged({ task: event.cardId })
+
+      if (linkedByOthers || declaredChange || event.type === 'task.copy') {
+        tick.refreshLinks({ task: event.cardId })
       }
 
       recent.push(event)
@@ -289,16 +325,16 @@ export async function mountOwnedHydra({
 
     offset = read.end
 
-    if (read.events.length) {
-      historyIndex.changed()
-    }
-
     hydrasChanged()
 
     if (recovered) {
       agents.reconcile({ state })
     }
 
+    background({
+      name: 'follow git refs',
+      run: () => gitFollow.reconcile({ state }),
+    })
     followHome()
 
     if (recent.length > RESUME_LIMIT) {
@@ -316,16 +352,20 @@ export async function mountOwnedHydra({
     hydraId,
     closed: () => closed,
   })
-
-  const historyIndex = createIndexSync({
+  backfillHydraConversations({
     hydraId,
-    startWorker,
+    closed: () => closed,
+  }).catch((error: unknown) => {
+    log({
+      level: 'error',
+      operation: 'harvest.backfill',
+      hydraId,
+      error,
+    })
   })
-  historyIndex.changed()
 
   const tick = createServerTick({
     hydraId,
-    dir,
     state: () => state,
     closed: () => closed,
     pump,
@@ -339,6 +379,12 @@ export async function mountOwnedHydra({
     review: () => review,
     recover: () => recovery.reconcile(),
   })
+  const gitFollow = followGit({ changed: tick.refreshLinks })
+  background({
+    name: 'follow git refs',
+    run: () => gitFollow.reconcile({ state }),
+  })
+
   const { kick } = tick
 
   const agents = createHost({
@@ -365,6 +411,7 @@ export async function mountOwnedHydra({
       }
     },
     streamed,
+    usageChanged: () => spend.count(),
   })
 
   const recovery = createDiagnosticRecovery({
@@ -375,9 +422,58 @@ export async function mountOwnedHydra({
     pause: recoveryPause,
   })
 
+  const profileAbort = new AbortController()
   const withdrawHost = offerHost({
     hydraId,
     ask: async ({ body }) => {
+      if (body.action === 'cpu-profile') {
+        if (typeof body.seconds !== 'number' || typeof body.path !== 'string') {
+          throw new HydraError({
+            code: 'VALIDATION_ERROR',
+            message: 'CPU profile needs seconds and output path',
+          })
+        }
+
+        return captureCpuProfile({
+          seconds: body.seconds,
+          path: body.path,
+          signal: profileAbort.signal,
+        })
+      }
+
+      if (body.action === 'refresh-links') {
+        if (typeof body.task !== 'string') {
+          throw new HydraError({
+            code: 'VALIDATION_ERROR',
+            message: 'task is required',
+          })
+        }
+
+        const card = findCard({
+          state,
+          ref: body.task,
+        })
+        const followed = followedLinks({ state }).some(({ card: linked }) => linked.id === card.id)
+
+        if (!followed) {
+          return {
+            refreshing: 'none: task has no open pull request links',
+            task: card.id,
+          }
+        }
+
+        tick.refreshLinks({
+          task: card.id,
+          restart: true,
+        })
+
+        return {
+          refreshing: 'pull requests',
+          task: card.id,
+          help: [`Run \`pnyx-axi task show ${card.id} --hydra ${hydraId}\` for the links once read`],
+        }
+      }
+
       if (body.action === 'debug-health') {
         const limit = typeof body.limit === 'number' ? body.limit : DEBUG_LIMIT
 
@@ -457,7 +553,10 @@ export async function mountOwnedHydra({
     }
   })
 
-  const { runCommand } = createServerCommands({
+  const {
+    runCommand,
+    closeClient: closeCommands,
+  } = createServerCommands({
     hydraId,
     url,
     open,
@@ -468,7 +567,6 @@ export async function mountOwnedHydra({
     kick,
     agents,
     catalogCommand,
-    historyIndex,
     hydraSubscribers,
     subscriptionMap,
     bindThread,
@@ -538,6 +636,7 @@ export async function mountOwnedHydra({
         }
       },
       close() {
+        closeCommands({ ws })
         tabs.closeClient({ ws })
         clients.delete(ws)
         hydraSubscribers.delete(ws)
@@ -572,12 +671,12 @@ export async function mountOwnedHydra({
             hydraId,
             entry: entry as { id: string },
           })
+          // The server knows it just spooled a file, so the drain need not wait for the folder watcher.
+          tick.spooled()
         }
       } catch {
       // Not JSON: dropped, as a hook never waits for an answer.
       }
-
-      kick()
     },
   })
 
@@ -585,9 +684,10 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    profileAbort.abort()
+    gitFollow.close()
     await recovery.close()
     withdrawHost()
-    historyIndex.stop()
 
     await Promise.all([
       tick.queueRun,
@@ -657,6 +757,7 @@ export async function mountOwnedHydra({
     liveThreadTimers.clear()
 
     for (const ws of clients) {
+      closeCommands({ ws })
       ws.terminate()
     }
 
@@ -680,7 +781,7 @@ export async function mountOwnedHydra({
       }),
       watchPath({
         path: spoolDir({ dir }),
-        changed: kick,
+        changed: tick.spooled,
       }),
     )
     followHome()

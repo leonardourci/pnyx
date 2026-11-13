@@ -11,7 +11,7 @@ import { HydraError } from '#store/errors.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
 import { holdHydra, loadHydra } from './store.ts'
-import { readEvents } from './event-log.ts'
+import { readEvents, readEventsFrom } from './event-log.ts'
 import { repairHydra } from './repair.ts'
 import { writeSnapshot } from './snapshot.ts'
 import { withWriter, type Writer } from './writer.ts'
@@ -63,6 +63,71 @@ function seedLog({ stream }: { stream: string }): string {
 
   return dir
 }
+
+test(
+  'bounded event reads retain repair-marker lookahead without rereading completed records',
+  () => {
+    const dir = seedLog({ stream: 'lifecycle' })
+    const events = readStream({ name: 'lifecycle' })
+    const first = JSON.stringify(events[0])
+    const marker = JSON.stringify({
+      v: 1,
+      type: 'log.repaired',
+      at: '2026-11-12T10:00:00Z',
+      data: {
+        offset: 0,
+        length: Buffer.byteLength(first),
+      },
+    })
+    writeFileSync(
+      join(
+        dir,
+        'events.jsonl',
+      ),
+      `${first}\n${marker}\n${JSON.stringify(events[1])}\n${JSON.stringify(events[2])}\n`,
+    )
+    const repaired = readEventsFrom({
+      hydraId: 'default',
+      offset: 0,
+      maxBytes: 1,
+    })
+    assert.ok(repaired)
+    assert.deepEqual(
+      repaired.events,
+      [],
+      'the repaired record is never exposed at a batch boundary',
+    )
+    const next = readEventsFrom({
+      hydraId: 'default',
+      offset: repaired.end,
+      maxBytes: 1,
+    })
+    assert.ok(next)
+    const last = readEventsFrom({
+      hydraId: 'default',
+      offset: next.end,
+      maxBytes: 1,
+    })
+    assert.ok(last)
+    assert.deepEqual(
+      [
+        ...next.events,
+        ...last.events,
+      ],
+      [
+        events[1],
+        events[2],
+      ],
+    )
+    assert.equal(
+      last.end,
+      fs.statSync(join(
+        dir,
+        'events.jsonl',
+      )).size,
+    )
+  },
+)
 
 test(
   'failed snapshot writes remove their stage and keep the original error, with a failed cleanup as its cause',

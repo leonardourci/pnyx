@@ -7,7 +7,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 import { HELPER_INSTRUCTIONS } from '#routine-helper/runner.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
-import { until, RECOVERY_TEST_PAUSE_MS } from '#test-harness/harness.ts'
+import { until, logLines, RECOVERY_TEST_PAUSE_MS } from '#test-harness/harness.ts'
 import { withWriter } from '#app/writer.ts'
 import { decideReply } from '#workers/reply-rules.ts'
 import type { HydraEvent } from '#app/model.ts'
@@ -466,7 +466,7 @@ test(
 )
 
 test(
-  'debug queries page correlated events without message bodies or writes and report runtime health',
+  'debug queries page correlated events without message bodies or writes, report runtime health, and save private CPU profiles that shutdown cancels',
   async () => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -539,6 +539,95 @@ test(
       ),
       before,
     )
+    const profile = join(
+      s.folder({ name: 'cpu-profiles' }),
+      'idle.cpuprofile',
+    )
+    await s.owner({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '1',
+        '--out',
+        profile,
+      ],
+    })
+    assert.ok(JSON.parse(readFileSync(
+      profile,
+      'utf8',
+    )).nodes.length > 0)
+    assert.equal(
+      fs.statSync(profile).mode & 0o777,
+      0o600,
+    )
+    const rejected = await s.ownerRefusal({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '0',
+        '--out',
+        profile,
+      ],
+    })
+    assert.equal(
+      rejected.code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      (await s.ownerRefusal({
+        args: [
+          'debug',
+          'cpu-profile',
+          '--seconds',
+          '1e1',
+          '--out',
+          profile,
+        ],
+      })).code,
+      'VALIDATION_ERROR',
+    )
+    const cancelled = join(
+      s.folder({ name: 'cpu-profiles' }),
+      'cancelled.cpuprofile',
+    )
+    const running = s.ownerRefusal({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '60',
+        '--out',
+        cancelled,
+      ],
+    })
+    await until({
+      what: 'the CPU capture to start',
+      check: () => logLines().some(record => record.operation === 'cpu.profile' && record.status === 'started' && record.name === cancelled),
+    })
+    await pnyx.restart()
+    assert.equal(
+      (await running).code,
+      'CANCELLED',
+    )
+    assert.equal(
+      fs.existsSync(cancelled),
+      false,
+    )
+    await s.owner({
+      args: [
+        'debug',
+        'cpu-profile',
+        '--seconds',
+        '1',
+        '--out',
+        join(
+          s.folder({ name: 'cpu-profiles' }),
+          'after-restart.cpuprofile',
+        ),
+      ],
+    })
     const invalid = await s.ownerRefusal({
       args: [
         'debug',
@@ -549,6 +638,17 @@ test(
     })
     assert.equal(
       invalid.code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      (await s.ownerRefusal({
+        args: [
+          'debug',
+          'timeline',
+          '--out',
+          profile,
+        ],
+      })).code,
       'VALIDATION_ERROR',
     )
   },

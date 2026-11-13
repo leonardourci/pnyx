@@ -40,6 +40,7 @@ export const COMMAND_REGISTRY = {
       'timeline',
       'health',
       'performance',
+      'cpu-profile',
     ],
   },
   approval: {
@@ -60,6 +61,7 @@ export const COMMAND_REGISTRY = {
     worker: [
       'show',
       'tools',
+      'refresh-links',
       'history',
       'status',
       'chat',

@@ -1,10 +1,12 @@
-import { COMMON, guard, integer, parse } from '#app/cli-support.ts'
+import { COMMON, guard, integer, parse, required } from '#app/cli-support.ts'
 import { logsDir } from '#app/diagnostics.ts'
 import { oneDecimal } from '#app/log-line.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { askHost } from '#app/server-state.ts'
-import { requestEnv } from '#app/request-context.ts'
+import { resolve } from 'node:path'
+import { PROFILE_SECONDS } from './cpu-profile.ts'
+import { requestCwd, requestEnv } from '#app/request-context.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { readSettings } from '#settings/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -156,9 +158,44 @@ export const debug = guard({
         limit: { type: 'string' },
         cursor: { type: 'string' },
         operation: { type: 'string' },
+        seconds: { type: 'string' },
+        out: { type: 'string' },
       },
       positionals: 1,
     })
+
+    if (positionals[0] === 'cpu-profile') {
+      onlyFlags({
+        values,
+        allowed: [
+          'hydra',
+          'seconds',
+          'out',
+        ],
+        usage: 'debug cpu-profile accepts only --hydra, --seconds and --out',
+      })
+      // The server checks the range, so every caller gets the same rule.
+      const seconds = integer({
+        value: values.seconds,
+        flag: '--seconds',
+      }) ?? PROFILE_SECONDS
+      const output = required({
+        value: values.out as string | undefined,
+        what: '--out',
+      })
+
+      return askHost({
+        hydraId,
+        body: {
+          action: 'cpu-profile',
+          seconds,
+          path: resolve(
+            requestCwd(),
+            output,
+          ),
+        },
+      })
+    }
 
     if (positionals[0] === 'performance') {
       const env = requestEnv()
@@ -198,16 +235,25 @@ export const debug = guard({
     if (positionals[0] !== 'timeline') {
       throw new HydraError({
         code: 'VALIDATION_ERROR',
-        message: 'Use debug timeline, debug health or debug performance',
+        message: 'Use debug timeline, debug health, debug performance or debug cpu-profile',
       })
     }
 
-    if (values.operation !== undefined) {
-      throw new HydraError({
-        code: 'VALIDATION_ERROR',
-        message: '--operation belongs to debug performance',
-      })
-    }
+    onlyFlags({
+      values,
+      allowed: [
+        'hydra',
+        'task',
+        'message',
+        'batch',
+        'session',
+        'since',
+        'until',
+        'limit',
+        'cursor',
+      ],
+      usage: 'debug timeline accepts only --hydra, --task, --message, --batch, --session, --since, --until, --limit and --cursor',
+    })
 
     const since = instant({
       value: values.since,

@@ -18,9 +18,14 @@ function fixture({ t }: { t: TestContext }) {
     reply({ hits }: { hits: Hit[] }): void
     fail(): void
   }[] = []
+  let cancelled = 0
   const shown: string[] = []
+  const displayed: Hit[][] = []
   const failed: string[] = []
   const schedule = searchSchedule({
+    cancel: () => {
+      cancelled += 1
+    },
     find: ({ search }) => {
       asked.push(search)
 
@@ -34,8 +39,13 @@ function fixture({ t }: { t: TestContext }) {
     },
     show: ({
       key,
+      hits,
       failed: failure,
-    }) => (failure ? failed : shown).push(key),
+    }) => {
+      displayed.push(hits)
+      const outcomes = failure ? failed : shown
+      outcomes.push(key)
+    },
   })
   // Answers resolve on microtasks; setImmediate is not mocked.
   const settle = () => new Promise(resolve => setImmediate(resolve))
@@ -45,8 +55,10 @@ function fixture({ t }: { t: TestContext }) {
     asked,
     answers,
     shown,
+    displayed,
     failed,
     settle,
+    cancellations: () => cancelled,
   }
 }
 
@@ -237,6 +249,69 @@ test(
     assert.deepEqual(
       hits,
       [hit({ card: 'task-1' })],
+    )
+  },
+)
+
+test(
+  'clearing or closing Oracle cancels its scan and older answers do not restart a pending query',
+  async t => {
+    const f = fixture({ t })
+    f.schedule.query({ search: { text: 'first' } })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.schedule.query({ search: { text: 'second' } })
+    assert.equal(
+      f.cancellations(),
+      1,
+      'a new query cancels the running scan before its typing delay',
+    )
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.answers[0]!.fail()
+    await f.settle()
+    f.schedule.changed()
+    t.mock.timers.tick(REFRESH_DELAY)
+    assert.deepEqual(
+      f.asked.map(search => search.text),
+      [
+        'first',
+        'second',
+      ],
+    )
+    f.schedule.query({ search: null })
+    assert.equal(
+      f.cancellations(),
+      2,
+    )
+    f.schedule.query({ search: { text: 'second' } })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.answers[1]!.reply({ hits: [hit({ card: 'cancelled-result' })] })
+    await f.settle()
+    assert.deepEqual(
+      f.shown,
+      [],
+    )
+    f.answers[2]!.reply({ hits: [hit({ card: 'replacement-result' })] })
+    await f.settle()
+    assert.deepEqual(
+      f.shown,
+      ['second'],
+    )
+    assert.deepEqual(
+      f.displayed,
+      [[hit({ card: 'replacement-result' })]],
+    )
+    f.schedule.query({ search: { text: 'third' } })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.schedule.stop()
+    assert.equal(
+      f.cancellations(),
+      4,
+    )
+    f.answers[3]!.fail()
+    await f.settle()
+    assert.deepEqual(
+      f.shown,
+      ['second'],
     )
   },
 )
