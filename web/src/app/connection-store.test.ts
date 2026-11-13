@@ -500,6 +500,73 @@ test(
   },
 )
 
+test(
+  'a move receipt leaves the Hydra list as Zero lists it',
+  async t => {
+    const { connection } = recoveryPage({ t })
+    const socket = TestSocket.current
+    const summary = ({
+      id,
+      order,
+    }: {
+      id: string
+      order: number
+    }) => ({
+      id,
+      name: id,
+      order,
+      hydra: 'fixture',
+      projects: [],
+    })
+    shared.hydras({
+      rows: [
+        summary({
+          id: 'default',
+          order: 1,
+        }),
+        summary({
+          id: 'second',
+          order: 2,
+        }),
+      ],
+    })
+    const moving = connection.commandFor({ id: 'default' })({
+      name: 'hydras',
+      args: [
+        'move',
+        'second',
+        '0',
+      ],
+    })
+    const request = socket.sent.find(message => message.name === 'hydras')!
+    socket.receive({
+      message: {
+        type: 'receipt',
+        id: request.id,
+        hydras: [
+          summary({
+            id: 'second',
+            order: 0,
+          }),
+          summary({
+            id: 'default',
+            order: 1,
+          }),
+        ],
+      },
+    })
+    await moving
+    assert.deepEqual(
+      connection.snapshot().navigation.hydras.map(hydra => hydra.id),
+      [
+        'default',
+        'second',
+      ],
+      'the moved Hydra shows in its new place once Zero lists it there',
+    )
+  },
+)
+
 function recoveryPage({ t }: { t: TestContext }) {
   const cleanup: { stop?: () => void } = {}
   t.after(() => cleanup.stop?.())

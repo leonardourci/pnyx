@@ -450,7 +450,6 @@ test(
       data: {
         ...hydraRow,
         config: { name: 'Eos' },
-        queue: {},
       },
       resultType: 'complete',
     })
@@ -468,22 +467,12 @@ test(
     })
     await setImmediate()
     const first = published.at(-1)!
-    assert.deepEqual(
-      first.queue,
-      {
-        chat: undefined,
-        waiting: [],
-        reading: [],
-      },
-      'a queue the server has not written yet reads as empty',
-    )
 
     hydra.answer({
       data: {
         ...hydraRow,
         seq: 4,
         config: { name: 'Eos' },
-        queue: {},
       },
       resultType: 'complete',
     })
@@ -507,7 +496,6 @@ test(
         ...hydraRow,
         seq: 5,
         config: { name: 'Eos' },
-        queue: {},
       },
       resultType: 'complete',
     })
@@ -540,7 +528,7 @@ test(
 )
 
 test(
-  'the Hydra list skips a row with no summary yet, and its read error reaches the page until it reads again',
+  'the Hydra list shows Hydras by their order, then id, and its read error reaches the page until it reads again',
   async () => {
     const fake = fakeZero()
     const lists: string[][] = []
@@ -561,15 +549,25 @@ test(
     list.answer({
       data: [
         {
-          id: 'default',
+          id: 'a',
           summary: {
-            id: 'default',
-            name: 'Eos',
+            id: 'a',
+            order: 2000,
           },
         },
         {
-          id: 'new',
-          summary: {},
+          id: 'default',
+          summary: {
+            id: 'default',
+            order: 1000,
+          },
+        },
+        {
+          id: 'b',
+          summary: {
+            id: 'b',
+            order: 1000,
+          },
         },
       ],
       resultType: 'complete',
@@ -583,7 +581,13 @@ test(
     )
     assert.deepEqual(
       lists,
-      [['default']],
+      [
+        [
+          'b',
+          'default',
+          'a',
+        ],
+      ],
     )
     watched.close()
   },

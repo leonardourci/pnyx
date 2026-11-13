@@ -23,9 +23,11 @@ export function hydrasCommand({
     second,
     third,
   ] = args
+  // The page lists Hydras from Zero; only a listing and a creation, whose new Hydra Zero may not list yet, carry it.
   const reply = ({
     open,
     creation,
+    listed = false,
   }: {
     open?: string
     creation?: {
@@ -34,13 +36,14 @@ export function hydrasCommand({
       status: 'saved'
       mount: 'pending'
     }
+    listed?: boolean
   } = {}) => send({
     ws,
     message: {
       type: 'receipt',
       id,
       hydraId,
-      hydras: listHydras(),
+      ...(listed || creation ? { hydras: listHydras() } : {}),
       ...(open ? { url: open } : {}),
       ...(creation ? { creation } : {}),
     },
@@ -112,7 +115,7 @@ export function hydrasCommand({
     })
     reply()
   } else if (action === undefined) {
-    reply()
+    reply({ listed: true })
   } else {
     throw new HydraError({
       message: 'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',

@@ -7,6 +7,7 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { queries } from '#store/zero-schema.ts'
+import { inListOrder } from './hydra-order.ts'
 import { hydraFromRows, type CardRow, type DetailRow, type HydraRow, type MessageRow, type ReferenceRow } from './hydra-rows.ts'
 
 type Watched<Data> = {
@@ -24,31 +25,10 @@ const loadedResult = ({ resultType }: { resultType: ResultType }) => resultType 
 // A view has its answer once it loaded or failed.
 const settled = ({ view }: { view: Watched<unknown> }) => view.loaded || view.error !== undefined
 
-// The Hydra row's queue reads '{}' until the server first writes it.
-function queueOf({ stored }: { stored: unknown }): HydraQueue {
-  const field = ({ name }: { name: keyof HydraQueue }) =>
-    typeof stored === 'object' && stored !== null ? Reflect.get(
-      stored,
-      name,
-    ) : undefined
-  const waiting = field({ name: 'waiting' })
-  const reading = field({ name: 'reading' })
-
-  return {
-    chat: field({ name: 'chat' }) ?? undefined,
-    waiting: Array.isArray(waiting) ? waiting : [],
-    reading: Array.isArray(reading) ? reading : [],
-  }
-}
-
-// A row the server just inserted holds '{}' until it writes the summary, so only a row with an id lists a Hydra.
-function summaryOf({ stored }: { stored: unknown }): HydraSummary[] {
-  const listed = typeof stored === 'object' && stored !== null && typeof Reflect.get(
-    stored,
-    'id',
-  ) === 'string'
-
-  return listed ? [stored as HydraSummary] : []
+// A Hydra with no row yet has nothing queued.
+const NOTHING_QUEUED: HydraQueue = {
+  waiting: [],
+  reading: [],
 }
 
 // A view counts as loaded once Zero has its rows from this session or a cached one.
@@ -206,7 +186,7 @@ export function watchHydra({
       previous: state,
     }) : missing
     // The Hydra row changes with every write; its queue keeps its identity while it reads the same.
-    const next = queueOf({ stored: hydra.data?.queue })
+    const next = (hydra.data?.queue ?? NOTHING_QUEUED) as HydraQueue
 
     if (JSON.stringify(queue) !== JSON.stringify(next)) {
       queue = next
@@ -381,7 +361,7 @@ export function watchInstallation({
     })
 
     if (loadedResult({ resultType })) {
-      hydras({ rows: rows.flatMap(row => summaryOf({ stored: row.summary })) })
+      hydras({ rows: inListOrder({ hydras: rows.map(row => row.summary as HydraSummary) }) })
     }
   })
   shared.addListener((

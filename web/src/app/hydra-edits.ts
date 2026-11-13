@@ -3,6 +3,7 @@ import type { HydraSummary } from '#app/server-hydras.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from './connection.ts'
+import { inListOrder } from './hydra-order.ts'
 
 type Edit = {
   name: string
@@ -193,13 +194,12 @@ export function useHydraEdits({
         return named
       }
 
-      return named.map(hydra => ({
-        ...hydra,
-        order: orders[hydra.id] ?? hydra.order,
-      })).sort((
-        a,
-        b,
-      ) => a.order - b.order || a.id.localeCompare(b.id))
+      return inListOrder({
+        hydras: named.map(hydra => ({
+          ...hydra,
+          order: orders[hydra.id] ?? hydra.order,
+        })),
+      })
     },
     [
       hydras,

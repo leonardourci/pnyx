@@ -3,6 +3,12 @@ import type { HydraSummary } from '#app/server-hydras.ts'
 // Order keys sit between their neighbors', so a move usually writes one event to the moved Hydra only.
 const ORDER_GAP = 1000
 
+// The Hydra list's order, as the server lists it: by order key, then id.
+export const inListOrder = ({ hydras }: { hydras: HydraSummary[] }) => hydras.toSorted((
+  a,
+  b,
+) => a.order - b.order || a.id.localeCompare(b.id))
+
 // The positions a move writes: the moved Hydra's alone, or, when its neighbors leave no room between
 // them (equal keys, or a gap halved too often), every Hydra renumbered in the new order.
 export const placements = ({

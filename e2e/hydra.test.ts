@@ -1795,13 +1795,17 @@ test(
         '1',
       ],
     })
-    const moved = await page.command({
+    await page.command({
       name: 'hydras',
       args: [
         'move',
         atlas,
         '2',
       ],
+    })
+    const moved = await page.command({
+      name: 'hydras',
+      args: [],
     }) as Listed
     assert.deepEqual(
       [
