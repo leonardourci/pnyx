@@ -311,9 +311,9 @@ for (const harness of [
         },
       )
     } else {
-      assert.equal(
-        native.sessions[0]!.config?.['mcp_servers."unrelated.server".enabled'],
-        false,
+      assert.deepEqual(
+        native.sessions[0]!.config?.mcp_servers,
+        { 'unrelated.server': { enabled: false } },
       )
       assert.equal(
         native.sessions[0]!.config?.['features.plugins'],
@@ -517,21 +517,27 @@ for (const harness of [
         check: () => claude[1]!.delivered() === 1,
       })
     } else {
-      assert.equal(
-        native.sessions[1]!.config?.['mcp_servers."unrelated.server".enabled'],
-        true,
+      assert.deepEqual(
+        native.sessions[1]!.config?.mcp_servers,
+        { 'unrelated.server': { enabled: true } },
       )
       assert.equal(
         native.sessions[1]!.config?.['shell_environment_policy.set.CHROME_DEVTOOLS_AXI_SESSION'],
         `pnyx-${hydraId}-${task}`,
       )
-      assert.equal(
-        native.sessions[1]!.config?.['plugins."company@fixture".mcp_servers."bundled".enabled'],
-        true,
-      )
-      assert.equal(
-        native.sessions[1]!.config?.['plugins."unused@fixture".mcp_servers."unused".enabled'],
-        false,
+      assert.deepEqual(
+        native.sessions[1]!.config?.plugins,
+        {
+          _default: { enabled: false },
+          'company@fixture': {
+            enabled: true,
+            mcp_servers: { bundled: { enabled: true } },
+          },
+          'unused@fixture': {
+            enabled: false,
+            mcp_servers: { unused: { enabled: false } },
+          },
+        },
       )
       grantTurn.release()
       await settle({
@@ -563,9 +569,9 @@ for (const harness of [
         {},
       )
     } else {
-      assert.equal(
-        native.sessions[2]!.config?.['mcp_servers."unrelated.server".enabled'],
-        false,
+      assert.deepEqual(
+        native.sessions[2]!.config?.mcp_servers,
+        { 'unrelated.server': { enabled: false } },
       )
     }
 
