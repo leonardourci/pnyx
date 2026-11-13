@@ -287,6 +287,7 @@ export function createServerCommands({
             id,
             args,
             send,
+            fail,
             hydraId,
             agents,
             kick,

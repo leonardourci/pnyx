@@ -73,6 +73,8 @@ export async function toolsCommand({
     requireConfigured({
       names: grants ?? [],
       offered: catalog.tools as string[],
+      task: card.id,
+      hydraId,
     })
   }
 

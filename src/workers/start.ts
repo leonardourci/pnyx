@@ -377,6 +377,8 @@ export async function startTask({
       requireConfigured({
         names: toolNames,
         offered: catalog.tools as string[],
+        task: card.id,
+        hydraId,
       })
     }
 

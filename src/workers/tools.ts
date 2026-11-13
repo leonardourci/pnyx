@@ -32,9 +32,13 @@ export function toolNames({ names }: { names: string[] }): string[] {
 export function requireConfigured({
   names,
   offered,
+  task,
+  hydraId,
 }: {
   names: string[]
   offered: string[]
+  task: string
+  hydraId: string
 }): void {
   const missing = names.find(name => !offered.includes(name))
 
@@ -42,7 +46,7 @@ export function requireConfigured({
     throw new HydraError({
       message: `Tool capability is not configured: ${missing}`,
       code: 'TOOL_UNAVAILABLE',
-      help: ['Read the configured names with `pnyx-axi task tools <task> --available`, and revoke a saved grant with `pnyx-axi task tools <task> --revoke <name>`'],
+      help: [`Configure it for that login, or revoke the grant with \`pnyx-axi task tools ${task} --revoke ${missing} --hydra ${hydraId}\``],
     })
   }
 }
