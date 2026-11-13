@@ -245,11 +245,12 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
     at: comments.find(comment => comment.messageId === id && comment.at)?.at || '',
   }))
 
-  // A reply without a time sorts by its id (transcript line numbers, compared as numbers), never by storage order.
+  // Dated replies come first by time; a reply without a time follows them by its id (transcript line numbers,
+  // compared as numbers), never by storage order.
   replies.sort((
     a,
     b,
-  ) => a.at.localeCompare(b.at) || a.id.localeCompare(
+  ) => Number(!a.at) - Number(!b.at) || a.at.localeCompare(b.at) || a.id.localeCompare(
     b.id,
     undefined,
     { numeric: true },

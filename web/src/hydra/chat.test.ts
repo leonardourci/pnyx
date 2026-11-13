@@ -338,6 +338,25 @@ test(
         '10:m0',
       ],
     )
+    // A reply with a time keeps its place ahead of those without one.
+    const mixed = [
+      ...undated,
+      {
+        ...note({
+          id: 'dated',
+          text: 'dated',
+        }),
+        messageId: 'dated',
+      },
+    ]
+    assert.deepEqual(
+      orderedComments({ comments: mixed }).map(comment => comment.id),
+      [
+        'dated',
+        '9:m0',
+        '10:m0',
+      ],
+    )
   },
 )
 
