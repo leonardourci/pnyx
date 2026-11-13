@@ -1270,3 +1270,26 @@ test(
     )
   },
 )
+
+test(
+  'switching to another Hydra subscribes with the cards that Hydra last opened',
+  async t => {
+    const { connection } = recoveryPage({ t })
+    const socket = TestSocket.current
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    const request = connection.commandFor({ id: 'second' })({
+      name: 'page',
+      args,
+    })
+    // The server never answers here; only the subscribe frame is under test.
+    request.catch(() => {})
+    await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
+    assert.deepEqual(
+      socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)?.page,
+      args,
+    )
+  },
+)
