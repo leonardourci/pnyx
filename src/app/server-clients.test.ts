@@ -9,6 +9,7 @@ import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
 import { loadHydra } from './store.ts'
+import { runForRequest } from './api-run.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { usageFor } from '#workers/usage.ts'
 import { query } from '#store/postgres.ts'
@@ -882,72 +883,176 @@ test(
   },
 )
 
+function temporaryHome({ t }: { t: TestContext }) {
+  const home = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-client-queue-',
+  ))
+  const previous = process.env.PNYX_HOME
+  process.env.PNYX_HOME = home
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.PNYX_HOME
+    } else {
+      process.env.PNYX_HOME = previous
+    }
+
+    rmSync(
+      home,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+  })
+
+  return home
+}
+
+const WAITING = [
+  {
+    seq: 3,
+    card: 'waiting-task',
+  },
+]
+
+// The tabs of one Hydra whose host has one update waiting for Hydra.
+const queueTabs = ({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state(): HydraState
+}) => createServerClients({
+  hydraId,
+  state,
+  agents: () => ({
+    queue: () => ({
+      waiting: WAITING,
+      reading: [],
+    }),
+    usageViews: () => ({}),
+  }),
+  threadSubscriptions: [],
+  bindThread() {},
+  refreshThread() {},
+  feed: () => ({
+    latest: {},
+    actions: {},
+  }),
+})
+
+const storedQueue = ({ hydraId }: { hydraId: string }) => (query({
+  statements: [
+    {
+      text: 'select queue from hydras where id = $1',
+      values: [hydraId],
+    },
+  ],
+})[0] as { queue: unknown }[])[0]?.queue
+
+// What the page reads for a Hydra at `through` with one update waiting and nothing else queued.
+const queueBox = ({ through }: { through: number }) => ({
+  waiting: [
+    {
+      seq: 3,
+      card: 'waiting-task',
+    },
+  ],
+  reading: [],
+  chat: {
+    upgrades: [],
+    held: [],
+    compactOperations: [],
+    shownUpgrades: [],
+    upgrading: false,
+    holding: false,
+    runningChange: false,
+    compactionRunning: false,
+    upgradeRunning: false,
+    compactInputs: [],
+    working: false,
+    through,
+    started: [],
+  },
+})
+
 test(
   'the queue box the page reads through Zero holds the updates waiting for Hydra with the chat queue',
   t => {
-    const home = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-client-queue-',
-    ))
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
-    t.after(() => {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    })
+    temporaryHome({ t })
     const hydraId = createHydra({ name: 'Queue' })
-    const waiting = [
-      {
-        seq: 3,
-        card: 'waiting-task',
-      },
-    ]
-    const tabs = createServerClients({
+    const tabs = queueTabs({
       hydraId,
       state: () => loadHydra({ hydraId }).state,
-      agents: () => ({
-        queue: () => ({
-          waiting,
-          reading: [],
-        }),
-        usageViews: () => ({}),
-      }),
-      threadSubscriptions: [],
-      bindThread() {},
-      refreshThread() {},
-      feed: () => ({
-        latest: {},
-        actions: {},
-      }),
     })
 
-    const queue = tabs.storeQueue()
-    const [stored] = query({
-      statements: [
-        {
-          text: 'select queue from hydras where id = $1',
-          values: [hydraId],
-        },
-      ],
-    })[0] as { queue: unknown }[]
+    tabs.storeQueue()
     assert.deepEqual(
-      stored?.queue,
-      JSON.parse(JSON.stringify(queue)),
+      storedQueue({ hydraId }),
+      queueBox({ through: 1 }),
+    )
+  },
+)
+
+test(
+  'a queue stored before the Hydra has a row is written on the next change once the row exists, without logging a failure',
+  async t => {
+    const home = temporaryHome({ t })
+    openLogs()
+    t.after(() => closeLogs())
+    const state = emptyHydra()
+    const tabs = queueTabs({
+      hydraId: 'later',
+      state: () => state,
+    })
+
+    tabs.storeQueue()
+    const created = await runForRequest({
+      body: {
+        argv: [
+          'hydra',
+          'create',
+          'later',
+          '--name',
+          'Later',
+        ],
+        cwd: home,
+        env: {},
+      },
+    })
+    assert.equal(
+      created.exitCode,
+      0,
+      created.stdout,
     )
     assert.deepEqual(
-      (stored?.queue as { waiting: unknown }).waiting,
-      waiting,
+      storedQueue({ hydraId: 'later' }),
+      {
+        waiting: [],
+        reading: [],
+      },
+      'a new row holds the empty queue',
+    )
+
+    tabs.storeQueue()
+    assert.deepEqual(
+      storedQueue({ hydraId: 'later' }),
+      queueBox({ through: 0 }),
+    )
+    assert.deepEqual(
+      readdirSync(logsDir()).flatMap(name => readFileSync(
+        join(
+          logsDir(),
+          name,
+        ),
+        'utf8',
+      ).split('\n'))
+        .filter(Boolean)
+        .map(text => JSON.parse(text) as Record<string, unknown>)
+        .filter(line => line.operation === 'queue.write'),
+      [],
+      'a Hydra without its row yet is no failure',
     )
   },
 )

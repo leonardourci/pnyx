@@ -334,12 +334,13 @@ export function createServerClients({
       return queue
     }
 
-    // A failed write is tried again on the next change; it must not stop the events behind it from reaching the tabs.
+    // A Hydra whose first write has not committed has no row yet, and a failed write is logged; either is tried again
+    // on the next change, and neither stops the events behind it from reaching the tabs.
     try {
-      query({
+      const [written] = query({
         statements: [
           {
-            text: 'update hydras set queue = $2 where id = $1',
+            text: 'update hydras set queue = $2 where id = $1 returning id',
             values: [
               hydraId,
               json,
@@ -347,7 +348,10 @@ export function createServerClients({
           },
         ],
       })
-      storedQueue = json
+
+      if (written?.length) {
+        storedQueue = json
+      }
     } catch (error) {
       log({
         level: 'error',

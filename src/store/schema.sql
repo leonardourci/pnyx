@@ -11,7 +11,7 @@ create table hydras (
   -- Facts the server derives for the page: the Hydra list's entry, and the queue box with the updates waiting for
   -- Hydra and the batch it is reading, which the server writes whenever they change.
   summary json not null,
-  queue json not null default '{}',
+  queue json not null default '{"waiting":[],"reading":[]}',
   -- The size of the events.jsonl this Hydra was imported from, so a log an older Pnyx appended to since is refused.
   imported_bytes bigint check (imported_bytes > 0)
 );
