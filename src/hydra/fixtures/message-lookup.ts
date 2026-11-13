@@ -1,7 +1,7 @@
 import type { HydraEvent } from '#app/model.ts'
 import type { SessionEntry } from '#hydra/transcripts-read.ts'
 
-// Nine native Hydra replies, each a second after one log event that gives it its seq.
+// Nine native Hydra replies, each half a second before the log event that gives it its seq.
 export const lookupEvents: HydraEvent[] = Array.from(
   { length: 9 },
   (
@@ -32,8 +32,5 @@ export const lookupEntries: SessionEntry[] = lookupEvents.map((
   kind: 'message',
   role: 'assistant',
   text: `Recorded reply ${index + 1}.`,
-  at: event.at.replace(
-    '.000Z',
-    '.500Z',
-  ),
+  at: new Date(Date.parse(event.at) - 500).toISOString(),
 }))

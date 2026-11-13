@@ -452,7 +452,31 @@ test(
       reference: `fixture:${entry.id}`,
       session: 'fixture',
     })))
-    const state = replay({
+    let state = replay({
+      state: emptyHydra(),
+      events,
+    })
+    // A reply after the newest event falls outside the history until an event follows it.
+    assert.equal(
+      readHistory({
+        state,
+        events,
+        native,
+        since: 'origin',
+      }).text,
+      [
+        '[owner] Is the release ready?',
+        '[Hydra] Checking the release.',
+        '[Hydra] The release is ready.',
+        '[owner] Ship it.',
+      ].join('\n\n'),
+    )
+    events.push(owner({
+      seq: 4,
+      second: 6,
+      text: 'Thanks.',
+    }))
+    state = replay({
       state: emptyHydra(),
       events,
     })
@@ -469,6 +493,7 @@ test(
         '[Hydra] The release is ready.',
         '[owner] Ship it.',
         '[Hydra] Shipped.',
+        '[owner] Thanks.',
       ].join('\n\n'),
     )
     assert.equal(
@@ -479,9 +504,12 @@ test(
         since: 'last-compaction',
       }).text,
       [
+        // Written after seq 1, so outside the compaction's snapshot through 1.
+        '[Hydra] Checking the release.',
         '[Hydra] The release is ready.',
         '[owner] Ship it.',
         '[Hydra] Shipped.',
+        '[owner] Thanks.',
       ].join('\n\n'),
     )
     assert.equal(
@@ -495,7 +523,6 @@ test(
       [
         '[owner] Is the release ready?',
         '[Hydra] Checking the release.',
-        '[Hydra] The release is ready.',
       ].join('\n\n'),
     )
   },

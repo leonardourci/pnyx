@@ -249,9 +249,10 @@ export function inscribeOperation({
   }
 }
 
-// A native entry has a time but no log position: it takes the seq of the last event at or
-// before its time, so milestones and snapshots bound it like the events around it. An entry
-// older than the log takes the first seq, and entries between two events share one seq.
+// A native entry has a time but no log position: it takes the seq of the first event after
+// its time, so milestones and snapshots bound it like the events around it. An entry newer
+// than the log takes the next seq, outside every snapshot taken before it, and entries
+// between two events share one seq.
 export function placeEntries<Entry extends ThreadEntry>({
   events,
   entries,
@@ -295,10 +296,7 @@ export function placeEntries<Entry extends ThreadEntry>({
 
     return [
       {
-        seq: events[Math.max(
-          low - 1,
-          0,
-        )]?.seq ?? 0,
+        seq: events[low]?.seq ?? (events.at(-1)?.seq ?? 0) + 1,
         entry,
       },
     ]

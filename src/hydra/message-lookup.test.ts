@@ -31,14 +31,14 @@ const sequences = ({ page }: { page: ReturnType<typeof read> }) =>
   page.messages.map(message => message.seq)
 
 test(
-  'native replies take the seq of the event at or before them and rejoin their parts, and task replies keep their actor',
+  'native replies take the seq of the first event after them and rejoin their parts, and task replies keep their actor',
   () => {
     const second = {
       ...lookupEntries[4],
       id: '4:m1',
       reference: 'original:4:m1',
-      text: 'A second reply after the same event.',
-      at: '2026-01-01T00:00:04.750Z',
+      text: 'A second reply before the same event.',
+      at: '2026-01-01T00:00:03.750Z',
     }
     const sameTime = {
       ...lookupEntries[3],
@@ -63,7 +63,7 @@ test(
       [
         [
           5,
-          'A second reply after the same event.',
+          'A second reply before the same event.',
         ],
       ],
     )
@@ -72,7 +72,7 @@ test(
         entries,
         selection: { id: sameTime.reference },
       }).messages.map(message => message.seq),
-      [4],
+      [5],
     )
     assert.throws(
       () => read({
@@ -221,44 +221,61 @@ test(
       ],
     )
 
+    const laterReply = {
+      ...lookupEntries[8],
+      id: '9:m0',
+      reference: 'original:9:m0',
+      text: 'A later reply.',
+      at: '2026-01-01T00:00:08.500Z',
+    }
     const later = {
       ...lookupEvents[8],
       seq: 10,
       id: 'event-10',
       at: '2026-01-01T00:00:09.000Z',
     }
-    const grown = read({
-      events: [
-        ...lookupEvents,
-        later,
-      ],
+    // A reply written after the newest event, before or after the next one, stays outside the cursor's snapshot.
+    const grown = [
+      {
+        events: lookupEvents,
+        snapshot: 9,
+      },
+      {
+        events: [
+          ...lookupEvents,
+          later,
+        ],
+        snapshot: 10,
+      },
+    ].map(({
+      events,
+      snapshot,
+    }) => read({
+      events,
       entries: [
         ...lookupEntries,
-        {
-          ...lookupEntries[8],
-          id: '9:m0',
-          reference: 'original:9:m0',
-          text: 'A later reply.',
-          at: '2026-01-01T00:00:09.500Z',
-        },
+        laterReply,
       ],
-      snapshot: 10,
+      snapshot,
       selection: { cursor: newer.newer },
-    })
+    }))
     assert.deepEqual(
-      [
-        sequences({ page: grown }),
-        grown.snapshot,
-        grown.newer,
-      ],
-      [
-        [
-          8,
+      grown.map(page => [
+        sequences({ page }),
+        page.snapshot,
+        page.newer,
+      ]),
+      Array.from(
+        { length: 2 },
+        () => [
+          [
+            8,
+            9,
+          ],
           9,
+          undefined,
         ],
-        9,
-        undefined,
-      ],
+      ),
     )
 
     assert.deepEqual(
@@ -323,8 +340,8 @@ test(
         sequences({
           page: read({
             selection: {
-              from: '2026-01-01T00:00:02.500Z',
-              to: '2026-01-01T00:00:06.500Z',
+              from: '2026-01-01T00:00:01.500Z',
+              to: '2026-01-01T00:00:05.500Z',
             },
           }),
         }),
