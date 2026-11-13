@@ -10,6 +10,7 @@ import type { RunningServer } from '#app/server-transport.ts'
 import { zeroCookieName } from '#app/server-protocol.ts'
 import { commands } from '#app/cli.ts'
 import { queries } from '#store/zero-schema.ts'
+import { homeDatabase, query } from '#store/postgres.ts'
 import { WebSocket as NodeSocket } from 'ws'
 import { readRows, zeroReady } from '#test-harness/zero-page.ts'
 import { until } from '#test-harness/harness.ts'
@@ -57,17 +58,32 @@ test(
   'the server runs zero-cache on loopback behind /zero for the page cookie only, never sends private card fields, restarts it after it dies, and stops it when it stops',
   async t => {
     const previous = process.env.PNYX_HOME
-    const home = mkdtempSync(join(
+    const folder = mkdtempSync(join(
       tmpdir(),
       'pnyx-zero-cache-',
     ))
+    // The live client's unescaped pnyx_0_% cleanup pattern used to match a scratch database beginning pnyx_0.
+    const home = Array.from(
+      { length: 4096 },
+      (
+        _,
+        index,
+      ) => join(
+        folder,
+        String(index),
+      ),
+    ).find(candidate => homeDatabase({ home: candidate }).startsWith('pnyx_0'))
+    assert.ok(
+      home,
+      'a scratch home whose old slot name overlaps the live cleanup pattern',
+    )
     process.env.PNYX_HOME = home
     const resources: { server?: RunningServer } = {}
     t.after(async () => {
       await resources.server?.close()
       process.env.PNYX_HOME = previous
       rmSync(
-        home,
+        folder,
         {
           recursive: true,
           force: true,
@@ -115,6 +131,24 @@ test(
       url: `${origin}/zero/`,
       cookie,
     })
+    const slots = query({
+      statements: [
+        {
+          text: `select slot_name like 'pnyx_0_%' as live_cleanup_matches
+        from pg_replication_slots where database = current_database()`,
+        },
+      ],
+    })[0]!
+    assert.ok(
+      slots.length > 0,
+      'Zero has a replication slot in the scratch database',
+    )
+    assert.equal(
+      slots.some(slot => slot.live_cleanup_matches),
+      false,
+      'the live home must never clean up this home\'s inactive replication slot',
+    )
+
     const listed = await readRows<{ id: string }[]>({
       url: `${origin}/zero`,
       cookie,

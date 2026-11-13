@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from 'node:child_process'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import http, { type IncomingMessage, type ServerResponse } from 'node:http'
 import { connect, createServer, type AddressInfo, type Server } from 'node:net'
 import { userInfo } from 'node:os'
@@ -255,8 +255,13 @@ export function startZeroCache({
             dir,
             'replica.db',
           ),
-          // Replication slots are named by the app id across the whole Postgres server, so each home has its own.
-          ZERO_APP_ID: homeDatabase(),
+          // Zero matches slots with LIKE appId_%; fixed-length alphanumeric ids keep homes' patterns disjoint.
+          ZERO_APP_ID: `p${createHash('sha256').update(homeDatabase())
+            .digest('hex')
+            .slice(
+              0,
+              32,
+            )}`,
           // Only the page's tables, so sessions, plan receipts and card_private never reach the replica.
           ZERO_APP_PUBLICATIONS: PAGE_PUBLICATION,
           ZERO_PORT: String(syncPort),
