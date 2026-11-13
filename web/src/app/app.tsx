@@ -35,12 +35,14 @@ import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
 import { useCallback,useEffect,useRef,useState,type CSSProperties } from 'react'
+import { useStore } from 'zustand'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
 import { hydraViews,restoreView,usePersistView } from './restore.ts'
+import { createHydraView } from './view-store.ts'
 import { hydraTitle,pageTitle } from './view.ts'
 
 export function App() {
@@ -70,7 +72,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   useEffect(
     () => {
       if (hydra.creating) {
-        setPage('hydra')
+        setPage({ page: 'hydra' })
         const frame = requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
 
         return () => cancelAnimationFrame(frame)
@@ -91,14 +93,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })
   const [restored] = useState(() => hydraViews.get(hydra.viewKey)
     ?? restoreView({ key: restoreKey }))
-  const [
+  const [viewStore] = useState(() => createHydraView({ restored }))
+  const {
     page,
-    setPage,
-  ] = useState(() => new URLSearchParams(location.search).has('settings') || restored.page === 'settings' ? 'settings' : 'hydra')
+    panel,
+    selected: selectedRef,
+    expanded,
+    revealed,
+  } = useStore(viewStore)
+  const setPage = ({ page }: { page: string }) => viewStore.setState({ page })
   const [
-      selectedRef,
-      setActive,
-    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? restored.expanded?.at(-1) ?? null), [
       notice,
       setNotice,
     ] = useState<{ text: string } | null>(null), [
@@ -117,21 +121,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     },
     [page],
   )
-  const [
-    expanded,
-    setExpanded,
-  ] = useState<string[]>(new URLSearchParams(location.search).has('open-project')
-    ? [] : restored.expanded ?? (restored.selected ? [restored.selected] : []))
-  const [
-    revealed,
-    setRevealed,
-  ] = useState<{
-    scope: string
-    ids: string[]
-  }>(restored.revealed ?? {
-    scope: '',
-    ids: [],
-  })
   // The view persistence reads the same record the chat's saves write into.
   const drafts = useRef<Record<string, string>>(restored.drafts ?? {})
   const chatDrafts = useChatDrafts({
@@ -167,10 +156,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     projectRequest,
     setProjectRequest,
   ] = useState(new URLSearchParams(location.search).has('add-project'))
-  const [
-    panel,
-    setPanel,
-  ] = useState(restored.panel ?? true)
   // The search Settings opens with when the Oracle sends a setting there; it also remounts the page for it.
   const [
     settingsQuery,
@@ -186,7 +171,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         const requested = (event as CustomEvent<{ harness?: 'claude' | 'codex' }>).detail.harness
         setAccountSetup(requested ?? 'claude')
         setSettingsQuery('Accounts')
-        setPage('settings')
+        setPage({ page: 'settings' })
       }
 
       window.addEventListener(
@@ -277,14 +262,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     command,
     connected,
     notify,
-    selectedRef,
-    setActive,
-    expanded,
-    setExpanded,
-    revealed,
-    setRevealed,
-    page,
-    setPage,
+    view: viewStore,
     project,
     projectReferences,
   })
@@ -356,7 +334,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     column: string
     parent?: string
   }) => {
-    setPage('hydra'); filterProject({ path: '' }); clearSelection()
+    setPage({ page: 'hydra' }); filterProject({ path: '' }); clearSelection()
     taskFormVersion.current++
     const refused = hydra.edits.findLast(intent => {
       const {
@@ -404,7 +382,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
   const createColumn = () => {
     const id = `custom:${crypto.randomUUID()}`
-    setPage('hydra'); setNewColumn(id)
+    setPage({ page: 'hydra' }); setNewColumn(id)
     void command({
       name: 'column',
       args: [
@@ -431,7 +409,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       cards: cards.filter(card => card.column === c.id).map(card => card.id),
     })),
     page,
-    setPage: ({ page }) => setPage(page),
+    setPage,
     selected,
     open,
     close,
@@ -440,10 +418,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     notify,
     newColumn: newColumn !== null,
     cancelColumn: () => setNewColumn(null),
-    togglePanel: () => setPanel(shown => !shown),
+    togglePanel: () => viewStore.setState(({ panel }) => ({ panel: !panel })),
     openSettings: () => {
       if (page === 'settings') {
-        setPage('hydra')
+        setPage({ page: 'hydra' })
 
         return
       }
@@ -453,7 +431,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })
 
   const answerTask = ({ card }: { card: Card }) => {
-    setPanel(true)
+    viewStore.setState({ panel: true })
     chatDrafts.setDraft({
       text: `${chatDrafts.read().text}\nFor ${taskMention({
         id: card.id,
@@ -478,12 +456,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   }
 
   const openSettings = ({ query }: { query: string }) => {
-    setAccountSetup(undefined); setSettingsQuery(query); setPage('settings')
+    setAccountSetup(undefined); setSettingsQuery(query); setPage({ page: 'settings' })
     requestAnimationFrame(() => focusElement({ selector: '.settings-page .search-bar-input' }))
   }
 
   const selectProject = ({ path }: { path: string }) => {
-    filterProject({ path }); clearSelection(); setPage('hydra')
+    filterProject({ path }); clearSelection(); setPage({ page: 'hydra' })
   }
 
   // The same command Hydra's composer sends the owner's message with, scoped to the chosen Hydra.
@@ -550,7 +528,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
   const addProject = async ({ id }: { id: string }) => {
     if (id === navigation.hydraId) {
-      setPage('hydra'); setProjectRequest(true)
+      setPage({ page: 'hydra' }); setProjectRequest(true)
 
       return
     }
@@ -607,7 +585,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             startUpgrade={startUpgrade}
             page={page}
             navigate={({ page }) => {
-              setSettingsQuery(''); setPage(page)
+              setSettingsQuery(''); setPage({ page })
             }}
             oracle={(
               <Oracle
@@ -651,10 +629,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               project={project}
               resolveProject={resolveProject}
               selectProject={({ path }) => {
-                filterProject({ path: project === path ? '' : path }); clearSelection(); setPage('hydra')
+                filterProject({ path: project === path ? '' : path }); clearSelection(); setPage({ page: 'hydra' })
               }}
               showHydra={() => {
-                setPage('hydra'); filterProject({ path: '' })
+                setPage({ page: 'hydra' }); filterProject({ path: '' })
               }}
               addProject={addProject}
             />
@@ -768,8 +746,13 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                         }
 
                                         const key = `task:${draft.attempt}`
-                                        setActive(current => current === key ? null : current)
-                                        setExpanded(ids => ids.filter(id => id !== key))
+                                        viewStore.setState(({
+                                          selected,
+                                          expanded,
+                                        }) => ({
+                                          selected: selected === key ? null : selected,
+                                          expanded: expanded.filter(id => id !== key),
+                                        }))
                                       }}
                                       submitted={({ id }) => {
                                         setCreatingTask(null); expand({
@@ -793,8 +776,13 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                       selected={expandedIds.includes(item.id)}
                                       onEdit={cancelOpen}
                                       recoverSelection={({ id }) => {
-                                        setActive(current => current ?? id)
-                                        setExpanded(ids => ids.length ? ids : [id])
+                                        viewStore.setState(({
+                                          selected,
+                                          expanded,
+                                        }) => ({
+                                          selected: selected ?? id,
+                                          expanded: expanded.length ? expanded : [id],
+                                        }))
                                       }}
                                       view={view}
                                       save={save}
