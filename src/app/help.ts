@@ -411,17 +411,20 @@ Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup check [--hydra <id>]
-pnyx-axi setup postgres [--check]
+pnyx-axi setup postgres [--check] [--allow-custom-home]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (Postgres, local config, logins, hooks, skills, quota-axi, the login
 service, project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
 setup postgres starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and creates
-this home's database (pnyx for ~/.pnyx). Host, port and user come from PGHOST, PGPORT and PGUSER. --check changes
-nothing: it reports what is missing and imports each Hydra still kept in events.jsonl in a transaction it rolls back.
+this home's database (pnyx for ~/.pnyx). Host, port and user come from PGHOST, PGPORT and PGUSER, unless the
+postgresUrl setting names the Postgres; then setup postgres only checks it and starts or changes nothing.
+--check writes no Hydra data (it creates this home's empty database if missing): it reports what is missing and
+imports each Hydra still kept in events.jsonl in a transaction it rolls back.
 setup installs the server's login service.
-setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
+setup, setup hooks, setup skills and setup postgres without --check refuse a non-default PNYX_HOME unless
+--allow-custom-home is given.
 setup refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.

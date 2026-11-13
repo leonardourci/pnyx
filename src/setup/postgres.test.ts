@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { HydraError } from '#store/errors.ts'
+import { homeDatabase } from '#store/postgres.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { hydraExists } from '#app/store.ts'
+import { emptyHydra } from '#app/reducer.ts'
+import { saveSettings } from '#settings/store.ts'
 import { STREAMS } from '#test-harness/streams.ts'
-import { setupCheckOutput } from './check.ts'
+import { setupCheck, setupCheckOutput } from './check.ts'
 import { setupPostgres } from './postgres.ts'
 
 beforeEach(() => {
@@ -18,8 +21,7 @@ beforeEach(() => {
   ))
 })
 
-const waitingLog = ({ hydraId }: { hydraId: string }) => {
-  const dir = hydraDir({ hydraId })
+const waitingLog = ({ dir }: { dir: string }) => {
   mkdirSync(
     dir,
     { recursive: true },
@@ -39,8 +41,40 @@ const waitingLog = ({ hydraId }: { hydraId: string }) => {
   return path
 }
 
+// A brew on PATH that only records how it was called.
+function fakeBrew(): { calls: () => string } {
+  const bin = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-brew-',
+  ))
+  const calls = join(
+    bin,
+    'calls',
+  )
+  const brew = join(
+    bin,
+    'brew',
+  )
+  writeFileSync(
+    brew,
+    `#!/bin/sh\necho "$@" >> '${calls}'\n`,
+  )
+  chmodSync(
+    brew,
+    0o755,
+  )
+  process.env.PATH = `${bin}${delimiter}${process.env.PATH}`
+
+  return {
+    calls: () => existsSync(calls) ? readFileSync(
+      calls,
+      'utf8',
+    ) : '',
+  }
+}
+
 test(
-  'setup check names Postgres first when this home cannot reach it',
+  'setup check and the digest name Postgres first when this home cannot reach it',
   async () => {
     const closed = createServer()
     await new Promise<void>(resolve => closed.listen(
@@ -76,24 +110,63 @@ test(
         process.exitCode,
         1,
       )
+      const digest = await setupCheck({
+        hydraId: 'default',
+        state: emptyHydra(),
+      })
+      assert.equal(
+        digest[0]?.name,
+        'postgres',
+      )
     } finally {
-      process.env.PGPORT = reachable
+      if (reachable === undefined) {
+        delete process.env.PGPORT
+      } else {
+        process.env.PGPORT = reachable
+      }
+
       process.exitCode = 0
     }
   },
 )
 
 test(
-  'setup postgres --check imports each waiting Hydra and rolls it back, leaving its log as it was',
+  'setup postgres --check imports each waiting Hydra and rolls it back, leaving its log and folder as they were',
   async () => {
-    const path = waitingLog({ hydraId: 'waiting' })
+    const home = process.env.PNYX_HOME!
+    const path = waitingLog({
+      dir: join(
+        home,
+        'boards',
+        'waiting',
+      ),
+    })
     const before = readFileSync(path)
+    const empty = join(
+      home,
+      'hydras',
+      'empty',
+    )
+    mkdirSync(
+      empty,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        empty,
+        'events.jsonl',
+      ),
+      '',
+    )
 
-    const output = await setupPostgres({ check: true })
+    const output = await setupPostgres({
+      check: true,
+      allowCustomHome: false,
+    })
 
-    assert.equal(
-      output.imports,
-      '1 Hydras import cleanly: waiting',
+    assert.deepEqual(
+      output.imported,
+      ['waiting'],
     )
     assert.equal(
       hydraExists({ hydraId: 'waiting' }),
@@ -102,14 +175,15 @@ test(
     assert.deepEqual(
       readFileSync(path),
       before,
+      'the log stays in boards/, unchanged',
     )
   },
 )
 
 test(
-  'setup postgres --check fails when a waiting Hydra would not import',
+  'an unreadable log fails the check',
   async () => {
-    const path = waitingLog({ hydraId: 'broken' })
+    const path = waitingLog({ dir: hydraDir({ hydraId: 'broken' }) })
     writeFileSync(
       path,
       `${readFileSync(
@@ -119,12 +193,93 @@ test(
     )
 
     await assert.rejects(
-      () => setupPostgres({ check: true }),
+      () => setupPostgres({
+        check: true,
+        allowCustomHome: false,
+      }),
       (error: unknown) => error instanceof HydraError && error.code === 'LOG_CORRUPT',
     )
     assert.equal(
       hydraExists({ hydraId: 'broken' }),
       false,
     )
+  },
+)
+
+test(
+  'setup postgres leaves a ready Postgres alone, reports a refused login at once, and only checks a postgresUrl one',
+  async () => {
+    const path = process.env.PATH
+    const user = process.env.PGUSER
+    const brew = fakeBrew()
+
+    try {
+      await assert.rejects(
+        () => setupPostgres({
+          check: false,
+          allowCustomHome: false,
+        }),
+        { code: 'CUSTOM_HOME_SETUP' },
+      )
+      const ready = await setupPostgres({
+        check: false,
+        allowCustomHome: true,
+      })
+      assert.equal(
+        ready.postgres,
+        'ready',
+      )
+
+      // The worker does not create a database postgresUrl names, so the URL names the one the first home made.
+      const named = homeDatabase()
+
+      // A running Postgres that refuses the role needs no start.
+      process.env.PNYX_HOME = mkdtempSync(join(
+        tmpdir(),
+        'pnyx-postgres-role-',
+      ))
+      process.env.PGUSER = 'pnyx_missing_role'
+      await assert.rejects(
+        () => setupPostgres({
+          check: false,
+          allowCustomHome: true,
+        }),
+        { code: 'POSTGRES_UNAVAILABLE' },
+      )
+      process.env.PGUSER = user
+
+      process.env.PNYX_HOME = mkdtempSync(join(
+        tmpdir(),
+        'pnyx-postgres-url-',
+      ))
+      saveSettings({
+        patch: { postgresUrl: `postgres://${process.env.PGUSER}:secret@${process.env.PGHOST}:${process.env.PGPORT}/${named}` },
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'cli',
+        },
+      })
+      const configured = await setupPostgres({
+        check: false,
+        allowCustomHome: false,
+      })
+      assert.deepEqual(
+        [
+          configured.postgres,
+          configured.database,
+        ],
+        [
+          'ready',
+          named,
+        ],
+      )
+      assert.equal(
+        brew.calls(),
+        '',
+      )
+    } finally {
+      process.env.PATH = path
+      process.env.PGUSER = user
+    }
   },
 )

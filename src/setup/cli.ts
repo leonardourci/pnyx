@@ -36,7 +36,10 @@ export const setup = guard({
     }
 
     if (positionals[0] === 'postgres') {
-      return setupPostgres({ check: !!values.check })
+      return setupPostgres({
+        check: !!values.check,
+        allowCustomHome: !!values['allow-custom-home'],
+      })
     }
 
     if (positionals[0] === undefined || [
