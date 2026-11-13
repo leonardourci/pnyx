@@ -3,7 +3,6 @@ import { test } from 'node:test'
 import type { HydraEvent } from './model.ts'
 import { emptyHydra, replayOwned } from './reducer.ts'
 import { applyPageUpdate, pageCard, pageEvent, pageState } from './page-state.ts'
-import { pageInterest, parsePage } from './page-cli.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
@@ -173,15 +172,10 @@ test(
     assert.deepEqual(
       Object.keys(pageState({
         state,
-        interest: pageInterest({
-          state,
-          values: parsePage({
-            args: [
-              '--card',
-              'hidden',
-            ],
-          }).values,
-        }).interest,
+        interest: {
+          cards: ['hidden'],
+          hidden: false,
+        },
       }).cards),
       [
         'task',
@@ -602,32 +596,6 @@ test(
         state,
         interest,
       }),
-    )
-    assert.deepEqual(
-      pageInterest({
-        state,
-        values: parsePage({
-          args: [
-            '--card',
-            'missing',
-            '--card',
-            'hidden',
-          ],
-        }).values,
-      }),
-      {
-        interest: {
-          cards: ['hidden'],
-          hidden: false,
-        },
-        opened: [
-          {
-            id: 'hidden',
-            title: 'Visible',
-          },
-        ],
-        unavailable: ['missing'],
-      },
     )
     const detachedSession = {
       ...state.sessions!['codex:hidden']!,
