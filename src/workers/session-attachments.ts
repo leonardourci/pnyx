@@ -262,7 +262,8 @@ export function observeSession({
       }
     }
 
-    session.launch ??= card.launch ?? {
+    // Copies, not the card's own objects: a write through one would otherwise change the other without touching its row.
+    session.launch ??= card.launch ? { ...card.launch } : {
       via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks',
       at: event.at,
       folder: card.agent.cwd,
@@ -288,11 +289,11 @@ export function observeSession({
         stoppedAt: card.stoppedAt,
       },
     })
-    session.attention = card.attention.filter(a => a.key.startsWith('hook:'))
+    session.attention = card.attention.filter(a => a.key.startsWith('hook:')).map(a => ({ ...a }))
     const objectId = `${session.agent.sessionId}${session.agent.agentId ? `/${session.agent.agentId}` : ''}`
     session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId)
       || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath)
-      || (r.adapter === 'paseo' && r.objectId === session.agent.paseoAgentId))
+      || (r.adapter === 'paseo' && r.objectId === session.agent.paseoAgentId)).map(r => ({ ...r }))
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {
