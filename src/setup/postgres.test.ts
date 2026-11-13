@@ -93,8 +93,15 @@ const waitingLog = ({ dir }: { dir: string }) => {
   return path
 }
 
-// A brew on PATH that records how it was called and prints `prefix` for `brew --prefix`.
-function fakeBrew({ prefix = '' }: { prefix?: string } = {}): { calls: () => string } {
+// A brew on PATH that records how it was called, prints `prefix` for `brew --prefix` and runs `start` for
+// `brew services start`.
+function fakeBrew({
+  prefix = '',
+  start = '',
+}: {
+  prefix?: string
+  start?: string
+} = {}): { calls: () => string } {
   const bin = mkdtempSync(join(
     tmpdir(),
     'pnyx-brew-',
@@ -111,8 +118,9 @@ function fakeBrew({ prefix = '' }: { prefix?: string } = {}): { calls: () => str
     brew,
     `#!/bin/sh
 echo "$@" >> '${calls}'
-case "$1" in
-  --prefix) echo '${prefix}' ;;
+case "$1 $2" in
+  --prefix*) echo '${prefix}' ;;
+  'services start') ${start || 'true'} ;;
 esac
 `,
   )
@@ -127,6 +135,51 @@ esac
       calls,
       'utf8',
     ) : '',
+  }
+}
+
+// A Postgres that answers on `port` once started: a process forwarding it to the test's own cluster, as brew services
+// start would bring one up there. Returns the shell line that starts it and a stop that ends it.
+function forwarder({ port }: { port: number }): {
+  start: string
+  stop: () => void
+} {
+  const dir = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-forward-',
+  ))
+  const script = join(
+    dir,
+    'forward.mjs',
+  )
+  const pidFile = join(
+    dir,
+    'pid',
+  )
+  writeFileSync(
+    script,
+    `import { connect, createServer } from 'node:net'
+import { writeFileSync } from 'node:fs'
+const [listen, target, pidFile] = process.argv.slice(2)
+createServer(socket => {
+  const upstream = connect(Number(target), '127.0.0.1')
+  socket.pipe(upstream).pipe(socket)
+  socket.on('error', () => upstream.destroy())
+  upstream.on('error', () => socket.destroy())
+}).listen(Number(listen), '127.0.0.1', () => writeFileSync(pidFile, String(process.pid)))
+`,
+  )
+
+  return {
+    start: `'${process.execPath}' '${script}' ${port} ${env.PGPORT} '${pidFile}' >/dev/null 2>&1 &`,
+    stop: () => {
+      if (existsSync(pidFile)) {
+        process.kill(Number(readFileSync(
+          pidFile,
+          'utf8',
+        )))
+      }
+    },
   }
 }
 
@@ -316,6 +369,41 @@ test(
 )
 
 test(
+  'setup postgres starts Homebrew\'s Postgres when none answers and reports it ready once it does',
+  async () => {
+    const port = await closedPort()
+    const forward = forwarder({ port })
+    const brew = fakeBrew({ start: forward.start })
+    process.env.PGPORT = String(port)
+    onPlatform({ platform: 'darwin' })
+
+    try {
+      const output = await run({
+        args: [
+          'postgres',
+          '--allow-custom-home',
+        ],
+      })
+
+      assert.deepEqual(
+        [
+          output.postgres,
+          output.walLevel,
+          brew.calls(),
+        ],
+        [
+          'ready',
+          'logical',
+          'services start postgresql@17\n',
+        ],
+      )
+    } finally {
+      forward.stop()
+    }
+  },
+)
+
+test(
   'setup postgres leaves the settings of a Postgres with wal_level replica that is not Homebrew\'s postgresql@17 alone',
   async () => {
     // The test's cluster runs with wal_level=logical, so every connection to this home's database reads wal_level
@@ -429,22 +517,26 @@ test(
 )
 
 test(
-  'a postgresUrl Postgres is only checked, and one that cannot be reached is fixed or cleared with setup postgres --url',
+  'a postgresUrl Postgres is only checked, in the database it names, and one that cannot be reached is fixed or cleared with setup postgres --url',
   async () => {
     const brew = fakeBrew()
     onPlatform({ platform: 'darwin' })
     saveUrl({ url: `postgres://${env.PGUSER}:secret@${process.env.PGHOST}:${env.PGPORT}/pnyx_configured` })
 
     const configured = await run({ args: ['postgres'] })
+    const served = query({ statements: [{ text: 'select current_database() as name' }] })[0]![0]!.name
     assert.deepEqual(
       [
         configured.postgres,
         configured.database,
+        served,
       ],
       [
         'ready',
         'pnyx_configured',
+        'pnyx_configured',
       ],
+      'setup reports the database the server\'s queries use',
     )
 
     // A home reads postgresUrl once, so each URL below gets a home of its own.

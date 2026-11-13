@@ -244,3 +244,134 @@ test(
     )
   },
 )
+
+// More events than one catch-up batch reads, so the index catches up in two.
+const NOTED_EVENTS = 600
+const SECOND_BATCH_SEQ = 550
+
+const batchNote = ({ n }: { n: number }) => {
+  if (n === 1) {
+    return 'firstbatchword'
+  }
+
+  return n === NOTED_EVENTS ? 'lastbatchword' : `filler ${n}`
+}
+
+const cursorPosition = () => {
+  const cache = new DatabaseSync(searchPath({ hydraId: 'default' }))
+
+  try {
+    return (cache.prepare('SELECT pos FROM cursors WHERE source = \'events\'').get() as { pos: number } | undefined)?.pos
+  } finally {
+    cache.close()
+  }
+}
+
+test(
+  'event batches commit with their cursor, so a retry after a failed read resumes after them',
+  t => {
+    temporaryHome({
+      t,
+      prefix: 'oracle-batches-',
+    })
+    const card = 'batched'
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const base = {
+          v: 1 as const,
+          cardId: card,
+          actor: 'fixture',
+          at: '2026-11-12T10:00:00Z',
+        }
+        writer.append({
+          event: {
+            ...base,
+            seq: 1,
+            id: 'create-batched',
+            type: 'task.created',
+            data: {
+              key: card,
+              title: 'Batched task',
+            },
+          },
+        })
+
+        for (let n = 1; n <= NOTED_EVENTS; n++) {
+          writer.append({
+            event: {
+              ...base,
+              seq: n + 1,
+              id: `batch-note-${n}`,
+              type: 'card.noted',
+              data: {
+                text: batchNote({ n }),
+                kind: 'context',
+                source: 'fixture',
+              },
+            },
+          })
+        }
+      },
+    })
+    const where = 'hydra_id = $1 and seq = $2'
+    const [[original]] = query({
+      statements: [
+        {
+          text: `select data from events where ${where}`,
+          values: [
+            'default',
+            SECOND_BATCH_SEQ,
+          ],
+        },
+      ],
+    }) as { data: unknown }[][]
+    // A stored event the index cannot read fails the second batch.
+    query({
+      statements: [
+        {
+          text: `update events set data = (data::jsonb - 'data')::json where ${where}`,
+          values: [
+            'default',
+            SECOND_BATCH_SEQ,
+          ],
+        },
+      ],
+    })
+    assert.throws(
+      () => find({ text: 'lastbatchword' }),
+      TypeError,
+    )
+    assert.equal(
+      cursorPosition(),
+      500,
+      'the first batch committed with its cursor',
+    )
+
+    query({
+      statements: [
+        {
+          text: `update events set data = $3 where ${where}`,
+          values: [
+            'default',
+            SECOND_BATCH_SEQ,
+            JSON.stringify(original!.data),
+          ],
+        },
+      ],
+    })
+    assert.equal(
+      find({ text: 'lastbatchword' }).hits[0]?.card,
+      card,
+    )
+    assert.equal(
+      find({ text: 'firstbatchword' }).hits[0]?.snippets.length,
+      1,
+      'the retry resumed after the first batch instead of indexing it again',
+    )
+    assert.equal(
+      cursorPosition(),
+      601,
+    )
+  },
+)
