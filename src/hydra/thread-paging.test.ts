@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { test } from 'node:test'
 import { withWriter } from '#app/writer.ts'
+import type { Card } from '#tasks/model.ts'
 import { readThread } from './transcripts-read.ts'
 import { mergeThreadPages } from './thread-history.ts'
 
@@ -106,10 +107,14 @@ test(
         return writer.state
       },
     })
-    const card = state.cards.$hydra!
+    // The Hydra's session as a later read sees it, given to the reads only: the test never writes Hydra state by hand.
+    let agent: Card['agent']
 
     const pageAll = () => {
-      const card = state.cards.$hydra!
+      const card = agent ? {
+        ...state.cards.$hydra!,
+        agent,
+      } : state.cards.$hydra!
       let page = readThread({
         hydraId: 'default',
         state,
@@ -149,7 +154,7 @@ test(
       new Set(archived.map(entry => entry.text)).size,
       80,
     )
-    card.agent = {
+    agent = {
       provider: 'claude-code',
       sessionId: 'old',
       transcriptPath: native,
