@@ -3,12 +3,10 @@ import { ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { countTokens } from '#workers/token-count.ts'
 import { redact } from '#oracle/text.ts'
-import type { ChatEvent, HydraOperation } from './model.ts'
+import type { HydraOperation } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
-import { legacyChatPosition } from './chat-events.ts'
-import { messageReference } from './message-reference.ts'
 import { HISTORY_BUDGET } from './history-command.ts'
 
 export { HISTORY_BUDGET, historyCommand } from './history-command.ts'
@@ -248,34 +246,6 @@ export function inscribeOperation({
     state: nextState,
     through: snapshot,
     error: action === 'fail' ? error ?? 'Inscribe did not complete' : undefined,
-  }
-}
-
-export function loggedEntry({ event }: { event: ChatEvent }): ThreadEntry {
-  // Older harvests kept the transport position only in nativeId.
-  const legacy = legacyChatPosition({ nativeId: event.data.nativeId })
-  const nativeId = event.data.messageId ?? legacy?.message
-  const messageId = nativeId ? `${event.data.session}:${nativeId}` : undefined
-  const part = event.data.part ?? legacy?.position
-
-  return {
-    id: event.id,
-    reference: messageReference({
-      session: event.data.session,
-      id: event.data.nativeId,
-      messageId: nativeId,
-    }),
-    messageId,
-    part,
-    kind: event.data.kind ?? 'message',
-    block: event.data.block,
-    hidden: event.data.hidden,
-    call: event.data.call,
-    role: event.data.role,
-    final: event.data.final,
-    text: event.data.text,
-    at: event.at,
-    session: event.data.session,
   }
 }
 

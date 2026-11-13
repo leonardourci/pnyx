@@ -27,7 +27,7 @@ interface LookupOutput {
 }
 
 test(
-  'CLI revisits UI message references after inscribe, compaction and agent replacement',
+  'CLI resolves native message references and keeps owner records after the transcript is gone',
   async t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -218,33 +218,27 @@ test(
         shown.text,
       )
 
-      for (const args of [
-        [
-          '--seq',
-          String(message.seq),
-        ],
-        [
+      const byAt = await invoke({
+        args: [
           '--at',
           message.at,
         ],
-      ]) {
-        const exact = await invoke({ args })
-        assert.equal(
-          exact.anchor,
-          shown.reference,
-        )
-        assert.equal(
-          exact.messages.length,
-          1,
-        )
-      }
+      })
+      assert.equal(
+        byAt.anchor,
+        shown.reference,
+      )
+      assert.equal(
+        byAt.messages.length,
+        1,
+      )
 
       const ranged = await invoke({
         args: [
           '--from',
-          String(message.seq),
+          message.at,
           '--to',
-          String(message.seq),
+          message.at,
         ],
       })
       assert.deepEqual(
@@ -544,60 +538,31 @@ test(
         ])
       }
 
-      const archived = reference.card === HYDRA_CARD
-        ? await commands.hydra([
+      const lookup = ({ id }: { id: string }) => (reference.card === HYDRA_CARD
+        ? commands.hydra([
           'message',
           '--id',
-          reference.id,
-          '--before',
-          '1',
-          '--after',
-          '1',
+          id,
           '--hydra',
           'fixture',
         ])
-        : await commands.task([
+        : commands.task([
           'messages',
           task,
           '--id',
-          reference.id,
-          '--before',
-          '1',
-          '--after',
-          '1',
+          id,
           '--hydra',
           'fixture',
-        ])
+        ])) as unknown as Promise<LookupOutput>
+      const owner = await lookup({ id: reference.owner.id })
       assert.equal(
-        archived.thread,
-        reference.card === HYDRA_CARD ? 'hydra' : reference.card,
-      )
-      const archivedOwner = reference.card === HYDRA_CARD
-        ? await commands.hydra([
-          'message',
-          '--id',
-          reference.owner.id,
-          '--hydra',
-          'fixture',
-        ])
-        : await commands.task([
-          'messages',
-          task,
-          '--id',
-          reference.owner.id,
-          '--hydra',
-          'fixture',
-        ])
-      assert.equal(
-        (archivedOwner as unknown as LookupOutput).messages[0].text,
+        owner.messages[0].text,
         reference.owner.text,
       )
-      assert.equal(
-        archived.anchor,
-        reference.id,
+      await assert.rejects(
+        async () => lookup({ id: reference.id }),
+        /No recorded message matches/,
       )
-      const messages = (archived as unknown as LookupOutput).messages
-      assert.ok(messages.some(message => message.text === reference.text))
     }
   },
 )

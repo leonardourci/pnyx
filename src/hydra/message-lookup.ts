@@ -4,6 +4,7 @@ import { countTokens } from '#workers/token-count.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { HISTORY_BUDGET } from './history.ts'
 import { messageRecords, type MessageRecord } from './message-records.ts'
+import type { ThreadEntry } from './transcripts-read.ts'
 
 const MAX_CURSOR_LENGTH = 4096
 export const MESSAGE_PAGE_BYTES = 20000
@@ -127,12 +128,15 @@ export function lookupMessages({
   hydraId,
   card = HYDRA_CARD,
   events,
+  entries,
   snapshot,
   selection = {},
 }: {
   hydraId: string
   card?: string
   events: HydraEvent[]
+  // The thread's native transcript entries, with their references.
+  entries: ThreadEntry[]
   snapshot: number
   selection?: MessageSelection
 }) {
@@ -236,9 +240,14 @@ export function lookupMessages({
   }
 
   const messages = messageRecords({
-    events: events.filter(event => event.seq <= snapshot),
+    events,
+    entries,
     card,
   }).filter(message => {
+    if (message.seq > snapshot) {
+      return false
+    }
+
     const time = Date.parse(message.at)
 
     return message.sequences.some(seq => {
@@ -289,7 +298,7 @@ export function lookupMessages({
     if (matches.length > 1) {
       throw new HydraError({
         code: 'CONFLICT',
-        message: `Timestamp matches multiple messages; use --id or --seq: ${matches.slice(
+        message: `Several messages match; use --id: ${matches.slice(
           0,
           MESSAGE_PAGE_LIMIT,
         ).map(({ message }) => `${message.id} (seq ${message.seq})`)

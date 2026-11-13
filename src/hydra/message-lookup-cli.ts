@@ -1,11 +1,12 @@
 import { integer, type Output, type Options } from '#app/cli-support.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
-import { withWriter } from '#app/writer.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { findCard } from '#tasks/push-rules.ts'
+import { cardSessionId } from '#workers/session-attachments.ts'
+import type { HydraState } from '#app/model.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { lookupMessages } from './message-lookup.ts'
+import { hydraEntries, sessionEntries, threadPath, type ThreadEntry } from './transcripts-read.ts'
 
 export const MESSAGE_LOOKUP_OPTIONS: Options = {
   id: { type: 'string' },
@@ -21,6 +22,28 @@ export const MESSAGE_LOOKUP_OPTIONS: Options = {
   limit: { type: 'string' },
 }
 
+function threadEntries({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: string
+}): ThreadEntry[] {
+  if (card === HYDRA_CARD) {
+    return hydraEntries({ state })
+  }
+
+  const task = state.cards[card]!
+  const path = threadPath({ card: task })
+  const session = cardSessionId({ card: task })
+
+  return path && session ? sessionEntries({
+    path,
+    session,
+    boundaries: false,
+  }) : []
+}
+
 export function messageLookup({
   values,
   hydraId,
@@ -30,24 +53,19 @@ export function messageLookup({
   hydraId: string
   task?: string
 }): Output {
-  const before = loadHydra({ hydraId }).state
+  const state = loadHydra({ hydraId }).state
   const card = task === undefined ? HYDRA_CARD : findCard({
-    state: before,
+    state,
     ref: task,
   }).id
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => harvestTranscripts({
-      writer,
-      cardIds: [card],
-      at: new Date().toISOString(),
-    }),
-  })
-  const state = loadHydra({ hydraId }).state
   const page = lookupMessages({
     hydraId,
     card,
     events: readEvents({ hydraId }),
+    entries: threadEntries({
+      state,
+      card,
+    }),
     snapshot: state.seq,
     selection: {
       id: values.id as string | undefined,
