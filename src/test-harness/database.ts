@@ -4,6 +4,7 @@ const TABLES = [
   'hydras',
   'hydra_values',
   'events',
+  'card_updates',
   'transactions',
   'columns',
   'cards',

@@ -6,6 +6,7 @@ import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import type { Statement } from '#store/postgres.ts'
 import { EVENT_VERSION } from '#store/events.ts'
+import { HydraError } from '#store/errors.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
 import { currentState } from '#tasks/card-status.ts'
 import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
@@ -650,34 +651,36 @@ export function eventStatements({
     seq: event.seq,
   })))
 
-  return [
-    claim,
-    ...events.length ? [
-      {
-        text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
-          select hydra_id, seq, id, type, at, actor, card_id, data from json_populate_recordset(null::events, $1::json)`,
-        values: [
-          JSON.stringify(events.map(event => ({
-            hydra_id: hydraId,
-            seq: event.seq,
-            id: event.id,
-            type: event.type,
-            at: event.at,
-            actor: event.actor,
-            card_id: event.cardId,
-            data: event,
-          }))),
-        ],
-      },
-    ] : [],
-    ...updates.length ? [
-      {
-        text: `insert into card_updates (hydra_id, card_id, seq)
-          select hydra_id, card_id, seq from json_populate_recordset(null::card_updates, $1::json)`,
-        values: [JSON.stringify(updates)],
-      },
-    ] : [],
-  ]
+  const statements = [claim]
+
+  if (events.length) {
+    statements.push({
+      text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+        select hydra_id, seq, id, type, at, actor, card_id, data from json_populate_recordset(null::events, $1::json)`,
+      values: [
+        JSON.stringify(events.map(event => ({
+          hydra_id: hydraId,
+          seq: event.seq,
+          id: event.id,
+          type: event.type,
+          at: event.at,
+          actor: event.actor,
+          card_id: event.cardId,
+          data: event,
+        }))),
+      ],
+    })
+  }
+
+  if (updates.length) {
+    statements.push({
+      text: `insert into card_updates (hydra_id, card_id, seq)
+        select hydra_id, card_id, seq from json_populate_recordset(null::card_updates, $1::json)`,
+      values: [JSON.stringify(updates)],
+    })
+  }
+
+  return statements
 }
 
 // A Hydra's state as its rows hold it, with the rows themselves so the next write compares against them.
@@ -862,7 +865,16 @@ export function stateFromRows({
   }
 
   for (const { id } of ids) {
-    const row = body.get(id)!
+    const row = body.get(id)
+
+    // The foreign key ties a body to its card, not a card to a body, so a missing one is named rather than read.
+    if (!row) {
+      throw new HydraError({
+        message: `card ${id} of Hydra ${hydraId} has no stored body`,
+        code: 'LOG_CORRUPT',
+      })
+    }
+
     const card: Card = {
       ...row.data,
       ...row.private,

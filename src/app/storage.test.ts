@@ -797,23 +797,6 @@ test(
       ),
       log,
     )
-    writeFileSync(
-      join(
-        old,
-        'snapshot.json',
-      ),
-      JSON.stringify({
-        v: 1,
-        rules: 7,
-        offset: Buffer.byteLength(log),
-        state: {
-          ...emptyHydra(),
-          seq: 3,
-          board: config,
-          boardRevision: 1,
-        },
-      }),
-    )
 
     const loaded = loadHydra({ hydraId: 'existing' })
     assert.equal(

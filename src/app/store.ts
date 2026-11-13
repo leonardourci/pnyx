@@ -1,6 +1,6 @@
 import type { HydraState } from './model.ts'
 import { HydraError } from '#store/errors.ts'
-import { homeScoped, query } from '#store/postgres.ts'
+import { homeScoped, query, withoutNul } from '#store/postgres.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
 import { emptyHydra } from './reducer.ts'
 import { emptySaved, loadStatements, stateFromRows, type SavedRows } from './rows.ts'
@@ -32,10 +32,39 @@ const loaded = new Map<string, Held>()
 
 export const heldHydra = ({ hydraId }: { hydraId: string }) => held.get(homeScoped({ hydraId }))
 
+// One snapshot of every table, so a load never mixes two commits another process made between its reads.
 const rowsOf = ({ hydraId }: { hydraId: string }) => stateFromRows({
   hydraId,
-  results: query({ statements: loadStatements({ hydraId }) }),
+  results: query({
+    transaction: true,
+    statements: [
+      { text: 'set transaction isolation level repeatable read, read only' },
+      ...loadStatements({ hydraId }),
+    ],
+  }).slice(1),
 })
+
+// Another process that imported the same log first leaves its rows, which this read then takes.
+function importOnce({
+  hydraId,
+  dir,
+}: {
+  hydraId: string
+  dir: string
+}): boolean {
+  try {
+    return importLegacy({
+      hydraId,
+      dir,
+    })
+  } catch (error) {
+    if (error instanceof HydraError && error.code === 'CONFLICT') {
+      return true
+    }
+
+    throw error
+  }
+}
 
 // A Hydra still kept in its events.jsonl moves into Postgres the first time it is read, in one transaction; the file
 // stays as it was, as a backup. A trial imports it in a transaction it rolls back. Returns whether there was one.
@@ -54,6 +83,7 @@ export function importLegacy({
     return false
   }
 
+  withoutNul({ value: legacy })
   importHydra({
     hydraId,
     events: legacy.events,
@@ -85,7 +115,7 @@ function readHydra({
   })
   let rows = rowsOf({ hydraId })
 
-  if (!rows && importLegacy({
+  if (!rows && importOnce({
     hydraId,
     dir,
   })) {
@@ -147,6 +177,7 @@ export function reloadHydra({ hydraId }: { hydraId: string }): void {
     live.saved = fresh.saved
     live.stale = false
   } catch (error) {
+    // The state in memory still holds the refused write, so the server is not told to show it; the next read retries.
     live.stale = true
     log({
       level: 'error',
@@ -154,6 +185,8 @@ export function reloadHydra({ hydraId }: { hydraId: string }): void {
       hydraId,
       error,
     })
+
+    return
   }
 
   live.changed()
@@ -249,7 +282,13 @@ export function hydraExists({ hydraId }: { hydraId: string }): boolean {
 // A Hydra exists once its first write committed, or while its events.jsonl waits to be imported; a bare folder, such
 // as one a config write made, does not count.
 export function requireHydra({ hydraId }: { hydraId: string }): void {
-  const waiting = () => existsSync(logPath({ dir: hydraDir({ hydraId }) }))
+  // Checking leaves a Hydra still in boards/ where it is; only a read or write moves it.
+  const waiting = () => existsSync(logPath({
+    dir: hydraDir({
+      hydraId,
+      migrate: false,
+    }),
+  }))
 
   const known = hydraId === DEFAULT_HYDRA || heldHydra({ hydraId }) || hydraExists({ hydraId })
 

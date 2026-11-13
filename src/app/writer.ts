@@ -4,7 +4,7 @@ import type { HydraState, HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
 import { requireHydra, writableHydra, reloadHydra } from './store.ts'
-import { query } from '#store/postgres.ts'
+import { query, withoutNul } from '#store/postgres.ts'
 import { privateDir } from '#store/storage.ts'
 import { hydraDir } from './home-migration.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
@@ -187,24 +187,27 @@ export function withWriter<T>({
         state: live.state,
         saved: changes.next,
       })
+      const statements = [
+        ...eventStatements({
+          hydraId,
+          from,
+          to: live.state.seq,
+          events: pending,
+        }),
+        ...changes.statements,
+      ]
+
+      if (transaction) {
+        statements.push(transactionStatement({
+          hydraId,
+          ...transaction,
+          receipt: result as Output,
+        }))
+      }
+
       query({
         transaction: true,
-        statements: [
-          ...eventStatements({
-            hydraId,
-            from,
-            to: live.state.seq,
-            events: pending,
-          }),
-          ...changes.statements,
-          ...transaction ? [
-            transactionStatement({
-              hydraId,
-              ...transaction,
-              receipt: result as Output,
-            }),
-          ] : [],
-        ],
+        statements,
       })
       live.saved = changes.next
       rememberEvents({
@@ -273,6 +276,7 @@ export function eventWriter({
       event,
       effects = true,
     }) {
+      withoutNul({ value: event })
       const harvestedNote = event.actor === 'harvest' && event.type === 'card.noted'
       // A message to a task's agent is never refused for the routine helper's lease; it queues like any message.
       const message = !isHelper({ actor: event.actor })
