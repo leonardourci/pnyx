@@ -300,3 +300,63 @@ test(
     )
   },
 )
+
+test(
+  'on the page a card reads its deciding merge question from the server\'s facts, and its own question keeps an unconfirmed deferral',
+  () => {
+    const deciding = structuredClone(card)
+    const secondary: Card = {
+      ...structuredClone(card),
+      id: 'secondary',
+      key: 'secondary',
+      asks: [],
+      facts: {
+        childWorking: false,
+        unmetPrerequisites: [],
+        mergeQuestions: {
+          [url]: {
+            card: deciding,
+            ask: deciding.asks![0]!,
+          },
+        },
+      },
+    }
+    const request = reviewRequests({ card: secondary })[0]
+    assert.equal(
+      request?.card.id,
+      deciding.id,
+      'the deciding question lives on another card the page does not show',
+    )
+
+    const own: Card = {
+      ...structuredClone(card),
+      facts: {
+        childWorking: false,
+        unmetPrerequisites: [],
+        mergeQuestions: { [url]: { ask: structuredClone(card.asks![0]!) } },
+      },
+    }
+    own.asks![0]!.deferredUntil = '2099-11-10T12:00:00.000Z'
+    const deferred = reviewRequests({ card: own })[0]
+    assert.ok(deferred)
+    assert.equal(
+      reviewState({ request: deferred }),
+      'Review later',
+    )
+
+    const server = emptyHydra()
+    server.cards[card.id] = structuredClone(card)
+    server.cards[secondary.id] = {
+      ...structuredClone(secondary),
+      facts: undefined,
+    }
+    assert.equal(
+      reviewRequests({
+        state: server,
+        card: server.cards[secondary.id]!,
+      })[0]?.card.id,
+      card.id,
+      'without facts, the server still decides across every card',
+    )
+  },
+)

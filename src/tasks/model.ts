@@ -155,8 +155,8 @@ export interface CardFacts {
   waitTitle?: string
   unmetPrerequisites: ReturnType<typeof import('./dependencies.ts').unmetPrerequisites>
   // Each linked pull request's deciding merge question, among every card's.
-  // The question's card when it is another one.
   mergeQuestions: Record<string, {
+    // The question's card when it is another one.
     card?: Card
     ask: Ask
   } | undefined>

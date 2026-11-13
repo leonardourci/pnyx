@@ -569,3 +569,35 @@ test(
     )
   },
 )
+
+test(
+  'on the page a card waits for a hidden prerequisite and shows a working child from the server\'s facts',
+  () => {
+    const waiting = cardState({
+      card: {
+        ...card,
+        activity: undefined,
+        facts: {
+          childWorking: true,
+          unmetPrerequisites: [
+            {
+              id: 'task-hidden',
+              title: 'Hidden schema task',
+              reason: 'not done',
+            },
+          ],
+          mergeQuestions: {},
+        },
+      },
+      now,
+    })
+    assert.match(
+      waiting.details,
+      /waiting for Hidden schema task/,
+    )
+    assert.equal(
+      waiting.kind,
+      'working',
+    )
+  },
+)

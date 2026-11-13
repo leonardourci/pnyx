@@ -40,9 +40,21 @@ export function canonicalMergeQuestion({
   if (facts && url in facts) {
     const decided = facts[url]
 
-    return decided && {
-      card: decided.card ?? card,
-      ask: decided.ask,
+    if (!decided) {
+      return undefined
+    }
+
+    if (decided.card) {
+      return {
+        card: decided.card,
+        ask: decided.ask,
+      }
+    }
+
+    // The card's own question may carry an edit the server has not confirmed yet.
+    return {
+      card,
+      ask: card.asks?.find(ask => ask.id === decided.ask.id) ?? decided.ask,
     }
   }
 
