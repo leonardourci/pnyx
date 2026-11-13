@@ -113,3 +113,5 @@ The flows:
 - `logs.test.ts` covers the diagnostic logs: each action's line and its fields, the lines a chat turn, its live thread and a project read write, the Off and Detailed levels, lines a page sends, cleanup by days and size, `logs clean`, a restart's lines and `debug performance`. The flows' server writes its process line every 200 ms instead of every 30 seconds, and `logLines()` reads every line back. The flows' agents are fakes without a process, so `src/workers/agent-memory.test.ts` covers the agent memory line with a real child process and its tool.
 
 The in-process provider contracts and their current limits are described in [Provider sessions](provider-sessions.md).
+
+When a test lane fails, the launcher retains its scratch Postgres log outside the deleted test home and prints the path and its last lines. The cluster logs lock waits and omits parameter values on SQL errors, so a timeout can be traced to the actual statement and blocking process without dumping event bodies.
