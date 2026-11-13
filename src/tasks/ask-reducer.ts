@@ -88,7 +88,7 @@ export function applyAsk({
           answered.closed = {
             id: accepted.id,
             at: event.at,
-            reason: 'answered from your message',
+            reason: "answered from the owner's message",
             evidence: accepted.source.id,
           }
         }
