@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createChatFollow, OWNER_SCROLL_MS, watchHistoryFocus } from './chat-follow.ts'
+import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
 
 const tracked = () => {
   const reports: boolean[] = []
@@ -40,24 +40,27 @@ test(
     } = tracked()
     follow.stop()
     follow.input({ at: 0 })
-    const step = OWNER_SCROLL_MS * 0.6
-
-    for (const [
-      index,
-      remaining,
-    ] of [
-        900,
-        600,
-        300,
-        10,
-      ].entries()) {
-      follow.scrolled({
-        at: step * (index + 1),
-        top: 1000 - remaining,
-        remaining,
-      })
-    }
-
+    // Each scroll lands inside the window the one before it renewed.
+    follow.scrolled({
+      at: 600,
+      top: 100,
+      remaining: 900,
+    })
+    follow.scrolled({
+      at: 1200,
+      top: 400,
+      remaining: 600,
+    })
+    follow.scrolled({
+      at: 1800,
+      top: 700,
+      remaining: 300,
+    })
+    follow.scrolled({
+      at: 2400,
+      top: 990,
+      remaining: 10,
+    })
     assert.equal(
       follow.following(),
       true,
