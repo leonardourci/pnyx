@@ -329,6 +329,60 @@ test(
       },
     })
     await agentSave
+    assert.equal(
+      connection.snapshot().state.config?.hydra.agent?.model,
+      'next-model',
+    )
+    assert.equal(
+      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
+      'confirmed',
+    )
+  },
+)
+
+test(
+  'activity from a hidden origin card leaves the task\'s Updates current, and an event its Updates list shows marks it stale',
+  async t => {
+    const { connection } = browserFixture({ t })
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'created',
+        at: '2099-10-16T11:00:00Z',
+        actor: 'web',
+        cardId: 'task',
+        type: 'task.created',
+        data: {
+          key: 'task',
+          title: 'Choose the schema',
+        },
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: state.seq,
+        state,
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'latest',
+        messages: {},
+        actions: {},
+      },
+    })
     const readTask = loadUpdates({
       command: connection.commandFor({ id: 'default' }),
       id: 'task',
@@ -361,12 +415,12 @@ test(
       message: {
         type: 'page.event',
         update: {
-          seq: 8,
+          seq: 2,
           cards: {
             origin: null,
             task: {
               ...connection.snapshot().state.cards.task!,
-              revision: 8,
+              revision: 2,
             },
           },
         },
@@ -375,14 +429,13 @@ test(
     assert.equal(
       updatesOf({ id: 'task' }).stale,
       false,
-      'activity from a hidden origin card leaves the task\'s Updates current',
     )
     socket.receive({
       message: forwarded({
         event: {
           v: 1,
           id: 'outcome',
-          seq: 9,
+          seq: 3,
           at: '2099-10-16T15:00:00Z',
           actor: 'owner',
           cardId: 'task',
@@ -411,15 +464,6 @@ test(
     assert.equal(
       updatesOf({ id: 'unaffected' }).stale,
       false,
-    )
-
-    assert.equal(
-      connection.snapshot().state.config?.hydra.agent?.model,
-      'next-model',
-    )
-    assert.equal(
-      connection.snapshot().intents.find(intent => intent.id === agentRequest.id)?.stage,
-      'confirmed',
     )
   },
 )
