@@ -13,6 +13,7 @@ const WORKER_ENTRY = new URL(
 // A statement the server waits on longer than this has a stuck connection behind it.
 const QUERY_TIMEOUT_MS = 30_000
 const LIVE_DATABASE = 'pnyx'
+const CONDITIONS = '--conditions='
 // What the worker reports when a conditional write matched another row count.
 export const CONFLICT_CODE = 'PNYX_CONFLICT'
 
@@ -100,6 +101,8 @@ function connection({ url }: { url?: string }): Connection {
         } : { database },
       },
       transferList: [port2],
+      // The worker needs only the import conditions; a flag such as --input-type from `node -e` would stop it loading.
+      execArgv: process.execArgv.filter(arg => arg.startsWith(CONDITIONS)),
       // The worker prints nothing; left unpiped, its streams add no listener per home and keep no command running.
       stdout: true,
       stderr: true,
