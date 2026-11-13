@@ -552,6 +552,11 @@ export function createLiveSessions({
           })
         }
 
+        // A refused input is never confirmed, so nothing will take the owner's messages it carried.
+        if (refused) {
+          entry.carried.delete(receipt.inputId)
+        }
+
         if (typeof received === 'object' && received.type === 'turn-ended') {
           log({
             operation: 'turn.end',
