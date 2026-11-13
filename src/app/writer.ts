@@ -19,7 +19,7 @@ import { preimage, type PreimageObserver, type Touched } from './preimage.ts'
 import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
-import { eventStatements, rowChanges } from './rows.ts'
+import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
 import { rememberEvents } from './event-log.ts'
 import { log } from './diagnostics.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
@@ -42,6 +42,33 @@ export interface Writer {
     event: HydraEvent
     effects?: boolean
   }): void
+}
+
+// Tests set this, so every write in the suite proves that comparing every row finds nothing the touched rows missed.
+const CHECK_ROWS = 'PNYX_CHECK_ROWS'
+
+function checkTouched({
+  hydraId,
+  state,
+  saved,
+}: {
+  hydraId: string
+  state: HydraState
+  saved: SavedRows
+}): void {
+  if (!process.env[CHECK_ROWS]) {
+    return
+  }
+
+  const missed = rowChanges({
+    hydraId,
+    state,
+    saved,
+  }).statements
+
+  if (missed.length) {
+    throw new Error(`a write changed rows it did not mark: ${missed.map(statement => statement.text.split('\n')[0]).join('; ')}`)
+  }
 }
 
 interface WriterOptions<T> {
@@ -81,7 +108,7 @@ export function withWriter<T>({
     hydraId,
     migrate,
   })
-  // Leases and locks keep their files in the Hydra's folder, which nothing else creates now that state is in Postgres.
+  // Leases and locks keep their files in the Hydra's folder, which no other write creates.
   privateDir({
     dir: hydraDir({
       hydraId,
@@ -147,11 +174,17 @@ export function withWriter<T>({
         })
       }
 
+      // A Hydra's first write saves every row, including the fields its empty state starts with.
       const changes = rowChanges({
         hydraId,
         state: live.state,
         saved: live.saved,
-        touched,
+        touched: from === 0 ? undefined : touched,
+      })
+      checkTouched({
+        hydraId,
+        state: live.state,
+        saved: changes.next,
       })
       query({
         transaction: true,
