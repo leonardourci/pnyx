@@ -11,9 +11,11 @@ export function movedHistory({
   hydraId,
   task,
   matches,
+  cards = [task],
 }: {
   hydraId: string
   task: string
+  cards?: string[]
   matches({ event }: { event: HydraEvent }): boolean
 }): HistoryEntry[] {
   const entries: HistoryEntry[] = []
@@ -21,7 +23,7 @@ export function movedHistory({
   let upTo = Number.POSITIVE_INFINITY
   let events = readEvents({
     hydraId,
-    cardId: task,
+    cardIds: cards,
   })
 
   while (hydra) {
@@ -45,7 +47,7 @@ export function movedHistory({
     // A Hydra deleted since the move has no log, which leaves its part out.
     events = readEvents({
       hydraId: from,
-      cardId: task,
+      cardIds: cards,
     })
     const departure = events.find(event => event.id === arrival.id && event.type === 'task.moved-out')
     hydra = departure ? from : undefined
