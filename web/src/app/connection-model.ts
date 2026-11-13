@@ -29,6 +29,8 @@ export interface Scope {
   ready: boolean
   subscribed: boolean
   subscription: string | null
+  // The cards the tab opened, sent with each subscribe so the server sends their live activity.
+  page?: string[]
   failed: boolean
   restoredSaves: boolean
   error: string

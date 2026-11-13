@@ -59,6 +59,7 @@ export function hydraSource() {
     }): void
     state: HydraState
     queue: HydraQueue
+    loaded: boolean
   }>()
 
   const show = ({
@@ -86,7 +87,9 @@ export function hydraSource() {
 
     const nextQueue = queue ?? entry.queue
 
-    if (next !== entry.state || nextQueue !== entry.queue) {
+    // Zero reports a Hydra once it loads, and then each write that changed a row.
+    if (!entry.loaded || next !== entry.state || nextQueue !== entry.queue) {
+      entry.loaded = true
       entry.state = next
       entry.queue = nextQueue
       entry.publish({
@@ -119,11 +122,17 @@ export function hydraSource() {
             waiting: [],
             reading: [],
           },
+          loaded: false,
         },
       )
 
       return {
-        open: async () => ({ unavailable: [] }),
+        // Like Zero, a ref no row has comes back missing.
+        open: async ({ refs }: { refs: string[] }) => {
+          const shown = watched.get(hydraId)?.state
+
+          return { unavailable: refs.filter(ref => !shown?.cards[ref] && !shown?.keys[ref]) }
+        },
         close: () => {
           watched.delete(hydraId)
         },

@@ -401,28 +401,35 @@ test(
       updatesOf({ id: 'task' }).stale,
       false,
     )
-    hydras.apply({
-      event: {
-        v: 1,
-        id: 'outcome',
-        seq: 3,
-        at: '2099-10-16T15:00:00Z',
-        actor: 'owner',
-        cardId: 'task',
-        type: 'card.outcome',
-        data: {
-          before: null,
-          after: {
-            state: 'done',
-            source: 'owner',
-            note: 'Shipped',
+    socket.receive({
+      message: {
+        type: 'page.event',
+        update: {
+          seq: 3,
+          event: {
+            v: 1,
+            id: 'outcome',
+            seq: 3,
+            at: '2099-10-16T15:00:00Z',
+            actor: 'owner',
+            cardId: 'task',
+            type: 'card.outcome',
+            data: {
+              before: null,
+              after: {
+                state: 'done',
+                source: 'owner',
+                note: 'Shipped',
+              },
+              card: {
+                title: 'Task',
+                workspace: '',
+                tags: [],
+                links: [],
+              },
+            },
           },
-          card: {
-            title: 'Task',
-            workspace: '',
-            tags: [],
-            links: [],
-          },
+          cards: {},
         },
       },
     })
@@ -1011,6 +1018,58 @@ test(
     assert.equal(
       connection.snapshot().state.cards.task!.usage,
       undefined,
+    )
+  },
+)
+
+test(
+  'a task still being created stays open instead of being reported missing',
+  async t => {
+    const { connection } = browserFixture({ t })
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    hydras.show({ state: emptyHydra() })
+    socket.receive({
+      message: {
+        type: 'latest',
+        messages: {},
+        actions: {},
+      },
+    })
+    const command = connection.commandFor({ id: 'default' })
+    command({
+      name: 'task',
+      args: [
+        'create',
+        '--title',
+        'Write the schema',
+        '--event-id',
+        'attempt',
+      ],
+    }).catch(() => {})
+    assert.ok(
+      connection.snapshot().state.cards['task:attempt'],
+      'the new task shows at once',
+    )
+    const opened = await command({
+      name: 'page',
+      args: [
+        '--card',
+        'task:attempt',
+        '--card',
+        'gone',
+      ],
+    })
+    assert.deepEqual(
+      opened.unavailable,
+      ['gone'],
     )
   },
 )

@@ -556,9 +556,9 @@ test(
         'an outage logs at most one failed attempt',
       )
       assert.ok(
-        logLines().some(line => line.source === 'web' && line.operation === 'page.snapshot' && line.hydraId === s.hydraId
-          && typeof line.ms === 'number'),
-        'each snapshot the page applies has its line',
+        logLines().some(line => line.source === 'web' && line.operation === 'page.update' && line.name === 'zero'
+          && line.hydraId === s.hydraId && typeof line.ms === 'number'),
+        'the Hydra the page loads from Zero has its line',
       )
       await capture({ name: 'final' })
       const other = await pnyx.scenario()

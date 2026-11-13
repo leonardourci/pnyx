@@ -1174,3 +1174,69 @@ for (const scenario of [
     },
   )
 }
+
+test(
+  'a reconnecting page names the cards it last opened in its socket address',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
+    const stop = connection.start()
+    const socket = TestSocket.current
+    open({ socket })
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    const request = connection.commandFor({ id: 'default' })({
+      name: 'page',
+      args,
+    })
+    // The socket closes before the server answers, so this command's outcome is not under test.
+    request.catch(() => {})
+
+    socket.onclose?.()
+    window.dispatchEvent(new Event('online'))
+    assert.notEqual(
+      TestSocket.current,
+      socket,
+    )
+    assert.deepEqual(
+      TestSocket.current.page,
+      args,
+    )
+  },
+)
+
+test(
+  'switching to another Hydra subscribes with the cards that Hydra last opened',
+  async t => {
+    const { connection } = recoveryPage({ t })
+    const socket = TestSocket.current
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    const request = connection.commandFor({ id: 'second' })({
+      name: 'page',
+      args,
+    })
+    // The server never answers here; only the subscribe frame is under test.
+    request.catch(() => {})
+    await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
+    assert.deepEqual(
+      socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)?.page,
+      args,
+    )
+  },
+)

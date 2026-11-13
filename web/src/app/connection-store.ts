@@ -13,7 +13,7 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { readSettingsSaves,saveSettingsSaves } from '#web-hydra/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
-import { staleUpdates } from '#web-tasks/updates-cache.ts'
+import { noteUpdate,staleUpdates } from '#web-tasks/updates-cache.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
@@ -209,9 +209,18 @@ export function createHydraConnection({
         args,
         onChecking,
       }) => {
-        // Zero loads the cards a tab opens; the answer names the ones this Hydra does not have.
+        // Zero loads the cards a tab opens, and the server sends their live activity.
         if (name === 'page') {
-          return readData({ scope }).open({
+          scope.page = args
+          // The answer comes from Zero; the server only learns which cards' activity to send.
+          command({
+            scope,
+            name,
+            args,
+          }).catch(() => {})
+
+          return openCards({
+            scope,
             refs: args.filter((
               _,
               index,
@@ -594,6 +603,10 @@ export function createHydraConnection({
           state,
         })
       },
+      failed: ({ message }: { message: string }) => {
+        scope.loadError = message
+        publish()
+      },
     }
     scope.views = watch ? watch(options) : watchHydra({
       ...options,
@@ -601,6 +614,22 @@ export function createHydraConnection({
     })
 
     return scope.views
+  }
+
+  // A card the page is still creating has no row yet, so it is on its way rather than missing.
+  const openCards = async ({
+    scope,
+    refs,
+  }: {
+    scope: Scope
+    refs: string[]
+  }) => {
+    const { unavailable } = await readData({ scope }).open({ refs })
+    const shown = scope.resource.snapshot().view
+
+    return {
+      unavailable: unavailable.filter(ref => !shown.cards[ref] && !shown.keys[ref]),
+    }
   }
 
   const subscribe = ({ scope }: { scope: Scope }) => {
@@ -621,11 +650,13 @@ export function createHydraConnection({
         type: 'subscribe',
         scope: scope.id,
         subscription: scope.subscription,
+        // JSON drops an undefined page, so a scope that opened no cards sends none.
+        page: scope.page,
       },
     })
   }
 
-  // The page's one Zero client, made when a Hydra first subscribes.
+  // The page's one Zero client, made once when the connection starts.
   let pageZero: Zero | undefined
 
   const zero = () => {
@@ -644,26 +675,24 @@ export function createHydraConnection({
     state: HydraState
   }) => {
     const handling = performance.now()
-    const before = scope.resource.snapshot().confirmed
+    const first = !scope.hasSnapshot
     confirmState({
       scope,
       state,
     })
     scope.hasSnapshot = true
-    confirmSaves({ scope })
-    const changed = Object.values(state.cards)
-      .filter(card => before.cards[card.id]?.updatedSeq !== card.updatedSeq)
-      .map(card => card.id)
 
-    if (selected === scope.id && changed.length) {
-      staleUpdates({ ids: changed })
+    if (scope.ready) {
+      clearTimeout(scope.subscriptionTimer)
+      scope.loadError = ''
     }
 
+    confirmSaves({ scope })
     publish(); flush()
-    // Zero's changes reach the page here, so this line is what one write costs it.
+    // Zero's changes reach the page here, so this line is what one write costs it; the first load always logs.
     log({
       operation: 'page.update',
-      detailed: true,
+      detailed: !first,
       hydraId: scope.id,
       name: 'zero',
       ms: performance.now() - handling,
@@ -729,6 +758,33 @@ export function createHydraConnection({
     }
 
     message = normalized
+
+    // Zero brings Hydra data; the server's events still tell a shown task's Updates list it is behind.
+    if (message.type === 'page.event') {
+      if (selected === scope.id && message.update.event) {
+        noteUpdate({ event: message.update.event })
+      }
+
+      return
+    }
+
+    // A snapshot skips the events in between, so every kept Updates list may be behind.
+    if (message.type === 'snapshot') {
+      if (selected === scope.id) {
+        staleUpdates()
+      }
+
+      return
+    }
+
+    if ([
+      'hydras',
+      'settings',
+      'upgrade',
+      'hydraQueue',
+    ].includes(message.type)) {
+      return
+    }
 
     if (message.type === 'thread') {
       publish(); flush()
@@ -820,9 +876,14 @@ export function createHydraConnection({
         changes: message.actions,
       })
       const wasReady = scope.ready
-      clearTimeout(scope.subscriptionTimer)
+
+      // The loading deadline runs until Zero has shown this Hydra too.
+      if (scope.hasSnapshot) {
+        clearTimeout(scope.subscriptionTimer)
+        scope.loadError = ''
+      }
+
       scope.subscriptionAttempt = 0
-      scope.loadError = ''
       scope.ready = true
       scope.failed = false
       attempt = 0
@@ -895,6 +956,15 @@ export function createHydraConnection({
       'scope',
       primary,
     )
+    const page = scopes.get(primary)?.page
+
+    if (page) {
+      url.searchParams.set(
+        'page',
+        JSON.stringify(page),
+      )
+    }
+
     const ws = new WebSocket(url)
     let opened = false
     socket = ws
