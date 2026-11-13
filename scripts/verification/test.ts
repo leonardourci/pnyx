@@ -221,8 +221,7 @@ try {
           '--test',
           `--test-concurrency=${lane.concurrency}`,
           ...lane.nodeArgs,
-          // A test past its lane's cap fails by name, and a handle it left open cannot keep its file
-          // running.
+          // A test past its lane's cap fails by name, and a handle it left open cannot keep its file running.
           `--test-timeout=${lane.testTimeout}`,
           '--test-force-exit',
           ...options,

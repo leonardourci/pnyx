@@ -388,7 +388,9 @@ export async function startServer({
 
       if (isZeroPath({ path: url.pathname })) {
         if (!zero || !allowed({ req })) {
-          return void socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+          socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+
+          return
         }
 
         return zero.upgrade({

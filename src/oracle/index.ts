@@ -26,7 +26,6 @@ function sqlite(): typeof import('node:sqlite') {
 }
 
 // Bump when the schema, stored text, visibility or tokenization changes.
-// 5: the events cursor counts seqs, read from the events table.
 const INDEX_VERSION = 5
 const CATCH_UP_BATCH_EVENTS = 500
 const EVENTS = 'events'

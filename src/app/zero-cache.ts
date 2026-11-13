@@ -408,7 +408,9 @@ export function startZeroCache({
         'error',
         () => {
           if (res.headersSent) {
-            return void res.destroy()
+            res.destroy()
+
+            return
           }
 
           reply({
@@ -429,11 +431,15 @@ export function startZeroCache({
       head,
     }) {
       if (!authorized({ req })) {
-        return void socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
+        socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
+
+        return
       }
 
       if (port === undefined) {
-        return void socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n')
+        socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n')
+
+        return
       }
 
       const upstream = connect(

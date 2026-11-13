@@ -4,6 +4,7 @@ import { ownerActor } from './actors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { cardReference } from './rows.ts'
 import { isManagedTask, knownCards, liveTask } from '#tasks/select.ts'
 
 export interface PageInterest {
@@ -35,23 +36,6 @@ export function pageCard({ card }: { card: Card }): Card {
   return visible
 }
 
-// A hidden task keeps what chips, prerequisites, waits and answer leads read: no histories,
-// texts or worker setup.
-function pageReference({ card }: { card: Card }): Card {
-  const reference = pageCard({ card })
-  delete reference.statusLog
-  delete reference.replies
-  delete reference.brief
-  delete reference.initialPrompt
-  delete reference.intent
-  delete reference.progress
-  delete reference.projectRefresh
-  delete reference.launch
-  delete reference.settings
-  delete reference.copy
-
-  return reference
-}
 
 export function pageShows({
   card,
@@ -111,7 +95,7 @@ export function pageState({
     })) {
       cards[card.id] = pageCard({ card })
     } else if (!isManagedTask({ card })) {
-      references[card.id] = pageReference({ card })
+      references[card.id] = cardReference({ card })
     }
   }
 

@@ -107,7 +107,7 @@ export async function mountOwnedHydra({
   })
   dropCopyLeases({ hydraId })
   let { state } = loadHydra({ hydraId })
-  // The seq of the last event this server has pushed.
+  // The seq of the last event this server has handled.
   let offset = state.seq
   const catalogIndex = createCatalogIndex({ locations: catalogLocations })
   const {

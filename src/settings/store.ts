@@ -378,7 +378,7 @@ export function saveSettings({
 export const configuredPostgres = () => readFolded().settings.postgresUrl
 
 // postgresUrl may hold a password, so pages never get it.
-export function pageSettings({ settings }: { settings: Settings }): PageSettings {
+function pageSettings({ settings }: { settings: Settings }): PageSettings {
   const shown: Partial<Settings> = { ...settings }
   delete shown.postgresUrl
 

@@ -13,8 +13,7 @@ process.on(
 const isolated = createTestEnvironment()
 keepChromeOffKeychain()
 
-// Preserve Node's private test transport, the disposable install path and the run's Postgres from the isolated
-// launcher.
+// Keep Node's private test transport, the disposable install path and the run's Postgres from the isolated launcher.
 for (const key of [
   'NODE_TEST_CONTEXT',
   'NODE_TEST_WORKER_ID',

@@ -43,7 +43,7 @@ export function hydrasCommand({
       type: 'receipt',
       id,
       hydraId,
-      ...(listed || creation ? { hydras: listHydras() } : {}),
+      hydras: listed || creation ? listHydras() : undefined,
       ...(open ? { url: open } : {}),
       ...(creation ? { creation } : {}),
     },

@@ -260,8 +260,8 @@ function cardSummary({
   }
 }
 
-function cardReference({ card }: { card: Card }): Partial<Card> {
-  const reference: Partial<Card> = { ...card }
+export function cardReference({ card }: { card: Card }): Card {
+  const reference: Card = { ...card }
 
   for (const field of UNREFERENCED) {
     delete reference[field]

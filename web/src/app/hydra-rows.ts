@@ -41,7 +41,7 @@ function inPosition<Row extends { position: number }>({ rows }: { rows: readonly
   ) => a.position - b.position)
 }
 
-export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
+function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
   const cached = built.get(row)
 
   if (cached) {

@@ -33,8 +33,7 @@ const SIGN_IN: Record<Harness, string> = {
   codex: 'sign in to Codex (`codex login`)',
 }
 
-// Reads files, PATH, each attached project's git sources and one Postgres query, so it is cheap enough for every session
-// open.
+// Reads files, PATH, each attached project's git sources and one Postgres query: cheap enough for every session open.
 export async function setupCheck({
   hydraId,
   state,
@@ -193,8 +192,7 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
   ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'hydra' ? 'you' : 'owner'}: ${item.fix}`),
 ] : []
 
-// Setup runs without the server, which alone imports a Hydra still in its events.jsonl; until it has, that is the one
-// item listed.
+// Setup runs without the server, which alone imports a Hydra still in its events.jsonl; until then it is the only item.
 function hydraIssue({ hydraId }: { hydraId: string }): SetupItem | HydraState {
   try {
     return loadHydra({ hydraId }).state

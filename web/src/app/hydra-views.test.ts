@@ -214,7 +214,8 @@ test(
       publish: () => {},
       failed: () => {},
     })
-    void watched.open({ refs: ['task:attempt'] })
+    // Settles only once the card loads or the view closes, which the end of this test does.
+    const opening = watched.open({ refs: ['task:attempt'] })
     answerAll({
       fake,
       references: [],
@@ -245,6 +246,7 @@ test(
       await waiting,
       { unavailable: [] },
     )
+    await opening
     assert.ok(fake.views.every(view => view.destroyed))
   },
 )

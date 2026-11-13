@@ -12,13 +12,11 @@ import { commands } from '#app/cli.ts'
 import { queries } from '#store/zero-schema.ts'
 import { WebSocket as NodeSocket } from 'ws'
 import { readRows, zeroReady } from '#test-harness/zero-page.ts'
+import { until } from '#test-harness/harness.ts'
 
 const QUIET_MS = 3_600_000
-// zero-cache's first start copies the home's tables into its replica before it reports ready.
 // Longer than zero-cache's own stop, shorter than a hang.
 const STOP_MS = 15_000
-const READY_MS = 60_000
-const POLL_MS = 100
 
 const alive = ({ pid }: { pid: number }) => {
   try {
@@ -54,21 +52,6 @@ const listening = ({ pid }: { pid: number }) => [
   host: host!,
   port: Number(port),
 }))
-
-async function until({ check }: { check: () => boolean }): Promise<void> {
-  for (const end = performance.now() + READY_MS; performance.now() < end;) {
-    if (check()) {
-      return
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      POLL_MS,
-    ))
-  }
-
-  throw new Error('timed out')
-}
 
 test(
   'the server runs zero-cache on loopback behind /zero for the page cookie only, never sends private card fields, restarts it after it dies, and stops it when it stops',
@@ -231,6 +214,7 @@ test(
       'SIGKILL',
     )
     await until({
+      what: 'zero-cache to start again',
       check: () => server.zeroCachePid() !== undefined && server.zeroCachePid() !== pid,
     })
     await zeroReady({
