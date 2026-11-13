@@ -12,9 +12,14 @@ create table hydras (
   -- Facts the server derives for the page: the Hydra list's entry, and the queue box with the updates waiting for
   -- Hydra and the batch it is reading, which the server writes whenever they change.
   summary json not null,
-  queue json not null default '{"waiting":[],"reading":[]}',
   -- The size of the events.jsonl this Hydra was imported from, so a log an older Pnyx appended to since is refused.
   imported_bytes bigint check (imported_bytes > 0)
+);
+
+-- Live queue facts change independently of the Hydra's event sequence.
+create table hydra_queues (
+  hydra_id text primary key references hydras (id) on delete cascade,
+  value json not null
 );
 
 -- The settings every Hydra shares, as the server last applied them.
@@ -243,7 +248,7 @@ create table sessions (
 );
 
 -- The tables zero-cache replicates for the page; sessions, transactions and card_private stay with the server.
-create publication pnyx_page for table hydras, settings, upgrade_status, hydra_values, events, card_updates, columns,
+create publication pnyx_page for table hydras, hydra_queues, settings, upgrade_status, hydra_values, events, card_updates, columns,
   cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
 
 -- The schema version this file creates. A change to the tables bumps it, with a migration for databases on the older
@@ -252,4 +257,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (1);
+insert into schema_version (version) values (2);

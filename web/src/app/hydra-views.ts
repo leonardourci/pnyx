@@ -207,11 +207,10 @@ export function watchHydra({
       ownerMessage: ownerMessage.data,
       previous: state,
     }) : missing
-    // Zero types json columns as plain JSON; the queue column holds the HydraQueue the server wrote. The Hydra row
-    // changes with every write, so the queue keeps its identity while it reads the same.
+    // The queue has its own row, so unrelated event writes retain its identity.
     queue = kept({
       previous: queue,
-      next: (hydra.data?.queue ?? NOTHING_QUEUED) as HydraQueue,
+      next: (hydra.data?.queue?.value ?? NOTHING_QUEUED) as HydraQueue,
     })
 
     publish({

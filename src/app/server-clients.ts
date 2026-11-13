@@ -350,7 +350,8 @@ export function createServerClients({
       const [written] = query({
         statements: [
           {
-            text: 'update hydras set queue = $2 where id = $1 returning id',
+            text: `insert into hydra_queues (hydra_id, value) select id, $2 from hydras where id = $1
+              on conflict (hydra_id) do update set value = excluded.value returning hydra_id`,
             values: [
               hydraId,
               json,

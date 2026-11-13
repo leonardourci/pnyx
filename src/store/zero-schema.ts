@@ -24,9 +24,15 @@ const hydras = table('hydras')
     seq: number(),
     config: json<Stored<Omit<HydraConfig, 'columns'>>>().optional(),
     summary: json<Stored<HydraSummary>>(),
-    queue: json<Stored<HydraQueue>>(),
   })
   .primaryKey('id')
+
+const hydraQueues = table('hydra_queues')
+  .columns({
+    hydra_id: string(),
+    value: json<Stored<HydraQueue>>(),
+  })
+  .primaryKey('hydra_id')
 
 const settings = table('settings')
   .columns({
@@ -364,7 +370,15 @@ const updateRelationships = relationships(
 
 const hydraRelationships = relationships(
   hydras,
-  ({ many }) => ({
+  ({
+    many,
+    one,
+  }) => ({
+    queue: one({
+      sourceField: ['id'],
+      destField: ['hydra_id'],
+      destSchema: hydraQueues,
+    }),
     columns: many({
       sourceField: ['id'],
       destField: ['hydra_id'],
@@ -381,6 +395,7 @@ const hydraRelationships = relationships(
 export const schema = createSchema({
   tables: [
     hydras,
+    hydraQueues,
     settings,
     upgradeStatus,
     hydraValues,
@@ -532,6 +547,7 @@ export const queries = defineQueries({
     one: defineQuery(
       hydraArgs,
       ({ args }) => zql.hydras
+        .related('queue')
         .where(
           'id',
           args.hydraId,

@@ -36,11 +36,11 @@ test(
         transaction: true,
         statements: [
           {
-            text: 'insert into hydras (id, summary, queue) values ($1, \'{}\', \'{}\')',
+            text: 'insert into hydras (id, summary) values ($1, \'{}\')',
             values: ['kept-out'],
           },
           {
-            text: 'insert into hydras (id, summary, queue) values ($1, \'{}\', \'{}\')',
+            text: 'insert into hydras (id, summary) values ($1, \'{}\')',
             values: ['kept-out'],
           },
         ],
@@ -285,3 +285,50 @@ test(
   },
 )
 
+test(
+  'a database from #378 migrates its queue without losing events or Hydra state',
+  async () => {
+    const { readFileSync } = await import('node:fs')
+    const { randomUUID } = await import('node:crypto')
+    const database = `migration_${randomUUID().replaceAll(
+      '-',
+      '',
+    )}`
+    const admin = new pg.Client({ database: 'postgres' })
+    await admin.connect()
+    await admin.query(`create database ${database}`)
+    const old = new pg.Client({ database })
+    await old.connect()
+
+    try {
+      await old.query(readFileSync(
+        new URL(
+          './fixtures/postgres-v1.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ))
+      await old.query('insert into hydras (id, seq, summary, queue) values (\'lab\', 7, \'{}\', \'{"waiting":["one"],"reading":[]}\')')
+      const rows = query({
+        url: `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`,
+        statements: [{ text: 'select seq, value from hydras join hydra_queues on hydras.id = hydra_queues.hydra_id where id = \'lab\'' }],
+      })[0]
+      assert.deepEqual(
+        rows,
+        [
+          {
+            seq: '7',
+            value: {
+              waiting: ['one'],
+              reading: [],
+            },
+          },
+        ],
+      )
+    } finally {
+      await old.end()
+      await admin.query(`drop database ${database} with (force)`)
+      await admin.end()
+    }
+  },
+)

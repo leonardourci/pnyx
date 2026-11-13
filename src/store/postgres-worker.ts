@@ -73,6 +73,21 @@ async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
     ? (await client.query<{ version: number }>('select version from schema_version')).rows
     : []
 
+  if (versions.some(row => row.version === 1) && SCHEMA_VERSION === 2) {
+    await client.query(`begin;
+      create table hydra_queues (
+        hydra_id text primary key references hydras (id) on delete cascade,
+        value json not null
+      );
+      insert into hydra_queues select id, queue from hydras;
+      alter table hydras drop column queue;
+      alter publication pnyx_page add table hydra_queues;
+      insert into schema_version (version) values (2);
+      commit`)
+
+    return
+  }
+
   if (versions.some(row => row.version === SCHEMA_VERSION)) {
     return
   }
