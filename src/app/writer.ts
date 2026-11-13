@@ -5,6 +5,8 @@ import { HydraError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
 import { requireHydra, writableHydra, reloadHydra } from './store.ts'
 import { query } from '#store/postgres.ts'
+import { privateDir } from '#store/storage.ts'
+import { hydraDir } from './home-migration.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { agentActor } from '#hydra/hydra.ts'
@@ -75,6 +77,13 @@ export function withWriter<T>({
   const live = writableHydra({
     hydraId,
     migrate,
+  })
+  // Leases and locks keep their files in the Hydra's folder, which nothing else creates now that state is in Postgres.
+  privateDir({
+    dir: hydraDir({
+      hydraId,
+      migrate,
+    }),
   })
 
   if (transaction) {
