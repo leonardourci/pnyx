@@ -1,4 +1,5 @@
--- Pnyx's own data. The server is the only writer; zero-cache replicates these tables to the page.
+-- Pnyx's own data. The server is the only writer; zero-cache replicates the tables of the pnyx_page publication to
+-- the page.
 -- Each `data` column holds the record as the server keeps it in memory. It is json, not jsonb, so key
 -- order survives a reload. The typed columns beside it are copies the page filters and sorts on.
 
@@ -116,8 +117,16 @@ create table card_bodies (
   card_id text not null,
   -- The card without the records the tables below hold.
   data json not null,
-  -- The fields the page never sees: queued steering and external source claims.
-  private json not null,
+  primary key (hydra_id, card_id),
+  foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
+);
+
+-- The card fields the page never sees, queued steering and external source claims, for a card that has any. Outside
+-- the page's publication, so zero-cache never replicates them.
+create table card_private (
+  hydra_id text not null,
+  card_id text not null,
+  data json not null,
   primary key (hydra_id, card_id),
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
@@ -211,6 +220,10 @@ create table sessions (
   data json not null,
   primary key (hydra_id, id)
 );
+
+-- The tables zero-cache replicates for the page; sessions, transactions and card_private stay with the server.
+create publication pnyx_page for table hydras, settings, upgrade_status, hydra_values, events, card_updates, columns,
+  cards, card_bodies, questions, declarations, links, notes, messages;
 
 -- The digest of this file as it created the database, so a build with another schema refuses the database instead of
 -- failing its writes.

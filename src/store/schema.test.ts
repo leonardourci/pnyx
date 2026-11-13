@@ -16,12 +16,8 @@ const ZERO_TYPES: Record<string, string> = {
   'json': 'json',
 }
 
-// What the page must never read.
-const SERVER_ONLY = [
-  'card_bodies.private',
-  'sessions',
-  'transactions',
-]
+// Replicated with its table, but no query reads it.
+const UNREAD = ['hydras.imported_bytes']
 
 // Each check constraint that restates a TypeScript union, with the values it must allow.
 const UNIONS = {
@@ -39,7 +35,7 @@ interface Column {
 }
 
 test(
-  'the folded migration applies, and the Zero schema matches its tables, keys and checks',
+  'the folded migration applies, and the Zero schema matches the published tables, keys and checks, so card_private, sessions and plan receipts never replicate',
   async () => {
     assert.ok(
       process.env.PGPORT,
@@ -78,6 +74,10 @@ test(
         join information_schema.key_column_usage k using (constraint_schema, constraint_name)
         where tc.table_schema = 'public' and tc.constraint_type = 'PRIMARY KEY'
         group by tc.table_name`)
+      // zero-cache replicates only these, whole rows; the Zero schema names each of their columns.
+      const { rows: published } = await client.query<{ tablename: string }>(`select tablename from
+        pg_publication_tables where pubname = 'pnyx_page'`)
+      const replicated = new Set(published.map(row => row.tablename))
       const { rows: checks } = await client.query<{
         name: string
         definition: string
@@ -96,9 +96,8 @@ test(
 
       for (const row of columns) {
         const name = `${row.table_name}.${row.column_name}`
-        const hidden = SERVER_ONLY.includes(row.table_name) || SERVER_ONLY.includes(name)
 
-        if (!hidden) {
+        if (replicated.has(row.table_name) && !UNREAD.includes(name)) {
           inPostgres[name] = {
             type: ZERO_TYPES[row.data_type]!,
             optional: row.is_nullable === 'YES',
@@ -122,6 +121,10 @@ test(
       }
 
       assert.deepEqual(
+        [...replicated].toSorted(),
+        Object.keys(tables).toSorted(),
+      )
+      assert.deepEqual(
         inZero,
         inPostgres,
       )
@@ -133,7 +136,7 @@ test(
           name,
           [...table.primaryKey],
         ])),
-        Object.fromEntries(keys.filter(row => !SERVER_ONLY.includes(row.table_name)).map(row => [
+        Object.fromEntries(keys.filter(row => replicated.has(row.table_name)).map(row => [
           row.table_name,
           row.columns,
         ])),

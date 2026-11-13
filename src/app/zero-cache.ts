@@ -22,6 +22,8 @@ const ZERO_CLI = fileURLToPath(new URL(
   import.meta.resolve('@rocicorp/zero'),
 ))
 const SECRET_BYTES = 32
+// Created by src/store/schema.sql.
+const PAGE_PUBLICATION = 'pnyx_page'
 const DEFAULT_PG_PORT = '5432'
 // A child that stays ready this long has recovered, so its next exit starts the restart delays over.
 const STABLE_MS = 60_000
@@ -262,6 +264,8 @@ export function startZeroCache({
           ),
           // Replication slots are named by the app id across the whole Postgres server, so each home has its own.
           ZERO_APP_ID: homeDatabase(),
+          // Only the page's tables, so sessions, plan receipts and card_private never reach the replica.
+          ZERO_APP_PUBLICATIONS: PAGE_PUBLICATION,
           ZERO_PORT: String(syncPort),
           ZERO_CHANGE_STREAMER_PORT: String(changeStreamerPort),
           ZERO_ADMIN_PASSWORD: secret(),

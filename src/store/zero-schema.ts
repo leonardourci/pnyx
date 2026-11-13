@@ -11,8 +11,8 @@ import type { Settings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
 import type { currentState } from '#tasks/card-status.ts'
 
-// The page's view of src/store/schema.sql. Tables and columns left out here, such as card_bodies.private, never
-// reach the page.
+// The page's view of src/store/schema.sql. zero-cache replicates only the tables of the pnyx_page publication, whole
+// rows, and the page reads them only through the queries below.
 
 // Zero's json columns take only types with index signatures; this restates an interface as a plain object type.
 type Stored<T> = unknown extends T ? ReadonlyJSONValue

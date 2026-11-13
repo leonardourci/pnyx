@@ -37,6 +37,10 @@ const TABLES = {
     'hydra_id',
     'card_id',
   ],
+  card_private: [
+    'hydra_id',
+    'card_id',
+  ],
   questions: [
     'hydra_id',
     'card_id',
@@ -145,9 +149,15 @@ function cardRows({
         hydra_id: hydraId,
         card_id: card.id,
         data,
-        private: hidden,
       },
     ],
+    card_private: Object.keys(hidden).length ? [
+      {
+        hydra_id: hydraId,
+        card_id: card.id,
+        data: hidden,
+      },
+    ] : [],
     questions: (card.asks ?? []).map((
       ask,
       position,
@@ -690,7 +700,8 @@ export function loadStatements({ hydraId }: { hydraId: string }): Statement[] {
     'select key, value from hydra_values where hydra_id = $1',
     'select data from columns where hydra_id = $1 order by position',
     'select id from cards where hydra_id = $1 order by created_seq, id',
-    'select card_id, data, private from card_bodies where hydra_id = $1',
+    'select card_id, data from card_bodies where hydra_id = $1',
+    'select card_id, data from card_private where hydra_id = $1',
     'select card_id, data from questions where hydra_id = $1 order by card_id, position',
     'select card_id, data from declarations where hydra_id = $1 order by card_id, position',
     'select card_id, data from links where hydra_id = $1 order by card_id, position',
@@ -728,6 +739,7 @@ export function stateFromRows({
     columns,
     ids,
     bodies,
+    privates,
     questions,
     declarations,
     links,
@@ -747,11 +759,8 @@ export function stateFromRows({
     }>,
     Of<{ data: HydraColumn }>,
     Of<{ id: string }>,
-    Of<{
-      card_id: string
-      data: Card
-      private: Partial<Card>
-    }>,
+    CardRow<Card>,
+    CardRow<Partial<Card>>,
     CardRow<Ask>,
     CardRow<TaskDeclaration>,
     CardRow<Link>,
@@ -844,7 +853,11 @@ export function stateFromRows({
 
   const body = new Map(bodies.map(row => [
     row.card_id,
-    row,
+    row.data,
+  ]))
+  const hidden = new Map(privates.map(row => [
+    row.card_id,
+    row.data,
   ]))
   const state: HydraState = {
     v: EVENT_VERSION,
@@ -879,8 +892,8 @@ export function stateFromRows({
     }
 
     const card: Card = {
-      ...row.data,
-      ...row.private,
+      ...row,
+      ...hidden.get(id),
       ...lists.get(id),
     }
     state.cards[id] = card
