@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { query } from './postgres.ts'
+import { HydraError } from './errors.ts'
+import { homeDatabase, query } from './postgres.ts'
 
 const EXIT_MS = 20_000
+// Postgres gives up on the lock after 5 s; the server's own wait would end only after 30.
+const LOCK_ANSWER_MS = 15_000
 
 test(
   'a home gets its own migrated database, and a failed transaction leaves nothing behind',
@@ -125,5 +128,68 @@ test(
       rows?.[0]?.name,
       database,
     )
+  },
+)
+
+test(
+  'a table another session keeps locked answers with an error within the lock timeout, instead of freezing the server',
+  async () => {
+    query({ statements: [{ text: 'select 1' }] })
+    // Another process, as a psql session or a long VACUUM FULL would be, holds the lock until its stdin closes.
+    const holder = spawn(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import pg from 'pg'
+const client = new pg.Client({ database: ${JSON.stringify(homeDatabase())} })
+await client.connect()
+await client.query('begin')
+await client.query('lock table hydras in access exclusive mode')
+process.stdout.write('locked\\n')
+process.stdin.resume()
+process.stdin.on('end', () => client.end())`,
+      ],
+      {
+        cwd: new URL(
+          '../..',
+          import.meta.url,
+        ),
+        stdio: [
+          'pipe',
+          'pipe',
+          'inherit',
+        ],
+      },
+    )
+
+    try {
+      await new Promise<void>((
+        resolve,
+        reject,
+      ) => {
+        holder.stdout.on(
+          'data',
+          (chunk: Buffer) => String(chunk).includes('locked') && resolve(),
+        )
+        holder.once(
+          'exit',
+          () => reject(new Error('the lock holder exited')),
+        )
+      })
+      const started = performance.now()
+      assert.throws(
+        () => query({ statements: [{ text: 'select count(*) from hydras' }] }),
+        (error: unknown) => error instanceof HydraError && error.code === 'DATABASE_ERROR'
+          && /lock timeout/.test(error.message),
+      )
+      assert.ok(performance.now() - started < LOCK_ANSWER_MS)
+    } finally {
+      holder.stdin.end()
+      await new Promise(resolve => holder.once(
+        'exit',
+        resolve,
+      ))
+    }
   },
 )

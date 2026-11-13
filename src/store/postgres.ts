@@ -11,7 +11,8 @@ const WORKER_ENTRY = new URL(
   import.meta.url.endsWith('.ts') ? './postgres-worker.ts' : './postgres-worker.js',
   import.meta.url,
 )
-// A statement the server waits on longer than this has a stuck connection behind it.
+// A request the server waits on longer than this has a stuck connection behind it; Postgres cancels a slow statement
+// itself well before (STATEMENT_TIMEOUT_MS in the worker).
 const QUERY_TIMEOUT_MS = 30_000
 // Postgres refuses U+0000 and a lone UTF-16 surrogate even in json columns, so one stored value holding either would
 // fail every later write.
@@ -33,6 +34,8 @@ export interface Request {
   transaction: boolean
   // A trial runs every statement and then rolls the transaction back.
   rollback?: boolean
+  // How long each statement of this transaction may run, for one that outlasts an ordinary statement's limit.
+  statementTimeoutMs?: number
 }
 
 export type Outcome = { results: Record<string, unknown>[][] } | {
@@ -213,12 +216,18 @@ export function query({
     0,
     0,
   )
-  open.port.postMessage({
+  const request: Request = {
     id,
     statements,
     transaction,
     rollback,
-  } satisfies Request)
+  }
+
+  if (timeoutMs !== QUERY_TIMEOUT_MS) {
+    request.statementTimeoutMs = timeoutMs
+  }
+
+  open.port.postMessage(request)
   const waited = Atomics.wait(
     open.signal,
     0,

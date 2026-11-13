@@ -9,6 +9,11 @@ const MISSING_DATABASE = '3D000'
 const SCHEMA_LOCK = 'select pg_advisory_lock(hashtext(\'pnyx schema\'))'
 const SCHEMA_UNLOCK = 'select pg_advisory_unlock(hashtext(\'pnyx schema\'))'
 const DUPLICATE_DATABASE = '42P04'
+// Postgres cancels a statement, or its wait for a lock, after these, so a lock another session holds or a slow
+// statement answers the server with an error instead of freezing it for its whole wait.
+const STATEMENT_TIMEOUT_MS = 10_000
+const LOCK_TIMEOUT_MS = 5_000
+const CONNECT_TIMEOUT_MS = 5_000
 const CONNECTION_LOST = [
   '08',
   '57P',
@@ -23,12 +28,18 @@ const {
   signal: Int32Array
   config: pg.ClientConfig & { database: string }
 }
+const limits = {
+  statement_timeout: STATEMENT_TIMEOUT_MS,
+  lock_timeout: LOCK_TIMEOUT_MS,
+  connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
+}
 
 // The same server's maintenance database, which can create this one; a connection string names its database itself.
 function adminConfig(): pg.ClientConfig {
   if (!config.connectionString) {
     return {
       ...config,
+      ...limits,
       database: 'postgres',
     }
   }
@@ -36,12 +47,18 @@ function adminConfig(): pg.ClientConfig {
   const url = new URL(config.connectionString)
   url.pathname = '/postgres'
 
-  return { connectionString: url.href }
+  return {
+    ...limits,
+    connectionString: url.href,
+  }
 }
 
 // A home's database appears on its first use, with the folded migration applied once.
 async function connect(): Promise<pg.Client> {
-  const client = new pg.Client(config)
+  const client = new pg.Client({
+    ...config,
+    ...limits,
+  })
 
   // A dropped connection, as when Postgres restarts, is replaced on the next request.
   const drop = () => {
@@ -158,6 +175,10 @@ async function run({ request }: { request: Request }): Promise<Outcome> {
     await client.query('begin')
 
     try {
+      if (request.statementTimeoutMs !== undefined) {
+        await client.query(`set local statement_timeout = ${Math.trunc(request.statementTimeoutMs)}`)
+      }
+
       const results = []
 
       for (const statement of request.statements) {
