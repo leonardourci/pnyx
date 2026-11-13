@@ -1176,9 +1176,18 @@ export function createLiveSessions({
           },
         },
       })
-      // A turn the provider fails to open is then recorded as stopped, as a failed reply is.
+      // Recorded as a reply's turn is, so the card shows it, recovery resumes it and a failed open is recorded as stopped.
       resumed.activity = 'working'
       resumed.sentAt = Date.now()
+      const agent = card.agent
+      note({
+        fn: ({ writer }) => record({
+          writer,
+          agent,
+          input: { activity: 'working' },
+          actor: 'pnyx',
+        }),
+      })
       resumed.input.push({
         id: randomUUID(),
         text,

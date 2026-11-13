@@ -165,6 +165,11 @@ test(
         what: 'restored folder accepts pending tools',
         check: () => sessions.get('folder-retry')?.incoming.length === 1,
       })
+      assert.equal(
+        card({ task: retry.task }).sessionActivity,
+        'working',
+        'the tool reopen turn shows as working',
+      )
       await until({
         what: 'restored-folder grant receipt',
         check: () => {
