@@ -505,6 +505,7 @@ const historyArgs = validator<OfCard & { limit: number }>({
 })
 
 // The newest replies that answer a question, which the page reads to know an answer is still on its way.
+// eslint-disable-next-line pnyx/object-params -- Zero owns related query callbacks.
 const answering = (query: ReturnType<typeof zql.replies.where>) => query.where(
   'answers',
   'IS NOT',
