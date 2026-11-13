@@ -20,6 +20,7 @@ import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
 import { heldHydra } from './store.ts'
+import { query } from '#store/postgres.ts'
 
 // A tab that opened no cards and did not ask for hidden ones.
 const NO_INTEREST: PageInterest = {
@@ -345,18 +346,38 @@ export function createServerClients({
     return true
   }
 
+  // The queue the page last read through Zero, so an unchanged one is not written again.
+  let storedQueue = ''
+
   const queueMessage = (): ServerMessage => {
     const queued = agents().queue()
     const chat = hydraChatQueue({ state: state() })
-
     // The batch Hydra reads shows only while its turn runs.
+    const queue = {
+      waiting: queued.waiting,
+      reading: chat.working ? queued.reading : [],
+      chat,
+    }
+    const json = JSON.stringify(queue)
+
+    if (json !== storedQueue) {
+      storedQueue = json
+      query({
+        statements: [
+          {
+            text: 'update hydras set queue = $2 where id = $1',
+            values: [
+              hydraId,
+              json,
+            ],
+          },
+        ],
+      })
+    }
+
     return {
       type: 'hydraQueue',
-      queue: {
-        waiting: queued.waiting,
-        reading: chat.working ? queued.reading : [],
-        chat,
-      },
+      queue,
     }
   }
 

@@ -8,6 +8,7 @@ import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
+import { loadHydra } from './store.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { usageFor } from '#workers/usage.ts'
 import { mirrorSettings, readSettings, saveSettings } from '#settings/store.ts'
@@ -1118,6 +1119,79 @@ test(
     assert.equal(
       received.some(message => message.type === 'latest'),
       false,
+    )
+  },
+)
+
+test(
+  'the queue box the page reads through Zero holds the updates waiting for Hydra with the chat queue',
+  t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-client-queue-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const hydraId = createHydra({ name: 'Queue' })
+    const waiting = [
+      {
+        seq: 3,
+        card: 'waiting-task',
+      },
+    ]
+    const tabs = createServerClients({
+      hydraId,
+      state: () => loadHydra({ hydraId }).state,
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting,
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+
+    const message = tabs.queueMessage()
+
+    assert.ok(message.type === 'hydraQueue')
+    const [stored] = query({
+      statements: [
+        {
+          text: 'select queue from hydras where id = $1',
+          values: [hydraId],
+        },
+      ],
+    })[0] as { queue: unknown }[]
+    assert.deepEqual(
+      stored?.queue,
+      JSON.parse(JSON.stringify(message.queue)),
+    )
+    assert.deepEqual(
+      (stored?.queue as { waiting: unknown }).waiting,
+      waiting,
     )
   },
 )

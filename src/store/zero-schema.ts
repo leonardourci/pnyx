@@ -5,7 +5,7 @@ import type { Ask, Card, NoteKind, TaskDeclaration, TaskKind, TaskStatus } from 
 import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
-import type { HydraChatQueue } from '#hydra/chat-queue.ts'
+import type { HydraQueue } from '#hydra/wakes.ts'
 import type { Settings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
 import type { currentState } from '#tasks/card-status.ts'
@@ -23,7 +23,7 @@ const hydras = table('hydras')
     seq: number(),
     config: json<Stored<Omit<HydraConfig, 'columns'>>>().optional(),
     summary: json<Stored<HydraSummary>>(),
-    queue: json<Stored<HydraChatQueue>>(),
+    queue: json<Stored<HydraQueue>>(),
   })
   .primaryKey('id')
 

@@ -11,7 +11,6 @@ import { currentState } from '#tasks/card-status.ts'
 import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 import { agentActivity } from '#workers/activity.ts'
-import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import type { Touched } from './preimage.ts'
 import { summarize } from './hydra-summary.ts'
 
@@ -293,7 +292,6 @@ function stateRows({
         id: hydraId,
         state,
       }).summary,
-      queue: hydraChatQueue({ state }),
     },
   })
 
@@ -629,7 +627,7 @@ export function eventStatements({
   events: HydraEvent[]
 }): Statement[] {
   const claim: Statement = from === 0 ? {
-    text: 'insert into hydras (id, seq, summary, queue) values ($1, $2, \'{}\', \'{}\') on conflict do nothing',
+    text: 'insert into hydras (id, seq, summary) values ($1, $2, \'{}\') on conflict do nothing',
     values: [
       hydraId,
       to,
