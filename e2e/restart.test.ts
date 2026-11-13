@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:net'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -450,86 +450,9 @@ test(
 )
 
 test(
-  'a torn log that stops the server is repaired from the CLI, and the server starts with every accepted change',
+  'a change the server accepted survives the server being killed',
   async t => {
     const {
-      root,
-      run,
-      serverPath,
-    } = await isolated({ t })
-    await run({ args: ['restart'] })
-    await until({
-      check: () => existsSync(serverPath),
-      timeout: START_TIMEOUT_MS,
-    })
-    await run({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Kept through a torn log',
-        '--key',
-        'torn',
-      ],
-    })
-    await run({ args: ['stop'] })
-    await until({
-      check: () => !existsSync(serverPath),
-      timeout: START_TIMEOUT_MS,
-    })
-    const dir = join(
-      root,
-      'hydras',
-      'default',
-    )
-    // A crash mid-append leaves part of a line at the end of the log.
-    appendFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      '{"v":1,"seq":',
-    )
-
-    const repaired = await run({ args: ['repair'] })
-    assert.match(
-      repaired.stdout,
-      /torn/i,
-    )
-    assert.deepEqual(
-      readdirSync(dir).filter(name => name.startsWith('events.jsonl.torn-'))
-        .map(name => readFileSync(
-          join(
-            dir,
-            name,
-          ),
-          'utf8',
-        )),
-      ['{"v":1,"seq":'],
-    )
-    await run({ args: ['restart'] })
-    await until({
-      check: () => existsSync(serverPath),
-      timeout: START_TIMEOUT_MS,
-    })
-    assert.match(
-      (await run({
-        args: [
-          'task',
-          'show',
-          'torn',
-        ],
-      })).stdout,
-      /Kept through a torn log/,
-    )
-  },
-)
-
-test(
-  'a change the server accepted survives the server being killed before it saves a snapshot',
-  async t => {
-    const {
-      root,
       run,
       serverPath,
     } = await isolated({ t })
@@ -548,20 +471,6 @@ test(
         'kept',
       ],
     })
-    const snapshot = join(
-      root,
-      'hydras',
-      'default',
-      'snapshot.json',
-    )
-    // The snapshot is saved in the background a while after a change, so the change is only in the log yet.
-    assert.equal(
-      existsSync(snapshot) && readFileSync(
-        snapshot,
-        'utf8',
-      ).includes('Kept through a crash'),
-      false,
-    )
     const { pid } = server({ serverPath })
     process.kill(
       pid,

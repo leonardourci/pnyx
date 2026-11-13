@@ -94,18 +94,10 @@ function connection({ url }: { url?: string }): Connection {
         } : { database },
       },
       transferList: [port2],
+      // The worker prints nothing; left unpiped, its streams add no listener per home and keep no command running.
       stdout: true,
       stderr: true,
     },
-  )
-  // Forwarded by hand: Node's default pipe adds stream listeners per worker, past the limit once a process opens many homes.
-  worker.stdout.on(
-    'data',
-    (chunk: Buffer) => process.stdout.write(chunk),
-  )
-  worker.stderr.on(
-    'data',
-    (chunk: Buffer) => process.stderr.write(chunk),
   )
   // The connection lives as long as the process and never keeps it running.
   worker.unref()

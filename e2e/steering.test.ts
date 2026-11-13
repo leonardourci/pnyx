@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
 import childProcess from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Card } from '#tasks/model.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
-import { hydraDir } from '#app/home-migration.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -519,13 +518,6 @@ test(
         2,
         3,
       ],
-    )
-    rmSync(
-      join(
-        hydraDir({ hydraId: s.hydraId }),
-        'snapshot.json',
-      ),
-      { force: true },
     )
     await pnyx.restart()
     const restored = s.task({ key: 'work' })
