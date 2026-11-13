@@ -160,6 +160,8 @@ export function startZeroCache({
   let stopping = false
   let restarts = 0
   let restartTimer: NodeJS.Timeout | undefined
+  // The page sockets this server tunnels to zero-cache, both ends.
+  const tunnels = new Set<Duplex>()
 
   const forwardOutput = ({ stream }: { stream: NodeJS.ReadableStream | null }) => {
     if (!stream) {
@@ -422,6 +424,17 @@ export function startZeroCache({
         'error',
         () => upstream.destroy(),
       )
+
+      for (const end of [
+        socket,
+        upstream,
+      ]) {
+        tunnels.add(end)
+        end.once(
+          'close',
+          () => tunnels.delete(end),
+        )
+      }
     },
     async query({
       req,
@@ -468,6 +481,12 @@ export function startZeroCache({
     async close() {
       stopping = true
       clearTimeout(restartTimer)
+
+      // An upgraded page socket is outside the HTTP server's connections, so it would keep that server from closing.
+      for (const end of tunnels) {
+        end.destroy()
+      }
+
       const running = child
 
       if (!running || running.exitCode !== null || running.signalCode !== null) {
@@ -478,9 +497,24 @@ export function startZeroCache({
         'exit',
         resolve,
       ))
-      running.kill('SIGTERM')
+
+      // zero-cache leads its own process group, so its workers stop with it; a group already gone needs nothing.
+      const signal = ({ name }: { name: NodeJS.Signals }) => {
+        try {
+          process.kill(
+            -running.pid!,
+            name,
+          )
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+            throw error
+          }
+        }
+      }
+
+      signal({ name: 'SIGTERM' })
       const killTimer = setTimeout(
-        () => running.kill('SIGKILL'),
+        () => signal({ name: 'SIGKILL' }),
         STOP_TIMEOUT_MS,
       )
       await gone
