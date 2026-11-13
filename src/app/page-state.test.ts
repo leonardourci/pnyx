@@ -714,11 +714,13 @@ test(
       actor,
       text,
       task,
+      action = 'send',
     }: {
       seq: number
       actor: string
       text: string
       task?: string
+      action?: 'send' | 'worker'
     }): HydraEvent => ({
       v: 1,
       id: `message-${seq}`,
@@ -728,12 +730,16 @@ test(
       cardId: '$hydra',
       type: 'hydra.message',
       data: {
-        action: 'send',
+        action,
         text,
         hydra: 'default',
         task,
       },
     })
+    const interest = {
+      cards: [],
+      hidden: false,
+    }
     const state = emptyHydra()
     replayOwned({
       state,
@@ -741,23 +747,32 @@ test(
         message({
           seq: 1,
           actor: 'web',
+          text: 'An earlier question',
+        }),
+        message({
+          seq: 2,
+          actor: 'web',
           text: 'Explain the choice',
           task: 'task',
         }),
         message({
-          seq: 2,
+          seq: 3,
           actor: 'hydra',
           text: 'Hydra prose',
+        }),
+        message({
+          seq: 4,
+          actor: 'cli',
+          text: 'Start the worker',
+          task: 'other',
+          action: 'worker',
         }),
       ],
     })
     const page: HydraState = {
       ...structuredClone(pageState({
         state,
-        interest: {
-          cards: [],
-          hidden: false,
-        },
+        interest,
       })),
       eventIds: {},
     }
@@ -768,58 +783,63 @@ test(
     assert.deepEqual(
       page.hydraOwnerMessage,
       {
-        id: 'message-1',
+        id: 'message-2',
         task: 'task',
         text: 'Explain the choice',
       },
     )
 
-    for (const [
-      seq,
-      actor,
-      text,
-    ] of [
-        [
-          3,
-          'hydra',
-          'More Hydra prose',
-        ],
-        [
-          4,
-          'cli',
-          'How is everything else going?',
-        ],
-      ] as const) {
-      const event = message({
-        seq,
-        actor,
-        text,
-      })
-      replayOwned({
+    const prose = message({
+      seq: 5,
+      actor: 'hydra',
+      text: 'More Hydra prose',
+    })
+    replayOwned({
+      state,
+      events: [prose],
+    })
+    applyPageUpdate({
+      state: page,
+      update: pageEvent({
+        event: prose,
         state,
-        events: [event],
-      })
-      applyPageUpdate({
-        state: page,
-        update: pageEvent({
-          event,
-          state,
-          interest: {
-            cards: [],
-            hidden: false,
-          },
-        }),
-      })
-      assert.equal(
-        page.hydraMessages,
-        undefined,
-      )
-    }
+        interest,
+      }),
+    })
+    assert.equal(
+      page.hydraMessages,
+      undefined,
+    )
+    assert.equal(
+      page.hydraOwnerMessage?.id,
+      'message-2',
+    )
 
+    const owner = message({
+      seq: 6,
+      actor: 'cli',
+      text: 'How is everything else going?',
+    })
+    replayOwned({
+      state,
+      events: [owner],
+    })
+    applyPageUpdate({
+      state: page,
+      update: pageEvent({
+        event: owner,
+        state,
+        interest,
+      }),
+    })
+    assert.equal(
+      page.hydraMessages,
+      undefined,
+    )
     assert.deepEqual(
       page.hydraOwnerMessage,
       {
-        id: 'message-4',
+        id: 'message-6',
         task: undefined,
         text: 'How is everything else going?',
       },

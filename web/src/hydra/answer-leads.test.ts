@@ -50,7 +50,7 @@ const card: Card = {
   ],
 }
 const message = ({ ...fields }: Partial<ThreadEntry>): ThreadEntry => ({
-  id: `msg-${fields.text}`,
+  id: `native-${fields.text}`,
   reference: `msg-${fields.text}`,
   task: card.id,
   kind: 'message',
