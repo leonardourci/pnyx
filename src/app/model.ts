@@ -303,6 +303,15 @@ export type HydraChange = EventBase & (
     data: HydraStatus
   }
   | {
+    // Hydra's harness confirmed it took this message.
+    type: 'hydra.received'
+    data: {
+      message: string
+      // When Hydra's harness took it, by its own record.
+      at: string
+    }
+  }
+  | {
     type: 'hydra.agent-used'
     data: import('#workers/model.ts').AgentConfig
   }
@@ -410,6 +419,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.mirrored',
   'hydra.message',
   'hydra.status',
+  'hydra.received',
   'hydra.operation',
   'hydra.agent-used',
   'hydra.agent-change',
@@ -488,6 +498,8 @@ export interface HydraState {
   v: typeof EVENT_VERSION
   seq: number
   cards: Record<string, Card>
+  // Only on the page: hidden tasks without their histories, for the cards and messages that name them.
+  references?: Record<string, Card>
   // Cards this Hydra handed to another one; the source log keeps their earlier events.
   movedOut?: Record<string, import('#tasks/move-state.ts').MovedOut>
   sessions?: Record<string, AgentSession>

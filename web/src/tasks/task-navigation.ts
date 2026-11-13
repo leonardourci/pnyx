@@ -1,3 +1,4 @@
+import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -10,6 +11,9 @@ const VISIBLE_TAB_PANEL = '.card-panel:not([hidden])'
 
 export function useTaskNavigation({
   state,
+  command,
+  connected,
+  notify,
   selectedRef,
   setActive,
   expanded,
@@ -22,6 +26,9 @@ export function useTaskNavigation({
   projectReferences,
 }: {
   state: HydraState
+  command: Command
+  connected: boolean
+  notify({ text }: { text: string }): void
   selectedRef: string | null
   setActive: Dispatch<SetStateAction<string | null>>
   expanded: string[]
@@ -57,6 +64,119 @@ export function useTaskNavigation({
     setRevealing(null)
   }
 
+  const interestRefs = [
+    ...expanded,
+    selectedRef,
+    revealing,
+  ].filter((id): id is string => id !== null)
+  const interestIds = page === 'hydra' ? [...new Set(interestRefs)] : []
+  const interestKey = JSON.stringify(interestIds)
+  const hadInterest = useRef(false)
+  const [
+    loadedInterest,
+    setLoadedInterest,
+  ] = useState<{
+    key: string
+    generation: number
+  } | null>(null)
+  const interestGeneration = useRef(0)
+  const pendingInterest = useRef<{
+    key: string
+    command: Command
+    request: ReturnType<Command>
+  } | null>(null)
+
+  const readInterest = async ({
+    ids,
+    key,
+  }: {
+    ids: string[]
+    key: string
+  }) => {
+    const pending = pendingInterest.current
+
+    if (pending?.key === key && pending.command === command) {
+      return pending.request
+    }
+
+    hadInterest.current = ids.length > 0
+    interestGeneration.current += 1
+    const request = command({
+      name: 'page',
+      args: ids.flatMap(id => [
+        '--card',
+        id,
+      ]),
+    })
+    pendingInterest.current = {
+      key,
+      command,
+      request,
+    }
+
+    try {
+      return await request
+    } finally {
+      if (pendingInterest.current?.request === request) {
+        pendingInterest.current = null
+      }
+    }
+  }
+
+  useEffect(
+    () => {
+      if (!connected || (!hadInterest.current && !interestIds.length)) {
+        return
+      }
+
+      let active = true
+
+      const read = async () => {
+        const ids = interestIds
+        const request = readInterest({
+          ids,
+          key: interestKey,
+        })
+        const generation = interestGeneration.current
+
+        try {
+          const receipt = await request
+          const unavailable = Array.isArray(receipt.unavailable) ? receipt.unavailable : []
+
+          if (active && unavailable.length) {
+            // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+            setExpanded(expanded => expanded.filter(id => !unavailable.includes(id)))
+
+            // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+            setActive(current => current && unavailable.includes(current) ? null : current)
+          }
+        } catch (error) {
+          if (active && !pendingOpen.current) {
+            notify({ text: (error as Error).message })
+          }
+        } finally {
+          if (active) {
+            setLoadedInterest({
+              key: interestKey,
+              generation,
+            })
+          }
+        }
+      }
+
+      read()
+
+      return () => {
+        active = false
+      }
+    },
+    [
+      connected,
+      command,
+      interestKey,
+    ],
+  )
+
   useEffect(
     () => () => {
       pendingOpen.current?.abort(); pendingOpen.current = null
@@ -84,6 +204,15 @@ export function useTaskNavigation({
   })
   useEffect(
     () => {
+      if (!connected || page !== 'hydra' || pendingInterest.current) {
+        return
+      }
+
+      if (loadedInterest?.key !== interestKey
+        || loadedInterest.generation !== interestGeneration.current) {
+        return
+      }
+
       // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
       setExpanded(ids => {
         const next = expandedByColumn({
@@ -98,7 +227,13 @@ export function useTaskNavigation({
         ) => id === next[index]) ? ids : next
       })
     },
-    [state.cards],
+    [
+      state.cards,
+      loadedInterest,
+      interestKey,
+      connected,
+      page,
+    ],
   )
   useLayoutEffect(() => {
     const pendingId = pendingFocus.current
@@ -252,16 +387,39 @@ export function useTaskNavigation({
       return true
     }
 
-    if (!state.cards[id]) {
-      return false
-    }
-
     const controller = new AbortController()
     const { signal } = controller
     pendingOpen.current = controller
     setPage('hydra'); setRevealing(id)
 
     try {
+      if (!currentCards.current[id]) {
+        const ids = [
+          ...new Set([
+            ...interestRefs,
+            id,
+          ]),
+        ]
+        const receipt = await readInterest({
+          ids,
+          key: JSON.stringify(ids),
+        })
+
+        const missing = Array.isArray(receipt.unavailable) && receipt.unavailable.includes(id)
+
+        if (!signal.aborted && missing) {
+          notify({ text: 'Task unavailable in this Hydra' })
+
+          return false
+        }
+
+        await afterTaskLayout({ signal })
+
+        if (!currentCards.current[id] || signal.aborted) {
+          return false
+        }
+      }
+
       if (pointer) {
         const card = await openFromPointer({
           id,
@@ -304,6 +462,12 @@ export function useTaskNavigation({
       }
 
       return !!panel && element.isConnected && !signal.aborted
+    } catch (error) {
+      if (!signal.aborted) {
+        notify({ text: (error as Error).message })
+      }
+
+      return false
     } finally {
       if (pendingOpen.current === controller) {
         pendingOpen.current = null; setRevealing(null)

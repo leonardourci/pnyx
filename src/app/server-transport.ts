@@ -1,3 +1,5 @@
+import type { PageState, PageUpdate } from './page-state.ts'
+import type { ThreadDelta } from '#hydra/thread-delta.ts'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { commands as cliCommands } from './cli.ts'
@@ -5,7 +7,6 @@ import { approval } from './confirmations.ts'
 import { project } from '#projects/cli.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
 import type { ThreadPage, LatestMessage } from '#hydra/transcripts-read.ts'
-import type { HydraState, HydraEvent } from './model.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { Settings } from '#settings/model.ts'
@@ -69,13 +70,17 @@ type ServerPayload =
     thread: ThreadPage
   }
   | {
-    type: 'snapshot'
-    seq: number
-    state: HydraState
+    type: 'thread.delta'
+    delta: ThreadDelta
   }
   | {
-    type: 'event'
-    event: HydraEvent
+    type: 'snapshot'
+    seq: number
+    state: PageState
+  }
+  | {
+    type: 'page.event'
+    update: PageUpdate
   }
   // Last conversation messages and current actions by card: all of them on connect, then the ones that changed (null when gone).
   | {
@@ -109,6 +114,7 @@ type ServerPayload =
   | {
     type: 'receipt'
     id: string
+    thread?: ThreadPage
     [field: string]: unknown
   }
   | {
@@ -166,9 +172,11 @@ export interface MountedHydra {
   connect({
     ws,
     after,
+    page,
   }: {
     ws: HydraClient
     after: string | null
+    page?: string[]
   }): HydraSubscription
   summaries({ hydras }: { hydras: HydraSummary[] }): void
   upgrade(): void

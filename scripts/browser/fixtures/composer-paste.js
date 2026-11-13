@@ -7,11 +7,11 @@
     'clipboard-write',
   ])
   const cdp = await page.context().newCDPSession(page)
-  const question = page.locator('.hydra-chat .chat-decision')
-  const answer = question.getByRole(
+  const composer = page.locator('form.composer')
+  const answer = composer.getByRole(
     'textbox',
     {
-      name: 'Your answer',
+      name: 'Reply to Hydra',
       exact: true,
     },
   )
@@ -239,14 +239,17 @@
     field: answer,
     expected: 'Copied first line\nSecond line',
   })
-  await question.getByRole(
+  await composer.getByRole(
     'button',
     {
-      name: 'Send answer',
+      name: 'Send reply',
       exact: true,
     },
   ).click()
-  await answer.waitFor({ state: 'detached' })
+  await valueIs({
+    field: answer,
+    expected: '',
+  })
   await cdp.detach()
 
   return 'paste-regression-passed'

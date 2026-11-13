@@ -1,10 +1,27 @@
-import { HYDRA_ACTOR } from '#app/actors.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { hydraDelivery,QUIET_REPLY,reportActor } from './hydra.ts'
 import { taskMentions } from './mentions.ts'
 import type { HydraMessage } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { withoutInjected } from '#oracle/text.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
+
+// One of the owner's messages shown in the thread.
+interface Owned {
+  message: HydraMessage
+  entry: ThreadEntry
+  // The words a transcript copy of this message can have.
+  copies: Set<string>
+  // The words of the transcript copy shown for it.
+  copy?: string
+}
+
+// An owned message shown by its transcript copy, which has a time.
+type ShownCopy = Owned & {
+  entry: ThreadEntry & { at: string }
+  copy: string
+}
 
 export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
   if (!entry.task || entry.task === HYDRA_CARD) {
@@ -50,11 +67,17 @@ export function hydraMessages({
   transcript,
   provider,
   boundaries = false,
+  waiting,
+  receipts = true,
 }: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
   provider?: string
   boundaries?: boolean
+  // Why the owner's queued messages wait, when Pnyx knows.
+  waiting?: string
+  // Only a Hydra Pnyx runs reports when it took a message.
+  receipts?: boolean
 }): ThreadEntry[] {
   transcript = transcript.filter(entry => {
     const visible = boundaries || !quietReply({ entry })
@@ -70,6 +93,7 @@ export function hydraMessages({
     ' ',
   )
   const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
+  const owned: Owned[] = []
   const rewritten = new Map<ThreadEntry, ThreadEntry>()
   const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
     entry,
@@ -132,13 +156,22 @@ export function hydraMessages({
           copy.task = message.task
         }
 
+        if (ownerActor({ actor: message.actor })) {
+          owned.push({
+            message,
+            entry: copy,
+            copies,
+            copy: ownCopies.get(entry!),
+          })
+        }
+
         rewritten.set(
           entry!,
           copy,
         )
       }
     } else if (!report) {
-      recorded.push({
+      const entry: ThreadEntry = {
         id: message.id,
         reference: message.id,
         kind: message.kind === 'divider' ? 'divider' : 'message',
@@ -148,7 +181,74 @@ export function hydraMessages({
         at: message.at,
         hidden: boundaries && message.kind !== 'divider' && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
         ...(message.task ? { task: message.task } : {}),
-      })
+      }
+      recorded.push(entry)
+
+      if (role === 'user' && ownerActor({ actor: message.actor }) && !entry.hidden) {
+        owned.push({
+          message,
+          entry,
+          copies,
+        })
+      }
+    }
+  }
+
+  // A copy found by its words is the newest unclaimed message with those words sent before it, so an older message
+  // cannot take a newer one's copy when its own copy is on another page.
+  const copyTimes = new Map<HydraMessage, string>()
+  const shownCopies = owned
+    .filter((item): item is ShownCopy => item.copy !== undefined && !!item.entry.at)
+    .toSorted((
+      a,
+      b,
+    ) => b.entry.at.localeCompare(a.entry.at))
+
+  for (const {
+    entry,
+    copy,
+  } of shownCopies) {
+    const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy)
+      && item.message.at <= entry.at)
+
+    if (taker) {
+      copyTimes.set(
+        taker.message,
+        entry.at,
+      )
+    }
+  }
+
+  // Hydra takes the owner's messages in order, so one sent before a received message no longer waits; with no
+  // recorded time, it shows no receipt.
+  let laterReceived = false
+
+  for (const {
+    message,
+    entry,
+  } of receipts ? owned.toReversed() : []) {
+    entry.sent = message.at
+    // Pnyx runs /restart and /upgrade itself, so they never reach the harness.
+    const pnyxCommand = restartCommand({ text: message.text })
+      || upgradeCommand({ text: message.text })
+
+    if (pnyxCommand) {
+      continue
+    }
+
+    const copyTime = copyTimes.get(message)
+    const received = message.received ?? copyTime
+
+    if (received) {
+      entry.receipt = 'delivered'
+      entry.received = received
+      laterReceived = true
+    } else if (!laterReceived) {
+      entry.receipt = 'queued'
+
+      if (waiting) {
+        entry.waiting = waiting
+      }
     }
   }
 

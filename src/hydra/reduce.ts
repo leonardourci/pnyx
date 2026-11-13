@@ -94,6 +94,16 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'hydra.received') {
+    const message = state.hydraMessages?.find(item => item.id === event.data.message)
+
+    if (message) {
+      message.received = event.data.at
+    }
+
+    return true
+  }
+
   if (event.type === 'hydra.status') {
     state.hydraStatus = {
       ...structuredClone(event.data),

@@ -1,3 +1,4 @@
+import { loadHydra } from '#app/store.ts'
 import { CLI_COMMANDS } from '#app/server-transport.ts'
 import { type createServerWorkers } from '#app/server-workers.ts'
 import type { CommandRequest } from './dispatch.ts'
@@ -82,6 +83,7 @@ export function cliCommand({
           ws,
           message: {
             ...result,
+            stateSeq: loadHydra({ hydraId }).state.seq,
             type: 'receipt',
             id,
           },

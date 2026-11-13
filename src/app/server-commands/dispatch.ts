@@ -1,3 +1,4 @@
+import { pageInterest, parsePage } from '#app/page-cli.ts'
 import { AxiError } from 'axi-sdk-js'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
@@ -5,7 +6,7 @@ import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import type { createHost } from '#app/host.ts'
 import type { HydraState } from '#app/model.ts'
-import { saveEventId, savedReceipt, type SaveCommand } from '#app/save-receipts.ts'
+import { saveEventId, savedEvent, type SaveCommand } from '#app/save-receipts.ts'
 import type { createServerClients } from '#app/server-clients.ts'
 import type { HydraClient } from '#app/server-transport.ts'
 import type { createServerWorkers } from '#app/server-workers.ts'
@@ -52,6 +53,7 @@ export function createServerCommands({
   agents,
   catalogCommand,
   hydraSubscribers,
+  showPage,
   subscriptionMap,
   bindThread,
   threadPage,
@@ -74,6 +76,7 @@ export function createServerCommands({
     send,
   }: CommandRequest): void
   hydraSubscribers: WeakSet<HydraClient>
+  showPage: ReturnType<typeof createServerClients>['show']
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
   bindThread: ThreadSubscriptions['bindThread']
   threadPage: ThreadSubscriptions['threadPage']
@@ -162,7 +165,7 @@ export function createServerCommands({
 
         if (saveEventId({ command })) {
           try {
-            const receipt = savedReceipt({
+            const receipt = savedEvent({
               command,
               state: loadHydra({ hydraId }).state,
             })
@@ -212,6 +215,7 @@ export function createServerCommands({
     }
 
     if ([
+      'page',
       'thread',
       'oracle',
       'reply',
@@ -300,6 +304,33 @@ export function createServerCommands({
             url,
             open,
             hydraSubscribers,
+          })
+        } else if (name === 'page') {
+          if (args.some(arg => arg === '--hydra' || arg.startsWith('--hydra='))) {
+            return fail({
+              error: `--hydra is not allowed; this server writes Hydra ${hydraId}`,
+              code: 'VALIDATION_ERROR',
+            })
+          }
+
+          const {
+            interest,
+            unavailable,
+          } = pageInterest({
+            state: state(),
+            values: parsePage({ args }).values,
+          })
+          showPage({
+            ws,
+            interest,
+          })
+          send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              unavailable,
+            },
           })
         } else if (name === 'thread') {
           threadCommand({

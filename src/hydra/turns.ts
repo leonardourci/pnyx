@@ -286,6 +286,7 @@ export function createHydraTurns({
     release = false,
     selected,
     history = true,
+    carried = [],
   }) => {
     if (reportActor({ actor })) {
       changed()
@@ -710,7 +711,7 @@ export function createHydraTurns({
           helperText += `\n<pnyx-wake>${sealed({ text: notice })}. These tasks are yours now: check their current state before acting, because earlier actions may have completed. The wakes it was given:\n${wakes}</pnyx-wake>`
         }
 
-        const inputText = recap ?? (memoryNote ? text.replace(
+        const inputText = recap?.text ?? (memoryNote ? text.replace(
           REPLY_RULES,
           `${memoryNote}\n${REPLY_RULES}`,
         ) : text)
@@ -746,6 +747,7 @@ export function createHydraTurns({
           original: original ?? text,
           id,
           agent: requestedAgent,
+          carried: recap?.carried ?? carried,
         })
         readWake({ id })
 

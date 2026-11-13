@@ -69,6 +69,7 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   arrow_down: IconArrowDown,
   external: IconArrowUpRight,
   reminder: IconClock,
+  waiting: IconClock,
   clone: IconGitFork,
   comment: IconMessagePlus,
   comments: IconMessage,

@@ -1,60 +1,77 @@
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { Fragment,type ReactNode,type Ref } from 'react'
+import { Fragment,useLayoutEffect,type ReactNode,type RefObject } from 'react'
 import { ImageThumb } from './attached-image.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
 import { cardChip,CHIP_SPACE,draftView,isPendingImage,type PlacedChip } from './draft.ts'
 import { ReferenceBadge } from './reference-badge.tsx'
 import { SkillBadge } from './skill-badge.tsx'
 
-// Display text from `from` to `to`, with the request paths in it marked.
-function markedPaths({
-  display,
-  from,
-  to,
+// React owns the badges; browser edits update only the mirror's plain text and offsets.
+export function writeDraftMirror({
+  element,
+  view,
   paths,
 }: {
-  display: string
-  from: number
-  to: number
+  element: HTMLDivElement
+  view: ReturnType<typeof draftView>
   paths: {
     from: number
     to: number
   }[]
-}): ReactNode[] {
-  const parts: ReactNode[] = []
-  let at = from
+}) {
+  element.querySelectorAll<HTMLElement>('[data-draft-gap]').forEach((
+    gap,
+    index,
+  ) => {
+    const from = view.chips[index - 1]?.to ?? 0
+    const to = view.chips[index]?.from ?? view.display.length
+    const parts: Node[] = []
+    let at = from
 
-  for (const path of paths.filter(path => path.to > from && path.from < to)) {
-    const start = Math.max(
-      path.from,
-      at,
-    )
-    const end = Math.min(
-      path.to,
-      to,
-    )
-    parts.push(
-      display.slice(
+    for (const path of paths.filter(path => path.to > from && path.from < to)) {
+      const start = Math.max(
+        path.from,
         at,
-        start,
-      ),
-      <span key={start} className="draft-path">{display.slice(
+      )
+      const end = Math.min(
+        path.to,
+        to,
+      )
+      const marked = document.createElement('span')
+      marked.className = 'draft-path'
+      marked.textContent = view.display.slice(
         start,
         end,
-      )}
-      </span>,
-    )
-    at = end
-  }
+      )
+      parts.push(
+        document.createTextNode(view.display.slice(
+          at,
+          start,
+        )),
+        marked,
+      )
+      at = end
+    }
 
-  parts.push(display.slice(
-    at,
-    to,
-  ))
+    parts.push(document.createTextNode(view.display.slice(
+      at,
+      to,
+    )))
+    gap.replaceChildren(...parts)
+  })
+  element.querySelectorAll<HTMLElement>('.draft-token').forEach((
+    token,
+    index,
+  ) => {
+    const chip = view.chips[index]
 
-  return parts
+    if (chip) {
+      token.dataset.from = String(chip.from)
+      token.dataset.to = String(chip.to)
+    }
+  })
 }
 
 function UploadBar({ fraction }: { fraction: number }) {
@@ -101,7 +118,6 @@ function DraftCard({
 
 export function DraftMirror({
   view,
-  display,
   paths,
   uploads,
   labelColors,
@@ -111,21 +127,29 @@ export function DraftMirror({
   mirror,
 }: {
   view: ReturnType<typeof draftView>
-  display: string
   paths: {
     from: number
     to: number
   }[]
   uploads: Record<string, number>
   labelColors?: SavedLabelColor[]
-  removeCard({ chip }: { chip: PlacedChip }): void
-  openChip({ chip }: { chip: PlacedChip }): void
+  removeCard({ index }: { index: number }): void
+  openChip({ index }: { index: number }): void
   chipLook({ chip }: { chip: PlacedChip }): {
     icons: string[]
     tone: string
   }
-  mirror: Ref<HTMLDivElement>
+  mirror: RefObject<HTMLDivElement | null>
 }) {
+  useLayoutEffect(() => {
+    if (mirror.current) {
+      writeDraftMirror({
+        element: mirror.current,
+        view,
+        paths,
+      })
+    }
+  })
   const chipOccurrences = new Map<string, number>()
 
   return (
@@ -136,12 +160,6 @@ export function DraftMirror({
       ) => {
         const look = chip.kind === 'task' || chip.kind === 'column' ? chipLook({ chip }) : undefined
         const title = chip.kind === 'project' ? chip.value : chip.kind === 'task' ? 'Open task' : undefined
-        const before = markedPaths({
-          display,
-          from: view.chips[index - 1]?.to ?? 0,
-          to: chip.from,
-          paths,
-        })
         const identity = JSON.stringify([
           chip.kind,
           chip.attached,
@@ -168,7 +186,7 @@ export function DraftMirror({
             <SkillBadge
               skill={skill}
               colors={labelColors}
-              remove={() => removeCard({ chip })}
+              remove={() => removeCard({ index })}
             />
           )
         } else if (cardChip({ chip })) {
@@ -176,8 +194,8 @@ export function DraftMirror({
             <DraftCard
               chip={chip}
               progress={uploads[chip.value]}
-              open={() => openChip({ chip })}
-              remove={() => removeCard({ chip })}
+              open={() => openChip({ index })}
+              remove={() => removeCard({ index })}
             />
           )
         } else {
@@ -187,7 +205,7 @@ export function DraftMirror({
               className={look?.tone ?? ''}
               data-kind={chip.kind}
               title={title}
-              onClick={() => openChip({ chip })}
+              onClick={() => openChip({ index })}
             >
               {look ? chip.name : chip.label}
             </ReferenceBadge>
@@ -196,19 +214,14 @@ export function DraftMirror({
 
         return (
           <Fragment key={key}>
-            {before}
+            <span data-draft-gap={index} />
             <span className="draft-token" data-from={chip.from} data-to={chip.to}>
               {CHIP_SPACE}{token}{CHIP_SPACE}
             </span>
           </Fragment>
         )
       })}
-      {markedPaths({
-        display,
-        from: view.chips.at(-1)?.to ?? 0,
-        to: display.length,
-        paths,
-      })}
+      <span data-draft-gap={view.chips.length} />
       {/* A trailing newline still gets a line box, as it does in the textarea. */}
       {'\u200B'}
     </div>

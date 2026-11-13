@@ -35,7 +35,7 @@ interface Output {
   // False while the socket is down, so the lines wait for the next flush.
   send({ lines }: { lines: string[] }): boolean
   hydra(): string
-  // The chat the page holds: the length of the frames that brought it, and its messages.
+  // The serialized chat the page holds and its message count.
   chat(): {
     chars: number
     messages: number

@@ -15,9 +15,11 @@ export interface AnswerLead {
 export function answerLeads({
   messages = [],
   cards,
+  previous,
 }: {
   messages?: HydraState['hydraMessages']
   cards: HydraState['cards']
+  previous?: ReadonlyMap<string, AnswerLead>
 }): Map<string, AnswerLead> {
   return new Map(messages.flatMap(message => {
     const discussion = !message.answers
@@ -43,10 +45,14 @@ export function answerLeads({
       discussion,
     }
 
+    const before = previous?.get(message.id)
+    // Both are built by the literal above, so their serialized forms compare every field in one order.
+    const unchanged = before && JSON.stringify(before) === JSON.stringify(lead)
+
     return [
       [
         message.id,
-        lead,
+        unchanged ? before : lead,
       ],
     ]
   }))

@@ -1,4 +1,3 @@
-import { hydraEvent } from '#hydra/hydra.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -7,7 +6,9 @@ import { log } from '#app/diagnostics.ts'
 import { logAgentMemory } from './agent-memory.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { inbox } from '#hydra/update-queue.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { receivedWith } from '#hydra/received.ts'
 import type { createHydraTurns } from '#hydra/turns.ts'
 import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
@@ -202,6 +203,49 @@ export function createLiveSessions({
     }
 
     streamed({ session: key })
+  }
+
+  // Hydra took this input, and with it the owner's messages the input lists.
+  const recordHydraReceived = ({
+    entry,
+    input,
+    taken,
+  }: {
+    entry: Live
+    input: string
+    taken: string
+  }) => {
+    const carried = entry.carried.get(input) ?? []
+    entry.carried.delete(input)
+    note({
+      fn: ({ writer }) => {
+        for (const message of receivedWith({
+          state: writer.state,
+          input,
+          carried,
+        })) {
+          applyDecision({
+            writer,
+            decision: hydraEvent({
+              state: writer.state,
+              cardId: HYDRA_CARD,
+              meta: {
+                id: `${message}:received`,
+                at: at(),
+                actor: 'pnyx',
+              },
+              change: {
+                type: 'hydra.received',
+                data: {
+                  message,
+                  at: taken,
+                },
+              },
+            }),
+          })
+        }
+      },
+    })
   }
 
   const consume = async ({
@@ -434,6 +478,13 @@ export function createLiveSessions({
 
           const original = item.original ?? item.text
 
+          if (item.id && item.carried?.length) {
+            entry.carried.set(
+              item.id,
+              item.carried,
+            )
+          }
+
           yield agentInput({
             id: item.id ?? randomUUID(),
             text: item.text,
@@ -598,6 +649,7 @@ export function createLiveSessions({
         }
 
         const refused = receipt?.phase === 'refused'
+        const confirmed = receipt?.phase === 'confirmed' ? receipt : undefined
 
         if (receipt && (refused || receipt.phase === 'taken')) {
           log({
@@ -607,6 +659,11 @@ export function createLiveSessions({
             sessionId: key,
             correlationId: receipt.inputId,
           })
+        }
+
+        // A refused input is never confirmed, so nothing will take the owner's messages it carried.
+        if (refused) {
+          entry.carried.delete(receipt.inputId)
         }
 
         if (typeof received === 'object' && received.type === 'turn-ended') {
@@ -634,16 +691,25 @@ export function createLiveSessions({
             entry,
             inputId: activity.receipt.inputId,
             phase: activity.receipt.phase,
+            taken: activity.receipt.at,
           })
         }
 
-        if (typeof activity === 'object' && activity.type === 'input' && activity.receipt.phase === 'confirmed'
-          && entry.delivered.has(activity.receipt.inputId)) {
-          const ids = entry.delivered.get(activity.receipt.inputId)!
-          entry.delivered.delete(activity.receipt.inputId)
+        if (card.id === HYDRA_CARD && confirmed) {
+          recordHydraReceived({
+            entry,
+            input: confirmed.inputId,
+            taken: confirmed.at ?? at(),
+          })
+        }
+
+        if (confirmed && entry.delivered.has(confirmed.inputId)) {
+          const ids = entry.delivered.get(confirmed.inputId)!
+          entry.delivered.delete(confirmed.inputId)
           markRead({
             card: card.id,
             ids,
+            taken: confirmed.at,
           })
           continue
         }
@@ -1112,6 +1178,7 @@ export function createLiveSessions({
       toolResume,
       steering: new Set(),
       delivered: new Map(),
+      carried: new Map(),
       pendingDirect: new Map(),
       task: card.id,
       generation: card.steeringGeneration,

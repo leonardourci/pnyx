@@ -11,9 +11,7 @@ export function useSlashMenu({
   prefix,
   onCatalogOpen,
   input,
-  display,
-  view,
-  draft,
+  read,
   projectRequests,
   dismissSlash,
   setActive,
@@ -24,9 +22,7 @@ export function useSlashMenu({
   prefix: string | null
   onCatalogOpen({ open }: { open: boolean }): void
   input: RefObject<HTMLTextAreaElement | null>
-  display: string
-  view: ReturnType<typeof draftView>
-  draft: string
+  read(): string
   projectRequests: boolean
   dismissSlash(): void
   setActive: Dispatch<SetStateAction<number>>
@@ -75,9 +71,11 @@ export function useSlashMenu({
       return
     }
 
-    const cursor = input.current?.selectionStart ?? display.length
+    const draft = read()
+    const view = draftView({ text: draft })
+    const cursor = input.current?.selectionStart ?? view.display.length
     const query = slashPrefix({
-      text: display,
+      text: view.display,
       cursor,
       chips: view.chips,
     })

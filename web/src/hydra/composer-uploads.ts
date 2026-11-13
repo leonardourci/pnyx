@@ -46,7 +46,10 @@ export function useComposerUploads({
       const orphaned = pending.length > 0 && pending.every(path => !uploadingImages.has(path))
 
       if (orphaned) {
-        latestChange.current({ text: withoutPendingImages({ text: restored }) })
+        write({
+          text: withoutPendingImages({ text: restored }),
+          caret: caretLast.current,
+        })
       }
 
       // Leaving stops this field's uploads; their placeholders go too, so no draft keeps waiting for them.

@@ -72,11 +72,13 @@ export function createHostedDelivery({
     inputId,
     state,
     detail,
+    received,
   }: {
     card: string
     inputId: string
     state: 'delivered' | 'failed' | 'delivery_unknown'
     detail?: string
+    received?: string
   }) => note({
     fn: ({ writer }) => {
       const reply = writer.state.cards[card]?.replies?.find(item => item.id === inputId)
@@ -93,6 +95,10 @@ export function createHostedDelivery({
 
       if (detail) {
         data.detail = detail
+      }
+
+      if (received) {
+        data.received = received
       }
 
       // A delivered answer marks its questions answered, as the reply's first record would have.
@@ -120,10 +126,12 @@ export function createHostedDelivery({
     entry,
     inputId,
     phase,
+    taken,
   }: {
     entry: Live
     inputId: string
     phase: InputReceipt['phase']
+    taken?: string
   }) => {
     const pending = entry.pendingDirect.get(inputId)
 
@@ -137,16 +145,31 @@ export function createHostedDelivery({
       return
     }
 
-    if (phase !== 'confirmed' && phase !== 'carried' && phase !== 'settled' && phase !== 'refused') {
+    // A carried message opens the next turn, which confirms it then.
+    if (phase !== 'confirmed' && phase !== 'settled' && phase !== 'refused') {
       return
     }
 
     entry.pendingDirect.delete(inputId)
+
+    if (phase === 'refused') {
+      directReply({
+        card: pending.card,
+        inputId,
+        state: 'failed',
+        detail: 'the agent refused this message; nothing was delivered',
+      })
+
+      return
+    }
+
+    // Without the harness's own time, the receipt arrives when it took the input.
+    const received = taken ?? at()
     directReply({
       card: pending.card,
       inputId,
-      state: phase === 'refused' ? 'failed' : 'delivered',
-      detail: phase === 'refused' ? 'the agent refused this message; nothing was delivered' : undefined,
+      state: 'delivered',
+      received,
     })
   }
 

@@ -1268,7 +1268,7 @@ test(
 )
 
 test(
-  'mid-turn owner chat steers Codex immediately while worker reports wait as one visible batch',
+  'mid-turn owner chat steers Codex immediately, shows Received at that moment, while worker reports wait as one visible batch',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'worker' })
@@ -1320,6 +1320,28 @@ test(
         what: 'the page’s queue to show Hydra working',
         check: () => page.queues.at(-1)?.chat?.working,
       })
+      // A task message's Hydra part reaches no input that joins the turn, so taking one must not receive it.
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Notes for later',
+          '--key',
+          'notes',
+        ],
+      })
+      await s.owner({
+        args: [
+          'reply',
+          'notes',
+          '--text',
+          'Keep this for later',
+          '--idempotency-key',
+          'notes-message',
+          '--task-message',
+        ],
+      })
       await send({
         s,
         text: 'Also check the docs',
@@ -1329,6 +1351,52 @@ test(
         what: 'the owner message inside the running turn',
         check: () => agent.received.includes('Also check the docs'),
       })
+      // Received is the moment Codex took the message into the running turn, not the turn's end.
+      const received = await until({
+        what: 'Hydra’s receipt for the message that joined its turn',
+        check: () => s.state().hydraMessages?.find(message => message.id === 'steer')?.received,
+      })
+      const steerSent = s.state().hydraMessages?.find(message => message.id === 'steer')?.at
+      assert.ok(steerSent && received >= steerSent)
+      const taskMessage = s.state().hydraMessages?.find(message => message.task === s.task({ key: 'notes' }).id)
+      assert.ok(taskMessage)
+      assert.equal(
+        taskMessage.received,
+        undefined,
+      )
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.sessionActivity,
+        'working',
+      )
+      const thread = (await page.command({
+        name: 'thread',
+        args: [HYDRA_CARD],
+      })).thread as ThreadPage
+      assert.deepEqual(
+        thread.conversation!.entries.filter(entry => entry.role === 'user').map(entry => [
+          entry.text,
+          entry.receipt,
+          entry.received === received,
+        ]),
+        [
+          [
+            'Take a long look',
+            'delivered',
+            false,
+          ],
+          // Sent before a received message, it shows no line rather than a receipt Hydra never gave.
+          [
+            'Keep this for later',
+            undefined,
+            false,
+          ],
+          [
+            'Also check the docs',
+            'delivered',
+            true,
+          ],
+        ],
+      )
 
       for (const text of [
         'Report one',
@@ -1788,7 +1856,7 @@ test(
 )
 
 test(
-  'the Hydra thread keeps what it loaded when an older page arrives, skips unrelated card events, and pushes a newer version when its conversation changes',
+  'the Hydra thread keeps what it loaded when an older page arrives, skips unrelated card events, pushes a newer version when its conversation changes, and reads its recent pages',
   async t => {
     const s = await pnyx.scenario()
     // Long enough to split into more parts than one page holds.
@@ -1853,12 +1921,12 @@ test(
       conversation({ page: older }),
     )
     assert.equal(
-      renewed.conversation!.stream,
-      older.conversation!.stream,
+      renewed.stream,
+      older.stream,
     )
 
-    const newer = () => page.threads.filter(thread => thread.conversation!.version!
-      > older.conversation!.version!)
+    const newer = () => page.threads.filter(thread => thread.version!
+      > older.version!)
 
     // A card Hydra's conversation does not show leaves the thread as it was.
     await s.owner({
@@ -1890,8 +1958,8 @@ test(
         .some(entry => entry.text === 'Ship it')),
     })
     assert.equal(
-      pushed.conversation!.stream,
-      older.conversation!.stream,
+      pushed.stream,
+      older.stream,
     )
     assert.deepEqual(
       conversation({ page: pushed }).slice(
@@ -1935,8 +2003,8 @@ test(
       page: restored,
     })
     assert.notEqual(
-      restored.conversation!.stream,
-      older.conversation!.stream,
+      restored.stream,
+      older.stream,
     )
     const refusal = await reconnected.refusal({
       name: 'thread',
@@ -1950,6 +2018,25 @@ test(
       refusal.code,
       'VALIDATION_ERROR',
     )
+    const recent = (await reconnected.command({
+      name: 'thread',
+      args: [
+        HYDRA_CARD,
+        '--recent',
+      ],
+    })).thread as ThreadPage
+    assert.equal(
+      recent.recent,
+      true,
+    )
+    assert.deepEqual(
+      conversation({ page: recent }).slice(
+        0,
+        2,
+      ),
+      conversation({ page: older }),
+    )
+    assert.ok(recent.conversation!.entries.some(entry => entry.text === 'Ship it'))
   },
 )
 

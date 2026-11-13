@@ -1,3 +1,4 @@
+import type { ChatDrafts } from './chat-drafts.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { upgradeMilestoneIcon } from '#upgrade/model.ts'
 import { skillIcon } from './skill-icons.ts'
@@ -6,7 +7,6 @@ import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
-import { receiptLabel } from '#web-app/view.ts'
 import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
@@ -14,8 +14,8 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
 import {
-  Fragment,useEffect,useLayoutEffect,useRef,useState,
-  type ComponentProps,
+  memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,
+  type ComponentProps,type RefObject,type ReactNode,
   type KeyboardEvent as KeyEvent,
 } from 'react'
 import {
@@ -40,9 +40,11 @@ import { useCommentDrafts } from './comment-drafts.ts'
 import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,paintComments } from './comment-highlight.ts'
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
+import { MessageReceipt } from './message-receipt.tsx'
+import { sentTime } from './receipt-lines.ts'
 import {
-  MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
-  type CommentPassage,
+  MESSAGE_DECORATIONS,blockPassage,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
+  selectedPassage,type CommentPassage,
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
@@ -119,11 +121,286 @@ function MilestoneIcon({ text }: { text: string }) {
   return name ? <Icon name={name} size={14} /> : null
 }
 
+interface RowComment {
+  comment: ChatComment
+  number: number
+}
+interface MessageActions {
+  remove({ id }: { id: string }): void
+  release({ id }: { id: string }): void
+  focus({ key }: { key: string }): void
+  retry?({ id }: { id: string }): void
+  sendAgain?({
+    task,
+    text,
+  }: {
+    task: string
+    text: string
+  }): void
+}
+const NO_COMMENTS: RowComment[] = []
+
+const MessageRow = memo(function MessageRow({
+  entry,
+  fold,
+  trailing,
+  timing,
+  inline,
+  hasInline,
+  lead,
+  hasTaskReferences,
+  catalog,
+  labelColors,
+  assistantLabel,
+  lookup,
+  toolDetails,
+  thinkingDetails,
+  comments,
+  active,
+  drafts,
+  root,
+  actions,
+  lookColumn,
+  leadingTitle,
+  timingTitle,
+  openTask,
+  canSendAgain,
+  canRetry,
+}: {
+  entry: ChatEntry
+  fold?: TurnActions
+  trailing?: ThreadEntry[]
+  timing?: TurnTiming
+  inline?: ReactNode
+  hasInline: boolean
+  lead?: AnswerLead
+  hasTaskReferences: boolean
+  catalog?: Catalog | null
+  labelColors?: SavedLabelColor[]
+  assistantLabel?: string
+  lookup: PnyxLookup
+  toolDetails: boolean
+  thinkingDetails: boolean
+  comments: RowComment[]
+  active: string | null
+  drafts: ChatDrafts
+  root: RefObject<HTMLDivElement | null>
+  actions: RefObject<MessageActions>
+  lookColumn({ id }: { id: string }): ReturnType<typeof columnLook>
+  leadingTitle?: string
+  timingTitle?: string
+  openTask?({ id }: { id: string }): void
+  canSendAgain: boolean
+  canRetry: boolean
+}) {
+  const canResend = canSendAgain && entry.task
+    && (entry.delivery?.agent?.state ?? entry.receipt) === 'delivery_unknown'
+  const sentAt = sentTime({ entry })
+
+  return entry.kind === 'divider' ? (
+    <div
+      className="chat-divider"
+      role="separator"
+      aria-label={entry.text}
+    >
+      <MilestoneIcon text={entry.text} />
+      <span>{entry.text}</span>
+    </div>
+  ) : (
+    <>
+      {fold?.notes.length ? (
+        <TurnActionsFold
+          fold={{
+            tasks: [],
+            notes: fold.notes,
+          }}
+          lookup={lookup}
+          toolDetails={toolDetails}
+          thinkingDetails={thinkingDetails}
+        />
+      ) : null}
+      <article
+        data-entry-id={entry.id}
+        className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
+        aria-label={roleLabel({
+          role: entry.role,
+          assistantLabel,
+        })}
+        data-streaming={entry.streaming || undefined}
+        data-sending={entry.sending || undefined}
+        data-unsent={entry.unsent !== undefined || undefined}
+        data-pnyx={entry.role === 'Pnyx' || undefined}
+        title={entry.at && !ownMessage({ entry })
+          ? new Date(entry.at).toLocaleString() : undefined}
+        onClick={lead ? ({
+          target,
+          currentTarget,
+        }) => openFoldedQuestion({
+          target,
+          bubble: currentTarget,
+        }) : undefined}
+      >
+        {hasTaskReferences && !hasInline && (
+          <MessageLead entry={entry} lead={lead} />
+        )}
+        {inline ?? (
+          <ChatMessageText
+            catalog={ownMessage({ entry }) ? catalog : undefined}
+            colors={labelColors}
+            savedTaskLabels={entry.role === 'Pnyx'}
+            text={entry.text}
+            streaming={entry.streaming}
+            decorations={MESSAGE_DECORATIONS}
+            openTask={openTask}
+            columnLook={lookColumn}
+            block={({
+              index,
+              offset: local,
+              quote,
+              children,
+            }) => {
+              const messageId = entry.messageId ?? entry.id
+              const offset = (entry.part ?? 0) + local
+              const key = messageBlockKey({
+                messageId,
+                offset,
+              })
+              const own = comments.filter(item => item.comment.offset === offset)
+
+              return (
+                <div
+                  className="message-block"
+                  data-message-block={key}
+                  data-message-id={messageId}
+                  data-message-at={entry.at}
+                  data-message-reference={entry.reference}
+                  data-block-index={index}
+                  data-block-offset={offset}
+                  data-quote={quote}
+                  data-active={active === key}
+                  role="group"
+                  aria-label={`Message block ${index + 1}`}
+                >
+                  {children}
+                  {own.map(({
+                    comment,
+                    number,
+                  }) => (
+                    <MessageComment
+                      key={comment.id}
+                      comment={comment}
+                      drafts={drafts}
+                      number={number}
+                      inline
+                      remove={() => {
+                        actions.current.remove({ id: comment.id })
+                        actions.current.focus({ key })
+                      }}
+                      leave={({
+                        note,
+                        direction,
+                      }) => root.current && leaveNote({
+                        passage: commentRange({
+                          host: root.current,
+                          comment,
+                        })?.getClientRects()[0],
+                        host: root.current,
+                        note,
+                        direction,
+                      })}
+                      release={() => actions.current.release({ id: comment.id })}
+                      show={() => {
+                        if (root.current) {
+                          revealComment({
+                            host: root.current,
+                            comment,
+                          })
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              )
+            }}
+          />
+        )}
+        {canResend && (
+          <Button
+            className="send-again"
+            aria-label="Send this message again"
+            onClick={() => actions.current.sendAgain?.({
+              task: entry.task!,
+              text: entry.text,
+            })}
+          >Send again
+          </Button>
+        )}
+      </article>
+      {ownMessage({ entry }) && !entry.continued && (
+        <div className="message-meta" contentEditable={false}>
+          <MessageReceipt entry={entry} />
+          {entry.unsent !== undefined && (
+            <span className="unsent" role="alert">
+              <Icon name="error" size={14} />Not sent · {entry.unsent}
+            </span>
+          )}
+          {entry.unsent !== undefined && canRetry && (
+            <InlineButton onClick={() => actions.current.retry?.({ id: entry.id })}>
+              Retry
+            </InlineButton>
+          )}
+          {sentAt && (
+            <time
+              dateTime={sentAt}
+              title={`Sent ${new Date(sentAt).toLocaleDateString()}, ${clock({
+                at: sentAt,
+                seconds: true,
+              })}`}
+            >{clock({ at: sentAt })}
+            </time>
+          )}
+          <CopyButton
+            label="Copy message"
+            text={() => copiedText({
+              text: entry.text,
+              task: leadingTask({ entry }),
+              title: leadingTitle,
+            })}
+          />
+        </div>
+      )}
+      {trailing?.length ? (
+        <TurnActionsFold
+          fold={{
+            tasks: [],
+            notes: trailing,
+          }}
+          lookup={lookup}
+          toolDetails={toolDetails}
+          thinkingDetails={thinkingDetails}
+        />
+      ) : null}
+      {fold?.tasks.length ? (
+        <TurnActionsFold
+          fold={{
+            tasks: fold.tasks,
+            notes: [],
+          }}
+          lookup={lookup}
+        />
+      ) : null}
+      {timing !== undefined && (
+        <TurnFooter turn={timing} taskTitle={timingTitle} />
+      )}
+    </>
+  )
+})
+
 export function Messages({
   entries,
   lookup,
   comments,
-  setComments,
+  drafts,
   quote,
   toolDetails = true,
   thinkingDetails = true,
@@ -168,7 +445,7 @@ export function Messages({
   entries: ChatEntry[]
   lookup: PnyxLookup
   comments: ChatComment[]
-  setComments({ items }: { items: ChatComment[] }): void
+  drafts: ChatDrafts
   quote({ text }: { text: string }): void
 }) {
   const root = useRef<HTMLDivElement>(null)
@@ -180,20 +457,65 @@ export function Messages({
     selection,
     setSelection,
   ] = useState<CommentPassage | null>(null)
-  const ordered = orderedComments({ comments })
-  const numbers = new Map(ordered.map((
-    comment,
-    index,
-  ) => [
-    comment.id,
-    index + 1,
-  ]))
-  const lookColumn = ({ id }: { id: string }) => columnLook({
-    column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
-  })
-  const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
-  const leadOf = ({ entry }: { entry: ChatEntry }) =>
-    entry.reference ? answerLeads?.get(entry.reference) : undefined
+  const ordered = useMemo(
+    () => orderedComments({ comments }),
+    [comments],
+  )
+  const previousCommentRows = useRef(new Map<string, RowComment[]>())
+  const rowComments = useMemo(
+    () => {
+      const grouped = new Map<string, RowComment[]>()
+      ordered.forEach((
+        comment,
+        index,
+      ) => {
+        const items = grouped.get(comment.messageId) ?? []
+        items.push({
+          comment,
+          number: index + 1,
+        })
+        grouped.set(
+          comment.messageId,
+          items,
+        )
+      })
+
+      for (const [
+        message,
+        items,
+      ] of grouped) {
+        const before = previousCommentRows.current.get(message)
+
+        if (before && before.length === items.length && items.every((
+          item,
+          index,
+        ) =>
+          item.comment === before[index]?.comment && item.number === before[index]?.number)) {
+          grouped.set(
+            message,
+            before,
+          )
+        }
+      }
+
+      previousCommentRows.current = grouped
+
+      return grouped
+    },
+    [ordered],
+  )
+  const lookColumn = useCallback(
+    ({ id }: { id: string }) => columnLook({
+      column: lookup.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
+    }),
+    [lookup],
+  )
+  const currentOpen = useRef(openTask)
+  currentOpen.current = openTask
+  const open = useCallback(
+    ({ id }: { id: string }) => currentOpen.current?.({ id }),
+    [],
+  )
 
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
@@ -215,16 +537,23 @@ export function Messages({
     paste,
     remove,
     release,
-    update,
-    latest,
   } = useCommentDrafts({
     root,
-    comments,
-    setComments,
+    drafts,
     notify,
     clearSelection: () => setSelection(null),
     blocks,
   })
+
+  const handlers: MessageActions = {
+    remove,
+    release,
+    focus: ({ key }) => focusBlock({ element: blockFor({ key }) }),
+    retry,
+    sendAgain,
+  }
+  const actions = useRef(handlers)
+  actions.current = handlers
 
   useEffect(() => {
     if (!selection) {
@@ -754,214 +1083,46 @@ export function Messages({
           }
         }}
       >
-        {entries.map(entry => entry.kind === 'divider' ? (
-          <div
-            key={entry.renderKey ?? entry.id}
-            className="chat-divider"
-            role="separator"
-            aria-label={entry.text}
-          >
-            <MilestoneIcon text={entry.text} />
-            <span>{entry.text}</span>
-          </div>
-        ) : (
-          <Fragment key={entry.renderKey ?? entry.id}>
-            {folds?.get(entry.id)?.notes.length ? (
-              <TurnActionsFold
-                fold={{
-                  tasks: [],
-                  notes: folds.get(entry.id)!.notes,
-                }}
-                lookup={lookup}
-                toolDetails={toolDetails}
-                thinkingDetails={thinkingDetails}
-              />
-            ) : null}
-            <article
-              data-entry-id={entry.id}
-              className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
-              aria-label={roleLabel({
-                role: entry.role,
-                assistantLabel,
-              })}
-              data-streaming={entry.streaming || undefined}
-              data-sending={entry.sending || undefined}
-              data-unsent={entry.unsent !== undefined || undefined}
-              data-pnyx={entry.role === 'Pnyx' || undefined}
-              title={entry.at && !ownMessage({ entry })
-                ? new Date(entry.at).toLocaleString() : undefined}
-              onClick={leadOf({ entry }) ? ({
-                target,
-                currentTarget,
-              }) => openFoldedQuestion({
-                target,
-                bubble: currentTarget,
-              }) : undefined}
-            >
-              {taskReferences && !inline?.has(entry.id) && (
-                <MessageLead entry={entry} lead={leadOf({ entry })} />
-              )}
-              {inline?.get(entry.id) ?? (
-                <ChatMessageText
-                  catalog={ownMessage({ entry }) ? catalog : undefined}
-                  colors={labelColors}
-                  savedTaskLabels={entry.role === 'Pnyx'}
-                  text={entry.text}
-                  streaming={entry.streaming}
-                  decorations={MESSAGE_DECORATIONS}
-                  openTask={openTask}
-                  columnLook={lookColumn}
-                  block={({
-                    index,
-                    offset: local,
-                    quote,
-                    children,
-                  }) => {
-                    const messageId = entry.messageId ?? entry.id
-                    const offset = (entry.part ?? 0) + local
-                    const key = messageBlockKey({
-                      messageId,
-                      offset,
-                    })
-                    const own = ordered.filter(c =>
-                      c.messageId === messageId && c.offset === offset)
+        {entries.map(entry => {
+          const messageId = entry.messageId ?? entry.id
+          const activeHere = isMessageBlockKey({
+            key: active,
+            messageId,
+          }) ? active : null
+          const task = leadingTask({ entry })
+          const timedTask = timings.get(entry.id)?.task
 
-                    return (
-                      <div
-                        className="message-block"
-                        data-message-block={key}
-                        data-message-id={messageId}
-                        data-message-at={entry.at}
-                        data-message-reference={entry.reference}
-                        data-block-index={index}
-                        data-block-offset={offset}
-                        data-quote={quote}
-                        data-active={active === key}
-                        role="group"
-                        aria-label={`Message block ${index + 1}`}
-                      >
-                        {children}
-                        {own.map(comment => (
-                          <MessageComment
-                            key={comment.id}
-                            comment={comment}
-                            number={numbers.get(comment.id)!}
-                            inline
-                            change={({ text }) => update({
-                              items: latest.current.map(c => c.id === comment.id ? {
-                                ...c,
-                                text,
-                              } : c),
-                            })}
-                            remove={() => {
-                              remove({ id: comment.id })
-                              focusBlock({ element: blockFor({ key }) })
-                            }}
-                            leave={({
-                              note,
-                              direction,
-                            }) => root.current && leaveNote({
-                              passage: commentRange({
-                                host: root.current,
-                                comment,
-                              })?.getClientRects()[0],
-                              host: root.current,
-                              note,
-                              direction,
-                            })}
-                            release={() => release({ id: comment.id })}
-                            show={() => {
-                              if (root.current) {
-                                revealComment({
-                                  host: root.current,
-                                  comment,
-                                })
-                              }
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )
-                  }}
-                />
-              )}
-              {entry.delivery ? (
-                <span className="receipt" role="status">
-                  {Object.entries(entry.delivery).map(([
-                    route,
-                    delivery,
-                  ]) => (
-                    <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
-                  ))}
-                </span>
-              ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
-              {sendAgain && entry.task && (entry.delivery?.agent?.state ?? entry.receipt) === 'delivery_unknown' && (
-                <Button
-                  className="send-again"
-                  aria-label="Send this message again"
-                  onClick={() => sendAgain({
-                    task: entry.task!,
-                    text: entry.text,
-                  })}
-                >Send again
-                </Button>
-              )}
-            </article>
-            {ownMessage({ entry }) && !entry.continued && (
-              <div className="message-meta" contentEditable={false}>
-                {entry.unsent !== undefined && (
-                  <span className="unsent" role="alert">
-                    <Icon name="error" size={14} />Not sent · {entry.unsent}
-                  </span>
-                )}
-                {entry.unsent !== undefined && retry && (
-                  <InlineButton onClick={() => retry({ id: entry.id })}>Retry</InlineButton>
-                )}
-                {entry.at && (
-                  <time
-                    dateTime={entry.at}
-                    title={`Sent ${new Date(entry.at).toLocaleDateString()}, ${clock({
-                      at: entry.at,
-                      seconds: true,
-                    })}`}
-                  >{clock({ at: entry.at })}
-                  </time>
-                )}
-                <CopyButton
-                  label="Copy message"
-                  text={() => copiedText({
-                    text: entry.text,
-                    task: leadingTask({ entry }),
-                    title: taskTitle({ id: leadingTask({ entry }) }),
-                  })}
-                />
-              </div>
-            )}
-            {trailing?.get(entry.id)?.length ? (
-              <TurnActionsFold
-                fold={{
-                  tasks: [],
-                  notes: trailing.get(entry.id)!,
-                }}
-                lookup={lookup}
-                toolDetails={toolDetails}
-                thinkingDetails={thinkingDetails}
-              />
-            ) : null}
-            {folds?.get(entry.id)?.tasks.length ? (
-              <TurnActionsFold
-                fold={{
-                  tasks: folds.get(entry.id)!.tasks,
-                  notes: [],
-                }}
-                lookup={lookup}
-              />
-            ) : null}
-            {timings.has(entry.id) && (
-              <TurnFooter turn={timings.get(entry.id)!} taskTitle={taskTitle} />
-            )}
-          </Fragment>
-        ))}
+          return (
+            <MessageRow
+              key={entry.renderKey ?? entry.id}
+              entry={entry}
+              fold={folds?.get(entry.id)}
+              trailing={trailing?.get(entry.id)}
+              timing={timings.get(entry.id)}
+              inline={inline?.get(entry.id)}
+              hasInline={inline?.has(entry.id) ?? false}
+              lead={entry.reference ? answerLeads?.get(entry.reference) : undefined}
+              hasTaskReferences={taskReferences !== undefined}
+              catalog={catalog}
+              labelColors={labelColors}
+              assistantLabel={assistantLabel}
+              lookup={lookup}
+              toolDetails={toolDetails}
+              thinkingDetails={thinkingDetails}
+              comments={rowComments.get(messageId) ?? NO_COMMENTS}
+              active={activeHere}
+              drafts={drafts}
+              root={root}
+              actions={actions}
+              lookColumn={lookColumn}
+              leadingTitle={task ? taskReferences?.[task]?.title : undefined}
+              timingTitle={timedTask ? taskReferences?.[timedTask]?.title : undefined}
+              openTask={openTask ? open : undefined}
+              canSendAgain={sendAgain !== undefined}
+              canRetry={retry !== undefined}
+            />
+          )
+        })}
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div

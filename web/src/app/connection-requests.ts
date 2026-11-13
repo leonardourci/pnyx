@@ -1,10 +1,8 @@
 import type { ServerMessage } from '#app/server-transport.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import { reminderTime } from '#tasks/time.ts'
-import { saveEventId, savedReceipt } from '#app/save-receipts.ts'
+import { saveEventId, savedReply } from '#app/save-receipts.ts'
 import { commandTimeout, retryable } from './connection-protocol.ts'
 import { argument, currentRevision, optimisticState } from '#web-tasks/optimistic.ts'
 import { commandArguments, editTargets } from './pending-state.ts'
@@ -198,7 +196,8 @@ export function createConnectionRequests({
       }
 
       const id = savedId ?? crypto.randomUUID()
-      const confirmed = savedReceipt({
+      // The page keeps no event ids, so a Hydra message or agent change confirms only from its receipt.
+      const confirmed = savedReply({
         command: {
           type: 'command',
           id,
@@ -384,9 +383,9 @@ export function createConnectionRequests({
       request.reject({ error })
     } else {
       if (request.optimistic) {
-        scope.resource.accept({
+        scope.resource.acknowledge({
           id: request.id,
-          complete: message.event === 'none: unchanged',
+          receipt: message,
         })
       }
 
@@ -395,10 +394,6 @@ export function createConnectionRequests({
         'account',
       ].includes(request.name) && request.args[0] !== 'list') {
         window.dispatchEvent(new Event(DISPATCH_CHANGED))
-      }
-
-      if (request.name === 'thread' && (message.thread as ThreadPage | undefined)?.card === HYDRA_CARD) {
-        scope.thread = message.thread as ThreadPage
       }
 
       request.resolve({ receipt: message })

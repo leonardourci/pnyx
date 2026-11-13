@@ -1,15 +1,31 @@
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { needsRecentThread } from '#hydra/thread-history.ts'
+import { receivedThread } from '#hydra/thread-delta.ts'
+import type { ThreadEntry, ThreadPage } from '#hydra/transcripts-read.ts'
 import { threadEntryOrder } from '#hydra/thread-order.ts'
+
+function holdsMessage({
+  entries,
+  message,
+}: {
+  entries: ThreadEntry[]
+  message: string
+}): boolean {
+  return entries.some(entry =>
+    entry.id === message || entry.messageId === message || entry.reference === message)
+}
 
 export async function loadEarlierMessages({
   past,
   cursor,
   until,
+  message,
   load,
 }: {
   past: ThreadPage | null
   cursor?: string
   until?: string
+  message?: string
   load({ before }: { before: string }): Promise<ThreadPage>
 }): Promise<ThreadPage | null> {
   const found = new Map((past?.entries ?? []).map(entry => [
@@ -22,6 +38,17 @@ export async function loadEarlierMessages({
   ]))
   let earliest = past
   const seen = new Set<string>()
+  const loaded = [
+    ...found.values(),
+    ...past?.conversation?.entries ?? [],
+  ]
+
+  if (message !== undefined && holdsMessage({
+    entries: loaded,
+    message,
+  })) {
+    return past
+  }
 
   while (cursor) {
     if (seen.has(cursor)) {
@@ -48,7 +75,18 @@ export async function loadEarlierMessages({
 
     cursor = previous.older
     const earliestAt = previous.entries[0]?.at
-    const reached = until === undefined || (earliestAt !== undefined && earliestAt <= until)
+    const visible = previous.conversation?.entries ?? []
+    const foundMessage = message !== undefined && holdsMessage({
+      entries: [
+        ...found.values(),
+        ...visible,
+      ],
+      message,
+    })
+    const reachedTime = until === undefined || (earliestAt !== undefined && earliestAt <= until)
+    // A comment carries its message's time, so a range older than that holds the message or never will.
+    const passedComment = until !== undefined && earliestAt !== undefined && earliestAt < until
+    const reached = message === undefined ? reachedTime : foundMessage || passedComment
 
     if (reached) {
       break
@@ -74,16 +112,98 @@ export async function loadEarlierMessages({
   }
 }
 
-export function receivedThread({
+export function receiveConversation({
   before,
   latest,
+  reading,
 }: {
   before: ThreadPage | null
   latest: ThreadPage
+  reading: boolean
 }): ThreadPage {
-  const sameSession = before?.session === latest.session
-  const sameStream = sameSession && before?.conversation?.stream === latest.conversation?.stream
-  const newer = (before?.conversation?.version ?? 0) > (latest.conversation?.version ?? 0)
+  const oldest = before?.entries.find(entry => !entry.id.startsWith('live:'))
+  const losesRange = oldest && !latest.entries.some(entry => entry.id === oldest.id)
 
-  return sameStream && newer ? before! : latest
+  if (before && reading && latest.recent && before.session === latest.session && losesRange) {
+    return before
+  }
+
+  return receivedThread({
+    before,
+    latest,
+  })
+}
+
+export type HistoryMode = 'recent' | 'retain'
+
+// The window read Hydra's chat needs now: trim to the recent pages while nobody reads, or keep the loaded range
+// while the owner reads and the server trims. A read already on its way, or one that failed in this reading state,
+// is not sent again.
+export function historyRead({
+  page,
+  reading,
+  serverTrims,
+  pending,
+  failed,
+}: {
+  page: ThreadPage
+  reading: boolean
+  serverTrims: boolean
+  pending?: HistoryMode
+  failed?: HistoryMode
+}): HistoryMode | undefined {
+  const pause = reading && serverTrims && page.entries.length > 0
+  const trim = !reading && needsRecentThread({ page })
+
+  if (!pause && !trim) {
+    return undefined
+  }
+
+  const mode = pause ? 'retain' : 'recent'
+
+  return mode === pending || mode === failed ? undefined : mode
+}
+
+// A window read that failed, with the owner's reading state and the connection it failed in.
+export interface FailedRead {
+  mode: HistoryMode
+  away: boolean
+  selected: boolean
+  connected: boolean
+}
+
+// A failed window read is not sent again until the owner's reading state or the connection changes.
+export function stillFailed({
+  failed,
+  away,
+  selected,
+  connected,
+}: {
+  failed?: FailedRead
+  away: boolean
+  selected: boolean
+  connected: boolean
+}): FailedRead | undefined {
+  const unchanged = failed?.away === away && failed.selected === selected
+    && failed.connected === connected
+
+  return unchanged ? failed : undefined
+}
+
+// The thread arguments that restore the range a page holds, by its session and oldest entry.
+export function retainArgs({
+  page,
+  oldest,
+}: {
+  page: ThreadPage
+  oldest: ThreadEntry
+}): string[] {
+  return [
+    HYDRA_CARD,
+    '--retain',
+    JSON.stringify({
+      session: page.session,
+      oldest: oldest.id,
+    }),
+  ]
 }

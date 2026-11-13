@@ -21,13 +21,16 @@ export function retainedReadings<Value>({
   before: HydraState
   after: HydraState
 }): Record<string, Value> {
-  return Object.fromEntries(Object.entries(current).filter(([id]) => {
+  const entries = Object.entries(current)
+  const retained = entries.filter(([id]) => {
     const previous = before.cards[id]?.agent
     const next = after.cards[id]?.agent
 
     return previous !== undefined && next !== undefined
       && sessionId({ agent: previous }) === sessionId({ agent: next })
-  }))
+  })
+
+  return retained.length === entries.length ? current : Object.fromEntries(retained)
 }
 
 // A push carries only the cards that changed; null drops a card's value.
@@ -38,6 +41,10 @@ export function withChanges<Value>({
   current: Record<string, Value>
   changes: Record<string, Value | null>
 }): Record<string, Value> {
+  if (!Object.keys(changes).length) {
+    return current
+  }
+
   const next = { ...current }
 
   for (const [

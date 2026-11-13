@@ -1,3 +1,4 @@
+import { taskMention } from '#hydra/mentions.ts'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync } from 'node:fs'
@@ -13,6 +14,7 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { installChatContract, assertChatContract, PAINT_TIMEOUT_MS } from '#test-harness/chat-contract.ts'
 
 const BROWSER_TIMEOUT_MS = 60_000
+const BROWSER_POLL_MS = 50
 const BROWSER_OUTPUT_BYTES = 1024 * 1024
 const execute = promisify(execFile)
 const cli = fileURLToPath(import.meta.resolve('chrome-devtools-axi/dist/bin/chrome-devtools-axi.js'))
@@ -152,7 +154,6 @@ async function browser({
     }
   }
 
-  // Resolves once the page's condition holds, checking on every DOM change.
   const waitFor = async ({
     what,
     condition,
@@ -162,12 +163,11 @@ async function browser({
   }) => evaluate({
     script: `async () => {
       await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => { observer.disconnect(); reject(new Error(${JSON.stringify(`Never saw ${what}`)})); }, ${PAINT_TIMEOUT_MS});
-        const check = () => {
-          if (${condition}) { clearTimeout(timer); observer.disconnect(); resolve(); }
-        };
-        const observer = new MutationObserver(check);
-        observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+        const interval = setInterval(check, ${BROWSER_POLL_MS});
+        const timer = setTimeout(() => { clearInterval(interval); reject(new Error(${JSON.stringify(`Never saw ${what}`)})); }, ${PAINT_TIMEOUT_MS});
+        function check() {
+          if (${condition}) { clearTimeout(timer); clearInterval(interval); resolve(); }
+        }
         check();
       });
       return 'chat-assertion-passed';
@@ -347,6 +347,7 @@ test(
       run,
       evaluate,
       capture,
+      waitFor,
     } = await browser({
       s,
       session: 'chat-stream',
@@ -625,6 +626,122 @@ test(
         if (window.scopeLeaks) throw new Error('Hydra switch painted another conversation');
         return 'chat-assertion-passed';
       }`,
+      })
+
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'hidden-reference',
+          '--title',
+          'Hidden reference fixture',
+          '--brief',
+          'An archived task still opens from its message chip.',
+        ],
+      })
+      const hiddenTask = s.task({ key: 'hidden-reference' }).id
+      await s.owner({
+        args: [
+          'task',
+          'hide',
+          hiddenTask,
+        ],
+      })
+      const defaultPage = await s.owner({ args: ['page'] })
+      assert.equal(
+        defaultPage.includes('Hidden reference fixture'),
+        false,
+      )
+      const includedPage = await s.owner({
+        args: [
+          'page',
+          '--card',
+          hiddenTask,
+        ],
+      })
+      assert.ok(includedPage.includes('Hidden reference fixture'))
+      const mention = taskMention({
+        id: hiddenTask,
+        title: 'Hidden reference fixture',
+      })
+      pnyx.claude.plan({
+        text: `Find the hidden reference ${mention}`,
+        reply: `Open ${mention}.`,
+      })
+      await s.chat({ text: `Find the hidden reference ${mention}` })
+      await waitFor({
+        what: 'the unloaded task chip',
+        condition: `document.querySelector('.messages [data-task-ref="${hiddenTask}"]:not(:disabled)')`,
+      })
+      await evaluate({ script: `() => { document.querySelector('.messages [data-task-ref="${hiddenTask}"]').click(); return 'chat-assertion-passed'; }` })
+      await waitFor({
+        what: 'the hidden task detail',
+        condition: `document.querySelector('.card[data-task="${hiddenTask}"].selected .card-panel:not([hidden])')`,
+      })
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await waitFor({
+        what: 'the restored hidden task detail',
+        condition: `document.querySelector('.card[data-task="${hiddenTask}"].selected .card-panel:not([hidden])')`,
+      })
+      await s.owner({
+        args: [
+          'task',
+          'move',
+          hiddenTask,
+          '--to-hydra',
+          other.hydraId,
+        ],
+      })
+      await waitFor({
+        what: 'the moved card leaving the source',
+        condition: `!document.querySelector('.card[data-task="${hiddenTask}"]')`,
+      })
+      await evaluate({ script: `() => { document.querySelector('.messages [data-task-ref="${hiddenTask}"]').click(); return 'chat-assertion-passed'; }` })
+      await waitFor({
+        what: 'the unavailable moved task notice',
+        condition: 'document.querySelector(\'.notice\')?.textContent.includes(\'Task unavailable in this Hydra\')',
+      })
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'second-hidden-reference',
+          '--title',
+          'Second hidden fixture',
+        ],
+      })
+      const secondHidden = s.task({ key: 'second-hidden-reference' }).id
+      await s.owner({
+        args: [
+          'task',
+          'hide',
+          secondHidden,
+        ],
+      })
+      const secondMention = taskMention({
+        id: secondHidden,
+        title: 'Second hidden fixture',
+      })
+      pnyx.claude.plan({
+        text: `Find the other hidden reference ${secondMention}`,
+        reply: `Open ${secondMention}.`,
+      })
+      await s.chat({ text: `Find the other hidden reference ${secondMention}` })
+      await waitFor({
+        what: 'another unloaded task chip',
+        condition: `document.querySelector('.messages [data-task-ref="${secondHidden}"]:not(:disabled)')`,
+      })
+      await evaluate({ script: `() => { document.querySelector('.messages [data-task-ref="${secondHidden}"]').click(); return 'chat-assertion-passed'; }` })
+      await waitFor({
+        what: 'another hidden card after a moved selection',
+        condition: `document.querySelector('.card[data-task="${secondHidden}"].selected .card-panel:not([hidden])')`,
       })
     } catch (error) {
       try {
@@ -1351,6 +1468,473 @@ Again: [image: ${src}]`
       await until({
         what: 'opening the task activity to read its pull requests once',
         check: () => linkRefreshes() === 1,
+      })
+    } finally {
+      await run({ args: ['stop'] })
+    }
+  },
+)
+
+test(
+  'chat drafts survive reload and send comment text before its save pause',
+  async t => {
+    const s = await pnyx.scenario()
+    pnyx.claude.plan({
+      text: 'Show a passage',
+      reply: 'A passage to comment on before sending the latest draft.',
+    })
+    const wire = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => wire.close())
+    const {
+      run,
+      evaluate,
+      waitFor,
+    } = await browser({
+      s,
+      session: 'chat-drafts',
+    })
+    const url = `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`
+
+    try {
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the composer for the first turn',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Show a passage\'); await page.click(\'[aria-label="Send reply"]\');',
+      })
+      const agent = await s.agent({ hydra: true })
+      await waitFor({
+        what: 'the passage in the chat',
+        condition: 'document.querySelector(\'.messages\')?.textContent.includes(\'A passage to comment on\')',
+      })
+      await evaluate({
+        script: `() => {
+        localStorage.setItem('pnyx:${s.hydraId}:comments', 'invalid-json');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the composer after invalid saved data',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
+      await evaluate({
+        script: `async () => {
+          const input = document.querySelector('[aria-label="Reply to Hydra"]');
+          const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+          const edit = (text, caret) => {
+            set.call(input, text); input.setSelectionRange(caret, caret);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          edit('[@Fixture](pnyx-task:synthetic-task) tail', 43);
+          await new Promise(requestAnimationFrame);
+          window.draftChip = document.querySelector('.composer .draft-token');
+          if (!window.draftChip) throw new Error('Missing task chip');
+          edit('Before ' + input.value, 7);
+          const chip = document.querySelector('.composer .draft-token');
+          const gap = document.querySelector('.composer [data-draft-gap="0"]');
+          if (chip !== window.draftChip || gap.textContent !== 'Before ') throw new Error('Typing did not move the existing chip and mirror together');
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await run({
+        args: ['run'],
+        input: `
+          await page.eval(() => {
+            const input = document.querySelector('[aria-label="Reply to Hydra"]');
+            input.focus();
+            const caret = input.value.indexOf(' tail');
+            if (caret < 0) throw new Error('Missing text after the chip');
+            input.setSelectionRange(caret, caret);
+          });
+          await page.press('Backspace');
+        `,
+      })
+      await evaluate({
+        script: `() => {
+          const input = document.querySelector('[aria-label="Reply to Hydra"]');
+          if (document.querySelector('.composer .draft-token') || input.value !== 'Before  tail') throw new Error('Backspace did not remove the moved chip');
+          return 'chat-assertion-passed';
+        }`,
+      })
+      // One task types and reloads, so only the pagehide flush can save the draft before its pause ends.
+      await evaluate({
+        script: `() => {
+          const field = document.querySelector('[aria-label="Reply to Hydra"]');
+          if (!field) throw new Error('Missing reply field');
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, 'Keep this draft');
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+          window.beforeReload = true;
+          location.reload();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the draft restored after reload',
+        condition: '!window.beforeReload && document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Keep this draft\'',
+      })
+      await evaluate({
+        script: `() => {
+      window.selectDraftPassage = () => {
+      const block = [...document.querySelectorAll('[data-message-block]')].find(el => el.dataset.quote?.includes('A passage to comment on'));
+      if (!block) throw new Error('Missing passage');
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      let text;
+      while ((text = walker.nextNode()) && !text.textContent.includes('A passage to comment on')) {}
+      if (!text) throw new Error('Missing passage text');
+      const range = document.createRange();
+      range.setStart(text, 0); range.setEnd(text, 9);
+      getSelection().removeAllRanges(); getSelection().addRange(range);
+      document.activeElement?.blur();
+      document.dispatchEvent(new Event('selectionchange'));
+      };
+      window.selectDraftPassage();
+      return 'chat-assertion-passed';
+    }`,
+      })
+      await waitFor({
+        what: 'the selected passage ready for a comment',
+        condition: 'document.querySelector(\'[aria-label="Comment on selection"]\')',
+      })
+      await evaluate({
+        script: `async () => {
+          document.querySelector('[aria-label="Quote selection"]').click();
+          const draft = document.querySelector('[aria-label="Reply to Hydra"]').value;
+          if (!draft.includes('Keep this draft') || !draft.includes('> A passage')) throw new Error('Quote did not reach the browser-owned draft immediately');
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          window.selectDraftPassage();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await evaluate({
+        script: `() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+      const note = document.querySelector('.comment-card textarea');
+      if (!note) throw new Error('Comment field did not open');
+      const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+      set.call(note, 'Latest unpaused comment');
+      note.dispatchEvent(new Event('input', { bubbles: true }));
+      const button = document.querySelector('[aria-label="Send reply"]');
+      if (button.disabled) throw new Error('Send disabled: ' + document.querySelector('[aria-label="Reply to Hydra"]').value);
+      button.click();
+      return 'chat-assertion-passed';
+    }`,
+      })
+      await until({
+        what: 'the draft delivered',
+        check: () => s.received({ cwd: agent.cwd }).some(message => message.includes('Keep this draft')),
+      })
+      const delivered = s.received({ cwd: agent.cwd }).findLast(message => message.includes('Keep this draft'))
+      assert.ok(
+        delivered?.includes('Latest unpaused comment'),
+        delivered?.slice(-1500),
+      )
+      await waitFor({
+        what: 'the sent draft and comments cleared',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'\' && !document.querySelector(\'.comment-card\')',
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the sent draft stays cleared after reload',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'\' && !document.querySelector(\'.comment-card\')',
+      })
+      await evaluate({ script: `() => { localStorage.removeItem('pnyx:${s.hydraId}:comments'); return 'chat-assertion-passed'; }` })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the clean composer with no saved comments entry',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
+      await evaluate({
+        script: `() => {
+          if (localStorage.getItem('pnyx:${s.hydraId}:comments') !== null) throw new Error('Clean tab wrote comments without an edit');
+          window.draftPeer = window.open(${JSON.stringify(url)}, 'draft-peer');
+          if (!window.draftPeer) throw new Error('Second draft tab did not open');
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the second tab composer',
+        condition: 'window.draftPeer.document.querySelector(\'[aria-label="Reply to Hydra"]\')',
+      })
+      await evaluate({
+        script: `() => {
+          const key = 'pnyx:${s.hydraId}:comments';
+          const messageId = document.querySelector('article.message[aria-label="Hydra"][data-entry-id]')?.dataset.entryId;
+          if (!messageId) throw new Error('Missing reply for the saved comments');
+          const comment = { messageId, block: 0, offset: 0, quote: 'A passage', text: 'Saved first' };
+          const comments = [{ ...comment, id: 'first' }, { ...comment, id: 'second', text: 'Saved second' }];
+          window.draftPeer.localStorage.setItem(key, JSON.stringify({ $hydra: comments }));
+          window.dispatchEvent(new Event('pagehide'));
+          if (JSON.parse(localStorage.getItem(key)).$hydra.length !== 2) throw new Error('Clean tab overwrote the other tab’s first save');
+          window.draftPeer.location.reload();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'comments in both tabs after the first save',
+        condition: 'document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\') && window.draftPeer.document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\')',
+      })
+      await evaluate({
+        script: `async () => {
+          document.querySelector('.composer-comments .card-main').click();
+          window.draftPeer.document.querySelector('.composer-comments .card-main').click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const peer = window.draftPeer;
+          const key = 'pnyx:${s.hydraId}:comments';
+          window.editDraftComment = ({ target, id, text }) => {
+            const input = target.document.querySelector('.comments-dialog [data-comment-ref="' + id + '"] textarea');
+            if (!input) throw new Error('Missing editable comment ' + id);
+            Object.getOwnPropertyDescriptor(target.HTMLTextAreaElement.prototype, 'value').set.call(input, text);
+            input.dispatchEvent(new target.Event('input', { bubbles: true }));
+          };
+          const read = ({ target }) => {
+            const legacy = JSON.parse(target.localStorage.getItem(key) || '{}').$hydra;
+            if (legacy) return legacy;
+            return Object.keys(target.localStorage).filter(name => name.startsWith(key + ':')).map(name => JSON.parse(target.localStorage.getItem(name)));
+          };
+          const before = JSON.stringify({ $hydra: read({ target: window }) });
+          const restore = [window, peer].map(target => {
+            const get = target.Storage.prototype.getItem;
+            target.Storage.prototype.getItem = function(name) { return name === key ? before : get.call(this, name); };
+            return () => { target.Storage.prototype.getItem = get; };
+          });
+          try {
+            window.editDraftComment({ target: window, id: 'first', text: 'Concurrent first' });
+            window.editDraftComment({ target: peer, id: 'second', text: 'Concurrent second' });
+            window.dispatchEvent(new Event('pagehide'));
+            peer.dispatchEvent(new peer.Event('pagehide'));
+          } finally {
+            restore.forEach(reset => reset());
+          }
+          const saved = read({ target: window });
+          if (saved.find(comment => comment.id === 'first')?.text !== 'Concurrent first' || saved.find(comment => comment.id === 'second')?.text !== 'Concurrent second') throw new Error('Simultaneous tab saves lost an independent comment edit');
+          if (localStorage.getItem(key) !== null) throw new Error('Legacy comments were not migrated');
+          window.draftAdditionReceived = false;
+          const added = event => {
+            if (event.key === key + ':%24hydra:third') {
+              window.draftAdditionReceived = true;
+              removeEventListener('storage', added);
+            }
+          };
+          addEventListener('storage', added);
+          peer.localStorage.setItem(key + ':%24hydra:third', JSON.stringify({ ...saved[0], id: 'third', text: 'Independent remote addition' }));
+          window.dispatchEvent(new Event('pagehide'));
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'both concurrent edits and the independent addition reaching the first tab',
+        condition: 'window.draftAdditionReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Concurrent first\' && document.querySelector(\'.comments-dialog [data-comment-ref="second"] textarea\')?.value === \'Concurrent second\'',
+      })
+      await evaluate({
+        script: `async () => {
+          const peer = window.draftPeer;
+          document.querySelector('.comments-dialog footer button').click();
+          peer.location.reload();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          document.querySelector('.composer-comments .card-main').click();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the source tab loading the raw storage fixture',
+        condition: 'window.draftPeer.document.querySelector(\'.composer-comments\')?.textContent.includes(\'3\')',
+      })
+      await evaluate({ script: "() => { window.draftPeer.document.querySelector('.composer-comments .card-main').click(); return 'chat-assertion-passed'; }" })
+      await waitFor({
+        what: 'both dialogs showing the newly added comment',
+        condition: 'document.querySelector(\'.comments-dialog [data-comment-ref="third"]\') && window.draftPeer.document.querySelector(\'.comments-dialog [data-comment-ref="third"]\')',
+      })
+      await evaluate({
+        script: `() => {
+          const key = 'pnyx:${s.hydraId}:comments:%24hydra:first';
+          const saved = localStorage.getItem(key);
+          window.malformedDraftReceived = false;
+          const received = event => {
+            if (event.key === key && event.newValue === 'invalid-json') {
+              window.malformedDraftReceived = true;
+              removeEventListener('storage', received);
+            }
+          };
+          addEventListener('storage', received);
+          window.draftPeer.localStorage.setItem(key, 'invalid-json');
+          window.restoreMalformedDraft = () => window.draftPeer.localStorage.setItem(key, saved);
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'a malformed record leaving the mounted comment intact',
+        condition: 'window.malformedDraftReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Concurrent first\'',
+      })
+      await evaluate({ script: "() => { window.restoreMalformedDraft(); return 'chat-assertion-passed'; }" })
+      await evaluate({
+        script: `() => {
+          const peer = window.draftPeer;
+          const key = 'pnyx:${s.hydraId}:comments';
+          const set = Storage.prototype.setItem;
+          const remove = Storage.prototype.removeItem;
+          window.restoreDraftStorage = () => { Storage.prototype.setItem = set; Storage.prototype.removeItem = remove; };
+          Storage.prototype.removeItem = function(name) {
+            if (name.startsWith(key)) throw new DOMException('Fixture storage failure', 'QuotaExceededError');
+            return remove.call(this, name);
+          };
+          Storage.prototype.setItem = function(name, value) {
+            if (name.startsWith(key)) throw new DOMException('Fixture storage failure', 'QuotaExceededError');
+            return set.call(this, name, value);
+          };
+          window.editDraftComment({ target: window, id: 'first', text: 'Unsaved local edit' });
+          document.querySelector('.comments-dialog [data-comment-ref="second"] [aria-label="Remove comment"]').click();
+          window.dispatchEvent(new Event('pagehide'));
+          window.draftStorageReceived = false;
+          const received = event => {
+            if (event.key?.startsWith(key) && event.newValue?.includes('Remote first')) {
+              window.draftStorageReceived = true;
+              removeEventListener('storage', received);
+            }
+          };
+          addEventListener('storage', received);
+          window.editDraftComment({ target: peer, id: 'first', text: 'Remote first' });
+          window.editDraftComment({ target: peer, id: 'second', text: 'Remote second' });
+          peer.dispatchEvent(new peer.Event('pagehide'));
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the local edit and removal surviving the other tab’s storage event',
+        condition: 'window.draftStorageReceived && document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Unsaved local edit\' && !document.querySelector(\'.comments-dialog [data-comment-ref="second"]\')',
+      })
+      await evaluate({
+        script: `() => {
+          window.restoreDraftStorage();
+          window.dispatchEvent(new Event('pagehide'));
+          window.editDraftComment({ target: window.draftPeer, id: 'third', text: 'Another independent edit' });
+          window.draftPeer.dispatchEvent(new window.draftPeer.Event('pagehide'));
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await waitFor({
+        what: 'the merged comments reaching the second tab',
+        condition: 'window.draftPeer.document.querySelector(\'.comments-dialog [data-comment-ref="first"] textarea\')?.value === \'Unsaved local edit\' && !window.draftPeer.document.querySelector(\'.comments-dialog [data-comment-ref="second"]\')',
+      })
+      await evaluate({ script: '() => { window.draftPeer.document.documentElement.dataset.draftReload = \'old\'; window.draftPeer.location.reload(); return \'chat-assertion-passed\'; }' })
+      await waitFor({
+        what: 'the second tab restoring its merged comment',
+        condition: '!window.draftPeer.document.documentElement.dataset.draftReload && window.draftPeer.document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\')',
+      })
+      await evaluate({
+        script: `async () => {
+          const peer = window.draftPeer;
+          peer.document.querySelector('.composer-comments .card-main').click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          if (peer.document.querySelector('.comments-dialog [data-comment-ref="first"] textarea')?.value !== 'Unsaved local edit') throw new Error('Second tab reload lost the merged comment');
+          if (peer.document.querySelector('.comments-dialog [data-comment-ref="second"]')) throw new Error('Second tab reload restored a deleted comment');
+          if (peer.document.querySelector('.comments-dialog [data-comment-ref="third"] textarea')?.value !== 'Another independent edit') throw new Error('Second tab reload lost the independent edit');
+          peer.close();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await run({
+        args: [
+          'open',
+          url,
+        ],
+      })
+      await waitFor({
+        what: 'the first tab restoring its merged comment',
+        condition: 'document.querySelector(\'.composer-comments\')?.textContent.includes(\'2\')',
+      })
+      await evaluate({
+        script: `async () => {
+          document.querySelector('.composer-comments .card-main').click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          if (document.querySelector('.comments-dialog [data-comment-ref="first"] textarea')?.value !== 'Unsaved local edit') throw new Error('First tab reload lost the merged comment');
+          if (document.querySelector('.comments-dialog [data-comment-ref="second"]')) throw new Error('First tab reload restored a deleted comment');
+          if (document.querySelector('.comments-dialog [data-comment-ref="third"] textarea')?.value !== 'Another independent edit') throw new Error('First tab reload lost the independent edit');
+          document.querySelectorAll('.comments-dialog [aria-label="Remove comment"]').forEach(button => button.click());
+          document.querySelector('.comments-dialog footer button').click();
+          return 'chat-assertion-passed';
+        }`,
+      })
+      await evaluate({
+        script: `() => {
+        const send = WebSocket.prototype.send;
+        window.pendingCreations = [];
+        WebSocket.prototype.send = function(frame) {
+          const request = typeof frame === 'string' ? JSON.parse(frame) : {};
+          if (request.name === 'hydras' && request.args?.[0] === 'create') {
+            window.pendingCreations.push([this, frame]); return;
+          }
+          return send.call(this, frame);
+        };
+        window.releaseCreation = () => {
+          WebSocket.prototype.send = send;
+          window.pendingCreations.forEach(([socket, frame]) => send.call(socket, frame));
+        };
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await run({
+        args: ['run'],
+        input: `
+        await page.click('[aria-label="Create Hydra"]');
+        await page.fill('[aria-label="Hydra name"]', 'Draft promotion fixture');
+        await page.eval(() => document.querySelector('.hydra-name-editor').requestSubmit());
+      `,
+      })
+      await waitFor({
+        what: 'the pending Hydra composer',
+        condition: 'document.querySelector(\'base\')?.getAttribute(\'href\')?.includes(\'/pending-\') && document.querySelector(\'[aria-label="Reply to Hydra"]\') && window.pendingCreations.length > 0',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Pending draft\');',
+      })
+      await evaluate({ script: '() => { window.releaseCreation(); return \'chat-assertion-passed\'; }' })
+      await waitFor({
+        what: 'the Hydra promoted without replacing its draft',
+        condition: '!document.querySelector(\'base\')?.getAttribute(\'href\')?.includes(\'/pending-\') && document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Pending draft\'',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.fill(\'[aria-label="Reply to Hydra"]\', \'Canonical draft\');',
+      })
+      await waitFor({
+        what: 'the promoted draft saved under the canonical identity',
+        condition: 'JSON.parse(sessionStorage.getItem(\'pnyx:\' + document.querySelector(\'meta[name="pnyx-hydra"]\')?.content + \':restore\') ?? \'{}\').drafts?.$hydra === \'Canonical draft\'',
+      })
+      await run({
+        args: ['run'],
+        input: 'await page.open(await page.eval(() => location.href));',
+      })
+      await waitFor({
+        what: 'the promoted draft restored under the canonical identity',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\')?.value === \'Canonical draft\'',
       })
     } finally {
       await run({ args: ['stop'] })

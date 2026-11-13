@@ -1,3 +1,5 @@
+import { threadDelta } from '#hydra/thread-delta.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import assert from 'node:assert/strict'
 import { setImmediate } from 'node:timers/promises'
 import { test, type TestContext } from 'node:test'
@@ -16,9 +18,11 @@ class TestSocket {
   sent: Record<string, unknown>[] = []
 
   token: string | null
+  page: unknown
   // eslint-disable-next-line pnyx/object-params -- WebSocket owns the constructor signature.
   constructor(url: URL) {
     this.token = url.searchParams.get('token')
+    this.page = JSON.parse(url.searchParams.get('page') ?? 'null')
     TestSocket.current = this
   }
 
@@ -208,20 +212,24 @@ test(
 
     socket.receive({
       message: {
-        type: 'event',
+        type: 'page.event',
         subscription: 'fixture',
-        event: {
-          v: 1,
-          id: 'after-gap',
+        update: {
           seq: 2,
-          at: '2026-10-22T10:00:00Z',
-          actor: 'web',
-          cardId: 'synthetic-task',
-          type: 'task.created',
-          data: {
-            key: 'synthetic-task',
-            title: 'Synthetic task',
+          event: {
+            v: 1,
+            id: 'after-gap',
+            seq: 2,
+            at: '2026-10-22T10:00:00Z',
+            actor: 'web',
+            cardId: 'synthetic-task',
+            type: 'task.created',
+            data: {
+              key: 'synthetic-task',
+              title: 'Synthetic task',
+            },
           },
+          cards: {},
         },
       },
     })
@@ -678,9 +686,12 @@ test(
 )
 
 test(
-  'every 30 seconds the page logs the size of the chat it holds as the frame that brought it, its messages and elements',
+  'conversation gaps resync and the memory line counts the retained chat after deltas',
   t => {
-    const { stop } = recoveryPage({ t })
+    const {
+      stop,
+      connection,
+    } = recoveryPage({ t })
     t.mock.timers.tick(2000)
     const sends = t.mock.method(
       TestSocket.prototype,
@@ -698,40 +709,113 @@ test(
         },
       },
     })
-    let frame = ''
-    const deliver = socket.onmessage
-
-    socket.onmessage = event => {
-      frame = event.data
-      deliver?.(event)
+    const initial: ThreadPage = {
+      card: '$hydra',
+      stream: 'memory',
+      version: 1,
+      entries: [
+        {
+          id: 'first',
+          role: 'You',
+          kind: 'message',
+          text: 'Hello',
+        },
+        {
+          id: 'second',
+          role: 'Hydra',
+          kind: 'message',
+          text: 'Hi',
+        },
+      ],
+      route: false,
+      watching: 'unknown',
     }
-
     socket.receive({
       message: {
         type: 'thread',
         subscription: 'fixture',
-        thread: {
-          card: '$hydra',
-          entries: [
-            {
-              id: 'first',
-              role: 'You',
-              kind: 'message',
-              text: 'Hello',
-            },
-            {
-              id: 'second',
-              role: 'Hydra',
-              kind: 'message',
-              text: 'Hi',
-            },
-          ],
-          route: false,
-          watching: 'unknown',
+        thread: initial,
+      },
+    })
+    const latest: ThreadPage = {
+      ...initial,
+      version: 2,
+      entries: [
+        initial.entries[0]!,
+        {
+          ...initial.entries[1]!,
+          text: 'The longer reply has arrived.',
+        },
+      ],
+    }
+    const delta = threadDelta({
+      before: initial,
+      after: latest,
+    })
+    assert.ok(delta)
+    socket.receive({
+      message: {
+        type: 'thread.delta',
+        subscription: 'fixture',
+        delta,
+      },
+    })
+    const held = connection.snapshot().hydraThread
+    assert.deepEqual(
+      held,
+      latest,
+    )
+    socket.receive({
+      message: {
+        type: 'thread.delta',
+        subscription: 'fixture',
+        delta: {
+          ...delta,
+          base: 3,
+          page: {
+            ...delta.page,
+            version: 4,
+          },
         },
       },
     })
-    const threadFrame = frame
+    assert.equal(
+      connection.snapshot().hydraThread,
+      held,
+    )
+    assert.deepEqual(
+      socket.sent.filter(message => message.type === 'resync'),
+      [
+        {
+          type: 'resync',
+          scope: 'default',
+        },
+      ],
+    )
+    const recovered: ThreadPage = {
+      ...latest,
+      version: 5,
+      entries: [
+        ...latest.entries,
+        {
+          id: 'third',
+          role: 'Hydra',
+          kind: 'message',
+          text: 'After reset',
+        },
+      ],
+    }
+    socket.receive({
+      message: {
+        type: 'thread',
+        subscription: 'fixture',
+        thread: recovered,
+      },
+    })
+    assert.deepEqual(
+      connection.snapshot().hydraThread,
+      recovered,
+    )
     // A pong on the way keeps the socket from looking stalled.
     t.mock.timers.tick(20_000)
     socket.receive({ message: { type: 'pong' } })
@@ -755,8 +839,8 @@ test(
       ]),
       [
         [
-          threadFrame.length,
-          2,
+          JSON.stringify(recovered).length,
+          3,
           0,
           false,
         ],
@@ -1146,3 +1230,66 @@ for (const scenario of [
     },
   )
 }
+
+test(
+  'a reconnecting page names the cards it last opened in its socket address',
+  async t => {
+    t.after(() => stop())
+    installPage({
+      t,
+      sessionStorage: {
+        getItem: () => null,
+        setItem() {},
+        removeItem() {},
+      },
+    })
+    const connection = createHydraConnection()
+    const stop = connection.start()
+    const socket = TestSocket.current
+    open({ socket })
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    const request = connection.commandFor({ id: 'default' })({
+      name: 'page',
+      args,
+    })
+    // The socket closes before the server answers, so this command's outcome is not under test.
+    request.catch(() => {})
+
+    socket.onclose?.()
+    window.dispatchEvent(new Event('online'))
+    assert.notEqual(
+      TestSocket.current,
+      socket,
+    )
+    assert.deepEqual(
+      TestSocket.current.page,
+      args,
+    )
+  },
+)
+
+test(
+  'switching to another Hydra subscribes with the cards that Hydra last opened',
+  async t => {
+    const { connection } = recoveryPage({ t })
+    const socket = TestSocket.current
+    const args = [
+      '--card',
+      'hidden-task',
+    ]
+    const request = connection.commandFor({ id: 'second' })({
+      name: 'page',
+      args,
+    })
+    // The server never answers here; only the subscribe frame is under test.
+    request.catch(() => {})
+    await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
+    assert.deepEqual(
+      socket.sent.filter(message => message.type === 'subscribe' && message.scope === 'second').at(-1)?.page,
+      args,
+    )
+  },
+)

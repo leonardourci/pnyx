@@ -1,3 +1,4 @@
+import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
 import { loggedEntry } from './history.ts'
@@ -43,14 +44,22 @@ export interface ThreadEntry {
   session?: string
   streaming?: boolean
   receipt?: ReplyState
+  // When the owner sent it; a transcript copy's at is when the agent read it.
+  sent?: string
+  // When the agent's harness confirmed it took this message.
+  received?: string
+  // Why a queued message still waits, when Pnyx knows.
+  waiting?: string
   delivery?: {
     agent?: {
       state: ReplyState
       detail?: string
+      received?: string
     }
     hydra: {
       state: ReplyState
       detail?: string
+      received?: string
     }
   }
   task?: string
@@ -64,11 +73,13 @@ export interface ThreadEntry {
 export interface ThreadPage {
   card: string
   session?: string
+  stream?: string
+  version?: number
+  pages?: number
+  recent?: boolean
   entries: ThreadEntry[]
   conversation?: {
     through: number
-    stream?: string
-    version?: number
     entries: ThreadEntry[]
     folds: Record<string, TurnActions>
     timings: Record<string, TurnTiming>
@@ -392,7 +403,6 @@ export function latestMessage({
 // A cursor carries each sources position, so paging cannot skip transcript
 // chunks when reply receipts also fill the latest page.
 export const THREAD_CURSOR = /^n(\d+:\d+)?;r(\d+:\d+)?$/
-const PAGE = 60
 type LoggedMessage = HydraEvent
 const replyLogs = new Map<string, {
   end: number
@@ -689,7 +699,7 @@ function readThreadPage(
           parsed = start + first
         }
 
-        if (!start || candidates.length >= PAGE || size >= MAX_BYTES) {
+        if (!start || candidates.length >= THREAD_PAGE_LIMIT || size >= MAX_BYTES) {
           break
         }
       }
@@ -807,6 +817,7 @@ function readThreadPage(
     const receipt = taskReceipt({
       card: state.cards[card.id] ?? card,
       reply: e.data.reply,
+      hydraReceived: state.hydraMessages?.find(message => message.id === `task-context:${card.id}:${e.data.reply}`)?.received,
     })
     splitEntry({
       entry: {
@@ -867,7 +878,7 @@ function readThreadPage(
 
   // Consume a contiguous suffix from each source even when a record was timestamped earlier.
   // A boundary message stays whole even when it exceeds the page target.
-  while ((page.length < PAGE || incomplete()) && (native.length || replies.length)) {
+  while ((page.length < THREAD_PAGE_LIMIT || incomplete()) && (native.length || replies.length)) {
     const nativeLast = native.at(-1)
     const replyLast = replies.at(-1)
     const takeNative = nativeLast && (!replyLast || (nativeLast.item.at ?? '') >= (replyLast.item.at ?? ''))

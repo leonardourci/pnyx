@@ -1,3 +1,4 @@
+import type { createThreadReceiver } from '#hydra/thread-receive.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { AgentUsage } from '#workers/provider.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
@@ -27,15 +28,16 @@ export interface Scope {
   ready: boolean
   subscribed: boolean
   subscription: string | null
+  // The arguments of the last page command, sent again on subscribe so the first snapshot is already scoped.
+  page?: string[]
   failed: boolean
   restoredSaves: boolean
   error: string
   loadError: string
   subscriptionTimer?: ReturnType<typeof setTimeout>
   subscriptionAttempt: number
-  thread: ThreadPage | null
-  // The length of the frame that brought the thread, for the page's memory line.
-  threadChars: number
+  readonly thread: ThreadPage | null
+  threads: ReturnType<typeof createThreadReceiver>
   queue: HydraQueue
   spend: Record<string, TaskSpend>
   usage: Record<string, AgentUsage>

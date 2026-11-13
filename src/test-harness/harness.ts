@@ -1,6 +1,8 @@
-import { randomUUID } from 'node:crypto'
 // The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
+import { applyPageUpdate } from '#app/page-state.ts'
+import { createThreadReceiver } from '#hydra/thread-receive.ts'
+import { randomUUID } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -9,7 +11,7 @@ import { join } from 'node:path'
 import { after, before } from 'node:test'
 import { WebSocket } from 'ws'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { emptyHydra, reduce } from '#app/reducer.ts'
+import { emptyHydra } from '#app/reducer.ts'
 import { startServer } from '#app/server-daemon.ts'
 import type { RunningServer, ServerMessage } from '#app/server-transport.ts'
 import { localToken } from '#app/server-state.ts'
@@ -168,18 +170,30 @@ export function pnyxAxi({
 }
 
 // The owner's page: the snapshot it gets, kept current with the events that follow, and its commands.
+// `page` names the cards it opens with, as page command arguments in its socket address.
 export async function openPage({
   port,
   hydraId,
+  page,
+  rawPage,
 }: {
   port: number
   hydraId: string
+  page?: string[]
+  // The page parameter exactly as sent, such as one that is not JSON.
+  rawPage?: string
 }) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}`)
+  const pageParameter = rawPage ?? (page && JSON.stringify(page))
+  const opened = pageParameter === undefined ? '' : `&page=${encodeURIComponent(pageParameter)}`
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}${opened}`)
   let state: HydraState | undefined
+  let snapshots = 0
   const answers = new Map<string, ServerMessage>()
   const queues: HydraQueue[] = []
   const threads: ThreadPage[] = []
+  const threadReceiver = createThreadReceiver()
+  // Pushed deltas the page could not apply. This socket never backs up, so each one is a server fault.
+  const gaps: string[] = []
   const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
   const actions: Record<string, CurrentAction | null> = {}
   const upgrades: UpgradeStatus[] = []
@@ -187,7 +201,19 @@ export async function openPage({
   ws.on(
     'message',
     (data: unknown) => {
-      const message = JSON.parse(String(data)) as ServerMessage
+      const received = JSON.parse(String(data)) as ServerMessage
+      const message = threadReceiver.receive({ message: received })
+
+      if (!message) {
+        if (received.type === 'thread.delta') {
+          const held = threadReceiver.read({ card: received.delta.page.card })
+          gaps.push(`${received.delta.page.card} delta ${received.delta.base} to ${received.delta.page.version} on version ${held?.version}`)
+        }
+
+        ws.send(JSON.stringify({ type: 'resync' }))
+
+        return
+      }
 
       if (message.type === 'latest') {
         Object.assign(
@@ -210,11 +236,19 @@ export async function openPage({
       } else if (message.type === 'thread') {
         threads.push(message.thread)
       } else if (message.type === 'snapshot') {
-        state = message.state
-      } else if (message.type === 'event') {
-        state = reduce({
-          state: state ?? emptyHydra(),
-          event: message.event,
+        snapshots += 1
+        state = {
+          ...message.state,
+          eventIds: {},
+        }
+      } else if (message.type === 'page.event') {
+        if (!state) {
+          state = emptyHydra()
+        }
+
+        applyPageUpdate({
+          state,
+          update: message.update,
         })
       } else if ((message.type === 'receipt' || message.type === 'error') && message.id) {
         answers.set(
@@ -260,6 +294,8 @@ export async function openPage({
   }
 
   return {
+    // How many snapshots the server has sent this page.
+    snapshots: () => snapshots,
     queues,
     // Every thread page the server pushed to the subscribed tab, in order.
     threads,
@@ -323,7 +359,16 @@ export async function openPage({
       type: 'log',
       lines,
     })),
-    close: () => ws.close(),
+    // Fails the flow when the server pushed a delta the page could not apply.
+    close: () => {
+      ws.close()
+      const following = threads.at(-1)
+      assert.equal(
+        gaps.length,
+        0,
+        `thread deltas the page could not apply: ${gaps.join(', ')}; the page that followed: ${following?.card} version ${following?.version}`,
+      )
+    },
   }
 }
 

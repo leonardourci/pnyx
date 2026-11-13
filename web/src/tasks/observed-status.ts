@@ -5,6 +5,7 @@ import { cardStatus, waitStatus, type CardStatus } from '#tasks/card-status.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
 import { failedChecks, pendingChecks } from '#tasks/delivery/model.ts'
+import { knownCards } from '#tasks/select.ts'
 import { nativeIdle } from '#workers/native-work.ts'
 
 export interface ObservedStatus extends CardStatus {
@@ -23,7 +24,7 @@ export function observedStatus({
   connected?: boolean
 }): ObservedStatus {
   const base = cardStatus({
-    cards: state?.cards,
+    cards: state && knownCards({ state }),
     card: {
       ...card,
       status: undefined,
@@ -74,7 +75,7 @@ export function observedStatus({
 
   const wait = waitStatus({
     card,
-    cards: state?.cards,
+    cards: state && knownCards({ state }),
   })
 
   if (wait) {

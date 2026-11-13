@@ -7,6 +7,17 @@ import { activeCompaction } from '#workers/compaction/state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 
+const STARTED_RECEIPTS = 32
+
+// A message whose Hydra turn started has been taken.
+const taken = ({
+  state,
+  message,
+}: {
+  state: HydraState
+  message: HydraMessage
+}) => `${message.id}:hosted` in state.eventIds
+
 function hydraQueueView({
   state,
   messages,
@@ -20,15 +31,16 @@ function hydraQueueView({
   const upgrades = state.upgrades ?? []
   const stopped = state.hydraOperation
   // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
-  // A message whose Hydra turn started has been taken.
-  const taken = ({ id }: { id: string }) => `${id}:hosted` in state.eventIds
   const changingAgent = state.hydraAgentChange
   const changeSeq = changingAgent ? (state.eventIds[changingAgent.id] ?? 1) - 1 : undefined
   const stopSeq = stopped?.seq ?? changeSeq
   const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
     && (state.eventIds[id] ?? 0) > stopSeq
   const waiting = messages.filter(m => !isRoutineMessage({ message: m })
-    && sentSince(m) && !taken(m))
+    && sentSince(m) && !taken({
+    state,
+    message: m,
+  }))
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
     ...waiting.map(message => message.id),
@@ -111,11 +123,30 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
     messages,
   })
 
+  const started: string[] = []
+
+  let index = messages.length - 1
+
+  // Newest first, stopping at the receipts the page keeps.
+  while (index >= 0 && started.length < STARTED_RECEIPTS) {
+    const message = messages[index]!
+
+    if (ownerActor({ actor: message.actor }) && taken({
+      state,
+      message,
+    })) {
+      started.unshift(message.id)
+    }
+
+    index -= 1
+  }
+
   return {
     ...view,
     held: [...view.held],
     working,
     through: state.seq,
+    started,
   }
 }
 

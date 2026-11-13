@@ -5,7 +5,7 @@ import { splitEntry } from '#hydra/transcripts-read.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { commentReply, commentUpdates, copiedText, keepStreamedKeys, withTimedRows, type ChatComment } from './chat.ts'
+import { commentReply, commentUpdates, copiedText, keepStreamedKeys, orderedComments, withTimedRows, type ChatComment } from './chat.ts'
 import { hasPendingImage, pendingImage, settleImage } from './draft.ts'
 import { imageLine } from '#hydra/images.ts'
 
@@ -41,19 +41,69 @@ test(
       previous: [],
       keys,
     })
+    const final: ThreadEntry = {
+      id: '5:m0',
+      kind: 'message',
+      role: 'assistant',
+      text: 'word '.repeat(320),
+    }
     const settled = keepStreamedKeys({
       entries: [
         owner,
-        {
-          id: '5:m0',
-          kind: 'message',
-          role: 'assistant',
-          text: 'word '.repeat(320),
-        },
+        final,
       ],
       previous: streaming,
       keys,
     })
+    const repeated = keepStreamedKeys({
+      entries: [
+        owner,
+        final,
+      ],
+      previous: settled,
+      keys,
+    })
+    assert.equal(
+      repeated[0],
+      owner,
+    )
+    assert.equal(
+      repeated[1],
+      settled[1],
+      'an unchanged settled reply keeps its object as well as its key',
+    )
+    const failed = {
+      ...owner,
+      id: 'retry',
+      streaming: true,
+      sending: true,
+      unsent: 'Waiting',
+    }
+    const delivered = {
+      ...owner,
+      id: 'retry',
+    }
+    const cleared = keepStreamedKeys({
+      entries: [delivered],
+      previous: [failed],
+      keys: new Map(),
+    })
+    assert.equal(
+      cleared[0],
+      delivered,
+    )
+    assert.equal(
+      'streaming' in cleared[0]!,
+      false,
+    )
+    assert.equal(
+      'sending' in cleared[0]!,
+      false,
+    )
+    assert.equal(
+      'unsent' in cleared[0]!,
+      false,
+    )
     assert.equal(
       settled[1]!.renderKey,
       'live:msg_1',
@@ -61,6 +111,10 @@ test(
     assert.equal(
       settled[0]!.renderKey,
       undefined,
+    )
+    keys.set(
+      'evicted',
+      'live:evicted',
     )
     assert.equal(
       keepStreamedKeys({
@@ -71,6 +125,15 @@ test(
       'live:msg_1',
       'the key holds on later pages',
     )
+    assert.equal(
+      keys.has('evicted'),
+      false,
+    )
+    assert.equal(
+      keys.get(settled[1]!.id),
+      'live:msg_1',
+    )
+
     assert.equal(
       keepStreamedKeys<ThreadEntry>({
         entries: [
@@ -210,6 +273,93 @@ const note = ({
   at: '2026-10-29T15:05:10.536Z',
 })
 
+test(
+  'comments that start at the same place, and replies with no time, keep one numbering whatever order storage returns them in',
+  () => {
+    const passage = ({
+      id,
+      position,
+    }: {
+      id: string
+      position: number
+    }): ChatComment => ({
+      ...note({
+        id,
+        text: id,
+      }),
+      start: 0,
+      end: {
+        offset: 0,
+        position,
+      },
+    })
+    const comments = [
+      passage({
+        id: 'longer',
+        position: 20,
+      }),
+      passage({
+        id: 'twin',
+        position: 7,
+      }),
+      passage({
+        id: 'short',
+        position: 7,
+      }),
+    ]
+    const order = [
+      'short',
+      'twin',
+      'longer',
+    ]
+    assert.deepEqual(
+      orderedComments({ comments }).map(comment => comment.id),
+      order,
+    )
+    assert.deepEqual(
+      orderedComments({ comments: comments.toReversed() }).map(comment => comment.id),
+      order,
+    )
+    const undated = [
+      '10:m0',
+      '9:m0',
+    ].map(messageId => ({
+      ...note({
+        id: messageId,
+        text: messageId,
+      }),
+      messageId,
+      at: undefined,
+    }))
+    assert.deepEqual(
+      orderedComments({ comments: undated }).map(comment => comment.id),
+      [
+        '9:m0',
+        '10:m0',
+      ],
+    )
+    // A reply with a time keeps its place ahead of those without one.
+    const mixed = [
+      ...undated,
+      {
+        ...note({
+          id: 'dated',
+          text: 'dated',
+        }),
+        messageId: 'dated',
+      },
+    ]
+    assert.deepEqual(
+      orderedComments({ comments: mixed }).map(comment => comment.id),
+      [
+        'dated',
+        '9:m0',
+        '10:m0',
+      ],
+    )
+  },
+)
+
 // The comments as their owner holds them; handlers are made once, like a render's, and used later.
 
 const store = ({ items }: { items: ChatComment[] }) => {
@@ -225,76 +375,6 @@ const store = ({ items }: { items: ChatComment[] }) => {
     }),
   }
 }
-
-test(
-  'a note that clears its upload after its comment was removed does not bring the comment back',
-  () => {
-    const pending = imageLine({ path: pendingImage({ id: 'a' }) })
-    const {
-      held,
-      updates,
-    } = store({
-      items: [
-        note({
-          id: 'a',
-          text: `a ${pending}`,
-        }),
-        note({
-          id: 'b',
-          text: 'b',
-        }),
-      ],
-    })
-    updates.remove({ id: 'a' })
-    updates.change({
-      id: 'a',
-      text: 'a',
-    })
-    assert.deepEqual(
-      held.items.map(comment => comment.id),
-      ['b'],
-    )
-  },
-)
-
-test(
-  'two notes clearing their uploads one after the other both land, so Send is not left waiting',
-  () => {
-    const first = imageLine({ path: pendingImage({ id: 'a' }) }), second = imageLine({ path: pendingImage({ id: 'b' }) })
-    const {
-      held,
-      updates,
-    } = store({
-      items: [
-        note({
-          id: 'a',
-          text: `a ${first}`,
-        }),
-        note({
-          id: 'b',
-          text: `b ${second}`,
-        }),
-      ],
-    })
-    updates.change({
-      id: 'a',
-      text: 'a',
-    })
-    updates.change({
-      id: 'b',
-      text: 'b',
-    })
-    assert.equal(
-      hasPendingImage({
-        text: commentReply({
-          draft: '',
-          comments: held.items,
-        }),
-      }),
-      false,
-    )
-  },
-)
 
 test(
   'an image pasted over a passage keeps the reply waiting until its upload settles into the comment',

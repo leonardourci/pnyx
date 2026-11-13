@@ -3,6 +3,11 @@ export const COMMENT_REVEAL = 'pnyx-comment-reveal'
 // The owner asked for the passage, so a chat that follows new messages counts this scroll as theirs.
 export const MESSAGE_SCROLL = 'pnyx-message-scroll'
 const pending = new WeakMap<Element, () => void>()
+const OWNER_SCROLL_EVENTS = [
+  'wheel',
+  'touchstart',
+  'keydown',
+]
 
 export function scrollMessage({
   host,
@@ -24,7 +29,6 @@ export function scrollMessage({
   }
 
   pending.get(scroller)?.()
-  scroller.dispatchEvent(new Event(MESSAGE_SCROLL))
   const viewport = scroller.getBoundingClientRect()
   const padding = Math.min(
     3 * bounds.height,
@@ -53,8 +57,13 @@ export function scrollMessage({
     ),
   )
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const moves = Math.abs(top - scroller.scrollTop) >= 1
 
-  if (reduced || Math.abs(top - scroller.scrollTop) < 1) {
+  if (moves) {
+    scroller.dispatchEvent(new Event(MESSAGE_SCROLL))
+  }
+
+  if (reduced || !moves) {
     scroller.scrollTo({
       top,
       behavior: 'instant',
@@ -69,18 +78,14 @@ export function scrollMessage({
       'scrollend',
       arrived,
     )
-    scroller.removeEventListener(
-      'wheel',
-      cancel,
-    )
-    scroller.removeEventListener(
-      'touchstart',
-      cancel,
-    )
-    scroller.removeEventListener(
-      'keydown',
-      cancel,
-    )
+
+    for (const type of OWNER_SCROLL_EVENTS) {
+      scroller.removeEventListener(
+        type,
+        cancel,
+      )
+    }
+
     pending.delete(scroller)
   }
 
@@ -106,22 +111,89 @@ export function scrollMessage({
     'scrollend',
     arrived,
   )
-  scroller.addEventListener(
-    'wheel',
-    cancel,
-    { passive: true },
-  )
-  scroller.addEventListener(
-    'touchstart',
-    cancel,
-    { passive: true },
-  )
-  scroller.addEventListener(
-    'keydown',
-    cancel,
-  )
+
+  for (const type of OWNER_SCROLL_EVENTS) {
+    scroller.addEventListener(
+      type,
+      cancel,
+      { passive: type !== 'keydown' },
+    )
+  }
+
   scroller.scrollTo({
     top,
     behavior: 'smooth',
+  })
+}
+
+// Rows not rendered yet count at their estimated height, so a smooth scroll lands off its target as they render on
+// the way. Once it stops, the element is centered again without animation, unless the owner scrolled meanwhile.
+export function centerMessage({ element }: { element: HTMLElement }) {
+  const scroller = element.closest('.thread')
+
+  if (!scroller) {
+    return
+  }
+
+  pending.get(scroller)?.()
+  const viewport = scroller.getBoundingClientRect()
+  const bounds = element.getBoundingClientRect()
+  const offset = bounds.top + bounds.height / 2 - viewport.top - viewport.height / 2
+  const top = Math.max(
+    0,
+    Math.min(
+      scroller.scrollTop + offset,
+      scroller.scrollHeight - scroller.clientHeight,
+    ),
+  )
+
+  if (Math.abs(top - scroller.scrollTop) < 1) {
+    return
+  }
+
+  const cancel = () => {
+    scroller.removeEventListener(
+      'scrollend',
+      arrived,
+    )
+
+    for (const type of OWNER_SCROLL_EVENTS) {
+      scroller.removeEventListener(
+        type,
+        cancel,
+      )
+    }
+
+    pending.delete(scroller)
+  }
+
+  const arrived = () => {
+    cancel()
+    element.scrollIntoView({
+      behavior: 'instant',
+      block: 'center',
+    })
+  }
+
+  pending.set(
+    scroller,
+    cancel,
+  )
+  scroller.addEventListener(
+    'scrollend',
+    arrived,
+  )
+
+  for (const type of OWNER_SCROLL_EVENTS) {
+    scroller.addEventListener(
+      type,
+      cancel,
+      { passive: true },
+    )
+  }
+
+  element.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
   })
 }

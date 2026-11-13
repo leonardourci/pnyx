@@ -118,6 +118,8 @@ export type InputReceipt = {
   // refused: the provider answered the start of its turn with an error, so the agent never got it.
   phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'refused' | 'unknown'
   turn?: string
+  // When the harness took the input, by its own record; without it, the receipt's arrival is that moment.
+  at?: string
 }
 // Submitted means handed to the SDK callback or native pipe, not acknowledged by the model.
 export type AnswerReceipt = {

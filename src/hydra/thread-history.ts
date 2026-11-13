@@ -2,6 +2,80 @@ import { HydraError } from '#store/errors.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 import { threadEntryOrder } from './thread-order.ts'
 
+export const RECENT_THREAD_PAGES = 3
+export const THREAD_PAGE_LIMIT = 60
+export const RECENT_THREAD_ENTRIES = RECENT_THREAD_PAGES * THREAD_PAGE_LIMIT
+
+export function threadSize({ page }: { page: ThreadPage }): number {
+  return page.entries.filter(entry => !entry.id.startsWith('live:')).length
+}
+
+// A page without a count is one page.
+export function pageCount({ page }: { page: ThreadPage }): number {
+  return page.pages ?? 1
+}
+
+export function needsRecentThread({ page }: { page: ThreadPage }): boolean {
+  const manyPages = pageCount({ page }) > RECENT_THREAD_PAGES
+  const manyEntries = threadSize({ page }) > RECENT_THREAD_ENTRIES
+
+  return page.recent !== true && (manyPages || manyEntries)
+}
+
+// The cursor of the next older page a recent window reads, or undefined once it holds RECENT_THREAD_PAGES pages.
+export function nextRecentCursor({
+  page,
+  seen,
+}: {
+  page: ThreadPage
+  seen: Set<string>
+}): string | undefined {
+  if (seen.size + 1 >= RECENT_THREAD_PAGES || !page.older) {
+    return undefined
+  }
+
+  if (seen.has(page.older)) {
+    throw new HydraError({
+      code: 'THREAD_HISTORY_STALLED',
+      message: 'Earlier conversation pages did not advance.',
+    })
+  }
+
+  seen.add(page.older)
+
+  return page.older
+}
+
+export async function recentThreadPages({
+  page,
+  read,
+}: {
+  page: ThreadPage
+  read({ before }: { before: string }): ThreadPage | Promise<ThreadPage>
+}): Promise<ThreadPage> {
+  let recent = page
+  const seen = new Set<string>()
+
+  let cursor = nextRecentCursor({
+    page: recent,
+    seen,
+  })
+
+  while (cursor) {
+    recent = mergeThreadPages({
+      before: recent,
+      latest: await read({ before: cursor }),
+      olderPage: true,
+    })
+    cursor = nextRecentCursor({
+      page: recent,
+      seen,
+    })
+  }
+
+  return recent
+}
+
 export function mergeThreadPages({
   before,
   latest,
@@ -53,6 +127,8 @@ export function mergeThreadPages({
     second: b,
   }))
   const older = olderPage ? latest.older : before.entries.length ? before.older : latest.older
+  const pages = olderPage ? pageCount({ page: before }) + pageCount({ page: latest })
+    : before.pages ?? pageCount({ page: latest })
 
   return {
     ...latest,
@@ -60,6 +136,7 @@ export function mergeThreadPages({
     currentTurn: olderPage ? before.currentTurn : latest.currentTurn,
     actions: [...actions.values()],
     older,
+    pages,
   }
 }
 

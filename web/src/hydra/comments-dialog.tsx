@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
+import { memo, useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { commentUpdates, groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
+import { commentUpdates, groupComments, orderedComments, sendableComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
 
@@ -47,31 +48,23 @@ const replyLabel = ({ at }: { at?: string }) => at
   )}`
   : 'On an earlier reply'
 
-export function CommentsDialog({
-  comments,
+export const CommentsDialog = memo(function CommentsDialog({
+  drafts,
   shown,
-  setComments,
   show,
   close,
 }: {
-  comments: ChatComment[]
+  drafts: ChatDrafts
   shown: string[]
-  setComments({ items }: { items: ChatComment[] }): void
   show({ id }: { id: string }): void
   close(): void
 }) {
-  // A note's cleanup can run after this render, as when the dialog closes mid-upload, so edits use the newest list.
-  const latest = useRef(comments)
-  latest.current = comments
-
-  const write = ({ items }: { items: ChatComment[] }) => {
-    latest.current = items
-    setComments({ items })
-  }
+  const { comments } = useDraftSnapshot({ drafts })
+  const read = () => drafts.read().comments
 
   const updates = commentUpdates({
-    read: () => latest.current,
-    write,
+    read,
+    write: drafts.setComments,
   })
   const listed = comments.filter(comment => shown.includes(comment.id))
   const replies = groupComments({ comments: listed })
@@ -84,8 +77,8 @@ export function CommentsDialog({
   ]))
 
   const finish = () => {
-    write({
-      items: latest.current.filter(comment => !shown.includes(comment.id)
+    drafts.setComments({
+      items: read().filter(comment => !shown.includes(comment.id)
         || sendableComment({ comment })),
     })
     close()
@@ -101,14 +94,13 @@ export function CommentsDialog({
               <MessageComment
                 key={comment.id}
                 comment={comment}
+                drafts={drafts}
                 number={numbers.get(comment.id)!}
-                change={({ text }) => updates.change({
-                  id: comment.id,
-                  text,
-                })}
                 remove={() => updates.remove({ id: comment.id })}
                 release={() => {
-                  if (!sendableComment({ comment })) {
+                  const current = read().find(item => item.id === comment.id)
+
+                  if (current && !sendableComment({ comment: current })) {
                     updates.remove({ id: comment.id })
                   }
                 }}
@@ -124,4 +116,4 @@ export function CommentsDialog({
       </footer>
     </Dialog>
   )
-}
+})

@@ -1,3 +1,4 @@
+import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
 import { AxiError } from 'axi-sdk-js'
 import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize } from './cli-support.ts'
@@ -197,6 +198,7 @@ export const undo = guard({
 export const commands = supervisedCommands({
   commands: {
     debug,
+    page,
     logs,
     apply,
     layout,

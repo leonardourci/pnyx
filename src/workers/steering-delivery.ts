@@ -121,9 +121,12 @@ export function createSteeringDelivery({
   const markRead = ({
     card: ref,
     ids,
+    taken,
   }: {
     card: string
     ids: string[]
+    // When the agent's harness took them, by its own record.
+    taken?: string
   }) => note({
     fn: ({ writer }) => {
       const card = writer.state.cards[ref]
@@ -141,7 +144,7 @@ export function createSteeringDelivery({
           ref: card.id,
           id: message.id,
           ack: {
-            at: at(),
+            at: taken ?? at(),
             actor: worker,
             claim,
             outcome: 'read',

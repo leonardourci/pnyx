@@ -1,3 +1,5 @@
+import { CommandFailure } from '#web-shared/pending-intents.ts'
+import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraChatQueue } from '#hydra/chat-queue.ts'
@@ -7,6 +9,7 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import { knownCards } from '#tasks/select.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
@@ -23,16 +26,18 @@ import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState } from 'react'
+import { flushSync } from 'react-dom'
 import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { hydraDown,keepStreamedKeys,quoteInto,withTimedRows,type ChatComment } from './chat.ts'
-import { MESSAGE_SCROLL } from './comment-motion.ts'
+import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
+import { MESSAGE_SCROLL, centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { loadEarlierMessages,receivedThread } from './conversation-history.ts'
+import { historyRead, loadEarlierMessages, receiveConversation, retainArgs, stillFailed, type FailedRead, type HistoryMode } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
@@ -42,8 +47,6 @@ import { readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
 import { REDUCED_MOTION } from './streaming.tsx'
 
-// How long after the owner's own input a scroll up still counts as theirs.
-const OWNER_SCROLL_MS = 1000
 // The share of the distance to the bottom that following covers per frame.
 const GLIDE = 0.3
 
@@ -62,6 +65,7 @@ const EMPTY_CHAT_QUEUE: HydraChatQueue = {
   compactInputs: [],
   working: false,
   through: 0,
+  started: [],
 }
 
 // Sends the server has not recorded yet; a confirmed one waits for its message to arrive.
@@ -95,10 +99,7 @@ export function HydraChat({
   notify,
   view,
   save,
-  draft,
-  setDraft,
-  comments,
-  setComments,
+  drafts,
   liveThread,
   queue,
   identity,
@@ -137,11 +138,13 @@ export function HydraChat({
   notify({ text }: { text: string }): void
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
-  draft: string
-  setDraft({ text }: { text: string }): void
-  comments: ChatComment[]
-  setComments({ items }: { items: ChatComment[] }): void
+  drafts: ChatDrafts
 }) {
+  const {
+    text: draft,
+    comments,
+  } = useDraftSnapshot({ drafts })
+  const { setDraft } = drafts
   const waitingButton = useRef<HTMLButtonElement>(null)
 
   useEffect(
@@ -178,13 +181,44 @@ export function HydraChat({
     setAway,
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
+  const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
+  const glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
+  const selectionInHistory = useRef(false)
+  const [
+    selectedHistory,
+    setSelectedHistory,
+  ] = useState(false)
+  useEffect(
+    () => watchHistoryFocus({
+      host: () => content.current?.querySelector('.messages'),
+      changed: ({ selected }) => {
+        selectionInHistory.current = selected
+        setSelectedHistory(selected)
+      },
+    }),
+    [],
+  )
+  // The owner is reading while the chat is away or the messages hold their focus or selection. Handlers read the
+  // refs here; effects check the away and selectedHistory state instead, so they rerun when either changes.
+  const readingNow = () => !chatFollow.following() || selectionInHistory.current
+  const receivePage = ({
+    before,
+    latest,
+  }: {
+    before: ThreadPage | null
+    latest: ThreadPage
+  }) =>
+    receiveConversation({
+      before,
+      latest,
+      reading: readingNow(),
+    })
   const retainedPage = useRef(page)
   useLayoutEffect(
     () => {
@@ -199,25 +233,19 @@ export function HydraChat({
       }
 
       let cancelled = false
-      const args = [HYDRA_CARD]
       const retained = retainedPage.current
-
-      if (retained?.entries.length) {
-        args.push(
-          '--retain',
-          JSON.stringify({
-            session: retained.session,
-            oldest: retained.entries[0]!.id,
-          }),
-        )
-      }
+      const oldest = retained?.entries[0]
+      const args = retained && oldest ? retainArgs({
+        page: retained,
+        oldest,
+      }) : [HYDRA_CARD]
 
       void command({
         name: 'thread',
         args,
       }).then(result => {
         if (!cancelled) {
-          setPage(before => receivedThread({
+          setPage(before => receivePage({
             before,
             latest: result.thread as ThreadPage,
           }))
@@ -243,7 +271,7 @@ export function HydraChat({
   useEffect(
     () => {
       if (liveThread) {
-        setPage(before => receivedThread({
+        setPage(before => receivePage({
           before,
           latest: liveThread,
         }))
@@ -254,11 +282,8 @@ export function HydraChat({
   const chatQueue = queue.chat ?? EMPTY_CHAT_QUEUE
   const held = new Set(chatQueue.held)
   const pending = sending.filter(item => {
-    const deliveredAt = state.eventIds[item.id]
-    const recorded = deliveredAt !== undefined
-    const rendered = (deliveredAt ?? 0) <= (page?.conversation?.through ?? 0)
-
-    return !recorded || !rendered
+    return !page?.conversation?.entries.some(entry =>
+      entry.reference === item.id || entry.id === item.id)
   })
   const {
     compacting,
@@ -439,7 +464,7 @@ export function HydraChat({
   previousEntries.current = entries
   // The reply to the owner's last send is the first text that streams once the send's own turn started, and was not
   // already streaming when it was sent.
-  const sendTurn = lastSend.current !== undefined && `${lastSend.current}:hosted` in state.eventIds
+  const sendTurn = lastSend.current !== undefined && chatQueue.started.includes(lastSend.current)
   const newReply = sendTurn && entries.some(entry => entry.streaming && entry.text
     && !streamingAtSend.current.has(entry.id))
   useLayoutEffect(() => {
@@ -467,12 +492,134 @@ export function HydraChat({
     [card?.agent?.sessionId],
   )
 
-  const loadEarlier = async ({ until }: { until?: string }) => {
+  const historyRequest = useRef<{
+    id: number
+    mode: HistoryMode
+  } | null>(null)
+  const historyGeneration = useRef(0)
+  // The server keeps only the recent pages, or a read asking it to is on its way.
+  const serverTrims = () => page?.recent === true || liveThread?.recent === true
+    || historyRequest.current?.mode === 'recent'
+  const failedHistory = useRef<FailedRead>(undefined)
+  useEffect(
+    () => {
+      failedHistory.current = stillFailed({
+        failed: failedHistory.current,
+        away,
+        selected: selectedHistory,
+        connected,
+      })
+
+      if (!connected || !page || loadingEarlier) {
+        return
+      }
+
+      const mode = historyRead({
+        page,
+        reading: away || selectedHistory,
+        serverTrims: serverTrims(),
+        pending: historyRequest.current?.mode,
+        failed: failedHistory.current?.mode,
+      })
+
+      if (!mode) {
+        return
+      }
+
+      const id = ++historyGeneration.current
+      historyRequest.current = {
+        id,
+        mode,
+      }
+      const session = threadSession.current
+
+      const recentArgs = [
+        HYDRA_CARD,
+        '--recent',
+      ]
+      // A retaining read only comes for a page that holds entries.
+      const oldest = page.entries[0]
+      const args = mode === 'retain' && oldest ? retainArgs({
+        page,
+        oldest,
+      }) : recentArgs
+
+      const read = async () => {
+        try {
+          const result = await command({
+            name: 'thread',
+            args,
+          })
+
+          const current = historyRequest.current?.id === id
+          const reading = readingNow()
+
+          if (threadSession.current === session && current && (mode !== 'recent' || !reading)) {
+            const latest = result.thread as ThreadPage
+            setPage(before => receivePage({
+              before,
+              latest,
+            }))
+          }
+        } catch (error) {
+          if (!(error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED')) {
+            failedHistory.current = {
+              mode,
+              away,
+              selected: selectedHistory,
+              connected,
+            }
+            notify({ text: (error as Error).message })
+          }
+        } finally {
+          if (historyRequest.current?.id === id) {
+            historyRequest.current = null
+          }
+        }
+      }
+
+      read()
+    },
+    [
+      connected,
+      page,
+      away,
+      selectedHistory,
+      liveThread,
+      loadingEarlier,
+      command,
+    ],
+  )
+
+  const loadEarlier = async ({
+    until,
+    message,
+  }: {
+    until?: string
+    message?: string
+  }) => {
+    stopFollowing()
     const session = threadSession.current
+    let current = page
+
+    const oldest = page?.entries[0]
+
+    if (page && oldest && serverTrims()) {
+      const restored = await command({
+        name: 'thread',
+        args: retainArgs({
+          page,
+          oldest,
+        }),
+      })
+      current = restored.thread as ThreadPage
+    }
+
     const earlier = await loadEarlierMessages({
-      past: page,
-      cursor: olderCursor,
+      past: current,
+      cursor: current?.older,
       until,
+      message,
       load: async ({ before }) => {
         const result = await command({
           name: 'thread',
@@ -488,19 +635,37 @@ export function HydraChat({
 
     if (threadSession.current === session) {
       if (earlier) {
-        setPage(before => receivedThread({
+        // The source row must be committed before its caller reads the note and passage from the DOM.
+        flushSync(() => setPage(before => receivePage({
           before,
           latest: earlier,
-        }))
+        })))
       }
     }
   }
 
+  const loadComment = async ({ comment }: { comment: ChatComment }) => {
+    stopFollowing()
+    const selector = `[data-comment-id="${CSS.escape(comment.id)}"] textarea`
+
+    if (content.current?.querySelector(selector)) {
+      return
+    }
+
+    setLoadingEarlier(true)
+
+    try {
+      await loadEarlier({
+        until: comment.at,
+        message: comment.messageId,
+      })
+    } finally {
+      setLoadingEarlier(false)
+    }
+  }
+
   const jumpDecision = async ({ decision }: { decision: ChatDecision }) => {
-    // The owner asked for this scroll: a glide still easing a reply to the bottom must not undo it.
-    ownerScroll()
-    follow.current = false
-    setAway(true)
+    stopFollowing()
     setLoadingEarlier(true)
 
     try {
@@ -513,11 +678,11 @@ export function HydraChat({
 
       requestAnimationFrame(() => {
         const question = target()
-        question?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        })
-        question?.querySelector<HTMLElement>('.ask button:not(:disabled), .ask textarea')?.focus()
+
+        if (question) {
+          centerMessage({ element: question })
+          question.querySelector<HTMLElement>('.ask button:not(:disabled), .ask textarea')?.focus({ preventScroll: true })
+        }
       })
     } catch (error) {
       notify({ text: (error as Error).message })
@@ -528,8 +693,16 @@ export function HydraChat({
 
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && inFlight.length > 0)
+  const lookupState = useRef(state)
+  lookupState.current = state
+  const lookup = useMemo(
+    () => pnyxLookup({ state: () => lookupState.current }),
+    [
+      state.config,
+      state.view?.customColumns,
+    ],
+  )
   // A send counts from the owner's message until the server says the turn began.
-  const lookup = pnyxLookup({ state })
   const since = (working ? card?.workingSince : undefined)
     ?? inFlight.at(-1)?.at ?? null
 
@@ -546,7 +719,7 @@ export function HydraChat({
     const element = stream.current
     glide.current = 0
 
-    if (!element || !follow.current) {
+    if (!element || !chatFollow.following()) {
       return
     }
 
@@ -558,10 +731,26 @@ export function HydraChat({
     }
   }
 
-  const ownerScroll = () => {
-    scrolledAt.current = performance.now()
+  const stopGlide = () => {
     cancelAnimationFrame(glide.current)
     glide.current = 0
+  }
+
+  const ownerScroll = () => {
+    chatFollow.input({ at: performance.now() })
+    stopGlide()
+  }
+
+  const stopFollowing = () => {
+    chatFollow.stop()
+    stopGlide()
+  }
+
+  const expandRow = ({ target }: { target: EventTarget }) => {
+    if (target instanceof Element && target.closest('summary')) {
+      chatFollow.expand({ at: performance.now() })
+      stopGlide()
+    }
   }
 
   useLayoutEffect(
@@ -580,7 +769,7 @@ export function HydraChat({
           `${(scroller.offsetWidth - scroller.clientWidth) / 2}px`,
         )
 
-        if (!follow.current || glide.current) {
+        if (!chatFollow.following() || glide.current) {
           return
         }
 
@@ -595,9 +784,10 @@ export function HydraChat({
       })
       observer.observe(element)
       observer.observe(scroller)
+
       scroller.addEventListener(
         MESSAGE_SCROLL,
-        ownerScroll,
+        stopFollowing,
       )
 
       return () => {
@@ -605,7 +795,7 @@ export function HydraChat({
         cancelAnimationFrame(glide.current)
         scroller.removeEventListener(
           MESSAGE_SCROLL,
-          ownerScroll,
+          stopFollowing,
         )
       }
     },
@@ -673,7 +863,7 @@ export function HydraChat({
         })
       }
 
-      follow.current = true; setAway(false)
+      chatFollow.resume()
       streamingAtSend.current = new Set(previousEntries.current.filter(entry => entry.streaming)
         .map(entry => entry.id))
       lastSend.current = id
@@ -757,14 +947,24 @@ export function HydraChat({
     actions: taskActions,
     connected,
   })
+  const previousLeads = useRef<ReturnType<typeof answerLeads> | undefined>(undefined)
+  const leadCards = knownCards({ state })
   const leads = useMemo(
-    () => answerLeads({
-      messages: state.hydraMessages,
-      cards: state.cards,
-    }),
+    () => {
+      const refs = new Set(conversation?.entries.map(entry => entry.reference) ?? [])
+      const next = answerLeads({
+        messages: state.hydraMessages?.filter(message => refs.has(message.id)),
+        cards: leadCards,
+        previous: previousLeads.current,
+      })
+      previousLeads.current = next
+
+      return next
+    },
     [
       state.hydraMessages,
-      state.cards,
+      leadCards,
+      conversation?.entries,
     ],
   )
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
@@ -803,16 +1003,10 @@ export function HydraChat({
           onTouchMove={ownerScroll}
           onKeyDown={event => {
             ownerScroll()
-
-            if (event.target instanceof Element && event.target.closest('summary')) {
-              follow.current = false
-            }
+            expandRow({ target: event.target })
           }}
           onPointerDown={event => {
-            if (event.target instanceof Element && event.target.closest('summary')) {
-              follow.current = false
-              ownerScroll()
-            }
+            expandRow({ target: event.target })
 
             if (event.target === event.currentTarget) {
               ownerScroll()
@@ -825,18 +1019,11 @@ export function HydraChat({
           }}
           onScroll={e => {
             const el = e.currentTarget
-
-            // Any way to the bottom pins; only the owner's own upward scroll unpins, never one the browser makes.
-            const owner = performance.now() - scrolledAt.current < OWNER_SCROLL_MS
-
-            if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
-              follow.current = true
-            } else if (owner && el.scrollTop < lastTop.current) {
-              follow.current = false
-            }
-
-            lastTop.current = el.scrollTop
-            setAway(!follow.current)
+            chatFollow.scrolled({
+              at: performance.now(),
+              top: el.scrollTop,
+              remaining: el.scrollHeight - el.scrollTop - el.clientHeight,
+            })
           }}
         >
           <div className="hydra-stream" ref={content}>
@@ -872,10 +1059,10 @@ export function HydraChat({
               taskReferences={references}
               answerLeads={leads}
               comments={comments}
-              setComments={setComments}
+              drafts={drafts}
               quote={({ text }) => setDraft({
                 text: quoteInto({
-                  draft,
+                  draft: drafts.read().text,
                   text,
                 }),
               })}
@@ -939,7 +1126,7 @@ export function HydraChat({
               aria-label="Jump to latest"
               title="Jump to latest"
               onClick={() => {
-                follow.current = true; setAway(false)
+                chatFollow.resume()
                 stream.current?.scrollTo({
                   top: stream.current.scrollHeight,
                   behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -991,6 +1178,7 @@ export function HydraChat({
       />
       <Composer
         hydraId={hydraId}
+        loadComment={loadComment}
         compacting={compactionRunning}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
@@ -1003,10 +1191,7 @@ export function HydraChat({
         }}
         card={HYDRA_CARD}
         title="Hydra"
-        draft={draft}
-        setDraft={setDraft}
-        comments={comments}
-        setComments={setComments}
+        drafts={drafts}
         thread={route}
         command={deliver}
         notify={notify}
