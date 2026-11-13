@@ -6,7 +6,7 @@ import { cardSessionId } from '#workers/session-attachments.ts'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { lookupMessages } from './message-lookup.ts'
-import { hydraEntries, sessionEntries, threadPath, type ThreadEntry } from './transcripts-read.ts'
+import { hydraEntries, sessionEntries, threadPath, type SessionEntry } from './transcripts-read.ts'
 
 export const MESSAGE_LOOKUP_OPTIONS: Options = {
   id: { type: 'string' },
@@ -28,7 +28,7 @@ function threadEntries({
 }: {
   state: HydraState
   card: string
-}): ThreadEntry[] {
+}): SessionEntry[] {
   if (card === HYDRA_CARD) {
     return hydraEntries({ state })
   }

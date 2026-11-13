@@ -1,5 +1,5 @@
 import type { HydraEvent } from '#app/model.ts'
-import type { ThreadEntry } from '#hydra/transcripts-read.ts'
+import type { SessionEntry } from '#hydra/transcripts-read.ts'
 
 // Nine native Hydra replies, each a second after one log event that gives it its seq.
 export const lookupEvents: HydraEvent[] = Array.from(
@@ -22,7 +22,7 @@ export const lookupEvents: HydraEvent[] = Array.from(
   }),
 )
 
-export const lookupEntries: ThreadEntry[] = lookupEvents.map((
+export const lookupEntries: SessionEntry[] = lookupEvents.map((
   event,
   index,
 ) => ({

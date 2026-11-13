@@ -236,6 +236,11 @@ export function threadPath({ card }: { card: Pick<Card, 'agent'> }): string | un
   ].includes(card.agent!.provider) ? path : undefined
 }
 
+export type SessionEntry = ThreadEntry & {
+  reference: string
+  session: string
+}
+
 // One session's whole native transcript, each entry with the reference its thread page gives it.
 export function sessionEntries({
   path,
@@ -245,7 +250,7 @@ export function sessionEntries({
   path: string
   session: string
   boundaries: boolean
-}): ThreadEntry[] {
+}): SessionEntry[] {
   const lines = readTranscript({
     cursor: {
       source: path,
@@ -269,8 +274,9 @@ export function sessionEntries({
   })))
 }
 
-// Every session Hydra has had, read from their native transcripts; the card holds the current session's latest agent.
-export function hydraEntries({ state }: { state: HydraState }): ThreadEntry[] {
+// Every session Hydra has had, read from their native transcripts; the card holds the
+// current session's latest agent.
+export function hydraEntries({ state }: { state: HydraState }): SessionEntry[] {
   const agents = new Map(Object.values(state.sessions ?? {})
     .filter(session => session.originCardId === HYDRA_CARD && !session.agent.agentId)
     .map(session => [
@@ -515,8 +521,9 @@ function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
   return log.events
 }
 
-// A moved task's owner replies stay in each Hydra it passed through. They are numbered in order across
-// those Hydras, so the reply cursor stays one increasing number; a task that never moved keeps its seqs.
+// A moved task's owner replies stay in each Hydra it passed through. They are numbered in
+// order across those Hydras, so the reply cursor stays one increasing number; a task that
+// never moved keeps its seqs.
 function threadEvents({
   hydraId,
   card,
@@ -527,7 +534,8 @@ function threadEvents({
   const history = movedHistory({
     hydraId,
     task: card.id,
-    matches: ({ event }) => event.type === 'card.replied' && Boolean(event.data.text) && event.cardId === card.id,
+    matches: ({ event }) => event.type === 'card.replied' && Boolean(event.data.text)
+      && event.cardId === card.id,
   })
 
   if (!history.some(entry => entry.hydra !== hydraId)) {

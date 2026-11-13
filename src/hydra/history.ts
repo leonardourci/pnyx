@@ -4,7 +4,7 @@ import { HydraError } from '#store/errors.ts'
 import { countTokens } from '#workers/token-count.ts'
 import { redact } from '#oracle/text.ts'
 import type { HydraOperation } from './model.ts'
-import type { ThreadEntry } from './transcripts-read.ts'
+import type { SessionEntry, ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
 import { HISTORY_BUDGET } from './history-command.ts'
@@ -252,15 +252,15 @@ export function inscribeOperation({
 // A native entry has a time but no log position: it takes the seq of the last event at or
 // before its time, so milestones and snapshots bound it like the events around it. An entry
 // older than the log takes the first seq, and entries between two events share one seq.
-export function placeEntries({
+export function placeEntries<Entry extends ThreadEntry>({
   events,
   entries,
 }: {
   events: HydraEvent[]
-  entries: ThreadEntry[]
+  entries: Entry[]
 }): {
   seq: number
-  entry: ThreadEntry
+  entry: Entry
 }[] {
   // A running maximum keeps the search correct when a clock stepped back between appends.
   let latest = -Infinity
@@ -310,7 +310,7 @@ function historyMessages({
   native,
 }: {
   events: HydraEvent[]
-  native: ThreadEntry[]
+  native: SessionEntry[]
 }): {
   seq: number
   text: string
@@ -323,17 +323,18 @@ function historyMessages({
     entry,
   } of placeEntries({
       events,
-      entries: native.filter(entry => entry.kind === 'message' && entry.role.startsWith('assistant')),
+      entries: native.filter(entry => entry.kind === 'message'
+        && entry.role.startsWith('assistant')),
     })) {
     entries.push({
       ...entry,
-      id: entry.reference!,
+      id: entry.reference,
       messageId: entry.reference,
       part: entry.part ?? 0,
       role: 'Hydra',
     })
     sequences.set(
-      entry.reference!,
+      entry.reference,
       seq,
     )
   }
@@ -364,7 +365,8 @@ function historyMessages({
 
     let entry: ThreadEntry
 
-    if (event.type === 'hydra.message' && event.data.kind !== 'divider' && ownerActor({ actor: event.actor })) {
+    if (event.type === 'hydra.message' && event.data.kind !== 'divider'
+      && ownerActor({ actor: event.actor })) {
       entry = {
         id: event.id,
         kind: 'message',
@@ -435,7 +437,7 @@ export function readHistory({
   state: HydraState
   events: HydraEvent[]
   // Hydra's native transcript entries, which carry no log position of their own.
-  native: ThreadEntry[]
+  native: SessionEntry[]
   since: string
   after?: string
   through?: number

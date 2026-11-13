@@ -4,7 +4,7 @@ import { redact } from '#oracle/text.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { joinMessageParts, placeEntries } from './history.ts'
 import { reportActor } from './hydra.ts'
-import type { ThreadEntry } from './transcripts-read.ts'
+import type { SessionEntry, ThreadEntry } from './transcripts-read.ts'
 
 export interface MessageRecord {
   id: string
@@ -23,7 +23,7 @@ export function messageRecords({
   card = HYDRA_CARD,
 }: {
   events: HydraEvent[]
-  entries?: ThreadEntry[]
+  entries?: SessionEntry[]
   card?: string
 }): MessageRecord[] {
   const groups = new Map<string, ThreadEntry[]>()

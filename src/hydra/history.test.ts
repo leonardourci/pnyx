@@ -450,6 +450,7 @@ test(
     }).map(entry => ({
       ...entry,
       reference: `fixture:${entry.id}`,
+      session: 'fixture',
     })))
     const state = replay({
       state: emptyHydra(),

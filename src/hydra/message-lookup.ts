@@ -4,7 +4,7 @@ import { countTokens } from '#workers/token-count.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { HISTORY_BUDGET } from './history.ts'
 import { messageRecords, type MessageRecord } from './message-records.ts'
-import type { ThreadEntry } from './transcripts-read.ts'
+import type { SessionEntry } from './transcripts-read.ts'
 
 const MAX_CURSOR_LENGTH = 4096
 export const MESSAGE_PAGE_BYTES = 20000
@@ -136,7 +136,7 @@ export function lookupMessages({
   card?: string
   events: HydraEvent[]
   // The thread's native transcript entries, with their references.
-  entries: ThreadEntry[]
+  entries: SessionEntry[]
   snapshot: number
   selection?: MessageSelection
 }) {
