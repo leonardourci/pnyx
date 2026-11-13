@@ -285,7 +285,7 @@ test(
 )
 
 test(
-  'compactions stay one operation through late statuses and a locked writer, fail at their deadline and hold input until the last ends',
+  'compactions stay one operation through late statuses, fail at their deadline and hold input until the last ends',
   async t => {
     assert.match(
       await runFixture({
