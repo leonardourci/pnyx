@@ -1099,6 +1099,24 @@ test(
       s.state().config?.hydra.session,
       `claude-code:${first.id}`,
     )
+    // A turn in the session already configured marks its delivery without writing the configuration again.
+    assert.deepEqual(
+      s.events().filter(e => e.id === 'first:hosted' || e.id === 'second:hosted')
+        .map(e => [
+          e.id,
+          e.type,
+        ]),
+      [
+        [
+          'first:hosted',
+          'board.configured',
+        ],
+        [
+          'second:hosted',
+          'hydra.delivered',
+        ],
+      ],
+    )
     assert.equal(
       s.received({ cwd: first.cwd }).filter(text => text.endsWith('Plan the release')).length,
       1,
