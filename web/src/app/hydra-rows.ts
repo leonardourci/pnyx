@@ -33,6 +33,14 @@ function stored<Value>({
   )) ? [] : undefined
 }
 
+// Each list a card relates arrives newest first, so the card puts it back oldest first, as the server keeps it.
+function inPosition<Row extends { position: number }>({ rows }: { rows: readonly Row[] }): Row[] {
+  return rows.toSorted((
+    a,
+    b,
+  ) => a.position - b.position)
+}
+
 export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
   const cached = built.get(row)
 
@@ -44,16 +52,16 @@ export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
   const card = {
     ...body,
     asks: stored({
-      rows: row.questions.map(question => question.data),
+      rows: inPosition({ rows: row.questions }).map(question => question.data),
       body,
       name: 'asks',
     }),
     statusLog: stored({
-      rows: row.declarations.map(declaration => declaration.data),
+      rows: inPosition({ rows: row.declarations }).map(declaration => declaration.data),
       body,
       name: 'statusLog',
     }),
-    links: row.links.map(link => link.data),
+    links: inPosition({ rows: row.links }).map(link => link.data),
     facts: {
       childWorking: row.child_working,
       waitTitle: row.wait_title ?? undefined,
@@ -77,7 +85,7 @@ export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
     notes: 'notes' in row ? stored({
       body,
       name: 'notes',
-      rows: row.notes.map(({
+      rows: inPosition({ rows: row.notes }).map(({
         id,
         kind,
         source,
@@ -98,7 +106,7 @@ export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
   return card
 }
 
-// A hidden task, for the chips and messages that name it.
+// A hidden task, for the chips, waits, prerequisites and answer leads that read it.
 function referenceCard({ row }: { row: ReferenceRow }): Card {
   const cached = built.get(row)
 
@@ -106,28 +114,15 @@ function referenceCard({ row }: { row: ReferenceRow }): Card {
     return cached
   }
 
-  const card: Card = {
-    id: row.id,
-    key: row.key,
-    title: row.title,
-    column: row.column_id as Card['column'],
-    rank: row.rank ?? undefined,
-    parentId: row.parent_id ?? undefined,
-    project: row.project ?? undefined,
-    kind: row.kind ?? undefined,
-    hidden: row.hidden,
-    automaticTask: row.automatic_task,
-    doneAt: row.done_at ?? undefined,
-    createdSeq: row.created_seq,
-    updatedSeq: row.updated_seq,
-    updatedAt: row.updated_at,
-    revision: 0,
-    workspace: '',
-    tags: [],
-    attention: [],
-    links: [],
-    sourceRefs: [],
-  }
+  const card = {
+    ...row.reference,
+    facts: {
+      childWorking: row.child_working,
+      waitTitle: row.wait_title ?? undefined,
+      unmetPrerequisites: row.unmet_prerequisites,
+      mergeQuestions: {},
+    },
+  } as Card
   built.set(
     row,
     card,

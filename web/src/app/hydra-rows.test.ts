@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { hydraFromRows, type CardRow, type HydraRow, type ReferenceRow } from './hydra-rows.ts'
+import { hydraFromRows, type CardRow, type DetailRow, type HydraRow, type ReferenceRow } from './hydra-rows.ts'
 
 const card = {
   hydra_id: 'h',
@@ -10,12 +10,17 @@ const card = {
   column_id: 'working',
   hidden: false,
   automatic_task: false,
-  open_permissions: 0,
   created_seq: 1,
   updated_seq: 7,
   updated_at: '2026-11-13T00:00:00.000Z',
   child_working: false,
   unmet_prerequisites: [],
+  reference: {
+    id: 'task-1',
+    key: 'ship',
+    title: 'Ship it',
+    column: 'working',
+  },
 }
 
 const boardRow = {
@@ -41,21 +46,39 @@ const boardRow = {
   },
   questions: [
     {
+      position: 2,
       data: {
         id: 'ask-2',
         question: 'Second?',
       },
     },
     {
+      position: 1,
       data: {
         id: 'ask-1',
         question: 'First?',
       },
     },
   ],
-  declarations: [],
+  declarations: [
+    {
+      position: 5,
+      data: {
+        id: 'status-2',
+        state: 'working',
+      },
+    },
+    {
+      position: 4,
+      data: {
+        id: 'status-1',
+        state: 'needs_you',
+      },
+    },
+  ],
   links: [
     {
+      position: 1,
       url: 'https://github.com/o/r/pull/1',
       data: {
         kind: 'github_pr',
@@ -69,6 +92,7 @@ const boardRow = {
       },
     },
     {
+      position: 0,
       url: 'https://github.com/o/r/pull/2',
       data: {
         kind: 'github_pr',
@@ -88,6 +112,15 @@ const boardRow = {
           created_seq: 2,
           updated_seq: 3,
           updated_at: '2026-11-13T00:00:00.000Z',
+          child_working: false,
+          unmet_prerequisites: [],
+          reference: {
+            id: 'task-2',
+            key: 'old',
+            title: 'Old work',
+            column: 'done',
+            hidden: true,
+          },
         },
       },
     },
@@ -137,6 +170,30 @@ const references = [
     key: 'old',
     title: 'Old work',
     hidden: true,
+    wait_title: 'Ship it',
+    reference: {
+      id: 'task-2',
+      key: 'old',
+      title: 'Old work',
+      column: 'done',
+      hidden: true,
+      status: {
+        id: 'status-9',
+        state: 'needs_you',
+        note: 'Pick a name',
+        at: '2026-11-13T00:00:00.000Z',
+        actor: 'agent',
+      },
+      asks: [
+        {
+          id: 'ask-9',
+          audience: 'owner',
+          question: 'Which name?',
+          at: '2026-11-13T00:00:00.000Z',
+          actor: 'agent',
+        },
+      ],
+    },
   },
   {
     ...card,
@@ -176,21 +233,6 @@ test(
       state.cards['task-1']?.brief,
       'Ship the page',
     )
-    assert.deepEqual(
-      state.cards['task-1']?.asks?.map(ask => ask.id),
-      [
-        'ask-2',
-        'ask-1',
-      ],
-    )
-    assert.equal(
-      state.cards['task-1']?.statusLog,
-      undefined,
-    )
-    assert.equal(
-      state.cards['task-1']?.links[0]?.number,
-      1,
-    )
     const decided = state.cards['task-1']?.facts?.mergeQuestions
     assert.equal(
       decided?.['https://github.com/o/r/pull/1']?.card,
@@ -205,9 +247,24 @@ test(
       Object.keys(state.references ?? {}),
       ['task-2'],
     )
+    const hidden = state.references?.['task-2']
     assert.equal(
-      state.references?.['task-2']?.title,
+      hidden?.title,
       'Old work',
+    )
+    assert.equal(
+      hidden?.status?.state,
+      'needs_you',
+      'a hidden task keeps the status its chip shows',
+    )
+    assert.equal(
+      hidden?.asks?.[0]?.question,
+      'Which name?',
+      'a hidden task keeps the questions its answer leads read',
+    )
+    assert.equal(
+      hidden?.facts?.waitTitle,
+      'Ship it',
     )
     assert.deepEqual(
       state.keys,
@@ -216,6 +273,64 @@ test(
         old: 'task-2',
         session: 'session-1',
       },
+    )
+  },
+)
+
+test(
+  'the lists Zero brings newest first read oldest first on the card, as the server keeps them',
+  () => {
+    const opened = {
+      ...boardRow,
+      notes: [
+        {
+          id: 'note-2',
+          position: 1,
+          kind: 'comment',
+          source: 'owner',
+        },
+        {
+          id: 'note-1',
+          position: 0,
+          kind: 'comment',
+          source: 'owner',
+        },
+      ],
+    } as unknown as DetailRow
+    const shown = hydraFromRows({
+      hydra,
+      cards: [boardRow],
+      opened: [opened],
+      references,
+    }).cards['task-1']
+
+    assert.deepEqual(
+      shown?.asks?.map(ask => ask.id),
+      [
+        'ask-1',
+        'ask-2',
+      ],
+    )
+    assert.deepEqual(
+      shown?.statusLog?.map(declaration => declaration.id),
+      [
+        'status-1',
+        'status-2',
+      ],
+    )
+    assert.deepEqual(
+      shown?.links.map(link => link.number),
+      [
+        2,
+        1,
+      ],
+    )
+    assert.deepEqual(
+      shown?.notes?.map(note => note.id),
+      [
+        'note-1',
+        'note-2',
+      ],
     )
   },
 )
@@ -253,6 +368,7 @@ test(
             },
           },
           questions: [],
+          declarations: [],
         } as unknown as CardRow,
       ],
       opened: [],
