@@ -1,5 +1,5 @@
 import { needsRecentThread } from '#hydra/thread-history.ts'
-import { historyRead, receiveConversation, loadEarlierMessages } from './conversation-history.ts'
+import { historyRead, receiveConversation, loadEarlierMessages, stillFailed, type FailedRead } from './conversation-history.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -272,6 +272,54 @@ test(
         },
         reading: true,
         serverTrims: true,
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'a failed window read stays failed until the owner’s reading state or the connection changes',
+  () => {
+    const failed: FailedRead = {
+      mode: 'retain',
+      away: true,
+      selected: false,
+      connected: true,
+    }
+    assert.equal(
+      stillFailed({
+        failed,
+        away: true,
+        selected: false,
+        connected: true,
+      }),
+      failed,
+    )
+    assert.equal(
+      stillFailed({
+        failed,
+        away: false,
+        selected: false,
+        connected: true,
+      }),
+      undefined,
+    )
+    assert.equal(
+      stillFailed({
+        failed,
+        away: true,
+        selected: true,
+        connected: true,
+      }),
+      undefined,
+    )
+    assert.equal(
+      stillFailed({
+        failed,
+        away: true,
+        selected: false,
+        connected: false,
       }),
       undefined,
     )

@@ -37,7 +37,7 @@ import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
 import { MESSAGE_SCROLL, centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { historyRead, loadEarlierMessages, receiveConversation, retainArgs, type HistoryMode } from './conversation-history.ts'
+import { historyRead, loadEarlierMessages, receiveConversation, retainArgs, stillFailed, type FailedRead, type HistoryMode } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
@@ -500,20 +500,16 @@ export function HydraChat({
   // The server keeps only the recent pages, or a read asking it to is on its way.
   const serverTrims = () => page?.recent === true || liveThread?.recent === true
     || historyRequest.current?.mode === 'recent'
-  // A window read that failed waits for the owner's reading state or the connection to change before it retries.
-  const failedHistory = useRef<HistoryMode>(undefined)
+  const failedHistory = useRef<FailedRead>(undefined)
   useEffect(
     () => {
-      failedHistory.current = undefined
-    },
-    [
-      away,
-      selectedHistory,
-      connected,
-    ],
-  )
-  useEffect(
-    () => {
+      failedHistory.current = stillFailed({
+        failed: failedHistory.current,
+        away,
+        selected: selectedHistory,
+        connected,
+      })
+
       if (!connected || !page || loadingEarlier) {
         return
       }
@@ -523,7 +519,7 @@ export function HydraChat({
         reading: away || selectedHistory,
         serverTrims: serverTrims(),
         pending: historyRequest.current?.mode,
-        failed: failedHistory.current,
+        failed: failedHistory.current?.mode,
       })
 
       if (!mode) {
@@ -567,7 +563,12 @@ export function HydraChat({
           }
         } catch (error) {
           if (!(error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED')) {
-            failedHistory.current = mode
+            failedHistory.current = {
+              mode,
+              away,
+              selected: selectedHistory,
+              connected,
+            }
             notify({ text: (error as Error).message })
           }
         } finally {

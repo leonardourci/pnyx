@@ -164,6 +164,32 @@ export function historyRead({
   return mode === pending || mode === failed ? undefined : mode
 }
 
+// A window read that failed, with the owner's reading state and the connection it failed in.
+export interface FailedRead {
+  mode: HistoryMode
+  away: boolean
+  selected: boolean
+  connected: boolean
+}
+
+// A failed window read is not sent again until the owner's reading state or the connection changes.
+export function stillFailed({
+  failed,
+  away,
+  selected,
+  connected,
+}: {
+  failed?: FailedRead
+  away: boolean
+  selected: boolean
+  connected: boolean
+}): FailedRead | undefined {
+  const unchanged = failed?.away === away && failed.selected === selected
+    && failed.connected === connected
+
+  return unchanged ? failed : undefined
+}
+
 // The thread arguments that restore the range a page holds, by its session and oldest entry.
 export function retainArgs({
   page,
