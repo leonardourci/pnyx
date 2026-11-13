@@ -13,6 +13,7 @@ import { pendingPermissions } from '#workers/permission-rules.ts'
 import { agentActivity } from '#workers/activity.ts'
 import type { Touched } from './preimage.ts'
 import { summarize } from './hydra-summary.ts'
+import { updateTasks } from '#tasks/updates.ts'
 
 type Row = Record<string, unknown>
 
@@ -643,6 +644,12 @@ export function eventStatements({
     expectRows: 1,
   }
 
+  const updates = events.flatMap(event => updateTasks({ event }).map(card => ({
+    hydra_id: hydraId,
+    card_id: card,
+    seq: event.seq,
+  })))
+
   return [
     claim,
     ...events.length ? [
@@ -661,6 +668,13 @@ export function eventStatements({
             data: event,
           }))),
         ],
+      },
+    ] : [],
+    ...updates.length ? [
+      {
+        text: `insert into card_updates (hydra_id, card_id, seq)
+          select hydra_id, card_id, seq from json_populate_recordset(null::card_updates, $1::json)`,
+        values: [JSON.stringify(updates)],
       },
     ] : [],
   ]

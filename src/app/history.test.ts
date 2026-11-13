@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import type { HydraEvent } from './model.ts'
 import { history } from './cli.ts'
 import { withWriter } from './writer.ts'
+import { query } from '#store/postgres.ts'
 
 const AT = '2026-10-13T10:00:00Z'
 const NOTES = 60
@@ -234,6 +235,77 @@ test(
     assert.throws(
       () => page({ card: 'nope' }),
       { code: 'NOT_FOUND' },
+    )
+  },
+)
+
+test(
+  'the Updates rows the page reads through Zero list each card\'s events as history --updates does',
+  () => {
+    fresh()
+    append({
+      events: [
+        pushed({
+          cardId: 'c1',
+          activity: 'working',
+        }),
+        pushed({
+          cardId: 'c2',
+          activity: 'working',
+        }),
+        noted({ text: 'Only the first task' }),
+        {
+          v: 1,
+          seq: ++seq,
+          id: `evt_${seq}`,
+          at: AT,
+          actor: 'worker:c1',
+          cardId: '$hydra',
+          type: 'hydra.message',
+          // The first task's worker reporting to Hydra, which Updates shows, naming the second task with a chip.
+          data: {
+            id: 'message-both',
+            task: 'c1',
+            action: 'worker',
+            hydra: 'hydra',
+            text: 'Done, and [@c2](pnyx-task:c2) waits on this',
+          },
+        } as HydraEvent,
+      ],
+    })
+
+    for (const card of [
+      'c1',
+      'c2',
+    ]) {
+      const listed = page({ card }).events
+      assert.ok(Array.isArray(listed))
+      const [rows] = query({
+        statements: [
+          {
+            text: 'select seq from card_updates where hydra_id = \'default\' and card_id = $1 order by seq desc',
+            values: [card],
+          },
+        ],
+      }) as { seq: string }[][]
+      assert.deepEqual(
+        rows!.map(row => Number(row.seq)),
+        listed.map(event => event.seq),
+        card,
+      )
+    }
+
+    const [shared] = query({
+      statements: [{ text: `select card_id from card_updates where hydra_id = 'default' and seq = ${seq} order by card_id` }],
+    }) as { card_id: string }[][]
+    assert.deepEqual(
+      shared!.map(row => row.card_id),
+      [
+        '$hydra',
+        'c1',
+        'c2',
+      ],
+      'a message is listed by its own card, its task and the task it mentions',
     )
   },
 )

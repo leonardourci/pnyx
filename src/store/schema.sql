@@ -51,7 +51,15 @@ create table events (
   unique (hydra_id, id)
 );
 
-create index events_card on events (hydra_id, card_id, seq);
+-- Each card's Updates tab: the events it lists, which can be listed by several cards, as a message to Hydra is by
+-- its task and every task it mentions.
+create table card_updates (
+  hydra_id text not null,
+  card_id text not null,
+  seq bigint not null,
+  primary key (hydra_id, card_id, seq),
+  foreign key (hydra_id, seq) references events (hydra_id, seq) on delete cascade
+);
 
 -- An applied plan's receipt under its id, so the same plan sent again returns it instead of applying twice.
 create table transactions (
