@@ -506,6 +506,7 @@ test(
           'pull:done',
           'install:done',
           'build:done',
+          'data:done',
           'restart:done',
         ],
       )
@@ -598,7 +599,14 @@ test(
 )
 
 // The upgrade status the server sends a page that connects.
-const hint = async ({ s }: { s: Scenario }) => {
+// The upgrade status from a check made after `after`: a restarted server first sends the check it saved before.
+const hint = async ({
+  s,
+  after,
+}: {
+  s: Scenario
+  after: string
+}) => {
   const ws = new WebSocket(`ws://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/ws?token=${localToken()}`)
 
   try {
@@ -620,7 +628,7 @@ const hint = async ({ s }: { s: Scenario }) => {
           },
         )
 
-        return () => status
+        return () => status && status.checkedAt >= after && status
       })(),
     })
   } finally {
@@ -632,9 +640,13 @@ test(
   'the page hears of an upgrade only when origin main is ahead',
   async () => {
     const s = await pnyx.scenario()
+    let restarted = new Date().toISOString()
     await pnyx.restart()
     assert.equal(
-      (await hint({ s })).available,
+      (await hint({
+        s,
+        after: restarted,
+      })).available,
       false,
     )
 
@@ -642,9 +654,13 @@ test(
       files: { 'build.sh': building({ version: 'three' }) },
       message: 'three',
     })
+    restarted = new Date().toISOString()
     await pnyx.restart()
     assert.equal(
-      (await hint({ s })).available,
+      (await hint({
+        s,
+        after: restarted,
+      })).available,
       true,
     )
   },
