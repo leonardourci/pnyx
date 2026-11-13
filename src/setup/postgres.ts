@@ -3,7 +3,8 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
 import { configuredUrl, homeDatabase, query } from '#store/postgres.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
-import { hydraExists, importLegacy } from '#app/store.ts'
+import { hydraExists, importLegacy, loadHydra } from '#app/store.ts'
+import { recordExitCode } from '#app/request-context.ts'
 import type { Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { saveSettings, shownSettings } from '#settings/store.ts'
@@ -220,25 +221,61 @@ const ready = ({ found }: { found: Server }) => ({
   help: ['Run `pnyx-axi setup check` to see what else is missing'],
 })
 
-// Imports every Hydra still kept in an events.jsonl in a transaction it rolls back, the same way its first read would,
-// without moving any folder, so an upgrade stops before its restart when an import would fail.
+// Imports every Hydra still kept in an events.jsonl in a transaction it rolls back, the same way the server would,
+// without moving any folder, and reads every imported one, which refuses a log an older Pnyx appended to since. An
+// upgrade stops before its restart when any Hydra fails; each failure names its Hydra.
 function checkImports(): Output {
   requireReady({ found: server() })
-  const imported = hydraIds({ migrate: false })
-    .filter(hydraId => !hydraExists({ hydraId }))
-    .filter(hydraId => importLegacy({
-      hydraId,
-      dir: hydraDir({
-        hydraId,
-        migrate: false,
-      }),
-      trial: true,
-    }))
+  const imported: string[] = []
+  const failed: {
+    hydra: string
+    error: string
+  }[] = []
 
-  return {
+  for (const hydraId of hydraIds({ migrate: false })) {
+    try {
+      if (hydraExists({ hydraId })) {
+        loadHydra({
+          hydraId,
+          migrate: false,
+        })
+      } else if (importLegacy({
+        hydraId,
+        dir: hydraDir({
+          hydraId,
+          migrate: false,
+        }),
+        trial: true,
+      })) {
+        imported.push(hydraId)
+      }
+    } catch (error) {
+      if (!(error instanceof HydraError)) {
+        throw error
+      }
+
+      failed.push({
+        hydra: hydraId,
+        error: error.message,
+      })
+    }
+  }
+
+  const checked = {
     postgres: 'ready',
     database: targetDatabase(),
     imported: imported.length ? imported : 'none: no Hydra waiting',
+  }
+
+  if (!failed.length) {
+    return checked
+  }
+
+  recordExitCode({ code: 1 })
+
+  return {
+    ...checked,
+    failed,
   }
 }
 

@@ -1,6 +1,6 @@
 import type { HydraState } from './model.ts'
 import { HydraError } from '#store/errors.ts'
-import { homeScoped, query, storable } from '#store/postgres.ts'
+import { homeDatabase, homeScoped, query, storable } from '#store/postgres.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
 import { emptyHydra } from './reducer.ts'
 import { emptySaved, loadStatements, stateFromRows, type SavedRows } from './rows.ts'
@@ -8,7 +8,7 @@ import { readLog } from './legacy-log.ts'
 import { importHydra } from './import.ts'
 import { log } from './diagnostics.ts'
 import { logPath } from '#store/storage.ts'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 
 export interface HydraSnapshot {
   dir: string
@@ -46,6 +46,13 @@ const rowsOf = ({ hydraId }: { hydraId: string }) => stateFromRows({
   }).slice(1),
 })
 
+// An import that failed, by its log's size and change time, so it is tried again only once the file changes.
+const failedImports = new Map<string, {
+  size: number
+  mtimeMs: number
+  error: unknown
+}>()
+
 // Another process that imported the same log first leaves its rows, which this read then takes.
 function importOnce({
   hydraId,
@@ -54,6 +61,17 @@ function importOnce({
   hydraId: string
   dir: string
 }): boolean {
+  const key = homeScoped({ hydraId })
+  const {
+    size,
+    mtimeMs,
+  } = statSync(logPath({ dir }))
+  const failed = failedImports.get(key)
+
+  if (failed?.size === size && failed.mtimeMs === mtimeMs) {
+    throw failed.error
+  }
+
   try {
     return importLegacy({
       hydraId,
@@ -64,12 +82,21 @@ function importOnce({
       return true
     }
 
+    failedImports.set(
+      key,
+      {
+        size,
+        mtimeMs,
+        error,
+      },
+    )
     throw error
   }
 }
 
-// A Hydra still kept in its events.jsonl moves into Postgres the first time it is read, in one transaction; the file
-// stays as it was, as a backup. A trial imports it in a transaction it rolls back. Returns whether there was one.
+// A Hydra still kept in its events.jsonl moves into Postgres when the server first holds it, in one transaction; the
+// file stays as it was, as a backup, and its size is kept to notice an older Pnyx appending to it. A trial imports it
+// in a transaction it rolls back. Returns whether there was one.
 export function importLegacy({
   hydraId,
   dir,
@@ -90,6 +117,7 @@ export function importLegacy({
     hydraId,
     events: legacy.events,
     transactions: legacy.transactions,
+    bytes: legacy.bytes,
     trial,
   })
 
@@ -104,12 +132,45 @@ export function importLegacy({
   return true
 }
 
+const waitingLog = ({ dir }: { dir: string }) => existsSync(logPath({ dir }))
+
+// An older Pnyx reads events.jsonl and knows nothing of Postgres, so what it appended after the import is not here.
+function requireUnchangedLog({
+  hydraId,
+  dir,
+  importedBytes,
+}: {
+  hydraId: string
+  dir: string
+  importedBytes: number
+}): void {
+  const path = logPath({ dir })
+  const bytes = existsSync(path) ? statSync(path).size : importedBytes
+
+  if (bytes === importedBytes) {
+    return
+  }
+
+  throw new HydraError({
+    message: `events.jsonl of Hydra ${hydraId} changed after it moved to Postgres (${importedBytes} bytes then, ${bytes} now), so an older Pnyx wrote events Postgres does not have`,
+    code: 'LOG_CHANGED',
+    help: [
+      `To keep the log's version, delete the Hydra's rows (\`psql ${homeDatabase()} -c "delete from hydras where id = '${hydraId}'"\`) and run \`pnyx-axi restart\`, which imports the log again`,
+      `To keep Postgres's version, move ${path} aside and run \`pnyx-axi restart\``,
+    ],
+  })
+}
+
+// Only the server imports, when it holds a Hydra; any other read of a Hydra still waiting in its log is refused, so a
+// command never imports while an older server still appends to that log.
 function readHydra({
   hydraId,
   migrate,
+  importing = false,
 }: {
   hydraId: string
   migrate: boolean
+  importing?: boolean
 }): Held {
   const dir = hydraDir({
     hydraId,
@@ -117,11 +178,29 @@ function readHydra({
   })
   let rows = rowsOf({ hydraId })
 
-  if (!rows && importOnce({
-    hydraId,
-    dir,
-  })) {
-    rows = rowsOf({ hydraId })
+  if (!rows && waitingLog({ dir })) {
+    if (!importing) {
+      throw new HydraError({
+        message: `Hydra ${hydraId} is still in its events.jsonl; the server imports it when it starts`,
+        code: 'NOT_IMPORTED',
+        help: ['Run `pnyx-axi restart`, or try again once the server has started'],
+      })
+    }
+
+    if (importOnce({
+      hydraId,
+      dir,
+    })) {
+      rows = rowsOf({ hydraId })
+    }
+  }
+
+  if (rows?.importedBytes !== undefined) {
+    requireUnchangedLog({
+      hydraId,
+      dir,
+      importedBytes: rows.importedBytes,
+    })
   }
 
   return {
@@ -145,6 +224,7 @@ export function holdHydra({
     ...readHydra({
       hydraId,
       migrate: true,
+      importing: true,
     }),
     changed,
   }
@@ -288,12 +368,12 @@ export function hydraExists({ hydraId }: { hydraId: string }): boolean {
 // as one a config write made, does not count.
 export function requireHydra({ hydraId }: { hydraId: string }): void {
   // Checking leaves a Hydra still in boards/ where it is; only a read or write moves it.
-  const waiting = () => existsSync(logPath({
+  const waiting = () => waitingLog({
     dir: hydraDir({
       hydraId,
       migrate: false,
     }),
-  }))
+  })
 
   const known = hydraId === DEFAULT_HYDRA || heldHydra({ hydraId }) || hydraExists({ hydraId })
 

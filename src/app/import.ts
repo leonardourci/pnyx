@@ -37,6 +37,7 @@ export function importHydra({
   events,
   trial = false,
   transactions = [],
+  bytes,
   state = replayOwned({
     state: emptyHydra(),
     events,
@@ -46,6 +47,8 @@ export function importHydra({
   events: readonly HydraEvent[]
   trial?: boolean
   transactions?: readonly Transaction[]
+  // The size of the events.jsonl the events came from.
+  bytes: number
   state?: HydraState
 }): HydraState {
   if (state.seq === 0) {
@@ -81,6 +84,13 @@ export function importHydra({
         digest: transaction.digest,
         receipt: transaction.receipt,
       })),
+      {
+        text: 'update hydras set imported_bytes = $2 where id = $1',
+        values: [
+          hydraId,
+          bytes,
+        ],
+      },
     ],
   })
 

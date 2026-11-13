@@ -238,8 +238,20 @@ test(
   },
 )
 
+// The server holds each Hydra it serves, which imports one still kept in its events.jsonl.
+const serveHydra = ({ hydraId = 'default' }: { hydraId?: string } = {}) => {
+  const release = holdHydra({
+    hydraId,
+    changed: () => undefined,
+  })
+  const { state } = loadHydra({ hydraId })
+  release()
+
+  return state
+}
+
 test(
-  'a Hydra kept in events.jsonl is imported on its first read and the file is left as it was',
+  'a Hydra kept in events.jsonl is imported only when the server holds it, and the file is left as it was',
   () => {
     const dir = seedLog({ stream: 'lifecycle' })
     const before = readFileSync(join(
@@ -247,8 +259,16 @@ test(
       'events.jsonl',
     ))
     const events = readStream({ name: 'lifecycle' })
+    rejects({
+      fn: () => loadHydra({ hydraId: 'default' }),
+      code: 'NOT_IMPORTED',
+    })
+    assert.equal(
+      storedEvents(),
+      0,
+    )
     assert.deepEqual(
-      saved({ value: loadHydra({ hydraId: 'default' }).state }),
+      saved({ value: serveHydra() }),
       saved({
         value: replay({
           state: emptyHydra(),
@@ -273,12 +293,87 @@ test(
 )
 
 test(
+  'an imported Hydra whose events.jsonl an older Pnyx appended to since is refused, naming both sizes',
+  () => {
+    const dir = seedLog({ stream: 'lifecycle' })
+    const path = join(
+      dir,
+      'events.jsonl',
+    )
+    serveHydra()
+    const imported = readFileSync(path).length
+    const [last] = readStream({ name: 'lifecycle' }).slice(-1)
+    fs.appendFileSync(
+      path,
+      `${JSON.stringify({
+        ...last,
+        seq: last!.seq + 1,
+        id: 'written-by-an-older-pnyx',
+      })}\n`,
+    )
+    const grown = readFileSync(path).length
+
+    assert.throws(
+      () => serveHydra(),
+      (error: unknown) => error instanceof HydraError && error.code === 'LOG_CHANGED'
+        && error.message.includes(`${imported} bytes then, ${grown} now`),
+    )
+  },
+)
+
+test(
+  'a failed import is not tried again until its events.jsonl changes',
+  () => {
+    const dir = hydraDir({ hydraId: 'default' })
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    const path = join(
+      dir,
+      'events.jsonl',
+    )
+    writeFileSync(
+      path,
+      '{"v":1,"seq":1,"id":"odd","type":"not.an.event","cardId":"x"}\n',
+    )
+
+    const failure = ({ fn }: { fn: () => unknown }) => {
+      try {
+        fn()
+      } catch (error) {
+        return error
+      }
+
+      assert.fail('the import should fail')
+    }
+
+    const first = failure({ fn: () => serveHydra() })
+    assert.equal(
+      failure({ fn: () => serveHydra() }),
+      first,
+    )
+    copyFileSync(
+      join(
+        STREAMS,
+        'lifecycle.jsonl',
+      ),
+      path,
+    )
+    assert.equal(
+      serveHydra().seq,
+      readStream({ name: 'lifecycle' }).at(-1)!.seq,
+    )
+  },
+)
+
+test(
   'an old log that repeats events and seqs imports as the reducer applied it, and a repeated append is no write',
   () => {
     seedLog({ stream: 'duplicates' })
     const events = readStream({ name: 'duplicates' })
     assert.deepEqual(
-      saved({ value: loadHydra({ hydraId: 'default' }).state }),
+      saved({ value: serveHydra() }),
       saved({
         value: replay({
           state: emptyHydra(),
@@ -838,6 +933,11 @@ test(
       log,
     )
 
+    rejects({
+      fn: () => loadHydra({ hydraId: 'existing' }),
+      code: 'NOT_IMPORTED',
+    })
+    serveHydra({ hydraId: 'existing' })
     const loaded = loadHydra({ hydraId: 'existing' })
     assert.equal(
       loaded.dir,

@@ -686,7 +686,7 @@ export function eventStatements({
 // A Hydra's state as its rows hold it, with the rows themselves so the next write compares against them.
 export function loadStatements({ hydraId }: { hydraId: string }): Statement[] {
   return [
-    'select seq, config from hydras where id = $1',
+    'select seq, config, imported_bytes from hydras where id = $1',
     'select key, value from hydra_values where hydra_id = $1',
     'select data from columns where hydra_id = $1 order by position',
     'select id from cards where hydra_id = $1 order by created_seq, id',
@@ -713,6 +713,8 @@ export function stateFromRows({
 }): {
   state: HydraState
   saved: SavedRows
+  // The size events.jsonl had when this Hydra was imported from it, for a Hydra that was.
+  importedBytes?: number
 } | undefined {
   type Of<T> = (T & Record<string, unknown>)[]
   type CardRow<T> = Of<{
@@ -737,6 +739,7 @@ export function stateFromRows({
     Of<{
       seq: string
       config: Omit<HydraConfig, 'columns'> | null
+      imported_bytes: string | null
     }>,
     Of<{
       key: string
@@ -902,12 +905,17 @@ export function stateFromRows({
     state.eventIds[id] = Number(seq)
   }
 
-  return {
+  const loaded = {
     state,
     saved: rowChanges({
       hydraId,
       state,
       saved: emptySaved(),
     }).next,
+  }
+
+  return head.imported_bytes === null ? loaded : {
+    ...loaded,
+    importedBytes: Number(head.imported_bytes),
   }
 }

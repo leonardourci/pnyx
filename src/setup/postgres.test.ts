@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { hydraDir } from '#app/home-migration.ts'
-import { hydraExists } from '#app/store.ts'
+import { holdHydra, hydraExists } from '#app/store.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import type { Output } from '#app/cli-support.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
@@ -216,28 +216,89 @@ test(
 )
 
 test(
-  'an unreadable log fails the check',
+  'setup postgres --check names every Hydra that would fail, an unreadable log and a log appended to since its import, and exits 1',
   async () => {
-    const path = waitingLog({ dir: hydraDir({ hydraId: 'broken' }) })
-    writeFileSync(
-      path,
-      `${readFileSync(
-        path,
-        'utf8',
-      )}{"v":1,"seq":99,"id":"odd","type":"not.an.event","cardId":"x"}\n`,
+    const broken = waitingLog({ dir: hydraDir({ hydraId: 'broken' }) })
+    appendFileSync(
+      broken,
+      '{"v":1,"seq":99,"id":"odd","type":"not.an.event","cardId":"x"}\n',
     )
+    const grown = waitingLog({ dir: hydraDir({ hydraId: 'grown' }) })
+    holdHydra({
+      hydraId: 'grown',
+      changed: () => undefined,
+    })()
+    appendFileSync(
+      grown,
+      '{"seq":99}\n',
+    )
+    waitingLog({ dir: hydraDir({ hydraId: 'waiting' }) })
 
-    await assert.rejects(
-      () => run({
-        args: [
-          'postgres',
-          '--check',
+    const output = await run({
+      args: [
+        'postgres',
+        '--check',
+      ],
+    })
+
+    assert.deepEqual(
+      [
+        output.imported,
+        output.failed,
+        process.exitCode,
+      ],
+      [
+        ['waiting'],
+        [
+          {
+            hydra: 'broken',
+            error: 'events.jsonl is corrupt at byte 2782',
+          },
+          {
+            hydra: 'grown',
+            error: 'events.jsonl of Hydra grown changed after it moved to Postgres (2782 bytes then, 2793 now), so an older Pnyx wrote events Postgres does not have',
+          },
         ],
-      }),
-      { code: 'LOG_CORRUPT' },
+        1,
+      ],
+    )
+    assert.deepEqual(
+      [
+        hydraExists({ hydraId: 'broken' }),
+        hydraExists({ hydraId: 'waiting' }),
+      ],
+      [
+        false,
+        false,
+      ],
+    )
+  },
+)
+
+test(
+  'setup check on a Hydra still in its events.jsonl lists the import the server makes, and imports nothing',
+  async () => {
+    waitingLog({ dir: hydraDir({ hydraId: 'waiting' }) })
+
+    const output = await setupCheckOutput({ hydraId: 'waiting' }) as { missing: unknown }
+
+    assert.deepEqual(
+      output.missing,
+      [
+        {
+          name: 'import',
+          missing: 'Hydra waiting is still in its events.jsonl; the server imports it when it starts',
+          by: 'owner',
+          fix: 'run `pnyx-axi restart`, then `pnyx-axi setup check`',
+        },
+      ],
     )
     assert.equal(
-      hydraExists({ hydraId: 'broken' }),
+      process.exitCode,
+      1,
+    )
+    assert.equal(
+      hydraExists({ hydraId: 'waiting' }),
       false,
     )
   },

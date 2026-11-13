@@ -9,6 +9,8 @@ import { existsSync, readFileSync } from 'node:fs'
 export interface LogRead {
   events: HydraEvent[]
   transactions: Transaction[]
+  // The file's size as read, torn tail included.
+  bytes: number
 }
 
 // Appended by an older Pnyx's repair command after it closed a torn line with a newline. Readers skip the
@@ -86,6 +88,7 @@ export function readLog({ dir }: { dir: string }): LogRead {
     return {
       events: [],
       transactions: [],
+      bytes: 0,
     }
   }
 
@@ -209,5 +212,6 @@ export function readLog({ dir }: { dir: string }): LogRead {
   return {
     events,
     transactions,
+    bytes: buf.length,
   }
 }
