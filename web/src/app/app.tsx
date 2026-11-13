@@ -23,6 +23,7 @@ import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
+import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useScrollingClass } from '#web-shared/use-scrolling-class.ts'
 import { HydraCard } from '#web-tasks/card.tsx'
 import { Column } from '#web-tasks/column.tsx'
@@ -444,6 +445,51 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
 
+  // Board cards redraw only for their own changes, so what they call keeps its identity.
+  const cardActions = useStableActions({
+    actions: {
+      notify,
+      answer: answerTask,
+      onEdit: cancelOpen,
+      save,
+      recoverSelection: ({ id }: { id: string }) => {
+        const {
+          selected,
+          expanded,
+        } = viewStore.getState()
+
+        if (!selected || !expanded.length) {
+          viewStore.setState({
+            selected: selected ?? id,
+            expanded: expanded.length ? expanded : [id],
+          })
+        }
+      },
+      open: ({
+        id,
+        pointer,
+        focusPanel,
+      }: {
+        id: string
+        pointer?: boolean
+        focusPanel?: boolean
+      }) => {
+        if (expandedIds.includes(id)) {
+          close({ id })
+
+          return Promise.resolve(false)
+        }
+
+        return open({
+          id,
+          pointer,
+          focusPanel,
+        })
+      },
+    },
+  })
+  const cardView = useKept({ value: view })
+
   const answerTaskById = ({ id }: { id: string }) => {
     const card = state.cards[id]
 
@@ -554,7 +600,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
   return (
     <KeyboardProvider
-      prefs={view.keyboard}
+      prefs={cardView.keyboard}
       onAction={keyboard.onAction}
       leaveField={keyboard.leaveField}
       hints={keyboard.hints.length > 0}
@@ -710,6 +756,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                           <div className="kanban" aria-label="Work columns">
                             {columns.map(c => {
                               const items = cards.filter(card => card.column === c.id)
+                              const remembered = keyboard.remembered[c.id]
+                              const rememberedShown = items.some(i => i.id === remembered)
+                              const focusable = rememberedShown ? remembered : items[0]?.id
 
                               return (
                                 <Column
@@ -769,54 +818,21 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     <HydraCard
                                       key={item.key}
                                       card={item}
-                                      state={state}
                                       labelColors={state.labelColors}
                                       doneAfterHours={shared?.doneAfterHours}
-                                      notify={notify}
+                                      notify={cardActions.notify}
                                       latest={latest[item.id]}
                                       action={actions[item.id]}
-                                      answer={answerTask}
+                                      answer={cardActions.answer}
                                       selected={expandedIds.includes(item.id)}
-                                      onEdit={cancelOpen}
-                                      recoverSelection={({ id }) => {
-                                        const {
-                                          selected,
-                                          expanded,
-                                        } = viewStore.getState()
-
-                                        if (!selected || !expanded.length) {
-                                          viewStore.setState({
-                                            selected: selected ?? id,
-                                            expanded: expanded.length ? expanded : [id],
-                                          })
-                                        }
-                                      }}
-                                      view={view}
-                                      save={save}
-                                      open={({
-                                        id,
-                                        pointer,
-                                        focusPanel,
-                                      }) => {
-                                        if (expandedIds.includes(id)) {
-                                          close({ id })
-
-                                          return Promise.resolve(false)
-                                        }
-
-                                        return open({
-                                          id,
-                                          pointer,
-                                          focusPanel,
-                                        })
-                                      }}
+                                      onEdit={cardActions.onEdit}
+                                      recoverSelection={cardActions.recoverSelection}
+                                      view={cardView}
+                                      save={cardActions.save}
+                                      open={cardActions.open}
                                       command={command}
                                       connected={connected}
-                                      tabIndex={
-                                        (items.some(i => i.id === keyboard.remembered[c.id])
-                                          ? keyboard.remembered[c.id]
-                                          : items[0]?.id) === item.id ? 0 : -1
-                                      }
+                                      tabIndex={focusable === item.id ? 0 : -1}
                                     >
                                       {expandedIds.includes(item.id) && (
                                         <Detail
