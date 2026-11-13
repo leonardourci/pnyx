@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { test, type TestContext } from 'node:test'
 import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
-import type { HydraEvent } from './model.ts'
+import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
@@ -12,6 +12,7 @@ import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } f
 import { usageFor } from '#workers/usage.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
+import type { LatestMessage } from '#hydra/transcripts-read.ts'
 
 test(
   'state, working status, actions and Hydra lists recover after drain without another update',
@@ -713,6 +714,68 @@ test(
   },
 )
 
+// One Hydra's tabs over a state the test changes, with one open tab that records every message it receives.
+function openTab({
+  t,
+  state,
+  recent = () => [],
+  latest = {},
+}: {
+  t: TestContext
+  state(): HydraState
+  recent?(): HydraEvent[]
+  latest?: Record<string, LatestMessage>
+}) {
+  const tabs = createServerClients({
+    hydraId: 'default',
+    state,
+    recent,
+    agents: () => ({
+      queue: () => ({
+        waiting: [],
+        reading: [],
+      }),
+      usageViews: () => ({}),
+    }),
+    threadSubscriptions: [],
+    bindThread() {},
+    refreshThread() {},
+    feed: () => ({
+      latest,
+      actions: {},
+    }),
+  })
+  t.after(() => tabs.close())
+  const received: ServerMessage[] = []
+  const client: HydraClient = {
+    OPEN: 1,
+    readyState: 1,
+    bufferedAmount: 0,
+    send({ message }) {
+      received.push(message)
+    },
+    terminate() {},
+  }
+  tabs.clients.add(client)
+
+  return {
+    tabs,
+    client,
+    received,
+  }
+}
+
+const reduced = ({ events }: { events: HydraEvent[] }) => events.reduce(
+  (
+    state,
+    event,
+  ) => reduce({
+    state,
+    event,
+  }),
+  emptyHydra(),
+)
+
 test(
   'a card another event brings back reaches the page with its last reply, and a column change sends a snapshot',
   t => {
@@ -721,71 +784,59 @@ test(
       at: '2026-11-12T00:00:00Z',
       actor: 'owner',
     }
-    let state = emptyHydra()
-
-    for (const [
-      seq,
-      id,
-    ] of [
-        'returning',
-        'kept',
-      ].entries()) {
-      state = reduce({
-        state,
-        event: {
+    let state = reduced({
+      events: [
+        {
           ...base,
-          id,
-          seq: seq + 1,
-          cardId: id,
+          id: 'returning',
+          seq: 1,
+          cardId: 'returning',
           type: 'task.created',
           data: {
-            key: id,
-            title: id,
+            key: 'returning',
+            title: 'returning',
             column: 'done',
           },
         },
-      })
+        {
+          ...base,
+          id: 'kept',
+          seq: 2,
+          cardId: 'kept',
+          type: 'task.created',
+          data: {
+            key: 'kept',
+            title: 'kept',
+            column: 'done',
+          },
+        },
+      ],
+    })
+
+    for (const id of [
+      'returning',
+      'kept',
+    ]) {
       state.cards[id]!.hidden = true
       state.cards[id]!.expired = true
     }
 
     const recent: HydraEvent[] = []
-    const tabs = createServerClients({
-      hydraId: 'default',
+    const {
+      tabs,
+      client,
+      received,
+    } = openTab({
+      t,
       state: () => state,
       recent: () => recent,
-      agents: () => ({
-        queue: () => ({
-          waiting: [],
-          reading: [],
-        }),
-        usageViews: () => ({}),
-      }),
-      threadSubscriptions: [],
-      bindThread() {},
-      refreshThread() {},
-      feed: () => ({
-        latest: {
-          returning: {
-            role: 'assistant',
-            text: 'Last reply before hiding',
-          },
+      latest: {
+        returning: {
+          role: 'assistant',
+          text: 'Last reply before hiding',
         },
-        actions: {},
-      }),
-    })
-    t.after(() => tabs.close())
-    const received: ServerMessage[] = []
-    const client: HydraClient = {
-      OPEN: 1,
-      readyState: 1,
-      bufferedAmount: 0,
-      send({ message }) {
-        received.push(message)
       },
-      terminate() {},
-    }
-    tabs.clients.add(client)
+    })
     const moved: HydraEvent = {
       ...base,
       id: 'moved',
@@ -863,65 +914,46 @@ test(
 test(
   'opening a live card sends no snapshot; opening or releasing a hidden one does',
   t => {
-    let state = emptyHydra()
-
-    for (const [
-      seq,
-      id,
-    ] of [
-        'live',
-        'gone',
-      ].entries()) {
-      state = reduce({
-        state,
-        event: {
-          v: 1,
-          id,
-          seq: seq + 1,
-          at: '2026-11-12T00:00:00Z',
-          actor: 'owner',
-          cardId: id,
+    const base = {
+      v: 1 as const,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'owner',
+    }
+    const state = reduced({
+      events: [
+        {
+          ...base,
+          id: 'live',
+          seq: 1,
+          cardId: 'live',
           type: 'task.created',
           data: {
-            key: id,
-            title: id,
+            key: 'live',
+            title: 'live',
           },
         },
-      })
-    }
-
-    state.cards.gone!.hidden = true
-    const tabs = createServerClients({
-      hydraId: 'default',
-      state: () => state,
-      recent: () => [],
-      agents: () => ({
-        queue: () => ({
-          waiting: [],
-          reading: [],
-        }),
-        usageViews: () => ({}),
-      }),
-      threadSubscriptions: [],
-      bindThread() {},
-      refreshThread() {},
-      feed: () => ({
-        latest: {},
-        actions: {},
-      }),
+        {
+          ...base,
+          id: 'gone',
+          seq: 2,
+          cardId: 'gone',
+          type: 'task.created',
+          data: {
+            key: 'gone',
+            title: 'gone',
+          },
+        },
+      ],
     })
-    t.after(() => tabs.close())
-    const received: ServerMessage[] = []
-    const client: HydraClient = {
-      OPEN: 1,
-      readyState: 1,
-      bufferedAmount: 0,
-      send({ message }) {
-        received.push(message)
-      },
-      terminate() {},
-    }
-    tabs.clients.add(client)
+    state.cards.gone!.hidden = true
+    const {
+      tabs,
+      client,
+      received,
+    } = openTab({
+      t,
+      state: () => state,
+    })
 
     const snapshots = ({ cards }: { cards: string[] }) => {
       received.length = 0
