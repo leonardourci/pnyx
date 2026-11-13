@@ -366,6 +366,7 @@ test(
       lines,
     })
     const stringify = JSON.stringify
+    // eslint-disable-next-line pnyx/object-params -- JSON.stringify owns this signature.
     JSON.stringify = ((...args: Parameters<typeof JSON.stringify>) => {
       const text = stringify(...args)
 
