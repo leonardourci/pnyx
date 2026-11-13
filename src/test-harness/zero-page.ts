@@ -6,7 +6,8 @@ import { schema } from '#store/zero-schema.ts'
 const ANSWER_MS = 20_000
 
 const decoded = ({ data }: { data: Buffer | ArrayBuffer | Buffer[] }) => {
-  const parts = Array.isArray(data) ? data : [Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data)]
+  const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data
+  const parts = Array.isArray(data) ? data : [Buffer.from(bytes)]
 
   return Buffer.concat(parts).toString('utf8')
 }
