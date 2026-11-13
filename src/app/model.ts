@@ -28,6 +28,17 @@ export interface SourceRef {
 
 export type HydraChange = EventBase & (
   | {
+    type: 'task.tools-applied'
+    data: { revision: string }
+  }
+  | {
+    type: 'task.tools'
+    data: {
+      before: string[]
+      after: string[]
+    }
+  }
+  | {
     type: 'task.wait-resumed'
     data: {
       wait: string
@@ -398,6 +409,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.retention',
   'hydra.memory',
   'task.declared',
+  'task.tools',
+  'task.tools-applied',
   'task.asked',
   'task.ask.escalated',
   'task.ask.closed',

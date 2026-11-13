@@ -12,6 +12,35 @@ export function applyTask({
   state: HydraState
   event: HydraEvent
 }): boolean {
+  if (event.type === 'task.tools-applied') {
+    const card = state.cards[event.cardId]
+
+    if (card?.toolsRevision === event.data.revision) {
+      card.toolsApplied = event.data.revision
+      touch({
+        card,
+        event,
+      })
+    }
+
+    return true
+  }
+
+  if (event.type === 'task.tools') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      card.tools = [...event.data.after]
+      card.toolsRevision = event.id
+      touch({
+        card,
+        event,
+      })
+    }
+
+    return true
+  }
+
   if (event.type === 'task.wait-resumed') {
     const card = state.cards[event.cardId]
 
