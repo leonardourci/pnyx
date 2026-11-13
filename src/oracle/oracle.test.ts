@@ -708,7 +708,8 @@ test(
       'pnyx-oracle-long-',
     ))
     process.env.PNYX_HOME = home
-    const card = withWriter({
+    // The writer's state stands in for replaying every appended event before the search.
+    const state = withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
         const base = {
@@ -748,18 +749,19 @@ test(
           ).join(''),
         )
 
-        return 'long'
+        return writer.state
       },
     })
     assert.deepEqual(
       search({
         hydraId: 'default',
+        state,
         query: {
           text: 'zeppelin',
           limit: 20,
         },
       }).hits.map(hit => hit.card),
-      [card],
+      ['long'],
     )
   },
 )
