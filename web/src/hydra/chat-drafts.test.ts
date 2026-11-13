@@ -226,6 +226,11 @@ test(
         added,
       ],
     )
+    // The chat shows another tab's edit at once, without waiting for a pause.
+    assert.deepEqual(
+      drafts.settled.getState().comments,
+      drafts.read().comments,
+    )
     drafts.setComments({
       items: [
         {
@@ -511,6 +516,52 @@ test(
     assert.equal(
       drafts.settled.getState().text,
       'yes',
+    )
+  },
+)
+
+test(
+  'a save that brings another tab’s comment shows it in the draft and the chat',
+  () => {
+    const mine: ChatComment = {
+      id: 'mine',
+      messageId: 'reply',
+      block: 0,
+      offset: 0,
+      quote: 'First passage',
+      text: 'Mine',
+    }
+    const theirs: ChatComment = {
+      ...mine,
+      id: 'theirs',
+      text: 'From another tab',
+    }
+    const drafts = createChatDrafts({
+      comments: [mine],
+      save: ({ comments }) => [
+        ...comments,
+        theirs,
+      ],
+    })
+    drafts.editComment({
+      id: 'mine',
+      text: 'Mine, edited',
+    })
+    drafts.flush()
+    const expected = [
+      {
+        ...mine,
+        text: 'Mine, edited',
+      },
+      theirs,
+    ]
+    assert.deepEqual(
+      drafts.read().comments,
+      expected,
+    )
+    assert.deepEqual(
+      drafts.settled.getState().comments,
+      expected,
     )
   },
 )

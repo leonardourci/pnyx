@@ -118,9 +118,7 @@ export function createChatDrafts({
 
   return {
     read: live.getState,
-    readSettled: settled.getState,
     subscribe: live.subscribe,
-    subscribeSettled: settled.subscribe,
     settled,
     flush,
     // The chat shows the questions of the tasks a draft mentions, so a change to which tasks it names publishes at once.
