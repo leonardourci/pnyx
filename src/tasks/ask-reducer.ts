@@ -1,5 +1,6 @@
 import { cloneValue } from '#app/preimage.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { AnswerMessage, Ask } from './model.ts'
 import { touch } from './touch.ts'
 
@@ -80,6 +81,16 @@ export function applyAsk({
           answered: accepted.id,
           answeredAt: event.at,
           fromMessage: accepted.source,
+        }
+
+        // The owner already said it in chat, and a Hydra-wide question has no task to finish, so it closes here.
+        if (accepted.card === HYDRA_CARD && accepted.source) {
+          answered.closed = {
+            id: accepted.id,
+            at: event.at,
+            reason: 'answered from your message',
+            evidence: accepted.source.id,
+          }
         }
 
         if (ask.kind === 'merge' && ask.choice === 'Hold' && ask.answered) {
