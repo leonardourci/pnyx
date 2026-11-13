@@ -131,8 +131,10 @@ export function createWakeQueue({
     const unread = updates.filter(update => !state.helper?.handled.includes(update.seq)
       && ((update.seq > after && update.seq <= wakeThrough) || parked.has(update.seq)))
     const seqs = new Set(unread.map(update => update.seq))
-    const routed = new Map(seqs.size ? readEvents({ hydraId })
-      .filter(event => seqs.has(event.seq))
+    const routed = new Map(seqs.size ? readEvents({
+      hydraId,
+      seqs: [...seqs],
+    })
       .flatMap(event => {
         const task = helperEvent({
           state,

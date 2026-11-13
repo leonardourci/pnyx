@@ -5,7 +5,7 @@ import type { HydraMessage } from './model.ts'
 import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import type { AgentRef } from '#workers/model.ts'
-import { readEvents } from '#app/event-log.ts'
+import { readEvents, scanEvents, findEvent } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { MAX_RESUMES, resumesInARow } from '#workers/host.ts'
 import { sessionId } from '#workers/session-attachments.ts'
@@ -260,22 +260,31 @@ export function findHydraTurnToResume({
   resumeMessage: string
   wakeThrough: number
 } | undefined {
-  const events = readEvents({ hydraId })
-  const cutHydraTurn = events.findLast(event => {
-    if (event.cardId !== HYDRA_CARD || !event.id.endsWith(':hosted')) {
-      return false
-    }
+  const cutHydraTurn = findEvent({
+    hydraId,
+    cardId: HYDRA_CARD,
+    types: [
+      'hydra.delivered',
+      'board.configured',
+    ],
+    descending: true,
+    matches: ({ event }) => {
+      if (event.cardId !== HYDRA_CARD || !event.id.endsWith(':hosted')) {
+        return false
+      }
 
-    if (event.type === 'hydra.delivered') {
-      return event.data.session === sessionId({ agent })
-    }
-
-    return event.type === 'board.configured' && event.data.hydra?.session === sessionId({ agent })
+      return event.type === 'hydra.delivered'
+        ? event.data.session === sessionId({ agent })
+        : event.type === 'board.configured' && event.data.hydra?.session === sessionId({ agent })
+    },
   })
 
   if (!cutHydraTurn || resumesInARow({
-    events,
     turn: cutHydraTurn,
+    read: ({ seq }) => readEvents({
+      hydraId,
+      seqs: [seq],
+    })[0],
   }) >= MAX_RESUMES) {
     return undefined
   }
@@ -286,44 +295,58 @@ export function findHydraTurnToResume({
     return undefined
   }
 
-  const lastFinishedTurn = events.findLast(event => {
-    if (event.type !== 'card.pushed') {
-      return false
-    }
-
-    const finishedBeforeCut = event.seq < cutHydraTurn.seq && event.data.activity === 'finished'
-    const recordedByServer = event.actor === 'pnyx'
-    const matchesSession = event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider
-
-    return finishedBeforeCut && recordedByServer && matchesSession
+  const lastFinishedTurn = findEvent({
+    hydraId,
+    types: ['card.pushed'],
+    before: cutHydraTurn.seq,
+    descending: true,
+    matches: ({ event }) => event.type === 'card.pushed' && event.data.activity === 'finished'
+      && event.actor === 'pnyx' && event.data.agent?.sessionId === agent.sessionId
+      && event.data.agent.provider === agent.provider,
   })
   const sourceId = cutHydraTurn.id.replace(
     /:compact:hosted$|:hosted$/,
     '',
   )
-  const source = events.find(event => event.type === 'hydra.message' && event.id === sourceId)
+  const source = readEvents({
+    hydraId,
+    types: ['hydra.message'],
+    ids: [sourceId],
+  })[0]
   const lastFinishedTurnSeq = Math.min(
     lastFinishedTurn?.seq ?? 0,
     source ? source.seq - 1 : Infinity,
   )
-  const unansweredMessageSeqs = events.filter(event => {
-    const isNewMessage = event.seq > lastFinishedTurnSeq && event.type === 'hydra.message'
-    const sentToHydra = event.actor !== HYDRA_ACTOR
-    const progress = event.type === 'hydra.message' && event.data.kind === 'progress'
+  let unansweredMessages = 0
+  let firstMessageSeq: number | undefined
+  let lastMessageSeq: number | undefined
 
-    return isNewMessage && sentToHydra && !progress
-  }).map(event => event.seq)
+  for (const event of scanEvents({
+    hydraId,
+    types: ['hydra.message'],
+    after: lastFinishedTurnSeq,
+  })) {
+    if (event.type !== 'hydra.message' || event.actor === HYDRA_ACTOR || event.data.kind === 'progress') {
+      continue
+    }
+
+    unansweredMessages++
+
+    if (firstMessageSeq === undefined) {
+      firstMessageSeq = event.seq
+    }
+
+    lastMessageSeq = event.seq
+  }
+
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
   const isStallCheck = /^(stall|wait|unconfirmed):/.test(cutHydraTurn.id)
   const unfinishedWork: string[] = []
 
-  if (unansweredMessageSeqs.length) {
-    const firstMessageSeq = unansweredMessageSeqs[0]
-    const lastMessageSeq = unansweredMessageSeqs.at(-1)
+  if (unansweredMessages) {
     let unansweredMessagesPhrase = `messages seq ${firstMessageSeq}`
 
-    if (unansweredMessageSeqs.length > 1) {
+    if (unansweredMessages > 1) {
       unansweredMessagesPhrase = `messages seq ${firstMessageSeq} to ${lastMessageSeq}`
     }
 
@@ -340,7 +363,7 @@ export function findHydraTurnToResume({
     unfinishedWork.push(stallCheckPhrase)
   }
 
-  const cutTurnHasNoRecordedWork = unansweredMessageSeqs.length === 0
+  const cutTurnHasNoRecordedWork = unansweredMessages === 0
     && wakeThroughSeq === undefined && !isStallCheck
   const unrecordedCutTurnPhrase = 'a turn'
   let interruptedWork: string
