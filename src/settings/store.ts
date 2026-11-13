@@ -18,6 +18,7 @@ import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { settingsNotice } from '#hydra/settings-notice.ts'
+import { query } from '#store/postgres.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -370,6 +371,29 @@ export function saveSettings({
         revision: current.revision + 1,
       }
     },
+  })
+}
+
+// The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
+// stays their record, since it also names the database.
+export function mirrorSettings({
+  settings,
+  revision,
+}: {
+  settings: Settings
+  revision: number
+}): void {
+  query({
+    statements: [
+      {
+        text: `insert into settings (id, revision, value) values ('shared', $1, $2) on conflict (id)
+          do update set revision = excluded.revision, value = excluded.value where settings.revision < excluded.revision`,
+        values: [
+          revision,
+          JSON.stringify(settings),
+        ],
+      },
+    ],
   })
 }
 

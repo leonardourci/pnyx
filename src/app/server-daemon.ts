@@ -22,7 +22,7 @@ import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
 import { pollPath, watchPath } from './watch.ts'
-import { readSettings, settingsLogPath } from '#settings/store.ts'
+import { mirrorSettings, readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
@@ -759,7 +759,9 @@ export async function startServer({
   // The settings log is written by any pnyx-axi process; every open page gets the change.
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
-  let settingsRevision = readSettings().revision
+  const startSettings = readSettings()
+  let settingsRevision = startSettings.revision
+  mirrorSettings(startSettings)
   const settingsWatcher = watchPath({
     path: settingsDir,
     changed: () => {
@@ -773,6 +775,10 @@ export async function startServer({
       }
 
       settingsRevision = revision
+      mirrorSettings({
+        settings,
+        revision,
+      })
       logs.apply({ settings })
       served.forEach(m => m.settings())
     },
