@@ -145,7 +145,7 @@ export function useTaskNavigation({
 
           if (active && unavailable.length) {
             // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
-            setExpanded(ids => ids.filter(id => !unavailable.includes(id)))
+            setExpanded(expanded => expanded.filter(id => !unavailable.includes(id)))
 
             // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
             setActive(current => current && unavailable.includes(current) ? null : current)
@@ -405,9 +405,9 @@ export function useTaskNavigation({
           key: JSON.stringify(ids),
         })
 
-        const unavailable = Array.isArray(receipt.unavailable) && receipt.unavailable.includes(id)
+        const missing = Array.isArray(receipt.unavailable) && receipt.unavailable.includes(id)
 
-        if (!signal.aborted && unavailable) {
+        if (!signal.aborted && missing) {
           notify({ text: 'Task unavailable in this Hydra' })
 
           return false

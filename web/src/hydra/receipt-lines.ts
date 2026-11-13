@@ -18,7 +18,7 @@ const ROUTES: Record<Route, string> = {
   agent: 'Agent',
   hydra: 'Hydra',
 }
-// The agent's part leads, as it did before Hydra's part had its own receipt.
+// The agent's part shows before Hydra's, whatever order the delivery record lists them in.
 const ROUTE_ORDER: Route[] = [
   'agent',
   'hydra',
@@ -52,15 +52,13 @@ function line({
   const failed = state === 'failed' || state === 'delivery_unknown'
 
   if (received) {
-    const waited = sent ? Date.parse(received) - Date.parse(sent) : undefined
-
     return {
       key,
       text: `${prefix}Received ${clock({ at: received })}`,
       tone: 'received',
       icon: 'check',
-      hint: waited !== undefined && sent
-        ? `Sent ${clock({ at: sent })}, received ${duration({ ms: waited })} later`
+      hint: sent
+        ? `Sent ${clock({ at: sent })}, received ${duration({ ms: Date.parse(received) - Date.parse(sent) })} later`
         : undefined,
     }
   }

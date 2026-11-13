@@ -204,8 +204,8 @@ export function HydraChat({
     }),
     [],
   )
-  // The owner is reading while the chat is away or the messages hold their focus or selection.
-  // Effects read the same two values from away and selectedHistory.
+  // The owner is reading while the chat is away or the messages hold their focus or selection. Handlers read the
+  // refs here; effects check the away and selectedHistory state instead, so they rerun when either changes.
   const readingNow = () => !chatFollow.following() || selectionInHistory.current
   const receivePage = ({
     before,

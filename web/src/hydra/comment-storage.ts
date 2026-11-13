@@ -68,7 +68,9 @@ function migrateComments({
 
   try {
     value = JSON.parse(raw)
-  } catch { /* Unreadable JSON is handled with the other lists that hold no cards. */ }
+  } catch {
+    // Unreadable JSON leaves value undefined, so it is removed below like a list that holds no cards.
+  }
 
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     // Nothing can be recovered from it, and leaving it would parse it again on every save.
@@ -81,10 +83,10 @@ function migrateComments({
 
   const entries = Object.entries(cards).flatMap(([
     card,
-    value,
-  ]) => Array.isArray(value)
-    ? value.flatMap(value => {
-      const comment = commentValue({ value })
+    list,
+  ]) => Array.isArray(list)
+    ? list.flatMap(item => {
+      const comment = commentValue({ value: item })
 
       return comment ? [
         {

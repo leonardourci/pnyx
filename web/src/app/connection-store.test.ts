@@ -1251,10 +1251,12 @@ test(
       '--card',
       'hidden-task',
     ]
-    void connection.commandFor({ id: 'default' })({
+    const request = connection.commandFor({ id: 'default' })({
       name: 'page',
       args,
-    }).catch(() => {})
+    })
+    // The socket closes before the server answers, so this command's outcome is not under test.
+    request.catch(() => {})
 
     socket.onclose?.()
     window.dispatchEvent(new Event('online'))
