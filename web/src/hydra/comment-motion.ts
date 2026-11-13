@@ -78,18 +78,14 @@ export function scrollMessage({
       'scrollend',
       arrived,
     )
-    scroller.removeEventListener(
-      'wheel',
-      cancel,
-    )
-    scroller.removeEventListener(
-      'touchstart',
-      cancel,
-    )
-    scroller.removeEventListener(
-      'keydown',
-      cancel,
-    )
+
+    for (const type of OWNER_SCROLL_EVENTS) {
+      scroller.removeEventListener(
+        type,
+        cancel,
+      )
+    }
+
     pending.delete(scroller)
   }
 
@@ -115,20 +111,15 @@ export function scrollMessage({
     'scrollend',
     arrived,
   )
-  scroller.addEventListener(
-    'wheel',
-    cancel,
-    { passive: true },
-  )
-  scroller.addEventListener(
-    'touchstart',
-    cancel,
-    { passive: true },
-  )
-  scroller.addEventListener(
-    'keydown',
-    cancel,
-  )
+
+  for (const type of OWNER_SCROLL_EVENTS) {
+    scroller.addEventListener(
+      type,
+      cancel,
+      { passive: type !== 'keydown' },
+    )
+  }
+
   scroller.scrollTo({
     top,
     behavior: 'smooth',
