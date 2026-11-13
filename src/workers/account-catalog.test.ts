@@ -87,6 +87,14 @@ test(
           options?.persistSession,
           false,
         )
+        assert.equal(
+          options?.strictMcpConfig,
+          true,
+        )
+        assert.deepEqual(
+          options?.mcpServers,
+          {},
+        )
         const folder = options?.env?.CLAUDE_CONFIG_DIR
         assert.ok(folder)
         reads.push(folder)

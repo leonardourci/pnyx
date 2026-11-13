@@ -35,6 +35,14 @@ const settings = table('settings')
   })
   .primaryKey('id')
 
+const upgradeStatus = table('upgrade_status')
+  .columns({
+    id: string(),
+    available: boolean(),
+    checked_at: string(),
+  })
+  .primaryKey('id')
+
 const hydraValues = table('hydra_values')
   .columns({
     hydra_id: string(),
@@ -329,6 +337,7 @@ export const schema = createSchema({
   tables: [
     hydras,
     settings,
+    upgradeStatus,
     hydraValues,
     events,
     columns,
@@ -639,6 +648,13 @@ export const queries = defineQueries({
     shared: defineQuery(() => zql.settings.where(
       'id',
       'shared',
+    ).one()),
+  },
+  upgrade: {
+    // Whether a newer Pnyx is available, as the server's last check found.
+    status: defineQuery(() => zql.upgrade_status.where(
+      'id',
+      'current',
     ).one()),
   },
 })

@@ -728,6 +728,8 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.helper-acknowledged': return 'Helper outcomes handled by Hydra'
     case 'hydra.review': return 'Timed review'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
+    case 'task.tools-applied': return 'Tool grants applied to the hosted session'
+    case 'task.tools': return `Tools: ${event.data.after.join(', ') || 'none'}`
     case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
     case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
     case 'task.ask.closed': return `Closed ${event.data.ask}: ${event.data.reason} (${event.data.evidence})`

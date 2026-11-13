@@ -23,11 +23,21 @@ export function transactionReceipt({
   hydraId,
   id,
   digest,
+  eventIds,
 }: {
   hydraId: string
   id: string
   digest: string
+  // The Hydra's known event ids: an id it lacks was never used, so nothing need be read.
+  eventIds?: Record<string, unknown>
 }): Output | undefined {
+  if (eventIds && !Object.hasOwn(
+    eventIds,
+    id,
+  )) {
+    return undefined
+  }
+
   const [
     individual,
     recorded,

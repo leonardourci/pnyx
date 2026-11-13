@@ -120,6 +120,7 @@ export function withWriter<T>({
     const previous = transactionReceipt({
       hydraId,
       ...transaction,
+      eventIds: live.state.eventIds,
     })
 
     if (previous) {

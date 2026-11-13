@@ -1,8 +1,13 @@
+import { canonical } from '#store/paths.ts'
+import { background } from './background.ts'
+import { hydraDir } from './home-migration.ts'
+import { nativeIdle } from '#workers/native-session.ts'
+import { toolInstructions, toolEnvironment } from '#workers/tools.ts'
 import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
-import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
+import { PROVIDERS, harnessOf, knownProvider, providerIdOf, knownHarness } from '#workers/providers.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
@@ -10,7 +15,7 @@ import { trackChildren } from '#workers/children.ts'
 import { watchAgent } from '#workers/agent-memory.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 import { createHostedHelper } from '#routine-helper/hosted-helper.ts'
-import { agentExhausted } from '#workers/dispatch.ts'
+import { agentExhausted, accountEnv } from '#workers/dispatch.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
@@ -38,7 +43,7 @@ import { loadHydra } from './store.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment } from '#workers/host.ts'
+import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment, closedTask, closedByWorker, toolApplicationReady } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
@@ -127,8 +132,51 @@ export function createHost({
   const children = trackChildren({ hydraId })
   const controller = new AbortController()
   const live = new Map<string, Live>()
+  const toolRetries = new Map<string, NodeJS.Timeout>()
+  const toolApplications = new Map<string, {
+    revision: string
+    attempted: boolean
+    attempts: number
+    retryAt: number
+  }>()
+
+  const toolApplication = ({
+    task,
+    revision,
+  }: {
+    task: string
+    revision: string
+  }) => {
+    let application = toolApplications.get(task)
+
+    if (application?.revision !== revision) {
+      application = {
+        revision,
+        attempted: false,
+        attempts: 0,
+        retryAt: 0,
+      }
+      toolApplications.set(
+        task,
+        application,
+      )
+    }
+
+    return application
+  }
+
+  const canRetryTools = ({
+    attempts,
+    retryAt,
+  }: {
+    attempts: number
+    retryAt: number
+  }) =>
+    attempts < retryDelays.length && retryAt <= Date.now()
   const midTurn = () => [...live.values()].some(entry => entry.activity === 'working')
   midTurnChecks.add(midTurn)
+  // Closed tasks whose agents were already stopped; their failed stops wait for a permanent release.
+  const reaped = new Set<string>()
   const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
     .map(card => [
       card.id,
@@ -162,9 +210,11 @@ export function createHost({
   const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
     const { cwd } = card.agent
 
-    if (!cwd || !isFolder({ path: cwd })) {
+    const released = card.copy?.state === 'removed' && canonical({ path: card.copy.path }) === canonical({ path: cwd })
+
+    if (!cwd || released || !isFolder({ path: cwd })) {
       throw new HydraError({
-        message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`,
+        message: released ? `the agent's copy ${cwd} was released, so its session cannot continue` : `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`,
         code: 'FOLDER_MISSING',
         help: [card.agent.host === 'pnyx' ? `Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id} --folder <absolute path>\` to start fresh from the brief` : `Run \`pnyx-axi task start ${card.id} --via pnyx --replace-session ${sessionId({ agent: card.agent })} --folder <absolute path>\` to start fresh from the brief`],
       })
@@ -482,16 +532,43 @@ export function createHost({
         // Without the caller's hook a provider starts its process itself, and nothing is tracked.
         const tracked: typeof spawned = spawned === undefined ? undefined : ({ child }) => {
           spawned({ child })
+
+          if (child.pid !== undefined && taskId) {
+            children.associate({
+              pid: child.pid,
+              task: taskId,
+            })
+          }
+
           watchAgent({
             child,
             ids,
           })
         }
 
+        const toolOwner = taskId ? loadHydra({ hydraId }).state.cards[taskId] : undefined
+        const inheritsTools = options.capabilities === undefined
+        const toolsRevision = inheritsTools ? toolOwner?.toolsRevision : undefined
+        const capabilities = options.capabilities ?? toolOwner?.tools ?? []
         const session = await chosen.open({
           ...options,
+          capabilities,
+          env: toolEnvironment({
+            env: options.env,
+            tools: capabilities,
+            hydraId,
+            task: taskId,
+          }),
+          instructions: [
+            options.instructions,
+            taskId && toolInstructions({
+              tools: capabilities,
+              worker: taskId !== HYDRA_CARD,
+            }),
+          ].filter(Boolean).join('\n\n'),
           spawned: tracked,
         })
+        session.toolsRevision = toolsRevision
         ids.sessionId = `${known}:${session.id}`
         log({
           operation: 'session.open',
@@ -542,6 +619,7 @@ export function createHost({
   const {
     retire,
     open,
+    resumeTools,
     action,
     thread,
     close: closeSessions,
@@ -552,6 +630,62 @@ export function createHost({
     controller,
     children,
     streamed,
+    beginTools: ({ task }) => {
+      const revision = loadHydra({ hydraId }).state.cards[task]?.toolsRevision
+
+      if (!revision) {
+        return false
+      }
+
+      const application = toolApplication({
+        task,
+        revision,
+      })
+
+      if (!canRetryTools(application)) {
+        return false
+      }
+
+      application.attempted = true
+      application.attempts++
+
+      return true
+    },
+    deferTools: ({
+      task,
+      failed,
+    }) => {
+      const application = toolApplications.get(task)
+
+      if (!application) {
+        return
+      }
+
+      application.attempted = false
+
+      if (failed && application.attempts) {
+        // beginTools counts an attempt only below the bound, so every attempt has its delay.
+        const delay = retryDelays[application.attempts - 1]!
+        application.retryAt = Date.now() + delay
+        // A quiet Hydra may see no event before then, so the retry has its own timer.
+        clearTimeout(toolRetries.get(task))
+        toolRetries.set(
+          task,
+          setTimeout(
+            () => background({
+              name: 'tool grant retry',
+              run: () => {
+                // Node may fire a timer a millisecond before Date.now reaches its mark, so the wait counts as done.
+                application.retryAt = 0
+
+                return host.toolsChanged({ task })
+              },
+            }),
+            delay,
+          ).unref(),
+        )
+      }
+    },
     usageTracker,
     compaction,
     at,
@@ -588,6 +722,8 @@ export function createHost({
     settleDirect,
     send,
   } = createHostedDelivery({
+    hydraId,
+    fenced: () => fenced(),
     live,
     at,
     write,
@@ -785,9 +921,11 @@ export function createHost({
     continueInPnyx,
     starting,
   } = createWorkerStarts({
+    hydraId,
     closing: () => closing,
     at,
     write,
+    changed,
     presence,
     providerOf,
     environment,
@@ -798,7 +936,10 @@ export function createHost({
     sessionKey,
   })
 
-  const { recover } = createHostRecovery({
+  const {
+    recover,
+    fenced,
+  } = createHostRecovery({
     hydraId,
     live,
     children,
@@ -849,6 +990,127 @@ export function createHost({
       })),
     }),
     catalogCommands: catalogs.commands,
+    toolCatalog: async ({
+      task,
+      harness,
+      account: selectedAccount,
+      folder,
+    }) => {
+      const state = loadHydra({ hydraId }).state
+      const card = state.cards[task]
+      const savedHarness = card?.agent ? harnessOf({ provider: card.agent.provider }) : undefined
+      const selected = knownHarness({ name: harness ?? savedHarness })
+
+      if (!card || !selected) {
+        throw new HydraError({
+          message: 'Name a task and --harness claude|codex to list its configured tools',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      const sameHarness = !harness || harness === savedHarness
+      const { account } = accountFor({
+        effective: effectiveDispatch(),
+        harness: selected,
+        prefer: selectedAccount ?? (sameHarness ? card.agent?.account : undefined),
+      })
+      const sameAccount = !selectedAccount || selectedAccount === card.agent?.account
+      const sameLogin = sameHarness && sameAccount
+      const login = sameLogin && card.agent?.loginFolder
+        ? {
+          provider: selected,
+          folder: card.agent.loginFolder,
+        } : account
+      const env = accountEnv({
+        account: login,
+        env: environment({ task }),
+      })
+
+      return providers[providerIdOf({ harness: selected })].toolCatalog({
+        // An earlier agent's folder may be a removed copy, whose project scopes are gone.
+        cwd: folder ?? [
+          card.agent?.cwd,
+          card.folder,
+          card.project,
+        ].find(path => path !== undefined && isFolder({ path })) ?? hydraDir({ hydraId }),
+        env,
+      })
+    },
+    toolsChanged: ({ task }) => {
+      if (!fenced()) {
+        return
+      }
+
+      const state = loadHydra({ hydraId }).state
+      const card = state.cards[task]
+
+      if (!card?.agent || !card.toolsRevision || !toolApplicationReady({
+        state,
+        card,
+      })) {
+        toolApplications.delete(task)
+
+        return
+      }
+
+      const application = toolApplication({
+        task: card.id,
+        revision: card.toolsRevision,
+      })
+
+      if (application.attempted || !canRetryTools(application)) {
+        return
+      }
+
+      application.attempted = true
+      const entry = live.get(sessionId({ agent: card.agent }))
+      const text = toolInstructions({
+        tools: card.tools ?? [],
+        worker: card.id !== HYDRA_CARD,
+      })
+
+      if (entry) {
+        const scheduled = entry.toolsRevision === card.toolsRevision
+        const loaded = entry.session?.toolsRevision === card.toolsRevision
+
+        if (scheduled || loaded) {
+          return
+        }
+
+        entry.toolsRevision = card.toolsRevision
+        entry.stale = true
+        entry.toolResume = text
+        const settled = entry.activity === 'finished' && !entry.input.pending({ includes: () => true })
+          && entry.session && nativeIdle({ work: entry.session.snapshot().work })
+
+        if (!settled) {
+          return
+        }
+
+        retire({
+          key: sessionId({ agent: card.agent }),
+          entry,
+        })
+      }
+
+      // The grant stays pending and retries on the host's delays, so a failed reopen is reported, not thrown.
+      try {
+        resumeTools({
+          task,
+          text,
+        })
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'tools.apply',
+          hydraId,
+          taskId: task,
+          error,
+        })
+
+        return error as Error
+      }
+    },
     models: catalogs.models,
     hydraId,
     hydra,
@@ -1010,16 +1272,21 @@ export function createHost({
 
     thread,
 
-    release: ({ task }) => {
+    release: async ({
+      task,
+      permanent,
+    }) => {
       const entries = [...live].filter(([
         , entry,
       ]) => entry.task === task)
 
-      if (starting({ task })) {
+      if (starting({ task }) || entries.some(([
+        , entry,
+      ]) => entry.session === undefined)) {
         return { busy: 'starting' }
       }
 
-      if (entries.some(([
+      if (!permanent && entries.some(([
         , entry,
       ]) => entry.activity === 'working')) {
         return { busy: 'mid-turn' }
@@ -1029,7 +1296,7 @@ export function createHost({
       const waiting = ({ entry }: { entry: Live }) => entry.pendingDirect.size > 0
         || (entry.session?.snapshot().work.unsettledInputs.length ?? 0) > 0
 
-      if (entries.some(([
+      if (!permanent && entries.some(([
         , entry,
       ]) => waiting({ entry }))) {
         return { busy: 'taking a message' }
@@ -1042,7 +1309,12 @@ export function createHost({
         retire({
           key,
           entry,
+          permanent,
         })
+      }
+
+      if (permanent) {
+        await children.stop({ task })
       }
 
       return { released: entries.length }
@@ -1052,6 +1324,70 @@ export function createHost({
       syncCompactions({ state })
 
       reconcilePermissions({ state })
+
+      for (const card of Object.values(state.cards)) {
+        const application = toolApplications.get(card.id)
+        const attempted = application !== undefined && application.revision === card.toolsRevision
+          && (application.attempted || !canRetryTools(application))
+
+        if (fenced() && !attempted && toolApplicationReady({
+          state,
+          card,
+        })) {
+          background({
+            name: 'tool grant application',
+            run: () => host.toolsChanged({ task: card.id }),
+          })
+        }
+      }
+
+      const owned = children.tasks()
+
+      for (const card of Object.values(state.cards)) {
+        if (card.id === HYDRA_CARD || !closedTask({
+          state,
+          card,
+        })) {
+          reaped.delete(card.id)
+          continue
+        }
+
+        // A later reply reopens a closed task's worker; the end of that turn reaps it again.
+        if (reaped.has(card.id)) {
+          continue
+        }
+
+        const entries = [...live].filter(([
+          , entry,
+        ]) => entry.task === card.id)
+
+        // A worker that declares its own task done finishes that turn; its end reaps the worker.
+        if (closedByWorker({ card }) && entries.some(([
+          , entry,
+        ]) => entry.activity === 'working')) {
+          continue
+        }
+
+        for (const [
+          key,
+          entry,
+        ] of entries) {
+          retire({
+            key,
+            entry,
+            permanent: true,
+          })
+        }
+
+        reaped.add(card.id)
+
+        if (owned.has(card.id)) {
+          background({
+            name: 'closed agent cleanup',
+            run: () => children.stop({ task: card.id }),
+          })
+        }
+      }
 
       for (const card of Object.values(state.cards)) {
         const assignment = steeringAssignment({ card })
@@ -1102,6 +1438,11 @@ export function createHost({
       helper.close()
       stopWake()
       stopRetry()
+
+      for (const timer of toolRetries.values()) {
+        clearTimeout(timer)
+      }
+
       stalls.close()
       controller.abort()
 
