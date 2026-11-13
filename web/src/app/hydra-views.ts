@@ -267,6 +267,11 @@ export function watchHydra({
   // Resolves once every opened card is loaded, naming the refs this Hydra has no card for; rejects when the board
   // cannot be read.
   const open = ({ refs }: { refs: string[] }) => {
+    for (const request of pending) {
+      request.resolve({ unavailable: [] })
+    }
+
+    pending = []
     opened = refs
     const loaded = new Promise<{ unavailable: string[] }>((
       resolve,

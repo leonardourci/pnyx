@@ -740,3 +740,41 @@ test(
     )
   },
 )
+
+test(
+  'switching cards while detail loads settles the superseded open',
+  async () => {
+    const fake = fakeZero()
+    const watched = watchHydra({
+      zero: fake.zero,
+      hydraId: 'h',
+      publish: () => {},
+      failed: () => {},
+    })
+    const first = watched.open({ refs: ['first'] })
+    answerAll({
+      fake,
+      references: [],
+    })
+    await setImmediate()
+    fake.detail({ ref: HYDRA_CARD })!.answer({
+      data: undefined,
+      resultType: 'complete',
+    })
+    const second = watched.open({ refs: ['second'] })
+    await setImmediate()
+    fake.detail({ ref: 'second' })!.answer({
+      data: detailRow({ id: 'second' }),
+      resultType: 'complete',
+    })
+    assert.deepEqual(
+      await first,
+      { unavailable: [] },
+    )
+    assert.deepEqual(
+      await second,
+      { unavailable: [] },
+    )
+    watched.close()
+  },
+)
