@@ -13,6 +13,20 @@ export const CREATION_PREFIX = 'hydra-create:'
 // A Hydra's first event never changes, so each is read once it exists.
 const firstEvents = new Map<string, HydraEvent>()
 
+// A Hydra's first write names its first event before it commits, so its summary row has it from the start.
+export function rememberFirstEvent({
+  hydraId,
+  event,
+}: {
+  hydraId: string
+  event: HydraEvent
+}): void {
+  firstEvents.set(
+    homeScoped({ hydraId }),
+    event,
+  )
+}
+
 function firstEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
   const key = homeScoped({ hydraId })
   const known = firstEvents.get(key)

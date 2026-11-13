@@ -22,6 +22,7 @@ import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges } from './rows.ts'
 import { rememberEvents } from './event-log.ts'
 import { log } from './diagnostics.ts'
+import { rememberFirstEvent } from './hydra-summary.ts'
 
 const MESSAGE_EVENTS = new Set<string>([
   'card.replied',
@@ -138,6 +139,14 @@ export function withWriter<T>({
 
     if (pending.length) {
       const started = performance.now()
+
+      if (from === 0) {
+        rememberFirstEvent({
+          hydraId,
+          event: pending[0]!,
+        })
+      }
+
       const changes = rowChanges({
         hydraId,
         state: live.state,
@@ -259,14 +268,21 @@ export function eventWriter({
         }
       }
 
-      if (transaction && Object.hasOwn(
+      const known = Object.hasOwn(
         state.eventIds,
         event.id,
-      )) {
+      )
+
+      if (transaction && known) {
         throw new HydraError({
           message: `event id ${event.id} already exists`,
           code: 'IDEMPOTENCY_CONFLICT',
         })
+      }
+
+      // The reducer skips an event it has already applied, so it is not sent again for the events table to refuse.
+      if (known) {
+        return
       }
 
       if (event.seq !== state.seq + 1) {

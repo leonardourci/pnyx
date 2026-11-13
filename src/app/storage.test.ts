@@ -273,6 +273,30 @@ test(
 )
 
 test(
+  'an old log that repeats events and seqs imports as the reducer applied it, and a repeated append is no write',
+  () => {
+    seedLog({ stream: 'duplicates' })
+    const events = readStream({ name: 'duplicates' })
+    assert.deepEqual(
+      saved({ value: loadHydra({ hydraId: 'default' }).state }),
+      saved({
+        value: replay({
+          state: emptyHydra(),
+          events,
+        }),
+      }),
+    )
+    const stored = storedEvents()
+    const [last] = readEvents({ hydraId: 'default' }).slice(-1)
+    appendAll({ events: [last!] })
+    assert.equal(
+      storedEvents(),
+      stored,
+    )
+  },
+)
+
+test(
   'event reads after a seq stop at their limit and at through',
   () => {
     const events = readStream({ name: 'lifecycle' })
