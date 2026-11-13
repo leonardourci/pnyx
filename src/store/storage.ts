@@ -35,10 +35,6 @@ export const logPath = ({ dir }: { dir: string }) => join(
   dir,
   'events.jsonl',
 )
-export const snapshotPath = ({ dir }: { dir: string }) => join(
-  dir,
-  'snapshot.json',
-)
 export const spoolDir = ({ dir }: { dir: string }) => join(
   dir,
   'spool',

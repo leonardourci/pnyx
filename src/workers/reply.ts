@@ -466,7 +466,7 @@ export async function sendReply({
     }
   }
 
-  // Sent outside the writer lock: a send can take a while and must not block other writers.
+  // Sent outside a write: a send can take a while and must not hold up other writes.
   const {
     card,
     reply,

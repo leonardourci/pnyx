@@ -890,9 +890,10 @@ export async function startServer({
       }
 
       wss.close()
+      // zero-cache first: it ends the page sockets it tunnels, which the HTTP server cannot close itself.
+      await zero?.close()
       http.closeAllConnections()
       await new Promise(r => http.close(r))
-      await zero?.close()
       rmSync(
         infoPath(),
         { force: true },

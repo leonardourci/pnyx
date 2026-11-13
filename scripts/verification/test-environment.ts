@@ -57,6 +57,8 @@ exit 79
       'codex',
     ),
     PNYX_GH_AXI: 'false',
+    // Every write checks that the rows it saved are all the rows its change touched.
+    PNYX_CHECK_ROWS: '1',
     PNYX_PASEO_URL: 'ws://127.0.0.1:1/ws',
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(

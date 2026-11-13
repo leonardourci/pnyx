@@ -33,15 +33,14 @@ export function cloneValue<T>({ value }: { value: T }): T {
   return value
 }
 
-// The writer owns its loaded state; derivations retain only properties changed by this event.
 // What a change wrote to: the ids of the cards under state.cards, and the other top-level fields of the state.
 export interface Touched {
   cards: Set<string>
   fields: Set<string>
 }
 
-// touched collects what this change wrote to, so a save rewrites only those rows. Replacing the whole cards record
-// counts as touching the cards field.
+// The writer owns its loaded state; derivations retain only properties changed by this event. touched collects what
+// this change wrote to, so a save rewrites only those rows; replacing the whole cards record touches the cards field.
 export function preimage<T extends object>({
   state,
   change,

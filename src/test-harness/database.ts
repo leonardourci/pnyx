@@ -26,3 +26,22 @@ export function storedHydra({ hydraId }: { hydraId: string }): string {
     })),
   }))
 }
+
+// Makes Postgres refuse every insert of events of this type until the returned release, as a write that fails after
+// its work ran would. The refusal reads `Postgres: refused <type>`.
+export function refuseEvents({ type }: { type: string }): () => void {
+  const name = `refuse_${type.replaceAll(
+    /[^a-z]/g,
+    '_',
+  )}`
+  query({
+    statements: [
+      { text: `create or replace function ${name}() returns trigger language plpgsql as $$ begin raise exception 'refused ${type}'; end $$` },
+      { text: `create trigger ${name} before insert on events for each row when (new.type = '${type}') execute function ${name}()` },
+    ],
+  })
+
+  return () => {
+    query({ statements: [{ text: `drop trigger if exists ${name} on events` }] })
+  }
+}

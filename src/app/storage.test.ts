@@ -11,9 +11,10 @@ import { HydraError } from '#store/errors.ts'
 import { query } from '#store/postgres.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
-import { holdHydra, loadHydra, reloadHydra } from './store.ts'
+import { heldHydra, holdHydra, loadHydra, reloadHydra } from './store.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { withWriter } from './writer.ts'
+import { listHydras } from './server-hydras.ts'
 import { acquireLock } from '#store/storage.ts'
 import { STREAMS, readStream } from '#test-harness/streams.ts'
 
@@ -174,9 +175,12 @@ test(
       second,
     ] = readStream({ name: 'lifecycle' })
     appendAll({ events: [first!] })
+    let changes = 0
     const release = holdHydra({
       hydraId: 'default',
-      changed: () => undefined,
+      changed: () => {
+        changes += 1
+      },
     })
 
     try {
@@ -185,6 +189,15 @@ test(
         fn: () => appendAll({ events: [second!] }),
         code: 'CONFLICT',
       })
+      // The server learns that the held state was read back, so it stops showing the refused event.
+      assert.equal(
+        changes,
+        1,
+      )
+      assert.equal(
+        heldHydra({ hydraId: 'default' })?.state.eventIds[second!.id],
+        undefined,
+      )
       assert.equal(
         storedEvents(),
         1,
@@ -260,6 +273,30 @@ test(
 )
 
 test(
+  'an old log that repeats events and seqs imports as the reducer applied it, and a repeated append is no write',
+  () => {
+    seedLog({ stream: 'duplicates' })
+    const events = readStream({ name: 'duplicates' })
+    assert.deepEqual(
+      saved({ value: loadHydra({ hydraId: 'default' }).state }),
+      saved({
+        value: replay({
+          state: emptyHydra(),
+          events,
+        }),
+      }),
+    )
+    const stored = storedEvents()
+    const [last] = readEvents({ hydraId: 'default' }).slice(-1)
+    appendAll({ events: [last!] })
+    assert.equal(
+      storedEvents(),
+      stored,
+    )
+  },
+)
+
+test(
   'event reads after a seq stop at their limit and at through',
   () => {
     const events = readStream({ name: 'lifecycle' })
@@ -292,6 +329,39 @@ test(
         second,
       ],
     )
+  },
+)
+
+test(
+  'a Hydra whose old log cannot be read stays in the Hydra list beside the others',
+  () => {
+    appendAll({ events: readStream({ name: 'lifecycle' }) })
+    const broken = hydraDir({ hydraId: 'broken' })
+    mkdirSync(
+      broken,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        broken,
+        'events.jsonl',
+      ),
+      '{"v":1,"seq":1,"id":"odd","type":"not.an.event","cardId":"x"}\n',
+    )
+    assert.deepEqual(
+      listHydras().map(summary => [
+        summary.id,
+        summary.hydra,
+      ])
+        .filter(([id]) => id === 'broken'),
+      [
+        [
+          'broken',
+          'could not be loaded',
+        ],
+      ],
+    )
+    assert.ok(listHydras().some(summary => summary.id === 'default'))
   },
 )
 

@@ -12,6 +12,8 @@ import { WebSocket as NodeSocket } from 'ws'
 
 const QUIET_MS = 3_600_000
 // zero-cache's first start copies the home's tables into its replica before it reports ready.
+// Longer than zero-cache's own stop, shorter than a hang.
+const STOP_MS = 15_000
 const READY_MS = 60_000
 const POLL_MS = 100
 
@@ -32,9 +34,12 @@ const alive = ({ pid }: { pid: number }) => {
 async function readHydras({
   origin,
   cookie,
+  keepOpen = false,
 }: {
   origin: string
   cookie: string
+  // Leaves the client connected, as an open page is, and returns how to close it.
+  keepOpen?: boolean
 }) {
   const browserSocket = globalThis.WebSocket
   globalThis.WebSocket = class extends NodeSocket {
@@ -48,6 +53,11 @@ async function readHydras({
         protocols,
         { headers: { cookie } },
       )
+      // A page left open sees its socket drop and its reconnects refused while the server stops.
+      this.on(
+        'error',
+        () => undefined,
+      )
     }
   } as unknown as typeof WebSocket
   const zero = new Zero({
@@ -57,14 +67,23 @@ async function readHydras({
     kvStore: 'mem',
   })
 
-  try {
-    return await zero.run(
-      queries.hydras.list(),
-      { type: 'complete' },
-    )
-  } finally {
+  const close = async () => {
     await zero.close()
     globalThis.WebSocket = browserSocket
+  }
+
+  try {
+    return {
+      hydras: await zero.run(
+        queries.hydras.list(),
+        { type: 'complete' },
+      ),
+      close,
+    }
+  } finally {
+    if (!keepOpen) {
+      await close()
+    }
   }
 }
 
@@ -156,7 +175,7 @@ test(
       url: `${origin}/zero/`,
       cookie,
     })
-    const hydras = await readHydras({
+    const { hydras } = await readHydras({
       origin,
       cookie,
     })
@@ -166,8 +185,25 @@ test(
     )
     const pid = server.zeroCachePid()
     assert.ok(pid)
+    // An open page's /zero socket must not keep the server from stopping.
+    const openPage = await readHydras({
+      origin,
+      cookie,
+      keepOpen: true,
+    })
+    t.after(openPage.close)
 
-    await server.close()
+    const stopped = await Promise.race([
+      server.close().then(() => true),
+      new Promise(resolve => setTimeout(
+        () => resolve(false),
+        STOP_MS,
+      )),
+    ])
+    assert.equal(
+      stopped,
+      true,
+    )
     resources.server = undefined
     assert.equal(
       alive({ pid }),

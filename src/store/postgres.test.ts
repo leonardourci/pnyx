@@ -82,3 +82,48 @@ test(
     )
   },
 )
+
+test(
+  'after Postgres drops the connection, the next request opens a new one and gets its own answer',
+  () => {
+    const [before] = query({ statements: [{ text: 'select pg_backend_pid() as pid' }] }) as { pid: number }[][]
+    assert.throws(
+      () => query({
+        statements: [
+          {
+            text: 'select pg_terminate_backend(pg_backend_pid())',
+          },
+        ],
+      }),
+      { code: 'DATABASE_ERROR' },
+    )
+    const [after] = query({ statements: [{ text: 'select pg_backend_pid() as pid, 7 as answer' }] }) as {
+      pid: number
+      answer: number
+    }[][]
+    assert.equal(
+      after?.[0]?.answer,
+      7,
+    )
+    assert.notEqual(
+      after?.[0]?.pid,
+      before?.[0]?.pid,
+    )
+  },
+)
+
+test(
+  'a database a connection string names is created on its first use',
+  () => {
+    const database = `named_${Date.now()}`
+    const url = `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`
+    const [rows] = query({
+      url,
+      statements: [{ text: 'select current_database() as name' }],
+    }) as { name: string }[][]
+    assert.equal(
+      rows?.[0]?.name,
+      database,
+    )
+  },
+)

@@ -2,7 +2,9 @@ import { commands } from './cli.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraIds } from './home-migration.ts'
 import { loadHydra } from './store.ts'
-import { CREATION_PREFIX, summarize } from './hydra-summary.ts'
+import { CREATION_PREFIX, summarize, unreadableSummary } from './hydra-summary.ts'
+import { homeScoped } from '#store/postgres.ts'
+import type { HydraState } from './model.ts'
 import { readInitialEvent } from './event-log.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
@@ -50,14 +52,22 @@ function projectStamp({ home }: { home?: string }): string {
   }
 }
 
-const logStamp = ({ id }: { id: string }) => String(loadHydra({ hydraId: id }).state.seq)
-
 // Unreadable Hydras remain reachable so opening one reports the error.
 export function listHydras(): HydraSummary[] {
   return hydraIds().map(id => {
-    const log = logStamp({ id }), known = summaries.get(id)
+    let state: HydraState
 
-    if (log && known?.log === log && known.projects === projectStamp({ home: known.home })) {
+    try {
+      state = loadHydra({ hydraId: id }).state
+    } catch {
+      return unreadableSummary({ id })
+    }
+
+    const key = homeScoped({ hydraId: id })
+    const seq = String(state.seq)
+    const known = summaries.get(key)
+
+    if (known?.log === seq && known.projects === projectStamp({ home: known.home })) {
       return known.summary
     }
 
@@ -66,12 +76,12 @@ export function listHydras(): HydraSummary[] {
       home,
     } = summarize({
       id,
-      state: loadHydra({ hydraId: id }).state,
+      state,
     })
     summaries.set(
-      id,
+      key,
       {
-        log,
+        log: seq,
         home,
         projects: projectStamp({ home }),
         summary,

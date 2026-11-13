@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Attention } from '#workers/model.ts'
-import { ingestSpool } from './ingest.ts'
+import { drainSpool, ingestSpool } from './ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from './observe.ts'
 import { readEvents } from '#app/event-log.ts'
 import { spoolWrite } from '#app/spool.ts'
@@ -607,6 +607,48 @@ test(
       2,
       'parent and child, once each',
     )
+  },
+)
+
+test(
+  'a command that fails after taking the spool leaves its events for the next write',
+  () => {
+    const { home } = sandbox()
+    process.env.PNYX_HOME = home
+    spoolWrite({
+      hydraId: 'default',
+      entry: {
+        ...envelope({
+          harness: 'claude',
+          event: 'SubagentStart',
+          name: 'claude-subagent-start',
+        }),
+        id: 'hook-7-7',
+      },
+    })
+    assert.throws(
+      () => withWriter({
+        hydraId: 'default',
+        create: true,
+        fn: ({ writer }) => {
+          drainSpool({ writer })
+          throw new Error('refused after the spool')
+        },
+      }),
+      /refused after the spool/,
+    )
+    assert.equal(
+      spoolFiles({
+        dir: join(
+          home,
+          'hydras',
+          'default',
+        ),
+      }).length,
+      1,
+    )
+    ingestSpool({ hydraId: 'default' })
+    assert.ok(readEvents({ hydraId: 'default' }).some(event => event.id === 'hook-7-7'))
   },
 )
 
