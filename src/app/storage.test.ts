@@ -107,7 +107,10 @@ test(
       const events = readStream({ name })
 
       // The duplicates stream repeats and skips seqs to test the reducer; a writer takes only the next one.
-      if (events.some((event, index) => event.seq !== index + 1)) {
+      if (events.some((
+        event,
+        index,
+      ) => event.seq !== index + 1)) {
         continue
       }
 
