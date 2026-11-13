@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
@@ -91,6 +91,46 @@ test(
         }),
       }),
     )
+  },
+)
+
+test(
+  'rows saved one command at a time reload as the state in memory for every recorded stream',
+  () => {
+    for (const name of readdirSync(STREAMS).filter(file => file.endsWith('.jsonl'))
+      .map(file => file.slice(
+        0,
+        -'.jsonl'.length,
+      ))) {
+      const hydraId = `stream-${name}`
+
+      const events = readStream({ name })
+
+      // The duplicates stream repeats and skips seqs to test the reducer; a writer takes only the next one.
+      if (events.some((event, index) => event.seq !== index + 1)) {
+        continue
+      }
+
+      for (const event of events) {
+        withWriter({
+          hydraId,
+          create: true,
+          migrate: false,
+          fn: ({ writer }) => writer.append({
+            event,
+            effects: false,
+          }),
+        })
+      }
+
+      const live = saved({ value: loadHydra({ hydraId }).state })
+      reloadHydra({ hydraId })
+      assert.deepEqual(
+        saved({ value: loadHydra({ hydraId }).state }),
+        live,
+        name,
+      )
+    }
   },
 )
 
