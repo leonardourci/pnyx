@@ -64,22 +64,7 @@ const parseJson = ({ text }: { text: string | null }): unknown => {
   }
 }
 
-function savedUpgradeStatus(): UpgradeStatus | undefined {
-  const [row] = query({ statements: [{ text: 'select available, checked_at from upgrade_status where id = \'current\'' }] })[0] as {
-    available: boolean
-    checked_at: string
-  }[]
-
-  if (!row) {
-    return undefined
-  }
-
-  return {
-    available: row.available,
-    checkedAt: row.checked_at,
-  }
-}
-
+// The last upgrade check, kept in Postgres so the page's notice survives a restart.
 const saveUpgradeStatus = ({ status }: { status: UpgradeStatus }) => query({
   statements: [
     {
@@ -143,8 +128,6 @@ export async function startServer({
   const skipped: Record<string, string> = {}
   let closed = false
   let summariesQueued = false, summariesKey = ''
-  // The last upgrade check, kept in Postgres so the page's notice survives a restart.
-  let upgradeStatus = savedUpgradeStatus()
   let zero: ZeroCache | undefined
 
   const hydrasChanged = () => {
@@ -164,9 +147,19 @@ export async function startServer({
 
         const hydras = listHydras(), key = JSON.stringify(hydras)
 
+        // The page reads the Hydra list through Zero; a summary that changes without an event, as a Firstmate home's
+        // projects can, is written to its row here.
         if (key !== summariesKey) {
           summariesKey = key
-          served.forEach(m => m.summaries({ hydras }))
+          query({
+            statements: hydras.map(summary => ({
+              text: 'update hydras set summary = $2 where id = $1 and summary::text is distinct from $2',
+              values: [
+                summary.id,
+                JSON.stringify(summary),
+              ],
+            })),
+          })
         }
       },
     }))
@@ -458,8 +451,8 @@ export async function startServer({
             )
             log({
               operation: 'socket.send',
-              // A snapshot carries the whole Hydra, so each one gets a line; other messages are live updates.
-              detailed: message.type !== 'snapshot',
+              // Every message is a live update; a thread page also gets its own thread.page line.
+              detailed: true,
               hydraId: message.scope ?? primary,
               name: message.type,
               bytes: data.length,
@@ -471,13 +464,11 @@ export async function startServer({
           const attach = ({
             hydra,
             mounted,
-            after,
             page,
             subscriptionId,
           }: {
             hydra: string
             mounted: MountedHydra
-            after: string | null
             page?: string[]
             subscriptionId?: string
           }) => {
@@ -504,7 +495,6 @@ export async function startServer({
             }
             const subscription = mounted.connect({
               ws: client,
-              after,
               page,
             })
             subscriptions.set(
@@ -515,12 +505,10 @@ export async function startServer({
 
           const subscribe = async ({
             hydra,
-            after,
             page,
             subscriptionId,
           }: {
             hydra: string
-            after: string | null
             page?: string[]
             subscriptionId?: string
           }) => {
@@ -540,7 +528,6 @@ export async function startServer({
                 attach({
                   hydra,
                   mounted: served.get(hydra)!,
-                  after,
                   page,
                   subscriptionId,
                 })
@@ -608,7 +595,6 @@ export async function startServer({
               if (message?.type === 'subscribe') {
                 void subscribe({
                   hydra,
-                  after: typeof message.after === 'string' ? message.after : null,
                   page: pageArgs({ value: message.page }),
                   subscriptionId: typeof message.subscription === 'string' ? message.subscription : undefined,
                 })
@@ -638,7 +624,6 @@ export async function startServer({
           attach({
             hydra: primary,
             mounted: mount,
-            after: url.searchParams.get('after'),
             page: pageArgs({ value: parseJson({ text: url.searchParams.get('page') }) }),
             subscriptionId: url.searchParams.get('subscription') ?? undefined,
           })
@@ -734,7 +719,6 @@ export async function startServer({
       homes: id === hydraId ? homes : undefined,
       open,
       hydrasChanged,
-      upgradeStatus: () => upgradeStatus,
       ...options,
     })
     mounts.set(
@@ -863,12 +847,12 @@ export async function startServer({
         return
       }
 
-      upgradeStatus = {
-        available,
-        checkedAt: new Date().toISOString(),
-      }
-      saveUpgradeStatus({ status: upgradeStatus })
-      served.forEach(m => m.upgrade())
+      saveUpgradeStatus({
+        status: {
+          available,
+          checkedAt: new Date().toISOString(),
+        },
+      })
     },
   })
   checkUpgrade()
@@ -1009,7 +993,6 @@ async function mountHydra({
   hydrasChanged,
   upgradeRoot,
   restart,
-  upgradeStatus,
 }: {
   hydraId: string
   url: string
@@ -1032,7 +1015,6 @@ async function mountHydra({
   hydrasChanged(): void
   upgradeRoot?: string
   restart?(): void | Promise<void>
-  upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   return mountOwnedHydra({
     hydraId,
@@ -1055,6 +1037,5 @@ async function mountHydra({
     hydrasChanged,
     upgradeRoot,
     restart,
-    upgradeStatus,
   })
 }

@@ -138,7 +138,6 @@ test(
     const tabs = createServerClients({
       hydraId: 'default',
       state: () => state,
-      recent: () => [],
       agents: () => ({
         queue: () => ({
           waiting: [],
@@ -571,7 +570,6 @@ test(
       homes: [],
       open: async () => 'http://127.0.0.1/',
       hydrasChanged() {},
-      upgradeStatus: () => undefined,
     })
     resources.mounted = mount
     const received: ServerMessage[] = []
@@ -589,7 +587,6 @@ test(
     })
     const tab = mount.connect({
       ws: networkClient(),
-      after: null,
     })
     tab.receive({
       message: {
@@ -612,7 +609,7 @@ test(
     tab.receive({ message: { type: 'resync' } })
     t.mock.timers.tick(LATEST_DELAY_MS)
     await setImmediate()
-    assert.ok(received.some(message => message.type === 'snapshot'))
+    assert.ok(received.some(message => message.type === 'latest'))
     const refreshed = received.find(message => message.type === 'thread')
     assert.ok(refreshed?.type === 'thread')
     assert.equal(
@@ -634,7 +631,6 @@ test(
     )
     const reconnected = mount.connect({
       ws: networkClient(),
-      after: null,
     })
     reconnected.receive({
       message: {
@@ -1303,7 +1299,6 @@ test(
     const tabs = createServerClients({
       hydraId: 'default',
       state: () => state,
-      recent: () => [],
       agents: () => ({
         queue: () => ({
           waiting: [],

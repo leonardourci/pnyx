@@ -3,10 +3,8 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { hydraConfig } from '#hydra/config.ts'
 import { test } from 'node:test'
-import { WebSocket } from 'ws'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { localToken } from '#app/server-state.ts'
-import type { UpgradeStatus } from '#upgrade/model.ts'
+import { query } from '#store/postgres.ts'
 import { building, git } from '#test-harness/upgrade-fixture.ts'
 import { openPage, pnyxAxi, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
@@ -598,43 +596,24 @@ test(
   },
 )
 
-// The upgrade status the server sends a page that connects.
-// The upgrade status from a check made after `after`: a restarted server first sends the check it saved before.
-const hint = async ({
+// The upgrade status the page reads from a check made after `after`: a restarted server keeps the check it saved before.
+const hint = ({
   s,
   after,
 }: {
   s: Scenario
   after: string
-}) => {
-  const ws = new WebSocket(`ws://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/ws?token=${localToken()}`)
+}) => until({
+  what: `the upgrade status in ${s.hydraId}'s page`,
+  check: () => {
+    const [row] = query({ statements: [{ text: 'select available, checked_at from upgrade_status where id = \'current\'' }] })[0] as {
+      available: boolean
+      checked_at: string
+    }[]
 
-  try {
-    return await until({
-      what: 'the upgrade status',
-      check: (() => {
-        let status: UpgradeStatus | undefined
-        ws.on(
-          'message',
-          data => {
-            const message = JSON.parse(String(data)) as {
-              type: string
-              upgrade?: UpgradeStatus
-            }
-
-            if (message.type === 'upgrade') {
-              status = message.upgrade
-            }
-          },
-        )
-
-        return () => status && status.checkedAt >= after && status
-      })(),
-    })
-  } finally {
-    ws.terminate()
-  }
-}
+    return row && row.checked_at >= after && row
+  },
+})
 
 test(
   'the page hears of an upgrade only when origin main is ahead',

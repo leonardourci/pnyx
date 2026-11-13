@@ -726,7 +726,7 @@ test(
     try {
       await until({
         what: 'the settings the page gets on connect',
-        check: () => page.settings.length > 0,
+        check: () => page.settings(),
       })
       await first.owner({
         args: [
@@ -738,7 +738,7 @@ test(
       })
       await until({
         what: 'the dark theme pushed to the other Hydra\'s page',
-        check: () => page.settings.at(-1)?.theme === 'dark',
+        check: () => page.settings()?.theme === 'dark',
       })
       await first.owner({
         args: [
@@ -750,7 +750,7 @@ test(
       })
       await until({
         what: 'the rebound Oracle shortcut pushed to the other Hydra\'s page',
-        check: () => page.settings.at(-1)?.keyboard.bindings.palette?.[0] === 'Mod+j',
+        check: () => page.settings()?.keyboard.bindings.palette?.[0] === 'Mod+j',
       })
       assert.match(
         await first.owner({

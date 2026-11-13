@@ -80,11 +80,11 @@ async function compact({
         && s.state().hydraMessages?.some(message => message.text === HELD),
     })
     assert.ok(!s.received({ cwd: agent.cwd }).some(text => text.includes(HELD)))
-    // The page shows it held, and a tab that connects now gets the same queue with its snapshot.
+    // The page's queue row shows it held.
     const heldId = s.state().hydraMessages!.find(message => message.text === HELD)!.id
     const shown = await until({
       what: 'the page’s queue to hold the owner’s message',
-      check: () => page.queues.at(-1)?.chat?.held.includes(heldId) && page.queues.at(-1)!.chat,
+      check: () => page.queue()?.chat?.held.includes(heldId) && page.queue()!.chat,
     })
     assert.deepEqual(
       {
@@ -100,19 +100,6 @@ async function compact({
         inputs: [HELD],
       },
     )
-    const reconnected = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    t.after(() => reconnected.close())
-    const first = await until({
-      what: 'the queue a new tab gets with its snapshot',
-      check: () => reconnected.queues[0],
-    })
-    assert.deepEqual(
-      first.chat?.held,
-      shown.held,
-    )
   } finally {
     turn.release()
   }
@@ -127,7 +114,7 @@ async function compact({
   await until({
     what: 'the page’s queue to release the held message',
     check: () => {
-      const chat = page.queues.at(-1)?.chat
+      const chat = page.queue()?.chat
 
       return chat?.holding === false && chat.held.length === 0
     },

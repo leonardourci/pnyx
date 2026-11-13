@@ -16,7 +16,7 @@ import { decideView } from '#preferences/decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
 import type { Card } from '#tasks/model.ts'
-import { settingsLogPath } from './store.ts'
+import { mirrorSettings, readSettings, settingsLogPath } from './store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { acquireLock } from '#store/storage.ts'
 import { query } from '#store/postgres.ts'
@@ -1009,6 +1009,13 @@ test(
         masked,
         masked,
       ],
+    )
+    mirrorSettings(readSettings())
+    const [mirrored] = query({ statements: [{ text: 'select value from settings where id = \'shared\'' }] })
+    assert.equal(
+      'postgresUrl' in (mirrored![0]!.value as Record<string, unknown>),
+      false,
+      'the row the page reads never holds the database URL',
     )
     await commands.settings([
       'set',

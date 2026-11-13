@@ -1,11 +1,11 @@
-import { pageEvent, pageShows, pageSnapshotEvent, pageState, type PageInterest } from './page-state.ts'
+import { pageShows, type PageInterest } from './page-state.ts'
 import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { threadPath, type LatestMessage } from '#hydra/transcripts-read.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
-import { effectiveView, pageSettings, readSettings } from '#settings/store.ts'
+import { effectiveView } from '#settings/store.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { AgentUsage } from '#workers/provider.ts'
@@ -14,7 +14,6 @@ import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
 import { readEvents } from './event-log.ts'
 import type { createHost } from './host.ts'
 import type { HydraEvent, HydraState } from './model.ts'
-import { listHydras } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
@@ -46,11 +45,11 @@ const shownTraces = ({
   return `${tools}:${thinking}`
 }
 
-// The tabs connected to one mounted Hydra and everything pushed to them: events, snapshots, spend, settings and resumes.
+// The tabs connected to one mounted Hydra and the live facts pushed to them: each card's latest message and action,
+// spend and usage. Hydra data reaches the page through Zero.
 export function createServerClients({
   hydraId,
   state,
-  recent,
   agents,
   threadSubscriptions,
   bindThread,
@@ -59,7 +58,6 @@ export function createServerClients({
 }: {
   hydraId: string
   state(): HydraState
-  recent(): HydraEvent[]
   agents(): Pick<ReturnType<typeof createHost>, 'queue' | 'usageViews'>
   threadSubscriptions: Map<HydraClient, Subscription>[]
   bindThread({
@@ -84,7 +82,6 @@ export function createServerClients({
   const clients = new Set<HydraClient>()
   const interests = new WeakMap<HydraClient, PageInterest>()
   const interestFor = ({ ws }: { ws: HydraClient }) => interests.get(ws) ?? NO_INTEREST
-  const hydraSubscribers = new WeakSet<HydraClient>()
   const liveCardIds = () => new Set(Object.values(state().cards).filter(card => liveTask({ card }))
     .map(card => card.id))
   // The cards a tab shows without interests, so a card an event brings back gets its cached latest.
@@ -115,9 +112,7 @@ export function createServerClients({
 
   type Latest = Extract<ServerMessage, { type: 'latest' }>
   interface Pending {
-    snapshot: boolean
     latest?: Latest
-    queue?: Extract<ServerMessage, { type: 'hydraQueue' }>
     timer?: ReturnType<typeof setTimeout>
     // When the tab's socket filled up, so socket.drained can say how long it stayed held.
     since: number
@@ -202,20 +197,13 @@ export function createServerClients({
     message: ServerMessage
   }) => {
     const held = recovery.get(ws)
-    const pending: Pending = held ?? {
-      snapshot: false,
-      since: performance.now(),
-    }
+    const pending: Pending = held ?? { since: performance.now() }
 
-    if (message.type === 'page.event' || message.type === 'snapshot' || message.type === 'hydras') {
-      pending.snapshot = true
-    } else if (message.type === 'latest') {
+    if (message.type === 'latest') {
       pending.latest = mergeLatest({
         before: pending.latest,
         latest: message,
       })
-    } else if (message.type === 'hydraQueue') {
-      pending.queue = message
     } else {
       if (!dropping.has(ws)) {
         dropping.add(ws)
@@ -331,11 +319,7 @@ export function createServerClients({
         delete pending.latest
       }
 
-      if (message.type === 'hydraQueue') {
-        delete pending.queue
-      }
-
-      if (!pending.snapshot && !pending.latest && !pending.queue) {
+      if (!pending.latest) {
         clearRecovery({
           ws,
           status: 'drained',
@@ -349,7 +333,8 @@ export function createServerClients({
   // The queue the page last read through Zero, so an unchanged one is not written again.
   let storedQueue = ''
 
-  const queueMessage = (): ServerMessage => {
+  // The queue box: the updates waiting for Hydra and the batch it is reading, which the page reads through Zero.
+  const storeQueue = () => {
     const queued = agents().queue()
     const chat = hydraChatQueue({ state: state() })
     // The batch Hydra reads shows only while its turn runs.
@@ -360,103 +345,58 @@ export function createServerClients({
     }
     const json = JSON.stringify(queue)
 
-    if (json !== storedQueue) {
-      storedQueue = json
-      query({
-        statements: [
-          {
-            text: 'update hydras set queue = $2 where id = $1',
-            values: [
-              hydraId,
-              json,
-            ],
-          },
-        ],
-      })
+    if (json === storedQueue) {
+      return queue
     }
 
-    return {
-      type: 'hydraQueue',
-      queue,
-    }
+    storedQueue = json
+    query({
+      statements: [
+        {
+          text: 'update hydras set queue = $2 where id = $1',
+          values: [
+            hydraId,
+            json,
+          ],
+        },
+      ],
+    })
+
+    return queue
   }
 
-  const sendQueue = ({
-    ws,
-    queue = queueMessage(),
-  }: {
-    ws: HydraClient
-    queue?: ServerMessage
-  }) => send({
-    ws,
-    message: queue,
-  })
-
-  const sendSnapshot = ({
-    ws,
-    queue,
-  }: {
-    ws: HydraClient
-    queue?: ServerMessage
-  }) => {
+  // Every card's latest message, action, spend and usage the tab may see, as one batch.
+  const sendLatest = ({ ws }: { ws: HydraClient }) => {
     const pending = recovery.get(ws)
     const accepted = send({
       ws,
-      message: {
-        type: 'snapshot',
-        seq: state().seq,
-        state: pageState({
-          state: state(),
-          interest: interestFor({ ws }),
-        }),
-      },
-    })
-
-    if (!accepted) {
-      return false
-    }
-
-    const latest = mergeLatest({
-      before: {
-        type: 'latest',
-        ...spendNow,
-        usage: agents().usageViews({
-          spend: spendNow.spend,
-          readings: readingsNow,
-        }),
-        messages: feed().latest,
-        actions: feed().actions,
-      },
-      latest: pending?.latest ?? {
-        type: 'latest',
-        messages: {},
-        actions: {},
-      },
-    })
-    clearRecovery({
-      ws,
-      status: 'drained',
-    })
-    // Once accepted, the snapshot and its current facts form one recovery batch.
-    ws.send({
-      message: visibleLatest({
-        ws,
-        message: latest,
+      message: mergeLatest({
+        before: {
+          type: 'latest',
+          ...spendNow,
+          usage: agents().usageViews({
+            spend: spendNow.spend,
+            readings: readingsNow,
+          }),
+          messages: feed().latest,
+          actions: feed().actions,
+        },
+        latest: pending?.latest ?? {
+          type: 'latest',
+          messages: {},
+          actions: {},
+        },
       }),
     })
-    ws.send({ message: queue ?? queueMessage() })
 
-    if (hydraSubscribers.has(ws)) {
-      ws.send({
-        message: {
-          type: 'hydras',
-          hydraId,
-          hydras: listHydras(),
-        },
+    if (accepted) {
+      clearRecovery({
+        ws,
+        status: 'drained',
       })
     }
 
-    return true
+    return accepted
   }
 
   const flush = ({ ws }: { ws: HydraClient }) => {
@@ -484,17 +424,6 @@ export function createServerClients({
       return
     }
 
-    if (pending.snapshot) {
-      if (sendSnapshot({ ws })) {
-        refreshThread({
-          ws,
-          resync: true,
-        })
-      }
-
-      return
-    }
-
     if (pending.latest) {
       send({
         ws,
@@ -502,18 +431,11 @@ export function createServerClients({
       })
     }
 
-    if (pending.queue) {
-      send({
-        ws,
-        message: pending.queue,
-      })
-    }
-
     retry({ ws })
   }
 
   const broadcast = ({ event }: { event: HydraEvent }) => {
-    const queue = queueMessage()
+    storeQueue()
     const live = liveCardIds()
     const returned = [...live].filter(id => knownCards.has(id) && !liveCards.has(id))
     liveCards = live
@@ -524,51 +446,26 @@ export function createServerClients({
       : undefined
 
     for (const ws of clients) {
-      if (recovery.get(ws)?.snapshot) {
-        flush({ ws })
-      } else if (pageSnapshotEvent({ event })) {
-        sendSnapshot({
-          ws,
-          queue,
-        })
-      } else {
+      // A card back on the board gets its cached latest; Zero brings the card itself.
+      if (returned.length) {
         send({
           ws,
           message: {
-            type: 'page.event',
-            update: pageEvent({
-              event,
-              state: state(),
-              interest: interestFor({ ws }),
+            type: 'latest',
+            ...spendNow,
+            usage: agents().usageViews({
+              spend: spendNow.spend,
+              readings: readingsNow,
             }),
+            messages: Object.fromEntries(returned.map(id => [
+              id,
+              feed().latest[id] ?? null,
+            ])),
+            actions: Object.fromEntries(returned.map(id => [
+              id,
+              feed().actions[id] ?? null,
+            ])),
           },
-        })
-
-        if (returned.length) {
-          send({
-            ws,
-            message: {
-              type: 'latest',
-              ...spendNow,
-              usage: agents().usageViews({
-                spend: spendNow.spend,
-                readings: readingsNow,
-              }),
-              messages: Object.fromEntries(returned.map(id => [
-                id,
-                feed().latest[id] ?? null,
-              ])),
-              actions: Object.fromEntries(returned.map(id => [
-                id,
-                feed().actions[id] ?? null,
-              ])),
-            },
-          })
-        }
-
-        sendQueue({
-          ws,
-          queue,
         })
       }
 
@@ -649,76 +546,12 @@ export function createServerClients({
     },
   })
 
-  const sendSettings = ({ ws }: { ws: HydraClient }) => {
-    const read = readSettings()
-    send({
-      ws,
-      message: {
-        type: 'settings',
-        settings: pageSettings({ settings: read.settings }),
-        revision: read.revision,
-      },
-    })
-  }
-
-  // A cursor this server can continue from gets only the events after it; any
-  // other cursor (ahead of the Hydra, older than the kept events, or none) gets a snapshot.
-  // Either way the tab then gets every card's last message.
-  const resume = ({
-    ws,
-    after,
-  }: {
-    ws: HydraClient
-    after: string | null
-  }) => {
-    const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
-    const first = recent()[0]?.seq ?? state().seq + 1
-
-    if (seq === undefined || seq > state().seq || seq < first - 1
-      || recent().some(event => event.seq > seq && pageSnapshotEvent({ event }))) {
-      return sendSnapshot({ ws })
-    }
-
-    for (const event of recent()) {
-      if (event.seq > seq) {
-        send({
-          ws,
-          message: {
-            type: 'page.event',
-            update: pageEvent({
-              event,
-              state: state(),
-              interest: interestFor({ ws }),
-            }),
-          },
-        })
-      }
-    }
-
-    sendQueue({ ws })
-    send({
-      ws,
-      message: {
-        type: 'latest',
-        ...spendNow,
-        usage: agents().usageViews({
-          spend: spendNow.spend,
-          readings: readingsNow,
-        }),
-        messages: feed().latest,
-        actions: feed().actions,
-      },
-    })
-  }
-
   return {
     clients,
-    hydraSubscribers,
     send,
-    queueMessage,
-    sendQueue,
-    sendSnapshot,
-    // A tab that names its cards when it subscribes gets its first snapshot or resume already scoped.
+    storeQueue,
+    sendLatest,
+    // A tab that names its cards when it subscribes gets its first latest batch already scoped.
     open({
       ws,
       interest,
@@ -752,13 +585,11 @@ export function createServerClients({
       ].some(id => toggled({ id }) && !shownWithoutInterest({ id })))
 
       if (changed) {
-        sendSnapshot({ ws })
+        sendLatest({ ws })
       }
     },
     broadcast,
     spend,
-    sendSettings,
-    resume,
     closeClient({ ws }: { ws: HydraClient }) {
       closedClients.add(ws)
       clearRecovery({

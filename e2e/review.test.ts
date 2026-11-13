@@ -448,7 +448,7 @@ test(
         check: ({ state }) => state.hydraMessages?.some(entry => entry.reminderQuestions?.length),
       })
       assert.deepEqual(
-        page.queues.at(-1)?.waiting,
+        page.queue()?.waiting,
         [],
       )
       held.release()

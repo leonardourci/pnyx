@@ -290,7 +290,7 @@ test(
       try {
         await until({
           what: 'the upgrade-available hint',
-          check: () => page.upgrades.at(-1)?.available === true,
+          check: () => page.upgrade()?.available === true,
         })
       } finally {
         page.close()

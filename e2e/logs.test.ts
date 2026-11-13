@@ -240,7 +240,7 @@ test(
     })
     await until({
       what: 'logging off on the page',
-      check: () => page.settings.at(-1)?.logs === 'off',
+      check: () => page.settings()?.logs === 'off',
     })
     const quietBefore = mine({ operation: 'command.page' }).length
     await page.command({
@@ -316,7 +316,7 @@ test(
     })
     await until({
       what: 'detailed logging on the page',
-      check: () => page.settings.at(-1)?.logs === 'detailed',
+      check: () => page.settings()?.logs === 'detailed',
     })
     await page.command({
       name: 'task',
@@ -330,7 +330,7 @@ test(
     })
     const live = await until({
       what: 'a detailed line for each live update the page gets',
-      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'page.event'),
+      check: () => mine({ operation: 'socket.send' }).find(line => line.name === 'receipt'),
     })
     assert.ok(Number(live.bytes) > 0)
     assert.equal(

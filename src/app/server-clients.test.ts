@@ -11,14 +11,12 @@ import { createHydra } from './server-hydras.ts'
 import { loadHydra } from './store.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { usageFor } from '#workers/usage.ts'
-import { mirrorSettings, readSettings, saveSettings } from '#settings/store.ts'
 import { query } from '#store/postgres.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
 
 test(
-  'state, working status, actions and Hydra lists recover after drain without another update',
+  'latest messages, actions and spend recover after drain without another update and follow what the tab opened',
   t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -118,7 +116,6 @@ test(
     const tabs = createServerClients({
       hydraId: 'default',
       state: () => state,
-      recent: () => [],
       agents: () => ({
         queue: () => ({
           waiting: [],
@@ -145,10 +142,6 @@ test(
       },
       send({ message }) {
         received.push(message)
-
-        if (message.type === 'snapshot') {
-          buffered = MAX_BUFFERED + 1
-        }
       },
       terminate() {},
     }
@@ -198,7 +191,6 @@ test(
         },
       },
     })
-    tabs.sendQueue({ ws: client })
     assert.equal(
       received.length,
       0,
@@ -228,12 +220,6 @@ test(
         other: action,
         removed: null,
       },
-    )
-    const running = received.find(message => message.type === 'hydraQueue')
-    assert.ok(running?.type === 'hydraQueue')
-    assert.equal(
-      running.queue.chat!.working,
-      true,
     )
 
     received.length = 0
@@ -334,29 +320,9 @@ test(
     t.mock.timers.tick(SOCKET_RETRY_MS)
     assert.deepEqual(
       received.map(message => message.type),
-      [
-        'snapshot',
-        'latest',
-        'hydraQueue',
-      ],
+      ['latest'],
     )
-    const snapshot = received.find(message => message.type === 'snapshot')
-    assert.ok(snapshot?.type === 'snapshot')
-    assert.equal(
-      snapshot.state.cards.$hydra!.activity,
-      'finished',
-    )
-    assert.equal(
-      snapshot.seq,
-      2,
-    )
-    const stopped = received.find(message => message.type === 'hydraQueue')
-    assert.ok(stopped?.type === 'hydraQueue')
-    assert.equal(
-      stopped.queue.chat!.working,
-      false,
-    )
-    const cleared = received.find(message => message.type === 'latest')
+    const cleared = received[0]
     assert.ok(cleared?.type === 'latest')
     assert.equal(
       cleared.actions.removed,
@@ -367,55 +333,10 @@ test(
     assert.equal(
       received.length,
       accepted,
-      'one oversized snapshot must not cause a resync loop',
+      'a drained tab gets nothing more until something changes',
     )
 
     received.length = 0
-    buffered = MAX_BUFFERED + 1
-    tabs.hydraSubscribers.add(client)
-    assert.equal(
-      tabs.send({
-        ws: client,
-        message: {
-          type: 'hydras',
-          hydraId: 'default',
-          hydras: [],
-        },
-      }),
-      false,
-    )
-    const added = createHydra({ name: 'Fresh list' })
-    buffered = 0
-    t.mock.timers.tick(SOCKET_RETRY_MS)
-    assert.deepEqual(
-      received.map(message => message.type),
-      [
-        'snapshot',
-        'latest',
-        'hydraQueue',
-        'hydras',
-      ],
-      'a rejected Hydra list must recover without another update',
-    )
-    const list = received.find(message => message.type === 'hydras')
-    assert.ok(list?.type === 'hydras')
-    assert.deepEqual(
-      list.hydras.map(({
-        id,
-        name,
-      }) => ({
-        id,
-        name,
-      })),
-      [
-        {
-          id: added,
-          name: 'Fresh list',
-        },
-      ],
-      'recovery must read the current list instead of sending the stale payload',
-    )
-    buffered = 0
     tabs.show({
       ws: client,
       interest: {
@@ -423,21 +344,25 @@ test(
         hidden: false,
       },
     })
-    const opened = received.findLast(message => message.type === 'snapshot')
-    assert.ok(opened?.type === 'snapshot')
+    const opened = received.at(-1)
+    assert.ok(opened?.type === 'latest')
     assert.equal(
-      opened.state.cards.hidden?.title,
-      state.cards.hidden.title,
+      opened.messages.hidden?.text,
+      'Cached hidden reply',
+      'opening a hidden card sends its latest',
     )
+    tabs.show({
+      ws: client,
+      interest: {
+        cards: ['hidden'],
+        hidden: false,
+      },
+    })
     assert.equal(
-      opened.state.cards.hidden?.steering,
-      undefined,
+      received.length,
+      1,
+      'the same interest again sends nothing',
     )
-    assert.equal(
-      'eventIds' in opened.state,
-      false,
-    )
-    buffered = 0
     tabs.show({
       ws: client,
       interest: {
@@ -445,26 +370,11 @@ test(
         hidden: false,
       },
     })
-    const closed = received.findLast(message => message.type === 'snapshot')
-    assert.ok(closed?.type === 'snapshot')
+    const released = received.at(-1)
+    assert.ok(released?.type === 'latest')
     assert.equal(
-      closed.state.cards.hidden,
+      released.messages.hidden,
       undefined,
-    )
-    buffered = 0
-    tabs.show({
-      ws: client,
-      interest: {
-        cards: [],
-        hidden: true,
-      },
-    })
-    const all = received.findLast(message => message.type === 'snapshot')
-    assert.ok(all?.type === 'snapshot')
-    assert.ok(all.state.cards.hidden)
-    assert.equal(
-      state.cards.hidden.steering?.[0]?.text,
-      'Private history',
     )
     buffered = 0
     tabs.send({
@@ -552,7 +462,6 @@ test(
     const tabs = createServerClients({
       hydraId: 'default',
       state: () => emptyHydra(),
-      recent: () => [],
       agents: () => ({
         queue: () => ({
           waiting: [],
@@ -583,22 +492,18 @@ test(
       terminate() {},
     }
     tabs.clients.add(client)
-    const settings: ServerMessage = {
-      type: 'settings',
-      settings: {} as Extract<ServerMessage, { type: 'settings' }>['settings'],
-      revision: 1,
-    }
+    const pong: ServerMessage = { type: 'pong' }
     const dropped = () => errors.mock.calls
       .map(call => JSON.parse(String(call.arguments[0])) as Record<string, unknown>)
       .filter(line => line.operation === 'socket.dropped')
 
     tabs.send({
       ws: client,
-      message: settings,
+      message: pong,
     })
     tabs.send({
       ws: client,
-      message: settings,
+      message: pong,
     })
     assert.deepEqual(
       dropped().map(line => [
@@ -609,7 +514,7 @@ test(
       [
         [
           'warn',
-          'settings',
+          'pong',
           MAX_BUFFERED + 1,
         ],
       ],
@@ -617,12 +522,12 @@ test(
     buffered = 0
     tabs.send({
       ws: client,
-      message: settings,
+      message: pong,
     })
     buffered = MAX_BUFFERED + 1
     tabs.send({
       ws: client,
-      message: settings,
+      message: pong,
     })
     assert.equal(
       received.length,
@@ -637,97 +542,6 @@ test(
 )
 
 test(
-  'a page gets the shared settings without postgresUrl, in its settings message and in the row Zero reads',
-  t => {
-    const home = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-page-settings-',
-    ))
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
-    t.after(() => {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    })
-    // postgresUrl is read at this home's first query, so this home keeps its own database.
-    query({ statements: [{ text: 'select 1' }] })
-    saveSettings({
-      patch: {
-        postgresUrl: 'postgres://pnyx:secret@127.0.0.1:1/elsewhere',
-        theme: 'dark',
-      },
-      meta: {
-        at: new Date().toISOString(),
-        actor: 'cli',
-      },
-    })
-    const tabs = createServerClients({
-      hydraId: 'default',
-      state: () => emptyHydra(),
-      recent: () => [],
-      agents: () => ({
-        queue: () => ({
-          waiting: [],
-          reading: [],
-        }),
-        usageViews: () => ({}),
-      }),
-      threadSubscriptions: [],
-      bindThread() {},
-      refreshThread() {},
-      feed: () => ({
-        latest: {},
-        actions: {},
-      }),
-    })
-    t.after(() => tabs.close())
-    const received: ServerMessage[] = []
-    tabs.sendSettings({
-      ws: {
-        OPEN: 1,
-        readyState: 1,
-        bufferedAmount: 0,
-        send({ message }) {
-          received.push(message)
-        },
-        terminate() {},
-      },
-    })
-    const read = readSettings()
-    mirrorSettings(read)
-    const [rows] = query({ statements: [{ text: 'select value from settings where id = \'shared\'' }] })
-    const sent = received[0] as Extract<ServerMessage, { type: 'settings' }>
-    const mirrored = rows![0]!.value as Record<string, unknown>
-
-    assert.deepEqual(
-      [
-        sent.settings.theme,
-        'postgresUrl' in sent.settings,
-        mirrored.theme,
-        'postgresUrl' in mirrored,
-      ],
-      [
-        'dark',
-        false,
-        'dark',
-        false,
-      ],
-    )
-  },
-)
-
-test(
   'a tab held over its socket budget has a warning when it starts being held and a line when it drains',
   t => {
     openLogs()
@@ -736,7 +550,6 @@ test(
     const tabs = createServerClients({
       hydraId: 'default',
       state: () => emptyHydra(),
-      recent: () => [],
       agents: () => ({
         queue: () => ({
           waiting: [],
@@ -767,11 +580,9 @@ test(
     tabs.send({
       ws: client,
       message: {
-        type: 'hydraQueue',
-        queue: {
-          waiting: [],
-          reading: [],
-        },
+        type: 'latest',
+        messages: {},
+        actions: {},
       },
     })
     buffered = 0
@@ -796,7 +607,7 @@ test(
         [
           'socket.held',
           'warn',
-          'hydraQueue',
+          'latest',
         ],
         [
           'socket.drained',
@@ -812,18 +623,15 @@ test(
 function openTab({
   t,
   state,
-  recent = () => [],
   latest = {},
 }: {
   t: TestContext
   state(): HydraState
-  recent?(): HydraEvent[]
   latest?: Record<string, LatestMessage>
 }) {
   const tabs = createServerClients({
     hydraId: 'default',
     state,
-    recent,
     agents: () => ({
       queue: () => ({
         waiting: [],
@@ -871,7 +679,7 @@ const reduced = ({ events }: { events: HydraEvent[] }) => events.reduce(
 )
 
 test(
-  'a card another event brings back reaches the page with its last reply, and a column change sends a snapshot',
+  'a card another event brings back reaches the page with its last reply',
   t => {
     const base = {
       v: 1 as const,
@@ -915,15 +723,12 @@ test(
       state.cards[id]!.expired = true
     }
 
-    const recent: HydraEvent[] = []
     const {
       tabs,
-      client,
       received,
     } = openTab({
       t,
       state: () => state,
-      recent: () => recent,
       latest: {
         returning: {
           role: 'assistant',
@@ -950,63 +755,18 @@ test(
       state.cards.returning!.hidden,
       undefined,
     )
-    recent.push(moved)
     tabs.broadcast({ event: moved })
-    const update = received.find(message => message.type === 'page.event')
-    assert.ok(update?.type === 'page.event')
-    assert.ok(update.update.cards.returning)
     const latest = received.find(message => message.type === 'latest')
     assert.ok(latest?.type === 'latest')
     assert.equal(
       latest.messages.returning?.text,
       'Last reply before hiding',
     )
-    received.length = 0
-    const columns: HydraEvent = {
-      ...base,
-      id: 'columns',
-      seq: 4,
-      cardId: '$board',
-      type: 'board.columns',
-      data: {
-        columns: hydraConfig({ state }).columns.map(column => ({
-          ...column,
-          role: undefined,
-        })),
-      },
-    }
-    state = reduce({
-      state,
-      event: columns,
-    })
-    assert.equal(
-      state.cards.kept!.hidden,
-      undefined,
-    )
-    recent.push(columns)
-    tabs.broadcast({ event: columns })
-    const snapshot = received.find(message => message.type === 'snapshot')
-    assert.ok(snapshot?.type === 'snapshot')
-    assert.ok(snapshot.state.cards.kept)
-    assert.equal(
-      received.some(message => message.type === 'page.event'),
-      false,
-    )
-    received.length = 0
-    tabs.resume({
-      ws: client,
-      after: String(moved.seq),
-    })
-    assert.equal(
-      received[0]?.type,
-      'snapshot',
-      'a resume across a column change starts from a snapshot',
-    )
   },
 )
 
 test(
-  'opening a live card sends no snapshot; opening or releasing a hidden one does',
+  'opening a live card sends no latest batch; opening or releasing a hidden one does',
   t => {
     const base = {
       v: 1 as const,
@@ -1049,7 +809,7 @@ test(
       state: () => state,
     })
 
-    const snapshots = ({ cards }: { cards: string[] }) => {
+    const batches = ({ cards }: { cards: string[] }) => {
       received.length = 0
       tabs.show({
         ws: client,
@@ -1059,15 +819,15 @@ test(
         },
       })
 
-      return received.filter(message => message.type === 'snapshot').length
+      return received.filter(message => message.type === 'latest').length
     }
 
     assert.equal(
-      snapshots({ cards: ['live'] }),
+      batches({ cards: ['live'] }),
       0,
     )
     assert.equal(
-      snapshots({
+      batches({
         cards: [
           'live',
           'gone',
@@ -1076,11 +836,11 @@ test(
       1,
     )
     assert.equal(
-      snapshots({ cards: ['gone'] }),
+      batches({ cards: ['gone'] }),
       0,
     )
     assert.equal(
-      snapshots({ cards: [] }),
+      batches({ cards: [] }),
       1,
     )
   },
@@ -1115,7 +875,6 @@ test(
       event: created,
     })
     tabs.broadcast({ event: created })
-    assert.ok(received.some(message => message.type === 'page.event'))
     assert.equal(
       received.some(message => message.type === 'latest'),
       false,
@@ -1157,7 +916,6 @@ test(
     const tabs = createServerClients({
       hydraId,
       state: () => loadHydra({ hydraId }).state,
-      recent: () => [],
       agents: () => ({
         queue: () => ({
           waiting,
@@ -1174,9 +932,7 @@ test(
       }),
     })
 
-    const message = tabs.queueMessage()
-
-    assert.ok(message.type === 'hydraQueue')
+    const queue = tabs.storeQueue()
     const [stored] = query({
       statements: [
         {
@@ -1187,7 +943,7 @@ test(
     })[0] as { queue: unknown }[]
     assert.deepEqual(
       stored?.queue,
-      JSON.parse(JSON.stringify(message.queue)),
+      JSON.parse(JSON.stringify(queue)),
     )
     assert.deepEqual(
       (stored?.queue as { waiting: unknown }).waiting,

@@ -697,7 +697,6 @@ test(
       homes: [],
       open: async () => 'http://127.0.0.1/',
       hydrasChanged() {},
-      upgradeStatus: () => undefined,
     })
     const backfilled = () => JSON.parse(readFileSync(
       cursors,
