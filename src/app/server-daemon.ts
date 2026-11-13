@@ -806,41 +806,57 @@ export async function startServer({
     changed: mountAll,
     interval: CREATION_POLL_MS,
   })
-  const retry = setInterval(
-    () => background({
-      name: 'mount Hydras',
-      run: mountAll,
-    }),
-    RETRY_MS,
-  ).unref()
   // The settings log is written by any pnyx-axi process; every open page gets the change.
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
-  // Mirrored to Postgres once the first mount has reached it, and from then on whenever the log changes.
-  let settingsRevision: number | undefined
-  const settingsWatcher = watchPath({
-    path: settingsDir,
-    changed: () => {
-      const {
-        revision,
-        settings,
-      } = readSettings()
+  // The revision the server runs with, and the one Postgres holds for the pages from the first mount on. A change
+  // applies at once; a mirror that failed is tried again on the next change or retry.
+  let appliedRevision = readSettings().revision
+  let mirroredRevision: number | undefined
 
-      if (closed || settingsRevision === undefined || revision === settingsRevision) {
-        return
-      }
+  const syncSettings = () => {
+    const {
+      revision,
+      settings,
+    } = readSettings()
 
+    if (closed) {
+      return
+    }
+
+    if (revision !== appliedRevision) {
+      appliedRevision = revision
+      logs.apply({ settings })
+      served.forEach(m => m.settings())
+    }
+
+    if (mirroredRevision !== undefined && revision !== mirroredRevision) {
       mirrorSettings({
         settings,
         revision,
       })
-      // Only once mirrored, so a mirror that failed is tried again on the next change.
-      settingsRevision = revision
-      logs.apply({ settings })
-      served.forEach(m => m.settings())
-    },
+      mirroredRevision = revision
+    }
+  }
+
+  const settingsWatcher = watchPath({
+    path: settingsDir,
+    changed: syncSettings,
     interval: CREATION_POLL_MS,
   })
+  const retry = setInterval(
+    () => {
+      background({
+        name: 'mount Hydras',
+        run: mountAll,
+      })
+      background({
+        name: 'settings mirror',
+        run: syncSettings,
+      })
+    },
+    RETRY_MS,
+  ).unref()
   // Once at start, then daily: an offline check leaves the last answer, and no answer shows no hint.
   const checkUpgrade = () => options.upgradeRoot && background({
     name: 'upgrade check',
@@ -926,7 +942,7 @@ export async function startServer({
     await mount({ id: 'default' })
     const startSettings = readSettings()
     mirrorSettings(startSettings)
-    settingsRevision = startSettings.revision
+    mirroredRevision = startSettings.revision
     // A check made before this start may describe the build it replaced, so the notice waits for this build's own.
     query({ statements: [{ text: 'delete from upgrade_status' }] })
     checkUpgrade()

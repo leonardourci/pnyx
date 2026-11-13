@@ -53,7 +53,7 @@ test(
           port: 0,
           ...quiet,
         }),
-        (error: unknown) => error instanceof HydraError && error.code === 'DATABASE_ERROR',
+        (error: unknown) => error instanceof HydraError && error.code === 'DATABASE_UNAVAILABLE',
       )
     } finally {
       process.env.PGPORT = port

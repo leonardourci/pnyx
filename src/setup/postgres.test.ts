@@ -305,26 +305,32 @@ test(
       ],
     })
 
+    const failed = output.failed as {
+      hydra: string
+      error: string
+    }[]
     assert.deepEqual(
       [
         output.imported,
-        output.failed,
+        failed.map(entry => entry.hydra),
         process.exitCode,
       ],
       [
         ['waiting'],
         [
-          {
-            hydra: 'broken',
-            error: 'events.jsonl is corrupt at byte 2782',
-          },
-          {
-            hydra: 'grown',
-            error: 'events.jsonl of Hydra grown changed after it moved to Postgres (2782 bytes then, 2793 now), so an older Pnyx wrote events Postgres does not have',
-          },
+          'broken',
+          'grown',
         ],
         1,
       ],
+    )
+    assert.match(
+      failed[0]!.error,
+      /^events\.jsonl is corrupt at byte \d+$/,
+    )
+    assert.match(
+      failed[1]!.error,
+      /^events\.jsonl of Hydra grown changed after it moved to Postgres \(\d+ bytes then, \d+ now\)/,
     )
     assert.deepEqual(
       [

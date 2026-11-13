@@ -4,6 +4,13 @@ import { schema } from '#store/zero-schema.ts'
 
 // How long a client waits for a query's first answer; zero-cache answers a page's in well under a second.
 const ANSWER_MS = 20_000
+
+const decoded = ({ data }: { data: Buffer | ArrayBuffer | Buffer[] }) => {
+  const parts = Array.isArray(data) ? data : [Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data)]
+
+  return Buffer.concat(parts).toString('utf8')
+}
+
 // zero-cache's first start copies the home's tables into its replica before it reports ready.
 const READY_MS = 60_000
 const POLL_MS = 100
@@ -46,7 +53,8 @@ export async function readRows<Rows>({
       )
       this.on(
         'message',
-        (data: Buffer) => frames.push(String(data)),
+        // Zero sends row data in binary messages, so each one is decoded before it is searched.
+        (data: Buffer | ArrayBuffer | Buffer[]) => frames.push(decoded({ data })),
       )
       // A page left open sees its socket drop and its reconnects refused while the server stops.
       this.on(

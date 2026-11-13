@@ -36,7 +36,6 @@ export function pageCard({ card }: { card: Card }): Card {
   return visible
 }
 
-
 export function pageShows({
   card,
   interest,

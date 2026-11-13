@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { refuseEvents } from '#test-harness/database.ts'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1252,6 +1252,21 @@ test(
 
     const moved = loadHydra({ hydraId: 'dst' }).state.cards[id]!.notes!.map(note => note.id)
     assert.ok(moved.length)
+    // The target reads on from where the source's harvest stopped: the end of the transcript.
+    const cursors = JSON.parse(readFileSync(
+      join(
+        hydraDir({ hydraId: 'dst' }),
+        'harvest.json',
+      ),
+      'utf8',
+    )) as Record<string, { pos: number }>
+    assert.deepEqual(
+      Object.entries(cursors).filter(([name]) => name.startsWith(`${id}\n`))
+        .map(([
+          , cursor,
+        ]) => cursor.pos),
+      [statSync(transcript).size],
+    )
     assert.equal(
       withWriter({
         hydraId: 'dst',

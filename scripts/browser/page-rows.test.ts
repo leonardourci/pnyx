@@ -10,9 +10,10 @@ import { readRows, zeroReady } from '#test-harness/zero-page.ts'
 const pnyx = scenarioGroup({ zeroCache: true })
 
 const SECRET = 'SECRET-STEERING'
+const QUESTION = 'Ship it on Friday?'
 
 test(
-  'the page\'s Zero rows carry a hidden task\'s state for its chips and leads, never a card\'s private steering, and a page of history at a time',
+  'the page\'s Zero rows carry a hidden task\'s status and questions for its chips and answer leads, never a card\'s private steering, and a page of history at a time',
   async () => {
     const s = await pnyx.scenario()
     const origin = `http://127.0.0.1:${pnyx.port()}`
@@ -60,6 +61,21 @@ test(
         'Waiting on the owner',
       ],
     })
+    // Only Hydra asks the owner.
+    const hydra = await s.chat({ text: 'Park the second task until I answer.' })
+    await s.as({ agent: hydra }).run({
+      args: [
+        'task',
+        'ask',
+        'parked',
+        '--to',
+        'owner',
+        '--question',
+        QUESTION,
+        '--reason',
+        'The owner decides the date.',
+      ],
+    })
     await s.owner({
       args: [
         'task',
@@ -82,17 +98,35 @@ test(
       ['shown'],
     )
     assert.equal(
+      JSON.stringify(board.rows).includes(SECRET),
+      false,
+    )
+    assert.equal(
       board.frames.some(frame => frame.includes(SECRET)),
       false,
     )
 
     const references = await read<{
       id: string
-      reference: { status?: { state: string } }
+      reference?: {
+        data: {
+          status?: { state: string }
+          asks?: { question: string }[]
+        }
+      }
     }[]>({ query: ({ zero }) => zero.materialize(queries.cards.references({ hydraId })) })
+    const hidden = references.rows.find(row => row.id === parked.id)?.reference?.data
     assert.equal(
-      references.rows.find(row => row.id === parked.id)?.reference.status?.state,
+      hidden?.status?.state,
       'blocked',
+    )
+    assert.deepEqual(
+      hidden?.asks?.map(ask => ask.question),
+      [QUESTION],
+    )
+    assert.equal(
+      JSON.stringify(references.rows).includes(SECRET),
+      false,
     )
     assert.equal(
       references.frames.some(frame => frame.includes(SECRET)),

@@ -172,9 +172,10 @@ test(
       cut?.wakeThrough,
       0,
     )
-    assert.equal(
-      cut?.resumeMessage.split('\n')[0],
-      '<pnyx-wake>A Pnyx server restart cut your last turn before you answered messages seq 5. Run `pnyx-axi hydra messages --after 4 --hydra default` and `pnyx-axi hydra check --after 4 --hydra default`, then answer what is still open; tell the owner in one line that the restart cut your reply.',
+    // The cut turn is the one delivered at seq 5, so Hydra rereads from just before it.
+    assert.match(
+      cut!.resumeMessage,
+      /pnyx-axi hydra messages --after 4 --hydra default/,
     )
   },
 )

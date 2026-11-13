@@ -62,6 +62,23 @@ const CONFLICTS = new Set([
   '23505',
 ])
 
+// A connection that failed or dropped, and a statement Postgres cancelled for a timeout or a lock, can pass when tried
+// again; anything else, such as a constraint the data breaks, fails the same way every time.
+const UNAVAILABLE = /^(08|57)|^55P03$/
+const SQLSTATE = /^[0-9A-Z]{5}$/
+
+function failureCode({ code = '' }: { code?: string }): string {
+  if (CONFLICTS.has(code)) {
+    return 'CONFLICT'
+  }
+
+  if (!SQLSTATE.test(code) || UNAVAILABLE.test(code)) {
+    return 'DATABASE_UNAVAILABLE'
+  }
+
+  return 'DATABASE_ERROR'
+}
+
 // The live home's database is pnyx; every other home, such as the dev home or a test's, gets its own name, so two
 // homes never share one. Host, port and user come from the usual libpq environment (PGHOST, PGPORT, PGUSER).
 export function homeDatabase({ home = pnyxHome() }: { home?: string } = {}): string {
@@ -170,8 +187,8 @@ export function configuredUrl(): string | undefined {
   return url
 }
 
-// Replaces U+0000 and lone surrogates with U+FFFD in every string of a record headed for Postgres, in place, so memory
-// and rows keep the same text.
+// Replaces U+0000 and lone surrogates with U+FFFD in every string and key of a record headed for Postgres, in place, so
+// memory and rows keep the same text.
 export function storable<Value>({ value }: { value: Value }): Value {
   if (typeof value === 'string') {
     return value.toWellFormed().replaceAll(
@@ -184,7 +201,14 @@ export function storable<Value>({ value }: { value: Value }): Value {
     const record = value as Record<string, unknown>
 
     for (const key of Object.keys(record)) {
-      record[key] = storable({ value: record[key] })
+      const cleaned = storable({ value: key })
+      const item = storable({ value: record[key] })
+
+      if (cleaned !== key) {
+        delete record[key]
+      }
+
+      record[cleaned] = item
     }
   }
 
@@ -252,7 +276,7 @@ export function query({
   if ('error' in reply) {
     throw new HydraError({
       message: `Postgres: ${reply.error.message}`,
-      code: CONFLICTS.has(reply.error.code ?? '') ? 'CONFLICT' : 'DATABASE_ERROR',
+      code: failureCode({ code: reply.error.code }),
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running and configured'],
     })
   }

@@ -233,8 +233,18 @@ export function withWriter<T>({
     throw error
   }
 
+  // The write has committed, so a step after it that fails is logged and the rest, and the page's update, still run.
   for (const run of committed) {
-    run()
+    try {
+      run()
+    } catch (error) {
+      log({
+        level: 'error',
+        operation: 'events.after-commit',
+        hydraId,
+        error,
+      })
+    }
   }
 
   if (pending.length) {

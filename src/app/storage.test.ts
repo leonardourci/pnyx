@@ -368,6 +368,62 @@ test(
 )
 
 test(
+  'a log whose state breaks a unique key fails its import loudly and leaves no Hydra a later write could start over',
+  () => {
+    const dir = hydraDir({ hydraId: 'default' })
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    const created = ({
+      seq,
+      cardId,
+    }: {
+      seq: number
+      cardId: string
+    }) => JSON.stringify({
+      v: 1,
+      seq,
+      id: `evt_${seq}`,
+      at: '2026-10-21T10:01:00Z',
+      actor: 'cli',
+      cardId,
+      type: 'task.created',
+      data: {
+        key: 'dup',
+        title: `Card ${seq}`,
+      },
+    })
+    writeFileSync(
+      join(
+        dir,
+        'events.jsonl',
+      ),
+      `${created({
+        seq: 1,
+        cardId: 'task-a',
+      })}\n${created({
+        seq: 2,
+        cardId: 'task-b',
+      })}\n`,
+    )
+
+    rejects({
+      fn: () => serveHydra(),
+      code: 'CONFLICT',
+    })
+    rejects({
+      fn: () => loadHydra({ hydraId: 'default' }),
+      code: 'NOT_IMPORTED',
+    })
+    assert.equal(
+      storedEvents(),
+      0,
+    )
+  },
+)
+
+test(
   'an old log that repeats events and seqs imports as the reducer applied it, and a repeated append is no write',
   () => {
     seedLog({ stream: 'duplicates' })
@@ -1093,3 +1149,54 @@ for (const removed of [
     },
   )
 }
+
+test(
+  'a step after a commit that fails leaves the write committed, runs the next steps and still shows the change',
+  () => {
+    const events = readStream({ name: 'lifecycle' })
+    appendAll({
+      events: events.slice(
+        0,
+        1,
+      ),
+    })
+    let changes = 0
+    const release = holdHydra({
+      hydraId: 'default',
+      changed: () => {
+        changes += 1
+      },
+    })
+    const ran: string[] = []
+
+    try {
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          writer.afterCommit({
+            run: () => {
+              throw new Error('the spool file is gone')
+            },
+          })
+          writer.afterCommit({ run: () => ran.push('cursors saved') })
+          writer.append({ event: events[1]! })
+        },
+      })
+    } finally {
+      release()
+    }
+
+    assert.deepEqual(
+      ran,
+      ['cursors saved'],
+    )
+    assert.equal(
+      changes,
+      1,
+    )
+    assert.equal(
+      storedEvents(),
+      2,
+    )
+  },
+)

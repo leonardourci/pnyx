@@ -81,9 +81,6 @@ importers:
       globals:
         specifier: ^17.13.0
         version: 17.13.0
-      immer:
-        specifier: 11.2.10
-        version: 11.2.10
       marked:
         specifier: ^18.1.1
         version: 18.1.1
@@ -107,7 +104,7 @@ importers:
         version: 8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1)
       zustand:
         specifier: 5.1.0
-        version: 5.1.0(@types/react@19.3.0)(immer@11.2.10)(react@19.3.0)
+        version: 5.1.0(@types/react@19.3.0)(react@19.3.0)
 
 packages:
 
@@ -2116,9 +2113,6 @@ packages:
   ignore@7.0.12:
     resolution: {integrity: sha512-/8UvqAPU9DGTI9k4mxtf49U37Isfwr8Uts96+SBHIkFxPJnHS0Ew4f00sM4Scd8V8EjM0jUNtVDdv1kPdt35lg==}
     engines: {node: '>= 4'}
-
-  immer@11.2.10:
-    resolution: {integrity: sha512-pzANBj+0A9u+prdhBJ14DVi44vCvVUQzBa8DKt6I0AMCokPHtt722BK9IX5bFC70xUSU9TnzLRIJLTGqIzjEFw==}
 
   import-in-the-middle@3.6.0:
     resolution: {integrity: sha512-xRU7hI24S2FhucXtuZXn8EpcOjfVP6iiEQyR0USayPeaOroEmSsNlqnl95866iRdRtkHrd6Q/Z4D14R60au0+A==}
@@ -5377,8 +5371,6 @@ snapshots:
 
   ignore@7.0.12: {}
 
-  immer@11.2.10: {}
-
   import-in-the-middle@3.6.0:
     dependencies:
       cjs-module-lexer: 2.3.0
@@ -6307,8 +6299,7 @@ snapshots:
 
   zod@4.6.7: {}
 
-  zustand@5.1.0(@types/react@19.3.0)(immer@11.2.10)(react@19.3.0):
+  zustand@5.1.0(@types/react@19.3.0)(react@19.3.0):
     optionalDependencies:
       '@types/react': 19.3.0
-      immer: 11.2.10
       react: 19.3.0

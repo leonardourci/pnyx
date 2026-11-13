@@ -3,7 +3,7 @@ import type { Ask, Card, NoteRef, TaskDeclaration } from '#tasks/model.ts'
 import type { Link } from '#tasks/delivery/model.ts'
 import type { HydraConfig, HydraMessage } from '#hydra/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
-import type { AgentSession } from '#workers/model.ts'
+import type { AgentSession, Reply } from '#workers/model.ts'
 import type { Statement } from '#store/postgres.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
@@ -12,6 +12,7 @@ import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
 import { agentActivity } from '#workers/activity.ts'
 import type { Touched } from './preimage.ts'
 import { summarize } from './hydra-summary.ts'
+import { LIST_LIMIT } from '#store/zero-schema.ts'
 import { updateTasks } from '#tasks/updates.ts'
 
 type Row = Record<string, unknown>
@@ -38,6 +39,15 @@ const TABLES = {
   card_private: [
     'hydra_id',
     'card_id',
+  ],
+  card_references: [
+    'hydra_id',
+    'card_id',
+  ],
+  replies: [
+    'hydra_id',
+    'card_id',
+    'id',
   ],
   questions: [
     'hydra_id',
@@ -77,6 +87,7 @@ const CARD_LISTS = [
   'statusLog',
   'notes',
   'links',
+  'replies',
 ] as const
 const PRIVATE_FIELDS = [
   'steering',
@@ -165,6 +176,24 @@ function cardRows({
         data,
       },
     ],
+    card_references: [
+      {
+        hydra_id: hydraId,
+        card_id: card.id,
+        data: cardReference({ card }),
+      },
+    ],
+    replies: (card.replies ?? []).map((
+      reply,
+      position,
+    ) => ({
+      hydra_id: hydraId,
+      card_id: card.id,
+      id: reply.id,
+      position,
+      answers: nullable({ value: reply.answers }),
+      data: reply,
+    })),
     card_private: Object.keys(hidden).length ? [
       {
         hydra_id: hydraId,
@@ -256,12 +285,18 @@ function cardSummary({
       state,
       card,
     }),
-    reference: cardReference({ card }),
   }
 }
 
 export function cardReference({ card }: { card: Card }): Card {
-  const reference: Card = { ...card }
+  const reference: Card = {
+    ...card,
+    links: card.links.slice(-LIST_LIMIT),
+  }
+
+  if (card.asks) {
+    reference.asks = card.asks.slice(-LIST_LIMIT)
+  }
 
   for (const field of UNREFERENCED) {
     delete reference[field]
@@ -725,6 +760,7 @@ export function loadStatements({ hydraId }: { hydraId: string }): Statement[] {
     'select id from cards where hydra_id = $1 order by created_seq, id',
     'select card_id, data from card_bodies where hydra_id = $1',
     'select card_id, data from card_private where hydra_id = $1',
+    'select card_id, data from replies where hydra_id = $1 order by card_id, position',
     'select card_id, data from questions where hydra_id = $1 order by card_id, position',
     'select card_id, data from declarations where hydra_id = $1 order by card_id, position',
     'select card_id, data from links where hydra_id = $1 order by card_id, position',
@@ -763,6 +799,7 @@ export function stateFromRows({
     ids,
     bodies,
     privates,
+    replies,
     questions,
     declarations,
     links,
@@ -784,6 +821,7 @@ export function stateFromRows({
     Of<{ id: string }>,
     CardRow<Card>,
     CardRow<Partial<Card>>,
+    CardRow<Reply>,
     CardRow<Ask>,
     CardRow<TaskDeclaration>,
     CardRow<Link>,
@@ -836,6 +874,14 @@ export function stateFromRows({
     add({
       card: row.card_id,
       list: 'asks',
+      item: row.data,
+    })
+  }
+
+  for (const row of replies) {
+    add({
+      card: row.card_id,
+      list: 'replies',
       item: row.data,
     })
   }

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
@@ -63,17 +62,17 @@ const SCHEMA = readFileSync(
   ),
   'utf8',
 )
-const SCHEMA_DIGEST = createHash('sha256').update(SCHEMA)
-  .digest('hex')
+// schema.sql names its own version, so the number has one source.
+const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(SCHEMA)?.[1])
 
 // A database another build's schema made would fail writes this build's statements make, so it is refused by name.
 async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
   const versioned = await client.query<{ table: string | null }>('select to_regclass(\'public.schema_version\') as table')
-  const digests = versioned.rows[0]?.table
-    ? (await client.query<{ digest: string }>('select digest from schema_version')).rows
+  const versions = versioned.rows[0]?.table
+    ? (await client.query<{ version: number }>('select version from schema_version')).rows
     : []
 
-  if (digests.some(row => row.digest === SCHEMA_DIGEST)) {
+  if (versions.some(row => row.version === SCHEMA_VERSION)) {
     return
   }
 
@@ -133,11 +132,8 @@ async function connect(): Promise<pg.Client> {
     const { rows } = await client.query<{ table: string | null }>('select to_regclass(\'public.hydras\') as table')
 
     if (!rows[0]?.table) {
+      // One query, so the tables and their version commit together.
       await client.query(SCHEMA)
-      await client.query(
-        'insert into schema_version (digest) values ($1)',
-        [SCHEMA_DIGEST],
-      )
     } else {
       await requireSchema({ client })
     }

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
 import { HydraError } from './errors.ts'
-import { homeDatabase, query } from './postgres.ts'
+import { homeDatabase, query, storable } from './postgres.ts'
 
 const EXIT_MS = 20_000
 // Postgres gives up on the lock after 5 s; the server's own wait would end only after 30.
@@ -99,7 +99,7 @@ test(
           },
         ],
       }),
-      { code: 'DATABASE_ERROR' },
+      { code: 'DATABASE_UNAVAILABLE' },
     )
     const [after] = query({ statements: [{ text: 'select pg_backend_pid() as pid, 7 as answer' }] }) as {
       pid: number
@@ -181,7 +181,7 @@ process.stdin.on('end', () => client.end())`,
       const started = performance.now()
       assert.throws(
         () => query({ statements: [{ text: 'select count(*) from hydras' }] }),
-        (error: unknown) => error instanceof HydraError && error.code === 'DATABASE_ERROR'
+        (error: unknown) => error instanceof HydraError && error.code === 'DATABASE_UNAVAILABLE'
           && /lock timeout/.test(error.message),
       )
       assert.ok(performance.now() - started < LOCK_ANSWER_MS)
@@ -215,6 +215,37 @@ test(
       }),
       (error: unknown) => error instanceof HydraError
         && error.message.includes(`database ${database} has another Pnyx build's schema`),
+    )
+  },
+)
+
+test(
+  'a record with a NUL or a lone surrogate in a key or a value is stored with U+FFFD in its place',
+  () => {
+    const record = storable({
+      value: {
+        'title\u0000': 'cut 😀 at \ud83d',
+        nested: [{ '\udc00': 'ok' }],
+      },
+    })
+    assert.deepEqual(
+      record,
+      {
+        'title�': 'cut 😀 at �',
+        nested: [{ '�': 'ok' }],
+      },
+    )
+    const [rows] = query({
+      statements: [
+        {
+          text: 'select $1::json as value',
+          values: [JSON.stringify(record)],
+        },
+      ],
+    }) as { value: unknown }[][]
+    assert.deepEqual(
+      rows?.[0]?.value,
+      record,
     )
   },
 )

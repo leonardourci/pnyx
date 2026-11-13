@@ -46,6 +46,11 @@ const rowsOf = ({ hydraId }: { hydraId: string }) => stateFromRows({
   }).slice(1),
 })
 
+const TRANSIENT = new Set([
+  'DATABASE_UNAVAILABLE',
+  'DATABASE_TIMEOUT',
+])
+
 // An import that failed, by its log's size and change time, so it is tried again only once the file changes.
 const failedImports = new Map<string, {
   size: number
@@ -53,7 +58,6 @@ const failedImports = new Map<string, {
   error: unknown
 }>()
 
-// Another process that imported the same log first leaves its rows, which this read then takes.
 function importOnce({
   hydraId,
   dir,
@@ -78,8 +82,9 @@ function importOnce({
       dir,
     })
   } catch (error) {
-    if (error instanceof HydraError && error.code === 'CONFLICT') {
-      return true
+    // Postgres down or busy for a moment is no fault of the log, so the next mount tries again.
+    if (error instanceof HydraError && TRANSIENT.has(error.code)) {
+      throw error
     }
 
     failedImports.set(

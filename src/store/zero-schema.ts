@@ -7,6 +7,7 @@ import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
+import type { Reply } from '#workers/model.ts'
 import type { Settings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
 
@@ -117,7 +118,6 @@ const cards = table('cards')
     child_working: boolean(),
     wait_title: string().optional(),
     unmet_prerequisites: json<Stored<ReturnType<typeof unmetPrerequisites>>>(),
-    reference: json<Stored<Card>>(),
   })
   .primaryKey(
     'hydra_id',
@@ -133,6 +133,32 @@ const cardBodies = table('card_bodies')
   .primaryKey(
     'hydra_id',
     'card_id',
+  )
+
+const cardReferences = table('card_references')
+  .columns({
+    hydra_id: string(),
+    card_id: string(),
+    data: json<Stored<Card>>(),
+  })
+  .primaryKey(
+    'hydra_id',
+    'card_id',
+  )
+
+const replies = table('replies')
+  .columns({
+    hydra_id: string(),
+    card_id: string(),
+    id: string(),
+    position: number(),
+    answers: string().optional(),
+    data: json<Stored<Reply>>(),
+  })
+  .primaryKey(
+    'hydra_id',
+    'card_id',
+    'id',
   )
 
 const questions = table('questions')
@@ -263,6 +289,14 @@ const cardRelationships = relationships(
       ...ofCard,
       destSchema: cardBodies,
     }),
+    reference: one({
+      ...ofCard,
+      destSchema: cardReferences,
+    }),
+    replies: many({
+      ...ofCard,
+      destSchema: replies,
+    }),
     questions: many({
       ...ofCard,
       destSchema: questions,
@@ -355,6 +389,8 @@ export const schema = createSchema({
     columns,
     cards,
     cardBodies,
+    cardReferences,
+    replies,
     questions,
     declarations,
     links,
@@ -383,7 +419,7 @@ declare module '@rocicorp/zero' {
 const HYDRA_LIMIT = 200
 const BOARD_LIMIT = 1_000
 const REFERENCE_LIMIT = 1_000
-const LIST_LIMIT = 100
+export const LIST_LIMIT = 100
 // One page of the Updates tab, and the most Older updates reaches.
 export const HISTORY_PAGE = 50
 export const MAX_HISTORY = 5_000
@@ -454,10 +490,10 @@ function validator<T extends Record<string, string | number>>({
 }
 
 const hydraArgs = validator<OfHydra>({ names: ['hydraId'] })
-const cardArgs = validator<OfCard>({
+const refArgs = validator<OfHydra & { ref: string }>({
   names: [
     'hydraId',
-    'cardId',
+    'ref',
   ],
 })
 const historyArgs = validator<OfCard & { limit: number }>({
@@ -467,6 +503,18 @@ const historyArgs = validator<OfCard & { limit: number }>({
   ],
   counts: ['limit'],
 })
+
+// The newest replies that answer a question, which the page reads to know an answer is still on its way.
+const answering = (query: ReturnType<typeof zql.replies.where>) => query.where(
+  'answers',
+  'IS NOT',
+  null,
+)
+  .orderBy(
+    'position',
+    'desc',
+  )
+  .limit(LIST_LIMIT)
 
 // The only reads zero-cache serves, so they are the page's permissions: the page asks for one by name and the
 // server's query endpoint builds it. Every write stays a server command. Every query is bounded, so the page never
@@ -552,6 +600,10 @@ export const queries = defineQueries({
         .limit(BOARD_LIMIT)
         .related('body')
         .related(
+          'replies',
+          answering,
+        )
+        .related(
           'questions',
           query => query.orderBy(
             'position',
@@ -573,24 +625,41 @@ export const queries = defineQueries({
           ).limit(LIST_LIMIT)
             .related(
               'mergeQuestion',
-              question => question.related('card'),
+              question => question.related(
+                'card',
+                card => card.related('reference'),
+              ),
             ),
         ),
     ),
   },
   card: {
+    // A card the page opens by its id or key, whether or not the board or the references hold it.
     detail: defineQuery(
-      cardArgs,
+      refArgs,
       ({ args }) => zql.cards
         .where(
           'hydra_id',
           args.hydraId,
         )
-        .where(
-          'id',
-          args.cardId,
-        )
+        .where(({
+          or,
+          cmp,
+        }) => or(
+          cmp(
+            'id',
+            args.ref,
+          ),
+          cmp(
+            'key',
+            args.ref,
+          ),
+        ))
         .related('body')
+        .related(
+          'replies',
+          answering,
+        )
         .related(
           'questions',
           query => query.orderBy(
@@ -613,7 +682,10 @@ export const queries = defineQueries({
           ).limit(LIST_LIMIT)
             .related(
               'mergeQuestion',
-              question => question.related('card'),
+              question => question.related(
+                'card',
+                card => card.related('reference'),
+              ),
             ),
         )
         .related(
@@ -655,11 +727,16 @@ export const queries = defineQueries({
           'hydra_id',
           args.hydraId,
         )
+        .where(
+          'automatic_task',
+          false,
+        )
         .orderBy(
           'updated_seq',
           'desc',
         )
-        .limit(REFERENCE_LIMIT),
+        .limit(REFERENCE_LIMIT)
+        .related('reference'),
     ),
   },
   settings: {

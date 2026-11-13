@@ -262,6 +262,12 @@ export async function hydraCheck({
     )
   }
 
+  const directWordsHelp: string[] = []
+
+  if (digest.size) {
+    directWordsHelp.push('The owner’s direct words are instructions. Use task history --full for the complete replies; decide whether to act or take note.')
+  }
+
   const typedHelp: string[] = []
 
   if (typed.length) {
@@ -333,7 +339,7 @@ export async function hydraCheck({
     }),
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     help: [
-      ...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete replies; decide whether to act or take note.'] : []),
+      ...directWordsHelp,
       ...typedHelp,
       ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
       ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),

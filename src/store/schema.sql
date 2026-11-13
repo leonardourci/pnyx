@@ -106,8 +106,6 @@ create table cards (
   child_working boolean not null,
   wait_title text,
   unmet_prerequisites json not null,
-  -- What a hidden task's chips, waits and answer leads read: the card without its histories, texts and worker setup.
-  reference json not null,
   primary key (hydra_id, id),
   unique (hydra_id, key)
 );
@@ -122,12 +120,35 @@ create table card_bodies (
 );
 
 -- The card fields the page never sees, queued steering and external source claims, for a card that has any. Outside
--- the page's publication, so zero-cache never replicates them.
+-- the page's publication, so zero-cache never replicates this table; the events that recorded them replicate, and no
+-- page query reads those events.
 create table card_private (
   hydra_id text not null,
   card_id text not null,
   data json not null,
   primary key (hydra_id, card_id),
+  foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
+);
+
+-- What a hidden task's chips, waits and answer leads read: the card without its histories, texts and worker setup,
+-- and only its newest questions and links. Only the page's task references read it.
+create table card_references (
+  hydra_id text not null,
+  card_id text not null,
+  data json not null,
+  primary key (hydra_id, card_id),
+  foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
+);
+
+-- The messages sent to a card's worker, with each one's delivery. The page reads the newest that answer a question.
+create table replies (
+  hydra_id text not null,
+  card_id text not null,
+  id text not null,
+  position integer not null check (position >= 0),
+  answers text,
+  data json not null,
+  primary key (hydra_id, card_id, id),
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
@@ -223,10 +244,12 @@ create table sessions (
 
 -- The tables zero-cache replicates for the page; sessions, transactions and card_private stay with the server.
 create publication pnyx_page for table hydras, settings, upgrade_status, hydra_values, events, card_updates, columns,
-  cards, card_bodies, questions, declarations, links, notes, messages;
+  cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
 
--- The digest of this file as it created the database, so a build with another schema refuses the database instead of
--- failing its writes.
+-- The schema version this file creates. A change to the tables bumps it, with a migration for databases on the older
+-- one; a build refuses a database on a version it does not know instead of failing its writes.
 create table schema_version (
-  digest text primary key
+  version integer primary key
 );
+
+insert into schema_version (version) values (1);

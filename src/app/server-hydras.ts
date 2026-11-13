@@ -10,6 +10,7 @@ import { withRegistryLock } from '#store/storage.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
+import { inListOrder } from './hydra-list-order.ts'
 
 export interface HydraProjectSummary {
   name: string
@@ -54,46 +55,44 @@ function projectStamp({ home }: { home?: string }): string {
 
 // Unreadable Hydras remain reachable so opening one reports the error.
 export function listHydras(): HydraSummary[] {
-  return hydraIds().map(id => {
-    let state: HydraState
+  return inListOrder({
+    hydras: hydraIds().map(id => {
+      let state: HydraState
 
-    try {
-      state = loadHydra({ hydraId: id }).state
-    } catch {
-      return unreadableSummary({ id })
-    }
+      try {
+        state = loadHydra({ hydraId: id }).state
+      } catch {
+        return unreadableSummary({ id })
+      }
 
-    const key = homeScoped({ hydraId: id })
-    const seq = String(state.seq)
-    const known = summaries.get(key)
+      const key = homeScoped({ hydraId: id })
+      const seq = String(state.seq)
+      const known = summaries.get(key)
 
-    if (known?.log === seq && known.projects === projectStamp({ home: known.home })) {
-      return known.summary
-    }
+      if (known?.log === seq && known.projects === projectStamp({ home: known.home })) {
+        return known.summary
+      }
 
-    const {
-      summary,
-      home,
-    } = summarize({
-      id,
-      state,
-    })
-    summaries.set(
-      key,
-      {
-        log: seq,
-        home,
-        projects: projectStamp({ home }),
+      const {
         summary,
-      },
-    )
+        home,
+      } = summarize({
+        id,
+        state,
+      })
+      summaries.set(
+        key,
+        {
+          log: seq,
+          home,
+          projects: projectStamp({ home }),
+          summary,
+        },
+      )
 
-    return summary
+      return summary
+    }),
   })
-    .sort((
-      a,
-      b,
-    ) => a.order - b.order || a.id.localeCompare(b.id))
 }
 
 const creationEventId = ({ attempt }: { attempt: string }) => `${CREATION_PREFIX}${attempt}`

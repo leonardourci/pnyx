@@ -151,6 +151,10 @@ test(
       ['steered'],
     )
     assert.equal(
+      JSON.stringify(board.rows).includes('SECRET-STEERING'),
+      false,
+    )
+    assert.equal(
       board.frames.some(frame => frame.includes('SECRET-STEERING')),
       false,
     )
@@ -170,6 +174,10 @@ test(
         url: `http://127.0.0.1:${port}`,
         query: ({ zero }) => zero.materialize(queries.hydras.list()),
       })
+      assert.deepEqual(
+        direct.rows,
+        [],
+      )
       assert.equal(
         direct.frames.some(frame => frame.includes('"default"')),
         false,

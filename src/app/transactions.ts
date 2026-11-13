@@ -2,7 +2,7 @@ import { EVENT_VERSION, type EventBase } from '#store/events.ts'
 import type { HydraEvent } from './model.ts'
 import type { Output } from './cli-support.ts'
 import { HydraError } from '#store/errors.ts'
-import { query, type Statement } from '#store/postgres.ts'
+import { query, storable, type Statement } from '#store/postgres.ts'
 
 export type ApplyRecordedEvent = EventBase & {
   type: 'apply.recorded'
@@ -106,6 +106,7 @@ export const transactionStatement = ({
     hydraId,
     id,
     digest,
-    JSON.stringify(receipt),
+    // A receipt can echo the plan's raw input, which Postgres refuses with a NUL or a lone surrogate in it.
+    JSON.stringify(storable({ value: structuredClone(receipt) })),
   ],
 })
