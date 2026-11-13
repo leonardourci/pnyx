@@ -18,7 +18,6 @@ import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } f
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
-import { heldHydra } from './store.ts'
 import { query } from '#store/postgres.ts'
 
 // A tab that opened no cards and did not ask for hidden ones.
@@ -67,13 +66,7 @@ export function createServerClients({
     ws: HydraClient
     card: Card
   }): void
-  refreshThread({
-    ws,
-    resync,
-  }: {
-    ws: HydraClient
-    resync?: boolean
-  }): void
+  refreshThread({ ws }: { ws: HydraClient }): void
   feed(): {
     latest: Record<string, LatestMessage>
     actions: Record<string, CurrentAction>
@@ -303,14 +296,6 @@ export function createServerClients({
       })
     }
 
-    // A receipt carries the Hydra's committed seq, so the page knows its change is in once Zero has synced that far.
-    if (message.type === 'receipt') {
-      message = {
-        ...message,
-        seq: heldHydra({ hydraId })?.state.seq ?? state().seq,
-      }
-    }
-
     ws.send({ message })
     dropping.delete(ws)
 
@@ -330,7 +315,7 @@ export function createServerClients({
     return true
   }
 
-  // The queue the page last read through Zero, so an unchanged one is not written again.
+  // The queue last written, so an unchanged one is not written again.
   let storedQueue = ''
 
   // The queue box: the updates waiting for Hydra and the batch it is reading, which the page reads through Zero.
@@ -349,18 +334,28 @@ export function createServerClients({
       return queue
     }
 
-    storedQueue = json
-    query({
-      statements: [
-        {
-          text: 'update hydras set queue = $2 where id = $1',
-          values: [
-            hydraId,
-            json,
-          ],
-        },
-      ],
-    })
+    // A failed write is tried again on the next change; it must not stop the events behind it from reaching the tabs.
+    try {
+      query({
+        statements: [
+          {
+            text: 'update hydras set queue = $2 where id = $1',
+            values: [
+              hydraId,
+              json,
+            ],
+          },
+        ],
+      })
+      storedQueue = json
+    } catch (error) {
+      log({
+        level: 'error',
+        operation: 'queue.write',
+        hydraId,
+        error,
+      })
+    }
 
     return queue
   }

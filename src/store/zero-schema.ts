@@ -521,6 +521,7 @@ export const queries = defineQueries({
     ),
   },
   board: {
+    // The live cards, as liveTask in src/tasks/select.ts decides them.
     cards: defineQuery(
       hydraArgs,
       ({ args }) => zql.cards

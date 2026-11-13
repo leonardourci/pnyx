@@ -81,7 +81,7 @@ test(
     )
     assert.ok(Number.isFinite(Date.parse(String(pageCommand.at))))
     assert.equal(
-      mine({ operation: 'socket.send' }).filter(line => line.name !== 'snapshot').length,
+      mine({ operation: 'socket.send' }).length,
       0,
       'On writes no line for the live updates the page got',
     )

@@ -536,7 +536,7 @@ export async function mountOwnedHydra({
   })
 
   // The page sends its open cards again as a page command once connected, which reports bad arguments and
-  // missing cards; here they only scope the first snapshot, so arguments that do not parse keep the default.
+  // missing cards; here they only scope the first latest batch, so arguments that do not parse keep the default.
   const openPage = ({
     ws,
     page,
