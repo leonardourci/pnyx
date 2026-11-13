@@ -28,6 +28,18 @@ export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
     asks: orNone({ list: row.questions.map(question => question.data) }),
     statusLog: orNone({ list: row.declarations.map(declaration => declaration.data) }),
     links: row.links.map(link => link.data),
+    facts: {
+      childWorking: row.child_working,
+      waitTitle: row.wait_title ?? undefined,
+      unmetPrerequisites: row.unmet_prerequisites,
+      mergeQuestions: Object.fromEntries(row.links.map(link => [
+        link.url,
+        link.mergeQuestion?.card ? {
+          card: link.mergeQuestion.card_id === row.id ? undefined : referenceCard({ row: link.mergeQuestion.card }),
+          ask: link.mergeQuestion.data,
+        } : undefined,
+      ])),
+    },
     notes: 'notes' in row ? orNone({
       list: row.notes.map(({
         id,

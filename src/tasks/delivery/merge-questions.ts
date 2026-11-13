@@ -34,6 +34,18 @@ export function canonicalMergeQuestion({
   card: Card
   url: string
 }) {
+  const facts = card.facts?.mergeQuestions
+
+  // The server decides among every card's questions for the card's own pull requests.
+  if (facts && url in facts) {
+    const decided = facts[url]
+
+    return decided && {
+      card: decided.card ?? card,
+      ask: decided.ask,
+    }
+  }
+
   const cards = Object.values(state?.cards ?? linkedCards ?? { [card.id]: card })
   const questions = cards.flatMap(card => (card.asks ?? [])
     .filter(ask => ask.kind === 'merge' && ask.url === url)
