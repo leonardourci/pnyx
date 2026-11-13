@@ -108,12 +108,12 @@ test(
       },
     })
     // The Hydra's session as a later read sees it, given to the reads only: the test never writes Hydra state by hand.
-    let agent: Card['agent']
+    const shown: { agent?: Card['agent'] } = {}
 
     const pageAll = () => {
-      const card = agent ? {
+      const card = shown.agent ? {
         ...state.cards.$hydra!,
-        agent,
+        agent: shown.agent,
       } : state.cards.$hydra!
       let page = readThread({
         hydraId: 'default',
@@ -154,7 +154,7 @@ test(
       new Set(archived.map(entry => entry.text)).size,
       80,
     )
-    agent = {
+    shown.agent = {
       provider: 'claude-code',
       sessionId: 'old',
       transcriptPath: native,

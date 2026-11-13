@@ -70,6 +70,18 @@ const events = table('events')
     'seq',
   )
 
+const cardUpdates = table('card_updates')
+  .columns({
+    hydra_id: string(),
+    card_id: string(),
+    seq: number(),
+  })
+  .primaryKey(
+    'hydra_id',
+    'card_id',
+    'seq',
+  )
+
 const columns = table('columns')
   .columns({
     hydra_id: string(),
@@ -300,6 +312,23 @@ const linkRelationships = relationships(
   }),
 )
 
+const updateRelationships = relationships(
+  cardUpdates,
+  ({ one }) => ({
+    event: one({
+      sourceField: [
+        'hydra_id',
+        'seq',
+      ],
+      destField: [
+        'hydra_id',
+        'seq',
+      ],
+      destSchema: events,
+    }),
+  }),
+)
+
 const noteRelationships = relationships(
   notes,
   ({ one }) => ({
@@ -340,6 +369,7 @@ export const schema = createSchema({
     upgradeStatus,
     hydraValues,
     events,
+    cardUpdates,
     columns,
     cards,
     cardBodies,
@@ -354,6 +384,7 @@ export const schema = createSchema({
     questionRelationships,
     linkRelationships,
     noteRelationships,
+    updateRelationships,
     hydraRelationships,
   ],
 })
@@ -384,21 +415,6 @@ const PAGE_VALUES = [
   'dispatchProposals',
   'upgrades',
 ] as const satisfies readonly (keyof HydraState)[]
-
-// Events the page never reads: queued steering for agents and the claims of external task sources.
-const SERVER_EVENTS = [
-  'task.steering.queued',
-  'task.steering.notified',
-  'task.steering.handled',
-  'task.steering.recovery',
-  'task.source.registered',
-  'task.source.lavish.published',
-  'task.source.started',
-  'task.source.result',
-  'task.source.alerted',
-  'task.source.handled',
-  'task.wait-resumed',
-] as const satisfies readonly HydraEvent['type'][]
 
 type OfHydra = { hydraId: string }
 
@@ -578,7 +594,7 @@ export const queries = defineQueries({
     // The Updates tab, newest first. A card moved in shows its updates from this Hydra on.
     history: defineQuery(
       cardArgs,
-      ({ args }) => zql.events
+      ({ args }) => zql.card_updates
         .where(
           'hydra_id',
           args.hydraId,
@@ -587,15 +603,11 @@ export const queries = defineQueries({
           'card_id',
           args.cardId,
         )
-        .where(
-          'type',
-          'NOT IN',
-          SERVER_EVENTS,
-        )
         .orderBy(
           'seq',
           'desc',
-        ),
+        )
+        .related('event'),
     ),
   },
   cards: {
