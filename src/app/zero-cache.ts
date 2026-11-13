@@ -182,11 +182,21 @@ export function startZeroCache({
 
     createInterface({ input: stream }).on(
       'line',
-      line => log({
-        level: 'warn',
-        operation: 'zero.output',
-        name: line,
-      }),
+      line => {
+        // Named queries enforce reads; this cache exposes no client mutations or upstream permission rules.
+        const permissionsAdvice = line.includes('No upstream permissions deployed.')
+          || line.includes("Run 'npx zero-deploy-permissions")
+
+        if (!line.trim() || permissionsAdvice) {
+          return
+        }
+
+        log({
+          level: 'warn',
+          operation: 'zero.output',
+          name: line,
+        })
+      },
     )
   }
 

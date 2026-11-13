@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { flushLogs, logsDir } from './diagnostics.ts'
 import { startServer } from '#app/server-daemon.ts'
 import { localToken } from '#app/server-state.ts'
 import type { RunningServer } from '#app/server-transport.ts'
@@ -175,6 +176,20 @@ test(
       '--text',
       'SECRET-STEERING',
     ])
+    await flushLogs()
+    const startupLog = readdirSync(logsDir()).map(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ))
+      .join('')
+    assert.doesNotMatch(
+      startupLog,
+      /No upstream permissions deployed|zero-deploy-permissions/,
+    )
+
     const board = await readRows<{ key: string }[]>({
       url: `${origin}/zero`,
       cookie,
