@@ -351,6 +351,13 @@ export const schema = createSchema({
 
 const zql = createBuilder(schema)
 
+// Zero's client and query types take this schema by default, so the page's typed client and these queries agree.
+declare module '@rocicorp/zero' {
+  interface DefaultTypes {
+    schema: typeof schema
+  }
+}
+
 // The Hydra-wide fields the page reads; the rest of hydra_values is the server's.
 const PAGE_VALUES = [
   'configured',
