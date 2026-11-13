@@ -159,8 +159,11 @@ export function watchIntake({ path }: { path: string }) {
         try {
           offset = fileSize({ path })
         } catch (error) {
+          // Without a start this message is never timed, so it waits for no intake and the next message tries again.
           offset = undefined
           unreadable({ error })
+
+          return
         }
       }
 

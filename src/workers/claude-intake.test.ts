@@ -201,6 +201,30 @@ test(
       hidden.taken(),
       [],
     )
+    // Once the folder can be searched again, the next message is timed from where the transcript ends then.
+    chmodSync(
+      folder,
+      0o700,
+    )
+    writeFileSync(
+      join(
+        folder,
+        'other.jsonl',
+      ),
+      '',
+    )
+    hidden.expect({ uuid: OPENS })
+    appendFileSync(
+      join(
+        folder,
+        'other.jsonl',
+      ),
+      `${line({ starts: '{"parentUuid":null' })}\n`,
+    )
+    assert.deepEqual(
+      hidden.taken().map(found => found.uuid),
+      [OPENS],
+    )
     closeLogs()
     const warned = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
