@@ -375,6 +375,7 @@ export function UpdateRow({
   prefix,
   open,
   toggle,
+  virtual,
 }: {
   update: TaskUpdate
   group: UpdateGroup
@@ -382,6 +383,8 @@ export function UpdateRow({
   prefix: string
   open: boolean
   toggle(): void
+  // What a virtual list needs on the row to measure it.
+  virtual?: Record<string, string>
 }) {
   const folded = group.type === 'workers' || group.type === 'changes'
   const many = group.updates.length > 1
@@ -390,6 +393,7 @@ export function UpdateRow({
 
   return (
     <li
+      {...virtual}
       className={`update-row update-group-${group.type}${index ? ' update-group-continuation' : ''}${update.kind === 'decision' ? ' update-decision' : ''}`}
       data-update={update.id}
       data-update-group={groupId}

@@ -1,7 +1,6 @@
 import type { Card } from '#tasks/model.ts'
 import { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateColumns, type UpdateDecision } from '#tasks/updates.ts'
 import { mentionId, TASK_MENTION } from '#hydra/mentions.ts'
-import { HISTORY_PAGE, MAX_HISTORY } from '#store/zero-schema.ts'
 
 const OWN_CHIP = new RegExp(`^${TASK_MENTION.source}\\s*`)
 
@@ -323,26 +322,4 @@ export function updateLayout({
       && (previous?.open.has(group.id) || group.ids.some(id => visible.has(id))))
       .map(group => group.id)),
   }
-}
-
-// Older updates shows while the newest page came back full, up to the most the Updates tab reads, and stays,
-// disabled, while the page after it loads.
-export function olderUpdates({
-  rows,
-  limit,
-  loading,
-}: {
-  rows: number
-  limit: number
-  loading: boolean
-}): 'hidden' | 'ready' | 'loading' {
-  const paging = loading && limit > HISTORY_PAGE && rows >= limit - HISTORY_PAGE
-
-  if (paging) {
-    return 'loading'
-  }
-
-  const full = rows === limit && limit + HISTORY_PAGE <= MAX_HISTORY
-
-  return full ? 'ready' : 'hidden'
 }

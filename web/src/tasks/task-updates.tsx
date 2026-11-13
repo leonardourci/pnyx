@@ -1,52 +1,47 @@
 import { useId, useState } from 'react'
-import { useQuery } from '@rocicorp/zero/react'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { TaskEvent } from '#tasks/updates.ts'
-import { HISTORY_PAGE, queries } from '#store/zero-schema.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { groupUpdates, olderUpdates, taskTimeline, updateLayout } from './task-updates.ts'
+import { VirtualList } from '#web-shared/ui/virtual-list.tsx'
+import type { Command } from '#web-app/connection.ts'
+import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 import { hasTaskQuestion } from './task-question.ts'
 import { UpdateRow } from './update-rows.tsx'
+import { useCardUpdates } from './use-card-updates.ts'
 
-// The card's Updates, newest first, as Zero syncs them: the events its card_updates rows list.
+// The card's Updates, a page of them at a time as the list reaches its end, and only the rows near the viewport on the
+// page.
 export function TaskUpdates({
   card,
   columns,
-  hydraId,
+  command,
+  connected,
+  through,
 }: {
   card: Card
   columns: HydraColumn[]
-  hydraId: string
+  command: Command
+  connected: boolean
+  // The Hydra's latest seq, which says when to read the newest page again.
+  through: number
 }) {
-  const [
-    limit,
-    setLimit,
-  ] = useState(HISTORY_PAGE)
-  const [
-    rows,
-    result,
-  ] = useQuery(queries.card.history({
-    hydraId,
-    cardId: card.id,
-    limit,
-  }))
-  // A row whose event Zero has not synced yet shows once it has. Zero types json columns as plain JSON; each event's
-  // data is the HydraEvent the server stored.
-  const events = rows.flatMap(row => row.event ? [row.event.data as TaskEvent] : [])
-  const error = result.type === 'error' ? result : undefined
-  const loaded = result.type === 'complete' || result.type === 'cached'
-  const older = () => setLimit(current => current + HISTORY_PAGE)
+  const {
+    list,
+    loading,
+    error,
+    older,
+    retry,
+  } = useCardUpdates({
+    task: card.id,
+    command,
+    connected,
+    through,
+  })
+  const events = list?.events ?? []
   const [
     oldestFirst,
     setOldestFirst,
   ] = useState(false)
-  const loading = !loaded && !error
-  const more = olderUpdates({
-    rows: rows.length,
-    limit,
-    loading,
-  })
   const timeline = taskTimeline({
     card,
     events,
@@ -61,6 +56,14 @@ export function TaskUpdates({
     && !card.asks?.some(ask => ask.id === update.id && ask.audience === 'owner' && !ask.answered && !ask.closed))
   const groups = groupUpdates({ updates: history.toReversed() })
   const shown = oldestFirst ? groups : groups.toReversed()
+  const rows = shown.flatMap(group => group.updates.map((
+    update,
+    index,
+  ) => ({
+    group,
+    update,
+    index,
+  })))
   const id = useId()
   const [
     layout,
@@ -108,29 +111,35 @@ export function TaskUpdates({
         </Button>
       </div>
       {shown.length > 0 && (
-        <ol>
-          {shown.flatMap(group => group.updates.map((
-            update,
-            index,
-          ) => (
+        <VirtualList
+          items={rows}
+          itemKey={({ item }) => item.update.id}
+          stayAtTop={!oldestFirst}
+          onEdge={({ edge }) => {
+            if (edge === (oldestFirst ? 'start' : 'end')) {
+              older()
+            }
+          }}
+          render={({
+            item,
+            virtual,
+          }) => (
             <UpdateRow
-              key={update.id}
-              update={update}
-              group={group}
-              index={index}
+              key={item.update.id}
+              update={item.update}
+              group={item.group}
+              index={item.index}
               prefix={id}
-              open={nextLayout.open.has(group.updates[0]!.id)}
-              toggle={() => toggle({ id: group.updates[0]!.id })}
+              open={nextLayout.open.has(item.group.updates[0]!.id)}
+              toggle={() => toggle({ id: item.group.updates[0]!.id })}
+              virtual={virtual}
             />
-          )))}
-        </ol>
+          )}
+        />
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
       {!shown.length && !loading && !error && <p className="empty">No updates yet.</p>}
-      {error && <p role="alert">{error.error.message} <Button onClick={error.retry}>Try again</Button></p>}
-      {more !== 'hidden' && (
-        <Button disabled={more === 'loading'} onClick={older}>Older updates</Button>
-      )}
+      {error && <p role="alert">{error} <Button onClick={retry}>Try again</Button></p>}
     </div>
   )
 }
