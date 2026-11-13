@@ -74,12 +74,19 @@ function checkTouched({
 interface WriterOptions<T> {
   hydraId: string
   create?: boolean
+  also?: string[]
   transaction?: {
     id: string
     digest: string
   }
   migrate?: boolean
-  fn({ writer }: { writer: Writer }): T
+  fn({
+    writer,
+    writers,
+  }: {
+    writer: Writer
+    writers: ReadonlyMap<string, Writer>
+  }): T
 }
 
 export function withWriter<T>({ fn }: WriterOptions<T> & { transaction?: undefined }): T
@@ -97,6 +104,7 @@ export function withWriter<T>({
   hydraId,
   fn,
   create = false,
+  also = [],
   transaction,
   migrate = true,
 }: WriterOptions<T>): T | Output {
@@ -128,127 +136,175 @@ export function withWriter<T>({
     }
   }
 
-  const from = live.state.seq
-  const pending: HydraEvent[] = []
-  const committed: (() => void)[] = []
-  const touched: Touched = {
-    cards: new Set(),
-    fields: new Set(),
-  }
-  const writer = eventWriter({
-    state: live.state,
-    owned: true,
-    dir: live.dir,
-    hydraId,
-    transaction: transaction?.id,
-    touched,
-    committed,
-    onAppend: ({ event }) => {
-      pending.push(event)
-    },
-  })
-  let result: T
-
-  try {
-    // A Hydra still on an older layout moves onto the default columns before its next write.
-    const migrated = migrate ? migrateColumns({
-      state: writer.state,
-      meta: {
-        at: new Date().toISOString(),
-        actor: 'pnyx',
-      },
-    }) : { skipped: 'unchanged' }
-
-    if ('event' in migrated) {
-      writer.append({ event: migrated.event })
+  const stages = [
+    ...new Set([
+      hydraId,
+      ...also,
+    ]),
+  ].sort().map(id => {
+    if (id !== hydraId) {
+      requireHydra({ hydraId: id })
     }
 
-    result = fn({ writer })
+    const held = id === hydraId ? live : writableHydra({
+      hydraId: id,
+      migrate,
+    })
+    privateDir({ dir: held.dir })
+    const pending: HydraEvent[] = []
+    const committed: (() => void)[] = []
+    const touched: Touched = {
+      cards: new Set(),
+      fields: new Set(),
+    }
+    const writer = eventWriter({
+      state: held.state,
+      owned: true,
+      dir: held.dir,
+      hydraId: id,
+      transaction: id === hydraId ? transaction?.id : undefined,
+      touched,
+      committed,
+      onAppend: ({ event }) => pending.push(event),
+    })
 
-    if (pending.length) {
-      const started = performance.now()
+    return {
+      id,
+      held,
+      writer,
+      pending,
+      committed,
+      touched,
+      from: held.state.seq,
+    }
+  })
+  const writers = new Map(stages.map(stage => [
+    stage.id,
+    stage.writer,
+  ]))
+  const primary = writers.get(hydraId)!
+  let result: T
+  const started = performance.now()
 
-      if (from === 0) {
-        rememberFirstEvent({
-          hydraId,
-          event: pending[0]!,
-        })
+  try {
+    for (const stage of stages) {
+      const migrated = migrate ? migrateColumns({
+        state: stage.writer.state,
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'pnyx',
+        },
+      }) : { skipped: 'unchanged' }
+
+      if ('event' in migrated) {
+        stage.writer.append({ event: migrated.event })
       }
+    }
 
-      // A Hydra's first write saves every row, including the fields its empty state starts with.
-      const changes = rowChanges({
-        hydraId,
-        state: live.state,
-        saved: live.saved,
-        touched: from === 0 ? undefined : touched,
+    result = fn({
+      writer: primary,
+      writers,
+    })
+    const changes = stages.filter(stage => stage.pending.length).map(stage => {
+      const rows = rowChanges({
+        hydraId: stage.id,
+        state: stage.held.state,
+        saved: stage.held.saved,
+        touched: stage.from === 0 ? undefined : stage.touched,
       })
       checkTouched({
-        hydraId,
-        state: live.state,
-        saved: changes.next,
+        hydraId: stage.id,
+        state: stage.held.state,
+        saved: rows.next,
       })
-      const statements = [
-        ...eventStatements({
-          hydraId,
-          from,
-          to: live.state.seq,
-          events: pending,
-        }),
-        ...changes.statements,
-      ]
 
-      if (transaction) {
-        statements.push(transactionStatement({
-          hydraId,
-          ...transaction,
-          receipt: result as Output,
-        }))
+      return {
+        stage,
+        rows,
       }
+    })
+    const statements = changes.flatMap(({
+      stage,
+      rows,
+    }) => [
+      ...eventStatements({
+        hydraId: stage.id,
+        from: stage.from,
+        to: stage.held.state.seq,
+        events: stage.pending,
+      }),
+      ...rows.statements,
+    ])
 
+    if (transaction && changes.length) {
+      statements.push(transactionStatement({
+        hydraId,
+        ...transaction,
+        receipt: result as Output,
+      }))
+    }
+
+    if (statements.length) {
       query({
         transaction: true,
         statements,
       })
-      live.saved = changes.next
-      live.committed = live.state.seq
-      rememberEvents({
-        hydraId,
-        from,
-        events: pending,
-      })
+    }
+
+    for (const {
+      stage,
+      rows,
+    } of changes) {
       log({
         operation: 'events.write',
-        hydraId,
-        name: pending.at(-1)!.type,
-        eventSeq: live.state.seq,
-        count: pending.length,
+        name: stage.pending.at(-1)!.type,
         ms: performance.now() - started,
+        hydraId: stage.id,
+        eventSeq: stage.held.state.seq,
+        count: stage.pending.length,
       })
+      stage.held.saved = rows.next
+      stage.held.committed = stage.held.state.seq
+      rememberEvents({
+        hydraId: stage.id,
+        from: stage.from,
+        events: stage.pending,
+      })
+
+      if (stage.from === 0) {
+        rememberFirstEvent({
+          hydraId: stage.id,
+          event: stage.pending[0]!,
+        })
+      }
     }
   } catch (error) {
-    if (pending.length) {
-      reloadHydra({ hydraId })
+    for (const stage of stages) {
+      if (stage.pending.length) {
+        reloadHydra({ hydraId: stage.id })
+      }
     }
 
     throw error
   }
 
-  // The write has committed, so a step after it that fails is logged and the rest, and the page's update, still run.
-  for (const run of committed) {
-    try {
-      run()
-    } catch (error) {
-      log({
-        level: 'error',
-        operation: 'events.after-commit',
-        hydraId,
-        error,
-      })
+  for (const stage of stages) {
+    for (const run of stage.committed) {
+      try {
+        run()
+      } catch (error) {
+        log({
+          level: 'error',
+          operation: 'events.after-commit',
+          hydraId: stage.id,
+          error,
+        })
+      }
     }
-  }
 
-  if (pending.length) {
-    live.changed()
+    if (stage.pending.length) {
+      stage.held.changed()
+    }
   }
 
   return result
