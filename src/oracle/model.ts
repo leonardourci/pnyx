@@ -1,7 +1,6 @@
 export const KINDS = [
   'event',
   'note',
-  'transcript',
 ] as const
 export type Kind = (typeof KINDS)[number]
 

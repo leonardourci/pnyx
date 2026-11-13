@@ -1,7 +1,7 @@
 import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Kind } from './model.ts'
-import { chunk, eventText, redact, visibleText } from './text.ts'
+import { chunk, eventText, redact } from './text.ts'
 
 export interface Document {
   card: string
@@ -10,7 +10,7 @@ export interface Document {
   text: string
 }
 
-export function* documentChunks({
+function* documentChunks({
   card,
   kind,
   at,
@@ -27,16 +27,8 @@ export function* documentChunks({
 }
 
 export function* eventDocuments({ event }: { event: HydraEvent }): Generator<Document> {
+  // Conversation copies an older Pnyx logged are agent transcripts, not Pnyx data.
   if (event.type === 'chat.message') {
-    if ((event.data.kind ?? 'message') === 'message' && !event.data.hidden) {
-      yield* documentChunks({
-        card: event.cardId,
-        kind: 'transcript',
-        at: event.at,
-        text: visibleText({ text: event.data.text }),
-      })
-    }
-
     return
   }
 
