@@ -1,9 +1,18 @@
+import { git, until } from '#test-harness/harness.ts'
+import { startTask } from './start.ts'
+import { createPaseoClient } from '@getpaseo/client'
+import { createHost } from '#app/host.ts'
+import { hostRequest } from '#app/host-request.ts'
+import { offerHost } from '#app/server-state.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { settleCopy } from '#projects/copy-settle.ts'
+import { notifySteering } from './inbox-delivery.ts'
 import { followUpSteering, STEERING_GRACE_MS, STEERING_RING_LIMIT } from './inbox-follow-up.ts'
 import type { NotificationResult } from './inbox-notice.ts'
 import { enqueueSteering } from './inbox.ts'
 import { steeringWorkerIdentity } from './steering.ts'
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
@@ -1339,5 +1348,308 @@ test(
       'exhausted',
     )
     assert.ok(inFlight instanceof Promise)
+  },
+)
+
+test(
+  'copy settlement refuses outside message I/O and command launches until their receipts are saved',
+  async t => {
+    const card = task()
+    const folder = card.agent!.cwd!
+    git({
+      cwd: folder,
+      args: [
+        'init',
+        '-q',
+        '-b',
+        'main',
+      ],
+    })
+    git({
+      cwd: folder,
+      args: [
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'Base',
+      ],
+    })
+    const message = withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const meta = {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        }
+        const attached = decidePush({
+          state: writer.state,
+          key: card.key,
+          input: {
+            agent: {
+              ...card.agent!,
+              paseoAgentId: 'outside-worker',
+              paseoUrl: 'ws://127.0.0.1:1/ws',
+            },
+          },
+          meta,
+        })
+        assert.ok('event' in attached)
+        writer.append({ event: attached.event })
+        const copied = hydraEvent({
+          state: writer.state,
+          cardId: card.id,
+          meta,
+          change: {
+            type: 'task.copy',
+            data: {
+              before: card.copy ?? null,
+              after: {
+                path: folder,
+                project: folder,
+                via: 'command',
+                base: 'main',
+                state: 'active',
+              },
+            },
+          },
+        })
+        assert.ok('event' in copied)
+        writer.append({ event: copied.event })
+
+        return enqueueSteering({
+          writer,
+          ref: card.id,
+          id: 'outside-instruction',
+          text: 'Continue the work',
+          source: 'cli',
+          meta,
+        })
+      },
+    })
+    const host = createHost({
+      hydraId: 'lab',
+      changed: () => {},
+      wakeDelay: MINUTE,
+    })
+    const unoffer = offerHost({
+      hydraId: 'lab',
+      ask: ({ body }) => hostRequest({
+        host,
+        body,
+      }),
+    })
+    let allowConnect = () => {}
+    let allowSend = () => {}
+    let allowClose = () => {}
+    const connected = new Promise<void>(resolve => {
+      allowConnect = resolve
+    })
+    const sent = new Promise<void>(resolve => {
+      allowSend = resolve
+    })
+    const closed = new Promise<void>(resolve => {
+      allowClose = resolve
+    })
+    let connecting = false
+    let sending = false
+    let closing = false
+    let delivered = 0
+    const client = createPaseoClient({ url: 'ws://127.0.0.1:1/ws' })
+    const agent = client.agents.ref('outside-worker')
+    t.mock.method(
+      client.agents,
+      'ref',
+      () => agent,
+    )
+    t.mock.method(
+      agent,
+      'send',
+      async () => {
+        sending = true
+        await sent
+        delivered++
+      },
+    )
+    t.mock.method(
+      client,
+      'close',
+      async () => {
+        closing = true
+        await closed
+      },
+    )
+    const notice = notifySteering({
+      hydraId: 'lab',
+      card: card.id,
+      message: message.id,
+      attempt: 'gated-notice',
+      connectPaseo: async () => {
+        connecting = true
+        await connected
+
+        return client
+      },
+    })
+    let launchCompletion: Promise<unknown> | undefined
+
+    try {
+      const settle = () => settleCopy({
+        hydraId: 'lab',
+        ref: card.id,
+        meta: {
+          actor: 'cli',
+          at: new Date().toISOString(),
+        },
+      })
+
+      await until({
+        what: 'outside connect to begin',
+        check: () => connecting,
+      })
+      await assert.rejects(
+        settle,
+        { code: 'TASK_LEASED' },
+      )
+      assert.equal(
+        task().copy?.state,
+        'active',
+      )
+      allowConnect()
+      await until({
+        what: 'outside send to begin',
+        check: () => sending,
+      })
+      await assert.rejects(
+        settle,
+        { code: 'TASK_LEASED' },
+      )
+      assert.equal(
+        task().steering![0]!.attempts.length,
+        0,
+      )
+      allowSend()
+      await until({
+        what: 'outside close to begin',
+        check: () => closing,
+      })
+      await assert.rejects(
+        settle,
+        { code: 'TASK_LEASED' },
+      )
+      assert.equal(
+        task().steering![0]!.attempts.length,
+        0,
+      )
+      allowClose()
+      assert.equal(
+        (await notice).result,
+        'delivered',
+      )
+      assert.equal(
+        delivered,
+        1,
+      )
+      assert.equal(
+        task().steering![0]!.attempts[0]!.result,
+        'delivered',
+      )
+      assert.equal(
+        (await settle()).copy?.state,
+        'removed',
+      )
+      await commands.task([
+        'detach',
+        card.id,
+        '--hydra',
+        'lab',
+      ])
+      withWriter({
+        hydraId: 'lab',
+        fn: ({ writer }) => {
+          const copy = writer.state.cards[card.id]!.copy!
+          const restored = hydraEvent({
+            state: writer.state,
+            cardId: card.id,
+            meta: {
+              actor: 'cli',
+              at: new Date().toISOString(),
+            },
+            change: {
+              type: 'task.copy',
+              data: {
+                before: copy,
+                after: {
+                  ...copy,
+                  state: 'active',
+                },
+              },
+            },
+          })
+          assert.ok('event' in restored)
+          writer.append({ event: restored.event })
+        },
+      })
+      const started = join(
+        root,
+        'command-started',
+      )
+      await commands.hydra([
+        'set',
+        '--hydra',
+        'lab',
+        '--command',
+        'printf started > "$PNYX_FOLDER/../command-started"',
+      ])
+      const launch = startTask({
+        hydraId: 'lab',
+        task: card.id,
+        via: 'command',
+        folder,
+        meta: {
+          actor: 'pnyx',
+          at: new Date().toISOString(),
+        },
+      })
+      const observed = (async () => {
+        try {
+          return { result: await launch }
+        } catch (error) {
+          return { error }
+        }
+      })()
+      launchCompletion = observed
+      await assert.rejects(
+        settle,
+        { code: 'TASK_LEASED' },
+      )
+      const launched = await observed
+
+      if (launched.error) {
+        throw launched.error
+      }
+
+      assert.ok(launched.result)
+      await until({
+        what: 'outside command to start',
+        check: () => existsSync(started),
+      })
+      assert.equal(
+        task().launch?.via,
+        'command',
+      )
+      assert.equal(
+        (await settle()).copy?.state,
+        'removed',
+      )
+    } finally {
+      allowConnect()
+      allowSend()
+      allowClose()
+      await notice.catch(() => undefined)
+      await launchCompletion
+      unoffer()
+      host.close()
+    }
   },
 )

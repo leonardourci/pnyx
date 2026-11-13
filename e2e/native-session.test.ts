@@ -807,6 +807,19 @@ test(
       nativeIdle({ work: session.snapshot().work }),
       false,
     )
+    agent.notify!({
+      method: 'item/completed',
+      params: {
+        item: {
+          type: 'futureNativeWork',
+          id: 'unknown',
+        },
+      },
+    })
+    await until({
+      what: 'unknown native work to end',
+      check: () => nativeIdle({ work: session.snapshot().work }),
+    })
   },
 )
 

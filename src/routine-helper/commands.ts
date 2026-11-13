@@ -1,3 +1,4 @@
+import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { parseArgs } from 'node:util'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
 import type { HydraState } from '#app/model.ts'
@@ -144,6 +145,15 @@ export function commandLease({
   if (!helper && name === 'reply') {
     return () => {}
   }
+
+  if (name === 'task' && action === 'copy' && positionals[2] === 'remove') {
+    return () => {}
+  }
+
+  requireCopyAvailable({
+    hydraId,
+    task: card.id,
+  })
 
   return taskLease({
     hydraId,

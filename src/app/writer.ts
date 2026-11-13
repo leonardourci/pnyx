@@ -149,6 +149,7 @@ export function withWriter<T>({
         hydraId,
         ...transaction,
         migrate,
+        eventIds: state.eventIds,
       })
 
       if (previous) {
@@ -208,7 +209,8 @@ export function withWriter<T>({
 
       const result = fn({ writer })
 
-      if (transaction) {
+      // A transaction that staged nothing, as a duplicate start, leaves no line, since the log rejects one without events.
+      if (transaction && pending.length) {
         const line = `${JSON.stringify({
           v: EVENT_VERSION,
           type: 'log.transaction',
@@ -308,6 +310,7 @@ function heldWrite<T>({
       hydraId,
       ...transaction,
       migrate,
+      eventIds: live.state.eventIds,
     })
 
     if (previous) {
@@ -357,7 +360,8 @@ function heldWrite<T>({
 
     const result = fn({ writer })
 
-    if (transaction) {
+    // A transaction that staged nothing, as a duplicate start, leaves no line, since the log rejects one without events.
+    if (transaction && pending.length) {
       const line = `${JSON.stringify({
         v: EVENT_VERSION,
         type: 'log.transaction',
