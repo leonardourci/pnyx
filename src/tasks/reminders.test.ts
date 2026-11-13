@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents, readLog } from '#app/event-log.ts'
+import { readEvents, readEventsFrom } from '#app/event-log.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
-import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { readSnapshot } from '#app/snapshot.ts'
+import { storedHydra } from '#test-harness/database.ts'
+import { query } from '#store/postgres.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { taskMentions } from '#hydra/mentions.ts'
 import { fireReminders } from './fire-reminders.ts'
@@ -812,6 +811,31 @@ test(
     assert.ok(ask)
     const questionKey = `${task().id}:${ask.id}`
     const sameTaskKey = `${task().id}:${sameTaskQuestion.ask}`
+    // A fire whose grouped message fails to commit leaves no receipt or reminder behind either.
+    const stored = storedHydra({ hydraId })
+    query({
+      statements: [
+        { text: 'create function refuse_message() returns trigger language plpgsql as $$ begin raise exception \'refused\'; end $$' },
+        { text: 'create trigger refuse_message before insert on events for each row when (new.type = \'hydra.message\') execute function refuse_message()' },
+      ],
+    })
+    assert.throws(
+      () => fireReminders({
+        hydraId,
+        at: later,
+      }),
+      /Postgres: refused/,
+    )
+    query({ statements: [{ text: 'drop trigger refuse_message on events' }] })
+    assert.equal(
+      storedHydra({ hydraId }),
+      stored,
+    )
+    assert.equal(
+      state().hydraMessages?.length ?? 0,
+      0,
+    )
+    const before = state().seq
     assert.equal(
       fireReminders({
         hydraId,
@@ -843,18 +867,15 @@ test(
       readEvents({ hydraId }).filter(event => event.type === 'task.reminder-due').length,
       2,
     )
-    const dir = join(
-      home,
-      'hydras',
+    const fired = readEventsFrom({
       hydraId,
-    )
-    const batch = readLog({ dir })?.transactions.at(-1)
-    assert.ok(batch)
+      offset: before,
+    }).events
     assert.equal(
-      batch.events.filter(event => event.type === 'task.reminder-due').length,
+      fired.filter(event => event.type === 'task.reminder-due').length,
       2,
     )
-    const posted = batch.events.find(event => event.type === 'hydra.message')
+    const posted = fired.find(event => event.type === 'hydra.message')
     assert.ok(posted?.type === 'hydra.message')
     assert.deepEqual(
       new Set(posted.data.reminderQuestions),
@@ -873,46 +894,6 @@ test(
         [`${state().keys.other}:${otherQuestion.ask}`]: later,
         [`${HYDRA_CARD}:${globalQuestion.ask}`]: later,
       },
-    )
-    const complete = readFileSync(join(
-      dir,
-      'events.jsonl',
-    ))
-    const tornDir = mkdtempSync(join(
-      home,
-      'torn-reminders-',
-    ))
-    writeFileSync(
-      join(
-        tornDir,
-        'events.jsonl',
-      ),
-      complete.subarray(
-        0,
-        complete.length - 2,
-      ),
-    )
-    const torn = readLog({ dir: tornDir })
-    assert.ok(torn)
-    const pending = replay({
-      state: emptyHydra(),
-      events: torn.events,
-    })
-    assert.equal(
-      pending.hydraMessages?.length ?? 0,
-      0,
-    )
-    assert.equal(
-      pending.questionReminders,
-      undefined,
-    )
-    assert.equal(
-      pending.cards[pending.keys.work!]?.reminder?.dueAt,
-      undefined,
-    )
-    assert.equal(
-      pending.cards[pending.keys.other!]?.reminder?.dueAt,
-      undefined,
     )
     const messages = await commands.hydra([
       'messages',
@@ -1170,111 +1151,6 @@ test(
         at: '2099-10-16T15:00:00.000Z',
       }),
       0,
-    )
-  },
-)
-
-test(
-  'a legacy reminder snapshot is rebuilt before restoring the prior task status',
-  async () => {
-    await run({
-      args: [
-        'status',
-        'work',
-        'paused',
-        '--note',
-        'Waiting before the reminder',
-      ],
-    })
-    await run({
-      args: [
-        'remind',
-        'work',
-        later,
-      ],
-    })
-    const dueId = withWriter({
-      hydraId,
-      fn: ({ writer }) => {
-        const card = writer.state.cards[writer.state.keys.work!]!
-        const column = writer.state.config?.columns.find(column => column.role === 'needs_you')
-        assert.ok(column)
-        assert.ok(card.reminder)
-        const decision = hydraEvent({
-          state: writer.state,
-          meta: {
-            at: later,
-            actor: 'pnyx',
-          },
-          cardId: card.id,
-          change: {
-            type: 'task.reminder-due',
-            data: {
-              reminder: card.reminder.id,
-              column: column.id,
-              message: {
-                task: card.id,
-                hydra: 'hydra',
-                action: 'send',
-                text: 'Reminder: Review synthetic pagination',
-              },
-            },
-          },
-        })
-        assert.ok('event' in decision)
-        writer.append({ event: decision.event })
-
-        return decision.event.id
-      },
-    })
-    const snapshot = join(
-      home,
-      'hydras',
-      hydraId,
-      'snapshot.json',
-    )
-    const legacy = readSnapshot({
-      dir: join(
-        home,
-        'hydras',
-        hydraId,
-      ),
-    })
-    assert.ok(legacy)
-    const message = legacy.state.hydraMessages?.[0]
-    const card = legacy.state.cards[legacy.state.keys.work!]
-    assert.ok(message)
-    assert.ok(card?.reminder)
-    legacy.rules = 20
-    message.actor = 'hydra'
-    delete card.reminder.dueEvent
-    delete card.reminder.resume
-    writeFileSync(
-      snapshot,
-      JSON.stringify(legacy),
-    )
-    assert.equal(
-      state().hydraMessages?.[0]?.actor,
-      'pnyx',
-    )
-    assert.equal(
-      task().reminder?.dueEvent,
-      dueId,
-    )
-    await run({
-      args: [
-        'remind',
-        'work',
-        'clear',
-      ],
-    })
-    assert.equal(
-      task().status?.state,
-      'paused',
-    )
-    assert.equal(
-      task().status?.note,
-      'Waiting before the reminder',
     )
   },
 )

@@ -1,14 +1,14 @@
 import { recentThreadPages, RECENT_THREAD_ENTRIES, THREAD_PAGE_LIMIT } from '#hydra/thread-history.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import assert from 'node:assert/strict'
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 import { LATEST_DELAY_MS } from './latest-feed.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
-import type { HydraEvent } from './model.ts'
+import type { Decision, HydraEvent } from './model.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -19,8 +19,10 @@ import { MAX_BUFFERED } from './server-transport.ts'
 import { SOCKET_RETRY_MS } from './server-transport.ts'
 import { threadCommand } from '#app/server-commands/thread.ts'
 import { mountOwnedHydra } from './server.ts'
-import { hydraDir } from './home-migration.ts'
-import { writeSnapshot } from './snapshot.ts'
+import { withWriter } from './writer.ts'
+import { decidePush } from '#tasks/push.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { hydraConfig } from '#hydra/config.ts'
 
 // Copies of the two-record fixture that make a transcript longer than the recent pages.
 const RECENT_WINDOW_COPIES = 120
@@ -470,11 +472,6 @@ test(
         },
       )
     })
-    const dir = hydraDir({ hydraId: 'default' })
-    mkdirSync(
-      dir,
-      { recursive: true },
-    )
     const path = join(
       home,
       'native.jsonl',
@@ -490,49 +487,83 @@ test(
         },
       })}\n`,
     )
-    const state = reduce({
-      state: emptyHydra(),
-      event: {
-        v: 1,
-        seq: 1,
-        id: 'create',
-        at: '2026-11-09T00:00:00Z',
-        actor: 'web',
-        cardId: HYDRA_CARD,
-        type: 'task.created',
-        data: {
-          key: 'hydra',
-          title: 'Hydra',
-        },
+    withWriter({
+      hydraId: 'default',
+      create: true,
+      fn: ({ writer }) => {
+        const meta = {
+          actor: 'web',
+          at: '2026-11-09T00:00:00Z',
+        }
+
+        const apply = ({ decision }: { decision: Decision }) => {
+          assert.ok('event' in decision)
+          writer.append({ event: decision.event })
+        }
+
+        const create = ({ key }: { key: string }) => writer.append({
+          event: {
+            ...meta,
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: `create-${key}`,
+            cardId: key,
+            type: 'task.created',
+            data: {
+              key,
+              title: key,
+            },
+          },
+        })
+        const attach = ({
+          key,
+          sessionId,
+        }: {
+          key: string
+          sessionId: string
+        }) => apply({
+          decision: decidePush({
+            state: writer.state,
+            key,
+            input: {
+              agent: {
+                provider: 'claude-code',
+                sessionId,
+                transcriptPath: path,
+              },
+            },
+            meta,
+          }),
+        })
+        attach({
+          key: 'hydra-session',
+          sessionId: 'fixture',
+        })
+        const config = hydraConfig({ state: writer.state })
+        apply({
+          decision: hydraEvent({
+            state: writer.state,
+            meta,
+            cardId: HYDRA_CARD,
+            change: {
+              type: 'board.configured',
+              data: {
+                ...config,
+                hydra: {
+                  ...config.hydra,
+                  session: 'claude-code:fixture',
+                },
+              },
+            },
+          }),
+        })
+        create({ key: 'first' })
+        attach({
+          key: 'first',
+          sessionId: 'first',
+        })
+        create({ key: 'second' })
       },
-    })
-    state.cards[HYDRA_CARD]!.agent = {
-      provider: 'claude-code',
-      sessionId: 'fixture',
-      transcriptPath: path,
-    }
-    state.cards.first = {
-      ...state.cards[HYDRA_CARD]!,
-      id: 'first',
-      key: 'first',
-      title: 'First',
-      agent: {
-        provider: 'claude-code',
-        sessionId: 'first',
-        transcriptPath: path,
-      },
-    }
-    state.cards.second = {
-      ...state.cards[HYDRA_CARD]!,
-      id: 'second',
-      key: 'second',
-      title: 'Second',
-      agent: undefined,
-    }
-    writeSnapshot({
-      dir,
-      state,
-      offset: 0,
     })
     const mount = await mountOwnedHydra({
       hydraId: 'default',
@@ -1176,9 +1207,8 @@ test(
       ],
       now: Date.parse('2026-11-07T00:00:00Z'),
     })
-    let state = reduce({
-      state: emptyHydra(),
-      event: {
+    const created: HydraEvent[] = [
+      {
         v: 1,
         seq: 1,
         id: 'create',
@@ -1191,10 +1221,7 @@ test(
           title: 'Hydra',
         },
       },
-    })
-    state = reduce({
-      state,
-      event: {
+      {
         v: 1,
         seq: 2,
         id: 'create-task',
@@ -1207,7 +1234,17 @@ test(
           title: 'Release checklist',
         },
       },
-    })
+    ]
+    let state = created.reduce(
+      (
+        hydra,
+        event,
+      ) => reduce({
+        state: hydra,
+        event,
+      }),
+      emptyHydra(),
+    )
     const path = join(
       home,
       'native.jsonl',
@@ -1359,22 +1396,19 @@ test(
         note: 'Checks complete',
       },
     }
-    const dir = join(
-      home,
-      'hydras',
-      'default',
-    )
-    mkdirSync(
-      dir,
-      { recursive: true },
-    )
-    appendFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      JSON.stringify(action) + '\n',
-    )
+    withWriter({
+      hydraId: 'default',
+      create: true,
+      migrate: false,
+      fn: ({ writer }) => {
+        for (const event of [
+          ...created,
+          action,
+        ]) {
+          writer.append({ event })
+        }
+      },
+    })
     state = reduce({
       state,
       event: action,
