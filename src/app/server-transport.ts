@@ -195,8 +195,7 @@ export type HydraRequest = {
 
 export const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 
-// A Hydra's page HTML sets the cookie for this path only, so only the page reaches zero-cache.
-export const ZERO_PATH = '/zero'
+export { ZERO_OWNER, ZERO_PATH } from './server-protocol.ts'
 export const ZERO_COOKIE = 'pnyx-token'
 export const ZERO_QUERY_PATH = '/zero-query'
 

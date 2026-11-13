@@ -20,7 +20,7 @@ const execute = promisify(execFile)
 const cli = fileURLToPath(import.meta.resolve('chrome-devtools-axi/dist/bin/chrome-devtools-axi.js'))
 const mcp = fileURLToPath(import.meta.resolve('chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js'))
 const mediaFolder = process.env.PNYX_CHAT_MEDIA
-const pnyx = scenarioGroup()
+const pnyx = scenarioGroup({ zeroCache: true })
 const CONTRACT_COPIES = 12
 const REPLAY_SCALE = 0.02
 const CONTRACT_START = 'STREAM_CONTRACT_START'
@@ -556,9 +556,9 @@ test(
         'an outage logs at most one failed attempt',
       )
       assert.ok(
-        logLines().some(line => line.source === 'web' && line.operation === 'page.snapshot' && line.hydraId === s.hydraId
-          && typeof line.ms === 'number'),
-        'each snapshot the page applies has its line',
+        logLines().some(line => line.source === 'web' && line.operation === 'page.update' && line.name === 'zero'
+          && line.hydraId === s.hydraId && typeof line.ms === 'number'),
+        'the Hydra the page loads from Zero has its line',
       )
       await capture({ name: 'final' })
       const other = await pnyx.scenario()

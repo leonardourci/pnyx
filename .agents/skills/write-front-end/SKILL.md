@@ -15,7 +15,7 @@ paths:
 - Reuse before building. Search `web/src/shared/ui/` and the feature folders under `web/src/` for a component, hook or formatter that already does the job; build a new one only when nothing composes into it.
 - Keep components small: one job each, composed from primitives. A screen reads as a list of named pieces, not one block of JSX. A piece used by one file sits above the exported component in that file; a generic piece several features use moves to `web/src/shared/ui/`. A component that looks generic but carries one feature's logic stays in that feature's folder; when a file comes to hold unrelated concerns, split it along them inside that folder ([follow-conventions](../follow-conventions/SKILL.md#files-and-concerns)).
 - Put derived values (labels, classes, formatted text) and compound conditions in named constants above the `return`, not inline in the JSX.
-- Read Hydra state from the connection store over the one WebSocket. Don't keep a second copy of it in component state.
+- Read Hydra data from the connection store, which builds it from Zero's queries; live agent activity and chat pages come over the one WebSocket. Don't keep a second copy of either in component state.
 - Use the installed React, Vite and Tailwind versions' current APIs, checked against their types or docs, not deprecated props or callbacks.
 - Keep accessible names, `aria-label` and `data-*` state attributes stable when you move or rename a component; assistive technology relies on them.
 - Chat tokens (commands, skills and task mentions) share one rendering between the composer and sent messages, including their icons, colors and task navigation. Keep surrounding text normal and unknown command or skill names literal.

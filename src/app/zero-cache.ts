@@ -14,7 +14,7 @@ import { pnyxHome, privateDir } from '#store/storage.ts'
 import { queries, schema } from '#store/zero-schema.ts'
 import { log } from './diagnostics.ts'
 import { readBody, reply } from './server-http.ts'
-import { STOP_TIMEOUT_MS, ZERO_COOKIE, ZERO_PATH } from './server-transport.ts'
+import { STOP_TIMEOUT_MS, ZERO_COOKIE, ZERO_OWNER, ZERO_PATH } from './server-transport.ts'
 
 // The zero-cache binary's own entry, run with this Node rather than through the shell shim in node_modules/.bin.
 const ZERO_CLI = fileURLToPath(new URL(
@@ -22,8 +22,6 @@ const ZERO_CLI = fileURLToPath(new URL(
   import.meta.resolve('@rocicorp/zero'),
 ))
 const APP_ID = 'pnyx'
-// Zero 1.x serves only named queries; every page reads as the one local owner.
-const OWNER = 'owner'
 const SECRET_BYTES = 32
 const DEFAULT_PG_PORT = '5432'
 // Waits before each restart after an unexpected exit; past the last one zero-cache stays down until the next serve.
@@ -474,7 +472,7 @@ export function startZeroCache({
           ctx: undefined,
         }),
         schema,
-        userID: OWNER,
+        userID: ZERO_OWNER,
         query: new URLSearchParams(search),
         body: await readBody({ req }) as ReadonlyJSONValue,
       })

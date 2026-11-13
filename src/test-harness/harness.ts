@@ -423,10 +423,13 @@ export function logLines(): LogRecord[] {
 export function scenarioGroup({
   retryDelays,
   upgradeRoot,
+  zeroCache = false,
 }: {
   // How long a failed Hydra start waits before each retry.
   retryDelays?: number[]
   upgradeRoot?: string
+  // Whether the server runs zero-cache, which a flow that opens the real page in a browser needs.
+  zeroCache?: boolean
 } = {}) {
   const root = realpathSync(mkdtempSync(join(
     tmpdir(),
@@ -526,6 +529,7 @@ export function scenarioGroup({
       recoveryPause: RECOVERY_TEST_PAUSE_MS,
       processLineMs: FLOW_PROCESS_LINE_MS,
       upgradeRoot: upgradeRoot ?? upgrade.install,
+      zeroCache,
       restart: () => {
         restarts++
 

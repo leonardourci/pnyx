@@ -1,6 +1,6 @@
 import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { answerPrompt } from '#workers/answers.ts'
-import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { memo, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -109,9 +109,8 @@ function LastMessage({ message }: { message: LatestMessage }) {
   )
 }
 
-export function HydraCard({
+export const HydraCard = memo(function HydraCard({
   card,
-  state,
   labelColors,
   latest,
   selected,
@@ -130,7 +129,6 @@ export function HydraCard({
   action,
 }: {
   card: CardData
-  state?: import('#app/model.ts').HydraState
   action?: CurrentAction
   labelColors?: SavedLabelColor[]
   doneAfterHours?: DoneAfterHours
@@ -271,7 +269,6 @@ export function HydraCard({
     card,
     hours: doneAfterHours,
     connected,
-    state,
     action,
     now,
   })
@@ -285,21 +282,12 @@ export function HydraCard({
     at: said.at,
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
-  const waiting = waitingQuestions({
-    card,
-    cards: state?.cards,
-  })
+  const waiting = waitingQuestions({ card })
   // A question whose answer is still on its way shows only when nothing else waits.
-  const question = waiting[0] ?? ownerQuestions({
-    card,
-    cards: state?.cards,
-  })[0]
+  const question = waiting[0] ?? ownerQuestions({ card })[0]
   const request = question?.permission
   const attention = question?.attention
-  const review = reviewRequests({
-    state,
-    card,
-  })[0]
+  const review = reviewRequests({ card })[0]
   const reviewSummary = review && (!question || question.ask?.kind === 'merge')
   const asked = question?.ask
   const canAnswer = attention && answerPrompt({
@@ -554,7 +542,6 @@ export function HydraCard({
               )}
               <TaskQuestion
                 card={card}
-                state={state}
                 connected={connected}
                 command={command}
                 notify={notify}
@@ -713,4 +700,4 @@ export function HydraCard({
       />
     </article>
   )
-}
+})

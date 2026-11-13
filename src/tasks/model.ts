@@ -150,6 +150,18 @@ export interface TaskHold {
   reason: string
 }
 
+export interface CardFacts {
+  childWorking: boolean
+  waitTitle?: string
+  unmetPrerequisites: ReturnType<typeof import('./dependencies.ts').unmetPrerequisites>
+  // Each linked pull request's deciding merge question, among every card's.
+  mergeQuestions: Record<string, {
+    // The question's card when it is another one.
+    card?: Card
+    ask: Ask
+  } | undefined>
+}
+
 export interface Card {
   tools?: string[]
   toolsRevision?: string
@@ -169,6 +181,8 @@ export interface Card {
   // Derived transcript totals sent to the browser; never used as Hydra state.
   spend?: TaskSpend
   usage?: import('#workers/provider.ts').AgentUsage
+  // Facts that read other cards, which the server derives for the page; never used as Hydra state.
+  facts?: CardFacts
   brief?: string
   // The card's Intent: what the owner wants from the task, newest version.
   intent?: string

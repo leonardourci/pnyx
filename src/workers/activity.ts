@@ -20,10 +20,12 @@ export function agentActivity({
     return 'stopped'
   }
 
-  const childWorking = !agent.agentId && Object.values(cards ?? {}).some(child =>
+  // The page has only shown cards, so it reads the server's answer instead.
+  const childSeen = () => Object.values(cards ?? {}).some(child =>
     child.agent?.agentId && child.agent.provider === agent.provider
     && child.agent.sessionId === agent.sessionId
     && agentActivity({ card: child }) === 'working')
+  const childWorking = !agent.agentId && (card.facts?.childWorking ?? childSeen())
 
   if (activity === 'working' || childWorking) {
     return 'working'

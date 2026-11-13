@@ -544,7 +544,10 @@ export const queries = defineQueries({
           query => query.orderBy(
             'position',
             'asc',
-          ).related('mergeQuestion'),
+          ).related(
+            'mergeQuestion',
+            question => question.related('card'),
+          ),
         ),
     ),
   },
@@ -580,7 +583,10 @@ export const queries = defineQueries({
           query => query.orderBy(
             'position',
             'asc',
-          ).related('mergeQuestion'),
+          ).related(
+            'mergeQuestion',
+            question => question.related('card'),
+          ),
         )
         .related(
           'notes',
