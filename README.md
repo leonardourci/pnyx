@@ -128,7 +128,7 @@ Work lands through a ready pull request by default, with you deciding when to me
 
 Owner memory is shared across Hydras, project memory follows a project, and Hydra memory keeps that Hydra's local context. **inscribe** curates and saves those layers before a reset.
 
-The **Oracle** searches tasks and recorded conversations by keyword, with stemming, synonyms and typo tolerance. Its index can be deleted and rebuilt from history.
+The **Oracle** searches tasks, their events and notes by keyword, with stemming, synonyms and typo tolerance. Its index can be deleted and rebuilt from history.
 
 ## CLI reference
 
@@ -150,7 +150,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi move <id> <column>` | Put a card in a column. |
 | `pnyx-axi card <id>` | Show one card with its summary, decisions and context. |
 | `pnyx-axi outcome <id> done\|failed\|cancelled` | Record a task's outcome. |
-| `pnyx-axi oracle "<words>"` | Search titles, links, events and transcripts with the Oracle. |
+| `pnyx-axi oracle "<words>"` | Search titles, links, events and notes with the Oracle. |
 | `pnyx-axi history` | Page through past events, newest first. |
 | `pnyx-axi rule`, `pnyx-axi account list\|set\|remove` | Edit dispatch rules and worker login folders. |
 | `pnyx-axi setup [check\|skills\|hooks]` | Install the login services, list missing setup, or install global skills and reporting hooks. |

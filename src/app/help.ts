@@ -37,7 +37,7 @@ commands:
   debug timeline|health|performance          Read correlated history, runtime health facts, or action durations and memory from the logs
   logs [clean]                               Show the diagnostic log files, or delete them all now
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
-  oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
+  oracle "<words>" | status | rebuild        Full-text search over titles, links, events and notes
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   settings show|schema|set                   Pnyx-wide settings: theme, text sizes, Hide Done, review cadence, helper, Oracle filters, Hydra order, logs
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths

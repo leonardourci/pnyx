@@ -37,7 +37,7 @@ Thread-delta tests cover entry additions, updates and removals, retained object 
 
 Page-projection checks cover omitted histories and event IDs, explicit hidden-card interests, closing an interest, hidden-origin worker activity, session attachment changes and removal, hidden compaction bodies, detached move-session payloads, cached reply and usage recovery on unhide, and resume matching a fresh projection. Socket page commands reject Hydra overrides. A projected card update without an event invalidates that card’s activity cache while leaving unrelated histories current. Request tests hold confirmation ahead of the page sequence so a task edit and Hydra agent selection keep their previews. The focused streaming browser flow also opens a hidden task from a chat chip and restores its expanded detail after reload, then checks the refusal after the referenced task moves away. Queue checks cover owner-only started receipts and the newest 32 IDs.
 
-Historical recovery tests check that Oracle readiness finishes before backfill, that batches yield and resume after stopping, and that a write between batches is retained once. Compaction history checks exclude tool and thinking records even when their role names start with `assistant`.
+Compaction history checks exclude tool and thinking records even when their role names start with `assistant`.
 
 For an archived home, run the read-only replay against an evidence copy:
 
