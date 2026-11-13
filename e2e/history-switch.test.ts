@@ -220,6 +220,11 @@ test(
         String(history.text),
         /Pending after the switch snapshot/,
       )
+      assert.match(
+        String(history.text),
+        /\[Hydra\] Memory saved\./,
+        'the previous session\'s reply after the boundary stays in the history',
+      )
       await until({
         what: 'the replacement agent to receive the matching summary and history boundary',
         check: () => pnyx.claude.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.model === 'opus' && session.received.some(text => text.includes(switched.summary!) && text.includes(`--since ${switched.id}`))),

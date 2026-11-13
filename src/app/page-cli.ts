@@ -108,7 +108,7 @@ export function pageOutput({
     })),
     opened: opened.length ? opened : 'none: no --card given',
     hidden: interest.hidden ? cards.filter(card => !liveTask({ card })).length : 'not included; pass --hidden',
-    messages: page.hydraMessages?.length ?? 0,
+    ownerMessage: page.hydraOwnerMessage?.id ?? 'none: the owner has not messaged Hydra',
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
       `Run \`pnyx-axi page --full --hydra ${hydraId}\` for the whole projection a page receives`,

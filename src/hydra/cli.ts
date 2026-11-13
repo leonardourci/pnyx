@@ -28,7 +28,7 @@ import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#set
 import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
-import { harvestHydra, hydraHistory, hydraInscribe } from './history-cli.ts'
+import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
@@ -443,13 +443,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   const readingHistory = positionals[0] === 'history' || (positionals[0] === 'messages' && values.inscribe)
-
-  if (readingHistory || (positionals[0] === 'inscribe' && positionals[1] === 'start')) {
-    harvestHydra({
-      values,
-      hydraId,
-    })
-  }
 
   if (readingHistory) {
     return hydraHistory({

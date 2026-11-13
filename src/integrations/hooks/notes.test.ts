@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { codexThreadTitle } from '#workers/codex.ts'
-import { readTranscriptRecord, transcriptMessages } from '#workers/transcripts.ts'
+import { readTranscriptRecord } from '#workers/transcripts.ts'
 
 const FIXTURES = join(
   import.meta.dirname,
@@ -100,7 +100,8 @@ test(
       new Set(notes.map(n => n.ref)).size,
       notes.length - 1,
     )
-    assert.ok(!records({ path: CLAUDE }).flatMap(record => transcriptMessages({ record }))
+    assert.ok(!records({ path: CLAUDE })
+      .flatMap(record => readTranscriptRecord({ record }).messages)
       .some(m => m.text.includes('zebrafish')))
     assert.deepEqual(
       records({ path: CODEX }).flatMap(record => readTranscriptRecord({ record }).notes)

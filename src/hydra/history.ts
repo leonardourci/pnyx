@@ -3,12 +3,10 @@ import { ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { countTokens } from '#workers/token-count.ts'
 import { redact } from '#oracle/text.ts'
-import type { ChatEvent, HydraOperation } from './model.ts'
-import type { ThreadEntry } from './transcripts-read.ts'
+import type { HydraOperation } from './model.ts'
+import type { SessionEntry, ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
-import { effectiveChatEvents, legacyChatPosition } from './chat-events.ts'
-import { messageReference } from './message-reference.ts'
 import { HISTORY_BUDGET } from './history-command.ts'
 
 export { HISTORY_BUDGET, historyCommand } from './history-command.ts'
@@ -251,42 +249,95 @@ export function inscribeOperation({
   }
 }
 
-export function loggedEntry({ event }: { event: ChatEvent }): ThreadEntry {
-  // Older harvests kept the transport position only in nativeId.
-  const legacy = legacyChatPosition({ nativeId: event.data.nativeId })
-  const nativeId = event.data.messageId ?? legacy?.message
-  const messageId = nativeId ? `${event.data.session}:${nativeId}` : undefined
-  const part = event.data.part ?? legacy?.position
+// A native entry has a time but no log position: it takes the seq of the first event after
+// its time, so milestones and snapshots bound it like the events around it. An entry newer
+// than the log takes the next seq, outside every snapshot taken before it, and entries
+// between two events share one seq.
+export function placeEntries<Entry extends ThreadEntry>({
+  events,
+  entries,
+}: {
+  events: HydraEvent[]
+  entries: Entry[]
+}): {
+  seq: number
+  entry: Entry
+}[] {
+  // A running maximum keeps the search correct when a clock stepped back between appends.
+  let latest = -Infinity
+  const times = events.map(event => {
+    latest = Math.max(
+      latest,
+      Date.parse(event.at),
+    )
 
-  return {
-    id: event.id,
-    reference: messageReference({
-      session: event.data.session,
-      id: event.data.nativeId,
-      messageId: nativeId,
-    }),
-    messageId,
-    part,
-    kind: event.data.kind ?? 'message',
-    block: event.data.block,
-    hidden: event.data.hidden,
-    call: event.data.call,
-    role: event.data.role,
-    final: event.data.final,
-    text: event.data.text,
-    at: event.at,
-    session: event.data.session,
-  }
+    return latest
+  })
+
+  return entries.flatMap(entry => {
+    const time = Date.parse(entry.at ?? '')
+
+    if (Number.isNaN(time)) {
+      return []
+    }
+
+    let low = 0
+    let high = times.length
+
+    while (low < high) {
+      const middle = (low + high) >> 1
+
+      if (times[middle]! <= time) {
+        low = middle + 1
+      } else {
+        high = middle
+      }
+    }
+
+    return [
+      {
+        seq: events[low]?.seq ?? (events.at(-1)?.seq ?? 0) + 1,
+        entry,
+      },
+    ]
+  })
 }
 
-function historyMessages({ events }: { events: HydraEvent[] }): {
+function historyMessages({
+  events,
+  native,
+}: {
+  events: HydraEvent[]
+  native: SessionEntry[]
+}): {
   seq: number
   text: string
 }[] {
   const entries: ThreadEntry[] = []
   const sequences = new Map<string, number>()
 
-  for (const event of effectiveChatEvents({ events })) {
+  for (const {
+    seq,
+    entry,
+  } of placeEntries({
+      events,
+      entries: native.filter(entry => entry.kind === 'message'
+        && entry.role.startsWith('assistant')),
+    })) {
+    entries.push({
+      ...entry,
+      id: entry.reference,
+      messageId: entry.reference,
+      part: entry.part ?? 0,
+      role: 'Hydra',
+    })
+    sequences.set(
+      entry.reference,
+      seq,
+    )
+  }
+
+  for (const event of events) {
     if (event.type === 'hydra.helper-finished') {
       for (const outcome of event.data.outcomes) {
         if (outcome.status === 'still_waiting') {
@@ -312,13 +363,8 @@ function historyMessages({ events }: { events: HydraEvent[] }): {
 
     let entry: ThreadEntry
 
-    if (event.type === 'chat.message' && event.cardId === HYDRA_CARD && event.data.role.startsWith('assistant')
-      && (event.data.kind ?? 'message') === 'message') {
-      entry = {
-        ...loggedEntry({ event }),
-        role: 'Hydra',
-      }
-    } else if (event.type === 'hydra.message' && event.data.kind !== 'divider' && ownerActor({ actor: event.actor })) {
+    if (event.type === 'hydra.message' && event.data.kind !== 'divider'
+      && ownerActor({ actor: event.actor })) {
       entry = {
         id: event.id,
         kind: 'message',
@@ -380,6 +426,7 @@ function historyMessages({ events }: { events: HydraEvent[] }): {
 export function readHistory({
   state,
   events,
+  native,
   since,
   after,
   through = state.seq,
@@ -387,6 +434,8 @@ export function readHistory({
 }: {
   state: HydraState
   events: HydraEvent[]
+  // Hydra's native transcript entries, which carry no log position of their own.
+  native: SessionEntry[]
   since: string
   after?: string
   through?: number
@@ -442,9 +491,10 @@ export function readHistory({
   }
 
   const messages = historyMessages({
-    events: events.filter(event => event.seq <= through),
+    events,
+    native,
   })
-    .filter(message => message.seq > boundary)
+    .filter(message => message.seq > boundary && message.seq <= through)
   const totalTokens = countTokens({ text: messages.map(message => message.text).join('\n\n') })
 
   if (position > messages.length) {

@@ -951,9 +951,8 @@ export function HydraChat({
   const leadCards = knownCards({ state })
   const leads = useMemo(
     () => {
-      const refs = new Set(conversation?.entries.map(entry => entry.reference) ?? [])
       const next = answerLeads({
-        messages: state.hydraMessages?.filter(message => refs.has(message.id)),
+        entries: conversation?.entries,
         cards: leadCards,
         previous: previousLeads.current,
       })
@@ -962,7 +961,6 @@ export function HydraChat({
       return next
     },
     [
-      state.hydraMessages,
       leadCards,
       conversation?.entries,
     ],

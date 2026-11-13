@@ -10,22 +10,11 @@ import { withWriter } from '#app/writer.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { logPath, snapshotPath } from '#store/storage.ts'
-import { decidePush } from '#tasks/push.ts'
 import { search } from './search.ts'
 import { searchPath } from './index.ts'
 
-const CHECKPOINT_WORDS = 20_000
-const TAIL_WORDS = 100_000
 const EVENT_BATCH_WORDS = 6000
 const PEER_SEARCH_TIMEOUT_MS = 10_000
-
-const nativeLine = ({ text }: { text: string }) => `${JSON.stringify({
-  type: 'user',
-  message: {
-    role: 'user',
-    content: text,
-  },
-})}\n`
 
 const find = ({ text }: { text: string }) => search({
   hydraId: 'default',
@@ -119,117 +108,40 @@ function temporaryHome({
   return root
 }
 
-// A task whose transcript holds two lines, one of them already archived in the log, and a cache
-// that has caught up with both.
-function transcriptTask({ t }: { t: TestContext }) {
-  const root = temporaryHome({
+// A task with one note and a cache that has caught up with it.
+function notedTask({ t }: { t: TestContext }) {
+  temporaryHome({
     t,
     prefix: 'oracle-deltas-',
   })
-  const native = join(
-    root,
-    'session.jsonl',
-  )
   assert.deepEqual(
     find({ text: 'emptyneedle' }).hits,
     [],
   )
-  fs.writeFileSync(
-    native,
-    nativeLine({ text: 'initialneedle' }) + nativeLine({ text: 'ephemeralneedle' }),
-  )
-  const created = withWriter({
-    hydraId: 'default',
-    fn: ({ writer }) => {
-      const decision = decidePush({
-        state: writer.state,
-        key: 'index',
-        input: {
-          title: 'Delta task',
-          activity: 'finished',
-          agent: {
-            provider: 'claude-code',
-            sessionId: 'delta',
-            transcriptPath: native,
-          },
-        },
-        meta: {
-          actor: 'fixture',
-          at: '2026-11-12T10:00:00Z',
-        },
-      })
-      assert.ok('event' in decision)
-      writer.append({ event: decision.event })
-
-      return {
-        card: decision.event.cardId,
-        log: join(
-          writer.dir,
-          'events.jsonl',
-        ),
-      }
-    },
-  })
-  chat({
-    card: created.card,
-    id: 'archived-original',
-    nativeId: '0:m0',
+  const card = 'index'
+  note({
+    card,
+    id: 'initial-note',
     text: 'initialneedle',
   })
   assert.equal(
     find({ text: 'initialneedle' }).hits[0]?.card,
-    created.card,
+    card,
   )
 
   return {
-    ...created,
-    native,
+    card,
+    log: logPath({ dir: hydraDir({ hydraId: 'default' }) }),
   }
 }
 
-function chat({
-  card,
-  id,
-  nativeId,
-  text,
-  replaces,
-}: {
-  card: string
-  id: string
-  nativeId: string
-  text: string
-  replaces?: string
-}) {
-  withWriter({
-    hydraId: 'default',
-    fn: ({ writer }) => writer.append({
-      event: {
-        v: 1,
-        seq: writer.state.seq + 1,
-        id,
-        actor: 'fixture',
-        at: '2026-11-12T10:00:01Z',
-        cardId: card,
-        type: 'chat.message',
-        data: {
-          session: 'claude-code:delta',
-          nativeId,
-          role: 'user',
-          text,
-          replaces,
-        },
-      },
-    }),
-  })
-}
-
-// Records every read of the event log and the transcript, and lets a test fail or change them mid-read.
+// Records every read of the event log, and lets a test fail it or advance the cursor from another process mid-read.
 function watchReads({
   t,
   task,
 }: {
   t: TestContext
-  task: ReturnType<typeof transcriptTask>
+  task: ReturnType<typeof notedTask>
 }) {
   const descriptors = new Map<number, string>()
   const reads: {
@@ -238,15 +150,10 @@ function watchReads({
     length: number
   }[] = []
   const hooks = {
-    truncateAfterRead: false,
-    appendWhileReading: false,
-    failNativeRead: false,
-    failFromPosition: 0,
     failEventRead: false,
     eventBatchStart: 0,
     failedEventPosition: 0,
     overlapEvents: false,
-    overlapNative: false,
   }
 
   const peerSearch = ({ text }: { text: string }) => {
@@ -288,28 +195,6 @@ function watchReads({
   const open = fs.openSync
   const read = fs.readSync
   const close = fs.closeSync
-  const stat = fs.statSync
-  t.mock.method(
-    fs,
-    'statSync',
-    // eslint-disable-next-line pnyx/object-params -- Node owns fs.statSync's signature.
-    (
-      path: fs.PathLike,
-      options?: fs.StatOptions,
-    ) => {
-      const found = stat(
-        path,
-        options,
-      )
-
-      if (hooks.overlapNative && String(path) === task.native) {
-        hooks.overlapNative = false
-        peerSearch({ text: 'overlapnative' })
-      }
-
-      return found
-    },
-  )
   t.mock.method(
     fs,
     'openSync',
@@ -354,10 +239,6 @@ function watchReads({
       position: number | null,
     ) => {
       const path = descriptors.get(fd)
-
-      const nativeRead = path === task.native && length > 0
-      const pastFailure = position !== null && position >= hooks.failFromPosition
-
       const eventRead = path === task.log && length > 0
       const laterEventBatch = position !== null && position > hooks.eventBatchStart
 
@@ -371,19 +252,7 @@ function watchReads({
         throw new Error('Synthetic event batch read failure')
       }
 
-      if (hooks.appendWhileReading && nativeRead) {
-        hooks.appendWhileReading = false
-        fs.appendFileSync(
-          task.native,
-          nativeLine({ text: 'futuremarker' }),
-        )
-      }
-
-      if (hooks.failNativeRead && nativeRead && pastFailure) {
-        throw new Error('Synthetic native read failure')
-      }
-
-      if ((path === task.log || path === task.native) && length > 0) {
+      if (eventRead) {
         reads.push({
           path,
           position,
@@ -391,23 +260,13 @@ function watchReads({
         })
       }
 
-      const bytes = read(
+      return read(
         fd,
         buffer,
         offset,
         length,
         position,
       )
-
-      if (hooks.truncateAfterRead && nativeRead) {
-        hooks.truncateAfterRead = false
-        fs.writeFileSync(
-          task.native,
-          nativeLine({ text: 'truncatedmarker' }),
-        )
-      }
-
-      return bytes
     },
   )
   syncBuiltinESMExports()
@@ -482,51 +341,9 @@ test(
 )
 
 test(
-  'a correction removes its older entry even when another reader cached that entry first',
-  t => {
-    const task = transcriptTask({ t })
-    const captured = structuredClone(loadHydra({ hydraId: 'default' }).state)
-    chat({
-      card: task.card,
-      id: 'earlier-record',
-      nativeId: 'earlier',
-      text: 'zinnia',
-    })
-    assert.equal(
-      find({ text: 'zinnia*' }).hits[0]?.card,
-      task.card,
-      'another reader caches the predecessor after the first query captures state',
-    )
-    chat({
-      card: task.card,
-      id: 'newer-record',
-      nativeId: 'newer',
-      text: 'quartz',
-      replaces: 'earlier-record',
-    })
-    assert.equal(
-      search({
-        hydraId: 'default',
-        state: captured,
-        query: {
-          text: 'quartz*',
-          limit: 20,
-        },
-      }).hits[0]?.card,
-      task.card,
-    )
-    assert.equal(
-      find({ text: 'zinnia*' }).total,
-      0,
-      'a correction beyond the captured state removes its older indexed entry',
-    )
-  },
-)
-
-test(
   'an unchanged query reads no historical bytes and needs no cache write lock',
   t => {
-    const task = transcriptTask({ t })
+    const task = notedTask({ t })
     const { reads } = watchReads({
       t,
       task,
@@ -538,7 +355,7 @@ test(
     assert.equal(
       reads.length,
       0,
-      'an unchanged query reads no historical event or transcript bytes',
+      'an unchanged query reads no historical event bytes',
     )
     const locked = new DatabaseSync(searchPath({ hydraId: 'default' }))
     locked.exec('BEGIN IMMEDIATE')
@@ -557,162 +374,9 @@ test(
 )
 
 test(
-  'a failed transcript read keeps the committed batch and the retry reads only new bytes',
-  t => {
-    const task = transcriptTask({ t })
-    const logSize = fs.statSync(task.log).size
-    const nativeSize = fs.statSync(task.native).size
-    const {
-      reads,
-      hooks,
-    } = watchReads({
-      t,
-      task,
-    })
-    const checkpoint = nativeLine({ text: 'checkpoint '.repeat(CHECKPOINT_WORDS) })
-    const throughCheckpoint = nativeSize + Buffer.byteLength(checkpoint)
-    fs.appendFileSync(
-      task.native,
-      checkpoint,
-    )
-    fs.appendFileSync(
-      task.native,
-      nativeLine({ text: `appendedneedle ${'tail '.repeat(TAIL_WORDS)}` }),
-    )
-    hooks.failFromPosition = throughCheckpoint
-    note({
-      card: task.card,
-      id: 'delta-note',
-      text: 'incrementalnote',
-    })
-    hooks.failNativeRead = true
-
-    try {
-      assert.throws(
-        () => find({ text: 'appendedneedle incrementalnote' }),
-        /Synthetic native read failure/,
-      )
-    } finally {
-      hooks.failNativeRead = false
-    }
-
-    const readsBeforeRetry = reads.length
-    assert.equal(
-      find({ text: 'appendedneedle incrementalnote' }).hits[0]?.card,
-      task.card,
-    )
-    assert.equal(
-      reads.slice(readsBeforeRetry).find(entry => entry.path === task.native)?.position,
-      throughCheckpoint,
-      'retry preserves the committed native batch instead of ingesting it again',
-    )
-    assert.ok(reads.some(entry => entry.path === task.log && entry.position === logSize))
-    assert.ok(reads.some(entry => entry.path === task.native && entry.position === nativeSize))
-    assert.ok(
-      reads.every(entry => {
-        const start = entry.path === task.native ? nativeSize : logSize
-
-        return entry.position !== null && entry.position >= start
-      }),
-      'delta catch-up never reads an older byte',
-    )
-  },
-)
-
-test(
-  'a replaced transcript resets only its own entries and reads only its admitted bytes',
-  t => {
-    const task = transcriptTask({ t })
-    note({
-      card: task.card,
-      id: 'delta-note',
-      text: 'incrementalnote',
-    })
-    assert.equal(
-      find({ text: 'incrementalnote' }).hits[0]?.card,
-      task.card,
-    )
-    const {
-      reads,
-      hooks,
-    } = watchReads({
-      t,
-      task,
-    })
-    const replacement = `${task.native}.replacement`
-    fs.writeFileSync(
-      replacement,
-      nativeLine({ text: 'replacementneedle' }) + nativeLine({ text: 'initialneedle' }),
-    )
-    fs.renameSync(
-      replacement,
-      task.native,
-    )
-    hooks.appendWhileReading = true
-    assert.deepEqual(
-      find({ text: 'replacementneedle futuremarker' }).hits,
-      [],
-      'a growing source is bounded to its admitted bytes',
-    )
-    assert.equal(
-      find({ text: 'futuremarker' }).hits[0]?.card,
-      task.card,
-    )
-    assert.equal(
-      find({ text: 'replacementneedle' }).hits[0]?.card,
-      task.card,
-      'a replacement line at an archived numeric offset remains searchable',
-    )
-    assert.equal(
-      find({ text: 'initialneedle' }).hits[0]?.snippets.length,
-      1,
-      'a reset retains the archive without indexing an unchanged native copy twice',
-    )
-    assert.equal(
-      find({ text: 'ephemeralneedle' }).hits.length,
-      0,
-    )
-    assert.equal(
-      find({ text: 'incrementalnote' }).hits[0]?.card,
-      task.card,
-      'a native source reset preserves indexed events',
-    )
-    assert.ok(
-      reads.every(entry => entry.path === task.native),
-      'resetting one native source does not reread the event log',
-    )
-  },
-)
-
-test(
-  'a transcript truncated during catch-up resets on the next query',
-  t => {
-    const task = transcriptTask({ t })
-    const { hooks } = watchReads({
-      t,
-      task,
-    })
-    fs.appendFileSync(
-      task.native,
-      nativeLine({ text: 'checkpoint '.repeat(CHECKPOINT_WORDS) }),
-    )
-    hooks.truncateAfterRead = true
-    assert.deepEqual(
-      find({ text: 'truncatedmarker*' }).hits,
-      [],
-      'a second source reset waits for the next query instead of restarting the current catch-up',
-    )
-    assert.equal(
-      find({ text: 'truncatedmarker*' }).hits[0]?.card,
-      task.card,
-    )
-  },
-)
-
-test(
   'event batches commit with their cursor, so a retry after a failed read resumes after them',
   t => {
-    const task = transcriptTask({ t })
+    const task = notedTask({ t })
     const {
       reads,
       hooks,
@@ -769,7 +433,7 @@ test(
 test(
   'another process advancing a cursor mid-query does not duplicate its batch',
   t => {
-    const task = transcriptTask({ t })
+    const task = notedTask({ t })
     const { hooks } = watchReads({
       t,
       task,
@@ -785,23 +449,13 @@ test(
       1,
       'another process advancing the event cursor does not duplicate its batch',
     )
-    fs.appendFileSync(
-      task.native,
-      nativeLine({ text: 'overlapnative' }),
-    )
-    hooks.overlapNative = true
-    assert.equal(
-      find({ text: 'overlapnative' }).hits[0]?.snippets.length,
-      1,
-      'another process advancing the native cursor does not duplicate its batch',
-    )
   },
 )
 
 test(
   'an incompatible cache version rebuilds from durable sources and leaves the log untouched',
   t => {
-    const task = transcriptTask({ t })
+    const task = notedTask({ t })
     note({
       card: task.card,
       id: 'versioned-note',
@@ -827,7 +481,7 @@ test(
     )
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.cards[task.card]?.title,
-      'Delta task',
+      'Noted task',
     )
     assert.deepEqual(
       fs.readFileSync(task.log),

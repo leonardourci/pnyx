@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { HydraEvent } from './model.ts'
+import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra, replayOwned } from './reducer.ts'
 import { applyPageUpdate, pageCard, pageEvent, pageState } from './page-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { summarize } from './cli-support.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
 
@@ -955,6 +956,180 @@ test(
     assert.equal(
       page.keys.first,
       'first',
+    )
+  },
+)
+
+test(
+  'the page holds the owner’s latest Hydra message instead of the message history, and follows new ones',
+  () => {
+    const message = ({
+      seq,
+      actor,
+      text,
+      task,
+      action = 'send',
+    }: {
+      seq: number
+      actor: string
+      text: string
+      task?: string
+      action?: 'send' | 'worker'
+    }): HydraEvent => ({
+      v: 1,
+      id: `message-${seq}`,
+      seq,
+      at: '2026-11-12T00:00:00Z',
+      actor,
+      cardId: '$hydra',
+      type: 'hydra.message',
+      data: {
+        action,
+        text,
+        hydra: 'default',
+        task,
+      },
+    })
+    const interest = {
+      cards: [],
+      hidden: false,
+    }
+    const state = emptyHydra()
+    replayOwned({
+      state,
+      events: [
+        message({
+          seq: 1,
+          actor: 'web',
+          text: 'An earlier question',
+        }),
+        message({
+          seq: 2,
+          actor: 'web',
+          text: 'Explain the choice',
+          task: 'task',
+        }),
+        message({
+          seq: 3,
+          actor: 'hydra',
+          text: 'Hydra prose',
+        }),
+        message({
+          seq: 4,
+          actor: 'cli',
+          text: 'Start the worker',
+          task: 'other',
+          action: 'worker',
+        }),
+      ],
+    })
+    const page: HydraState = {
+      ...structuredClone(pageState({
+        state,
+        interest,
+      })),
+      eventIds: {},
+    }
+    assert.equal(
+      'hydraMessages' in page,
+      false,
+    )
+    assert.deepEqual(
+      page.hydraOwnerMessage,
+      {
+        id: 'message-2',
+        task: 'task',
+        text: 'Explain the choice',
+      },
+    )
+
+    const prose = message({
+      seq: 5,
+      actor: 'hydra',
+      text: 'More Hydra prose',
+    })
+    replayOwned({
+      state,
+      events: [prose],
+    })
+    applyPageUpdate({
+      state: page,
+      update: pageEvent({
+        event: prose,
+        state,
+        interest,
+      }),
+    })
+    assert.equal(
+      page.hydraMessages,
+      undefined,
+    )
+    assert.equal(
+      page.hydraOwnerMessage?.id,
+      'message-2',
+    )
+
+    const owner = message({
+      seq: 6,
+      actor: 'cli',
+      text: 'How is everything else going?',
+    })
+    replayOwned({
+      state,
+      events: [owner],
+    })
+    applyPageUpdate({
+      state: page,
+      update: pageEvent({
+        event: owner,
+        state,
+        interest,
+      }),
+    })
+    assert.equal(
+      page.hydraMessages,
+      undefined,
+    )
+    assert.deepEqual(
+      page.hydraOwnerMessage,
+      {
+        id: 'message-6',
+        task: undefined,
+        text: 'How is everything else going?',
+      },
+    )
+
+    // A conversation copy an older Pnyx logged reaches no tab and is listed without its text.
+    const copy: HydraEvent = {
+      v: 1,
+      id: 'copy-7',
+      seq: 7,
+      at: '2026-11-12T00:00:00Z',
+      actor: 'harvest',
+      cardId: HYDRA_CARD,
+      type: 'chat.message',
+      data: {
+        session: 'claude-code:older',
+        nativeId: 'record:7',
+        role: 'assistant',
+        text: 'A copied reply',
+      },
+    }
+    replayOwned({
+      state,
+      events: [copy],
+    })
+    assert.equal(
+      pageEvent({
+        event: copy,
+        state,
+        interest,
+      }).event,
+      undefined,
+    )
+    assert.equal(
+      summarize({ event: copy }),
+      'Conversation copy from an older Pnyx',
     )
   },
 )

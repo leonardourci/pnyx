@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cpSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commands } from '#app/cli.ts'
@@ -27,7 +27,7 @@ interface LookupOutput {
 }
 
 test(
-  'CLI revisits UI message references after inscribe, compaction and agent replacement',
+  'CLI resolves native message references, keeps owner records and Hydra\'s earlier sessions after a replacement, and a task reads only its current session',
   async t => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -76,9 +76,11 @@ test(
     }) => withWriter({
       hydraId: 'fixture',
       fn: ({ writer }) => {
+        const hydra = card === HYDRA_CARD
         const previous = writer.state.cards[card]?.sessionIds?.[0]
 
-        if (previous) {
+        // Hooks first see each Hydra session on a hidden card of its own; hydra set then makes it Hydra's.
+        if (previous && !hydra) {
           const detached = decideSession({
             state: writer.state,
             ref: previous,
@@ -96,9 +98,9 @@ test(
 
         const decision = decidePush({
           state: writer.state,
-          key: writer.state.cards[card]?.key ?? card,
+          key: hydra ? `hook-${session}` : writer.state.cards[card]!.key,
           input: {
-            title: card === HYDRA_CARD ? 'Hydra' : 'Sample change',
+            title: hydra ? 'Hydra' : 'Sample change',
             agent: {
               host: 'pnyx',
               provider: 'claude-code',
@@ -113,10 +115,15 @@ test(
         })
         assert.ok('event' in decision)
         writer.append({ event: decision.event })
+
+        if (hydra) {
+          return
+        }
+
         const attached = decideSession({
           state: writer.state,
           ref: `claude-code:${session}`,
-          task: card === HYDRA_CARD ? null : card,
+          task: card,
           meta: {
             actor: 'web',
             at: '2026-01-02T00:00:00.000Z',
@@ -218,33 +225,27 @@ test(
         shown.text,
       )
 
-      for (const args of [
-        [
-          '--seq',
-          String(message.seq),
-        ],
-        [
+      const byAt = await invoke({
+        args: [
           '--at',
           message.at,
         ],
-      ]) {
-        const exact = await invoke({ args })
-        assert.equal(
-          exact.anchor,
-          shown.reference,
-        )
-        assert.equal(
-          exact.messages.length,
-          1,
-        )
-      }
+      })
+      assert.equal(
+        byAt.anchor,
+        shown.reference,
+      )
+      assert.equal(
+        byAt.messages.length,
+        1,
+      )
 
       const ranged = await invoke({
         args: [
           '--from',
-          String(message.seq),
+          message.at,
           '--to',
-          String(message.seq),
+          message.at,
         ],
       })
       assert.deepEqual(
@@ -523,15 +524,21 @@ test(
         },
       }),
     })
-    renameSync(
-      originalPath,
-      `${originalPath}.unavailable`,
+
+    const replacementPath = join(
+      home,
+      'replacement.jsonl',
+    )
+    writeFileSync(
+      replacementPath,
+      '',
     )
 
     for (const reference of references) {
       attach({
         card: reference.card,
         session: `replacement-${reference.card}`,
+        path: reference.card === HYDRA_CARD ? replacementPath : undefined,
       })
 
       if (reference.card === HYDRA_CARD) {
@@ -544,60 +551,89 @@ test(
         ])
       }
 
-      const archived = reference.card === HYDRA_CARD
-        ? await commands.hydra([
+      const lookup = ({ id }: { id: string }) => (reference.card === HYDRA_CARD
+        ? commands.hydra([
           'message',
           '--id',
-          reference.id,
-          '--before',
-          '1',
-          '--after',
-          '1',
+          id,
           '--hydra',
           'fixture',
         ])
-        : await commands.task([
+        : commands.task([
           'messages',
           task,
           '--id',
-          reference.id,
-          '--before',
-          '1',
-          '--after',
-          '1',
+          id,
           '--hydra',
           'fixture',
-        ])
+        ])) as unknown as Promise<LookupOutput>
+      const owner = await lookup({ id: reference.owner.id })
       assert.equal(
-        archived.thread,
-        reference.card === HYDRA_CARD ? 'hydra' : reference.card,
-      )
-      const archivedOwner = reference.card === HYDRA_CARD
-        ? await commands.hydra([
-          'message',
-          '--id',
-          reference.owner.id,
-          '--hydra',
-          'fixture',
-        ])
-        : await commands.task([
-          'messages',
-          task,
-          '--id',
-          reference.owner.id,
-          '--hydra',
-          'fixture',
-        ])
-      assert.equal(
-        (archivedOwner as unknown as LookupOutput).messages[0].text,
+        owner.messages[0].text,
         reference.owner.text,
       )
-      assert.equal(
-        archived.anchor,
-        reference.id,
-      )
-      const messages = (archived as unknown as LookupOutput).messages
-      assert.ok(messages.some(message => message.text === reference.text))
+
+      if (reference.card === HYDRA_CARD) {
+        assert.equal(
+          (await lookup({ id: reference.id })).messages[0].text,
+          reference.text,
+        )
+        assert.match(
+          String((await commands.hydra([
+            'history',
+            '--since',
+            'origin',
+            '--hydra',
+            'fixture',
+          ])).text),
+          /Keep the sample input unchanged/,
+        )
+        const earlier = ({ thread }: {
+          thread: {
+            entries: {
+              reference?: string
+              text: string
+            }[]
+          }
+        }) =>
+          thread.entries.find(entry => entry.reference === reference.id)?.text
+        assert.equal(
+          earlier({
+            thread: readThread({
+              hydraId: 'fixture',
+              state: state(),
+              card: state().cards[HYDRA_CARD]!,
+              homes: [],
+            }),
+          }),
+          reference.text,
+          'Hydra\'s chat pages into its earlier session',
+        )
+        const chat = await commands.task([
+          'chat',
+          HYDRA_CARD,
+          '--session',
+          'claude-code:main-original',
+          '--hydra',
+          'fixture',
+        ]) as unknown as {
+          thread: {
+            entries: {
+              reference?: string
+              text: string
+            }[]
+          }
+        }
+        assert.equal(
+          earlier({ thread: chat.thread }),
+          reference.text,
+        )
+      } else {
+        await assert.rejects(
+          async () => lookup({ id: reference.id }),
+          /No recorded message matches/,
+        )
+      }
     }
   },
 )

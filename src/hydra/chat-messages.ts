@@ -194,6 +194,23 @@ export function hydraMessages({
     }
   }
 
+  for (const {
+    message,
+    entry,
+  } of owned) {
+    if (message.answers) {
+      entry.answers = message.answers
+    }
+
+    if (message.discusses) {
+      entry.discusses = message.discusses
+    }
+
+    if (message.choice) {
+      entry.choice = message.choice
+    }
+  }
+
   // A copy found by its words is the newest unclaimed message with those words sent before it, so an older message
   // cannot take a newer one's copy when its own copy is on another page.
   const copyTimes = new Map<HydraMessage, string>()

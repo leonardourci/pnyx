@@ -7,7 +7,7 @@ import { snapshotPath, writeDurably } from '#store/storage.ts'
 import { log } from './diagnostics.ts'
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 23
+const RULES = 24
 
 interface Snapshot {
   v: typeof EVENT_VERSION

@@ -1,9 +1,11 @@
 import type { EventType, HydraEvent, HydraState } from './model.ts'
+import type { HydraMessage } from '#hydra/model.ts'
 import { replayOwned } from './reducer.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { isManagedTask, knownCards, liveTask } from '#tasks/select.ts'
+import { ownerActor } from './actors.ts'
 
 export interface PageInterest {
   cards: string[]
@@ -19,7 +21,22 @@ export interface PageUpdate {
   undone?: HydraState['undone']
   labelColors?: HydraState['labelColors']
 }
-export type PageState = Omit<HydraState, 'eventIds' | 'contextNotes' | 'questionReminders'>
+type ServerOnly = 'eventIds' | 'contextNotes' | 'questionReminders' | 'hydraMessages'
+export type PageState = Omit<HydraState, ServerOnly>
+
+function ownerMessage({ messages }: {
+  messages: HydraState['hydraMessages']
+}): HydraState['hydraOwnerMessage'] {
+  const ownerSend = ({ message }: { message: HydraMessage }) =>
+    ownerActor({ actor: message.actor }) && message.action === 'send'
+  const latest = messages?.findLast(message => ownerSend({ message }))
+
+  return latest && {
+    id: latest.id,
+    task: latest.task,
+    text: latest.text,
+  }
+}
 
 // Which tabs replay an event: every tab, a tab that shows its card (optionally with that card's sessions),
 // or no tab ('cards only', where tabs get the changed cards without the event). A column or Hydra change can
@@ -84,7 +101,8 @@ const PAGE_REACH = {
   'hydra.dispatch-resolved': 'every tab',
   'hydra.dispatch-progress': 'every tab',
   'hydra.project': 'every tab',
-  'chat.message': 'every tab',
+  // Conversation copies an older Pnyx logged: replayed, never shown.
+  'chat.message': 'cards only',
   'task.launched': 'shown card',
   'task.permission': 'shown card',
   'task.tools': 'shown card',
@@ -173,10 +191,14 @@ export function pageState({
   state: HydraState
   interest: PageInterest
 }): PageState {
-  const page: PageState & Partial<Pick<HydraState, 'eventIds' | 'contextNotes' | 'questionReminders'>> = { ...state }
+  const page: PageState & Partial<Pick<HydraState, ServerOnly>> = {
+    ...state,
+    hydraOwnerMessage: ownerMessage({ messages: state.hydraMessages }),
+  }
   delete page.eventIds
   delete page.contextNotes
   delete page.questionReminders
+  delete page.hydraMessages
   const cards: Record<string, Card> = {}
   const references: Record<string, Card> = {}
 
@@ -392,6 +414,13 @@ export function applyPageUpdate({
   state.eventIds = {}
   delete state.contextNotes
   delete state.questionReminders
+  const latest = ownerMessage({ messages: state.hydraMessages })
+
+  if (latest) {
+    state.hydraOwnerMessage = latest
+  }
+
+  delete state.hydraMessages
 
   for (const [
     cardId,

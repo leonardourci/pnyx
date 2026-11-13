@@ -698,7 +698,7 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.steering.queued': return `Steering ${event.data.message.order} queued: ${event.data.message.id}`
     case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
-    case 'chat.message': return `${event.data.role}: ${event.data.text}`
+    case 'chat.message': return 'Conversation copy from an older Pnyx'
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`

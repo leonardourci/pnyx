@@ -2,15 +2,14 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { lookupMessages } from '#hydra/message-lookup.ts'
 import { messageLookupCommand } from '#hydra/message-reference.ts'
-import { loggedEntry } from '#hydra/history.ts'
-import { lookupEvents } from '#hydra/fixtures/message-lookup.ts'
+import { lookupEntries, lookupEvents } from '#hydra/fixtures/message-lookup.ts'
 import { commentReply, type ChatComment } from './chat.ts'
 
 const comment: ChatComment = {
   id: 'a',
   messageId: '4:m0',
   reference: 'original:4:m0',
-  at: lookupEvents[4].at,
+  at: lookupEntries[4].at,
   block: 0,
   offset: 0,
   quote: 'Recorded reply 5.',
@@ -20,13 +19,7 @@ const comment: ChatComment = {
 test(
   'a comment carries the exact reference and a runnable scoped command for its surroundings',
   () => {
-    const event = lookupEvents[4]
-
-    if (event.type !== 'chat.message') {
-      throw new Error('fixture must be a chat message')
-    }
-
-    const reference = loggedEntry({ event }).reference!
+    const reference = lookupEntries[4].reference!
     const text = commentReply({
       draft: '',
       hydraId: 'fixture',
@@ -49,6 +42,7 @@ test(
     const page = lookupMessages({
       hydraId: 'fixture',
       events: lookupEvents,
+      entries: lookupEntries,
       snapshot: 9,
       selection: {
         id,

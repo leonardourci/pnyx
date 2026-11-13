@@ -40,7 +40,6 @@ import { snippetText } from './snippet-text.ts'
 const SNIPPET_SOURCES: Record<Kind, string> = {
   event: 'Update',
   note: 'Note',
-  transcript: 'Conversation',
 }
 const KIND_NAMES: Record<string, string> = {
   project: 'projects',

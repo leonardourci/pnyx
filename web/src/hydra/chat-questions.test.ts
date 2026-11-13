@@ -92,48 +92,23 @@ test(
 )
 
 test(
-  'only the latest owner task context surfaces a task question; Hydra prose does not select one',
+  'only the latest owner task context surfaces a task question',
   () => {
     const state = emptyHydra()
     state.cards[task.id] = structuredClone(task)
-    state.hydraMessages = [
-      {
-        id: 'owner-task',
-        at,
-        actor: 'web',
-        action: 'send',
-        task: task.id,
-        text: 'Explain the choice',
-        hydra: 'lab',
-      },
-    ]
+    state.hydraOwnerMessage = {
+      id: 'owner-task',
+      task: task.id,
+      text: 'Explain the choice',
+    }
     assert.equal(
       chatDecisions({ state })[0]?.ask.id,
       'ask-1',
     )
-    state.hydraMessages.push({
+    state.hydraOwnerMessage = {
       id: 'other-topic',
-      at,
-      actor: 'cli',
-      action: 'send',
       text: 'How is everything else going?',
-      hydra: 'lab',
-    })
-    assert.deepEqual(
-      chatDecisions({ state }),
-      [],
-    )
-    state.hydraMessages.push({
-      id: 'hydra-mention',
-      at,
-      actor: 'hydra',
-      action: 'send',
-      text: taskMention({
-        id: task.id,
-        title: task.title,
-      }),
-      hydra: 'lab',
-    })
+    }
     assert.deepEqual(
       chatDecisions({ state }),
       [],

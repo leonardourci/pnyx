@@ -368,6 +368,8 @@ export interface Provider {
 export interface TranscriptMessage {
   block?: number
   internal?: boolean
+  // Pnyx wrote this input: it carried a worker header, as a worker's start prompt does.
+  pnyx?: boolean
   at?: string
   text: string
 }

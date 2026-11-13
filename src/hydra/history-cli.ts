@@ -2,26 +2,44 @@ import { randomUUID } from 'node:crypto'
 import { meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
-import { withWriter } from '#app/writer.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { historyCommand, inscribeOperation, readHistory } from './history.ts'
+import { historyBoundary, historyCommand, inscribeOperation, readHistory } from './history.ts'
+import { hydraEntries } from './transcripts-read.ts'
 import { operationEvent } from './operations.ts'
 
-export function harvestHydra({
-  values,
+// Hydra's history, reading only the Hydra transcripts written since its boundary.
+export function hydraHistoryPage({
   hydraId,
+  since,
+  after,
+  through,
+  budget,
 }: {
-  values: Record<string, string | boolean | undefined>
   hydraId: string
-}): void {
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => harvestTranscripts({
-      writer,
-      cardIds: [HYDRA_CARD],
-      at: meta({ values }).at,
+  since: string
+  after?: string
+  through?: number
+  budget?: number
+}) {
+  const state = loadHydra({ hydraId }).state
+  const events = readEvents({ hydraId })
+  // A cursor h1:<boundary>:<through>:<position> keeps the boundary its first page used.
+  const boundary = after === undefined ? historyBoundary({
+    state,
+    since,
+  }) : Number(after.split(':')[1])
+
+  return readHistory({
+    state,
+    events,
+    native: hydraEntries({
+      state,
+      after: events.find(event => event.seq === boundary)?.at,
     }),
+    since,
+    after,
+    through,
+    budget,
   })
 }
 
@@ -32,10 +50,8 @@ export function hydraHistory({
   values: Record<string, string | boolean | undefined>
   hydraId: string
 }): Output {
-  const state = loadHydra({ hydraId }).state
-  const page = readHistory({
-    state,
-    events: readEvents({ hydraId }),
+  const page = hydraHistoryPage({
+    hydraId,
     since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
     after: values.after as string | undefined,
     through: integer({

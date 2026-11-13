@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Ask, Card } from '#tasks/model.ts'
-import type { HydraMessage } from '#hydra/model.ts'
+import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { answerLeads, questionPreview } from './answer-leads.ts'
 import { emptyHydra } from '#app/reducer.ts'
@@ -52,23 +52,23 @@ const card: Card = {
     format,
   ],
 }
-const message = ({ ...fields }: Partial<HydraMessage>): HydraMessage => ({
-  id: `msg-${fields.text}`,
+const message = ({ ...fields }: Partial<ThreadEntry>): ThreadEntry => ({
+  id: `native-${fields.text}`,
+  reference: `msg-${fields.text}`,
   task: card.id,
-  action: 'send',
+  kind: 'message',
+  role: 'user',
   text: '',
   at,
-  actor: 'web',
-  hydra: 'lab',
   ...fields,
 })
 
 test(
-  'owner answers and discussions on a task carry their question, choices and pick; other messages carry none',
+  'answers and discussions on a task carry their question, choices and pick; other messages carry none',
   () => {
     const leads = answerLeads({
       cards: { [card.id]: card },
-      messages: [
+      entries: [
         message({
           text: 'Follow up on paste separately.',
           answers: merge.id,
@@ -83,11 +83,6 @@ test(
           answers: format.id,
         }),
         message({ text: 'Plain message about the task.' }),
-        message({
-          text: 'Hydra relays an answer.',
-          answers: format.id,
-          actor: 'hydra',
-        }),
         message({
           text: 'An answer to a forgotten question.',
           answers: 'ask-gone',
@@ -162,12 +157,12 @@ test(
     })
     const refreshed = answerLeads({
       cards: { [card.id]: card },
-      messages: [reply],
+      entries: [reply],
       previous: leads,
     })
     assert.equal(
-      refreshed.get(reply.id),
-      leads.get(reply.id),
+      refreshed.get(reply.reference!),
+      leads.get(reply.reference!),
     )
 
     const changed = answerLeads({
@@ -182,15 +177,15 @@ test(
           ],
         },
       },
-      messages: [reply],
+      entries: [reply],
       previous: refreshed,
     })
     assert.notEqual(
-      changed.get(reply.id),
-      refreshed.get(reply.id),
+      changed.get(reply.reference!),
+      refreshed.get(reply.reference!),
     )
     assert.equal(
-      changed.get(reply.id)?.question,
+      changed.get(reply.reference!)?.question,
       'Ship it?',
     )
     const relabeled = answerLeads({
@@ -209,15 +204,15 @@ test(
           ],
         },
       },
-      messages: [reply],
+      entries: [reply],
       previous: changed,
     })
     assert.notEqual(
-      relabeled.get(reply.id),
-      changed.get(reply.id),
+      relabeled.get(reply.reference!),
+      changed.get(reply.reference!),
     )
     assert.deepEqual(
-      relabeled.get(reply.id)?.options,
+      relabeled.get(reply.reference!)?.options,
       [
         'Ship',
         'Wait',
@@ -258,7 +253,6 @@ test(
         },
       },
       keys: { [card.key]: card.id },
-      hydraMessages: [answer],
     }
     const page = {
       ...pageState({
@@ -276,9 +270,9 @@ test(
     )
     assert.equal(
       answerLeads({
-        messages: page.hydraMessages,
+        entries: [answer],
         cards: knownCards({ state: page }),
-      }).get(answer.id)?.question,
+      }).get(answer.reference!)?.question,
       merge.question,
     )
   },
