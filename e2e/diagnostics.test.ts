@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import fs, { readFileSync } from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
-import { hydraDir } from '#app/home-migration.ts'
+import { MessagePort } from 'node:worker_threads'
+import type { Request } from '#store/postgres.ts'
+import { storedHydra } from '#test-harness/database.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 import { HELPER_INSTRUCTIONS } from '#routine-helper/runner.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
@@ -13,6 +14,7 @@ import { decideReply } from '#workers/reply-rules.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { asRecord } from '#app/command-validation.ts'
 
+// Fails the Postgres write of any event `reject` picks, as a dropped connection would fail its transaction.
 function failEventWrites({
   t,
   reject,
@@ -20,59 +22,36 @@ function failEventWrites({
   t: TestContext
   reject({ event }: { event: Record<string, unknown> }): boolean
 }) {
-  const replacement = new Proxy(
-    fs.writeSync,
-    {
-    // eslint-disable-next-line pnyx/object-params -- JavaScript owns Proxy's apply trap signature.
-      apply(
-        target,
-        receiver,
-        args: unknown[],
-      ) {
-        const payload = args[1]
-        let serialized = ''
+  const send = MessagePort.prototype.postMessage
+  t.mock.method(
+    MessagePort.prototype,
+    'postMessage',
+    // eslint-disable-next-line pnyx/object-params -- Node owns postMessage's signature.
+    function (
+      this: MessagePort,
+      ...args: Parameters<MessagePort['postMessage']>
+    ) {
+      const request = args[0] as Partial<Request> | undefined
+      const inserted = request?.statements
+        ?.find(statement => statement.text.startsWith('insert into events'))
+      const rows = inserted
+        ? JSON.parse(String(inserted.values?.[0])) as { data: Record<string, unknown> }[]
+        : []
 
-        if (Buffer.isBuffer(payload)) {
-          serialized = payload.toString('utf8')
-        } else if (typeof payload === 'string') {
-          serialized = payload
-        }
-
-        let event: unknown
-
-        try {
-          event = JSON.parse(serialized)
-        } catch {
-          return Reflect.apply(
-            target,
-            receiver,
-            args,
-          )
-        }
-
-        const record = asRecord({ value: event })
-
-        if (record && reject({ event: record })) {
-          throw Object.assign(
-            new Error('Synthetic durable event write failure'),
-            { code: 'EIO' },
-          )
-        }
-
-        return Reflect.apply(
-          target,
-          receiver,
-          args,
+      if (rows.some(row => reject({ event: row.data }))) {
+        throw Object.assign(
+          new Error('Synthetic durable event write failure'),
+          { code: 'EIO' },
         )
-      },
+      }
+
+      return Reflect.apply(
+        send,
+        this,
+        args,
+      )
     },
   )
-  t.mock.method(
-    fs,
-    'writeSync',
-    replacement,
-  )
-  syncBuiltinESMExports()
 }
 
 function recordFailed({
@@ -167,7 +146,6 @@ test(
     const task = s.task({ key: 'worker' })
     t.after(async () => {
       t.mock.restoreAll()
-      syncBuiltinESMExports()
       await s.owner({
         args: [
           'settings',
@@ -267,7 +245,6 @@ test(
       0,
     )
     t.mock.restoreAll()
-    syncBuiltinESMExports()
     recordFailed({
       s,
       task: task.id,
@@ -353,7 +330,6 @@ test(
       0,
     )
     t.mock.restoreAll()
-    syncBuiltinESMExports()
     await pnyx.restart()
     await s.owner({
       args: [
@@ -489,13 +465,7 @@ test(
         'PRIVATE_SYNTHETIC_BODY',
       ],
     })
-    const before = readFileSync(
-      join(
-        hydraDir({ hydraId: s.hydraId }),
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const before = storedHydra({ hydraId: s.hydraId })
     const output = await s.owner({
       args: [
         'debug',
@@ -530,13 +500,7 @@ test(
       /lastSuccessAt/,
     )
     assert.equal(
-      readFileSync(
-        join(
-          hydraDir({ hydraId: s.hydraId }),
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
+      storedHydra({ hydraId: s.hydraId }),
       before,
     )
     const profile = join(
