@@ -293,7 +293,7 @@ Hydra hands a worker's question to the owner under the same id; the worker's wor
 pnyx-axi task history <id> [--before <seq>|<hydra>:<seq>] [--limit <n>] [--full]
 A moved task's history continues into the Hydras it came from; those rows name their Hydra, and --before <hydra>:<seq> pages through them.
 pnyx-axi task updates <id> [--before <seq>] [--limit <n>]
-The events the card's Updates tab lists, newest first, with the `older` cursor to pass as --before. The page reads them this way, 50 at a time; each event is capped at 64 KB.
+The events the card's Updates tab lists, newest first, with the older cursor to pass as --before. The page reads them this way, 50 at a time; each event is capped at 64 KB.
 pnyx-axi task messages <id> [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>] [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
 Uses the same bounded lookup as hydra message over the task's current session and the owner's replies; read past sessions with task chat --session.
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
