@@ -7,6 +7,7 @@ import { listFolders } from '#projects/folders.ts'
 import { privateDir } from '#store/storage.ts'
 import { buildId, readBytes, reply, serveStatic } from './server-http.ts'
 import type { HydraRequest } from './server-transport.ts'
+import { zeroCookieName } from './server-protocol.ts'
 
 export function createServerRoutes({
   hydraId,
@@ -218,10 +219,12 @@ export function createServerRoutes({
       })
     }
 
+    const mounted = new URL(url)
     const page = {
       token: token.toString(),
+      cookie: zeroCookieName({ port: Number(mounted.port) }),
       identity,
-      base: new URL(url).pathname,
+      base: mounted.pathname,
     }
     serveStatic({
       res,

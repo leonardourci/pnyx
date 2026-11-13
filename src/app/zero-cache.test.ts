@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { startServer } from '#app/server-daemon.ts'
 import { localToken } from '#app/server-state.ts'
 import type { RunningServer } from '#app/server-transport.ts'
+import { zeroCookieName } from '#app/server-protocol.ts'
 import { queries, schema } from '#store/zero-schema.ts'
 import { Zero } from '@rocicorp/zero'
 import { WebSocket as NodeSocket } from 'ws'
@@ -142,7 +143,7 @@ test(
     })
     resources.server = server
     const origin = `http://127.0.0.1:${server.port}`
-    const cookie = `pnyx-token=${localToken()}`
+    const cookie = `${zeroCookieName({ port: server.port })}=${localToken()}`
 
     const page = await fetch(`${origin}/hydra/default/`)
     assert.equal(
@@ -156,7 +157,7 @@ test(
     assert.equal(
       (await fetch(
         `${origin}/zero/`,
-        { headers: { cookie: 'pnyx-token=wrong' } },
+        { headers: { cookie: `${zeroCookieName({ port: server.port })}=wrong` } },
       )).status,
       401,
     )
@@ -193,8 +194,14 @@ test(
     })
     t.after(openPage.close)
 
+    const closed = async () => {
+      await server.close()
+
+      return true
+    }
+
     const stopped = await Promise.race([
-      server.close().then(() => true),
+      closed(),
       new Promise(resolve => setTimeout(
         () => resolve(false),
         STOP_MS,

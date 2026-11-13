@@ -14,16 +14,17 @@ import { pnyxHome, privateDir } from '#store/storage.ts'
 import { queries, schema } from '#store/zero-schema.ts'
 import { log } from './diagnostics.ts'
 import { readBody, reply } from './server-http.ts'
-import { STOP_TIMEOUT_MS, ZERO_COOKIE, ZERO_OWNER, ZERO_PATH } from './server-transport.ts'
+import { STOP_TIMEOUT_MS, ZERO_OWNER, ZERO_PATH } from './server-transport.ts'
 
 // The zero-cache binary's own entry, run with this Node rather than through the shell shim in node_modules/.bin.
 const ZERO_CLI = fileURLToPath(new URL(
   './cli.js',
   import.meta.resolve('@rocicorp/zero'),
 ))
-const APP_ID = 'pnyx'
 const SECRET_BYTES = 32
 const DEFAULT_PG_PORT = '5432'
+// A child that stays ready this long has recovered, so its next exit starts the restart delays over.
+const STABLE_MS = 60_000
 // Waits before each restart after an unexpected exit; past the last one zero-cache stays down until the next serve.
 const RESTART_DELAYS_MS = [
   1_000,
@@ -147,10 +148,13 @@ export interface ZeroCache {
 export function startZeroCache({
   queryUrl,
   token,
+  cookie: cookieName,
 }: {
   // The server's query endpoint, which zero-cache calls with the per-run API key.
   queryUrl: string
   token: string
+  // The cookie the page's HTML sets with the token.
+  cookie: string
 }): ZeroCache {
   const dir = join(
     pnyxHome(),
@@ -164,6 +168,7 @@ export function startZeroCache({
   let stopping = false
   let restarts = 0
   let restartTimer: NodeJS.Timeout | undefined
+  let stableTimer: NodeJS.Timeout | undefined
   // The page sockets this server tunnels to zero-cache, both ends.
   const tunnels = new Set<Duplex>()
 
@@ -191,6 +196,7 @@ export function startZeroCache({
   }) => {
     child = undefined
     port = undefined
+    clearTimeout(stableTimer)
 
     if (stopping) {
       return
@@ -254,7 +260,8 @@ export function startZeroCache({
             dir,
             'replica.db',
           ),
-          ZERO_APP_ID: APP_ID,
+          // Replication slots are named by the app id across the whole Postgres server, so each home has its own.
+          ZERO_APP_ID: homeDatabase(),
           ZERO_PORT: String(syncPort),
           ZERO_CHANGE_STREAMER_PORT: String(changeStreamerPort),
           ZERO_ADMIN_PASSWORD: secret(),
@@ -277,24 +284,60 @@ export function startZeroCache({
       message => {
         if (Array.isArray(message) && message[0] === 'ready') {
           port = syncPort
-          restarts = 0
+          stableTimer = setTimeout(
+            () => {
+              restarts = 0
+            },
+            STABLE_MS,
+          )
+          stableTimer.unref()
         }
       },
     )
+    let ended = false
+
+    // A child that never spawned reports only an error, so either event ends this run once.
+    const end = ({
+      code,
+      signal,
+    }: {
+      code: number | null
+      signal: NodeJS.Signals | null
+    }) => {
+      if (ended) {
+        return
+      }
+
+      ended = true
+      exited({
+        code,
+        signal,
+      })
+    }
+
     started.on(
       'error',
-      error => log({
-        level: 'error',
-        operation: 'zero.start',
-        error,
-      }),
+      error => {
+        log({
+          level: 'error',
+          operation: 'zero.start',
+          error,
+        })
+
+        if (started.pid === undefined) {
+          end({
+            code: null,
+            signal: null,
+          })
+        }
+      },
     )
     started.once(
       'exit',
       (
         code,
         signal,
-      ) => exited({
+      ) => end({
         code,
         signal,
       }),
@@ -314,7 +357,7 @@ export function startZeroCache({
   const authorized = ({ req }: { req: IncomingMessage }) => sameSecret({
     given: cookie({
       header: req.headers.cookie,
-      name: ZERO_COOKIE,
+      name: cookieName,
     }),
     expected: token,
   })
@@ -445,8 +488,11 @@ export function startZeroCache({
       res,
       search,
     }) {
+      const key = req.headers['x-api-key']
+
+      // A repeated header arrives as a list, which is never the one key.
       if (!sameSecret({
-        given: req.headers['x-api-key'] as string | undefined,
+        given: typeof key === 'string' ? key : undefined,
         expected: apiKey,
       })) {
         return reply({
@@ -491,9 +537,12 @@ export function startZeroCache({
         end.destroy()
       }
 
+      clearTimeout(stableTimer)
       const running = child
+      const pid = running?.pid
+      const ended = running?.exitCode !== null || running.signalCode !== null
 
-      if (!running || running.exitCode !== null || running.signalCode !== null) {
+      if (pid === undefined || ended) {
         return
       }
 
@@ -506,7 +555,7 @@ export function startZeroCache({
       const signal = ({ name }: { name: NodeJS.Signals }) => {
         try {
           process.kill(
-            -running.pid!,
+            -pid,
             name,
           )
         } catch (error) {

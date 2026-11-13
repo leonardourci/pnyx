@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join, normalize, extname } from 'node:path'
-import { MAX_BODY, WEB_ROOT, MIME, ZERO_COOKIE, ZERO_PATH } from './server-transport.ts'
+import { MAX_BODY, WEB_ROOT, MIME, ZERO_PATH } from './server-transport.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraIdentity } from './server-state.ts'
 
@@ -160,6 +160,8 @@ export function serveStatic({
   home: string
   page?: {
     token: string
+    // The cookie the /zero proxy reads the token from.
+    cookie: string
     identity: string
     base: string
   }
@@ -191,7 +193,7 @@ export function serveStatic({
             'content-type': MIME['.html'],
             'cache-control': 'no-store',
             // The page's Zero client cannot add a header to its WebSocket, so the /zero proxy reads the token here.
-            'set-cookie': `${ZERO_COOKIE}=${page.token}; HttpOnly; SameSite=Strict; Path=${ZERO_PATH}`,
+            'set-cookie': `${page.cookie}=${page.token}; HttpOnly; SameSite=Strict; Path=${ZERO_PATH}`,
           },
         ).end(html)
 

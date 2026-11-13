@@ -153,8 +153,7 @@ export type HydraRequest = {
 
 export const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 
-export { ZERO_OWNER, ZERO_PATH } from './server-protocol.ts'
-export const ZERO_COOKIE = 'pnyx-token'
+export { ZERO_OWNER, ZERO_PATH, zeroCookieName } from './server-protocol.ts'
 export const ZERO_QUERY_PATH = '/zero-query'
 
 // A target such as // reads as a URL with an empty host, which throws; take it as a path instead.

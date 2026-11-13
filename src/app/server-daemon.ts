@@ -9,7 +9,7 @@ import type { SpawnCodex } from '#workers/codex.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { allowedRequest, requestUrl, HYDRA_PATH, ZERO_QUERY_PATH, type RunningServer, type MountedHydra, type HydraSubscription, type ServerMessage, type HydraClient } from './server-transport.ts'
-import { MAX_MESSAGE_BYTES } from './server-protocol.ts'
+import { MAX_MESSAGE_BYTES, zeroCookieName } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
@@ -64,7 +64,7 @@ const parseJson = ({ text }: { text: string | null }): unknown => {
   }
 }
 
-// The last upgrade check, kept in Postgres so the page's notice survives a restart.
+// The last upgrade check, the row the page's upgrade notice reads.
 const saveUpgradeStatus = ({ status }: { status: UpgradeStatus }) => query({
   statements: [
     {
@@ -150,7 +150,6 @@ export async function startServer({
         // The page reads the Hydra list through Zero; a summary that changes without an event, as a Firstmate home's
         // projects can, is written to its row here.
         if (key !== summariesKey) {
-          summariesKey = key
           query({
             statements: hydras.map(summary => ({
               text: 'update hydras set summary = $2 where id = $1 and summary::text is distinct from $2',
@@ -160,6 +159,7 @@ export async function startServer({
               ],
             })),
           })
+          summariesKey = key
         }
       },
     }))
@@ -238,6 +238,7 @@ export async function startServer({
             home: `/hydra/${id}/`,
             page: {
               token: localToken(),
+              cookie: zeroCookieName({ port: bound }),
               identity: hydraIdentity({ hydraId: id }),
               base: `/hydra/${id}/`,
             },
@@ -727,7 +728,7 @@ export async function startServer({
     )
     started.then(
       m => {
-        // Loading the Hydra from its snapshot and event log and starting its host, the start-up cost that grows with a Hydra.
+        // Loading the Hydra from its rows and starting its host, the start-up cost that grows with a Hydra.
         log({
           operation: 'hydra.open',
           hydraId: id,
@@ -855,6 +856,8 @@ export async function startServer({
       })
     },
   })
+  // A check made before this start may describe the build it replaced, so the notice waits for this build's own.
+  query({ statements: [{ text: 'delete from upgrade_status' }] })
   checkUpgrade()
   const upgradeTimer = setInterval(
     checkUpgrade,
@@ -928,6 +931,7 @@ export async function startServer({
       zero = startZeroCache({
         queryUrl: `http://127.0.0.1:${bound}${ZERO_QUERY_PATH}`,
         token: localToken(),
+        cookie: zeroCookieName({ port: bound }),
       })
     }
 
