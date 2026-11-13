@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { MessageChannel, receiveMessageOnPort, Worker, type MessagePort } from 'node:worker_threads'
 import { CONFLICT_CODE, HydraError } from './errors.ts'
+import type { ErrorDetails } from './error-details.ts'
 import { configuredPostgres } from '#settings/store.ts'
 import { pnyxHome } from './paths.ts'
 
@@ -39,12 +40,7 @@ export interface Request {
   statementTimeoutMs?: number
 }
 
-export type Outcome = { results: Record<string, unknown>[][] } | {
-  error: {
-    message: string
-    code?: string
-  }
-}
+export type Outcome = { results: Record<string, unknown>[][] } | { error: ErrorDetails }
 
 export type Reply = { id: number } & Outcome
 
@@ -305,6 +301,7 @@ export function query({
   if ('error' in reply) {
     throw new HydraError({
       message: `Postgres: ${reply.error.message}`,
+      cause: reply.error,
       code: failureCode({ code: reply.error.code }),
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running and configured'],
     })

@@ -10,13 +10,18 @@ export class HydraError extends Error {
     code,
     help = [],
     field,
+    cause,
   }: {
     message: string
     code: string
     help?: string[]
     field?: string
+    cause?: unknown
   }) {
-    super(message)
+    super(
+      message,
+      { cause },
+    )
     this.code = code
     this.help = help
     this.field = field

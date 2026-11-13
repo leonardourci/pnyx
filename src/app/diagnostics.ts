@@ -1,3 +1,4 @@
+import { errorDetails } from '#store/error-details.ts'
 import { randomUUID } from 'node:crypto'
 import { closeSync, openSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
@@ -103,12 +104,7 @@ export function closeLogs(): void {
 
 function failure({ error }: { error: unknown }) {
   if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      code: 'code' in error && typeof error.code === 'string' ? error.code : undefined,
-      stack: error.stack,
-    }
+    return errorDetails({ error })
   }
 
   return {

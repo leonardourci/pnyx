@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
+import { errorDetails } from './error-details.ts'
 import { CONFLICT_CODE } from './errors.ts'
 import type { Outcome, Reply, Request, Statement } from './postgres.ts'
 
@@ -243,10 +244,7 @@ async function run({ request }: { request: Request }): Promise<Outcome> {
     }
 
     return {
-      error: {
-        message: failure.message ?? String(error),
-        code: failure.code,
-      },
+      error: errorDetails({ error }),
     }
   }
 }
@@ -304,7 +302,7 @@ process.on(
       answer({
         reply: {
           id: current,
-          error: { message: error.message },
+          error: errorDetails({ error }),
         },
       })
     }
