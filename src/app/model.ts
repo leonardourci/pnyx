@@ -316,6 +316,11 @@ export type HydraChange = EventBase & (
     data: import('#workers/model.ts').AgentConfig
   }
   | {
+    // Pnyx handed Hydra a turn in a session already configured; its id, <turn>:hosted, marks the turn delivered.
+    type: 'hydra.delivered'
+    data: { session: string }
+  }
+  | {
     type: 'hydra.agent-change'
     data: import('#hydra/model.ts').HydraAgentChange
   }
@@ -422,6 +427,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.received',
   'hydra.operation',
   'hydra.agent-used',
+  'hydra.delivered',
   'hydra.agent-change',
   'hydra.review',
   'hydra.helper-started',

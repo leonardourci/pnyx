@@ -20,6 +20,10 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'hydra.delivered') {
+    return true
+  }
+
   if (event.type === 'hydra.agent-change') {
     const change = event.data
 
