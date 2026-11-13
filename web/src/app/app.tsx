@@ -36,14 +36,12 @@ import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
 import { useCallback,useEffect,useRef,useState,type CSSProperties } from 'react'
-import { useStore } from 'zustand'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
-import { hydraViews,restoreView,usePersistView } from './restore.ts'
-import { createHydraView, showPage } from './view-store.ts'
+import { hydraViews,openingView,restoreView,showingPage,usePersistView } from './restore.ts'
 import { hydraTitle,pageTitle } from './view.ts'
 
 export function App() {
@@ -94,18 +92,21 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })
   const [restored] = useState(() => hydraViews.get(hydra.viewKey)
     ?? restoreView({ key: restoreKey }))
-  const [viewStore] = useState(() => createHydraView({ restored }))
+  const [
+    pageView,
+    setPageView,
+  ] = useState(() => openingView({ restored }))
   const {
     page,
     panel,
     selected: selectedRef,
     expanded,
     revealed,
-  } = useStore(viewStore)
-  const setPage = ({ page }: { page: string }) => showPage({
-    view: viewStore,
+  } = pageView
+  const setPage = ({ page }: { page: string }) => setPageView(view => showingPage({
+    view,
     page,
-  })
+  }))
   const [
       notice,
       setNotice,
@@ -266,7 +267,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     command,
     connected,
     notify,
-    view: viewStore,
+    view: pageView,
+    setView: setPageView,
     project,
     projectReferences,
   })
@@ -422,7 +424,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     notify,
     newColumn: newColumn !== null,
     cancelColumn: () => setNewColumn(null),
-    togglePanel: () => viewStore.setState(({ panel }) => ({ panel: !panel })),
+    togglePanel: () => setPageView(view => ({
+      ...view,
+      panel: !view.panel,
+    })),
     openSettings: () => {
       if (page === 'settings') {
         setPage({ page: 'hydra' })
@@ -435,7 +440,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })
 
   const answerTask = ({ card }: { card: Card }) => {
-    viewStore.setState({ panel: true })
+    setPageView(view => ({
+      ...view,
+      panel: true,
+    }))
     chatDrafts.setDraft({
       text: `${chatDrafts.read().text}\nFor ${taskMention({
         id: card.id,
@@ -452,19 +460,15 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       answer: answerTask,
       onEdit: cancelOpen,
       save,
-      recoverSelection: ({ id }: { id: string }) => {
-        const {
-          selected,
-          expanded,
-        } = viewStore.getState()
+      recoverSelection: ({ id }: { id: string }) => setPageView(view => {
+        const recovered = view.selected && view.expanded.length
 
-        if (!selected || !expanded.length) {
-          viewStore.setState({
-            selected: selected ?? id,
-            expanded: expanded.length ? expanded : [id],
-          })
+        return recovered ? view : {
+          ...view,
+          selected: view.selected ?? id,
+          expanded: view.expanded.length ? view.expanded : [id],
         }
-      },
+      }),
       open: ({
         id,
         pointer,
@@ -798,12 +802,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                         }
 
                                         const key = `task:${draft.attempt}`
-                                        viewStore.setState(({
-                                          selected,
-                                          expanded,
-                                        }) => ({
-                                          selected: selected === key ? null : selected,
-                                          expanded: expanded.filter(id => id !== key),
+                                        setPageView(view => ({
+                                          ...view,
+                                          selected: view.selected === key ? null : view.selected,
+                                          expanded: view.expanded.filter(id => id !== key),
                                         }))
                                       }}
                                       submitted={({ id }) => {
