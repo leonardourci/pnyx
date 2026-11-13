@@ -7,7 +7,7 @@ import { startServer } from '#app/server-daemon.ts'
 import { localToken } from '#app/server-state.ts'
 import type { RunningServer } from '#app/server-transport.ts'
 import { queries, schema } from '#store/zero-schema.ts'
-import { Zero, type Schema } from '@rocicorp/zero'
+import { Zero } from '@rocicorp/zero'
 import { WebSocket as NodeSocket } from 'ws'
 
 const QUIET_MS = 3_600_000
@@ -50,7 +50,7 @@ async function readHydras({
       )
     }
   } as unknown as typeof WebSocket
-  const zero = new Zero<Schema, undefined, unknown>({
+  const zero = new Zero({
     cacheURL: `${origin}/zero`,
     schema,
     userID: 'owner',
