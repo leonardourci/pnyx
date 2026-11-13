@@ -25,7 +25,7 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { keepChromeOffKeychain } from './chrome-keychain.ts'
 import { upgradeRepo } from './upgrade-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
-import type { Settings } from '#settings/model.ts'
+import type { PageSettings } from '#settings/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 
 const BIN = join(
@@ -197,7 +197,7 @@ export async function openPage({
   const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
   const actions: Record<string, CurrentAction | null> = {}
   const upgrades: UpgradeStatus[] = []
-  const settings: Settings[] = []
+  const settings: PageSettings[] = []
   ws.on(
     'message',
     (data: unknown) => {

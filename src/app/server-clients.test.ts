@@ -10,6 +10,8 @@ import { createServerClients } from './server-clients.ts'
 import { createHydra } from './server-hydras.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
 import { usageFor } from '#workers/usage.ts'
+import { mirrorSettings, readSettings, saveSettings } from '#settings/store.ts'
+import { query } from '#store/postgres.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
@@ -629,6 +631,97 @@ test(
       dropped().length,
       2,
       'a later stretch over the budget is warned about again',
+    )
+  },
+)
+
+test(
+  'a page gets the shared settings without postgresUrl, in its settings message and in the row Zero reads',
+  t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-page-settings-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    t.after(() => {
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    // postgresUrl is read at this home's first query, so this home keeps its own database.
+    query({ statements: [{ text: 'select 1' }] })
+    saveSettings({
+      patch: {
+        postgresUrl: 'postgres://pnyx:secret@127.0.0.1:1/elsewhere',
+        theme: 'dark',
+      },
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'cli',
+      },
+    })
+    const tabs = createServerClients({
+      hydraId: 'default',
+      state: () => emptyHydra(),
+      recent: () => [],
+      agents: () => ({
+        queue: () => ({
+          waiting: [],
+          reading: [],
+        }),
+        usageViews: () => ({}),
+      }),
+      threadSubscriptions: [],
+      bindThread() {},
+      refreshThread() {},
+      feed: () => ({
+        latest: {},
+        actions: {},
+      }),
+    })
+    t.after(() => tabs.close())
+    const received: ServerMessage[] = []
+    tabs.sendSettings({
+      ws: {
+        OPEN: 1,
+        readyState: 1,
+        bufferedAmount: 0,
+        send({ message }) {
+          received.push(message)
+        },
+        terminate() {},
+      },
+    })
+    const read = readSettings()
+    mirrorSettings(read)
+    const [rows] = query({ statements: [{ text: 'select value from settings where id = \'shared\'' }] })
+    const sent = received[0] as Extract<ServerMessage, { type: 'settings' }>
+    const mirrored = rows![0]!.value as Record<string, unknown>
+
+    assert.deepEqual(
+      [
+        sent.settings.theme,
+        'postgresUrl' in sent.settings,
+        mirrored.theme,
+        'postgresUrl' in mirrored,
+      ],
+      [
+        'dark',
+        false,
+        'dark',
+        false,
+      ],
     )
   },
 )

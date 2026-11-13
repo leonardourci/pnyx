@@ -5,7 +5,7 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { threadPath, type LatestMessage } from '#hydra/transcripts-read.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
-import { effectiveView, readSettings } from '#settings/store.ts'
+import { effectiveView, pageSettings, readSettings } from '#settings/store.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { AgentUsage } from '#workers/provider.ts'
@@ -634,7 +634,7 @@ export function createServerClients({
       ws,
       message: {
         type: 'settings',
-        settings: read.settings,
+        settings: pageSettings({ settings: read.settings }),
         revision: read.revision,
       },
     })

@@ -18,6 +18,7 @@ import type { Card } from '#tasks/model.ts'
 import { settingsLogPath } from './store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { acquireLock } from '#store/storage.ts'
+import { query } from '#store/postgres.ts'
 import type { Settings } from './model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { writeDocument } from '#workers/dispatch-config.ts'
@@ -914,6 +915,71 @@ test(
         '0',
       ]),
       { code: 'REVISION_CONFLICT' },
+    )
+  },
+)
+
+test(
+  'postgresUrl takes a postgres URL naming its database or an empty string, applies after a restart, and prints masked',
+  async () => {
+    home()
+    // This home's first query reads postgresUrl, so the URL saved after it changes nothing until a restart.
+    query({ statements: [{ text: 'select 1' }] })
+
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        '{"postgresUrl":"https://127.0.0.1/elsewhere"}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        '{"postgresUrl":"postgres://pnyx@127.0.0.1:1"}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+
+    const receipt = await commands.settings([
+      'set',
+      '--json',
+      '{"postgresUrl":"postgres://pnyx:secret@127.0.0.1:1/elsewhere"}',
+    ]) as {
+      changed: Partial<Settings>
+      settings: Settings
+    }
+    const masked = 'postgres://pnyx:***@127.0.0.1:1/elsewhere'
+    const [answered] = query({ statements: [{ text: 'select 1 as answer' }] })
+
+    assert.deepEqual(
+      answered,
+      [{ answer: 1 }],
+      'this home keeps the database it opened',
+    )
+
+    assert.deepEqual(
+      [
+        receipt.changed.postgresUrl,
+        receipt.settings.postgresUrl,
+        (await settings()).settings.postgresUrl,
+      ],
+      [
+        masked,
+        masked,
+        masked,
+      ],
+    )
+    await commands.settings([
+      'set',
+      '--json',
+      '{"postgresUrl":""}',
+    ])
+    assert.equal(
+      (await settings()).settings.postgresUrl,
+      '',
     )
   },
 )

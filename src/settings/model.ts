@@ -51,6 +51,9 @@ export interface Settings extends SharedView {
   postgresUrl: string
 }
 
+// The settings an open page gets, without the URL that may hold a password.
+export type PageSettings = Omit<Settings, 'postgresUrl'>
+
 export const SETTING_KEYS = [
   ...SHARED_VIEW_KEYS,
   'doneAfterHours',

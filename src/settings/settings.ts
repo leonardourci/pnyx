@@ -162,18 +162,25 @@ const POSTGRES_PROTOCOLS = [
   'postgresql:',
 ]
 
+const POSTGRES_URL_RULE = 'postgresUrl takes a postgres:// URL that names its database, or an empty string'
+
 function postgresUrl({ value }: { value: unknown }): string {
   if (value === '') {
     return value
   }
 
-  const url = typeof value === 'string' && URL.canParse(value) ? new URL(value) : undefined
-
-  if (!url || !POSTGRES_PROTOCOLS.includes(url.protocol) || url.pathname.length < 2) {
-    return invalid({ detail: 'postgresUrl takes a postgres:// URL that names its database, or an empty string' })
+  if (typeof value !== 'string' || !URL.canParse(value)) {
+    return invalid({ detail: POSTGRES_URL_RULE })
   }
 
-  return value as string
+  const url = new URL(value)
+  const namesDatabase = url.pathname.length > 1
+
+  if (!POSTGRES_PROTOCOLS.includes(url.protocol) || !namesDatabase) {
+    return invalid({ detail: POSTGRES_URL_RULE })
+  }
+
+  return value
 }
 
 export function patchSettings({
