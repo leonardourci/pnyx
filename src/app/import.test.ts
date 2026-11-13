@@ -338,3 +338,57 @@ test(
     )
   },
 )
+
+test(
+  'a legacy import stays within the serializer ceiling while keeping every event in one commit',
+  () => {
+    const lines = Array.from(
+      { length: 1200 },
+      (
+        _,
+        index,
+      ) => ({
+        v: 1,
+        seq: index + 1,
+        id: `large-${index}`,
+        at: '2026-11-13T00:00:00Z',
+        actor: 'cli',
+        cardId: 'large',
+        type: 'card.pushed',
+        data: {
+          key: 'large',
+          title: `${index}:` + 'x'.repeat(1024),
+        },
+      }),
+    )
+    seedLog({
+      hydraId: 'large',
+      lines,
+    })
+    const stringify = JSON.stringify
+    JSON.stringify = ((...args: Parameters<typeof JSON.stringify>) => {
+      const text = stringify(...args)
+
+      if (Array.isArray(args[0]) && text.length > 1024 * 1024) {
+        throw new RangeError('serializer ceiling')
+      }
+
+      return text
+    }) as typeof JSON.stringify
+
+    try {
+      const release = holdHydra({
+        hydraId: 'large',
+        changed: () => {},
+      })
+      release()
+    } finally {
+      JSON.stringify = stringify
+    }
+
+    assert.equal(
+      Number(query({ statements: [{ text: "select count(*) from events where hydra_id = 'large'" }] })[0]![0]!.count),
+      1200,
+    )
+  },
+)

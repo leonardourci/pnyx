@@ -15,6 +15,9 @@ import { summarize } from './hydra-summary.ts'
 import { LIST_LIMIT } from '#store/zero-schema.ts'
 import { updateTasks } from '#tasks/updates.ts'
 
+// Bounded serialization keeps a legacy log below V8's single-string ceiling.
+const EVENT_BATCH_SIZE = 500
+
 type Row = Record<string, unknown>
 
 // Each table's primary key, in the order rows are written; deletes run in reverse.
@@ -721,12 +724,16 @@ export function eventStatements({
 
   const statements = [claim]
 
-  if (events.length) {
+  for (let offset = 0; offset < events.length; offset += EVENT_BATCH_SIZE) {
+    const batch = events.slice(
+      offset,
+      offset + EVENT_BATCH_SIZE,
+    )
     statements.push({
       text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
         select hydra_id, seq, id, type, at, actor, card_id, data from json_populate_recordset(null::events, $1::json)`,
       values: [
-        JSON.stringify(events.map(event => ({
+        JSON.stringify(batch.map(event => ({
           hydra_id: hydraId,
           seq: event.seq,
           id: event.id,
@@ -740,11 +747,16 @@ export function eventStatements({
     })
   }
 
-  if (updates.length) {
+  for (let offset = 0; offset < updates.length; offset += EVENT_BATCH_SIZE) {
     statements.push({
       text: `insert into card_updates (hydra_id, card_id, seq)
         select hydra_id, card_id, seq from json_populate_recordset(null::card_updates, $1::json)`,
-      values: [JSON.stringify(updates)],
+      values: [
+        JSON.stringify(updates.slice(
+          offset,
+          offset + EVENT_BATCH_SIZE,
+        )),
+      ],
     })
   }
 
