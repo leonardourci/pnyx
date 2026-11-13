@@ -10,7 +10,8 @@ import type { Settings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
 import type { currentState } from '#tasks/card-status.ts'
 
-// The page's view of src/store/schema.sql. Columns left out here, such as cards.private, never reach the page.
+// The page's view of src/store/schema.sql. Tables and columns left out here, such as card_bodies.private, never
+// reach the page.
 
 // Zero's json columns take only types with index signatures; this restates an interface as a plain object type.
 type Stored<T> = unknown extends T ? ReadonlyJSONValue
@@ -88,10 +89,7 @@ const cards = table('cards')
     kind: enumeration<TaskKind>().optional(),
     status: enumeration<TaskStatus>().optional(),
     hidden: boolean(),
-    live: boolean(),
     automatic_task: boolean(),
-    initial_prompt: string().optional(),
-    brief: string().optional(),
     done_at: string().optional(),
     open_permissions: number(),
     created_seq: number(),
@@ -135,6 +133,7 @@ const questions = table('questions')
   })
   .primaryKey(
     'hydra_id',
+    'card_id',
     'id',
   )
 
@@ -153,6 +152,7 @@ const declarations = table('declarations')
   })
   .primaryKey(
     'hydra_id',
+    'card_id',
     'id',
   )
 
@@ -167,6 +167,7 @@ const links = table('links')
     title: string().optional(),
     state: enumeration<LinkState>().optional(),
     draft: boolean().optional(),
+    merge_question_card: string().optional(),
     merge_question: string().optional(),
     data: json<Stored<Link>>(),
   })
@@ -188,6 +189,7 @@ const notes = table('notes')
   })
   .primaryKey(
     'hydra_id',
+    'card_id',
     'id',
   )
 
@@ -277,10 +279,12 @@ const linkRelationships = relationships(
     mergeQuestion: one({
       sourceField: [
         'hydra_id',
+        'merge_question_card',
         'merge_question',
       ],
       destField: [
         'hydra_id',
+        'card_id',
         'id',
       ],
       destSchema: questions,
@@ -348,7 +352,7 @@ export const schema = createSchema({
 const zql = createBuilder(schema)
 
 // The Hydra-wide fields the page reads; the rest of hydra_values is the server's.
-export const PAGE_VALUES = [
+const PAGE_VALUES = [
   'configured',
   'configRevision',
   'view',
@@ -365,9 +369,68 @@ export const PAGE_VALUES = [
   'upgrades',
 ] as const satisfies readonly (keyof HydraState)[]
 
+// Events the page never reads: queued steering for agents and the claims of external task sources.
+const SERVER_EVENTS = [
+  'task.steering.queued',
+  'task.steering.notified',
+  'task.steering.handled',
+  'task.steering.recovery',
+  'task.source.registered',
+  'task.source.lavish.published',
+  'task.source.started',
+  'task.source.result',
+  'task.source.alerted',
+  'task.source.handled',
+  'task.wait-resumed',
+] as const satisfies readonly HydraEvent['type'][]
+
 type OfHydra = { hydraId: string }
 
 type OfCard = OfHydra & { cardId: string }
+
+// The Standard Schema shape Zero takes as a query's validator.
+interface Validator<T> {
+  readonly '~standard': {
+    readonly version: 1
+    readonly vendor: string
+    // eslint-disable-next-line pnyx/object-params -- Standard Schema owns this signature.
+    readonly validate: (value: unknown) => { value: T } | { issues: readonly { message: string }[] }
+    readonly types?: {
+      readonly input: T
+      readonly output: T
+    }
+  }
+}
+
+// A query's arguments come from the page, so each one is checked to be the strings it names.
+function strings<T extends Record<string, string>>({
+  names,
+}: {
+  names: (keyof T & string)[]
+}): Validator<T> {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'pnyx',
+      // eslint-disable-next-line pnyx/object-params -- Standard Schema owns this signature.
+      validate: (value: unknown) => {
+        const given = value as Record<string, unknown> | null
+
+        return typeof given === 'object' && given !== null && names.every(name => typeof given[name] === 'string')
+          ? { value: given as T }
+          : { issues: [{ message: `expected strings: ${names.join(', ')}` }] }
+      },
+    },
+  }
+}
+
+const hydraArgs = strings<OfHydra>({ names: ['hydraId'] })
+const cardArgs = strings<OfCard>({
+  names: [
+    'hydraId',
+    'cardId',
+  ],
+})
 
 // The only reads zero-cache serves, so they are the page's permissions: the page asks for one by name and the
 // server's query endpoint builds it. Every write stays a server command.
@@ -376,161 +439,194 @@ export const queries = defineQueries({
     list: defineQuery(() => zql.hydras),
   },
   hydra: {
-    one: defineQuery(({ args }: { args: OfHydra }) => zql.hydras
-      .where(
-        'id',
-        args.hydraId,
-      )
-      .related(
-        'columns',
-        query => query.orderBy(
+    one: defineQuery(
+      hydraArgs,
+      ({ args }) => zql.hydras
+        .where(
+          'id',
+          args.hydraId,
+        )
+        .related(
+          'columns',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ),
+        )
+        .related(
+          'values',
+          query => query.where(
+            'key',
+            'IN',
+            PAGE_VALUES,
+          ),
+        )
+        .one(),
+    ),
+    messages: defineQuery(
+      hydraArgs,
+      ({ args }) => zql.messages
+        .where(
+          'hydra_id',
+          args.hydraId,
+        )
+        .orderBy(
           'position',
           'asc',
         ),
-      )
-      .related(
-        'values',
-        query => query.where(
-          'key',
-          'IN',
-          PAGE_VALUES,
-        ),
-      )
-      .one()),
-    messages: defineQuery(({ args }: { args: OfHydra }) => zql.messages
-      .where(
-        'hydra_id',
-        args.hydraId,
-      )
-      .orderBy(
-        'position',
-        'asc',
-      )),
+    ),
   },
   board: {
-    cards: defineQuery(({ args }: { args: OfHydra }) => zql.cards
-      .where(
-        'hydra_id',
-        args.hydraId,
-      )
-      .where(
-        'live',
-        true,
-      )
-      .related('body')
-      .related(
-        'questions',
-        query => query.orderBy(
-          'position',
-          'asc',
+    cards: defineQuery(
+      hydraArgs,
+      ({ args }) => zql.cards
+        .where(
+          'hydra_id',
+          args.hydraId,
+        )
+        .where(
+          'hidden',
+          false,
+        )
+        .where(
+          'automatic_task',
+          false,
+        )
+        .related('body')
+        .related(
+          'questions',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ),
+        )
+        .related(
+          'declarations',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ),
+        )
+        .related(
+          'links',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ).related('mergeQuestion'),
         ),
-      )
-      .related(
-        'declarations',
-        query => query.orderBy(
-          'position',
-          'asc',
-        ),
-      )
-      .related(
-        'links',
-        query => query.orderBy(
-          'position',
-          'asc',
-        ).related('mergeQuestion'),
-      )),
+    ),
   },
   card: {
-    detail: defineQuery(({ args }: { args: OfCard }) => zql.cards
-      .where(
-        'hydra_id',
-        args.hydraId,
-      )
-      .where(
-        'id',
-        args.cardId,
-      )
-      .related('body')
-      .related(
-        'questions',
-        query => query.orderBy(
-          'position',
-          'asc',
+    detail: defineQuery(
+      cardArgs,
+      ({ args }) => zql.cards
+        .where(
+          'hydra_id',
+          args.hydraId,
+        )
+        .where(
+          'id',
+          args.cardId,
+        )
+        .related('body')
+        .related(
+          'questions',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ),
+        )
+        .related(
+          'declarations',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ),
+        )
+        .related(
+          'links',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ).related('mergeQuestion'),
+        )
+        .related(
+          'notes',
+          query => query.orderBy(
+            'position',
+            'asc',
+          ).related('event'),
+        )
+        .one(),
+    ),
+    // The Updates tab, newest first. A card moved in shows its updates from this Hydra on.
+    history: defineQuery(
+      cardArgs,
+      ({ args }) => zql.events
+        .where(
+          'hydra_id',
+          args.hydraId,
+        )
+        .where(
+          'card_id',
+          args.cardId,
+        )
+        .where(
+          'type',
+          'NOT IN',
+          SERVER_EVENTS,
+        )
+        .orderBy(
+          'seq',
+          'desc',
         ),
-      )
-      .related(
-        'declarations',
-        query => query.orderBy(
-          'position',
-          'asc',
-        ),
-      )
-      .related(
-        'links',
-        query => query.orderBy(
-          'position',
-          'asc',
-        ).related('mergeQuestion'),
-      )
-      .related(
-        'notes',
-        query => query.orderBy(
-          'position',
-          'asc',
-        ).related('event'),
-      )
-      .one()),
-    // The Updates tab, newest first.
-    history: defineQuery(({ args }: { args: OfCard }) => zql.events
-      .where(
-        'hydra_id',
-        args.hydraId,
-      )
-      .where(
-        'card_id',
-        args.cardId,
-      )
-      .orderBy(
-        'seq',
-        'desc',
-      )),
+    ),
   },
   cards: {
     // Every card, hidden ones included, for mentions and task chips.
-    references: defineQuery(({ args }: { args: OfHydra }) => zql.cards.where(
-      'hydra_id',
-      args.hydraId,
-    )),
+    references: defineQuery(
+      hydraArgs,
+      ({ args }) => zql.cards.where(
+        'hydra_id',
+        args.hydraId,
+      ),
+    ),
   },
   questions: {
-    open: defineQuery(({ args }: { args: OfHydra }) => zql.questions
-      .where(
-        'hydra_id',
-        args.hydraId,
-      )
-      .where(
-        'closed',
-        false,
-      )
-      .where(
-        'answered',
-        'IS',
-        null,
-      )
-      .related('card')),
+    open: defineQuery(
+      hydraArgs,
+      ({ args }) => zql.questions
+        .where(
+          'hydra_id',
+          args.hydraId,
+        )
+        .where(
+          'closed',
+          false,
+        )
+        .where(
+          'answered',
+          'IS',
+          null,
+        )
+        .related('card'),
+    ),
   },
   permissions: {
-    open: defineQuery(({ args }: { args: OfHydra }) => zql.cards
-      .where(
-        'hydra_id',
-        args.hydraId,
-      )
-      .where(
-        'open_permissions',
-        '>',
-        0,
-      )
-      .related('body')),
+    open: defineQuery(
+      hydraArgs,
+      ({ args }) => zql.cards
+        .where(
+          'hydra_id',
+          args.hydraId,
+        )
+        .where(
+          'open_permissions',
+          '>',
+          0,
+        )
+        .related('body'),
+    ),
   },
   settings: {
     shared: defineQuery(() => zql.settings.where(
