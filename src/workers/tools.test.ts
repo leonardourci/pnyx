@@ -227,6 +227,7 @@ test(
         mcpServers: {
           kept: { command: 'kept-server' },
           rejected: { command: 'rejected-server' },
+          unapproved: { command: 'cloned-server' },
         },
       },
     })
@@ -236,7 +237,13 @@ test(
         '.claude',
         'settings.json',
       ),
-      value: { disabledMcpjsonServers: ['rejected'] },
+      value: {
+        enabledMcpjsonServers: [
+          'kept',
+          'rejected',
+        ],
+        disabledMcpjsonServers: ['rejected'],
+      },
     })
     writeFileSync(
       join(
@@ -272,6 +279,14 @@ test(
         grants: ['mcp:rejected'],
       }),
       { code: 'TOOL_UNAVAILABLE' },
+    )
+    await assert.rejects(
+      claudeTools({
+        ...lab,
+        grants: ['mcp:unapproved'],
+      }),
+      { code: 'TOOL_UNAVAILABLE' },
+      'a project server the owner never approved is not grantable',
     )
     writeFileSync(
       join(

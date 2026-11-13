@@ -211,9 +211,12 @@ export async function claudeTools({
     ...settings,
     ...folders.map(folder => object({ value: projects[folder] })),
   ]
-  // Project servers the owner rejected in Claude Code stay off the catalog.
-  const rejected = new Set(sources.flatMap(source =>
-    Array.isArray(source.disabledMcpjsonServers) ? source.disabledMcpjsonServers : []))
+  const listed = ({ key }: { key: string }) => new Set(sources.flatMap(source =>
+    Array.isArray(source[key]) ? source[key] : []))
+  // A project server reaches the catalog only once the owner approved it in Claude Code, and never once rejected.
+  const rejected = listed({ key: 'disabledMcpjsonServers' })
+  const approved = listed({ key: 'enabledMcpjsonServers' })
+  const approveAll = sources.some(source => source.enableAllProjectMcpServers === true)
 
   for (const folder of [...folders].reverse()) {
     const projectConfig = object({ value: projects[folder] })
@@ -229,7 +232,7 @@ export async function claudeTools({
       required: serversNeeded,
     })
     const accepted = Object.entries(object({ value: project.mcpServers }))
-      .filter(([name]) => !rejected.has(name))
+      .filter(([name]) => !rejected.has(name) && (approveAll || approved.has(name)))
     Object.assign(
       servers,
       Object.fromEntries(accepted),

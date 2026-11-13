@@ -133,6 +133,14 @@ test(
         ),
         JSON.stringify({ mcpServers: { local: { command: 'fixture-server' } } }),
       )
+      // The owner approved the project servers in Claude Code.
+      writeFileSync(
+        join(
+          dispatch.claude,
+          'settings.json',
+        ),
+        JSON.stringify({ enableAllProjectMcpServers: true }),
+      )
       git({
         cwd,
         args: [
@@ -376,6 +384,18 @@ test(
           '.mcp.json',
         ),
         JSON.stringify({ mcpServers: { fresh: { command: 'fresh-server' } } }),
+      )
+      mkdirSync(join(
+        fresh,
+        '.claude',
+      ))
+      writeFileSync(
+        join(
+          fresh,
+          '.claude',
+          'settings.json',
+        ),
+        JSON.stringify({ enabledMcpjsonServers: ['fresh'] }),
       )
       create({ key: 'replacement' })
       withWriter({
