@@ -1464,10 +1464,7 @@ test(
     assert.ok(failure?.type === 'card.replied')
     assert.equal(
       relevantUpdate({
-        event: {
-          ...failure,
-          summary: '',
-        },
+        event: failure,
         columns: [],
       })?.state,
       'Answer delivery failed',

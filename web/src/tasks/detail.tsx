@@ -4,6 +4,7 @@ import { TaskUpdates } from './task-updates.tsx'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { columnsFor } from './view.ts'
+import { hydraConfig } from '#hydra/config.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export function Detail({
@@ -29,8 +30,7 @@ export function Detail({
       <TaskUpdates
         card={card}
         columns={columnsFor({ state })}
-        command={command}
-        connected={connected}
+        hydraId={hydraConfig({ state }).id}
       />
     </section>
   )

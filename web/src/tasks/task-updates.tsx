@@ -1,81 +1,34 @@
-import { useEffect, useId, useState, useSyncExternalStore } from 'react'
+import { useId, useState } from 'react'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card } from '#tasks/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import type { Command } from '#web-app/connection.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
-import { loadOlderUpdates, loadUpdates, retryUpdates, subscribeUpdates, updatesOf } from './updates-cache.ts'
+import { useCardHistory } from './card-history.ts'
 import { hasTaskQuestion } from './task-question.ts'
 import { UpdateRow } from './update-rows.tsx'
 
 export function TaskUpdates({
   card,
   columns,
-  command,
-  connected,
+  hydraId,
 }: {
   card: Card
   columns: HydraColumn[]
-  command: Command
-  connected: boolean
+  hydraId: string
 }) {
   const {
     events,
-    more,
     loaded,
-    stale,
     error,
-  } = useSyncExternalStore(
-    subscribeUpdates,
-    () => updatesOf({ id: card.id }),
-  )
-  const [
-    paging,
-    setPaging,
-  ] = useState(false)
+  } = useCardHistory({
+    hydraId,
+    cardId: card.id,
+  })
   const [
     oldestFirst,
     setOldestFirst,
   ] = useState(false)
-
-  useEffect(
-    () => {
-      if (connected) {
-        void loadUpdates({
-          command,
-          id: card.id,
-        })
-      }
-    },
-    [
-      connected,
-      command,
-      card.id,
-      loaded,
-      stale,
-    ],
-  )
-
-  const older = async () => {
-    setPaging(true)
-
-    try {
-      await loadOlderUpdates({
-        command,
-        id: card.id,
-      })
-    } finally {
-      setPaging(false)
-    }
-  }
-
-  const retry = () => void retryUpdates({
-    command,
-    id: card.id,
-  })
-
-  // Only the first read and Older updates show loading; a refresh keeps the list as it is.
-  const loading = paging || (connected && !loaded && !error)
+  const loading = !loaded && !error
   const timeline = taskTimeline({
     card,
     events,
@@ -156,12 +109,7 @@ export function TaskUpdates({
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
       {!shown.length && !loading && !error && <p className="empty">No updates yet.</p>}
-      {error && (
-        <p role="alert">{error} <Button disabled={!connected} onClick={retry}>Try again</Button></p>
-      )}
-      {more && (
-        <Button disabled={!connected || loading} onClick={older}>Older updates</Button>
-      )}
+      {error && <p role="alert">{error}</p>}
     </div>
   )
 }

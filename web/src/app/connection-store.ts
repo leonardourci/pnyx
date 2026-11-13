@@ -13,7 +13,6 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { readSettingsSaves,saveSettingsSaves } from '#web-hydra/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
-import { noteUpdate,staleUpdates } from '#web-tasks/updates-cache.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
@@ -759,21 +758,8 @@ export function createHydraConnection({
 
     message = normalized
 
-    // Zero brings Hydra data; the server's events still tell a shown task's Updates list it is behind.
-    if (message.type === 'page.event') {
-      if (selected === scope.id && message.update.event) {
-        noteUpdate({ event: message.update.event })
-      }
-
-      return
-    }
-
-    // A snapshot skips the events in between, so every kept Updates list may be behind.
-    if (message.type === 'snapshot') {
-      if (selected === scope.id) {
-        staleUpdates()
-      }
-
+    // Zero brings Hydra data and each task's Updates; these whole-Hydra pushes are not read.
+    if (message.type === 'page.event' || message.type === 'snapshot') {
       return
     }
 
@@ -1168,7 +1154,6 @@ export function createHydraConnection({
       )
     }
 
-    staleUpdates()
     publish(); subscribe({ scope })
   }
 
