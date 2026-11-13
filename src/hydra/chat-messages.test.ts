@@ -815,13 +815,20 @@ test(
           }),
           at: '2026-10-20T10:02:00Z',
         },
-        // Pnyx runs /upgrade itself, so it never waits for Hydra.
+        // Pnyx runs /upgrade and /restart itself, so they never wait for Hydra.
         {
           ...message({
             id: 'upgrade',
             text: '/upgrade',
           }),
           at: '2026-10-20T10:03:00Z',
+        },
+        {
+          ...message({
+            id: 'restart',
+            text: '/restart',
+          }),
+          at: '2026-10-20T10:04:00Z',
         },
       ],
       transcript: [],
@@ -855,6 +862,12 @@ test(
         ],
         [
           'upgrade',
+          undefined,
+          undefined,
+          undefined,
+        ],
+        [
+          'restart',
           undefined,
           undefined,
           undefined,
