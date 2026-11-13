@@ -1,6 +1,8 @@
 import type { HydraEvent } from './model.ts'
 import { homeScoped, query } from '#store/postgres.ts'
-import { heldHydra } from './store.ts'
+import { heldHydra, hydraExists } from './store.ts'
+import { hydraDir } from './home-migration.ts'
+import { readLog } from './legacy-log.ts'
 
 // The tasks an event belongs to, under which an index lists it.
 type EventKeys = ({ event }: { event: HydraEvent }) => readonly string[]
@@ -158,6 +160,15 @@ export function rememberEvents({
 
 export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
   return eventLog({ hydraId }).events.slice()
+}
+
+// A Hydra's events, from its events.jsonl while it still waits to be imported, for the one-time moves of old values.
+export function eventsOrLegacy({ hydraId }: { hydraId: string }): HydraEvent[] {
+  if (hydraExists({ hydraId })) {
+    return readEvents({ hydraId })
+  }
+
+  return readLog({ dir: hydraDir({ hydraId }) }).events
 }
 
 // The events that `keys` lists under `key`, oldest first, without copying or scanning the rest of the log.

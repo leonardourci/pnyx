@@ -6,10 +6,8 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { ViewEvent } from '#preferences/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
-import { readEvents } from '#app/event-log.ts'
-import { readLog } from '#app/legacy-log.ts'
-import { hydraExists } from '#app/store.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { eventsOrLegacy } from '#app/event-log.ts'
+import { hydraIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
@@ -168,10 +166,7 @@ function migrate(): void {
     return
   }
 
-  // A Hydra not yet imported still keeps these values in its events.jsonl.
-  const logs = hydraIds().map(hydraId => hydraExists({ hydraId })
-    ? readEvents({ hydraId })
-    : readLog({ dir: hydraDir({ hydraId }) })?.events ?? [])
+  const logs = hydraIds().map(hydraId => eventsOrLegacy({ hydraId }))
   const views = logs.flat().filter((event): event is ViewEvent => event.type === 'board.view')
   const view = newest({ events: views })
   const changed = <K extends Legacy>({ key }: { key: K }) => newest({
