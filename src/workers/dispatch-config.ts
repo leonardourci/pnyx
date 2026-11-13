@@ -8,7 +8,7 @@ import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
-import { readLog } from '#app/event-log.ts'
+import { readEvents } from '#app/event-log.ts'
 import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { candidateIssues, checkDispatch, fallbackAccount, HARNESSES, mergePatch, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
@@ -347,7 +347,7 @@ type AgentsEvent = HydraEvent & { type: 'board.agents' }
 
 // A Hydra's old agents, as `rule migrate` used to turn them into rules.
 function legacyAgents({ hydraId }: { hydraId: string }): Fields | undefined {
-  const agents = readLog({ dir: hydraDir({ hydraId }) })?.events
+  const agents = readEvents({ hydraId })
     .filter((event): event is AgentsEvent => event.type === 'board.agents')
     .at(-1)?.data.agents ?? {}
 

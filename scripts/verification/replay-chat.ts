@@ -4,10 +4,10 @@ import { homedir, tmpdir } from 'node:os'
 import { join, relative, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { readLog } from '#app/event-log.ts'
+import { readLog } from '#app/legacy-log.ts'
+import { importHydra } from '#app/import.ts'
 import { replayOwned } from '#app/reducer.ts'
 import { withWriter } from '#app/writer.ts'
-import { writeSnapshot } from '#app/snapshot.ts'
 import { harvestTranscripts, backfillConversations } from '#integrations/hooks/harvest.ts'
 import { checkConversation, ownerSendOrder } from '#hydra/conversation-check.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
@@ -118,10 +118,6 @@ export function replayChat({
         target,
         { recursive: true },
       )
-      const bytes = readFileSync(join(
-        source,
-        'events.jsonl',
-      ))
       const events = readLog({ dir: source })!.events
       const snapshot = JSON.parse(readFileSync(
         join(
@@ -255,16 +251,9 @@ export function replayChat({
         }
       }
 
-      writeFileSync(
-        join(
-          target,
-          'events.jsonl',
-        ),
-        bytes,
-      )
-      writeSnapshot({
-        dir: target,
-        offset: bytes.length,
+      importHydra({
+        hydraId: hydra,
+        events,
         state,
       })
       writeFileSync(

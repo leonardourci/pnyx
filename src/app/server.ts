@@ -24,7 +24,6 @@ import type { HydraEvent } from './model.ts'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
-import { saveSnapshot } from './writer.ts'
 import { readEventsFrom } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { background } from './background.ts'
@@ -108,10 +107,9 @@ export async function mountOwnedHydra({
     hydraId,
     changed: () => kick(),
   })
-  let {
-    state,
-    offset,
-  } = loadHydra({ hydraId })
+  let { state } = loadHydra({ hydraId })
+  // The seq of the last event this server has pushed.
+  let offset = state.seq
   const catalogIndex = createCatalogIndex({ locations: catalogLocations })
   const {
     threadSubscriptions,
@@ -188,10 +186,8 @@ export async function mountOwnedHydra({
   } = tabs
 
   const reload = () => {
-    ({
-      state,
-      offset,
-    } = loadHydra({ hydraId }))
+    ({ state } = loadHydra({ hydraId }))
+    offset = state.seq
     recent = []
     agents.reconcile({ state })
     background({
@@ -255,10 +251,6 @@ export async function mountOwnedHydra({
       hydraId,
       offset,
     })
-
-    if (!read) {
-      return reload()
-    }
 
     const live = heldHydra({ hydraId })
 
@@ -726,22 +718,6 @@ export async function mountOwnedHydra({
     catalogIndex.close()
     agents.close()
     await spend.close()
-    const live = heldHydra({ hydraId })
-
-    // The log holds every change; a snapshot that cannot be written only makes the next start slower,
-    // so the rest of shutdown runs regardless.
-    if (live) {
-      try {
-        await saveSnapshot({ live })
-      } catch (error) {
-        log({
-          level: 'error',
-          operation: 'snapshot',
-          hydraId,
-          error,
-        })
-      }
-    }
 
     releaseHold()
 
