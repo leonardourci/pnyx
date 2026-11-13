@@ -33,6 +33,8 @@ const externalCallbacks = new Set([
   'before',
   'afterEach',
   'beforeEach',
+  // Zero's query builder
+  'related',
 ])
 const callbackCalls = new Set([
   'test',

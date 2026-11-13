@@ -28,7 +28,7 @@ One folder per feature. Code for a feature lives in its folder. Inside a feature
 |---|---|
 | `src/cli/` | the `pnyx-axi` entry, its help and version |
 | `src/app/` | the app shell that composes the features: event log, snapshots and the writer, the closed event unions and the pure reducer, the CLI registry, and the server and host |
-| `src/store/` | storage primitives: private folders, durable writes, the writer lock, spool files, the event envelope, event ids and `HydraError` |
+| `src/store/` | storage primitives: private folders, durable writes, the writer lock, spool files, the event envelope, event ids and `HydraError`; the Postgres tables (`schema.sql`) and the page's Zero schema and queries |
 | `src/tasks/` | tasks, cards and columns, questions, holds and dependencies, reminders and retention; delivery (links, outcomes, landing and merges) in `src/tasks/delivery/` |
 | `src/workers/` | dispatch, launch and sessions, the Claude and Codex providers, replies, steering, permissions, the queue and spend; compaction in `src/workers/compaction/` |
 | `src/hydra/` | Hydra's identity and configuration, wakes, stalls and review, its session and commands, transcripts and the catalog, mentions and attachments |
