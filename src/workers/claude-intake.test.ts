@@ -129,6 +129,12 @@ test(
 test(
   'a transcript Pnyx cannot read is logged and gives no intake, never failing the agent’s turn',
   t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'claude-intake-home-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
     openLogs()
     const folder = mkdtempSync(join(
       tmpdir(),
@@ -136,6 +142,20 @@ test(
     ))
     t.after(() => {
       closeLogs()
+
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
       chmodSync(
         folder,
         0o700,
