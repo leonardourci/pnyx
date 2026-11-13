@@ -46,6 +46,7 @@ export function Running({
     waiting: waiting.length,
     tasks: new Set(reading.map(update => update.card).filter(card => card !== HYDRA_CARD)).size,
   })
+  const cards = knownCards({ state })
 
   return (
     <div
@@ -85,7 +86,7 @@ export function Running({
                     <strong>{group.label} {group.updates.length} {group.updates.length === 1 ? 'update' : 'updates'}</strong>
                     {group.updates.map(update => (
                       <span key={update.seq}>
-                        {knownCards({ state })[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
+                        {cards[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
                       </span>
                     ))}
                   </TooltipSection>
