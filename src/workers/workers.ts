@@ -27,6 +27,7 @@ import { commands } from '#app/cli.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { pendingPermissions } from './permission-rules.ts'
+import { typedWords, type TypedWords } from './typed-words.ts'
 
 const TRACKED: readonly EventType[] = [
   'task.queue',
@@ -113,6 +114,12 @@ export async function hydraCheck({
   let woken = false
   let offset = 0
   let last = after
+  // Words typed into a worker's session count once an event follows them, between the times
+  // of the events at after and at the last seq read, so a check from that seq never repeats them.
+  let from = -Infinity
+  let to = -Infinity
+  const replies: HydraEvent[] = []
+  let typed: TypedWords[] = []
 
   do {
     withWriter({
@@ -142,6 +149,18 @@ export async function hydraCheck({
           last,
           e.seq,
         )
+        to = Math.max(
+          to,
+          Date.parse(e.at),
+        )
+
+        if (e.seq === after) {
+          from = to
+        }
+
+        if (e.type === 'card.replied' && e.data.state === 'queued' && e.data.text) {
+          replies.push(e)
+        }
 
         const task = current.cards[e.cardId]
         const worker = task?.tracking === 'declared' && !isManagedTask({ card: task })
@@ -158,6 +177,14 @@ export async function hydraCheck({
           woken ||= !own
         }
       }
+
+      typed = typedWords({
+        state: current,
+        replies,
+        from,
+        to,
+      })
+      woken ||= typed.length > 0
     }
 
     if (woken || Date.now() >= deadline) {
@@ -174,11 +201,18 @@ export async function hydraCheck({
     0,
     CHECK_LIMIT,
   )
-  const through = changes.length > CHECK_LIMIT ? page.at(-1)!.seq : last
+  const paged = changes.length > CHECK_LIMIT
+  const through = paged ? page.at(-1)!.seq : last
+
+  if (paged) {
+    typed = typed.filter(words => Date.parse(words.at) < Date.parse(page.at(-1)!.at))
+  }
+
   type Conversation = {
     task: string
     messages: {
-      seq: number
+      seq?: number
+      at?: string
       role: string
       text: string
     }[]
@@ -207,6 +241,22 @@ export async function hydraCheck({
         task,
       )
     }
+  }
+
+  for (const words of typed) {
+    const task = digest.get(words.task) ?? {
+      task: words.task,
+      messages: [],
+    }
+    task.messages.push({
+      at: words.at,
+      role: 'user',
+      text: compact({ text: words.text }),
+    })
+    digest.set(
+      words.task,
+      task,
+    )
   }
 
   const row = ({ e }: { e: HydraEvent }) => ({
@@ -275,6 +325,7 @@ export async function hydraCheck({
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     help: [
       ...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []),
+      ...(typed.length ? [`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`] : []),
       ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
       ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
       `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`,

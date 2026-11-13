@@ -23,6 +23,13 @@ export function notificationReceipt({ result }: NotificationResult): ReplyState 
   }
 }
 
+const NOTICE = 'Pnyx steering inbox has pending instruction IDs '
+const MESSAGES = /^New instructions for task \S+, in order \(Pnyx inbox IDs /
+
+// Text Pnyx itself sent a worker to steer it, not words from the owner.
+export const steeringText = ({ text }: { text: string }) =>
+  text.startsWith(NOTICE) || MESSAGES.test(text)
+
 // The owner's instructions themselves, first time they reach the worker; the inbox keeps them as the record.
 export function steeringMessages({
   task,
@@ -52,5 +59,5 @@ export function steeringNotice({
   hydraId: string
   ids: string[]
 }): string {
-  return `Pnyx steering inbox has pending instruction IDs ${JSON.stringify(ids)}. Run \`pnyx-axi task inbox read ${task} --hydra ${hydraId}\`, which records read acknowledgements and stops reminders. Apply the returned messages in order; report progress and blockers separately. An acknowledgement means read, never completed work. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
+  return `${NOTICE}${JSON.stringify(ids)}. Run \`pnyx-axi task inbox read ${task} --hydra ${hydraId}\`, which records read acknowledgements and stops reminders. Apply the returned messages in order; report progress and blockers separately. An acknowledgement means read, never completed work. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
 }

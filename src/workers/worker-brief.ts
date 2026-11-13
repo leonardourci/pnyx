@@ -37,6 +37,11 @@ function workerPrompt({
   ].join(' ')
 }
 
+const HEADER = '<pnyx-worker '
+
+// A worker's start prompt, which Pnyx wrote, not the owner.
+export const workerStartText = ({ text }: { text: string }) => text.startsWith(HEADER)
+
 // Every worker Pnyx starts opens with the same scope and authority, then where its job stops.
 function workerHeader({
   hydraId,
@@ -64,7 +69,7 @@ function workerHeader({
   ] : []
 
   return [
-    `<pnyx-worker task="${id}" hydra="${hydraId}">`,
+    `${HEADER}task="${id}" hydra="${hydraId}">`,
     `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report only through pnyx-axi on this task; Hydra reads your declarations and answers your questions.`,
     "Before changing anything, read your project's AGENTS.md, CLAUDE.md and CONTRIBUTING.md when present, and its skills under .agents/skills, .claude/skills and skills/. Follow them over generic habits, and use the project's skills for the jobs they cover.",
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
