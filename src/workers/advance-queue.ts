@@ -12,7 +12,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import type { Card } from '#tasks/model.ts'
 import type { LinkState } from '#tasks/delivery/model.ts'
-import type { AgentSession, SessionEvent } from './model.ts'
+import type { AgentSession } from './model.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { confirmedMerge } from '#tasks/delivery/confirmed.ts'
 import { mergeObservation } from '#tasks/delivery/merge-observation.ts'
@@ -22,7 +22,7 @@ import { checkAttachments, seenAt } from './presence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents, findEvent } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './queue.ts'
 import { pendingPermissions } from './permission-rules.ts'
@@ -445,10 +445,16 @@ async function deliverHandoffs({
   hydraId: string
   active(): boolean
 }) {
-  const events = readEvents({ hydraId }).filter((e): e is SessionEvent =>
-    e.type === 'task.session' && Boolean(e.data.handoff))
+  const events = scanEvents({
+    hydraId,
+    types: ['task.session'],
+  })
 
   for (const event of events) {
+    if (event.type !== 'task.session' || !event.data.handoff) {
+      continue
+    }
+
     const state = loadHydra({ hydraId }).state
     const card = state.cards[event.cardId]
     const id = `brief:${event.id}`
@@ -478,12 +484,20 @@ async function deliverHandoffs({
 
   const current = loadHydra({ hydraId }).state
 
-  return events.some(event => {
-    const card = current.cards[event.cardId]
-    const receipt = card?.replies?.find(r => r.id === `brief:${event.id}`)
+  return Boolean(findEvent({
+    hydraId,
+    types: ['task.session'],
+    matches: ({ event }) => {
+      if (event.type !== 'task.session' || !event.data.handoff) {
+        return false
+      }
 
-    return card?.sessionIds?.[0] === event.data.session && (!receipt || receipt.state === 'failed')
-  })
+      const card = current.cards[event.cardId]
+      const receipt = card?.replies?.find(r => r.id === `brief:${event.id}`)
+
+      return card?.sessionIds?.[0] === event.data.session && (!receipt || receipt.state === 'failed')
+    },
+  }))
 }
 
 export async function advanceQueues({

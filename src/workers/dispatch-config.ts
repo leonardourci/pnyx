@@ -347,7 +347,10 @@ type AgentsEvent = HydraEvent & { type: 'board.agents' }
 
 // A Hydra's old agents, as `rule migrate` used to turn them into rules.
 function legacyAgents({ hydraId }: { hydraId: string }): Fields | undefined {
-  const agents = eventsOrLegacy({ hydraId })
+  const agents = eventsOrLegacy({
+    hydraId,
+    types: ['board.agents'],
+  })
     .filter((event): event is AgentsEvent => event.type === 'board.agents')
     .at(-1)?.data.agents ?? {}
 

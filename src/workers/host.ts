@@ -4,7 +4,7 @@ import { taskDone } from '#tasks/select.ts'
 import { steeringHeld } from './steering.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { readEvents } from '#app/event-log.ts'
+import { readEvents, findEvent } from '#app/event-log.ts'
 
 export const SETTINGS = [
   'model',
@@ -71,16 +71,18 @@ export const MAX_RESUMES = 3
 export function resumesInARow({
   events,
   turn,
+  read,
 }: {
-  events: HydraEvent[]
+  events?: HydraEvent[]
   turn: HydraEvent
+  read?({ seq }: { seq: number }): HydraEvent | undefined
 }): number {
   let count = 0
 
   for (let current: HydraEvent | undefined = turn; current?.id.startsWith('resume:');) {
     count++
     const resumed: number = Number(current.id.split(':')[1])
-    current = events.find(event => event.seq === resumed)
+    current = read ? read({ seq: resumed }) : events?.find(event => event.seq === resumed)
   }
 
   return count
@@ -96,21 +98,21 @@ export function findWorkerTurnToResume({
   state: HydraState
   agent: AgentRef
 }): string | undefined {
-  const events = readEvents({ hydraId })
-  const lastTurn = events.findLast(event => {
-    if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
-      return false
-    }
-
-    const matchesSession = event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider
-
-    return matchesSession
+  const lastTurn = findEvent({
+    hydraId,
+    types: ['card.pushed'],
+    descending: true,
+    matches: ({ event }) => event.type === 'card.pushed' && event.data.activity === 'working'
+      && event.data.agent?.sessionId === agent.sessionId
+      && event.data.agent.provider === agent.provider,
   })
 
   if (!lastTurn || resumesInARow({
-    events,
     turn: lastTurn,
+    read: ({ seq }) => readEvents({
+      hydraId,
+      seqs: [seq],
+    })[0],
   }) >= MAX_RESUMES) {
     return undefined
   }
