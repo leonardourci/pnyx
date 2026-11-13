@@ -94,6 +94,63 @@ test(
 )
 
 test(
+  'a Hydra-wide question Hydra answers from the owner\'s message closes, also on replay',
+  async t => {
+    const l = await lab({ t })
+    const asked = await commands.hydra([
+      'ask',
+      '--question',
+      'Wait for the reset, or move the work now?',
+      '--actor',
+      'hydra',
+      '--reason',
+      reason,
+      '--hydra',
+      hydraId,
+    ])
+    const id = String(asked.ask)
+    const message = l.chat({
+      ref: HYDRA_CARD,
+      text: 'Clean up questions not waiting for me.',
+    })
+    await l.task({
+      args: [
+        'answer',
+        HYDRA_CARD,
+        id,
+        '--from-message',
+        message,
+      ],
+    })
+    const closed = l.state().cards[HYDRA_CARD]?.asks?.find(ask => ask.id === id)?.closed
+    assert.equal(
+      closed?.evidence,
+      message,
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[HYDRA_CARD]?.asks?.find(ask => ask.id === id)?.closed,
+      closed,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'reopen-question',
+          HYDRA_CARD,
+          id,
+          '--answer',
+          closed!.id,
+        ],
+        actor: 'web',
+      }),
+      /only the owner can undo/,
+    )
+  },
+)
+
+test(
   'clarification reaches Hydra without answering or releasing an owner question',
   async t => {
     const l = await lab({ t })
