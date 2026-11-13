@@ -1,6 +1,8 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Settings } from '#settings/model.ts'
+import type { HydraQueue } from '#hydra/wakes.ts'
+import type { UpgradeStatus } from '#upgrade/model.ts'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 
 // Keeps every part of the earlier value that reads the same, as Zero keeps an unchanged row.
@@ -48,15 +50,24 @@ function share<Value>({
 // The page gets no event ids, and a write that changed nothing reports nothing.
 export function hydraSource() {
   const watched = new Map<string, {
-    publish({ state }: { state: HydraState }): void
+    publish({
+      state,
+      queue,
+    }: {
+      state: HydraState
+      queue: HydraQueue
+    }): void
     state: HydraState
+    queue: HydraQueue
   }>()
 
   const show = ({
     state,
+    queue,
     hydraId = 'default',
   }: {
     state: HydraState
+    queue?: HydraQueue
     hydraId?: string
   }) => {
     const entry = watched.get(hydraId)
@@ -73,9 +84,15 @@ export function hydraSource() {
       },
     })
 
-    if (next !== entry.state) {
+    const nextQueue = queue ?? entry.queue
+
+    if (next !== entry.state || nextQueue !== entry.queue) {
       entry.state = next
-      entry.publish({ state: next })
+      entry.queue = nextQueue
+      entry.publish({
+        state: next,
+        queue: nextQueue,
+      })
     }
   }
 
@@ -85,13 +102,23 @@ export function hydraSource() {
       publish,
     }: {
       hydraId: string
-      publish({ state }: { state: HydraState }): void
+      publish({
+        state,
+        queue,
+      }: {
+        state: HydraState
+        queue: HydraQueue
+      }): void
     }) => {
       watched.set(
         hydraId,
         {
           publish,
           state: emptyHydra(),
+          queue: {
+            waiting: [],
+            reading: [],
+          },
         },
       )
 
@@ -123,6 +150,7 @@ export function hydraSource() {
 export function sharedSource() {
   let shown: {
     hydras({ rows }: { rows: HydraSummary[] }): void
+    upgrade({ status }: { status: UpgradeStatus | undefined }): void
     settings({
       settings,
       revision,
@@ -136,10 +164,12 @@ export function sharedSource() {
     watch: ({
       hydras,
       settings,
+      upgrade,
     }: NonNullable<typeof shown>) => {
       shown = {
         hydras,
         settings,
+        upgrade,
       }
 
       return {
@@ -149,6 +179,7 @@ export function sharedSource() {
       }
     },
     hydras: ({ rows }: { rows: HydraSummary[] }) => shown?.hydras({ rows }),
+    upgrade: ({ status }: { status: UpgradeStatus | undefined }) => shown?.upgrade({ status }),
     settings: ({
       settings,
       revision,

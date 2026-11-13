@@ -2,6 +2,8 @@ import type { ResultType, TypedView, Zero } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Settings } from '#settings/model.ts'
+import type { HydraQueue } from '#hydra/wakes.ts'
+import type { UpgradeStatus } from '#upgrade/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { queries } from '#store/zero-schema.ts'
 import { hydraFromRows, type CardRow, type DetailRow, type HydraRow, type MessageRow, type ReferenceRow } from './hydra-rows.ts'
@@ -47,9 +49,16 @@ export function watchHydra({
 }: {
   zero: Zero
   hydraId: string
-  publish({ state }: { state: HydraState }): void
+  publish({
+    state,
+    queue,
+  }: {
+    state: HydraState
+    queue: HydraQueue
+  }): void
 }) {
   let scheduled = false
+  let queue: HydraQueue | undefined
   let closed = false
   let state: HydraState | undefined
   // Opened cards waiting for Zero to load them, with the page's request to answer.
@@ -89,7 +98,17 @@ export function watchHydra({
         messages: messages.data,
         previous: state,
       })
-      publish({ state })
+      // The Hydra row changes with every write; its queue keeps its identity while it reads the same.
+      const next = hydra.data.queue as HydraQueue
+
+      if (JSON.stringify(queue) !== JSON.stringify(next)) {
+        queue = next
+      }
+
+      publish({
+        state,
+        queue: queue ?? next,
+      })
 
       for (const {
         ids,
@@ -180,14 +199,16 @@ export function watchHydra({
   }
 }
 
-// What every Hydra on the page shares: the Hydra list and the shared settings.
+// What every Hydra on the page shares: the Hydra list, the shared settings and the upgrade check.
 export function watchInstallation({
   zero,
   hydras,
   settings,
+  upgrade,
 }: {
   zero: Zero
   hydras({ rows }: { rows: HydraSummary[] }): void
+  upgrade({ status }: { status: UpgradeStatus | undefined }): void
   settings({
     settings,
     revision,
@@ -198,6 +219,13 @@ export function watchInstallation({
 }) {
   const list = zero.materialize(queries.hydras.list())
   const shared = zero.materialize(queries.settings.shared())
+  const checked = zero.materialize(queries.upgrade.status())
+  checked.addListener(row => upgrade({
+    status: row ? {
+      available: row.available,
+      checkedAt: row.checked_at,
+    } : undefined,
+  }))
   list.addListener((
     rows,
     resultType: ResultType,
@@ -220,6 +248,7 @@ export function watchInstallation({
     close: () => {
       list.destroy()
       shared.destroy()
+      checked.destroy()
     },
   }
 }

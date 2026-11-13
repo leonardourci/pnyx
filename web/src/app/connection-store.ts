@@ -50,14 +50,12 @@ const emptyQueue = (): HydraQueue => ({
 type WatchHydra = ({
   hydraId,
   publish,
-}: {
-  hydraId: string
-  publish({ state }: { state: HydraState }): void
-}) => ReturnType<typeof watchHydra>
+}: Omit<Parameters<typeof watchHydra>[0], 'zero'>) => ReturnType<typeof watchHydra>
 
 type WatchInstallation = ({
   hydras,
   settings,
+  upgrade,
 }: Omit<Parameters<typeof watchInstallation>[0], 'zero'>) => ReturnType<typeof watchInstallation>
 
 // The page reads each Hydra, the Hydra list and the shared settings through Zero; tests pass their own sources.
@@ -585,10 +583,19 @@ export function createHydraConnection({
 
     const options = {
       hydraId: scope.id,
-      publish: ({ state }: { state: HydraState }) => receiveState({
-        scope,
+      publish: ({
         state,
-      }),
+        queue,
+      }: {
+        state: HydraState
+        queue: HydraQueue
+      }) => {
+        scope.queue = queue
+        receiveState({
+          scope,
+          state,
+        })
+      },
     }
     scope.views = watch ? watch(options) : watchHydra({
       ...options,
@@ -723,9 +730,6 @@ export function createHydraConnection({
     }
 
     if (message.type === 'hello') {
-      // A restarted server sends its own answer once its check has one.
-      upgrade = undefined
-
       if (message.installation !== installation) {
         active = false
         scope.ready = false
@@ -819,10 +823,6 @@ export function createHydraConnection({
       if (!wasReady) {
         window.dispatchEvent(new Event(DISPATCH_CHANGED))
       }
-    } else if (message.type === 'hydraQueue') {
-      scope.queue = message.queue
-    } else if (message.type === 'upgrade') {
-      upgrade = message.upgrade
     } else if ('id' in message && message.id) {
       respond({
         scope,
@@ -1183,6 +1183,10 @@ export function createHydraConnection({
               revision,
             },
           })
+        },
+        upgrade: ({ status }: { status: UpgradeStatus | undefined }) => {
+          upgrade = status
+          publish()
         },
       }
       const installationViews = watchShared ? watchShared(sharedOptions) : watchInstallation({

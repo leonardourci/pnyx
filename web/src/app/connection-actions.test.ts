@@ -1015,42 +1015,6 @@ test(
   },
 )
 
-test(
-  'Hydra\'s queue stays shown while a snapshot replaces the state',
-  t => {
-    const { connection } = browserFixture({ t })
-    const socket = BrowserSocket.instances.at(-1)!
-    socket.receive({
-      message: {
-        type: 'hello',
-        build: 'test',
-        hydraId: 'default',
-        installation: 'test',
-      },
-    })
-    const queue = {
-      waiting: [
-        {
-          seq: 1,
-          card: 'task',
-        },
-      ],
-      reading: [],
-    }
-    socket.receive({
-      message: {
-        type: 'hydraQueue',
-        queue,
-      },
-    })
-    hydras.show({ state: emptyHydra() })
-    assert.deepEqual(
-      connection.snapshot().hydraQueue,
-      queue,
-    )
-  },
-)
-
 for (const when of [
   '2099-10-16T12:00:00Z',
   'in 2 hours',
