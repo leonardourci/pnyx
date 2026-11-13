@@ -1,5 +1,7 @@
 import type { ResultType, TypedView, Zero } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
+import type { HydraSummary } from '#app/server-hydras.ts'
+import type { Settings } from '#settings/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { queries } from '#store/zero-schema.ts'
 import { hydraFromRows, type CardRow, type DetailRow, type HydraRow, type MessageRow, type ReferenceRow } from './hydra-rows.ts'
@@ -174,6 +176,50 @@ export function watchHydra({
       ]) {
         view.destroy()
       }
+    },
+  }
+}
+
+// What every Hydra on the page shares: the Hydra list and the shared settings.
+export function watchInstallation({
+  zero,
+  hydras,
+  settings,
+}: {
+  zero: Zero
+  hydras({ rows }: { rows: HydraSummary[] }): void
+  settings({
+    settings,
+    revision,
+  }: {
+    settings: Settings
+    revision: number
+  }): void
+}) {
+  const list = zero.materialize(queries.hydras.list())
+  const shared = zero.materialize(queries.settings.shared())
+  list.addListener((
+    rows,
+    resultType: ResultType,
+  ) => {
+    if (resultType === 'complete' || resultType === 'cached') {
+      // Zero types the json column as plain JSON; it holds the summary the server stored.
+      hydras({ rows: rows.map(row => row.summary) as HydraSummary[] })
+    }
+  })
+  shared.addListener(row => {
+    if (row) {
+      settings({
+        settings: row.value as Settings,
+        revision: row.revision,
+      })
+    }
+  })
+
+  return {
+    close: () => {
+      list.destroy()
+      shared.destroy()
     },
   }
 }

@@ -1,4 +1,6 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { HydraSummary } from '#app/server-hydras.ts'
+import type { Settings } from '#settings/model.ts'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 
 // Keeps every part of the earlier value that reads the same, as Zero keeps an unchanged row.
@@ -113,6 +115,49 @@ export function hydraSource() {
         event,
       }),
       hydraId,
+    }),
+  }
+}
+
+// Stands in for the Hydra list and shared settings the page reads from Zero.
+export function sharedSource() {
+  let shown: {
+    hydras({ rows }: { rows: HydraSummary[] }): void
+    settings({
+      settings,
+      revision,
+    }: {
+      settings: Settings
+      revision: number
+    }): void
+  } | undefined
+
+  return {
+    watch: ({
+      hydras,
+      settings,
+    }: NonNullable<typeof shown>) => {
+      shown = {
+        hydras,
+        settings,
+      }
+
+      return {
+        close: () => {
+          shown = undefined
+        },
+      }
+    },
+    hydras: ({ rows }: { rows: HydraSummary[] }) => shown?.hydras({ rows }),
+    settings: ({
+      settings,
+      revision,
+    }: {
+      settings: Settings
+      revision: number
+    }) => shown?.settings({
+      settings,
+      revision,
     }),
   }
 }

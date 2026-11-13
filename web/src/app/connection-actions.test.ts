@@ -7,9 +7,10 @@ import type { HydraEvent } from '#app/model.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { loadUpdates, updatesOf } from '#web-tasks/updates-cache.ts'
 import { createHydraConnection } from './connection-store.ts'
-import { hydraSource } from '#web-app/fixtures/hydra-source.ts'
+import { hydraSource, sharedSource } from '#web-app/fixtures/hydra-source.ts'
 
 const hydras = hydraSource()
+const shared = sharedSource()
 
 class BrowserSocket {
   static OPEN = 1
@@ -534,7 +535,10 @@ function browserFixture({
     )
   }
 
-  const connection = createHydraConnection({ watch: hydras.watch })
+  const connection = createHydraConnection({
+    watch: hydras.watch,
+    watchShared: shared.watch,
+  })
   cleanup.stop = connection.start()
 
   return {
@@ -636,14 +640,6 @@ test(
       connection.snapshot().actions,
       {},
     )
-    // Answering the page's Hydra list leaves no request to reject once the connection stops.
-    const listing = replacement.sent.find(message => message.name === 'hydras')!
-    replacement.receive({
-      message: {
-        type: 'receipt',
-        id: listing.id,
-      },
-    })
   },
 )
 

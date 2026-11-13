@@ -4,6 +4,7 @@ import type { HydraState } from '#app/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
+import type { Settings } from '#settings/model.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -19,7 +20,7 @@ import { reconnectDelay,retainedReadings,withChanges } from './connection-protoc
 import { createConnectionRequests } from './connection-requests.ts'
 import { save } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
-import { watchHydra } from './hydra-views.ts'
+import { watchHydra, watchInstallation } from './hydra-views.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
@@ -54,8 +55,19 @@ type WatchHydra = ({
   publish({ state }: { state: HydraState }): void
 }) => ReturnType<typeof watchHydra>
 
-// The page reads each Hydra through Zero; tests pass their own source of states.
-export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
+type WatchInstallation = ({
+  hydras,
+  settings,
+}: Omit<Parameters<typeof watchInstallation>[0], 'zero'>) => ReturnType<typeof watchInstallation>
+
+// The page reads each Hydra, the Hydra list and the shared settings through Zero; tests pass their own sources.
+export function createHydraConnection({
+  watch,
+  watchShared,
+}: {
+  watch?: WatchHydra
+  watchShared?: WatchInstallation
+} = {}) {
   const origin = location.origin
   const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
     ?? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? ''
@@ -806,36 +818,11 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
 
       if (!wasReady) {
         window.dispatchEvent(new Event(DISPATCH_CHANGED))
-
-        if (scope.id === physicalHydra || scope.id === selected) {
-          command({
-            scope,
-            name: 'hydras',
-            args: [],
-          }).catch((error: Error) => {
-            if (error instanceof CommandFailure && error.code === 'DISCONNECTED') {
-              // The next subscription reloads this catalog.
-              return
-            }
-
-            scope.error = error.message; publish()
-          })
-        }
       }
     } else if (message.type === 'hydraQueue') {
       scope.queue = message.queue
-    } else if (message.type === 'hydras') {
-      updateHydras({ rows: message.hydras })
     } else if (message.type === 'upgrade') {
       upgrade = message.upgrade
-    } else if (message.type === 'settings') {
-      setLogMode({ mode: message.settings.logs })
-      sharedSettings().receive({
-        state: {
-          settings: message.settings,
-          revision: message.revision,
-        },
-      })
     } else if ('id' in message && message.id) {
       respond({
         scope,
@@ -1177,6 +1164,31 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
     },
     start() {
       active = true
+      const sharedOptions = {
+        hydras: ({ rows }: { rows: HydraSummary[] }) => {
+          updateHydras({ rows })
+          publish()
+        },
+        settings: ({
+          settings,
+          revision,
+        }: {
+          settings: Settings
+          revision: number
+        }) => {
+          setLogMode({ mode: settings.logs })
+          sharedSettings().receive({
+            state: {
+              settings,
+              revision,
+            },
+          })
+        },
+      }
+      const installationViews = watchShared ? watchShared(sharedOptions) : watchInstallation({
+        ...sharedOptions,
+        zero: zero(),
+      })
       const stopLog = startPageLog({
         send: ({ lines }) => {
           if (socket?.readyState !== WebSocket.OPEN) {
@@ -1239,6 +1251,7 @@ export function createHydraConnection({ watch }: { watch?: WatchHydra } = {}) {
         }
 
         scopes.forEach(scope => scope.views?.close())
+        installationViews.close()
         pageZero?.close()
         removeEventListener(
           'popstate',

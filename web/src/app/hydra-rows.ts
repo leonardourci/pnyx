@@ -32,13 +32,21 @@ export function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
       childWorking: row.child_working,
       waitTitle: row.wait_title ?? undefined,
       unmetPrerequisites: row.unmet_prerequisites,
-      mergeQuestions: Object.fromEntries(row.links.map(link => [
-        link.url,
-        link.mergeQuestion?.card ? {
-          card: link.mergeQuestion.card_id === row.id ? undefined : referenceCard({ row: link.mergeQuestion.card }),
-          ask: link.mergeQuestion.data,
-        } : undefined,
-      ])),
+      mergeQuestions: Object.fromEntries(row.links.map(({
+        url,
+        mergeQuestion,
+      }) => {
+        const owner = mergeQuestion?.card
+        const another = owner && owner.id !== row.id
+
+        return [
+          url,
+          owner ? {
+            card: another ? referenceCard({ row: owner }) : undefined,
+            ask: mergeQuestion.data,
+          } : undefined,
+        ]
+      })),
     },
     notes: 'notes' in row ? orNone({
       list: row.notes.map(({

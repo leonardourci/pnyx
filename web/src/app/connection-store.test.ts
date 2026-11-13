@@ -4,9 +4,10 @@ import assert from 'node:assert/strict'
 import { setImmediate } from 'node:timers/promises'
 import { test, type TestContext } from 'node:test'
 import { createHydraConnection } from './connection-store.ts'
-import { hydraSource } from '#web-app/fixtures/hydra-source.ts'
+import { hydraSource, sharedSource } from '#web-app/fixtures/hydra-source.ts'
 
 const hydras = hydraSource()
+const shared = sharedSource()
 import { emptyHydra } from '#app/reducer.ts'
 
 class TestSocket {
@@ -193,7 +194,10 @@ test(
         removeItem() {},
       },
     })
-    const connection = createHydraConnection({ watch: hydras.watch })
+    const connection = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
     assert.equal(
       connection.snapshot().offline,
       false,
@@ -205,13 +209,6 @@ test(
     const stop = connection.start()
     const socket = TestSocket.current
     open({ socket })
-    const listing = socket.sent.find(message => message.name === 'hydras')!
-    socket.receive({
-      message: {
-        type: 'receipt',
-        id: listing.id,
-      },
-    })
 
     await connection.navigate({ url: 'http://pnyx.test/hydra/second/' })
     assert.equal(
@@ -314,7 +311,10 @@ test(
       },
     })
 
-    const connection = createHydraConnection({ watch: hydras.watch })
+    const connection = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
     const stop = connection.start()
     const socket = TestSocket.current
     open({ socket })
@@ -327,14 +327,7 @@ test(
         projects: [],
       },
     ]
-    const listing = socket.sent.find(message => message.name === 'hydras')!
-    socket.receive({
-      message: {
-        type: 'receipt',
-        id: listing.id,
-        hydras: catalog,
-      },
-    })
+    shared.hydras({ rows: catalog })
     assert.deepEqual(
       connection.snapshot().navigation.hydras,
       catalog,
@@ -380,13 +373,7 @@ test(
         name: 'Apollo',
       },
     ]
-    socket.receive({
-      message: {
-        type: 'hydras',
-        subscription: 'fixture',
-        hydras: renamed,
-      },
-    })
+    shared.hydras({ rows: renamed })
     assert.deepEqual(
       connection.snapshot().navigation.hydras,
       renamed,
@@ -431,18 +418,14 @@ test(
       },
     ]
 
-    const first = createHydraConnection({ watch: hydras.watch })
+    const first = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
     stops.push(first.start())
     const firstSocket = TestSocket.current
     open({ socket: firstSocket })
-    const listing = firstSocket.sent.find(message => message.name === 'hydras')!
-    firstSocket.receive({
-      message: {
-        type: 'receipt',
-        id: listing.id,
-        hydras: catalog,
-      },
-    })
+    shared.hydras({ rows: catalog })
     void first.create({
       name: 'Apollo',
       icon: 'rocket',
@@ -455,7 +438,10 @@ test(
     )
     stops.pop()!()
 
-    const reloaded = createHydraConnection({ watch: hydras.watch })
+    const reloaded = createHydraConnection({
+      watch: hydras.watch,
+      watchShared: shared.watch,
+    })
     stops.push(reloaded.start())
     assert.equal(
       reloaded.snapshot().navigation.hydraId,
@@ -533,7 +519,10 @@ function recoveryPage({ t }: { t: TestContext }) {
       removeItem() {},
     },
   })
-  const connection = createHydraConnection({ watch: hydras.watch })
+  const connection = createHydraConnection({
+    watch: hydras.watch,
+    watchShared: shared.watch,
+  })
   const stop = connection.start()
   cleanup.stop = stop
   open({ socket: TestSocket.current })
