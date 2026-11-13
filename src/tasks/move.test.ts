@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
@@ -12,6 +12,8 @@ import { withWriter } from '#app/writer.ts'
 import { appendNote } from '#integrations/hooks/harvest.ts'
 import { offerHost } from '#app/server-state.ts'
 import { base } from '#app/command-meta.ts'
+import { readEvents } from '#app/event-log.ts'
+import { query } from '#store/postgres.ts'
 
 const INHERITED = [
   'PNYX_HOME',
@@ -628,17 +630,6 @@ test(
       assert.ok(stale.fix.includes('--hydra dst'))
     }
 
-    // The saved snapshot is only a cache: the logs alone give the same Hydras.
-    for (const hydraId of [
-      'src',
-      'dst',
-    ]) {
-      rmSync(join(
-        hydraDir({ hydraId }),
-        'snapshot.json',
-      ))
-    }
-
     assert.equal(
       loadHydra({ hydraId: 'src' }).state.cards[before.id],
       undefined,
@@ -801,28 +792,26 @@ test(
   },
 )
 
-// Drops the source's last log line, as a crash right after the target's line would leave it.
-function cutSourceLine() {
-  const log = join(
-    hydraDir({ hydraId: 'src' }),
-    'events.jsonl',
-  )
-  const lines = readFileSync(
-    log,
-    'utf8',
-  ).trimEnd()
-    .split('\n')
-  writeFileSync(
-    log,
-    `${lines.slice(
-      0,
-      -1,
-    ).join('\n')}\n`,
-  )
-  rmSync(join(
-    hydraDir({ hydraId: 'src' }),
-    'snapshot.json',
-  ))
+// Runs a move whose source write fails after the target's committed, as a crash between the two would leave it.
+async function cutMove({ id }: { id: string }) {
+  query({
+    statements: [
+      { text: 'create or replace function cut_move() returns trigger language plpgsql as $$ begin raise exception \'cut\'; end $$' },
+      { text: 'create trigger cut_move before insert on events for each row when (new.type = \'task.moved-out\') execute function cut_move()' },
+    ],
+  })
+
+  try {
+    await assert.rejects(
+      task({ args: move({ id }) }),
+      /Postgres: cut/,
+    )
+  } finally {
+    query({ statements: [{ text: 'drop trigger cut_move on events' }] })
+  }
+
+  // The target's arrival, which the cut left committed.
+  return readEvents({ hydraId: 'dst' }).findLast(event => event.type === 'task.moved-in' && event.cardId === id)
 }
 
 test(
@@ -853,8 +842,8 @@ test(
       }),
     ]
 
-    const moved = await task({ args: move({ id: ship.id }) })
-    cutSourceLine()
+    const arrival = await cutMove({ id: ship.id })
+    assert.ok(arrival)
     assert.ok(card({
       hydraId: 'src',
       key: 'ship',
@@ -873,7 +862,7 @@ test(
     const finished = await task({ args: move({ id: ship.id }) })
     assert.notEqual(
       finished.event,
-      moved.event,
+      arrival.id,
     )
     assert.equal(
       card({
@@ -913,8 +902,7 @@ test(
       ],
     )
 
-    await task({ args: move({ id: other.id }) })
-    cutSourceLine()
+    await cutMove({ id: other.id })
     await task({
       args: [
         'brief',
@@ -973,6 +961,8 @@ test(
         app,
       ],
     })
+    // The card read is live, so keep the project path it had before the rename.
+    const path = ship.project
     await task({
       args: [
         'rename',
@@ -995,7 +985,7 @@ test(
       refused.code,
       'NOT_FOUND',
     )
-    assert.ok(refused.fix.includes(`pnyx-axi project add ${ship.project} --hydra dst`))
+    assert.ok(refused.fix.includes(`pnyx-axi project add ${path} --hydra dst`))
   },
 )
 
@@ -1195,8 +1185,7 @@ test(
     })
     t.after(withdraw)
 
-    await task({ args: move({ id: ship.id }) })
-    cutSourceLine()
+    await cutMove({ id: ship.id })
     released.length = 0
 
     answer = { busy: 'mid-turn' }

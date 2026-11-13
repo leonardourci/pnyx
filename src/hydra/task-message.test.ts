@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -121,7 +121,7 @@ async function fixture() {
 }
 
 test(
-  'old snapshots rebuild the original prompt after the working brief changed',
+  'a revised brief keeps the original prompt',
   async () => {
     const f = await fixture()
 
@@ -132,22 +132,6 @@ test(
         '--brief',
         'The revised plan',
       ])
-      const path = join(
-        f.home,
-        'hydras',
-        'default',
-        'snapshot.json',
-      )
-      const snapshot = JSON.parse(readFileSync(
-        path,
-        'utf8',
-      ))
-      snapshot.rules = 11
-      delete snapshot.state.cards[f.card().id].initialPrompt
-      writeFileSync(
-        path,
-        JSON.stringify(snapshot),
-      )
       assert.equal(
         f.card().initialPrompt,
         'Read the migration plan',

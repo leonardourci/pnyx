@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, appendFileSync, mkdirSync, renameSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, mkdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { commands } from '#app/cli.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadHydra, reloadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
-import { repairHydra } from '#app/repair.ts'
+import { storedHydra } from '#test-harness/database.ts'
 import { runForRequest } from '#app/api-run.ts'
 import { ApplyError } from './schema.ts'
 
@@ -140,22 +140,9 @@ test(
       result.applied,
       true,
     )
-    const log = join(
-      f.dir,
-      'events.jsonl',
-    )
-    const lines = readFileSync(
-      log,
-      'utf8',
-    ).trim()
-      .split('\n')
-    assert.equal(
-      lines.length,
-      1,
-    )
-    assert.equal(
-      JSON.parse(lines[0]!).type,
-      'log.transaction',
+    assert.deepEqual(
+      new Set(readEvents({ hydraId: 'default' }).map(event => event.transaction)),
+      new Set(['export-plan']),
     )
     const before = loadHydra({ hydraId: 'default' }).state
     assert.deepEqual(
@@ -186,10 +173,7 @@ test(
       before.cards[aliases.research]?.links[0]?.url,
       'https://example.com/formats',
     )
-    rmSync(join(
-      f.dir,
-      'snapshot.json',
-    ))
+    reloadHydra({ hydraId: 'default' })
     assert.deepEqual(
       loadHydra({ hydraId: 'default' }).state,
       before,
@@ -207,10 +191,7 @@ test(
       '--brief',
       'Later instructions',
     ])
-    const afterEdit = readFileSync(
-      log,
-      'utf8',
-    )
+    const afterEdit = storedHydra({ hydraId: 'default' })
     const retry = await f.apply({
       document,
       flags: [
@@ -227,10 +208,7 @@ test(
       result.revisions,
     )
     assert.equal(
-      readFileSync(
-        log,
-        'utf8',
-      ),
+      storedHydra({ hydraId: 'default' }),
       afterEdit,
     )
     await assert.rejects(
@@ -255,7 +233,7 @@ test(
 )
 
 test(
-  'independent invalid operations return indexed fields and leave both log and snapshot unchanged',
+  'independent invalid operations return indexed fields and leave the stored Hydra unchanged',
   async t => {
     const f = fixture({ t })
     await commands.task([
@@ -265,20 +243,7 @@ test(
       '--title',
       'Existing',
     ])
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
-    const snapshot = readFileSync(
-      join(
-        f.dir,
-        'snapshot.json',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     await assert.rejects(
       () => f.apply({
         document: {
@@ -321,24 +286,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
-    )
-    assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      snapshot,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
     assert.equal(
       Object.keys(loadHydra({ hydraId: 'default' }).state.cards).length,
@@ -383,13 +332,7 @@ test(
       (await f.apply({ document })).applied,
       true,
     )
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     await assert.rejects(
       () => f.apply({ document }),
       error => {
@@ -435,113 +378,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
-    )
-  },
-)
-
-test(
-  'a torn compound record exposes none of its children and repair preserves the original log',
-  async t => {
-    const f = fixture({ t })
-    await commands.task([
-      'create',
-      '--key',
-      'base',
-      '--title',
-      'Base',
-    ])
-    const original = readFileSync(join(
-      f.dir,
-      'events.jsonl',
-    ))
-    await f.apply({
-      document: {
-        version: 1,
-        changes: [
-          {
-            op: 'task.brief',
-            task: 'base',
-            brief: 'Atomic instructions',
-          },
-          {
-            op: 'task.create',
-            title: 'Atomic new task',
-          },
-        ],
-      },
-    })
-    const full = readFileSync(join(
-      f.dir,
-      'events.jsonl',
-    ))
-    const transaction = full.subarray(original.length)
-    rmSync(join(
-      f.dir,
-      'snapshot.json',
-    ))
-    const torn = Buffer.concat([
-      original,
-      transaction.subarray(
-        0,
-        transaction.length - 2,
-      ),
-    ])
-    writeFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      torn,
-    )
-    const state = loadHydra({ hydraId: 'default' }).state
-    assert.equal(
-      Object.keys(state.cards).length,
-      1,
-    )
-    assert.equal(
-      state.cards[state.keys.base!]?.brief,
-      undefined,
-    )
-    await assert.rejects(
-      () => commands.task([
-        'brief',
-        'base',
-        '--brief',
-        'Blocked',
-      ]),
-      { code: 'TORN_TAIL' },
-    )
-    repairHydra({ hydraId: 'default' })
-    assert.ok(readFileSync(join(
-      f.dir,
-      'events.jsonl',
-    )).subarray(
-      0,
-      torn.length,
-    )
-      .equals(torn))
-    appendFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      transaction,
-    )
-    assert.equal(
-      loadHydra({ hydraId: 'default' }).state.cards[state.keys.base!]?.brief,
-      'Atomic instructions',
-    )
-    assert.equal(
-      Object.keys(loadHydra({ hydraId: 'default' }).state.cards).length,
-      2,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )
@@ -701,13 +539,7 @@ test(
       held.prerequisites,
       [],
     )
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     await assert.rejects(
       () => f.apply({
         document: {
@@ -776,14 +608,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )
@@ -808,13 +634,7 @@ test(
       '--title',
       'Build',
     ])
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     await assert.rejects(
       () => f.apply({
         document: {
@@ -873,14 +693,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )
@@ -964,13 +778,7 @@ test(
         'noop-id',
       ],
     })
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     assert.equal(
       (await f.apply({
         document: noop,
@@ -1031,14 +839,8 @@ test(
       /on/,
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )
@@ -1178,10 +980,7 @@ test(
         'noop-reserved',
       ],
     })
-    rmSync(join(
-      f.dir,
-      'snapshot.json',
-    ))
+    reloadHydra({ hydraId: 'default' })
     await assert.rejects(
       () => commands.task([
         'brief',
@@ -1231,13 +1030,7 @@ test(
       f.dir,
       legacy,
     )
-    const before = readFileSync(
-      join(
-        legacy,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const before = storedHydra({ hydraId: 'default' })
     await f.apply({
       document: {
         version: 1,
@@ -1252,13 +1045,7 @@ test(
       flags: ['--check'],
     })
     assert.equal(
-      readFileSync(
-        join(
-          legacy,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
+      storedHydra({ hydraId: 'default' }),
       before,
     )
     await assert.rejects(
@@ -1282,13 +1069,7 @@ test(
       ApplyError,
     )
     assert.equal(
-      readFileSync(
-        join(
-          legacy,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
+      storedHydra({ hydraId: 'default' }),
       before,
     )
     assert.deepEqual(
@@ -1440,13 +1221,7 @@ test(
       '--event-id',
       'other-kind:op:0',
     ])
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     const document = JSON.stringify({
       version: 1,
       changes: [
@@ -1481,14 +1256,8 @@ test(
       /0,"\/changes\/0\/op","IDEMPOTENCY_CONFLICT"/,
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
     const other = await f.cli({
       argv: [
@@ -1509,14 +1278,8 @@ test(
       /0,"\/changes\/0\/op","IDEMPOTENCY_CONFLICT"/,
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )
@@ -1532,13 +1295,7 @@ test(
       '--title',
       'A',
     ])
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     await assert.rejects(
       () => f.apply({
         document: {
@@ -1577,14 +1334,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )
@@ -1720,17 +1471,11 @@ test(
       bulk.ask?.[0]?.text,
       'Bulk owner words',
     )
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
     assert.match(
-      log,
+      JSON.stringify(readEvents({ hydraId: 'default' })),
       /"intent":"Expanded goal"/,
     )
+    const stored = storedHydra({ hydraId: 'default' })
     await assert.rejects(
       () => commands.task([
         'intent',
@@ -1784,14 +1529,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )
@@ -1817,20 +1556,7 @@ test(
       '--event-id',
       `derived-collision:op:0:${task}:lifecycle`,
     ])
-    const log = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
-    const snapshot = readFileSync(
-      join(
-        f.dir,
-        'snapshot.json',
-      ),
-      'utf8',
-    )
+    const stored = storedHydra({ hydraId: 'default' })
     await assert.rejects(
       () => f.apply({
         flags: [
@@ -1868,24 +1594,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      log,
-    )
-    assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      snapshot,
+      storedHydra({ hydraId: 'default' }),
+      stored,
     )
   },
 )

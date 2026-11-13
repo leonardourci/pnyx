@@ -6,8 +6,8 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { ViewEvent } from '#preferences/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
-import { readLog } from '#app/event-log.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { readEvents } from '#app/event-log.ts'
+import { hydraIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
@@ -18,6 +18,7 @@ import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { settingsNotice } from '#hydra/settings-notice.ts'
+import { query } from '#store/postgres.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -165,7 +166,7 @@ function migrate(): void {
     return
   }
 
-  const logs = hydraIds().map(hydraId => readLog({ dir: hydraDir({ hydraId }) })?.events ?? [])
+  const logs = hydraIds().map(hydraId => readEvents({ hydraId }))
   const views = logs.flat().filter((event): event is ViewEvent => event.type === 'board.view')
   const view = newest({ events: views })
   const changed = <K extends Legacy>({ key }: { key: K }) => newest({
@@ -370,6 +371,29 @@ export function saveSettings({
         revision: current.revision + 1,
       }
     },
+  })
+}
+
+// The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
+// stays their record, since it also names the database.
+export function mirrorSettings({
+  settings,
+  revision,
+}: {
+  settings: Settings
+  revision: number
+}): void {
+  query({
+    statements: [
+      {
+        text: `insert into settings (id, revision, value) values ('shared', $1, $2) on conflict (id)
+          do update set revision = excluded.revision, value = excluded.value where settings.revision < excluded.revision`,
+        values: [
+          revision,
+          JSON.stringify(settings),
+        ],
+      },
+    ],
   })
 }
 

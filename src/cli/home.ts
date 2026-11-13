@@ -17,7 +17,6 @@ export async function home(): Promise<Output> {
   const {
     dir,
     state,
-    tornBytes,
   } = loadHydra({ hydraId })
   const cards = Object.values(state.cards).filter(card => liveTask({ card }))
   const config = hydraConfig({ state })
@@ -34,10 +33,6 @@ export async function home(): Promise<Output> {
     hydra: config.hydra.id,
     server: server ? `running at ${server.url}` : 'not running',
     columns,
-  }
-
-  if (tornBytes > 0) {
-    out.warning = 'events.jsonl has a torn tail; run `pnyx-axi repair`'
   }
 
   const serveHint = server ? [] : [`Run \`pnyx-axi serve --hydra ${hydraId}\` to start the Hydra server`]

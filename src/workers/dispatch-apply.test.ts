@@ -14,6 +14,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { HydraError } from '#store/errors.ts'
 import { withRegistryLock } from '#store/storage.ts'
+import { query } from '#store/postgres.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
 import { changesPath, configPath, effectiveDispatch, readTemplate, type HeadsDispatch } from './dispatch-config.ts'
 import type { DispatchDocument } from './dispatch-check.ts'
@@ -1289,25 +1290,43 @@ test(
         token,
       ],
     })
-    const events = join(
-      hydraDir({ hydraId: 'lab' }),
-      'events.jsonl',
-    )
-    chmodSync(
-      events,
-      0o400,
-    )
+    // A row already holding the next seq makes the resolution's commit fail after the dispatch save landed.
+    const [[hydra]] = query({
+      statements: [
+        {
+          text: 'select seq from hydras where id = $1',
+          values: ['lab'],
+        },
+      ],
+    }) as { seq: string }[][]
+    query({
+      statements: [
+        {
+          text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+            values ($1, $2, 'blocker', 'card.noted', '2026-11-13T00:00:00Z', 'fixture', $3, '{}')`,
+          values: [
+            'lab',
+            Number(hydra!.seq) + 1,
+            HYDRA_CARD,
+          ],
+        },
+      ],
+    })
 
     try {
       await assert.rejects(
         confirm,
-        { code: 'EACCES' },
+        { code: 'CONFLICT' },
       )
     } finally {
-      chmodSync(
-        events,
-        0o600,
-      )
+      query({
+        statements: [
+          {
+            text: 'delete from events where hydra_id = $1 and id = \'blocker\'',
+            values: ['lab'],
+          },
+        ],
+      })
     }
 
     assert.equal(

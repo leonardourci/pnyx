@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -47,13 +47,6 @@ test(
     const mine = ({ operation }: { operation: string }) => logLines()
       .filter(line => line.operation === operation && line.hydraId === s.hydraId)
 
-    const eventLog = join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      s.hydraId,
-      'events.jsonl',
-    )
-    const logBefore = statSync(eventLog).size
     const seqBefore = s.state().seq
     await page.command({
       name: 'task',
@@ -129,13 +122,13 @@ test(
         (
           sum,
           line,
-        ) => sum + Number(line.bytes),
+        ) => sum + Number(line.count),
         0,
       )
     assert.equal(
       appended,
-      statSync(eventLog).size - logBefore,
-      'event-log lines count the UTF-8 bytes they append',
+      s.events().filter(event => event.seq > seqBefore).length,
+      'event-log lines count the events they write',
     )
 
     await s.owner({
@@ -414,7 +407,6 @@ test(
         'hydra.open',
         'message.taken',
         'session.open',
-        'snapshot.write',
         'socket.send',
         'thread.page',
         'turn.end',

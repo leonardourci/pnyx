@@ -2,21 +2,20 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import type { HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
+import { query } from '#store/postgres.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
-import { holdHydra, loadHydra } from './store.ts'
+import { holdHydra, loadHydra, reloadHydra } from './store.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
-import { repairHydra } from './repair.ts'
-import { writeSnapshot } from './snapshot.ts'
-import { withWriter, type Writer } from './writer.ts'
+import { withWriter } from './writer.ts'
 import { acquireLock } from '#store/storage.ts'
-import { STREAMS, assertGolden, readStream } from '#test-harness/streams.ts'
+import { STREAMS, readStream } from '#test-harness/streams.ts'
 
 beforeEach(() => {
   process.env.PNYX_HOME = mkdtempSync(join(
@@ -44,6 +43,13 @@ function appendAll({ events }: { events: HydraEvent[] }): void {
   })
 }
 
+const storedEvents = () => Number(query({
+  statements: [{ text: 'select count(*) as count from events where hydra_id = \'default\'' }],
+})[0]![0]!.count)
+
+// What the state holds once saved as JSON: fields set to undefined are gone.
+const saved = ({ value }: { value: unknown }) => JSON.parse(JSON.stringify(value))
+
 function seedLog({ stream }: { stream: string }): string {
   const dir = hydraDir({ hydraId: 'default' })
   mkdirSync(
@@ -65,336 +71,131 @@ function seedLog({ stream }: { stream: string }): string {
 }
 
 test(
-  'bounded event reads retain repair-marker lookahead without rereading completed records',
-  () => {
-    const dir = seedLog({ stream: 'lifecycle' })
-    const events = readStream({ name: 'lifecycle' })
-    const first = JSON.stringify(events[0])
-    const marker = JSON.stringify({
-      v: 1,
-      type: 'log.repaired',
-      at: '2026-11-12T10:00:00Z',
-      data: {
-        offset: 0,
-        length: Buffer.byteLength(first),
-      },
-    })
-    writeFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      `${first}\n${marker}\n${JSON.stringify(events[1])}\n${JSON.stringify(events[2])}\n`,
-    )
-    const repaired = readEventsFrom({
-      hydraId: 'default',
-      offset: 0,
-      maxBytes: 1,
-    })
-    assert.ok(repaired)
-    assert.deepEqual(
-      repaired.events,
-      [],
-      'the repaired record is never exposed at a batch boundary',
-    )
-    const next = readEventsFrom({
-      hydraId: 'default',
-      offset: repaired.end,
-      maxBytes: 1,
-    })
-    assert.ok(next)
-    const last = readEventsFrom({
-      hydraId: 'default',
-      offset: next.end,
-      maxBytes: 1,
-    })
-    assert.ok(last)
-    assert.deepEqual(
-      [
-        ...next.events,
-        ...last.events,
-      ],
-      [
-        events[1],
-        events[2],
-      ],
-    )
-    assert.equal(
-      last.end,
-      fs.statSync(join(
-        dir,
-        'events.jsonl',
-      )).size,
-    )
-  },
-)
-
-test(
-  'failed snapshot writes remove their stage and keep the original error, with a failed cleanup as its cause',
-  t => {
-    const dir = seedLog({ stream: 'lifecycle' })
-    const loaded = loadHydra({ hydraId: 'default' })
-    const input = {
-      dir,
-      state: loaded.state,
-      offset: loaded.offset,
-    }
-    writeSnapshot(input)
-    const cache = readFileSync(
-      join(
-        dir,
-        'snapshot.json',
-      ),
-      'utf8',
-    )
-    const writeFailure = new Error('snapshot sync refused')
-    const publishFailure = new Error('snapshot rename refused')
-    const cleanupFailure = new Error('snapshot cleanup refused')
-    t.after(() => {
-      t.mock.restoreAll()
-      syncBuiltinESMExports()
-    })
-    t.mock.method(
-      fs,
-      'fsyncSync',
-      () => {
-        throw writeFailure
-      },
-    )
-    syncBuiltinESMExports()
-    assert.throws(
-      () => writeSnapshot(input),
-      error => error === writeFailure,
-    )
-    assert.deepEqual(
-      readdirSync(dir).sort(),
-      [
-        'events.jsonl',
-        'snapshot.json',
-      ],
-    )
-    assert.equal(
-      readFileSync(
-        join(
-          dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      cache,
-    )
-    t.mock.restoreAll()
-    t.mock.method(
-      fs,
-      'renameSync',
-      () => {
-        throw publishFailure
-      },
-    )
-    t.mock.method(
-      fs,
-      'rmSync',
-      () => {
-        throw cleanupFailure
-      },
-    )
-    syncBuiltinESMExports()
-    assert.throws(
-      () => writeSnapshot(input),
-      error => error === publishFailure && publishFailure.cause === cleanupFailure,
-    )
-    assert.equal(
-      readFileSync(
-        join(
-          dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      cache,
-    )
-  },
-)
-
-test(
-  'appends are durable lines and the snapshot matches a full replay',
+  'a command commits its events with the rows they change, and the Hydra reloads as a full replay',
   () => {
     const events = readStream({ name: 'lifecycle' })
     appendAll({ events })
-    const dir = hydraDir({ hydraId: 'default' })
-    const lines = readFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    ).trimEnd()
-      .split('\n')
-    const written: HydraEvent[] = lines.map(l => JSON.parse(l))
+    const written = readEvents({ hydraId: 'default' })
     assert.ok(written.every(e => e.boardId === 'default' && e.commandId === e.id))
-    // Each line holds the appended event plus the denormalized ids.
-    assert.deepEqual(
-      written.map((
-        e,
-        i,
-      ) => ({
-        ...e,
-        ...events[i],
-      })),
-      written,
-    )
     assert.equal(
-      written.length,
+      storedEvents(),
       events.length,
     )
-    const expected = replay({
-      state: emptyHydra(),
-      events: readEvents({ hydraId: 'default' }),
-    })
+    reloadHydra({ hydraId: 'default' })
     assert.deepEqual(
-      loadHydra({ hydraId: 'default' }).state,
-      expected,
-    )
-    const snapshot = JSON.parse(readFileSync(
-      join(
-        dir,
-        'snapshot.json',
-      ),
-      'utf8',
-    ))
-    assert.deepEqual(
-      snapshot.state,
-      expected,
-    )
-    const create = ({
-      writer,
-      key,
-    }: {
-      writer: Writer
-      key: string
-    }) => writer.append({
-      event: {
-        v: 1,
-        seq: writer.state.seq + 1,
-        id: key,
-        cardId: key,
-        type: 'task.created',
-        at: '2026-11-03T20:00:00Z',
-        actor: 'cli',
-        data: {
-          key,
-          title: key,
-        },
-      },
-    })
-    const release = holdHydra({
-      hydraId: 'default',
-      changed: () => {},
-    })
-
-    try {
-      withWriter({
-        hydraId: 'default',
-        fn: ({ writer }) => {
-          withWriter({
-            hydraId: 'default',
-            fn: ({ writer: nested }) => create({
-              writer: nested,
-              key: 'nested',
-            }),
-          })
-          create({
-            writer,
-            key: 'outer',
-          })
-        },
-      })
-      withWriter({
-        hydraId: 'default',
-        fn: ({ writer }) => create({
-          writer,
-          key: 'following',
+      saved({ value: loadHydra({ hydraId: 'default' }).state }),
+      saved({
+        value: replay({
+          state: emptyHydra(),
+          events: written,
         }),
-      })
-    } finally {
-      release()
-    }
-
-    const restored = loadHydra({ hydraId: 'default' }).state
-    assert.deepEqual(
-      [
-        'nested',
-        'outer',
-        'following',
-      ].map(key => restored.cards[key]?.title),
-      [
-        'nested',
-        'outer',
-        'following',
-      ],
-    )
-    assert.deepEqual(
-      restored,
-      replay({
-        state: emptyHydra(),
-        events: readEvents({ hydraId: 'default' }),
       }),
     )
   },
 )
 
 test(
-  'a missing, corrupt or stale snapshot is rebuilt from the log',
+  'rows saved one command at a time reload as the state in memory for every recorded stream',
   () => {
-    const events = readStream({ name: 'lifecycle' })
-    appendAll({
-      events: events.slice(
+    for (const name of readdirSync(STREAMS).filter(file => file.endsWith('.jsonl'))
+      .map(file => file.slice(
         0,
-        4,
-      ),
-    })
-    const dir = hydraDir({ hydraId: 'default' })
-    const early = readFileSync(join(
-      dir,
-      'snapshot.json',
-    ))
-    appendAll({ events: events.slice(4) })
-    const expected = replay({
-      state: emptyHydra(),
-      events: readEvents({ hydraId: 'default' }),
+        -'.jsonl'.length,
+      ))) {
+      const hydraId = `stream-${name}`
+
+      const events = readStream({ name })
+
+      // The duplicates stream repeats and skips seqs to test the reducer; a writer takes only the next one.
+      if (events.some((
+        event,
+        index,
+      ) => event.seq !== index + 1)) {
+        continue
+      }
+
+      for (const event of events) {
+        withWriter({
+          hydraId,
+          create: true,
+          migrate: false,
+          fn: ({ writer }) => writer.append({
+            event,
+            effects: false,
+          }),
+        })
+      }
+
+      const live = saved({ value: loadHydra({ hydraId }).state })
+      reloadHydra({ hydraId })
+      assert.deepEqual(
+        saved({ value: loadHydra({ hydraId }).state }),
+        live,
+        name,
+      )
+    }
+  },
+)
+
+test(
+  'a command that throws commits none of its events',
+  () => {
+    const [
+      first,
+      second,
+    ] = readStream({ name: 'lifecycle' })
+    appendAll({ events: [first!] })
+    assert.throws(
+      () => withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          writer.append({ event: second! })
+          throw new Error('stopped midway')
+        },
+      }),
+      /stopped midway/,
+    )
+    assert.equal(
+      storedEvents(),
+      1,
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.seq,
+      first!.seq,
+    )
+  },
+)
+
+test(
+  'a held Hydra whose seq another writer moved refuses the write at the database and reloads',
+  () => {
+    const [
+      first,
+      second,
+    ] = readStream({ name: 'lifecycle' })
+    appendAll({ events: [first!] })
+    const release = holdHydra({
+      hydraId: 'default',
+      changed: () => undefined,
     })
 
-    // Crash between the append and the snapshot write: the old snapshot plus the log tail.
-    writeFileSync(
-      join(
-        dir,
-        'snapshot.json',
-      ),
-      early,
-    )
-    assert.deepEqual(
-      loadHydra({ hydraId: 'default' }).state,
-      expected,
-    )
-    writeFileSync(
-      join(
-        dir,
-        'snapshot.json',
-      ),
-      '{not json',
-    )
-    assert.deepEqual(
-      loadHydra({ hydraId: 'default' }).state,
-      expected,
-    )
-    rmSync(join(
-      dir,
-      'snapshot.json',
-    ))
-    assert.deepEqual(
-      loadHydra({ hydraId: 'default' }).state,
-      expected,
-    )
+    try {
+      query({ statements: [{ text: 'update hydras set seq = seq + 1 where id = \'default\'' }] })
+      rejects({
+        fn: () => appendAll({ events: [second!] }),
+        code: 'CONFLICT',
+      })
+      assert.equal(
+        storedEvents(),
+        1,
+      )
+      assert.equal(
+        loadHydra({ hydraId: 'default' }).state.seq,
+        first!.seq + 1,
+      )
+    } finally {
+      release()
+    }
   },
 )
 
@@ -425,227 +226,72 @@ test(
 )
 
 test(
-  'a torn tail is skipped on read, blocks writes and is set aside by repair',
-  () => {
-    const dir = seedLog({ stream: 'torn-tail' })
-    const original = readFileSync(join(
-      dir,
-      'events.jsonl',
-    ))
-    const clean = original.subarray(
-      0,
-      original.lastIndexOf(10) + 1,
-    )
-
-    const loaded = loadHydra({ hydraId: 'default' })
-    assert.equal(
-      loaded.state.seq,
-      3,
-    )
-    assert.equal(
-      loaded.tornBytes,
-      original.length - clean.length,
-    )
-    assertGolden({
-      name: 'torn-tail',
-      actual: loaded.state,
-    })
-    rejects({
-      fn: () => withWriter({
-        hydraId: 'default',
-        fn: () => undefined,
-      }),
-      code: 'TORN_TAIL',
-    })
-
-    const result = repairHydra({ hydraId: 'default' })
-    assert.equal(
-      result.tornBytes,
-      loaded.tornBytes,
-    )
-    assert.deepEqual(
-      readFileSync(result.preserved!),
-      original.subarray(clean.length),
-    )
-    const repaired = readFileSync(join(
-      dir,
-      'events.jsonl',
-    ))
-    assert.deepEqual(
-      repaired.subarray(
-        0,
-        original.length,
-      ),
-      original,
-    )
-    const marker = JSON.parse(repaired.subarray(original.length + 1).toString('utf8'))
-    assert.deepEqual(
-      marker.data,
-      {
-        offset: clean.length,
-        length: original.length - clean.length,
-      },
-    )
-    assert.equal(
-      loadHydra({ hydraId: 'default' }).tornBytes,
-      0,
-    )
-  },
-)
-
-test(
-  'repeated reads return appended events, honour a repair and notice a new file',
-  () => {
-    const events = readStream({ name: 'lifecycle' })
-    const ids = () => readEvents({ hydraId: 'default' }).map(e => e.id)
-    appendAll({
-      events: events.slice(
-        0,
-        2,
-      ),
-    })
-    assert.deepEqual(
-      ids(),
-      [
-        'evt_1',
-        'evt_2',
-      ],
-    )
-    appendAll({ events: events.slice(2) })
-    assert.deepEqual(
-      ids(),
-      events.map(e => e.id),
-    )
-
-    const path = join(
-      hydraDir({ hydraId: 'default' }),
-      'events.jsonl',
-    )
-    const ghost = JSON.stringify({
-      ...events[0]!,
-      seq: 99,
-      id: 'evt_99',
-    })
-    writeFileSync(
-      path,
-      readFileSync(
-        path,
-        'utf8',
-      ) + ghost,
-    )
-    repairHydra({ hydraId: 'default' })
-    assert.deepEqual(
-      ids(),
-      events.map(e => e.id),
-    )
-
-    rmSync(path)
-    assert.deepEqual(
-      ids(),
-      [],
-    )
-    appendAll({
-      events: events.slice(
-        0,
-        1,
-      ),
-    })
-    assert.deepEqual(
-      ids(),
-      ['evt_1'],
-    )
-  },
-)
-
-test(
-  'repair skips a torn line even when it parses as an event',
+  'a Hydra kept in events.jsonl is imported on its first read and the file is left as it was',
   () => {
     const dir = seedLog({ stream: 'lifecycle' })
+    const before = readFileSync(join(
+      dir,
+      'events.jsonl',
+    ))
     const events = readStream({ name: 'lifecycle' })
-    const unacknowledged = JSON.stringify({
-      ...events[0]!,
-      seq: 9,
-      id: 'evt_9',
-      data: { key: 'ghost' },
-    })
-    writeFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
+    assert.deepEqual(
+      saved({ value: loadHydra({ hydraId: 'default' }).state }),
+      saved({
+        value: replay({
+          state: emptyHydra(),
+          events,
+        }),
+      }),
+    )
+    reloadHydra({ hydraId: 'default' })
+    loadHydra({ hydraId: 'default' })
+    assert.equal(
+      storedEvents(),
+      events.length,
+    )
+    assert.deepEqual(
       readFileSync(join(
         dir,
         'events.jsonl',
-      )).toString() + unacknowledged,
+      )),
+      before,
     )
-    repairHydra({ hydraId: 'default' })
-    rmSync(join(
-      dir,
-      'snapshot.json',
-    ))
+  },
+)
+
+test(
+  'event reads after a seq stop at their limit and at through',
+  () => {
+    const events = readStream({ name: 'lifecycle' })
+    appendAll({ events })
+    const second = events[1]!.seq
+    const read = readEventsFrom({
+      hydraId: 'default',
+      offset: events[0]!.seq,
+      limit: 2,
+    })
     assert.deepEqual(
-      loadHydra({ hydraId: 'default' }).state,
-      replay({
-        state: emptyHydra(),
-        events: readEvents({ hydraId: 'default' }),
-      }),
+      read.events.map(event => event.seq),
+      events.slice(
+        1,
+        3,
+      ).map(event => event.seq),
     )
-  },
-)
-
-test(
-  'a repair marker that names the wrong line is corruption',
-  () => {
-    const dir = seedLog({ stream: 'lifecycle' })
-    const marker = {
-      v: 1,
-      type: 'log.repaired',
-      at: '2026-10-13T00:00:00Z',
-      data: {
+    assert.equal(
+      read.end,
+      events[2]!.seq,
+    )
+    assert.deepEqual(
+      readEventsFrom({
+        hydraId: 'default',
         offset: 0,
-        length: 1,
-      },
-    }
-    writeFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      `${readFileSync(join(
-        dir,
-        'events.jsonl',
-      ))}${JSON.stringify(marker)}\n`,
+        through: second,
+      }).events.map(event => event.seq),
+      [
+        events[0]!.seq,
+        second,
+      ],
     )
-    rejects({
-      fn: () => loadHydra({ hydraId: 'default' }),
-      code: 'LOG_CORRUPT',
-    })
-  },
-)
-
-test(
-  'corruption inside the log is rejected, not skipped',
-  () => {
-    const dir = seedLog({ stream: 'lifecycle' })
-    const lines = readFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    ).split('\n')
-    lines[2] = '{garbage'
-    writeFileSync(
-      join(
-        dir,
-        'events.jsonl',
-      ),
-      lines.join('\n'),
-    )
-    rejects({
-      fn: () => loadHydra({ hydraId: 'default' }),
-      code: 'LOG_CORRUPT',
-    })
   },
 )
 
@@ -1000,7 +646,7 @@ test(
 )
 
 test(
-  'a Hydra in the old boards folder moves to hydras and its events replay',
+  'a Hydra in the old boards folder moves to hydras and its events are imported',
   () => {
     const old = join(
       process.env.PNYX_HOME!,
@@ -1123,7 +769,7 @@ test(
       loaded.state.hydraMemory?.rule?.text,
       'Keep this fact',
     )
-    repairHydra({ hydraId: 'existing' })
+    reloadHydra({ hydraId: 'existing' })
     assert.equal(
       readFileSync(
         join(

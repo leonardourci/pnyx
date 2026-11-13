@@ -8,7 +8,7 @@ import { agentsMidTurn, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { allowedRequest, requestUrl, HYDRA_PATH, type RunningServer, type MountedHydra, type HydraSubscription, type ServerMessage, type HydraClient } from './server-transport.ts'
+import { allowedRequest, requestUrl, HYDRA_PATH, ZERO_QUERY_PATH, type RunningServer, type MountedHydra, type HydraSubscription, type ServerMessage, type HydraClient } from './server-transport.ts'
 import { MAX_MESSAGE_BYTES } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
@@ -22,12 +22,13 @@ import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
 import { pollPath, watchPath } from './watch.ts'
-import { readSettings, settingsLogPath } from '#settings/store.ts'
+import { mirrorSettings, readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { log } from './diagnostics.ts'
+import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -65,11 +66,14 @@ export async function startServer({
   hydraId = 'default',
   port = 0,
   homes,
+  zeroCache = false,
   ...options
 }: {
   hydraId?: string
   port?: number
   homes?: string[]
+  // Whether to run zero-cache for the page's reads; only serve does, so other test servers start no child.
+  zeroCache?: boolean
   catalogLocations?: CatalogLocations
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
@@ -109,6 +113,7 @@ export async function startServer({
   let closed = false
   let summariesQueued = false, summariesKey = ''
   let upgradeStatus: UpgradeStatus | undefined
+  let zero: ZeroCache | undefined
 
   const hydrasChanged = () => {
     if (closed || summariesQueued) {
@@ -167,6 +172,30 @@ export async function startServer({
       pathname: path,
       search,
     } = requestUrl({ url: req.url })
+
+    if (isZeroPath({ path })) {
+      return zero ? zero.request({
+        req,
+        res,
+      }) : reply({
+        res,
+        status: 404,
+        body: {
+          error: 'this server runs no zero-cache',
+          code: 'NOT_FOUND',
+        },
+      })
+    }
+
+    // Outside /zero, so a page cannot reach it through the proxy; zero-cache calls it with its per-run API key.
+    if (req.method === 'POST' && path === ZERO_QUERY_PATH && zero) {
+      return zero.query({
+        req,
+        res,
+        search,
+      })
+    }
+
     const [
       , id,
       rest,
@@ -329,6 +358,19 @@ export async function startServer({
       head,
     ) => {
       const url = requestUrl({ url: req.url })
+
+      if (isZeroPath({ path: url.pathname })) {
+        if (!zero || !allowed({ req })) {
+          return void socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+        }
+
+        return zero.upgrade({
+          req,
+          socket,
+          head,
+        })
+      }
+
       // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
       const requested = url.searchParams.get('scope')
       const initialScope = requested && served.has(requested) ? requested : hydraId
@@ -759,7 +801,9 @@ export async function startServer({
   // The settings log is written by any pnyx-axi process; every open page gets the change.
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
-  let settingsRevision = readSettings().revision
+  const startSettings = readSettings()
+  let settingsRevision = startSettings.revision
+  mirrorSettings(startSettings)
   const settingsWatcher = watchPath({
     path: settingsDir,
     changed: () => {
@@ -773,6 +817,10 @@ export async function startServer({
       }
 
       settingsRevision = revision
+      mirrorSettings({
+        settings,
+        revision,
+      })
       logs.apply({ settings })
       served.forEach(m => m.settings())
     },
@@ -844,6 +892,7 @@ export async function startServer({
       wss.close()
       http.closeAllConnections()
       await new Promise(r => http.close(r))
+      await zero?.close()
       rmSync(
         infoPath(),
         { force: true },
@@ -860,6 +909,15 @@ export async function startServer({
   try {
     named = await mount({ id: hydraId })
     await mount({ id: 'default' })
+
+    // After the first mount, which creates the home's database that zero-cache replicates.
+    if (zeroCache) {
+      zero = startZeroCache({
+        queryUrl: `http://127.0.0.1:${bound}${ZERO_QUERY_PATH}`,
+        token: localToken(),
+      })
+    }
+
     replaceFile({
       path: infoPath(),
       text: JSON.stringify({
@@ -896,6 +954,7 @@ export async function startServer({
     socket: named.socket,
     skipped: { ...skipped },
     open,
+    zeroCachePid: () => zero?.pid(),
     close,
   }
 }

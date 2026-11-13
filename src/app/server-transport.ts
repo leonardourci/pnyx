@@ -157,6 +157,8 @@ export interface RunningServer {
   // Hydras that could not be loaded, with the reason; the others keep working.
   skipped: Record<string, string>
   open({ id }: { id: string }): Promise<string>
+  // The zero-cache child's pid while it runs; undefined when the server was started without it.
+  zeroCachePid(): number | undefined
   close(): Promise<void>
 }
 
@@ -192,6 +194,11 @@ export type HydraRequest = {
 }
 
 export const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
+
+// A Hydra's page HTML sets the cookie for this path only, so only the page reaches zero-cache.
+export const ZERO_PATH = '/zero'
+export const ZERO_COOKIE = 'pnyx-token'
+export const ZERO_QUERY_PATH = '/zero-query'
 
 // A target such as // reads as a URL with an empty host, which throws; take it as a path instead.
 export const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(

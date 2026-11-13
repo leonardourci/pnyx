@@ -7,9 +7,8 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout } from 'node:timers/promises'
 import { hydraDir } from '#app/home-migration.ts'
-import { emptyHydra, reduce } from '#app/reducer.ts'
 import { mountOwnedHydra } from '#app/server.ts'
-import { writeSnapshot } from '#app/snapshot.ts'
+import { storedHydra } from '#test-harness/database.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
@@ -227,14 +226,7 @@ test(
       chats().find(event => event.data.text === 'Ready')?.data.final,
       true,
     )
-    const log = join(
-      home,
-      'hydras/default/events.jsonl',
-    )
-    const before = readFileSync(
-      log,
-      'utf8',
-    )
+    const before = storedHydra({ hydraId: 'default' })
     rmSync(transcript)
     const state = loadHydra({ hydraId: 'default' }).state
     const page = readThread({
@@ -263,10 +255,7 @@ test(
       4,
     )
     assert.equal(
-      readFileSync(
-        log,
-        'utf8',
-      ),
+      storedHydra({ hydraId: 'default' }),
       before,
     )
   },
@@ -421,14 +410,7 @@ test(
         },
       }),
     )
-    const log = join(
-      folder,
-      'events.jsonl',
-    )
-    const before = readFileSync(
-      log,
-      'utf8',
-    )
+    const before = readEvents({ hydraId: 'default' })
     const harvest = () => withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
@@ -485,18 +467,55 @@ test(
       events.filter(event => event.type === 'chat.message' && event.data.hidden).length,
       1,
     )
-    assert.ok(readFileSync(
-      log,
-      'utf8',
-    ).startsWith(before))
+    assert.deepEqual(
+      events.slice(
+        0,
+        before.length,
+      ),
+      before,
+    )
     harvest()
     assert.equal(
       readEvents({ hydraId: 'default' }).length,
       events.length,
     )
-    const archivedBytes = readFileSync(
-      log,
-      'utf8',
+    const archived = storedHydra({ hydraId: 'default' })
+    // replay-chat reads an archived home in the events.jsonl layout, so archive this Hydra in it.
+    const archive = join(
+      home,
+      'archive',
+    )
+    const archivedHydra = join(
+      archive,
+      'hydras/default',
+    )
+    mkdirSync(
+      archivedHydra,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        archivedHydra,
+        'events.jsonl',
+      ),
+      events.map(event => `${JSON.stringify(event)}\n`).join(''),
+    )
+    writeFileSync(
+      join(
+        archivedHydra,
+        'snapshot.json',
+      ),
+      JSON.stringify({ state: loadHydra({ hydraId: 'default' }).state }),
+    )
+    copyFileSync(
+      join(
+        folder,
+        'harvest.json',
+      ),
+      join(
+        archivedHydra,
+        'harvest.json',
+      ),
     )
     const checked = JSON.parse(execFileSync(
       process.execPath,
@@ -507,7 +526,7 @@ test(
           import.meta.url,
         )),
         '--archive',
-        home,
+        archive,
         '--claude-transcripts',
         home,
         '--codex-transcripts',
@@ -532,11 +551,8 @@ test(
       },
     )
     assert.equal(
-      readFileSync(
-        log,
-        'utf8',
-      ),
-      archivedBytes,
+      storedHydra({ hydraId: 'default' }),
+      archived,
     )
     rmSync(transcript)
     const state = replayOwned({
@@ -620,46 +636,46 @@ test(
       ),
       transcript,
     )
+    withWriter({
+      hydraId: 'default',
+      create: true,
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: 1,
+            id: 'create',
+            at: '2026-10-22T09:00:00.000Z',
+            actor: 'web',
+            cardId: HYDRA_CARD,
+            type: 'task.created',
+            data: {
+              key: HYDRA_CARD,
+              title: 'Hydra',
+            },
+          },
+        })
+        writer.state.sessions = {
+          'claude-code:old': {
+            id: 'claude-code:old',
+            originCardId: HYDRA_CARD,
+            taskId: null,
+            attention: [],
+            sourceRefs: [],
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'old',
+              transcriptPath: transcript,
+            },
+          },
+        }
+      },
+    })
     const dir = hydraDir({ hydraId: 'default' })
     mkdirSync(
       dir,
       { recursive: true },
     )
-    const state = reduce({
-      state: emptyHydra(),
-      event: {
-        v: 1,
-        seq: 1,
-        id: 'create',
-        at: '2026-10-22T09:00:00.000Z',
-        actor: 'web',
-        cardId: HYDRA_CARD,
-        type: 'task.created',
-        data: {
-          key: HYDRA_CARD,
-          title: 'Hydra',
-        },
-      },
-    })
-    state.sessions = {
-      'claude-code:old': {
-        id: 'claude-code:old',
-        originCardId: HYDRA_CARD,
-        taskId: null,
-        attention: [],
-        sourceRefs: [],
-        agent: {
-          provider: 'claude-code',
-          sessionId: 'old',
-          transcriptPath: transcript,
-        },
-      },
-    }
-    writeSnapshot({
-      dir,
-      state,
-      offset: 0,
-    })
     const info = statSync(transcript)
     const cursors = join(
       dir,
