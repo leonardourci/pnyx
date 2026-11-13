@@ -40,7 +40,17 @@ export interface Request {
   statementTimeoutMs?: number
 }
 
-export type Outcome = { results: Record<string, unknown>[][] } | { error: ErrorDetails }
+export interface QueryTimings {
+  connectionWaitMs: number
+  commitMs: number
+}
+
+export type Outcome = {
+  results: Record<string, unknown>[][]
+  timings: QueryTimings
+} | {
+  error: ErrorDetails
+}
 
 export type Reply = { id: number } & Outcome
 
@@ -234,7 +244,9 @@ export function query({
   url,
   timeoutMs = QUERY_TIMEOUT_MS,
   progress,
+  timed,
 }: {
+  timed?({ timings }: { timings: QueryTimings }): void
   statements: Statement[]
   transaction?: boolean
   rollback?: boolean
@@ -319,6 +331,8 @@ export function query({
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running and configured'],
     })
   }
+
+  timed?.({ timings: reply.timings })
 
   return reply.results
 }

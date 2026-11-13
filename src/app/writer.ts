@@ -4,7 +4,7 @@ import type { HydraState, HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
 import { requireHydra, writableHydra, reloadHydra } from './store.ts'
-import { query, storable } from '#store/postgres.ts'
+import { query, storable, type QueryTimings } from '#store/postgres.ts'
 import { privateDir } from '#store/storage.ts'
 import { hydraDir } from './home-migration.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
@@ -241,8 +241,13 @@ export function withWriter<T>({
       }))
     }
 
+    let timings: QueryTimings | undefined
+
     if (statements.length) {
       query({
+        timed: ({ timings: measured }) => {
+          timings = measured
+        },
         transaction: true,
         statements,
       })
@@ -254,6 +259,8 @@ export function withWriter<T>({
     } of changes) {
       log({
         operation: 'events.write',
+        connectionWaitMs: timings?.connectionWaitMs,
+        commitMs: timings?.commitMs,
         name: stage.pending.at(-1)!.type,
         ms: performance.now() - started,
         hydraId: stage.id,

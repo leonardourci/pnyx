@@ -286,6 +286,28 @@ test(
 )
 
 test(
+  'transaction telemetry reports connection wait and commit separately from statement execution',
+  () => {
+    let timings: import('./postgres.ts').QueryTimings | undefined
+    const started = performance.now()
+    query({
+      transaction: true,
+      statements: [{ text: 'select pg_sleep(0.05)' }],
+      timed: ({ timings: measured }) => {
+        timings = measured
+      },
+    })
+    assert.ok(timings)
+    assert.ok(timings.connectionWaitMs >= 0)
+    assert.ok(timings.commitMs >= 0)
+    assert.ok(
+      performance.now() - started - timings.connectionWaitMs - timings.commitMs >= 40,
+      'statement execution is outside connection and commit timing',
+    )
+  },
+)
+
+test(
   'a database from #378 migrates its queue without losing events or Hydra state',
   async () => {
     const { readFileSync } = await import('node:fs')

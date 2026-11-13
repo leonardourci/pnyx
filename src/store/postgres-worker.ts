@@ -205,7 +205,9 @@ async function execute({
 
 async function run({ request }: { request: Request }): Promise<Outcome> {
   try {
+    const connecting = performance.now()
     const client = await connection()
+    const connectionWaitMs = performance.now() - connecting
 
     if (!request.transaction) {
       const results = []
@@ -217,7 +219,13 @@ async function run({ request }: { request: Request }): Promise<Outcome> {
         }))
       }
 
-      return { results }
+      return {
+        results,
+        timings: {
+          connectionWaitMs,
+          commitMs: 0,
+        },
+      }
     }
 
     await client.query('begin')
@@ -236,9 +244,16 @@ async function run({ request }: { request: Request }): Promise<Outcome> {
         }))
       }
 
+      const committing = performance.now()
       await client.query(request.rollback ? 'rollback' : 'commit')
 
-      return { results }
+      return {
+        results,
+        timings: {
+          connectionWaitMs,
+          commitMs: performance.now() - committing,
+        },
+      }
     } catch (error) {
       // A lost connection fails the rollback too; the caller needs the error that stopped the transaction.
       await client.query('rollback').catch(() => undefined)
