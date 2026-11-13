@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from 'node:fs'
 export interface LogRead {
   events: HydraEvent[]
   transactions: Transaction[]
-  // The file's size as read, torn tail included.
+  // The complete file's size, retained to detect an older writer appending after import.
   bytes: number
 }
 
@@ -79,8 +79,7 @@ function toEvent({
   return e as HydraEvent
 }
 
-// Reads every complete line. Bytes after the last newline are a torn tail left by a crash mid-append and are never
-// parsed; a line named by the repair marker right after it is skipped, whatever it holds.
+// A repaired line is skipped; an incomplete last line is refused so an import cannot lose its events.
 export function readLog({ dir }: { dir: string }): LogRead {
   const path = logPath({ dir })
 
@@ -94,6 +93,15 @@ export function readLog({ dir }: { dir: string }): LogRead {
 
   const buf = readFileSync(path)
   const complete = buf.lastIndexOf(10) + 1
+
+  if (complete !== buf.length) {
+    throw new HydraError({
+      message: `events.jsonl has a torn tail of ${buf.length - complete} bytes at byte ${complete}`,
+      code: 'TORN_TAIL',
+      help: ['Keep a backup and repair the incomplete line before importing this Hydra'],
+    })
+  }
+
   const events: HydraEvent[] = []
   const transactions: Transaction[] = []
   let previous: {

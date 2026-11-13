@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
+import { HydraError } from '#store/errors.ts'
 import { query } from '#store/postgres.ts'
 import { logPath } from '#store/storage.ts'
 import { storedHydra } from '#test-harness/database.ts'
@@ -304,6 +305,36 @@ test(
     assert.equal(
       loadHydra({ hydraId: 'odd' }).state.cards['task-odd']?.title,
       'Fix the� build � now',
+    )
+  },
+)
+
+test(
+  'a torn legacy tail refuses import and reports the bytes without saving any rows',
+  () => {
+    seedLog({
+      hydraId: 'torn',
+      lines: LEGACY_LOG,
+    })
+    const path = logPath({ dir: hydraDir({ hydraId: 'torn' }) })
+    writeFileSync(
+      path,
+      readFileSync(
+        path,
+        'utf8',
+      ) + '{broken',
+    )
+    assert.throws(
+      () => holdHydra({
+        hydraId: 'torn',
+        changed: () => {},
+      }),
+      (error: unknown) => error instanceof HydraError && error.code === 'TORN_TAIL'
+      && error.message.includes('7 bytes'),
+    )
+    assert.deepEqual(
+      query({ statements: [{ text: "select id from hydras where id = 'torn'" }] })[0],
+      [],
     )
   },
 )
