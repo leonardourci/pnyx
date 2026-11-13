@@ -1,8 +1,9 @@
+import { projectFolders, pluginInstallation } from '#workers/tool-scopes.ts'
 import { open, readdir, realpath, stat } from 'node:fs/promises'
 import { skillPrefix } from '#workers/providers.ts'
 import { constants } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
 import type { HydraProject } from '#projects/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -202,32 +203,6 @@ class Reader {
       this.partial = true
     }
   }
-}
-
-async function projectFolders({ cwd }: { cwd: string }): Promise<string[]> {
-  const folders = [cwd]
-
-  for (let here = cwd, depth = 0; depth < 40; depth++) {
-    try {
-      await stat(join(
-        here,
-        '.git',
-      ))
-
-      return folders
-    } catch { /* Worktrees use a .git file. */ }
-
-    const parent = dirname(here)
-
-    if (parent === here) {
-      break
-    }
-
-    folders.push(parent); here = parent
-  }
-
-  // Outside a repository, unrelated ancestor folders are not project scopes.
-  return [cwd]
 }
 
 async function readLocalCatalog({
@@ -730,19 +705,16 @@ async function readLocalCatalog({
         continue
       }
 
-      // Most specific applicable installation wins; never enumerate plugin caches.
-      const entries = raw.map(value => object({ value })).filter(e => typeof e.installPath === 'string' && isAbsolute(e.installPath) && (e.scope === 'user' || ((e.scope === 'project' || e.scope === 'local') && typeof e.projectPath === 'string' && folders.includes(resolve(e.projectPath)))))
-        .sort((
-          a,
-          b,
-        ) => String(b.scope).localeCompare(String(a.scope)))
-      const installation = entries.find(e => e.scope === 'local') ?? entries.find(e => e.scope === 'project') ?? entries[0]
+      const root = pluginInstallation({
+        value: raw,
+        folders,
+      })
 
-      if (!installation) {
+      if (!root) {
         continue
       }
 
-      const root = installation.installPath as string, manifest = await reader.json({
+      const manifest = await reader.json({
         path: join(
           root,
           '.claude-plugin/plugin.json',

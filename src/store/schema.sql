@@ -20,6 +20,13 @@ create table settings (
   value json not null
 );
 
+-- The last upgrade check, so the page's upgrade notice survives a restart.
+create table upgrade_status (
+  id text primary key check (id = 'current'),
+  available boolean not null,
+  checked_at text not null
+);
+
 -- The HydraState fields without a table of their own, one row each. keys and eventIds are rebuilt from cards and
 -- events on load.
 create table hydra_values (

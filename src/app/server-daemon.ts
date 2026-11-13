@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
-import { dirname, join } from 'node:path'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { agentsMidTurn, type QueryFn } from './host.ts'
@@ -14,14 +14,14 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
-import { hydraIds, hydraDir, hydrasDir } from './home-migration.ts'
+import { hydraIds, hydrasDir } from './home-migration.ts'
 import { localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
-import { pollPath, watchPath } from './watch.ts'
+import { watchPath } from './watch.ts'
 import { mirrorSettings, readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
@@ -29,6 +29,8 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { log } from './diagnostics.ts'
 import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
+import { hydraExists } from './store.ts'
+import { query } from '#store/postgres.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -61,6 +63,35 @@ const parseJson = ({ text }: { text: string | null }): unknown => {
     return undefined
   }
 }
+
+function savedUpgradeStatus(): UpgradeStatus | undefined {
+  const [row] = query({ statements: [{ text: 'select available, checked_at from upgrade_status where id = \'current\'' }] })[0] as {
+    available: boolean
+    checked_at: string
+  }[]
+
+  if (!row) {
+    return undefined
+  }
+
+  return {
+    available: row.available,
+    checkedAt: row.checked_at,
+  }
+}
+
+const saveUpgradeStatus = ({ status }: { status: UpgradeStatus }) => query({
+  statements: [
+    {
+      text: `insert into upgrade_status (id, available, checked_at) values ('current', $1, $2)
+        on conflict (id) do update set available = excluded.available, checked_at = excluded.checked_at`,
+      values: [
+        status.available,
+        status.checkedAt,
+      ],
+    },
+  ],
+})
 
 export async function startServer({
   hydraId = 'default',
@@ -112,7 +143,8 @@ export async function startServer({
   const skipped: Record<string, string> = {}
   let closed = false
   let summariesQueued = false, summariesKey = ''
-  let upgradeStatus: UpgradeStatus | undefined
+  // The last upgrade check, kept in Postgres so the page's notice survives a restart.
+  let upgradeStatus = savedUpgradeStatus()
   let zero: ZeroCache | undefined
 
   const hydrasChanged = () => {
@@ -646,26 +678,21 @@ export async function startServer({
     origins.add(`http://${host}`)
   }
 
-  // A directory notification can precede its log, and later filesystem notifications may be lost.
+  // A folder can appear before its Hydra's first write commits; the Hydra is served once it has.
   const watchMissingLog = ({ id }: { id: string }) => {
     if (closed || pendingLogs.has(id)) {
       return
     }
 
-    const path = join(
-      hydraDir({ hydraId: id }),
-      'events.jsonl',
-    )
-
     const stop = () => {
-      watcher.close()
+      clearInterval(timer)
       pendingLogs.delete(id)
     }
 
     const ready = () => background({
-      name: 'Hydra log discovery',
+      name: 'Hydra discovery',
       run: () => {
-        if (closed || !existsSync(path)) {
+        if (closed || !hydraExists({ hydraId: id })) {
           return
         }
 
@@ -678,11 +705,11 @@ export async function startServer({
       id,
       stop,
     )
-    const watcher = pollPath({
-      path,
-      interval: CREATION_POLL_MS,
-      changed: ready,
-    })
+    const timer = setInterval(
+      ready,
+      CREATION_POLL_MS,
+    )
+    timer.unref()
     ready()
   }
 
@@ -840,6 +867,7 @@ export async function startServer({
         available,
         checkedAt: new Date().toISOString(),
       }
+      saveUpgradeStatus({ status: upgradeStatus })
       served.forEach(m => m.upgrade())
     },
   })

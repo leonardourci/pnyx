@@ -1,12 +1,14 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
-import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { acquireLock } from '#store/storage.ts'
+
+export const COPY_LEASE_PREFIX = 'copy-settlement:'
 
 interface Lease {
   actor: string
@@ -29,12 +31,47 @@ const leasePath = ({
   `helper-lease-${encodeURIComponent(task)}.json`,
 )
 
+// Only the server settles copies, so a settlement lease it finds when it mounts a Hydra was left by a server that stopped mid-settlement.
+export function dropCopyLeases({ hydraId }: { hydraId: string }): void {
+  const dir = hydraDir({ hydraId })
+  const unlock = acquireLock({ dir })
+
+  try {
+    for (const name of readdirSync(dir).filter(name => name.startsWith('helper-lease-') && name.endsWith('.json'))) {
+      const path = join(
+        dir,
+        name,
+      )
+      let actor: unknown
+
+      try {
+        actor = JSON.parse(readFileSync(
+          path,
+          'utf8',
+        )).actor
+      } catch {
+        // An unreadable lease is not provably a settlement's, so it stays.
+        continue
+      }
+
+      // Its holder's pid may belong to any process by now, so liveness is not checked.
+      if (typeof actor === 'string' && actor.startsWith(COPY_LEASE_PREFIX)) {
+        rmSync(path)
+      }
+    }
+  } finally {
+    unlock()
+  }
+}
+
 export function taskLeasePresent({
   hydraId,
   task,
+  actorPrefix,
 }: {
   hydraId: string
   task: string
+  actorPrefix?: string
 }): boolean {
   const path = leasePath({
     dir: hydraDir({ hydraId }),
@@ -55,10 +92,12 @@ export function taskLeasePresent({
       return true
     }
 
-    return readLease({
+    const lease = readLease({
       path,
       cleanup: false,
-    }) !== undefined
+    })
+
+    return lease !== undefined && (actorPrefix === undefined || lease.actor.startsWith(actorPrefix))
   } catch {
     // Unknown ownership must never authorize an automatic resend.
     return true
@@ -176,16 +215,19 @@ export function taskLease({
   hydraId,
   task,
   actor,
+  message = false,
   pid = process.pid,
   lockTimeout,
 }: {
   hydraId: string
   task: string
   actor: string
+  message?: boolean
   pid?: number
   lockTimeout?: number
 }): () => void {
   const holder = randomUUID()
+  let owner = actor
   const dir = hydraDir({ hydraId })
   const unlock = acquireLock({
     dir,
@@ -199,7 +241,13 @@ export function taskLease({
     })
     const lease = readLease({ path })
 
-    if (lease && lease.actor !== actor) {
+    const copyHeld = message && lease?.actor.startsWith(COPY_LEASE_PREFIX)
+
+    if (message && lease && !copyHeld) {
+      owner = lease.actor
+    }
+
+    if (lease && (lease.actor !== owner || copyHeld)) {
       throw new HydraError({
         message: `Task ${task} is being handled by ${lease.actor}; try again after its turn ends`,
         code: 'TASK_LEASED',
@@ -227,7 +275,7 @@ export function taskLease({
     writeLease({
       path,
       lease: {
-        actor,
+        actor: owner,
         holders,
       },
     })
@@ -239,7 +287,7 @@ export function taskLease({
     releaseTask({
       hydraId,
       task,
-      actor,
+      actor: owner,
       holder,
       lockTimeout,
     })
