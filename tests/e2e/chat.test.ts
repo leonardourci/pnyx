@@ -220,8 +220,7 @@ test(
   },
 )
 
-// Skipped until the jump is fixed (task-d772c98a-f35e-459b-9924-80cbe1466028): today the rows in view move about one exchange when the page lands.
-test.skip(
+test(
   'an older page that lands while the owner holds still at the top leaves what they read in place',
   async () => {
     const hydra = await longConversation()
