@@ -317,6 +317,7 @@ test(
       what: 'the restore visibility write',
       check: () => held.length === 1,
     })
+    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
     held.shift()!()
     await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
     await page.close()
