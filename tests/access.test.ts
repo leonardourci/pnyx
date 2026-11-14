@@ -138,59 +138,286 @@ test(
   },
 )
 
-// task-8178f4ca: a worker can still declare on another task; remove the skip when that is fixed.
-test.skip(
-  'a worker\'s declaration on another task is refused and leaves that task unchanged',
+test(
+  'a worker\'s pnyx-axi writes only to its own task: other tasks, settings, rules, accounts and moves are refused, its own status, question and link work, and Hydra and the owner keep their rights',
   async () => {
     const hydra = await pnyx.hydra()
-    const folder = hydra.folder({ name: 'mine' })
-
-    for (const key of [
-      'mine',
-      'other',
-    ]) {
-      await hydra.owner({
-        args: [
-          'task',
-          'create',
-          '--title',
-          key,
-          '--key',
-          key,
-          ...key === 'mine' ? [
-            '--folder',
-            folder,
-          ] : [],
-        ],
-      })
-    }
-
+    const { worker } = await hydra.startTask({ key: 'mine' })
     await hydra.owner({
       args: [
         'task',
-        'start',
-        'mine',
+        'create',
+        '--title',
+        'Other task',
+        '--key',
+        'other',
+        '--folder',
+        hydra.folder({ name: 'other' }),
       ],
     })
-    const worker = await hydra.agent({ cwd: folder })
-
-    await hydra.as({ session: worker }).refused({
+    const mine = await hydra.task({ key: 'mine' })
+    const other = await hydra.task({ key: 'other' })
+    const asWorker = hydra.as({ session: worker })
+    expect(worker.env.PNYX_ACTOR).toBe(`worker:${mine.id}`)
+    const otherStatus = other.status
+    const fontSize = (await hydra.owner({
       args: [
+        'settings',
+        'show',
+      ],
+    })).settings.fontSize
+    const done = await hydra.column({ role: 'done' })
+
+    const refused = {
+      'status on another task': [
         'task',
         'status',
         'other',
         'done',
         '--note',
-        'Finished by someone else',
+        'not mine',
+      ],
+      'status on another task by id': [
+        'task',
+        'status',
+        other.id,
+        'done',
+      ],
+      'status on another task claiming to be Hydra': [
+        'task',
+        'status',
+        'other',
+        'done',
+        '--actor',
+        'hydra',
+        '--reason',
+        'not mine',
+      ],
+      'status on another task claiming to be its worker': [
+        'task',
+        'status',
+        'other',
+        'done',
+        '--actor',
+        `worker:${other.id}`,
+      ],
+      'status on its own task claiming to be the owner': [
+        'task',
+        'status',
+        'mine',
+        'done',
+        '--actor',
+        'web',
+      ],
+      'status through apply': [
+        'apply',
+        '--json',
+        '{}',
+      ],
+      'a question on another task': [
+        'task',
+        'ask',
+        'other',
+        '--question',
+        'Which one?',
+      ],
+      'a link on another task': [
+        'link',
+        'other',
+        '--url',
+        'https://example.test/pull/1',
+      ],
+      'a message about another task': [
+        'hydra',
+        'send',
+        '--task',
+        'other',
+        '--kind',
+        'progress',
+        '--text',
+        'not mine',
+      ],
+      'a move of another task': [
+        'move',
+        'other',
+        done,
+      ],
+      'a move of its own card': [
+        'move',
+        'mine',
+        done,
+      ],
+      'settings set': [
+        'settings',
+        'set',
+        '--json',
+        '{"fontSize":19}',
+      ],
+      'settings set claiming to be Hydra': [
+        'settings',
+        'set',
+        '--json',
+        '{"fontSize":19}',
+        '--actor',
+        'hydra',
+        '--reason',
+        'not mine',
+      ],
+      'a rule change': [
+        'rule',
+        'remove',
+        'build',
+      ],
+      'an account change': [
+        'account',
+        'remove',
+        'main',
+      ],
+      'an outcome': [
+        'outcome',
+        'other',
+        'done',
+      ],
+      'creating a task': [
+        'task',
+        'create',
+        '--title',
+        'Another',
+      ],
+    }
+
+    for (const [
+      what,
+      args,
+    ] of Object.entries(refused)) {
+      const refusal = await asWorker.refused({ args })
+      expect(
+        refusal.code,
+        what,
+      ).toBe('WORKER_SCOPE')
+      expect(
+        refusal.error,
+        what,
+      ).toMatch(/own task|is not a worker's command|--actor/)
+    }
+
+    expect((await hydra.task({ key: 'other' })).status).toBe(otherStatus)
+    expect((await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })).settings.fontSize).toBe(fontSize)
+
+    await asWorker.run({
+      args: [
+        'task',
+        'status',
+        'mine',
+        'working',
+        '--note',
+        'On it',
       ],
     })
-    expect((await hydra.owner({
+    expect((await hydra.task({ key: 'mine' })).status).toBe('working: On it')
+    await asWorker.run({
+      args: [
+        'task',
+        'status',
+        mine.id,
+        'working',
+        '--note',
+        'Still on it',
+        '--actor',
+        `worker:${mine.id}`,
+      ],
+    })
+    await asWorker.run({
+      args: [
+        'task',
+        'ask',
+        'mine',
+        '--question',
+        'Which parser?',
+      ],
+    })
+    expect((await hydra.task({ key: 'mine' })).questionCount).toBe(1)
+    await asWorker.run({
+      args: [
+        'link',
+        'mine',
+        '--url',
+        'https://github.com/example/repo/pull/1',
+      ],
+    })
+    await asWorker.run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'mine',
+        '--kind',
+        'progress',
+        '--text',
+        'Halfway',
+      ],
+    })
+    await asWorker.run({
       args: [
         'task',
         'show',
         'other',
       ],
-    })).task.status).not.toContain('done')
+    })
+    await asWorker.run({
+      args: [
+        'settings',
+        'show',
+      ],
+    })
+
+    const hydraSession = await hydra.chat({ text: 'Pause the other task and make the text bigger.' })
+    const asHydra = hydra.as({ session: hydraSession })
+    await asHydra.run({
+      args: [
+        'task',
+        'status',
+        'other',
+        'paused',
+        '--note',
+        'Hydra paused it',
+        '--reason',
+        'the owner asked',
+      ],
+    })
+    expect((await hydra.task({ key: 'other' })).status).toBe('paused: Hydra paused it')
+    await asHydra.run({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"fontSize":19}',
+        '--reason',
+        'the owner asked',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })).settings.fontSize).toBe(19)
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'other',
+        'paused',
+        '--note',
+        'Owner paused it',
+      ],
+    })
+    expect((await hydra.task({ key: 'other' })).status).toBe('paused: Owner paused it')
   },
 )
 
