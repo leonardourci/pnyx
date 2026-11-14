@@ -87,7 +87,6 @@ export function hydraMessages({
       provider,
     })
   })
-  const remaining = [...transcript]
   const normalized = ({ text }: { text: string }) => text.trim().replace(
     /\s+/g,
     ' ',
@@ -101,53 +100,71 @@ export function hydraMessages({
   ]))
 
   // A copy is known by what Pnyx delivered: reports never show, the owner's own words always do.
-  for (const message of messages) {
-    const report = reportActor({ actor: message.actor })
-    const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
+  const deliveredWords = ({ message }: { message: HydraMessage }) => {
     const text = message.details ? `${message.text}\n\n${message.details}` : message.text
-    const entered = message.enteredText ?? message.text
-    const shown = message.details ? `${entered}\n\n${message.details}` : entered
     const sent = message.context ? `${text}\n\n${message.context}` : text
-    // An older server delivered a report as its bare words.
-    const reportCopies = [
+    // An older server delivered a report as its bare words; the transcript reader drops harness markup the owner quoted.
+    const delivered = reportActor({ actor: message.actor }) ? [
       hydraDelivery({ message }),
       text,
       sent,
-    ]
-    // The transcript reader drops harness markup the owner quoted.
-    const ownerCopies = [
+    ] : [
       text,
       sent,
       withoutInjected({ text }),
       withoutInjected({ text: sent }),
     ]
-    const delivered = report ? reportCopies : ownerCopies
-    const copies = new Set(delivered.map(copy => normalized({ text: copy })))
-    const match = role === 'user' ? remaining.findIndex(entry => {
-      const copy = ownCopies.get(entry)
 
-      return copy !== undefined && copies.has(copy)
-    }) : -1
+    return new Set(delivered.map(copy => normalized({ text: copy })))
+  }
 
-    if (match >= 0) {
-      const [entry] = remaining.splice(
-        match,
-        1,
+  // The newest message claims the newest copy sent after it, so a stopped one cannot take its resend's copy.
+  const claims = new Map<HydraMessage, ThreadEntry>(), claimed = new Set<ThreadEntry>()
+
+  for (const message of messages.toReversed()) {
+    if (message.actor === HYDRA_ACTOR || message.actor === 'pnyx' || message.stopped) {
+      continue
+    }
+
+    const copies = deliveredWords({ message })
+    const copy = transcript.findLast(entry => {
+      const words = ownCopies.get(entry)
+
+      return !claimed.has(entry) && words !== undefined && copies.has(words)
+        && (entry.at === undefined || entry.at >= message.at)
+    })
+
+    if (copy) {
+      claimed.add(copy)
+      claims.set(
+        message,
+        copy,
       )
+    }
+  }
 
+  for (const message of messages) {
+    const report = reportActor({ actor: message.actor })
+    const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
+    const copies = deliveredWords({ message })
+    const entered = message.enteredText ?? message.text
+    const shown = message.details ? `${entered}\n\n${message.details}` : entered
+    const entry = claims.get(message)
+
+    if (entry) {
       if (report) {
-        replaced.add(entry!)
+        replaced.add(entry)
 
         if (boundaries) {
           recorded.push({
-            ...entry!,
+            ...entry,
             text: '',
             hidden: true,
           })
         }
       } else {
         const copy: ThreadEntry = {
-          ...entry!,
+          ...entry,
           reference: message.id,
           text: shown,
         }
@@ -161,12 +178,12 @@ export function hydraMessages({
             message,
             entry: copy,
             copies,
-            copy: ownCopies.get(entry!),
+            copy: ownCopies.get(entry),
           })
         }
 
         rewritten.set(
-          entry!,
+          entry,
           copy,
         )
       }
