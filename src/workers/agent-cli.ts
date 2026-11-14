@@ -3,7 +3,6 @@ import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, settingRequest } from './controls.ts'
 import { replyRoute } from './reply-route.ts'
-import { fastWord } from './transcript-content.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { askHost } from '#app/server-state.ts'
@@ -194,9 +193,7 @@ export const agent = guard({
           at: new Date().toISOString(),
         })
 
-        const stored = writer.state.cards[card.id]?.settings?.[setting]
-
-        return setting === 'fast' ? fastWord({ value: stored }) : stored
+        return writer.state.cards[card.id]?.settings?.[setting]
       },
     })
     const before = settled()

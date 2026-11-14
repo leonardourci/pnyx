@@ -1,3 +1,4 @@
+import { fastWord } from './transcript-content.ts'
 import type { ReplyRoute } from './reply-route.ts'
 
 export const KEYS = [
@@ -455,8 +456,11 @@ export function confirms({
     return false
   }
 
+  // Fast is stored as true or false; the control's values are the owner's on and off.
+  const seen = control.setting === 'fast' ? fastWord({ value: after }) : after
+
   switch (control.confirm) {
-    case 'equals': return after === option.value
+    case 'equals': return seen === option.value
     case 'includes': return after.includes(option.value)
     default: return after !== before
   }
