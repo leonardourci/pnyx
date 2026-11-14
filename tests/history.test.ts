@@ -39,12 +39,47 @@ const replyAfter = ({ k }: { k: number }) => 1 + Math.floor(k * (EVENTS - 1) / R
 
 const inGap = ({ k }: { k: number }) => k >= GAP.from && k < GAP.to
 
-async function longHydra(): Promise<Fixture> {
-  if (fixture) {
-    return fixture
+// Events a second apart from 2099-01-01, a task brief every BRIEF_EVERY of them.
+function insertEvents({
+  hydraId,
+  first,
+  card,
+  count,
+}: {
+  hydraId: string
+  first: number
+  card: string
+  count: number
+}) {
+  // Several statements, so a loaded machine never pushes one past the statement limit.
+  for (let start = 1; start <= count; start += INSERT_BATCH) {
+    rows({
+      text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+      select $1::text, $2::bigint + n, 'bulk' || n, kind, at, 'hook:claude', $3::text, json_build_object('v', 1,
+        'id', 'bulk' || n, 'seq', $2::bigint + n, 'type', kind, 'cardId', $3::text, 'actor', 'hook:claude', 'at', at,
+        'data', case kind when 'task.brief' then json_build_object('before', 'bulk ' || (n - 1), 'after', 'bulk ' || n)
+          else json_build_object('before', false, 'after', false) end)
+      from generate_series($4::integer, $6::integer) as n,
+        lateral (select to_char(timestamp '2099-01-01' + n * interval '1 second', 'YYYY-MM-DD"T"HH24:MI:SS.000"Z"') as at,
+          case when n % $5::integer = 0 then 'task.brief' else 'task.visibility' end as kind) as time`,
+      values: [
+        hydraId,
+        first,
+        card,
+        start,
+        BRIEF_EVERY,
+        Math.min(
+          start + INSERT_BATCH - 1,
+          count,
+        ),
+      ],
+    })
   }
+}
 
-  const hydra = await pnyx.hydra({ id: 'long' })
+// A Hydra that has answered once, with a task to hang bulk events on and the path of its transcript.
+async function seededHydra({ id }: { id: string }) {
+  const hydra = await pnyx.hydra({ id })
   pnyx.claude.plan({
     hydra: hydra.id,
     text: 'hello',
@@ -77,32 +112,34 @@ async function longHydra(): Promise<Fixture> {
   })
   const first = Number(last)
 
+  return {
+    hydra,
+    busy,
+    transcript,
+    first,
+  }
+}
+
+async function longHydra(): Promise<Fixture> {
+  if (fixture) {
+    return fixture
+  }
+
+  const {
+    hydra,
+    busy,
+    transcript,
+    first,
+  } = await seededHydra({ id: 'long' })
+
   await pnyx.restart({
     whileStopped: () => {
-      // Several statements, so a loaded machine never pushes one past the statement limit.
-      for (let start = 1; start <= EVENTS; start += INSERT_BATCH) {
-        rows({
-          text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
-          select $1::text, $2::bigint + n, 'bulk' || n, kind, at, 'hook:claude', $3::text, json_build_object('v', 1,
-            'id', 'bulk' || n, 'seq', $2::bigint + n, 'type', kind, 'cardId', $3::text, 'actor', 'hook:claude', 'at', at,
-            'data', case kind when 'task.brief' then json_build_object('before', 'bulk ' || (n - 1), 'after', 'bulk ' || n)
-              else json_build_object('before', false, 'after', false) end)
-          from generate_series($4::integer, $6::integer) as n,
-            lateral (select to_char(timestamp '2099-01-01' + n * interval '1 second', 'YYYY-MM-DD"T"HH24:MI:SS.000"Z"') as at,
-              case when n % $5::integer = 0 then 'task.brief' else 'task.visibility' end as kind) as time`,
-          values: [
-            hydra.id,
-            first,
-            busy,
-            start,
-            BRIEF_EVERY,
-            Math.min(
-              start + INSERT_BATCH - 1,
-              EVENTS,
-            ),
-          ],
-        })
-      }
+      insertEvents({
+        hydraId: hydra.id,
+        first,
+        card: busy,
+        count: EVENTS,
+      })
 
       rows({
         text: 'update hydras set seq = (select max(seq) from events where hydra_id = $1) where id = $1',
@@ -294,6 +331,17 @@ test(
   120_000,
 )
 
+// Six hundred replies numbered 1000 to 1599, each once and in order.
+function expectRun({ numbers }: { numbers: string[] }) {
+  expect(numbers).toHaveLength(600)
+  expect(numbers[0]).toBe('1000')
+  expect(numbers.at(-1)).toBe('1599')
+  expect(numbers.every((
+    value,
+    index,
+  ) => index === 0 || Number(value) - Number(numbers[index - 1]) === 1)).toBe(true)
+}
+
 test(
   'a message lookup reads the replies around a reference and a range of the long thread in both directions',
   async () => {
@@ -343,13 +391,6 @@ test(
       '--limit',
       '60',
     ]
-    const expected = Array.from(
-      { length: 600 },
-      (
-        _,
-        index,
-      ) => String(1000 + index),
-    )
     const numbers = ({ page }: { page: Output }) => page.messages
       .map((message: { text: string }) => /reply-(\d+)/.exec(message.text)![1])
 
@@ -378,7 +419,7 @@ test(
       fromNewest.unshift(...numbers({ page: older }))
     }
 
-    expect(fromNewest).toEqual(expected)
+    expectRun({ numbers: fromNewest })
 
     let newer = await hydra.owner({
       args: [
@@ -403,7 +444,7 @@ test(
       fromOldest.push(...numbers({ page: newer }))
     }
 
-    expect(fromOldest).toEqual(expected)
+    expectRun({ numbers: fromOldest })
 
     const acrossBack = await hydra.owner({
       args: [
@@ -462,6 +503,118 @@ test(
       '2000',
       '2001',
     ])
+  },
+  120_000,
+)
+
+// Replies far denser than the log, each a few milliseconds after the one before it: more in one window of positions than a read keeps, so it halves the range.
+const DENSE_EVENTS = 600
+const DENSE_REPLIES = 5_000
+
+test(
+  'a message lookup reads a transcript denser than one read keeps in both directions, each reply once and in order',
+  async () => {
+    const {
+      hydra,
+      busy,
+      transcript,
+      first,
+    } = await seededHydra({ id: 'dense' })
+
+    await pnyx.restart({
+      whileStopped: () => {
+        insertEvents({
+          hydraId: hydra.id,
+          first,
+          card: busy,
+          count: DENSE_EVENTS,
+        })
+        rows({
+          text: 'update hydras set seq = (select max(seq) from events where hydra_id = $1) where id = $1',
+          values: [hydra.id],
+        })
+
+        let lines = ''
+        let previous = 0
+        let inside = 0
+
+        for (let k = 0; k < DENSE_REPLIES; k++) {
+          const after = 1 + Math.floor(k * (DENSE_EVENTS - 1) / DENSE_REPLIES)
+          inside = after === previous ? inside + 1 : 0
+          previous = after
+          lines += `${JSON.stringify({
+            type: 'assistant',
+            timestamp: new Date(BASE + after * 1000 + 10 * (1 + inside)).toISOString(),
+            message: {
+              role: 'assistant',
+              content: `reply-${k} end`,
+            },
+          })}\n`
+        }
+
+        appendFileSync(
+          transcript,
+          lines,
+        )
+      },
+    })
+
+    const numbers = ({ page }: { page: Output }) => page.messages
+      .map((message: { text: string }) => Number(/reply-(\d+)/.exec(message.text)![1]))
+
+    const pageThrough = async ({ direction }: { direction: 'older' | 'newer' }) => {
+      const found: number[] = []
+      let page = await hydra.owner({
+        args: [
+          'hydra',
+          'message',
+          '--from',
+          '2099-01-01T00:00:00.000Z',
+          '--limit',
+          '60',
+          '--direction',
+          direction,
+        ],
+      })
+
+      for (;;) {
+        found.push(...direction === 'older' ? numbers({ page }).reverse() : numbers({ page }))
+
+        const cursor = direction === 'older' ? page.older : page.newer
+
+        if (!cursor) {
+          break
+        }
+
+        page = await hydra.owner({
+          args: [
+            'hydra',
+            'message',
+            '--cursor',
+            cursor,
+            '--limit',
+            '60',
+          ],
+        })
+      }
+
+      return direction === 'older' ? found.reverse() : found
+    }
+
+    for (const direction of [
+      'newer',
+      'older',
+    ] as const) {
+      const found = await pageThrough({ direction })
+
+      expect(found).toHaveLength(5000)
+      expect(found[0]).toBe(0)
+      expect(found.at(-1)).toBe(4999)
+      expect(found.every((
+        value,
+        index,
+      ) => index === 0 || value - found[index - 1] === 1)).toBe(true)
+    }
   },
   120_000,
 )
