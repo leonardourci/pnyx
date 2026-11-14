@@ -38,9 +38,9 @@ export function messageWindow({
   hi: number
   toward?: 'lo' | 'hi'
 }): MessageWindow {
-  let read: SessionEntry[]
+  let read: SessionEntry[] | undefined
 
-  for (;;) {
+  while (!read) {
     const start = lo > 0 ? eventTime({
       hydraId,
       seq: lo,
@@ -53,7 +53,7 @@ export function messageWindow({
     if (end === undefined || sources.length === 0) {
       read = []
 
-      break
+      continue
     }
 
     const single = hi - lo <= 1
@@ -67,7 +67,7 @@ export function messageWindow({
     if (!window.exceeded) {
       read = window.entries
 
-      break
+      continue
     }
 
     const half = Math.ceil((hi - lo) / 2)
