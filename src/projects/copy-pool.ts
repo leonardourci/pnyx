@@ -131,6 +131,7 @@ export const checkout = async ({
       args: [
         'checkout',
         '--quiet',
+        '--no-track',
         '-b',
         branch,
         start,

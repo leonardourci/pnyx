@@ -25,6 +25,7 @@
     "src",
     "scripts",
     "eslint",
-    "e2e"
+    "tests",
+    "vitest.config.ts"
   ]
 }

@@ -47,7 +47,7 @@ import { loadHydra } from './store.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, steeringAssignment, closedTask, closedByWorker, toolApplicationReady } from '#workers/host.ts'
+import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, untrackedBranches, steeringAssignment, closedTask, closedByWorker, toolApplicationReady } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
@@ -504,6 +504,7 @@ export function createHost({
     } : task ? {
       PNYX_ACTOR: `worker:${task}`,
       PNYX_STEERING_WORKER: steeringWorker,
+      ...untrackedBranches({ env: process.env }),
     } : {}),
   })
 
