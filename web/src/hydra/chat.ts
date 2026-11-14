@@ -2,6 +2,7 @@ import { messageLookupCommand } from '#hydra/message-reference.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import type { HydraStatus } from '#hydra/model.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
+import type { Compaction } from '#workers/compaction/model.ts'
 
 export interface ChatComment {
   id: string
@@ -445,4 +446,55 @@ export function withTimedRows<Row extends Pick<ThreadEntry, 'at'>>({
     ...merged,
     ...pending,
   ]
+}
+
+// Pnyx's notices sit in the timeline at their moment, so one older than the loaded rows waits until its page loads.
+export function noticesInTimeline<Notice>({
+  notices,
+  at,
+  rows,
+  older,
+}: {
+  notices: Notice[]
+  at({ notice }: { notice: Notice }): string
+  rows: Pick<ThreadEntry, 'at'>[]
+  older: boolean
+}): Notice[] {
+  const oldest = rows[0]?.at
+
+  if (!older) {
+    return notices
+  }
+
+  return notices.filter(notice => oldest !== undefined && at({ notice }) >= oldest)
+}
+
+// Compactions between the same two rows form one run; one still running stays on its own line.
+export function compactionRuns({
+  operations,
+  rows,
+}: {
+  operations: Compaction[]
+  rows: Pick<ThreadEntry, 'at'>[]
+}): Compaction[][] {
+  const runs: Compaction[][] = []
+  let gap: number | undefined
+  let settled = false
+
+  for (const operation of operations) {
+    const later = rows.findIndex(row => (row.at ?? '') > operation.startedAt)
+    const here = later === -1 ? rows.length : later
+    const done = operation.state !== 'running'
+
+    if (here === gap && done && settled) {
+      runs.at(-1)!.push(operation)
+    } else {
+      runs.push([operation])
+    }
+
+    gap = here
+    settled = done
+  }
+
+  return runs
 }

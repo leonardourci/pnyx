@@ -22,7 +22,7 @@ import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { WaitingDecisions } from '#web-tasks/waiting-decisions.tsx'
 import { UpgradeRow } from '#web-upgrade/upgrade-row.tsx'
-import { CompactionQueue,CompactionRow } from '#web-workers/compaction.tsx'
+import { CompactionQueue,CompactionRow,CompactionRun } from '#web-workers/compaction.tsx'
 import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
@@ -33,7 +33,7 @@ import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { hydraDown,keepStreamedKeys,quoteInto,withTimedRows,type ChatComment } from './chat.ts'
+import { compactionRuns,hydraDown,keepStreamedKeys,noticesInTimeline,quoteInto,withTimedRows,type ChatComment } from './chat.ts'
 import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
 import { MESSAGE_SCROLL, centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
@@ -396,14 +396,37 @@ export function HydraChat({
     />,
   ]))
 
-  for (const operation of compactOperations) {
+  const loadedCompactions = noticesInTimeline({
+    notices: compactOperations,
+    at: ({ notice }) => notice.startedAt,
+    rows: chat.entries,
+    older: olderCursor !== undefined,
+  })
+  const compactionUnits = compactionRuns({
+    operations: loadedCompactions,
+    rows: chat.entries,
+  })
+
+  const compactionId = ({ unit }: { unit: typeof compactionUnits[number] }) =>
+    `${unit.length > 1 ? 'compact-run' : 'compact'}:${unit[0]!.id}`
+
+  for (const unit of compactionUnits) {
+    const first = unit[0]!
     inline.set(
-      `compact:${operation.id}`,
-      <CompactionRow key={operation.id} operation={operation} />,
+      compactionId({ unit }),
+      unit.length > 1 ? <CompactionRun key={first.id} operations={unit} />
+        : <CompactionRow key={first.id} operation={first} />,
     )
   }
 
-  for (const operation of shownUpgrades) {
+  const loadedUpgrades = noticesInTimeline({
+    notices: shownUpgrades,
+    at: ({ notice }) => notice.startedAt ?? notice.queuedAt,
+    rows: chat.entries,
+    older: olderCursor !== undefined,
+  })
+
+  for (const operation of loadedUpgrades) {
     inline.set(
       `upgrade:${operation.id}`,
       <UpgradeRow
@@ -431,14 +454,14 @@ export function HydraChat({
   const listed: ChatEntry[] = withTimedRows({
     rows: chat.entries,
     timed: [
-      ...compactOperations.map(operation => ({
-        id: `compact:${operation.id}`,
+      ...compactionUnits.map(unit => ({
+        id: compactionId({ unit }),
         kind: 'message' as const,
         role: 'Pnyx',
         text: '',
-        at: operation.startedAt,
+        at: unit[0]!.startedAt,
       })),
-      ...shownUpgrades.map(operation => ({
+      ...loadedUpgrades.map(operation => ({
         id: `upgrade:${operation.id}`,
         kind: 'message' as const,
         role: 'Pnyx',
@@ -1103,6 +1126,11 @@ export function HydraChat({
         >
           <div className="hydra-stream" ref={content}>
             {olderCursor && <div ref={olderMarker} className="hydra-older" aria-hidden="true" />}
+            {loadingEarlier && (
+              <div className="hydra-loading" role="status" aria-label="Loading earlier messages">
+                <span className="hydra-spinner" aria-hidden="true" />
+              </div>
+            )}
             <Messages
               catalog={catalog}
               labelColors={state.labelColors}
