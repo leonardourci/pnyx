@@ -635,7 +635,7 @@ const resizeLoopErrors = ({ page }: { page: Page }) => page.evaluate(
 const WATCHED_FRAMES = 120
 
 test(
-  'resting at the bottom of a long chat during a live turn reads no older page and keeps the view still',
+  'resting at the bottom of a long chat during a live turn reads no older page and keeps the view still, and a reply landing while the owner reads further up leaves the rows in view in place with no ResizeObserver loop error',
   async () => {
     const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
     const {
@@ -649,7 +649,7 @@ test(
     const turn = pnyx.claude.plan({
       hydra: hydra.id,
       text: 'one more',
-      reply: 'A longer reply that streams in while the owner watches the bottom of the chat.',
+      reply: 'A longer reply that streams in while the owner reads further up.',
       partial: 'A longer reply that streams in',
       hold: true,
     })
@@ -670,42 +670,10 @@ test(
       page,
       frames: WATCHED_FRAMES,
     })
-    turn.release()
 
     expect(reads).toHaveLength(0)
     expect(steps).toHaveLength(1)
-    expect(await resizeLoopErrors({ page })).toBe(0)
-  },
-)
 
-test(
-  'a reply that lands while the owner reads further up a long chat leaves the rows in view in place and raises no ResizeObserver loop error',
-  async () => {
-    const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
-    const {
-      page,
-    } = await openCounted({
-      hydraId: hydra.id,
-      height: RECENT_PAGES_IN_RANGE,
-    })
-    const conversation = page.locator(CONVERSATION)
-    const turn = pnyx.claude.plan({
-      hydra: hydra.id,
-      text: 'one more',
-      reply: 'A longer reply that streams in while the owner reads further up.',
-      partial: 'A longer reply that streams in',
-      hold: true,
-    })
-    await conversation.getByText(
-      'question 16',
-      { exact: true },
-    ).waitFor()
-    await page.fill(
-      COMPOSER,
-      'one more',
-    )
-    await page.click('[aria-label="Send reply"]')
-    await conversation.getByText('A longer reply that streams in').waitFor()
     await conversation.hover()
     await page.mouse.wheel(
       0,
@@ -718,7 +686,6 @@ test(
     })
     const before = await view({ page })
 
-    // The reply lands and streams out while the owner reads on.
     turn.release()
     await watchFrames({
       page,
@@ -734,7 +701,7 @@ test(
       expect(Math.abs(after.rows[id]! - before.rows[id]!)).toBeLessThanOrEqual(3)
     }
 
-    // Since the page opened: the stream starting, the reply landing and the owner scrolling up.
+    // Since the page opened: the stream starting, resting at the bottom, scrolling up and the reply landing.
     expect(await resizeLoopErrors({ page })).toBe(0)
   },
 )
