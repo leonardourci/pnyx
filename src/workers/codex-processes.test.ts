@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { spawn } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { codexProvider } from './codex.ts'
+import { inbox } from '#hydra/update-queue.ts'
+import { until } from '#test-harness/harness.ts'
 import { once } from 'node:events'
 import { codexProcesses } from './codex-processes.ts'
 
@@ -97,12 +103,203 @@ test(
       background,
       0,
     ))
+    await until({
+      what: 'foreground process reaped',
+      check: () => {
+        try {
+          process.kill(
+            foreground,
+            0,
+          )
+
+          return false
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+            return true
+          }
+
+          throw error
+        }
+      },
+    })
     assert.throws(
       () => process.kill(
         foreground,
         0,
       ),
       { code: 'ESRCH' },
+    )
+  },
+)
+
+test(
+  'Codex Stop consumes native command arrays and kills only unfinished foreground processes',
+  async t => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-codex-processes-',
+    ))
+    const session = await codexProvider({
+      spawnCodex: ({
+        cwd,
+        env,
+      })=>spawn(
+        process.execPath,
+        [
+          join(
+            import.meta.dirname,
+            'fixtures/codex-stop.mjs',
+          ),
+        ],
+        {
+          cwd,
+          env,
+          stdio:'pipe',
+        },
+      ),
+    }).open({
+      cwd:root,
+      settings:{},
+      env:{},
+      signal:new AbortController().signal,
+    })
+    const input=inbox()
+
+    const messages=async function*(){
+      for await(const message of input){
+        yield{
+          id:message.id!,
+          text:message.text,
+          images:[],
+        }
+      }
+    }
+
+    const consume=async()=>{
+      for await(const event of session.run({
+        input:messages(),
+        permission:async()=>({
+          behavior:'deny',
+          message:'unused',
+        }),
+      })){
+        if(typeof event==='object' && event.type==='turn-ended') {
+          assert.equal(
+            event.outcome.status,
+            'interrupted',
+          )
+        }
+      }
+    }
+
+    const done=consume()
+    t.after(async()=>{
+      input.end();session.close();await done;rmSync(
+        root,
+        {
+          recursive:true,
+          force:true,
+        },
+      )
+    })
+    input.push({
+      id:'command-array',
+      text:'Run the synthetic foreground command',
+    })
+    await until({
+      what:'native foreground starts',
+      check:()=>existsSync(join(
+        root,
+        'pids.json',
+      )) && existsSync(join(
+        root,
+        'started',
+      )) && session.snapshot().work.runningTurns.length === 1,
+    })
+    const pids=JSON.parse(readFileSync(
+      join(
+        root,
+        'pids.json',
+      ),
+      'utf8',
+    )) as {
+      earlier:number
+      background:number
+      foreground:number
+      action:number
+    }
+    await session.interrupt()
+    await until({
+      what:'interrupted outcome',
+      check:()=>session.snapshot().outcome?.status === 'interrupted',
+    })
+    assert.equal(
+      session.snapshot().outcome?.stoppedProcesses?.includes(pids.foreground),
+      true,
+    )
+    await until({
+      what:'foreground process exits',
+      check:()=>{
+        try{
+          process.kill(
+            pids.foreground,
+            0,
+          )
+
+          return false
+        }catch(error){
+          if((error as NodeJS.ErrnoException).code==='ESRCH'){
+            return true
+          }
+
+          throw error
+        }
+      },
+    })
+    assert.equal(
+      session.snapshot().outcome?.stoppedProcesses?.includes(pids.action),
+      true,
+    )
+    await until({
+      what:'action process exits',
+      check:()=>{
+        try{
+          process.kill(
+            pids.action,
+            0,
+          )
+
+          return false
+        }catch(error){
+          if((error as NodeJS.ErrnoException).code==='ESRCH'){
+            return true
+          }
+
+          throw error
+        }
+      },
+    })
+    assert.equal(
+      existsSync(join(
+        root,
+        'completed-action',
+      )),
+      false,
+    )
+    assert.doesNotThrow(()=>process.kill(
+      pids.earlier,
+      0,
+    ))
+    assert.doesNotThrow(()=>process.kill(
+      pids.background,
+      0,
+    ))
+    assert.equal(
+      existsSync(join(
+        root,
+        'completed',
+      )),
+      false,
     )
   },
 )

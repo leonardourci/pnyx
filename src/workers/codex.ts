@@ -135,6 +135,30 @@ function userQuestions({ value }: { value: unknown }): (Question & { id: string 
   })
 }
 
+function commandLine({ item }: { item: ObjectValue }): string {
+  const actions = item.commandActions
+
+  if (Array.isArray(actions) && actions.length === 1) {
+    const action = object({ value: actions[0] })
+
+    if (typeof action.command === 'string') {
+      return action.command
+    }
+  }
+
+  const value = item.command
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value) && value.every(part => typeof part === 'string')) {
+    return value.join(' ')
+  }
+
+  return ''
+}
+
 function connection({
   child,
   command = () => {},
@@ -512,7 +536,7 @@ function connection({
             if (item.type === 'commandExecution' && typeof item.id === 'string') {
               command({
                 id: item.id,
-                command: String(item.command ?? ''),
+                command: commandLine({ item }),
                 completed: true,
               })
             }
@@ -544,7 +568,7 @@ function connection({
             if (item.type === 'commandExecution' && typeof item.id === 'string') {
               command({
                 id: item.id,
-                command: String(item.command ?? ''),
+                command: commandLine({ item }),
                 completed: false,
               })
             }
@@ -1301,7 +1325,17 @@ export function codexProvider({
               },
             })
 
-            return cleanup()
+            const lateCleanup = await processes.capture()
+
+            const stopped = await cleanup()
+            const lateStopped = await lateCleanup()
+
+            return [
+              ...new Set([
+                ...stopped,
+                ...lateStopped,
+              ]),
+            ]
           }
 
           stoppedCommands = stop()

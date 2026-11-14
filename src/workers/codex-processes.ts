@@ -1,9 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { setTimeout as delay } from 'node:timers/promises'
 
 const readProcessTable = promisify(execFile)
-const STOP_GRACE_MS = 250
 const PROCESS_TABLE_BYTES = 8 * 1024 * 1024
 
 type ProcessIdentity = {
@@ -181,7 +179,7 @@ export function codexProcesses({ pid }: { pid?: number }) {
       }
 
       return async () => {
-        // Children first keeps their parent chain verifiable while each signal is checked.
+        // Freeze parents first so killing a child cannot let its shell execute the next command.
         const deepest = targets.toSorted((
           left,
           right,
@@ -197,14 +195,12 @@ export function codexProcesses({ pid }: { pid?: number }) {
             ancestor: pid,
           })?.length ?? 0))
 
-        for (const target of deepest) {
+        for (const target of deepest.toReversed()) {
           await signal({
             target,
-            signal: 'SIGTERM',
+            signal: 'SIGSTOP',
           })
         }
-
-        await delay(STOP_GRACE_MS)
 
         for (const target of deepest) {
           await signal({
