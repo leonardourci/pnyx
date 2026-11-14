@@ -14,6 +14,7 @@ beforeAll(async () => {
 // over the whole log, which Postgres cancelled after ten seconds.
 const EVENTS = 60_000
 const BRIEF_EVERY = 25
+const INSERT_BATCH = 5_000
 const REPLIES = 7_000
 // No replies between these, a stretch of the log longer than one window of a lookup.
 const GAP = {
@@ -78,23 +79,31 @@ async function longHydra(): Promise<Fixture> {
 
   await pnyx.restart({
     whileStopped: () => {
-      rows({
-        text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+      // Several statements, so a loaded machine never pushes one past the statement limit.
+      for (let start = 1; start <= EVENTS; start += INSERT_BATCH) {
+        rows({
+          text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
           select $1::text, $2::bigint + n, 'bulk' || n, kind, at, 'hook:claude', $3::text, json_build_object('v', 1,
             'id', 'bulk' || n, 'seq', $2::bigint + n, 'type', kind, 'cardId', $3::text, 'actor', 'hook:claude', 'at', at,
             'data', case kind when 'task.brief' then json_build_object('before', 'bulk ' || (n - 1), 'after', 'bulk ' || n)
               else json_build_object('before', false, 'after', false) end)
-          from generate_series(1, $4::integer) as n,
+          from generate_series($4::integer, $6::integer) as n,
             lateral (select to_char(timestamp '2099-01-01' + n * interval '1 second', 'YYYY-MM-DD"T"HH24:MI:SS.000"Z"') as at,
               case when n % $5::integer = 0 then 'task.brief' else 'task.visibility' end as kind) as time`,
-        values: [
-          hydra.id,
-          first,
-          busy,
-          EVENTS,
-          BRIEF_EVERY,
-        ],
-      })
+          values: [
+            hydra.id,
+            first,
+            busy,
+            start,
+            BRIEF_EVERY,
+            Math.min(
+              start + INSERT_BATCH - 1,
+              EVENTS,
+            ),
+          ],
+        })
+      }
+
       rows({
         text: 'update hydras set seq = (select max(seq) from events where hydra_id = $1) where id = $1',
         values: [hydra.id],
