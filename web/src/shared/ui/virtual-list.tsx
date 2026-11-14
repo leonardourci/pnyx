@@ -201,7 +201,9 @@ export function VirtualList<T>({
       }
 
       const schedule = () => {
-        frame ||= requestAnimationFrame(update)
+        if (!frame) {
+          frame = requestAnimationFrame(update)
+        }
       }
 
       const target = isPage({ element: parent }) ? globalThis : parent

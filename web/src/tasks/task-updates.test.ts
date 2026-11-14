@@ -596,8 +596,8 @@ const page = ({
   from: number
   to: number
   older?: number
-}) => ({
-  events: Array.from(
+}) => {
+  const events = Array.from(
     { length: from - to + 1 },
     (
       _,
@@ -606,9 +606,13 @@ const page = ({
       seq: from - index,
       type: 'card.renamed',
     }),
-  ),
-  ...(older === undefined ? {} : { older }),
-})
+  )
+
+  return older === undefined ? { events } : {
+    events,
+    older,
+  }
+}
 
 test(
   'the newest page read again keeps the older pages it reaches back to touch',
