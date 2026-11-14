@@ -135,28 +135,27 @@ function userQuestions({ value }: { value: unknown }): (Question & { id: string 
   })
 }
 
-function commandLine({ item }: { item: ObjectValue }): string {
-  const actions = item.commandActions
+// Every way Codex names a command, so Stop can find the process whichever the shell was started with.
+function commandLines({ item }: { item: ObjectValue }): string[] {
+  const lines: string[] = []
 
-  if (Array.isArray(actions) && actions.length === 1) {
-    const action = object({ value: actions[0] })
+  for (const action of Array.isArray(item.commandActions) ? item.commandActions : []) {
+    const { command } = object({ value: action })
 
-    if (typeof action.command === 'string') {
-      return action.command
+    if (typeof command === 'string') {
+      lines.push(command)
     }
   }
 
   const value = item.command
 
   if (typeof value === 'string') {
-    return value
+    lines.push(value)
+  } else if (Array.isArray(value) && value.every(part => typeof part === 'string')) {
+    lines.push(value.join(' '))
   }
 
-  if (Array.isArray(value) && value.every(part => typeof part === 'string')) {
-    return value.join(' ')
-  }
-
-  return ''
+  return lines
 }
 
 function connection({
@@ -166,11 +165,11 @@ function connection({
   child: ChildProcessWithoutNullStreams
   command?({
     id,
-    command,
+    commands,
     completed,
   }: {
     id: string
-    command: string
+    commands: string[]
     completed: boolean
   }): void
 }) {
@@ -536,7 +535,7 @@ function connection({
             if (item.type === 'commandExecution' && typeof item.id === 'string') {
               command({
                 id: item.id,
-                command: commandLine({ item }),
+                commands: commandLines({ item }),
                 completed: true,
               })
             }
@@ -568,7 +567,7 @@ function connection({
             if (item.type === 'commandExecution' && typeof item.id === 'string') {
               command({
                 id: item.id,
-                command: commandLine({ item }),
+                commands: commandLines({ item }),
                 completed: false,
               })
             }
@@ -1315,31 +1314,25 @@ export function codexProvider({
         let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
         const stopTurn = async () => {
-          const stop = async () => {
-            const cleanup = await processes.capture()
-            await rpc.request({
-              method: 'turn/interrupt',
-              params: {
-                threadId: id,
-                turnId,
-              },
-            })
+          const early = processes.capture()
+          await rpc.request({
+            method: 'turn/interrupt',
+            params: {
+              threadId: id,
+              turnId,
+            },
+          })
 
-            const lateCleanup = await processes.capture()
-
-            const stopped = await cleanup()
-            const lateStopped = await lateCleanup()
-
-            return [
-              ...new Set([
-                ...stopped,
-                ...lateStopped,
-              ]),
+          // Cleanup runs after the interrupt is accepted, so a slow process table never delays Stop.
+          stoppedCommands = (async () => {
+            const cleanups = [
+              await early,
+              await processes.capture(),
             ]
-          }
+            const stopped = await Promise.all(cleanups.map(cleanup => cleanup()))
 
-          stoppedCommands = stop()
-          await stoppedCommands
+            return [...new Set(stopped.flat())]
+          })()
         }
 
         const interruptStartedTurn = async () => {
@@ -1432,7 +1425,7 @@ export function codexProvider({
                 incoming = messages.next()
               }
 
-              await processes.begin()
+              processes.begin()
               stoppedCommands = undefined
               latestSteering = undefined
               const said = message.text
@@ -1777,7 +1770,7 @@ export function codexProvider({
           }) {
             options[setting] = value
           },
-          async interrupt({ cancelQueued = true } = {}) {
+          async interrupt({ cancelQueued }) {
             interrupted = true
 
             if (cancelQueued) {
@@ -1790,17 +1783,16 @@ export function codexProvider({
                     receipt: {
                       inputId: message.id,
                       phase: 'refused',
+                      stopped: true,
                     },
                   },
                 })
               }
-            } else if (!carried.length) {
+            } else if (!carried.length && latestSteering) {
+              // The steered message is already in the thread, so the new turn only points at it.
               continuation = {
                 id: randomUUID(),
-                text: `<pnyx-wake>The owner interrupted your previous step. Answer their latest message now:\n${latestSteering?.text.replace(
-                  /<\/pnyx-wake/gi,
-                  '<\\/pnyx-wake',
-                ) ?? 'Continue with the latest owner request in this thread.'}</pnyx-wake>`,
+                text: '<pnyx-wake>The owner interrupted your previous step. Answer their latest message above now.</pnyx-wake>',
                 images: [],
               }
             }
