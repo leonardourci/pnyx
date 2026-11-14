@@ -41,6 +41,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { moveTask } from '#tasks/move.ts'
 import { requestEnv } from './request-context.ts'
+import { requireStopAuthority } from './stop-authority.ts'
 
 const TASK_DETAIL_LIMIT = 5
 
@@ -365,6 +366,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'send-now') {
+    requireStopAuthority({ meta: m })
     const card = findCard({
       state: loadHydra({ hydraId }).state,
       ref: required({
@@ -388,6 +390,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'stop') {
+    requireStopAuthority({ meta: meta({ values }) })
     const card = findCard({
       state: loadHydra({ hydraId }).state,
       ref: required({
