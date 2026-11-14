@@ -1,5 +1,8 @@
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { Compaction } from '#workers/compaction/model.ts'
+import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
+import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -9,6 +12,7 @@ beforeAll(async () => {
 
 interface Entry {
   id: string
+  at?: string
   role: string
   text: string
 }
@@ -261,5 +265,129 @@ test(
     })
     expect(unknown.type).toBe('error')
     page.close()
+  },
+)
+
+// What the chat holds for a Hydra: its saved compactions, oldest first.
+const compactions = ({ hydra }: { hydra: Hydra }) => rows<{
+  data: { compaction?: { operations: Compaction[] } }
+}>({
+  text: 'select data from card_bodies where hydra_id = $1 and card_id = $2',
+  values: [
+    hydra.id,
+    HYDRA_CARD,
+  ],
+})[0]?.data.compaction?.operations ?? []
+
+test(
+  'a chat page shows only the compactions that happened within its messages, and compactions with no message between them fold into one run',
+  async () => {
+    const hydra = await pnyx.hydra()
+    let answered = 0
+
+    const exchange = async () => {
+      answered += 1
+      const number = answered
+      pnyx.claude.plan({
+        hydra: hydra.id,
+        text: `question ${number}`,
+        reply: `answer ${number}`,
+      })
+      const session = await hydra.chat({ text: `question ${number}` })
+      await until({
+        what: `answer ${number}`,
+        check: () => session.answered >= number,
+      })
+    }
+
+    const compact = async () => {
+      const before = compactions({ hydra }).length
+      pnyx.claude.plan({
+        hydra: hydra.id,
+        text: '/compact',
+        compacting: true,
+      })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          '/compact',
+        ],
+      })
+      await until({
+        what: 'the compaction to finish',
+        check: () => compactions({ hydra }).filter(operation => operation.state !== 'running')
+          .length > before,
+      })
+    }
+
+    for (let count = 0; count < 4; count++) {
+      await exchange()
+    }
+
+    // Two compactions early in the chat, then enough messages to push them onto an older page, then one in the newest.
+    await compact()
+    await compact()
+
+    for (let count = 0; count < 12; count++) {
+      await exchange()
+    }
+
+    await compact()
+    await exchange()
+
+    const page = await hydra.page()
+    const newest = (await page.send({
+      name: 'thread',
+      args: ['$hydra'],
+    }) as unknown as ThreadReceipt).thread
+    expect(newest.older).toBeTruthy()
+    const operations = compactions({ hydra })
+    expect(operations).toHaveLength(3)
+
+    const shown = ({ thread }: { thread: ThreadReceipt['thread'] }) => noticesInTimeline({
+      notices: operations,
+      at: ({ notice }) => notice.startedAt,
+      rows: thread.conversation.entries,
+      older: thread.older !== undefined,
+    })
+    expect(shown({ thread: newest }).map(operation => operation.id)).toEqual([operations[2]!.id])
+
+    let thread = newest
+
+    while (thread.older) {
+      thread = (await page.send({
+        name: 'thread',
+        args: [
+          '$hydra',
+          thread.older,
+        ],
+      }) as unknown as ThreadReceipt).thread
+    }
+
+    page.close()
+    const loaded = thread.conversation.entries
+    // With the whole chat loaded, every compaction shows, each between its own messages.
+    const everything = noticesInTimeline({
+      notices: operations,
+      at: ({ notice }) => notice.startedAt,
+      rows: loaded,
+      older: false,
+    })
+    expect(everything).toEqual(operations)
+    expect(compactionRuns({
+      operations: everything,
+      rows: loaded,
+    }).map(run => run.length)).toEqual([
+      1,
+      1,
+      1,
+    ])
+    // Compactions with no message between them, such as repeated automatic ones, fold into one run.
+    expect(compactionRuns({
+      operations: everything,
+      rows: loaded.slice(-2),
+    }).map(run => run.length)).toEqual([3])
   },
 )
