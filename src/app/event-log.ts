@@ -151,12 +151,12 @@ const EVENT_PAGE_SIZE = 200
 
 // Scans that need old history retain only one bounded page, in either direction.
 export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
-  const pageAt = (bounds: Pick<EventSelection, 'after' | 'before'>) => readEvents({
+  const pageAt = ({ bounds }: { bounds: Pick<EventSelection, 'after' | 'before'> }) => readEvents({
     ...selection,
     ...bounds,
     limit: EVENT_PAGE_SIZE,
   })
-  let page = pageAt({})
+  let page = pageAt({ bounds: {} })
 
   while (page.length) {
     yield* page
@@ -166,7 +166,9 @@ export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Ge
     }
 
     const edge = page.at(-1)!.seq
-    page = selection.descending ? pageAt({ before: edge }) : pageAt({ after: edge })
+    page = selection.descending
+      ? pageAt({ bounds: { before: edge } })
+      : pageAt({ bounds: { after: edge } })
   }
 }
 
