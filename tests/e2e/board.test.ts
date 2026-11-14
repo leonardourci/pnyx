@@ -20,7 +20,7 @@ test(
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })
 
-    const { card } = await hydra.owner({
+    await hydra.owner({
       args: [
         'task',
         'create',
@@ -32,8 +32,20 @@ test(
         folder,
       ],
     })
-    const shown = `.card[data-task="${card.id}"]`
-    await column({ title: 'Queued' }).locator(shown)
+    // A card is the article holding its title button.
+    const shown = ({ title }: { title: string }) => page.locator(
+      'article',
+      {
+        has: page.getByRole(
+          'button',
+          {
+            name: title,
+            exact: true,
+          },
+        ),
+      },
+    )
+    await column({ title: 'Queued' }).locator(shown({ title: 'Ship the export' }))
       .waitFor()
 
     await hydra.owner({
@@ -43,7 +55,7 @@ test(
         'export',
       ],
     })
-    await column({ title: 'In progress' }).locator(shown)
+    await column({ title: 'In progress' }).locator(shown({ title: 'Ship the export' }))
       .waitFor()
 
     const worker = await hydra.agent({ cwd: folder })
@@ -57,9 +69,9 @@ test(
         'Export shipped',
       ],
     })
-    await column({ title: 'Done' }).locator(shown)
+    await column({ title: 'Done' }).locator(shown({ title: 'Ship the export' }))
       .waitFor()
-    expect(await page.locator(shown).count()).toBe(1)
+    expect(await shown({ title: 'Ship the export' }).count()).toBe(1)
   },
 )
 
@@ -67,7 +79,7 @@ test(
   'a card\'s Activity opens on its newest updates and loads the older ones as the owner scrolls down to its creation',
   async () => {
     const hydra = await pnyx.hydra()
-    const { card } = await hydra.owner({
+    await hydra.owner({
       args: [
         'task',
         'create',
@@ -105,8 +117,25 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
     })
-    const shown = page.locator(`.card[data-task="${card.id}"]`)
-    await shown.locator('.card-open').click()
+    const shown = page.locator(
+      'article',
+      {
+        has: page.getByRole(
+          'button',
+          {
+            name: 'Long history',
+            exact: true,
+          },
+        ),
+      },
+    )
+    await shown.getByRole(
+      'button',
+      {
+        name: 'Long history',
+        exact: true,
+      },
+    ).click()
     await shown.getByRole(
       'tab',
       { name: 'Activity' },

@@ -24,14 +24,14 @@ test(
     pnyx.claude.plan({
       hydra: hydra.id,
       text: 'Plan the release',
-      reply: 'Release plan: freeze on Monday, ship on Thursday.',
-      partial: 'Release plan: freeze on Monday',
+      reply: 'Release plan: **freeze on Monday**, ship on Thursday.',
+      partial: 'Release plan: **freeze on Mon',
       hold: true,
     })
     pnyx.claude.plan({
       hydra: hydra.id,
       text: 'Also list the risks',
-      reply: 'Risks: the migration and the new billing page.',
+      reply: 'Risks: the migration and the new billing page. <img src=x onerror=alert(1)> [open](javascript:alert(1))',
     })
 
     await page.fill(
@@ -40,22 +40,25 @@ test(
     )
     await page.click('[aria-label="Send reply"]')
     await conversation.getByText('Plan the release').waitFor()
-    await conversation.getByText('Release plan: freeze on Monday').waitFor()
+    await conversation.getByText('Release plan:').waitFor()
+    // Half-written Markdown stays hidden until its closing marker arrives.
+    expect(await conversation.textContent()).not.toContain('**')
+    expect(await conversation.locator('strong').count()).toBe(0)
 
     await page.fill(
       COMPOSER,
       'Also list the risks',
     )
     await page.click('[aria-label="Send reply"]')
-    const queued = conversation.locator(
-      '.measured-row',
-      { hasText: 'Also list the risks' },
-    ).locator('.message-meta')
-    await queued.getByText('Queued').waitFor()
+    await conversation.getByText('Queued').waitFor()
 
     await page.click('[aria-label="Stop Hydra"]')
     await conversation.getByText('Risks: the migration and the new billing page.').waitFor()
     expect(await conversation.textContent()).not.toContain('ship on Thursday')
+    // Raw HTML and a javascript: link in a reply show as text, never as a tag or a link.
+    expect(await conversation.textContent()).toContain('<img src=x onerror=alert(1)>')
+    expect(await conversation.locator('img').count()).toBe(0)
+    expect(await conversation.locator('a[href^="javascript:" i]').count()).toBe(0)
 
     await page.reload()
     await conversation.getByText('Risks: the migration and the new billing page.').waitFor()
