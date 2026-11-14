@@ -2,7 +2,7 @@ import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { basename } from 'node:path'
-import { parse, WRITE, required, meta, commit, guard, type Output } from '#app/cli-support.ts'
+import { parse, WRITE, required, meta, commit, guard, type Options, type Output } from '#app/cli-support.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { hydraIds, hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
@@ -29,6 +29,7 @@ import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { requireStopAuthority } from '#app/stop-authority.ts'
+import { workerIdentity, workerRefusal } from '#workers/worker-identity.ts'
 import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
@@ -373,6 +374,35 @@ function homeHydraId({ home }: { home: string }): string {
     ) || 'firstmate'
 }
 
+// What `hydra send` and Hydra's other commands take; create, list, homes, show and set take their own.
+export const HYDRA_OPTIONS: Options = {
+  ...WRITE,
+  ...MESSAGE_LOOKUP_OPTIONS,
+  task: { type: 'string' },
+  force: { type: 'boolean' },
+  action: { type: 'string' },
+  kind: { type: 'string' },
+  key: { type: 'string' },
+  width: { type: 'string' },
+  text: { type: 'string' },
+  after: { type: 'string' },
+  since: { type: 'string' },
+  budget: { type: 'string' },
+  through: { type: 'string' },
+  count: { type: 'boolean' },
+  error: { type: 'string' },
+  limit: { type: 'string' },
+  full: { type: 'boolean' },
+  inscribe: { type: 'boolean' },
+  via: { type: 'string' },
+  rule: { type: 'string' },
+  harness: { type: 'string' },
+  prompt: { type: 'string' },
+  folder: { type: 'string' },
+  home: { type: 'string' },
+  'paseo-url': { type: 'string' },
+}
+
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (args[0] === 'ask') {
     return hydraQuestion({ args: args.slice(1) })
@@ -405,33 +435,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     hydraId,
   } = parse({
     args,
-    options: {
-      ...WRITE,
-      ...MESSAGE_LOOKUP_OPTIONS,
-      task: { type: 'string' },
-      force: { type: 'boolean' },
-      action: { type: 'string' },
-      kind: { type: 'string' },
-      key: { type: 'string' },
-      width: { type: 'string' },
-      text: { type: 'string' },
-      after: { type: 'string' },
-      since: { type: 'string' },
-      budget: { type: 'string' },
-      through: { type: 'string' },
-      count: { type: 'boolean' },
-      error: { type: 'string' },
-      limit: { type: 'string' },
-      full: { type: 'boolean' },
-      inscribe: { type: 'boolean' },
-      via: { type: 'string' },
-      rule: { type: 'string' },
-      harness: { type: 'string' },
-      prompt: { type: 'string' },
-      folder: { type: 'string' },
-      home: { type: 'string' },
-      'paseo-url': { type: 'string' },
-    },
+    options: HYDRA_OPTIONS,
     positionals: 2,
   })
 
@@ -518,6 +522,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     if (action === 'stop') {
       requireStopAuthority({ meta: meta({ values }) })
+    }
+
+    if (action === 'usage-refresh' && workerIdentity({ actor: meta({ values }).actor })) {
+      throw workerRefusal({ message: 'hydra usage refresh is refused for a worker: it refreshes the plan limits every Hydra shares' })
     }
 
     return readServer({ hydraId }).then(server => server ? askHost({

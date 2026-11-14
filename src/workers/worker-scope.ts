@@ -1,144 +1,101 @@
 import { parseArgs } from 'node:util'
-import { AxiError } from 'axi-sdk-js'
-import { requestEnv } from '#app/request-context.ts'
+import { workerScope } from '#app/command-registry.ts'
+import { commandHydra, guard, type Options } from '#app/cli-support.ts'
+import { requestEnv, requestInvocation } from '#app/request-context.ts'
 import { loadHydra } from '#app/store.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
-import { DEFAULT_HYDRA } from '#app/home-migration.ts'
+import { HYDRA_OPTIONS } from '#hydra/cli.ts'
+import { pnyxHome } from '#store/storage.ts'
+import { SOURCE_OPTIONS } from '#task-sources/cli.ts'
+import { LINK_OPTIONS } from '#tasks/delivery/cli.ts'
 import { findCard } from '#tasks/push-rules.ts'
+import { INBOX_OPTIONS } from './inbox-cli.ts'
+import { workerIdentity, workerRefusal } from './worker-identity.ts'
 
-const WORKER_PREFIX = 'worker:'
-
-export const WORKER_SCOPE_CODE = 'WORKER_SCOPE'
-
-const WORKER_SCOPE = 'A worker writes only to its own task: task status, task ask, task report, task report-review, task refresh-links, task inbox, task source, link, and hydra send --task <its task>'
-
-// Subcommands a worker runs on any task or Hydra: reads, and commands that refuse a worker themselves. One listed with no subcommand is open whole.
-const OPEN: Record<string, string[]> = {
-  debug: [],
-  oracle: [],
-  page: [],
-  card: [],
-  context: [],
-  history: [],
-  integrations: [],
-  logs: [],
-  task: [
-    'list',
-    'show',
-    'history',
-    'updates',
-    'messages',
-    'chat',
-    'sessions',
-    'tools',
-    'move',
+// The task subcommands that name their task one word later, and the options each of them takes.
+const NESTED_TASK_COMMANDS = new Map<string, Options>([
+  [
+    'inbox',
+    INBOX_OPTIONS,
   ],
-  hydra: [
-    'list',
-    'homes',
-    'show',
-    'messages',
-    'message',
-    'history',
-    'check',
+  [
+    'source',
+    SOURCE_OPTIONS,
   ],
-  project: [
-    'list',
-    'show',
-    'memory list',
-  ],
-  column: ['list'],
-  settings: [
-    'show',
-    'schema',
-  ],
-  view: [
-    'show',
-    'schema',
-  ],
-  layout: ['show'],
-  rule: [
-    'list',
-    'show',
-    'schema',
-    'now',
-  ],
-  account: ['list'],
-  setup: ['check'],
-  upgrade: [],
-  restart: [],
-}
+])
 
-// Task subcommands a worker runs on its own task only; inbox and source name the task one word later.
-const OWN_TASK_ACTIONS = [
-  'status',
-  'ask',
-  'report',
-  'report-review',
-  'refresh-links',
-  'inbox',
-  'source',
-]
-
-const NESTED_TASK_ACTIONS = [
-  'inbox',
-  'source',
-]
-
-const OPTIONS = {
-  ...TASK_OPTIONS,
-  state: { type: 'string' as const },
-  remove: { type: 'boolean' as const },
-  task: { type: 'string' as const },
-}
+const COMMAND_OPTIONS = new Map<string, Options>([
+  [
+    'link',
+    LINK_OPTIONS,
+  ],
+  [
+    'hydra',
+    HYDRA_OPTIONS,
+  ],
+])
 
 const startsWith = ({
-  args,
+  words,
   path,
 }: {
-  args: string[]
+  words: string[]
   path: string
-}) => path.split(' ').every((
+}) => path === '' || path.split(' ').every((
   word,
   index,
-) => args[index] === word)
+) => words[index] === word)
 
-// The worker's own task: the actor Pnyx set in its environment, or the one a worker Pnyx does not run declares.
-export function workerTask({
-  env = requestEnv(),
+// The command line split the way the command itself splits it, so a flag's value is never taken for a word.
+function split({
+  name,
   args,
 }: {
-  env?: NodeJS.ProcessEnv
+  name: string
   args: string[]
-}): string | undefined {
-  const declared = declaredActor({ args })
-  const actor = env.PNYX_ACTOR || declared
-
-  return actor?.startsWith(WORKER_PREFIX) ? actor.slice(WORKER_PREFIX.length) : undefined
-}
-
-function declaredActor({ args }: { args: string[] }): string | undefined {
-  const { values } = parseArgs({
-    args,
-    options: { actor: { type: 'string' } },
+}) {
+  const nested = name === 'task' ? NESTED_TASK_COMMANDS.get(args[0] ?? '') : undefined
+  const {
+    values,
+    positionals,
+  } = parseArgs({
+    args: nested ? args.slice(1) : args,
+    options: nested ?? COMMAND_OPTIONS.get(name) ?? TASK_OPTIONS,
+    allowPositionals: true,
     strict: false,
   })
 
-  return typeof values.actor === 'string' ? values.actor : undefined
+  return {
+    values,
+    words: nested ? [
+      args[0]!,
+      ...positionals,
+    ] : positionals,
+  }
 }
 
-function refuse({ message }: { message: string }): never {
-  throw new AxiError(
-    message,
-    WORKER_SCOPE_CODE,
-    [
-      `Allowed for a worker: ${WORKER_SCOPE}`,
-      'Ask Hydra with `pnyx-axi task ask <task> --question "<what you need>"` for anything else',
-    ],
-  )
+// The task a command line writes to: named one word later for the nested task subcommands, by --task for hydra send.
+function targetOf({
+  name,
+  words,
+  values,
+}: {
+  name: string
+  words: string[]
+  values: Record<string, string | boolean | (string | boolean)[] | undefined>
+}): string | undefined {
+  if (name === 'hydra') {
+    return typeof values.task === 'string' ? values.task : undefined
+  }
+
+  if (name === 'link') {
+    return words[0]
+  }
+
+  return NESTED_TASK_COMMANDS.has(words[0] ?? '') ? words[2] : words[1]
 }
 
-function ownTask({
+function requireOwnTask({
   task,
   ref,
   hydraId,
@@ -150,7 +107,7 @@ function ownTask({
   what: string
 }): void {
   if (!ref) {
-    refuse({ message: `${what} needs your own task id (${task})` })
+    throw workerRefusal({ message: `${what} needs your own task id (${task})` })
   }
 
   const card = findCard({
@@ -159,98 +116,78 @@ function ownTask({
   })
 
   if (card.id !== task) {
-    refuse({ message: `${what} on ${card.id} is not yours; a worker writes only to its own task (${task})` })
+    throw workerRefusal({ message: `${what} on ${card.id} is not yours; a worker writes only to its own task (${task})` })
   }
 }
 
-// Refuses a command line a worker may not run. The worker is whoever PNYX_ACTOR says it is; --actor can only repeat that.
-export function checkWorkerScope({
+// Refuses a command line a worker may not run. A guardrail against a worker's mistakes, not a sandbox: the worker is whoever
+// workerIdentity says it is, and a worker that rewrites its own environment is not stopped.
+function checkWorkerScope({
   name,
   args,
-  env = requestEnv(),
 }: {
   name: string
   args: string[]
-  env?: NodeJS.ProcessEnv
 }): void {
-  const task = workerTask({
-    env,
-    args,
-  })
-
-  if (!task) {
-    return
-  }
-
-  const declared = declaredActor({ args })
-
-  if (env.PNYX_ACTOR && declared !== undefined && declared !== env.PNYX_ACTOR) {
-    refuse({ message: `--actor ${declared} is refused: this worker writes as ${env.PNYX_ACTOR}` })
-  }
-
   const {
     values,
-    positionals: words,
-  } = parseArgs({
+    words,
+  } = split({
+    name,
     args,
-    options: OPTIONS,
-    allowPositionals: true,
-    strict: false,
   })
-  const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
-  const open = OPEN[name]
+  const declared = typeof values.actor === 'string' ? values.actor : undefined
+  const identity = workerIdentity({ actor: declared })
+  const home = requestEnv().PNYX_WORKER_HOME
 
-  if (open && (!open.length || open.some(path => startsWith({
-    args: words,
+  // A worker starting or stopping a server in a scratch home of its own is not working in the home that started it.
+  if (!identity || (home !== undefined && home !== pnyxHome())) {
+    return
+  }
+
+  if (declared !== undefined && identity.task !== undefined && declared !== `worker:${identity.task}`) {
+    throw workerRefusal({ message: `--actor ${declared} is refused: this worker writes as worker:${identity.task}` })
+  }
+
+  const scope = workerScope({ name })
+  const command = requestInvocation().name ?? name
+
+  if (scope?.reads?.some(path => startsWith({
+    words,
     path,
-  })))) {
-    if (name === 'logs' && words[0] === 'clean') {
-      refuse({ message: 'logs clean deletes every Hydra\'s log files' })
-    }
-
+  }))) {
     return
   }
 
-  const action = words[0] ?? ''
-
-  if (name === 'task' && OWN_TASK_ACTIONS.includes(action)) {
-    ownTask({
-      task,
-      ref: NESTED_TASK_ACTIONS.includes(action) ? words[2] : words[1],
-      hydraId,
-      what: `task ${action}`,
-    })
-
+  // Without --file, `task report` reads the latest stored report of any task.
+  if (name === 'task' && words[0] === 'report' && values.file === undefined) {
     return
   }
 
-  if (name === 'link') {
-    ownTask({
-      task,
-      ref: words[0],
-      hydraId,
-      what: 'link',
-    })
-
-    return
+  if (!scope?.own?.some(path => startsWith({
+    words,
+    path,
+  }))) {
+    throw workerRefusal({ message: `${command} is not a worker's command` })
   }
 
-  if (name === 'hydra' && action === 'send' && values.action === undefined) {
-    ownTask({
-      task,
-      ref: typeof values.task === 'string' ? values.task : undefined,
-      hydraId,
-      what: 'hydra send',
-    })
-
-    return
+  if (name === 'hydra' && values.action !== undefined) {
+    throw workerRefusal({ message: 'hydra send --action is Hydra\'s: a worker sends progress with hydra send --task <its task> --kind progress' })
   }
 
-  refuse({
-    message: `${[
+  if (!identity.task) {
+    throw workerRefusal({ message: `${command} needs your own task, but PNYX_ACTOR is missing from your environment; restore it or pass --actor worker:<your task>` })
+  }
+
+  requireOwnTask({
+    task: identity.task,
+    ref: targetOf({
       name,
-      action,
-    ].filter(Boolean).join(' ')} is not a worker's command`,
+      words,
+      values,
+    }),
+    hydraId: commandHydra({ hydra: typeof values.hydra === 'string' ? values.hydra : undefined }),
+    what: command,
   })
 }
 
@@ -262,16 +199,22 @@ export function workerScoped<T extends Record<string, Command>>({ commands }: { 
   return Object.fromEntries(Object.entries(commands).map(([
     name,
     run,
-  ]) => [
-    name,
-    // eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
-    (args: string[]) => {
-      checkWorkerScope({
+  ]) => {
+    const check = guard({
+      handler: ({ args }) => checkWorkerScope({
         name,
         args,
-      })
+      }),
+    })
 
-      return run(args)
-    },
-  ])) as T
+    return [
+      name,
+      // eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
+      (args: string[]) => {
+        check(args)
+
+        return run(args)
+      },
+    ]
+  })) as T
 }
