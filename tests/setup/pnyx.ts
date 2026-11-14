@@ -291,22 +291,34 @@ export async function startPnyx({
     },
     start,
     // A Hydra of its own, created through the CLI and served once the server mounts it.
-    hydra: async ({ id = `h${++hydras}` }: { id?: string } = {}) => {
+    // Serves a Hydra whose folder the test made itself, such as one with a legacy events.jsonl; it refuses when the Hydra cannot load.
+    open: ({ id }: { id: string }) => server!.open({ id }),
+    hydra: async ({
+      id = `h${++hydras}`,
+      create = true,
+    }: {
+      id?: string
+      create?: boolean
+    } = {}) => {
       const hydra = hydraClient({
         hydraId: id,
         root,
         sessions,
         port: () => server!.port,
       })
-      await hydra.owner({
-        args: [
-          'hydra',
-          'create',
-          id,
-          '--helper',
-          'off',
-        ],
-      })
+
+      if (create) {
+        await hydra.owner({
+          args: [
+            'hydra',
+            'create',
+            id,
+            '--helper',
+            'off',
+          ],
+        })
+      }
+
       await server!.open({ id })
 
       return hydra
