@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
-import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
+import { closeLogs, flushLogs, logsDir, openLogs } from './diagnostics.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra, reduce } from './reducer.ts'
 import { createServerClients } from './server-clients.ts'
@@ -544,7 +544,7 @@ test(
 
 test(
   'a tab held over its socket budget has a warning when it starts being held and a line when it drains',
-  t => {
+  async t => {
     openLogs()
     t.after(() => closeLogs())
     t.mock.timers.enable({ apis: ['setTimeout'] })
@@ -588,6 +588,7 @@ test(
     })
     buffered = 0
     t.mock.timers.tick(SOCKET_RETRY_MS)
+    await flushLogs()
     const lines = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),
@@ -945,7 +946,7 @@ const queueTabs = ({
 const storedQueue = ({ hydraId }: { hydraId: string }) => (query({
   statements: [
     {
-      text: 'select queue from hydras where id = $1',
+      text: 'select value as queue from hydra_queues where hydra_id = $1',
       values: [hydraId],
     },
   ],
@@ -1026,13 +1027,10 @@ test(
       0,
       created.stdout,
     )
-    assert.deepEqual(
+    assert.equal(
       storedQueue({ hydraId: 'later' }),
-      {
-        waiting: [],
-        reading: [],
-      },
-      'a new row holds the empty queue',
+      undefined,
+      'a new Hydra has no queue row until its queue holds something',
     )
 
     tabs.storeQueue()
@@ -1040,6 +1038,7 @@ test(
       storedQueue({ hydraId: 'later' }),
       queueBox({ through: 0 }),
     )
+    await flushLogs()
     assert.deepEqual(
       readdirSync(logsDir()).flatMap(name => readFileSync(
         join(
