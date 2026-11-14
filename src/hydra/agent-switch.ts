@@ -573,10 +573,13 @@ export function createAgentSwitch({
     })
 
     for (const message of held) {
-      void host().hydra({
-        id: message.id,
-        text: hydraDelivery({ message }),
-        actor: message.actor,
+      background({
+        name: 'Hydra held message',
+        run: () => host().hydra({
+          id: message.id,
+          text: hydraDelivery({ message }),
+          actor: message.actor,
+        }),
       })
     }
   }

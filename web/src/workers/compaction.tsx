@@ -95,7 +95,7 @@ export function CompactionQueue({
           </Tooltip>
           {input.text !== UPGRADE_COMMAND && (
             <Tooltip content="Remove">
-              <Button aria-label="Remove" onClick={() => void remove({ id: input.id })}><Icon name="close" size={14} /></Button>
+              <Button aria-label="Remove" onClick={() => remove({ id: input.id })}><Icon name="close" size={14} /></Button>
             </Tooltip>
           )}
         </div>
