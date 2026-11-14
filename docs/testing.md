@@ -80,7 +80,7 @@ Rules:
 
 ## What each file covers
 
-- `access.test.ts`: a worker's limits (its writes stop at its own task) and Hydra's, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the page's Zero publication and rows never carry private steering.
+- `access.test.ts`: a worker's and Hydra's limits, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the page's Zero publication and rows never carry private steering.
 - `chat.test.ts`: Hydra's chat, the queue, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its column, project and date filters and what it never reads.
@@ -92,6 +92,7 @@ Rules:
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
 - `verification.test.ts`: which tests a change's paths call for, and the staged build.
+- `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions and resumed turns, on Claude and Codex.
 - `e2e/board.test.ts`: the live board and a card's Activity in Chrome.
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload and scrolling back through a long chat in Chrome.
