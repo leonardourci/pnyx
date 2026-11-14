@@ -2094,3 +2094,47 @@ test(
     }
   },
 )
+
+test(
+  'opening Hydra\'s page saves no agent settings the owner did not change',
+  async () => {
+    const s = await pnyx.scenario()
+    const before = s.events().length
+    const {
+      run,
+      evaluate,
+      waitFor,
+    } = await browser({
+      s,
+      session: 'chat-agent-open',
+    })
+
+    try {
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await waitFor({
+        what: 'the composer with its agent pickers',
+        condition: 'document.querySelector(\'[aria-label="Reply to Hydra"]\') && document.querySelector(\'[aria-label="Hydra agent settings"]\')',
+      })
+      // The model catalog arrives after the pickers; a save on open would follow it.
+      await evaluate({
+        script: `async () => {
+        await new Promise(resolve => setTimeout(resolve, 4000));
+        if (document.body.textContent.includes('Saving changes')) throw new Error('The page is saving settings the owner did not change');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      assert.equal(
+        s.events().length,
+        before,
+        'no event was written by opening the page',
+      )
+    } finally {
+      await run({ args: ['stop'] }).catch(() => undefined)
+    }
+  },
+)

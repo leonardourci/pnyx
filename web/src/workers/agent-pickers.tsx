@@ -31,7 +31,6 @@ export function AgentPickers({
   load = true,
   label,
   onChange,
-  onResolved,
   defaultAction = 'save',
   fields = ALL_FIELDS,
   marks,
@@ -53,8 +52,6 @@ export function AgentPickers({
   load?: boolean
   label: string
   onChange({ next }: { next: AgentConfig }): void | Promise<unknown>
-  // The agent with every value the pickers show filled in, once the catalog names them.
-  onResolved?({ next }: { next: AgentConfig }): void
   // What a model's pin does: save it as Hydra's default, only select it because these pickers already edit that default, or show no pin.
   defaultAction?: 'save' | 'edit' | 'none'
   // The pickers shown beside the model; the routine helper has no permissions.
@@ -129,16 +126,6 @@ export function AgentPickers({
   const fastShown = fields.includes('fast') && (!ready || defaults?.fast || agent.fast)
   // A table cell keeps its place with a dash instead.
   const fastDash = fields.includes('fast') && !fastShown && marks !== undefined
-  const key = JSON.stringify(resolved)
-  const reported = useRef('')
-
-  useEffect(() => {
-    if (ready && !disabled && reported.current !== key) {
-      reported.current = key
-      onResolved?.({ next: resolved })
-    }
-  })
-
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const defaultAgent = rule && effective ? {
     ...rule,
