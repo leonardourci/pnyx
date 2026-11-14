@@ -564,39 +564,30 @@ test(
 
     const pageThrough = async ({ direction }: { direction: 'older' | 'newer' }) => {
       const found: number[] = []
-      let page = await hydra.owner({
-        args: [
-          'hydra',
-          'message',
-          '--from',
-          '2099-01-01T00:00:00.000Z',
-          '--limit',
-          '60',
-          '--direction',
-          direction,
-        ],
-      })
+      let cursor: string | undefined
+      let page: Output
 
-      for (;;) {
-        found.push(...direction === 'older' ? numbers({ page }).reverse() : numbers({ page }))
-
-        const cursor = direction === 'older' ? page.older : page.newer
-
-        if (!cursor) {
-          break
-        }
-
+      do {
         page = await hydra.owner({
           args: [
             'hydra',
             'message',
-            '--cursor',
-            cursor,
+            ...cursor ? [
+              '--cursor',
+              cursor,
+            ] : [
+              '--from',
+              '2099-01-01T00:00:00.000Z',
+              '--direction',
+              direction,
+            ],
             '--limit',
             '60',
           ],
         })
-      }
+        found.push(...direction === 'older' ? numbers({ page }).reverse() : numbers({ page }))
+        cursor = direction === 'older' ? page.older : page.newer
+      } while (cursor)
 
       return direction === 'older' ? found.reverse() : found
     }
@@ -615,6 +606,32 @@ test(
         index,
       ) => index === 0 || value - found[index - 1] === 1)).toBe(true)
     }
+
+    const history = await readAll({
+      hydra,
+      args: [
+        '--since',
+        'origin',
+      ],
+    })
+    const told = history.flatMap(page => [...page.text.matchAll(/reply-(\d+) end/g)].map(match => Number(match[1])))
+    expect(told).toHaveLength(5000)
+    const count = await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'origin',
+        '--count',
+      ],
+    })
+    expect(count.totalTokens).toBe(Math.ceil(Buffer.byteLength(history.map(page => page.text).join('\n\n')) / 4))
+    expect(told[0]).toBe(0)
+    expect(told.at(-1)).toBe(4999)
+    expect(told.every((
+      value,
+      index,
+    ) => index === 0 || value - told[index - 1] === 1)).toBe(true)
   },
   120_000,
 )
