@@ -570,12 +570,14 @@ function threadEvents({
       && event.cardId === card.id,
   })
 
+  const moved = history.some(entry => entry.hydra !== hydraId)
+
   return history.reverse().map((
     { event },
     index,
   ) => ({
     ...event,
-    seq: index + 1,
+    seq: moved ? index + 1 : event.seq,
   }))
 }
 
