@@ -22,6 +22,7 @@ import { askHost } from './server-state.ts'
 import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
+import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
@@ -624,6 +625,24 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
   }
 
+  if (action === 'updates') {
+    return taskUpdates({
+      hydraId,
+      ref: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+      before: integer({
+        value: values.before,
+        flag: '--before',
+      }),
+      limit: integer({
+        value: values.limit,
+        flag: '--limit',
+      }),
+    })
+  }
+
   if (action === 'show') {
     const state = loadHydra({ hydraId }).state
     const task = findCard({
@@ -636,7 +655,13 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
     const spend = taskSpend({
       state,
-      events: readEvents({ hydraId }),
+      events: readEvents({
+        hydraId,
+        types: [
+          'board.configured',
+          'task.session',
+        ],
+      }),
       task: task.id,
     })
 
@@ -1006,7 +1031,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, messages, rename, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }
@@ -1068,9 +1093,12 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     },
   })
 
-  if (action === 'attach' && typeof result.event === 'object' && result.event !== null && 'id' in result.event) {
+  if (action === 'attach' && typeof result.event === 'object' && result.event !== null && 'id' in result.event && typeof result.event.id === 'string') {
     const eventId = result.event.id
-    const attachment = readEvents({ hydraId }).find(e => e.id === eventId)
+    const attachment = readEvents({
+      hydraId,
+      ids: [eventId],
+    })[0]
 
     if (attachment?.type === 'task.session') {
       return afterAttach({

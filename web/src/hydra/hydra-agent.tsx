@@ -4,13 +4,6 @@ import type { AgentConfig } from '#workers/model.ts'
 import { AgentPickers } from '#web-workers/agent-pickers.tsx'
 import type { Command } from '#web-app/connection.ts'
 
-const FIELDS = [
-  'model',
-  'effort',
-  'mode',
-  'fast',
-] as const
-
 export function HydraAgent({
   state,
   command,
@@ -59,12 +52,7 @@ export function HydraAgent({
       disabled={Boolean(state.hydraAgentChange)}
       fastNote="Applies from the next turn. It also applies to every agent this Hydra starts, heads dispatch workers and the routine helper alike, where their model has Fast."
       onChange={save}
-      // Saving the named values makes Hydra run with exactly what the pickers show.
-      onResolved={({ next }) => {
-        if (effective && FIELDS.some(field => next[field] !== agent[field])) {
-          save({ next })
-        }
-      }}
+
     />
   )
 }

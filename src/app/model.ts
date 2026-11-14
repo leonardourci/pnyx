@@ -1,3 +1,4 @@
+import type { SourceObservation } from '#tasks/observations.ts'
 import { EVENT_VERSION, type EventBase } from '#store/events.ts'
 import type { ViewEvent, ViewPreferences } from '#preferences/model.ts'
 import type { HydraProject, TaskCopy } from '#projects/model.ts'
@@ -13,7 +14,10 @@ import type { HelperChange, HelperState } from '#routine-helper/state.ts'
 import type { ExternalSourceEvent } from '#task-sources/model.ts'
 import type { RecoveryEvent, RecoveryAttempt } from '#diagnostics/recovery-state.ts'
 
-export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
+export type Decision = { event: HydraEvent } | {
+  skipped: 'unchanged' | 'stale' | 'duplicate'
+  observation?: SourceObservation
+}
 
 // Where an observation came from. generation and observedAt order observations of
 // the same source object so a late, older observation cannot overwrite a newer one.

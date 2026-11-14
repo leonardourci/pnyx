@@ -19,7 +19,7 @@ commands:
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|list|set|remove                   Attach, list or detach projects
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
+  task create|list|show|rename|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
@@ -297,6 +297,8 @@ pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--con
 Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
 pnyx-axi task history <id> [--before <seq>|<hydra>:<seq>] [--limit <n>] [--full]
 A moved task's history continues into the Hydras it came from; those rows name their Hydra, and --before <hydra>:<seq> pages through them.
+pnyx-axi task updates <id> [--before <seq>] [--limit <n>]
+The events the card's Updates tab lists, newest first, with the older cursor to pass as --before. The page reads them this way, 50 at a time; each event is capped at 64 KB.
 pnyx-axi task messages <id> [--id <message-id> | --seq <seq> | --at <ISO-time>] [--before <n>] [--after <n>] [--budget <tokens>] [--direction older|newer] [--from <seq|ISO-time>] [--to <seq|ISO-time>] [--cursor <cursor>] [--limit <n>]
 Uses the same bounded lookup as hydra message over the task's current session and the owner's replies; read past sessions with task chat --session.
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
@@ -382,7 +384,7 @@ card.json fields (all optional): title, autoTitle {from: session|prompt|agent|fo
   folder (absolute path, null to clear; a hook session started there reports to this card),
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored. A push that reports exactly what its
-source last reported, at a newer source.observedAt, is logged as a card.observed event holding only that time.
+source last reported advances its private observation observation time without recording an event. Raw reports go to the diagnostic log.
 `,
   card: `usage: pnyx-axi card <id|key> [--full] [--hydra <name>]
 Shows the card and its notes in three sections, summary, decisions and context, newest first:

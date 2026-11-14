@@ -1,3 +1,4 @@
+import { MeasuredList } from '#web-shared/ui/measured-list.tsx'
 import type { ChatDrafts } from './chat-drafts.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { upgradeMilestoneIcon } from '#upgrade/model.ts'
@@ -1113,47 +1114,52 @@ export function Messages({
           }
         }}
       >
-        {entries.map(entry => {
-          const messageId = entry.messageId ?? entry.id
-          const activeHere = isMessageBlockKey({
-            key: active,
-            messageId,
-          }) ? active : null
-          const task = leadingTask({ entry })
-          const timedTask = timings.get(entry.id)?.task
+        <MeasuredList
+          items={entries}
+          itemKey={({ item }) => item.renderKey ?? item.id}
+          render={({ item: entry }) => {
+            const messageId = entry.messageId ?? entry.id
+            const activeHere = isMessageBlockKey({
+              key: active,
+              messageId,
+            }) ? active : null
+            const task = leadingTask({ entry })
+            const timedTask = timings.get(entry.id)?.task
 
-          return (
-            <MessageRow
-              key={entry.renderKey ?? entry.id}
-              entry={entry}
-              fold={folds?.get(entry.id)}
-              trailing={trailing?.get(entry.id)}
-              timing={timings.get(entry.id)}
-              inline={inline?.get(entry.id)}
-              hasInline={inline?.has(entry.id) ?? false}
-              lead={entry.reference ? answerLeads?.get(entry.reference) : undefined}
-              hasTaskReferences={taskReferences !== undefined}
-              catalog={catalog}
-              labelColors={labelColors}
-              assistantLabel={assistantLabel}
-              lookup={lookup}
-              toolDetails={toolDetails}
-              thinkingDetails={thinkingDetails}
-              comments={rowComments.get(messageId) ?? NO_COMMENTS}
-              active={activeHere}
-              drafts={drafts}
-              root={root}
-              actions={actions}
-              lookColumn={lookColumn}
-              leadingTitle={task ? taskReferences?.[task]?.title : undefined}
-              timingTitle={timedTask ? taskReferences?.[timedTask]?.title : undefined}
-              openTask={openTask ? open : undefined}
-              canSendAgain={sendAgain !== undefined}
-              canRetry={retry !== undefined}
-              canSendNow={sendNow !== undefined}
-            />
-          )
-        })}
+            return (
+              <MessageRow
+                key={entry.renderKey ?? entry.id}
+                entry={entry}
+                fold={folds?.get(entry.id)}
+                trailing={trailing?.get(entry.id)}
+                timing={timings.get(entry.id)}
+                inline={inline?.get(entry.id)}
+                hasInline={inline?.has(entry.id) ?? false}
+                lead={entry.reference ? answerLeads?.get(entry.reference) : undefined}
+                hasTaskReferences={taskReferences !== undefined}
+                catalog={catalog}
+                labelColors={labelColors}
+                assistantLabel={assistantLabel}
+                lookup={lookup}
+                toolDetails={toolDetails}
+                thinkingDetails={thinkingDetails}
+                comments={rowComments.get(messageId) ?? NO_COMMENTS}
+                active={activeHere}
+                drafts={drafts}
+                root={root}
+                actions={actions}
+                lookColumn={lookColumn}
+                leadingTitle={task ? taskReferences?.[task]?.title : undefined}
+                timingTitle={timedTask ? taskReferences?.[timedTask]?.title : undefined}
+                openTask={openTask ? open : undefined}
+                canSendAgain={sendAgain !== undefined}
+                canRetry={retry !== undefined}
+                canSendNow={sendNow !== undefined}
+              />
+            )
+          }}
+        />
+
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div

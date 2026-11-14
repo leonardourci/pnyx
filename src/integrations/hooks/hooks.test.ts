@@ -1,3 +1,5 @@
+import { closeLogs, flushLogs, logsDir, openLogs } from '#app/diagnostics.ts'
+import { query } from '#store/postgres.ts'
 // Hook payload normalization and spool ingestion. Every path lives in a temporary
 // folder: tests never read or edit the real ~/.claude, ~/.codex or ~/.pnyx.
 import assert from 'node:assert/strict'
@@ -1104,14 +1106,20 @@ const repeatCard = () => Object.values(loadHydra({ hydraId: 'default' }).state.c
   .find(card => card.agent?.sessionId === REPEAT_SESSION)!
 
 test(
-  'a hook report that repeats the last one is logged as its new observation time; one with new content is logged in full',
-  () => {
+  'repeated hooks and raw prompts stay in diagnostics while source time advances without events',
+  async t => {
     process.env.PNYX_HOME = sandbox().home
+    openLogs()
+    t.after(() => closeLogs())
     hookAt({
       second: 0,
       event: 'UserPromptSubmit',
       prompt: 'Initial request',
     })
+    const before = {
+      seq: loadHydra({ hydraId: 'default' }).state.seq,
+      revision: repeatCard().revision,
+    }
     hookAt({
       second: 20,
       event: 'UserPromptSubmit',
@@ -1124,16 +1132,35 @@ test(
     })
     assert.deepEqual(
       repeatEvents(),
-      [
-        'card.pushed 00',
-        'card.observed 20',
-        'card.pushed 30',
-      ],
+      ['card.pushed 00'],
     )
+    assert.deepEqual(
+      {
+        seq: loadHydra({ hydraId: 'default' }).state.seq,
+        revision: repeatCard().revision,
+      },
+      before,
+    )
+    assert.equal(
+      query({ statements: [{ text: 'select observed_at from source_observations' }] })[0]![0]!.observed_at,
+      '2026-10-29T12:00:30.000Z',
+    )
+    await flushLogs()
+    const diagnostic = readdirSync(logsDir()).map(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    ))
+      .join('')
     assert.match(
-      JSON.stringify(readEvents({ hydraId: 'default' }).at(-1)),
+      diagnostic,
       /New constraint: preserve diagnostics/,
-      'the second prompt stays in history though the card keeps its first title',
+    )
+    assert.doesNotMatch(
+      JSON.stringify(readEvents({ hydraId: 'default' })),
+      /New constraint: preserve diagnostics/,
     )
 
     const card = repeatCard()
@@ -1159,15 +1186,15 @@ test(
       }),
     })
     assert.equal(
-      'event' in facts && facts.event.type,
-      'card.pushed',
-      'a push with a new reason and details is logged in full',
+      'skipped' in facts && facts.skipped,
+      'unchanged',
+      'diagnostic text alone does not change task state',
     )
   },
 )
 
 test(
-  'a late older hook event stays stale in a new process after the newer repeat was logged compactly',
+  'a private source observation time rejects older hooks after restart without a repeat event',
   () => {
     process.env.PNYX_HOME = sandbox().home
     hookAt({
@@ -1210,14 +1237,21 @@ test(
     )
     assert.deepEqual(
       repeatEvents(),
-      [
-        'card.pushed 00',
-        'card.observed 30',
-      ],
+      ['card.pushed 00'],
     )
     assert.equal(
       repeatCard().sessionActivity,
       'working',
+    )
+    reloadHydra({ hydraId: 'default' })
+    hookAt({
+      second: 35,
+      event: 'PreToolUse',
+    })
+    assert.deepEqual(
+      repeatEvents(),
+      ['card.pushed 00'],
+      'the first repeat after restart also stays out of events',
     )
   },
 )
@@ -1390,6 +1424,55 @@ test(
       repeatCard().sessionActivity,
       'finished',
       'late working hooks leave an ended turn finished',
+    )
+  },
+)
+
+test(
+  'a repeat does not dirty public card rows when a different card changes later',
+  () => {
+    process.env.PNYX_HOME = sandbox().home
+    hookAt({
+      second: 0,
+      event: 'PreToolUse',
+    })
+    const card = repeatCard()
+    const versions = () => query({
+      statements: [
+        {
+          text: 'select xmin::text as version from card_bodies where card_id = $1',
+          values: [card.id],
+        },
+        {
+          text: 'select xmin::text as version from card_references where card_id = $1',
+          values: [card.id],
+        },
+      ],
+    })
+    const before = versions()
+    hookAt({
+      second: 20,
+      event: 'PreToolUse',
+    })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: decidePush({
+          state: writer.state,
+          key: 'unrelated',
+          input: { title: 'Another task' },
+          meta: {
+            at: '2026-10-29T12:01:00.000Z',
+            actor: 'test',
+            id: 'another-task',
+          },
+        }),
+      }),
+    })
+    assert.deepEqual(
+      versions(),
+      before,
     )
   },
 )

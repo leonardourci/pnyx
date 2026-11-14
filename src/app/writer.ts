@@ -1,10 +1,11 @@
+import { applyObservation, observationKey, observationStatement, type SourceObservation } from '#tasks/observations.ts'
 import type { Output } from './cli-support.ts'
 import { transactionReceipt, transactionStatement } from './transactions.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
 import { requireHydra, writableHydra, reloadHydra } from './store.ts'
-import { query, storable } from '#store/postgres.ts'
+import { query, storable, type QueryTimings } from '#store/postgres.ts'
 import { privateDir } from '#store/storage.ts'
 import { hydraDir } from './home-migration.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
@@ -20,7 +21,6 @@ import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
-import { rememberEvents } from './event-log.ts'
 import { log } from './diagnostics.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
 
@@ -33,6 +33,7 @@ const MESSAGE_EVENTS = new Set<string>([
 export interface Writer {
   readonly state: HydraState
   readonly dir: string
+  observe({ observation }: { observation: SourceObservation }): void
   // Work outside Postgres, such as removing an ingested spool file, that must happen only once the write commits.
   afterCommit({ run }: { run(): void }): void
   append({
@@ -151,6 +152,7 @@ export function withWriter<T>({
     })
     const pending: HydraEvent[] = []
     const committed: (() => void)[] = []
+    const observations = new Map<string, SourceObservation>()
     const touched: Touched = {
       cards: new Set(),
       fields: new Set(),
@@ -164,6 +166,10 @@ export function withWriter<T>({
       touched,
       committed,
       onAppend: ({ event }) => pending.push(event),
+      onObserve: ({ observation }) => observations.set(
+        observationKey(observation),
+        observation,
+      ),
     })
 
     return {
@@ -171,6 +177,7 @@ export function withWriter<T>({
       held,
       writer,
       pending,
+      observations,
       committed,
       touched,
       from: held.state.seq,
@@ -234,6 +241,15 @@ export function withWriter<T>({
       ...rows.statements,
     ])
 
+    for (const stage of stages) {
+      for (const observation of stage.observations.values()) {
+        statements.push(observationStatement({
+          hydraId: stage.id,
+          observation,
+        }))
+      }
+    }
+
     if (transaction && changes.length) {
       statements.push(transactionStatement({
         hydraId,
@@ -242,8 +258,13 @@ export function withWriter<T>({
       }))
     }
 
+    let timings: QueryTimings | undefined
+
     if (statements.length) {
       query({
+        timed: ({ timings: measured }) => {
+          timings = measured
+        },
         transaction: true,
         statements,
       })
@@ -255,6 +276,8 @@ export function withWriter<T>({
     } of changes) {
       log({
         operation: 'events.write',
+        connectionWaitMs: timings?.connectionWaitMs,
+        commitMs: timings?.commitMs,
         name: stage.pending.at(-1)!.type,
         ms: performance.now() - started,
         hydraId: stage.id,
@@ -263,11 +286,6 @@ export function withWriter<T>({
       })
       stage.held.saved = rows.next
       stage.held.committed = stage.held.state.seq
-      rememberEvents({
-        hydraId: stage.id,
-        from: stage.from,
-        events: stage.pending,
-      })
 
       if (stage.from === 0) {
         rememberFirstEvent({
@@ -278,7 +296,7 @@ export function withWriter<T>({
     }
   } catch (error) {
     for (const stage of stages) {
-      if (stage.pending.length) {
+      if (stage.pending.length || stage.observations.size) {
         reloadHydra({ hydraId: stage.id })
       }
     }
@@ -317,6 +335,7 @@ export function eventWriter({
   touched,
   committed = [],
   onAppend,
+  onObserve,
 }: {
   state: HydraState
   owned?: boolean
@@ -326,11 +345,25 @@ export function eventWriter({
   touched?: Touched
   committed?: (() => void)[]
   onAppend({ event }: { event: HydraEvent }): void
+  onObserve?({ observation }: { observation: SourceObservation }): void
 }): Writer {
   const state = owned ? initial : structuredClone(initial)
   const observers = new Set<PreimageObserver>()
   const writer: Writer = {
     dir,
+    observe({ observation }) {
+      onObserve?.({ observation })
+      applyObservation({
+        state,
+        observation,
+      })
+      log({
+        operation: 'card.observed',
+        hydraId,
+        taskId: observation.cardId,
+        name: observation.source.adapter,
+      })
+    },
     get state() {
       return state
     },
@@ -464,6 +497,17 @@ export function eventWriter({
       }
 
       onAppend({ event })
+
+      if (event.type === 'card.pushed' && event.data.source) {
+        onObserve?.({
+          observation: {
+            cardId: event.cardId,
+            source: event.data.source,
+            at: event.at,
+          },
+        })
+      }
+
       const {
         before,
         release,

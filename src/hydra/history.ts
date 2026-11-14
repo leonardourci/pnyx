@@ -256,13 +256,28 @@ export function inscribeOperation({
 export function placeEntries<Entry extends ThreadEntry>({
   events,
   entries,
+  positions,
 }: {
+  positions?: ReadonlyMap<string, number>
   events: HydraEvent[]
   entries: Entry[]
 }): {
   seq: number
   entry: Entry
 }[] {
+  if (positions) {
+    return entries.flatMap(entry => {
+      const seq = positions.get(entry.id)
+
+      return seq === undefined ? [] : [
+        {
+          entry,
+          seq,
+        },
+      ]
+    })
+  }
+
   // A running maximum keeps the search correct when a clock stepped back between appends.
   let latest = -Infinity
   const times = events.map(event => {
@@ -304,11 +319,13 @@ export function placeEntries<Entry extends ThreadEntry>({
 }
 
 function historyMessages({
+  positions,
   events,
   native,
 }: {
   events: HydraEvent[]
   native: SessionEntry[]
+  positions?: ReadonlyMap<string, number>
 }): {
   seq: number
   text: string
@@ -320,6 +337,7 @@ function historyMessages({
     seq,
     entry,
   } of placeEntries({
+      positions,
       events,
       entries: native.filter(entry => entry.kind === 'message'
         && entry.role.startsWith('assistant')),
@@ -424,6 +442,7 @@ function historyMessages({
 }
 
 export function readHistory({
+  positions,
   state,
   events,
   native,
@@ -432,6 +451,7 @@ export function readHistory({
   through = state.seq,
   budget = HISTORY_BUDGET,
 }: {
+  positions?: ReadonlyMap<string, number>
   state: HydraState
   events: HydraEvent[]
   // Hydra's native transcript entries, which carry no log position of their own.
@@ -491,6 +511,7 @@ export function readHistory({
   }
 
   const messages = historyMessages({
+    positions,
     events,
     native,
   })

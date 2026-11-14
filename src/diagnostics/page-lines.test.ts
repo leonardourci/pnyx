@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { closeLogs, logsDir, openLogs } from '#app/diagnostics.ts'
+import { closeLogs, flushLogs, logsDir, openLogs } from '#app/diagnostics.ts'
 import { logPageLines } from './page-lines.ts'
 
 const MINUTE_MS = 60_000
@@ -10,7 +10,7 @@ const DAY_MS = 24 * 60 * MINUTE_MS
 
 test(
   'a page line queued while the socket was down is placed at its age on the page’s monotonic clock, within a bound',
-  t => {
+  async t => {
     openLogs()
     t.after(() => closeLogs())
     const sent = Date.now()
@@ -33,6 +33,7 @@ test(
         },
       ],
     })
+    await flushLogs()
     const at = Object.fromEntries(readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),

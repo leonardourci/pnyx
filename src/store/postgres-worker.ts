@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
+import { errorDetails } from './error-details.ts'
 import { CONFLICT_CODE } from './errors.ts'
 import type { Outcome, Reply, Request, Statement } from './postgres.ts'
 
@@ -62,28 +63,95 @@ const SCHEMA = readFileSync(
   ),
   'utf8',
 )
+// The page's publication as schema.sql creates it, which a migration sets an older database's to.
+const PAGE_PUBLICATION = /create publication pnyx_page for table[^;]*/.exec(SCHEMA)?.[0] ?? ''
+
+if (!PAGE_PUBLICATION) {
+  throw new Error('schema.sql has no pnyx_page publication')
+}
+
 // schema.sql names its own version, so the number has one source.
 const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(SCHEMA)?.[1])
 
 // A database another build's schema made would fail writes this build's statements make, so it is refused by name.
-async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
+async function requireSchema({
+  client,
+  migrate = false,
+}: {
+  client: pg.Client
+  migrate?: boolean
+}): Promise<void> {
   const versioned = await client.query<{ table: string | null }>('select to_regclass(\'public.schema_version\') as table')
   const versions = versioned.rows[0]?.table
     ? (await client.query<{ version: number }>('select version from schema_version')).rows
     : []
 
-  if (versions.some(row => row.version === SCHEMA_VERSION)) {
+  const current = Math.max(
+    0,
+    ...versions.map(row => row.version),
+  )
+
+  if (current === SCHEMA_VERSION) {
+    return
+  }
+
+  if (current === 1 && migrate) {
+    await client.query('begin')
+
+    try {
+      await client.query(`set local statement_timeout = 0;
+        set local lock_timeout = 0;
+        create index card_updates_event on card_updates (hydra_id, seq);
+        insert into hydra_values (hydra_id, key, value) select id, 'queue', queue from hydras
+          on conflict (hydra_id, key) do nothing`)
+      await client.query(`create table source_observations (
+        hydra_id text not null references hydras (id) on delete cascade,
+        card_id text not null, adapter text not null, instance_id text not null,
+        object_id text not null, generation double precision not null check (generation >= 0),
+        observed_at text not null, seen_at text not null,
+        primary key (hydra_id, card_id, adapter, instance_id, object_id)
+      );
+      insert into source_observations
+        (hydra_id, card_id, adapter, instance_id, object_id, generation, observed_at, seen_at)
+      select distinct on (hydra_id, card_id, source->>'adapter', coalesce(source->>'instanceId', ''), source->>'objectId')
+        hydra_id, card_id, source->>'adapter', coalesce(source->>'instanceId', ''), source->>'objectId',
+        coalesce((source->>'generation')::double precision, 0), coalesce(source->>'observedAt', at), at
+      from (select hydra_id, card_id, at, seq, data->'data'->'source' as source from events
+        where type in ('card.pushed', 'card.observed')) candidates
+      where source->>'adapter' is not null and source->>'objectId' is not null
+      order by hydra_id, card_id, source->>'adapter', coalesce(source->>'instanceId', ''), source->>'objectId',
+        coalesce((source->>'generation')::double precision, 0) desc, coalesce(source->>'observedAt', at) desc, seq desc;
+      `)
+      await client.query(`with removed as (
+        delete from events where type in ('card.observed', 'chat.message') returning hydra_id
+      ) select hydra_id, count(*)::integer as count from removed group by hydra_id`)
+      await client.query(`create index events_card_history on events (hydra_id, card_id, seq);
+        create index events_type_history on events (hydra_id, type, seq)`)
+
+      // The page reads no events, and Hydra's chat reads the actions within the time its page spans.
+      await client.query(`create index events_at on events (hydra_id, at);
+        ${PAGE_PUBLICATION.replace(
+          'create publication pnyx_page for table',
+          'alter publication pnyx_page set table',
+        )};
+        insert into schema_version (version) values (5)`)
+      await client.query('commit')
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    }
+
     return
   }
 
   throw Object.assign(
-    new Error(`database ${config.database} has another Pnyx build's schema; this build cannot use it. A database made before the first release can be dropped (\`dropdb ${config.database}\`), and the server imports every Hydra's events.jsonl again`),
+    new Error(`database ${config.database} has another Pnyx build's schema (${current}); this build requires ${SCHEMA_VERSION}. Start this build with serve to migrate an older schema; this build cannot use it. A database made before the first release can be dropped (\`dropdb ${config.database}\`), and the server imports every Hydra's events.jsonl again`),
     { code: SCHEMA_MISMATCH },
   )
 }
 
 // A home's database appears on its first use, with the folded migration applied once.
-async function connect(): Promise<pg.Client> {
+async function connect({ schema }: { schema?: Request['schema'] }): Promise<pg.Client> {
   const client = new pg.Client({
     ...config,
     ...limits,
@@ -106,12 +174,18 @@ async function connect(): Promise<pg.Client> {
   try {
     await client.connect()
   } catch (error) {
+    await client.end()
+
     if ((error as { code?: string }).code !== MISSING_DATABASE) {
       throw error
     }
 
     const admin = new pg.Client(adminConfig())
     await admin.connect()
+
+    if (schema === 'inspect') {
+      return admin
+    }
 
     try {
       await admin.query(`create database ${pg.escapeIdentifier(config.database)}`)
@@ -123,32 +197,54 @@ async function connect(): Promise<pg.Client> {
       await admin.end()
     }
 
-    return connect()
+    return connect({ schema })
   }
 
-  await client.query(SCHEMA_LOCK)
-
   try {
-    const { rows } = await client.query<{ table: string | null }>('select to_regclass(\'public.hydras\') as table')
-
-    if (!rows[0]?.table) {
-      // One query, so the tables and their version commit together.
-      await client.query(SCHEMA)
-    } else {
-      await requireSchema({ client })
+    if (schema === 'inspect') {
+      return client
     }
-  } finally {
-    await client.query(SCHEMA_UNLOCK)
+
+    await client.query('set lock_timeout = 0')
+    await client.query(SCHEMA_LOCK)
+
+    try {
+      const { rows } = await client.query<{ table: string | null }>('select to_regclass(\'public.hydras\') as table')
+
+      if (!rows[0]?.table) {
+      // One query, so the tables and their version commit together.
+        await client.query(SCHEMA)
+      } else {
+        await requireSchema({
+          client,
+          migrate: schema === 'migrate',
+        })
+      }
+    } finally {
+      await client.query(SCHEMA_UNLOCK)
+      await client.query(`set lock_timeout = ${LOCK_TIMEOUT_MS}`)
+    }
+  } catch (error) {
+    await client.end()
+    throw error
   }
 
   return client
 }
 
 let ready: Promise<pg.Client> | undefined
+let inspected = false
 
 // A connection that failed to open is tried again on the next request, so Pnyx recovers once Postgres is up.
-async function connection(): Promise<pg.Client> {
-  const opening = ready ?? connect()
+async function connection({ schema }: { schema?: Request['schema'] }): Promise<pg.Client> {
+  if (ready && inspected && schema !== 'inspect') {
+    const client = await ready
+    await client.end()
+    ready = undefined
+  }
+
+  inspected = schema === 'inspect'
+  const opening = ready ?? connect({ schema })
   ready = opening
 
   try {
@@ -189,7 +285,9 @@ async function execute({
 
 async function run({ request }: { request: Request }): Promise<Outcome> {
   try {
-    const client = await connection()
+    const connecting = performance.now()
+    const client = await connection({ schema: request.schema })
+    const connectionWaitMs = performance.now() - connecting
 
     if (!request.transaction) {
       const results = []
@@ -201,7 +299,13 @@ async function run({ request }: { request: Request }): Promise<Outcome> {
         }))
       }
 
-      return { results }
+      return {
+        results,
+        timings: {
+          connectionWaitMs,
+          commitMs: 0,
+        },
+      }
     }
 
     await client.query('begin')
@@ -220,9 +324,16 @@ async function run({ request }: { request: Request }): Promise<Outcome> {
         }))
       }
 
+      const committing = performance.now()
       await client.query(request.rollback ? 'rollback' : 'commit')
 
-      return { results }
+      return {
+        results,
+        timings: {
+          connectionWaitMs,
+          commitMs: performance.now() - committing,
+        },
+      }
     } catch (error) {
       // A lost connection fails the rollback too; the caller needs the error that stopped the transaction.
       await client.query('rollback').catch(() => undefined)
@@ -243,10 +354,7 @@ async function run({ request }: { request: Request }): Promise<Outcome> {
     }
 
     return {
-      error: {
-        message: failure.message ?? String(error),
-        code: failure.code,
-      },
+      error: errorDetails({ error }),
     }
   }
 }
@@ -277,10 +385,11 @@ const serve = async ({
 }) => {
   await previous
   current = request.id
+  const outcome = await run({ request })
   answer({
     reply: {
       id: request.id,
-      ...await run({ request }),
+      ...outcome,
     },
   })
   current = undefined
@@ -304,7 +413,7 @@ process.on(
       answer({
         reply: {
           id: current,
-          error: { message: error.message },
+          error: errorDetails({ error }),
         },
       })
     }

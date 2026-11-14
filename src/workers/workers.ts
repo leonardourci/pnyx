@@ -13,7 +13,7 @@ import type { HydraEvent, EventType } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEventsFrom } from '#app/event-log.ts'
+import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import type { Connect } from '#integrations/paseo/client.ts'
@@ -135,16 +135,16 @@ export async function hydraCheck({
         })
       },
     })
-    const read = readEventsFrom({
+    const read = readEvents({
       hydraId,
-      offset,
+      after: offset,
     })
 
     if (read) {
-      offset = read.end
+      offset = (read.at(-1)?.seq ?? offset)
       const current = loadHydra({ hydraId }).state
 
-      for (const e of read.events) {
+      for (const e of read) {
         last = Math.max(
           last,
           e.seq,

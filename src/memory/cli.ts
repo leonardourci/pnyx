@@ -7,7 +7,7 @@ import { ownerMemory, ownerRevision, ownerArchive, saveOwnerMemory, moveOwnerLea
 import { findProject } from '#projects/read.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 
@@ -348,8 +348,11 @@ export function hydraMemory({
     withWriter({
       hydraId,
       fn: ({ writer }) => {
-        const saved = readEvents({ hydraId }).findLast(event => event.type === 'hydra.memory'
-          && event.data.key === 'workers')
+        const saved = scanEvents({
+          hydraId,
+          types: ['hydra.memory'],
+          descending: true,
+        }).find(event => event.type === 'hydra.memory' && event.data.key === 'workers')
 
         if (saved) {
           workerNotesNotice({

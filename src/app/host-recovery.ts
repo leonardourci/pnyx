@@ -1,7 +1,7 @@
 import { applyDecision } from './decision.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
-import { readEvents } from './event-log.ts'
+import { scanEvents } from './event-log.ts'
 import type { Host, Live } from './host-types.ts'
 import { loadHydra } from './store.ts'
 import type { Writer } from './writer.ts'
@@ -413,10 +413,16 @@ export function createHostRecovery({
       }
 
       // Changes from while the server was stopped can only be read against the state now.
-      const missed = readEvents({ hydraId })
-        .filter(event => event.seq > after && !state.helper?.handled.includes(event.seq))
+      const missed = scanEvents({
+        hydraId,
+        after,
+      })
 
       for (const event of missed) {
+        if (state.helper?.handled.includes(event.seq)) {
+          continue
+        }
+
         const reasons = wakeReasons({
           state,
           events: [event],

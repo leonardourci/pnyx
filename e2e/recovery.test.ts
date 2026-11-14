@@ -305,7 +305,7 @@ test(
 )
 
 test(
-  'a quiet hooked worker repeating itself logs each observation compactly, so it never looks stalled, and a late older event stays stale after a restart',
+  'a quiet hooked worker repeating itself writes no event per observation yet never looks stalled, and a late older event stays stale after a restart',
   async () => {
     const s = await pnyx.scenario()
     const session = crypto.randomUUID()
@@ -354,8 +354,8 @@ test(
     }
 
     await until({
-      what: 'every repeat to be logged',
-      check: () => logged().length === 16,
+      what: 'the newest repeat to be observed',
+      check: () => lastSeen() === new Date(start + 300_000).toISOString(),
     })
     assert.deepEqual(
       logged(),
@@ -364,23 +364,8 @@ test(
           type: 'card.pushed',
           second: 0,
         },
-        ...Array.from(
-          { length: 15 },
-          (
-            _,
-            index,
-          ) => ({
-            type: 'card.observed',
-            second: (index + 1) * 20,
-          }),
-        ),
       ],
-      'the first report is logged in full and each repeat as its observation time',
-    )
-    assert.equal(
-      lastSeen(),
-      new Date(start + 300_000).toISOString(),
-      'the worker\'s last sign of life is its newest observation',
+      'the first report is an event and its fifteen repeats are not',
     )
 
     await pnyx.restart()
@@ -397,7 +382,7 @@ test(
       check: () => logged().at(-1)?.second === 320,
     })
     assert.deepEqual(
-      logged().slice(16),
+      logged().slice(1),
       [
         {
           type: 'card.pushed',

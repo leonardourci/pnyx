@@ -7,7 +7,7 @@ import { loadHydra } from '#app/store.ts'
 import { sendReply } from './reply.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { selfSession } from './session-attachments.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 import { requestEnv } from '#app/request-context.ts'
 
 export function startOverride({
@@ -131,7 +131,15 @@ export function taskSessions({
 }): Set<string> {
   const sessions = new Set<string>()
 
-  for (const event of readEvents({ hydraId })) {
+  for (const event of scanEvents({
+    hydraId,
+    cardIds: [...ids],
+    types: [
+      'task.session',
+      'task.moved-in',
+      'card.pushed',
+    ],
+  })) {
     if (event.type === 'task.session' && (ids.has(event.data.before ?? '') || ids.has(event.data.after ?? ''))) {
       sessions.add(event.data.session)
     }

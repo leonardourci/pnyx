@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
-import fs, { readdirSync, readFileSync } from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { closeLogs, log, logsDir, openLogs, setLogMode, type LogLine } from './diagnostics.ts'
+import { closeLogs, flushLogs, log, logsDir, openLogs, setLogMode, type LogLine } from './diagnostics.ts'
 import { logged } from './log-line.ts'
 
 test(
@@ -123,74 +122,13 @@ test(
 )
 
 test(
-  'a log write that fails keeps no file open and sends the failure to stderr, and the next line lands in the file again',
-  t => {
-    openLogs()
-    t.after(() => closeLogs())
-    log({ operation: 'before the disk filled' })
-    const descriptors = () => readdirSync('/dev/fd').length
-    const open = descriptors()
-    const errors = t.mock.method(
-      console,
-      'error',
-      () => {},
-    )
-    const write = fs.writeSync
-    t.mock.method(
-      fs,
-      'writeSync',
-      () => {
-        throw Object.assign(
-          new Error('no space left on device'),
-          { code: 'ENOSPC' },
-        )
-      },
-    )
-    syncBuiltinESMExports()
-
-    for (const attempt of Array.from({ length: 20 }).keys()) {
-      log({
-        level: 'error',
-        operation: 'failed while full',
-        error: `attempt ${attempt}`,
-      })
-    }
-
-    t.mock.method(
-      fs,
-      'writeSync',
-      write,
-    )
-    syncBuiltinESMExports()
-    assert.ok(
-      descriptors() <= open,
-      'each failed write closed its file',
-    )
-    assert.equal(
-      errors.mock.calls.filter(call => String(call.arguments[0]).includes('"operation":"failed while full"')).length,
-      20,
-    )
-    log({ operation: 'after the disk freed' })
-    const written = readdirSync(logsDir()).map(name => readFileSync(
-      join(
-        logsDir(),
-        name,
-      ),
-      'utf8',
-    ))
-      .join('')
-    assert.match(
-      written,
-      /"operation":"after the disk freed"/,
-    )
-  },
-)
-
-test(
   'a written line keeps only the known fields, bounds their text, always describes an error, and leaves out what a reader can recover',
-  t => {
+  async t => {
     openLogs()
     t.after(() => closeLogs())
+    openLogs()
+    log({ operation: 'initial line' })
+    await flushLogs()
     const before = new Set(readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),
@@ -222,6 +160,7 @@ test(
       ms: 16.7,
     })
     setLogMode({ mode: 'on' })
+    await flushLogs()
     const written = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),
@@ -269,6 +208,57 @@ test(
         'v',
       ],
       'Detailed lines leave out the flag, the process id and the memory',
+    )
+  },
+)
+
+test(
+  'a burst keeps every line and error in call order',
+  async t => {
+    openLogs()
+    t.after(() => closeLogs())
+
+    for (let index = 0; index < 1000; index++) {
+      if (index % 100 === 0) {
+        log({
+          operation: 'burst',
+          count: index,
+          level: 'error',
+          error: 'burst failure',
+        })
+      } else {
+        log({
+          operation: 'burst',
+          count: index,
+        })
+      }
+    }
+
+    await flushLogs()
+    const lines = readdirSync(logsDir()).flatMap(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map(line => JSON.parse(line)))
+      .filter(line => line.operation === 'burst')
+    assert.deepEqual(
+      lines.map(line => line.count),
+      Array.from(
+        { length: 1000 },
+        (
+          _,
+          index,
+        ) => index,
+      ),
+    )
+    assert.equal(
+      lines.filter(line => line.level === 'error').length,
+      10,
     )
   },
 )

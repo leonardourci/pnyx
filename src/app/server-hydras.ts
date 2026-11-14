@@ -5,7 +5,7 @@ import { loadHydra } from './store.ts'
 import { CREATION_PREFIX, summarize, unreadableSummary } from './hydra-summary.ts'
 import { homeScoped } from '#store/postgres.ts'
 import type { HydraState } from './model.ts'
-import { readInitialEvent } from './event-log.ts'
+import { readEvents } from './event-log.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { pickName } from '#hydra/hydra-names.ts'
@@ -113,7 +113,10 @@ export function createHydra({
 
       if (eventId) {
         for (const id of ids) {
-          const event = readInitialEvent({ hydraId: id })
+          const event = readEvents({
+            hydraId: id,
+            limit: 1,
+          })[0]
 
           if (event?.type === 'board.configured' && event.id === eventId) {
             return id

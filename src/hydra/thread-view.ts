@@ -35,7 +35,7 @@ export function hydraThreadView({
       text: '',
     } : entry)
   const transcript = joinMessageParts({ entries })
-  const messages = (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id)
+  const messages = page.messages ?? []
   const {
     held,
     working,
@@ -53,7 +53,6 @@ export function hydraThreadView({
       card.id,
       card.title,
     ])),
-    oldest: page.older ? transcript[0]?.at : undefined,
     currentTurn: page.currentTurn,
     receipts: pnyxRunsHydra({ state }),
   })

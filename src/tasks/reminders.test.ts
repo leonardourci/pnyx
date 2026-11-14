@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents, readEventsFrom } from '#app/event-log.ts'
+import { readEvents } from '#app/event-log.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { refuseEvents, storedHydra } from '#test-harness/database.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
@@ -861,10 +861,10 @@ test(
       readEvents({ hydraId }).filter(event => event.type === 'task.reminder-due').length,
       2,
     )
-    const fired = readEventsFrom({
+    const fired = readEvents({
       hydraId,
-      offset: before,
-    }).events
+      after: before,
+    })
     assert.equal(
       fired.filter(event => event.type === 'task.reminder-due').length,
       2,

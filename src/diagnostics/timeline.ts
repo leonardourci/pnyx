@@ -302,7 +302,7 @@ export function timeline({
   service = [],
   filter,
 }: {
-  events: HydraEvent[]
+  events: Iterable<HydraEvent>
   service?: TimelineRow[]
   filter: TimelineFilter
 }) {

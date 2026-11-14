@@ -750,3 +750,82 @@ test(
     }).cards[third.cardId])
   },
 )
+
+test(
+  'an identical report bypasses the reducer and leaves unrelated cards unread',
+  async () => {
+    const { eventWriter } = await import('#app/writer.ts')
+    const { applyDecision } = await import('#app/decision.ts')
+    const state = emptyHydra()
+    const writer = eventWriter({
+      state,
+      owned: true,
+      dir: '/unused',
+      hydraId: 'test',
+      onAppend: () => {},
+    })
+    const input = {
+      title: 'Same report',
+      source: {
+        adapter: 'hooks',
+        objectId: 'source',
+        observedAt: '2026-11-13T12:00:00.000Z',
+      },
+    }
+    applyDecision({
+      writer,
+      decision: decidePush({
+        state,
+        key: 'repeated',
+        input,
+        meta: {
+          ...meta,
+          at: input.source.observedAt,
+          id: 'report-one',
+        },
+      }),
+    })
+    const card = state.cards[state.keys.repeated!]!
+    const unrelated = {
+      ...card,
+      id: 'unrelated',
+      key: 'unrelated',
+    }
+    Object.defineProperty(
+      unrelated,
+      'column',
+      {
+        configurable: true,
+        get() {
+          throw new Error('the reducer visited an unrelated card')
+        },
+      },
+    )
+    state.cards.unrelated = unrelated
+    const decision = decidePush({
+      state,
+      key: 'repeated',
+      input: {
+        ...input,
+        source: {
+          ...input.source,
+          observedAt: '2026-11-13T12:01:00.000Z',
+        },
+      },
+      meta: {
+        ...meta,
+        at: '2026-11-13T12:01:00.000Z',
+        id: 'report-two',
+      },
+    })
+    assert.equal(
+      'skipped' in decision && decision.skipped,
+      'unchanged',
+    )
+    assert.ok('observation' in decision && decision.observation)
+    assert.equal(
+      state.seq,
+      1,
+    )
+  },
+)

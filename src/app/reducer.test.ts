@@ -181,3 +181,60 @@ test(
     )
   },
 )
+
+test(
+  'a decision shares untouched cards and state branches without changing its input or event',
+  () => {
+    const state = replay({
+      state: emptyHydra(),
+      events: readStream({ name: 'lifecycle' }),
+    })
+    const snapshot = structuredClone(state)
+    const event: HydraEvent = {
+      v: 1,
+      id: 'edit-one-card',
+      seq: state.seq + 1,
+      at: '2026-11-13T22:00:00.000Z',
+      actor: 'cli',
+      cardId: 'c1',
+      type: 'card.moved',
+      data: {
+        before: 'in_progress',
+        after: 'queued',
+      },
+    }
+    const savedEvent = structuredClone(event)
+    const next = replay({
+      state,
+      events: [event],
+    })
+    assert.deepEqual(
+      state,
+      snapshot,
+    )
+    assert.deepEqual(
+      event,
+      savedEvent,
+    )
+    assert.notEqual(
+      next.cards.c1,
+      state.cards.c1,
+    )
+    assert.equal(
+      next.cards.c2,
+      state.cards.c2,
+    )
+    assert.equal(
+      next.keys,
+      state.keys,
+    )
+    assert.equal(
+      next.undone,
+      state.undone,
+    )
+    assert.equal(
+      next.cards.c1?.column,
+      'queued',
+    )
+  },
+)
