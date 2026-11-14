@@ -846,6 +846,13 @@ export function createHost({
     readThrough,
     handBack,
     armWake,
+    models: ({
+      harness,
+      account,
+    }) => catalogs.models({
+      harness,
+      account,
+    }),
   })
   const {
     hydraTurn,

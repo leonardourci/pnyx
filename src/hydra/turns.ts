@@ -79,6 +79,7 @@ export function createHydraTurns({
   readThrough,
   handBack,
   armWake,
+  models,
 }: {
   hydraId: string
   live: Map<string, Live>
@@ -140,6 +141,7 @@ export function createHydraTurns({
   readThrough: ReturnType<typeof createWakeQueue>['readThrough']
   handBack: ReturnType<typeof createWakeQueue>['handBack']
   armWake: ReturnType<typeof createWakeQueue>['armWake']
+  models: Host['models']
 }) {
   let hydraTurn = Promise.resolve()
   let wakeTurn = Promise.resolve()
@@ -363,7 +365,7 @@ export function createHydraTurns({
         state: queuedState,
         dispatch: queuedDispatch,
       })
-    const requestedAgent = {
+    const requested = {
       ...desiredAgent,
       account: harnessAccount({
         effective: effectiveDispatch(),
@@ -427,10 +429,20 @@ export function createHydraTurns({
         mode: previous.settings?.mode,
         fast: previous.settings?.fast === 'true',
       } : undefined)
-      const kind = used && agentChangeKind({
+      const kind = used && await agentChangeKind({
         previous: used,
-        next: requestedAgent,
+        next: requested,
+        models: () => models({
+          harness: requested.harness,
+          account: requested.account,
+        }),
       })
+      // A model or effort named as what the session already runs with keeps that session.
+      const requestedAgent = used && !kind ? {
+        ...requested,
+        model: used.model,
+        effort: used.effort,
+      } : requested
 
       if (used && kind && ownerActor({ actor })) {
         write({

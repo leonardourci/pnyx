@@ -27,21 +27,49 @@ import { recapText } from './wakes.ts'
 import { hydraHistoryPage } from './history-cli.ts'
 import { canSkipCompaction, compactionContext, historyCommand, inscribeSince, NEITHER_REASON } from './history.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import type { HostedSession, Provider } from '#workers/provider.ts'
+import { modelOption, type HostedSession, type ModelOption, type Provider } from '#workers/provider.ts'
 
-export function agentChangeKind({
+// A model or effort left unnamed is the harness default, and a model alias is the model it stands for, so naming what the session already runs with changes nothing.
+export async function agentChangeKind({
   previous,
   next,
+  models,
 }: {
   previous: AgentConfig
   next: AgentConfig
-}): 'agent' | 'effort' | undefined {
-  if (previous.harness !== next.harness || previous.account !== next.account
-    || previous.model !== next.model) {
+  models(): Promise<ModelOption[]>
+}): Promise<'agent' | 'effort' | undefined> {
+  if (previous.harness !== next.harness || previous.account !== next.account) {
     return 'agent'
   }
 
-  return previous.effort !== next.effort ? 'effort' : undefined
+  if (previous.model === next.model && previous.effort === next.effort) {
+    return undefined
+  }
+
+  // A catalog that cannot load compares the names as they are.
+  const offered = await models().catch(() => [])
+
+  const runs = ({ agent }: { agent: AgentConfig }) => {
+    const option = modelOption({
+      models: offered,
+      model: agent.model,
+    })
+
+    return {
+      model: option?.resolvedModel ?? option?.value ?? agent.model,
+      effort: agent.effort ?? option?.defaultEffort,
+    }
+  }
+
+  const was = runs({ agent: previous })
+  const now = runs({ agent: next })
+
+  if (was.model !== now.model) {
+    return 'agent'
+  }
+
+  return was.effort !== now.effort ? 'effort' : undefined
 }
 
 // Only Pnyx's recorded conversation crosses provider and account boundaries.
