@@ -33,7 +33,7 @@ import { decideQueue } from '#workers/queue-decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
 import { taskSpend } from '#workers/task-spend.ts'
-import { readEvents } from './event-log.ts'
+import { readEvents, scanEvents } from './event-log.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { askRows, askCommand } from '#tasks/asks.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
@@ -658,13 +658,15 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
     const spend = taskSpend({
       state,
-      events: readEvents({
-        hydraId,
-        types: [
-          'board.configured',
-          'task.session',
-        ],
-      }),
+      events: [
+        ...scanEvents({
+          hydraId,
+          types: [
+            'board.configured',
+            'task.session',
+          ],
+        }),
+      ],
       task: task.id,
     })
 

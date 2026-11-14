@@ -3,7 +3,7 @@ import { stopHydraInputs } from './stop-inputs.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { contextNoteBlock, contextTurnNotes } from './context-notes.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
-import { agentSettings, hydraCandidate } from './agent-choice.ts'
+import { agentSettings, hydraCandidate, startsFromSummary, withAccount } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
 import { hydraDigest } from './digest.ts'
 import { QUIET_REPLY, hydraEvent, reportActor } from './hydra.ts'
@@ -359,20 +359,14 @@ export function createHydraTurns({
       return Promise.resolve({ state: 'cancelled' })
     }
 
-    const queuedDispatch = effectiveDispatch().dispatch
-    const desiredAgent = selected ?? (!ownerActor({ actor }) ? queuedState.hydraAgent : undefined)
-      ?? hydraCandidate({
+    // Pnyx's wakes keep the agent Hydra last ran with, unless an agent change's compaction left no session to keep.
+    const keepsAgent = !ownerActor({ actor }) && !startsFromSummary({ state: queuedState })
+    const chosenAgent = withAccount({
+      agent: selected ?? (keepsAgent ? queuedState.hydraAgent : undefined) ?? hydraCandidate({
         state: queuedState,
-        dispatch: queuedDispatch,
-      })
-    const chosenAgent = {
-      ...desiredAgent,
-      account: harnessAccount({
-        effective: effectiveDispatch(),
-        harness: desiredAgent.harness,
-        prefer: desiredAgent.account,
+        dispatch: effectiveDispatch().dispatch,
       }),
-    }
+    })
     const deliveryId = release ? `${id}:compact:hosted` : `${id}:hosted`
 
     if (queuedHydra.has(id)) {
@@ -423,7 +417,7 @@ export function createHydraTurns({
       }
 
       const previous = state.cards[HYDRA_CARD]
-      const used = state.hydraAgent ?? (previous?.agent ? {
+      const ranWith = state.hydraAgent ?? (previous?.agent ? {
         harness: harnessOf({ provider: previous.agent.provider }),
         account: previous.agent.account ?? harnessAccount({
           effective: effectiveDispatch(),
@@ -434,6 +428,8 @@ export function createHydraTurns({
         mode: previous.settings?.mode,
         fast: previous.settings?.fast === 'true',
       } : undefined)
+      // After an agent change's compaction no session holds context to lose, so nothing is compared.
+      const used = startsFromSummary({ state }) ? undefined : ranWith
       const kind = used && await agentChangeKind({
         previous: used,
         next: chosenAgent,
@@ -575,7 +571,7 @@ export function createHydraTurns({
         card = state.cards[HYDRA_CARD]
         const sameIdentity = history && card?.agent?.provider === provider
           && card.agent.account === main
-          && state.hydraContext?.previousSession !== sessionId({ agent: card.agent })
+          && !startsFromSummary({ state })
           && card.settings?.model === candidate.model
         const agent = sameIdentity ? card?.agent : undefined
         const changedSettings = !sameChosenSettings({

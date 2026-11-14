@@ -1,5 +1,5 @@
 import type { HydraEvent } from '#app/model.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 
 export interface HistoryEntry {
   hydra: string
@@ -23,15 +23,17 @@ export function movedHistory({
   const entries: HistoryEntry[] = []
   let hydra: string | undefined = hydraId
   let upTo = Number.POSITIVE_INFINITY
-  let events = readEvents({
-    hydraId,
-    cardIds: cards,
-    types: types ? [
-      ...types,
-      'task.moved-in',
-      'task.moved-out',
-    ] : undefined,
-  })
+  let events = [
+    ...scanEvents({
+      hydraId,
+      cardIds: cards,
+      types: types ? [
+        ...types,
+        'task.moved-in',
+        'task.moved-out',
+      ] : undefined,
+    }),
+  ]
 
   while (hydra) {
     const stay = events.filter(event => event.seq <= upTo)
@@ -52,15 +54,17 @@ export function movedHistory({
 
     const from: string = arrival.data.from
     // A Hydra deleted since the move has no log, which leaves its part out.
-    events = readEvents({
-      hydraId: from,
-      cardIds: cards,
-      types: types ? [
-        ...types,
-        'task.moved-in',
-        'task.moved-out',
-      ] : undefined,
-    })
+    events = [
+      ...scanEvents({
+        hydraId: from,
+        cardIds: cards,
+        types: types ? [
+          ...types,
+          'task.moved-in',
+          'task.moved-out',
+        ] : undefined,
+      }),
+    ]
     const departure = events.find(event => event.id === arrival.id && event.type === 'task.moved-out')
     hydra = departure ? from : undefined
     upTo = departure?.seq ?? 0

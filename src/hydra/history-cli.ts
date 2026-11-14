@@ -1,13 +1,65 @@
 import { randomUUID } from 'node:crypto'
 import { meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
-import { eventPositions, readEvents } from '#app/event-log.ts'
+import type { HydraState } from '#app/model.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { historyBoundary, historyCommand, inscribeOperation, readHistory } from './history.ts'
-import { hydraEntries } from './transcripts-read.ts'
+import {
+  historyCommand,
+  historyMessages,
+  historyRange,
+  historyTokens,
+  inscribeOperation,
+  readHistory,
+  type HistoryWindow,
+} from './history.ts'
+import { messageWindow } from './message-window.ts'
+import { nativeSources } from './native-window.ts'
 import { operationEvent } from './operations.ts'
 
-// Hydra's history, reading only the Hydra transcripts written since its boundary.
+const HISTORY_TYPES = [
+  'hydra.message',
+  'hydra.helper-finished',
+  'task.created',
+  'task.brief',
+  'task.owner-ask',
+  'task.intent',
+]
+
+export function hydraHistoryWindow({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state: HydraState
+}): HistoryWindow {
+  const sources = nativeSources({
+    state,
+    card: HYDRA_CARD,
+  })
+
+  return ({
+    lo,
+    hi,
+  }) => {
+    const read = messageWindow({
+      hydraId,
+      sources,
+      types: HISTORY_TYPES,
+      lo,
+      hi,
+    })
+
+    return {
+      messages: historyMessages({
+        positions: read.positions,
+        events: read.events,
+        native: read.native.filter(entry => entry.kind === 'message' && entry.role.startsWith('assistant')),
+      }),
+      hi: read.hi,
+    }
+  }
+}
+
 export function hydraHistoryPage({
   hydraId,
   since,
@@ -22,46 +74,43 @@ export function hydraHistoryPage({
   budget?: number
 }) {
   const state = loadHydra({ hydraId }).state
-  // A cursor h1:<boundary>:<through>:<position> keeps the boundary its first page used.
-  const boundary = after === undefined ? historyBoundary({
-    state,
-    since,
-  }) : Number(after.split(':')[1])
-
-  const events = readEvents({
-    hydraId,
-    after: boundary,
-    before: (through ?? state.seq) + 1,
-    types: [
-      'hydra.message',
-      'hydra.helper-finished',
-      'task.created',
-      'task.brief',
-      'task.owner-ask',
-      'task.intent',
-    ],
-  })
-
-  const native = hydraEntries({
-    state,
-    after: readEvents({
-      hydraId,
-      seqs: [boundary],
-    })[0]?.at,
-  })
 
   return readHistory({
-    positions: eventPositions({
+    window: hydraHistoryWindow({
       hydraId,
-      entries: native,
+      state,
     }),
     state,
-    events,
-    native,
     since,
     after,
     through,
     budget,
+  })
+}
+
+export function hydraHistoryTokens({
+  hydraId,
+  since,
+  limit,
+}: {
+  hydraId: string
+  since: string
+  limit?: number
+}): number {
+  const state = loadHydra({ hydraId }).state
+  const range = historyRange({
+    state,
+    since,
+  })
+
+  return historyTokens({
+    window: hydraHistoryWindow({
+      hydraId,
+      state,
+    }),
+    boundary: range.boundary,
+    through: range.through,
+    limit,
   })
 }
 
@@ -72,7 +121,7 @@ export function hydraHistory({
   values: Record<string, string | boolean | undefined>
   hydraId: string
 }): Output {
-  const page = hydraHistoryPage({
+  const request = {
     hydraId,
     since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
     after: values.after as string | undefined,
@@ -84,15 +133,32 @@ export function hydraHistory({
       value: values.budget,
       flag: '--budget',
     }),
-  })
+  }
 
   if (values.count) {
+    const state = loadHydra({ hydraId }).state
+    const range = historyRange({
+      state,
+      since: request.since,
+      after: request.after,
+      through: request.through,
+    })
+
     return {
-      totalTokens: page.totalTokens,
-      boundary: page.boundary,
-      snapshot: page.snapshot,
+      totalTokens: historyTokens({
+        window: hydraHistoryWindow({
+          hydraId,
+          state,
+        }),
+        boundary: range.boundary,
+        through: range.through,
+      }),
+      boundary: range.boundary,
+      snapshot: range.through,
     }
   }
+
+  const page = hydraHistoryPage(request)
 
   return {
     ...page,

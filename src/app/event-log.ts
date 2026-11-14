@@ -127,6 +127,11 @@ export function eventsOrLegacy({
   return types ? events.filter(event => types.includes(event.type)) : events
 }
 
+const POSITION_BATCH = 500
+
+// A native entry has a time but no log position: it takes the seq of the first event after its time, or the next seq when
+// no event follows. The `at` index finds that event without reading every later one, and each statement covers a bounded
+// batch of the distinct times.
 export function eventPositions({
   hydraId,
   entries,
@@ -138,25 +143,156 @@ export function eventPositions({
   }[]
 }): Map<string, number> {
   const valid = entries.filter(entry => Number.isFinite(Date.parse(entry.at ?? '')))
+  const times = [...new Set(valid.map(entry => new Date(entry.at!).toISOString()))]
+  const seqs = new Map<string, number>()
+
+  for (let start = 0; start < times.length; start += POSITION_BATCH) {
+    const batch = times.slice(
+      start,
+      start + POSITION_BATCH,
+    )
+    const [found] = query({
+      statements: [
+        {
+          text: `select entry.at as at, coalesce((select min(seq) from events where hydra_id = $1 and at =
+        (select min(at) from events where hydra_id = $1 and at > entry.at)),
+      (select coalesce(max(seq), 0) + 1 from events where hydra_id = $1)) as seq
+      from unnest($2::text[]) entry(at)`,
+          values: [
+            hydraId,
+            batch,
+          ],
+        },
+      ],
+    }) as {
+      at: string
+      seq: number
+    }[][]
+
+    for (const row of found!) {
+      seqs.set(
+        row.at,
+        Number(row.seq),
+      )
+    }
+  }
+
+  return new Map(valid.map(entry => [
+    entry.id,
+    seqs.get(new Date(entry.at!).toISOString())!,
+  ]))
+}
+
+export function eventTime({
+  hydraId,
+  seq,
+}: {
+  hydraId: string
+  seq: number
+}): string | undefined {
   const [rows] = query({
     statements: [
       {
-        text: `select coalesce((select min(seq) from events where hydra_id = $1 and at > entry.at),
-      (select coalesce(max(seq), 0) + 1 from events where hydra_id = $1)) as seq
-      from json_array_elements_text($2::json) with ordinality entry(at, position) order by position`,
+        text: 'select at from events where hydra_id = $1 and seq <= $2 order by seq desc limit 1',
         values: [
           hydraId,
-          JSON.stringify(valid.map(entry => new Date(entry.at!).toISOString())),
+          seq,
+        ],
+      },
+    ],
+  }) as { at: string }[][]
+
+  return rows![0]?.at
+}
+
+// The log positions a time bounds: the first event recorded at or after it and the last one at or before it. Event times
+// are text, so the search is widened by a second to cover the two spellings of a time.
+export function seqsAround({
+  hydraId,
+  time,
+}: {
+  hydraId: string
+  time: number
+}): {
+  first: number
+  last: number
+} {
+  const [rows] = query({
+    statements: [
+      {
+        text: `select
+        (select min(seq) from events where hydra_id = $1 and at =
+          (select min(at) from events where hydra_id = $1 and at >= $2)) as first,
+        (select max(seq) from events where hydra_id = $1 and at =
+          (select max(at) from events where hydra_id = $1 and at <= $3)) as last`,
+        values: [
+          hydraId,
+          new Date(time - 1000).toISOString(),
+          new Date(time + 1000).toISOString(),
+        ],
+      },
+    ],
+  }) as {
+    first: number | null
+    last: number | null
+  }[][]
+  const [
+    {
+      first,
+      last,
+    },
+  ] = rows!
+
+  return {
+    first: first === null ? Infinity : Number(first),
+    last: last === null ? 0 : Number(last),
+  }
+}
+
+export function eventSeq({
+  hydraId,
+  id,
+}: {
+  hydraId: string
+  id: string
+}): number | undefined {
+  const [rows] = query({
+    statements: [
+      {
+        text: 'select seq from events where hydra_id = $1 and id = $2',
+        values: [
+          hydraId,
+          id,
         ],
       },
     ],
   }) as { seq: number }[][]
 
-  return new Map(valid.map((
-    entry,
-    index,
-  ) => [
-    entry.id,
-    Number(rows![index]!.seq),
-  ]))
+  return rows![0] && Number(rows![0].seq)
+}
+
+export function replySeq({
+  hydraId,
+  card,
+  reply,
+}: {
+  hydraId: string
+  card: string
+  reply: string
+}): number | undefined {
+  const [rows] = query({
+    statements: [
+      {
+        text: `select seq from events where hydra_id = $1 and type = 'card.replied' and card_id = $2
+          and data->'data'->>'reply' = $3 order by seq limit 1`,
+        values: [
+          hydraId,
+          card,
+          reply,
+        ],
+      },
+    ],
+  }) as { seq: number }[][]
+
+  return rows![0] && Number(rows![0].seq)
 }

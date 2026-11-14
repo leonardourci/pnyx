@@ -1,12 +1,13 @@
 import { integer, type Output, type Options } from '#app/cli-support.ts'
-import { eventPositions, readEvents } from '#app/event-log.ts'
+import { eventPositions, eventSeq, replySeq, seqsAround } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { cardSessionId } from '#workers/session-attachments.ts'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { lookupMessages } from './message-lookup.ts'
-import { hydraEntries, sessionEntries, threadPath, type SessionEntry } from './transcripts-read.ts'
+import { lookupMessages, type LookupThread } from './message-lookup.ts'
+import { messageRecords } from './message-records.ts'
+import { messageWindow } from './message-window.ts'
+import { nativeRecord, nativeSources } from './native-window.ts'
 
 export const MESSAGE_LOOKUP_OPTIONS: Options = {
   id: { type: 'string' },
@@ -22,26 +23,91 @@ export const MESSAGE_LOOKUP_OPTIONS: Options = {
   limit: { type: 'string' },
 }
 
-function threadEntries({
+const NATIVE_ID = /^(.+):(\d+):m\d+$/
+
+function lookupThread({
+  hydraId,
   state,
   card,
 }: {
+  hydraId: string
   state: HydraState
   card: string
-}): SessionEntry[] {
-  if (card === HYDRA_CARD) {
-    return hydraEntries({ state })
+}): LookupThread {
+  const sources = nativeSources({
+    state,
+    card,
+  })
+  const types = [card === HYDRA_CARD ? 'hydra.message' : 'card.replied']
+
+  return {
+    window: ({
+      lo,
+      hi,
+      toward,
+    }) => {
+      const read = messageWindow({
+        hydraId,
+        sources,
+        cardId: card,
+        types,
+        lo,
+        hi,
+        toward,
+      })
+
+      return {
+        messages: messageRecords({
+          positions: read.positions,
+          events: read.events,
+          entries: read.native,
+          card,
+        }),
+        lo: read.lo,
+        hi: read.hi,
+      }
+    },
+    locate: ({ id }) => {
+      if (id.startsWith('reply:')) {
+        return replySeq({
+          hydraId,
+          card,
+          reply: id.slice('reply:'.length),
+        })
+      }
+
+      const [
+        , session,
+        offset,
+      ] = NATIVE_ID.exec(id) ?? []
+      const source = sources.find(candidate => candidate.session === session)
+      const entry = source && nativeRecord({
+        source,
+        offset: Number(offset),
+      }).find(candidate => candidate.reference === id)
+
+      if (entry) {
+        return eventPositions({
+          hydraId,
+          entries: [
+            {
+              id,
+              at: entry.at,
+            },
+          ],
+        }).get(id)
+      }
+
+      return eventSeq({
+        hydraId,
+        id,
+      })
+    },
+    around: ({ time }) => seqsAround({
+      hydraId,
+      time,
+    }),
   }
-
-  const task = state.cards[card]!
-  const path = threadPath({ card: task })
-  const session = cardSessionId({ card: task })
-
-  return path && session ? sessionEntries({
-    path,
-    session,
-    boundaries: false,
-  }) : []
 }
 
 export function messageLookup({
@@ -58,23 +124,14 @@ export function messageLookup({
     state,
     ref: task,
   }).id
-  const entries = threadEntries({
-    state,
-    card,
-  })
   const page = lookupMessages({
-    positions: eventPositions({
+    thread: lookupThread({
       hydraId,
-      entries,
+      state,
+      card,
     }),
     hydraId,
     card,
-    events: readEvents({
-      hydraId,
-      cardId: card,
-      types: [card === HYDRA_CARD ? 'hydra.message' : 'card.replied'],
-    }),
-    entries,
     snapshot: state.seq,
     selection: {
       id: values.id as string | undefined,

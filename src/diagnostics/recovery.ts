@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -94,7 +94,7 @@ export function createDiagnosticRecovery({
   }: {
     task: string
     message: string
-  }) => readEvents({
+  }) => scanEvents({
     hydraId,
     cardId: task,
     types: ['card.replied'],
