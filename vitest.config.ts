@@ -16,6 +16,14 @@ export default defineConfig({
     execArgv: ['--conditions=source'],
     globalSetup: ['tests/setup/global-setup.ts'],
     setupFiles: ['tests/setup/environment.ts'],
+    // Files and the tests in each run in a random order, so a test that needs another one's leftovers fails at once.
+    // A failing run's order repeats with --sequence.seed=<the seed it printed>.
+    sequence: {
+      shuffle: {
+        files: true,
+        tests: true,
+      },
+    },
     // Bounds for a stuck test, not speed targets: every wait ends as soon as its condition holds.
     testTimeout: 60_000,
     hookTimeout: 60_000,
