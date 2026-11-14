@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDigestContext } from '#hydra/digest-context.ts'
@@ -360,6 +360,116 @@ test(
     expect(wake).toContain('Halfway through the invoices')
     expect(wake).toContain('Need the SFTP password')
     expect(session.received).toHaveLength(2)
+  },
+)
+
+test(
+  'while the routine helper handles a worker\'s update, what the worker\'s transcript records still reaches its card',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'auto',
+      ],
+    })
+    // Updates wake only a Hydra that Pnyx runs.
+    const main = await hydra.chat({ text: 'Watch the invoices' })
+    await until({
+      what: 'Hydra\'s first turn',
+      check: () => main.answered === 1,
+    })
+    const folder = hydra.folder({ name: 'invoices' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export invoices',
+        '--key',
+        'invoices',
+        '--folder',
+        folder,
+      ],
+    })
+    const { id } = await hydra.task({ key: 'invoices' })
+    // Planned before the worker starts: the helper's batch on the worker's first turn ending takes it and holds the task.
+    const helperTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Granted tasks:'),
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: id,
+            audience: 'routine',
+            summary: 'Told the worker to retry.',
+          },
+        ],
+      }),
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'invoices',
+      ],
+    })
+    await hydra.agent({ cwd: folder })
+    await until({
+      what: 'the routine helper to take the worker\'s update',
+      check: () => pnyx.claude.sessions.some(session => session.env.PNYX_HYDRA === hydra.id
+        && session.env.PNYX_ACTOR?.startsWith('helper:') && session.received.length > 0),
+    })
+
+    // Claude Code stamps its version on each transcript record; Pnyx reads it back from the transcript.
+    const { sessions } = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        'invoices',
+      ],
+    })
+    appendFileSync(
+      sessions[0].transcript,
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date().toISOString(),
+        version: '9.9.9',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: 'Retrying the export.',
+            },
+          ],
+        },
+      })}\n`,
+    )
+    await hydra.owner({
+      args: [
+        'reply',
+        'invoices',
+        '--text',
+        'Retry the export',
+      ],
+    })
+    await until({
+      what: 'the transcript\'s version to reach the card while the helper still works',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'invoices',
+          '--full',
+        ],
+      })).task.settings?.version === '9.9.9',
+    })
+
+    helperTurn.release()
   },
 )
 
