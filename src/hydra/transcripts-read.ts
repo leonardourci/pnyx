@@ -1,3 +1,4 @@
+import { query } from '#store/postgres.ts'
 import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
@@ -7,7 +8,6 @@ import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentRef, ReplyState } from '#workers/model.ts'
-import { readEvents } from '#app/event-log.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
@@ -24,7 +24,9 @@ import { isManagedTask } from '#tasks/select.ts'
 import type { TurnActions } from './conversation.ts'
 import type { TurnTiming } from './chat-messages.ts'
 import { threadEntryOrder } from './thread-order.ts'
-import { hydraMessagesOf, messageWindow, MESSAGE_CURSOR } from './message-window.ts'
+import { hydraMessages } from './chat-messages.ts'
+import { hydraConfig } from './config.ts'
+import type { HydraMessage } from './model.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -96,14 +98,14 @@ export interface ThreadPage {
   }
   actions?: HydraEvent[]
   older?: string
-  // Hydra's conversation holds no message older than this time, which its `older` cursor reads next.
-  messagesFrom?: string
+  messages?: HydraMessage[]
   route: boolean
   via?: string
   routeKind?: ReplyRoute['kind']
   noRoute?: string
   watching: 'unknown'
 }
+const HYDRA_PAGE_SIZE = 20
 const MAX_BYTES = 10 * 1024 * 1024
 // How many transcripts' parsed messages the server keeps between reads.
 const CACHED_TRANSCRIPTS = 16
@@ -547,7 +549,7 @@ export function latestMessage({
 
 // A cursor carries each sources position, so paging cannot skip transcript
 // chunks when reply receipts also fill the latest page.
-export const THREAD_CURSOR = /^(?:n(?:(\d+)\.)?(\d+:\d+)?;r(\d+:\d+)?|m[\w%.!~*'()-]+)$/
+export const THREAD_CURSOR = /^n(?:(\d+)\.)?(\d+:\d+)?;r(\d+:\d+)?(?:;m([\w%.!~*'()-]+))?$/
 type LoggedMessage = HydraEvent
 
 // A moved task's owner replies stay in each Hydra it passed through. They are numbered in
@@ -563,17 +565,10 @@ function threadEvents({
   const history = movedHistory({
     hydraId,
     task: card.id,
+    types: ['card.replied'],
     matches: ({ event }) => event.type === 'card.replied' && Boolean(event.data.text)
       && event.cardId === card.id,
   })
-
-  if (!history.some(entry => entry.hydra !== hydraId)) {
-    return readEvents({
-      hydraId,
-      cardId: card.id,
-      types: ['card.replied'],
-    }).filter(event => event.type === 'card.replied' && !!event.data.text)
-  }
 
   return history.reverse().map((
     { event },
@@ -601,6 +596,7 @@ type Candidate = {
   item: ThreadEntry
   native?: string
   reply?: string
+  message?: string
 }
 
 // A transcript a thread pages through, newest first. index names an earlier Hydra session in
@@ -893,21 +889,6 @@ function readThreadPage(
     } : { noRoute: found.reason }),
     watching: 'unknown',
   }
-  const messageCursor = card.id === HYDRA_CARD && before !== undefined
-    ? MESSAGE_CURSOR.exec(before)
-    : null
-
-  // Older messages of a conversation the transcript does not bound: only the window moves back.
-  if (messageCursor) {
-    return {
-      ...result,
-      ...messageWindow({
-        messages: hydraMessagesOf({ state }),
-        before: decodeURIComponent(messageCursor[1]!),
-      }),
-    }
-  }
-
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
   const sourceCursor = match?.[1] === undefined ? undefined : Number(match[1])
   const nativeCursor = match?.[2], replyCursor = match?.[3]
@@ -1070,77 +1051,102 @@ function readThreadPage(
     })
   }
 
-  const positions = new Map(candidates.map((
+  const messageCursor = match?.[4] === undefined ? undefined : decodeURIComponent(match[4])
+  const allMessages = card.id === HYDRA_CARD
+    ? (state.hydraMessages ?? []).filter(message =>
+      message.hydra === hydraConfig({ state }).hydra.id)
+      .toSorted((
+        a,
+        b,
+      ) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))
+    : []
+  const messageEnd = messageCursor === undefined ? allMessages.length
+    : Math.max(
+      0,
+      allMessages.findIndex(message => message.id === messageCursor),
+    )
+  const messages = allMessages.slice(
+    0,
+    messageEnd,
+  )
+  const originals = new Map(candidates.map(candidate => [
+    candidate.item.id,
     candidate,
-    index,
-  ) => [
-    candidate,
-    index,
   ]))
-  const native = candidates.filter(candidate => candidate.native)
-  const replies = candidates.filter(candidate => candidate.reply).sort((
+
+  if (card.id === HYDRA_CARD) {
+    const messageIds = new Set(messages.map(message => message.id))
+    candidates = hydraMessages({
+      messages,
+      transcript: candidates.map(candidate => candidate.item),
+      provider: card.agent?.provider,
+      boundaries: true,
+    }).map(item => ({
+      ...originals.get(item.id),
+      item,
+      message: item.reference && messageIds.has(item.reference) ? item.reference : undefined,
+    }))
+  }
+
+  candidates.sort((
     a,
     b,
   ) => threadEntryOrder({
     first: a.item,
     second: b.item,
   }))
-  const page: typeof candidates = []
+  const limit = card.id === HYDRA_CARD ? HYDRA_PAGE_SIZE : THREAD_PAGE_LIMIT
+  const page = candidates.slice(-limit)
+  const firstMessage = page.find(candidate => candidate.message)?.message
+  const shownMessages = new Set(page.flatMap(candidate =>
+    candidate.message ? [candidate.message] : []))
 
-  const incomplete = () => {
-    const firstPart = page.at(-1)?.item.part
-
-    return firstPart !== undefined && firstPart > 0
+  if (card.id === HYDRA_CARD) {
+    result.messages = messages.filter(message => shownMessages.has(message.id))
   }
 
-  // Consume a contiguous suffix from each source even when a record was timestamped earlier.
-  // A boundary message stays whole even when it exceeds the page target.
-  while ((page.length < THREAD_PAGE_LIMIT || incomplete()) && (native.length || replies.length)) {
-    const nativeLast = native.at(-1)
-    const replyLast = replies.at(-1)
-    const takeNative = nativeLast && (!replyLast || (nativeLast.item.at ?? '') >= (replyLast.item.at ?? ''))
-    const selected = takeNative ? native.pop() : replies.pop()
-
-    if (selected) {
-      page.push(selected)
-    }
-  }
-
-  const firstNative = page.findLast(candidate => candidate.native)?.native
-  const firstReply = page.findLast(candidate => candidate.reply)?.reply
+  const firstNative = page.find(candidate => candidate.native)?.native
+  const firstReply = page.find(candidate => candidate.reply)?.reply
   page.sort((
     a,
     b,
   ) => threadEntryOrder({
     first: a.item,
     second: b.item,
-  })
-    || positions.get(a)! - positions.get(b)!)
-  result.entries = page.map(e => e.item)
+  }))
+  result.entries = page.filter(candidate => !candidate.message).map(candidate => candidate.item)
 
   if (card.id === HYDRA_CARD) {
-    const firstAt = result.entries[0]?.at
+    const firstAt = page[0]?.item.at
     const beforeAt = excludedAt.toSorted()[0]
-    result.actions = firstAt === undefined ? [] : readEvents({
-      hydraId,
-      hydraActions: true,
-      atFrom: firstAt,
-      atTo: beforeAt,
-    }).filter(event => threadAction({
+    const [rows] = firstAt === undefined ? [[]] : query({
+      statements: [
+        {
+          text: `select data from events where hydra_id = $1 and at >= $2
+        and ($3::text is null or at <= $3)
+        and ((type = 'card.replied' and coalesce(data->'data'->>'text', '') <> '')
+          or (actor = 'hydra' and type <> 'hydra.message')) order by seq`,
+          values: [
+            hydraId,
+            firstAt,
+            beforeAt ?? null,
+          ],
+        },
+      ],
+    }) as { data: HydraEvent }[][]
+    result.actions = rows!.map(row => row.data).filter(event => threadAction({
       event,
       state,
     }))
   }
 
-  const carried = `${sourceCursor === undefined ? '' : `${sourceCursor}.`}${nativeCursor ?? ''}`
+  const oldestMessage = firstMessage ?? messageCursor
+  const messagePosition = oldestMessage === undefined ? '' : `;m${encodeURIComponent(oldestMessage)}`
+  const carriedSource = sourceCursor === undefined ? '' : `${sourceCursor}.`
+  const carried = `${carriedSource}${nativeCursor ?? ''}`
 
   if (candidates.length > page.length || earlierNative) {
-    result.older = `n${firstNative ?? emptyNativeCursor ?? carried};r${firstReply ?? replyCursor ?? ''}`
-  } else if (card.id === HYDRA_CARD) {
-    Object.assign(
-      result,
-      messageWindow({ messages: hydraMessagesOf({ state }) }),
-    )
+    result.older = `n${firstNative ?? emptyNativeCursor ?? carried};r${firstReply ?? replyCursor ?? ''}${messagePosition}`
   }
 
   return result

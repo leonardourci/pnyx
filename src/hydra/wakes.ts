@@ -5,7 +5,7 @@ import type { HydraMessage } from './model.ts'
 import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import type { AgentRef } from '#workers/model.ts'
-import { readEvents, scanEvents, findEvent } from '#app/event-log.ts'
+import { readEvents, scanEvents } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { MAX_RESUMES, resumesInARow } from '#workers/host.ts'
 import { sessionId } from '#workers/session-attachments.ts'
@@ -260,7 +260,7 @@ export function findHydraTurnToResume({
   resumeMessage: string
   wakeThrough: number
 } | undefined {
-  const cutHydraTurn = findEvent({
+  const cutHydraTurn = scanEvents({
     hydraId,
     cardId: HYDRA_CARD,
     types: [
@@ -268,15 +268,14 @@ export function findHydraTurnToResume({
       'board.configured',
     ],
     descending: true,
-    matches: ({ event }) => {
-      if (event.cardId !== HYDRA_CARD || !event.id.endsWith(':hosted')) {
-        return false
-      }
+  }).find(event => {
+    if (event.cardId !== HYDRA_CARD || !event.id.endsWith(':hosted')) {
+      return false
+    }
 
-      return event.type === 'hydra.delivered'
-        ? event.data.session === sessionId({ agent })
-        : event.type === 'board.configured' && event.data.hydra?.session === sessionId({ agent })
-    },
+    return event.type === 'hydra.delivered'
+      ? event.data.session === sessionId({ agent })
+      : event.type === 'board.configured' && event.data.hydra?.session === sessionId({ agent })
   })
 
   if (!cutHydraTurn || resumesInARow({
@@ -295,15 +294,15 @@ export function findHydraTurnToResume({
     return undefined
   }
 
-  const lastFinishedTurn = findEvent({
+  const lastFinishedTurn = scanEvents({
     hydraId,
+    cardId: HYDRA_CARD,
     types: ['card.pushed'],
     before: cutHydraTurn.seq,
     descending: true,
-    matches: ({ event }) => event.type === 'card.pushed' && event.data.activity === 'finished'
+  }).find(event => event.type === 'card.pushed' && event.data.activity === 'finished'
       && event.actor === 'pnyx' && event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider,
-  })
+      && event.data.agent.provider === agent.provider)
   const sourceId = cutHydraTurn.id.replace(
     /:compact:hosted$|:hosted$/,
     '',

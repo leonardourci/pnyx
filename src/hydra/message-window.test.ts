@@ -6,7 +6,8 @@ import { test } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { HydraMessage } from './model.ts'
-import { MESSAGE_PAGE, messageWindow } from './message-window.ts'
+
+const MESSAGE_PAGE = 20
 import { mergeThreadPages } from './thread-history.ts'
 import { hydraThreadView } from './thread-view.ts'
 import { readThread } from './transcripts-read.ts'
@@ -30,60 +31,6 @@ const messages = Array.from(
     actor: 'web',
     hydra: 'hydra',
   }),
-)
-
-test(
-  'a window shows the newest page of messages and a cursor to the page before, until the first message',
-  () => {
-    const newest = messageWindow({ messages })
-
-    assert.equal(
-      newest.messagesFrom,
-      messages[COUNT - MESSAGE_PAGE]!.at,
-    )
-    assert.equal(
-      newest.older,
-      `m${messages[COUNT - MESSAGE_PAGE]!.id}`,
-    )
-    assert.deepEqual(
-      messageWindow({
-        messages,
-        before: `m${COUNT - MESSAGE_PAGE}`,
-      }).messagesFrom,
-      messages[COUNT - 2 * MESSAGE_PAGE]!.at,
-    )
-
-    const last = messageWindow({
-      messages,
-      before: `m${MESSAGE_PAGE - 3}`,
-    })
-
-    assert.equal(
-      last.messagesFrom,
-      messages[0]!.at,
-    )
-    assert.equal(
-      last.older,
-      undefined,
-    )
-    assert.deepEqual(
-      messageWindow({
-        messages: messages.slice(
-          0,
-          MESSAGE_PAGE,
-        ),
-      }),
-      {},
-      'a conversation that fits one page has no window',
-    )
-    assert.deepEqual(
-      messageWindow({
-        messages,
-        before: 'gone',
-      }),
-      {},
-    )
-  },
 )
 
 test(
@@ -162,10 +109,6 @@ test(
       messages.map(message => message.text),
       'every earlier message is read, and the page then holds no limit',
     )
-    assert.equal(
-      page.messagesFrom,
-      messages[0]!.at,
-    )
   },
 )
 
@@ -219,10 +162,6 @@ test(
       latest: read(),
     })
 
-    assert.equal(
-      refreshed.messagesFrom,
-      loaded.messagesFrom,
-    )
     assert.equal(
       refreshed.older,
       loaded.older,

@@ -3,7 +3,6 @@ import type { HydraState } from '#app/model.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { hydraConfig } from './config.ts'
-import { hydraMessagesOf } from './message-window.ts'
 import { joinMessageParts } from './history.ts'
 import { hydraConversation } from './conversation.ts'
 import { injectedInstructions, quietReply } from './chat-messages.ts'
@@ -36,7 +35,7 @@ export function hydraThreadView({
       text: '',
     } : entry)
   const transcript = joinMessageParts({ entries })
-  const messages = hydraMessagesOf({ state })
+  const messages = page.messages ?? []
   const {
     held,
     working,
@@ -54,7 +53,6 @@ export function hydraThreadView({
       card.id,
       card.title,
     ])),
-    oldest: page.messagesFrom ?? (page.older ? transcript[0]?.at : undefined),
     currentTurn: page.currentTurn,
     receipts: pnyxRunsHydra({ state }),
   })

@@ -127,10 +127,8 @@ export function mergeThreadPages({
     second: b,
   }))
   // A page read again keeps how far back the loaded conversation reaches.
-  const loaded = before.entries.length > 0 || before.messagesFrom !== undefined
-  const keep = !olderPage && loaded
+  const loaded = before.entries.length > 0 || (before.messages?.length ?? 0) > 0
   const older = olderPage || !loaded ? latest.older : before.older
-  const messagesFrom = keep ? before.messagesFrom : latest.messagesFrom
   const pages = olderPage ? pageCount({ page: before }) + pageCount({ page: latest })
     : before.pages ?? pageCount({ page: latest })
 
@@ -140,7 +138,18 @@ export function mergeThreadPages({
     currentTurn: olderPage ? before.currentTurn : latest.currentTurn,
     actions: [...actions.values()],
     older,
-    messagesFrom,
+    messages: [
+      ...new Map([
+        ...(before.messages ?? []),
+        ...(latest.messages ?? []),
+      ].map(message => [
+        message.id,
+        message,
+      ])).values(),
+    ].sort((
+      a,
+      b,
+    ) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id)),
     pages,
   }
 }

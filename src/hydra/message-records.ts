@@ -18,10 +18,12 @@ export interface MessageRecord {
 
 // entries are the thread's native transcript entries, each with its reference.
 export function messageRecords({
+  positions,
   events,
   entries: native = [],
   card = HYDRA_CARD,
 }: {
+  positions?: ReadonlyMap<string, number>
   events: HydraEvent[]
   entries?: SessionEntry[]
   card?: string
@@ -39,6 +41,7 @@ export function messageRecords({
     entry: ThreadEntry
     alias?: string
   }[] = placeEntries({
+    positions,
     events,
     entries: messages,
   }).map(({
