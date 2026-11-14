@@ -20,10 +20,13 @@ afterAll(async () => {
 export async function openHydra({
   port,
   hydraId,
+  reducedMotion = false,
   prepare,
 }: {
   port: number
   hydraId: string
+  // The page then shows each streamed push as it lands instead of typing it out.
+  reducedMotion?: boolean
   // Runs before the page loads, such as routing its socket.
   prepare?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {
@@ -46,6 +49,7 @@ export async function openHydra({
       width: 1440,
       height: 900,
     },
+    ...reducedMotion ? { reducedMotion: 'reduce' as const } : {},
   })).newPage()
   await prepare?.({ page })
   await page.goto(`http://127.0.0.1:${port}/hydra/${hydraId}/`)

@@ -41,8 +41,32 @@ test(
     await page.click('[aria-label="Send reply"]')
     await conversation.getByText('Plan the release').waitFor()
     await conversation.getByText('Release plan:').waitFor()
+    // The page types about seven letters a frame, so the text has stopped moving a few dozen frames later.
+    const streamed = await until({
+      what: 'the streamed text to stop moving',
+      check: () => page.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+        async selector => {
+          const read = () => document.querySelector(selector)!.textContent ?? ''
+          const start = read()
+
+          for (let frame = 0; frame < 40; frame++) {
+            await new Promise(requestAnimationFrame)
+
+            if (read() !== start) {
+              return undefined
+            }
+          }
+
+          return start
+        },
+        CONVERSATION,
+      ),
+    })
     // Half-written Markdown stays hidden until its closing marker arrives.
-    expect(await conversation.textContent()).not.toContain('**')
+    expect(streamed).toContain('Release plan:')
+    expect(streamed).not.toContain('**')
+    expect(streamed).not.toContain('freeze')
     expect(await conversation.locator('strong').count()).toBe(0)
 
     await page.fill(
@@ -66,6 +90,40 @@ test(
     expect(text.split('Plan the release')).toHaveLength(2)
     expect(text.split('Also list the risks')).toHaveLength(2)
     expect(text.split('Risks: the migration and the new billing page.')).toHaveLength(2)
+  },
+)
+
+test(
+  'with reduced motion a streamed push shows as it lands, and a half-written bold marker stays hidden until it is closed',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+    const conversation = page.locator(CONVERSATION)
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Summarize the plan',
+      reply: 'Plan: **freeze on Monday**.',
+      partial: 'Plan: **freeze on Mon',
+      hold: true,
+    })
+
+    await page.fill(
+      COMPOSER,
+      'Summarize the plan',
+    )
+    await page.click('[aria-label="Send reply"]')
+    await conversation.getByText('Plan:').waitFor()
+    const partial = await conversation.textContent() ?? ''
+    expect(partial).not.toContain('**')
+    expect(partial).not.toContain('freeze')
+
+    turn.release()
+    await conversation.locator('strong').getByText('freeze on Monday')
+      .waitFor()
   },
 )
 
