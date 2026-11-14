@@ -178,16 +178,22 @@ function offsetAt({
 }
 
 // The messages a thread's transcripts hold timed from `from` up to but excluding `to`, in time order. Only the transcript
-// bytes in between are read, a chunk at a time.
+// bytes in between are read, a chunk at a time, and the read stops once it holds more than `limit` messages, so the
+// caller can narrow its range instead of materializing every message in it.
 export function nativeWindow({
   sources,
   from,
   to,
+  limit = Infinity,
 }: {
   sources: NativeSource[]
   from?: number
   to?: number
-}): SessionEntry[] {
+  limit?: number
+}): {
+  entries: SessionEntry[]
+  exceeded: boolean
+} {
   const found: SessionEntry[] = []
 
   for (const source of sources) {
@@ -233,6 +239,13 @@ export function nativeWindow({
 
           if (from === undefined || time >= from) {
             found.push(entry)
+
+            if (found.length > limit) {
+              return {
+                entries: found,
+                exceeded: true,
+              }
+            }
           }
         }
 
@@ -243,7 +256,10 @@ export function nativeWindow({
     }
   }
 
-  return found
+  return {
+    entries: found,
+    exceeded: false,
+  }
 }
 
 export function nativeRecord({

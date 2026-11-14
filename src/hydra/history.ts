@@ -406,7 +406,11 @@ export type HistoryWindow = ({
 }: {
   lo: number
   hi: number
-}) => HistoryMessage[]
+}) => {
+  messages: HistoryMessage[]
+  // The last log position the read covered, at most hi: a window holding many transcript messages covers a part.
+  hi: number
+}
 
 const encoder = new TextEncoder()
 
@@ -438,17 +442,19 @@ function* historyStream({
 }): Generator<HistoryMessage & { index: number }> {
   let first = true
 
-  for (let lo = from - 1; lo < through; lo += HISTORY_WINDOW) {
-    const hi = Math.min(
-      lo + HISTORY_WINDOW,
-      through,
-    )
+  for (let lo = from - 1; lo < through;) {
+    const read = window({
+      lo,
+      hi: Math.min(
+        lo + HISTORY_WINDOW,
+        through,
+      ),
+    })
     const seen = new Map<number, number>()
 
-    for (const message of window({
-      lo,
-      hi,
-    })) {
+    lo = read.hi
+
+    for (const message of read.messages) {
       const index = seen.get(message.seq) ?? 0
       seen.set(
         message.seq,

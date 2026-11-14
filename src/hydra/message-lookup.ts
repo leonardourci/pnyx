@@ -126,13 +126,21 @@ function decodeCursor({ value }: { value: string }): Cursor {
 }
 
 export interface LookupThread {
+  // The messages after log position lo up to hi, and the positions the read covered: a part of that range, the part
+  // nearest the end the caller walks from, when the transcripts hold many messages in it.
   window({
     lo,
     hi,
+    toward,
   }: {
     lo: number
     hi: number
-  }): MessageRecord[]
+    toward?: 'lo' | 'hi'
+  }): {
+    messages: MessageRecord[]
+    lo: number
+    hi: number
+  }
   locate({ id }: { id: string }): number | undefined
   // The first and last log positions whose messages can have been recorded at a time.
   around({ time }: { time: number }): {
@@ -177,14 +185,17 @@ function* walk({
     for (let lo = Math.max(
       min,
       beyond?.seq ?? min,
-    ) - 1; lo < max; lo += LOOKUP_WINDOW) {
-      yield* thread.window({
+    ) - 1; lo < max;) {
+      const read = thread.window({
         lo,
         hi: Math.min(
           lo + LOOKUP_WINDOW,
           max,
         ),
-      }).filter(message => passed({ message }))
+      })
+
+      yield* read.messages.filter(message => passed({ message }))
+      lo = read.hi
     }
 
     return
@@ -198,12 +209,15 @@ function* walk({
       hi - LOOKUP_WINDOW,
       min - 1,
     )
-    yield* thread.window({
+    const read = thread.window({
       lo,
       hi,
-    }).filter(message => passed({ message }))
+      toward: 'lo',
+    })
+
+    yield* read.messages.filter(message => passed({ message }))
       .reverse()
-    hi = lo
+    hi = read.lo
   }
 }
 
@@ -394,27 +408,35 @@ export function lookupMessages({
       candidates = seq === undefined ? [] : thread.window({
         lo: seq - 1,
         hi: seq,
-      }).filter(message => message.id === selection.id || message.aliases.includes(selection.id!))
+      }).messages.filter(
+        message => message.id === selection.id || message.aliases.includes(selection.id!),
+      )
     } else if (selection.seq !== undefined) {
       candidates = selection.seq > snapshot ? [] : thread.window({
         lo: selection.seq - 1,
         hi: selection.seq,
-      }).filter(message => message.sequences.includes(selection.seq!))
+      }).messages.filter(message => message.sequences.includes(selection.seq!))
     } else {
       const found = thread.around({ time: time! })
 
-      for (let lo = found.first - 1; lo < Math.min(
+      const last = Math.min(
         found.last + 1,
         snapshot,
-      ); lo += LOOKUP_WINDOW) {
-        candidates.push(...thread.window({
+      )
+
+      for (let lo = found.first - 1; lo < last;) {
+        const read = thread.window({
           lo,
           hi: Math.min(
             lo + LOOKUP_WINDOW,
-            found.last + 1,
-            snapshot,
+            last,
           ),
-        }).filter(message => Date.parse(message.at) === time))
+        })
+
+        candidates.push(...read.messages.filter(
+          message => Date.parse(message.at) === time,
+        ))
+        lo = read.hi
       }
     }
 

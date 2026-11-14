@@ -44,26 +44,28 @@ function lookupThread({
     window: ({
       lo,
       hi,
+      toward,
     }) => {
-      const {
-        events,
-        native,
-        positions,
-      } = messageWindow({
+      const read = messageWindow({
         hydraId,
         sources,
         cardId: card,
         types,
         lo,
         hi,
+        toward,
       })
 
-      return messageRecords({
-        positions,
-        events,
-        entries: native,
-        card,
-      })
+      return {
+        messages: messageRecords({
+          positions: read.positions,
+          events: read.events,
+          entries: read.native,
+          card,
+        }),
+        lo: read.lo,
+        hi: read.hi,
+      }
     },
     locate: ({ id }) => {
       if (id.startsWith('reply:')) {

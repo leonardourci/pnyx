@@ -41,11 +41,7 @@ export function hydraHistoryWindow({
     lo,
     hi,
   }) => {
-    const {
-      events,
-      native,
-      positions,
-    } = messageWindow({
+    const read = messageWindow({
       hydraId,
       sources,
       types: HISTORY_TYPES,
@@ -53,11 +49,14 @@ export function hydraHistoryWindow({
       hi,
     })
 
-    return historyMessages({
-      positions,
-      events,
-      native: native.filter(entry => entry.kind === 'message' && entry.role.startsWith('assistant')),
-    })
+    return {
+      messages: historyMessages({
+        positions: read.positions,
+        events: read.events,
+        native: read.native.filter(entry => entry.kind === 'message' && entry.role.startsWith('assistant')),
+      }),
+      hi: read.hi,
+    }
   }
 }
 
