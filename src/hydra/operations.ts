@@ -251,6 +251,12 @@ export function createHydraOperations({
 
         const since = stoppedSince ?? running
         stoppedSince = undefined
+        const hydraCard = state.cards[HYDRA_CARD]
+
+        // The owner's Stop ended it: Hydra waits for their next message instead of a recap.
+        if ((hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted') {
+          return
+        }
 
         if (!since) {
           armWake()
