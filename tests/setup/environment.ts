@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import pg from 'pg'
 import { afterAll, inject } from 'vitest'
 import { closePostgres, homeDatabase } from '#store/postgres.ts'
+import { keepFiles } from './keep.ts'
 
 // Commands a test must never reach for real; each fails loudly instead.
 const GUARDED = [
@@ -22,7 +23,7 @@ const GUARDED = [
   'systemctl',
   'brew',
 ]
-const KEEP = /^(VITEST|__VITEST|CI$|TERM$|FORCE_COLOR$|NO_COLOR$)/
+const KEEP = /^(VITEST|__VITEST|CI$|TERM$|FORCE_COLOR$|NO_COLOR$|PNYX_KEEP_TEST_FILES$)/
 
 // Short paths leave room for the Unix socket names Pnyx makes inside its home.
 const root = realpathSync(mkdtempSync('/tmp/pt-'))
@@ -157,6 +158,7 @@ for (const signal of [
 
 afterAll(async () => {
   await closePostgres()
+  keepFiles({ from: root })
   rmSync(
     root,
     {

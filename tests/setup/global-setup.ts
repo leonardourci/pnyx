@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { TestProject } from 'vitest/node'
+import { keepFiles } from './keep.ts'
 import { startPostgres } from './postgres.ts'
 
 declare module 'vitest' {
@@ -61,6 +62,10 @@ export default async function setup(project: TestProject) {
     try {
       postgres.stop()
     } finally {
+      keepFiles({
+        from: root,
+        exclude: ['postgres/data'],
+      })
       rmSync(
         root,
         {
