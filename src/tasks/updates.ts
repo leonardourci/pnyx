@@ -314,6 +314,14 @@ function updateRow({
         }
       }
 
+      if (reply.state === 'failed' && reply.detail === 'stopped') {
+        return {
+          kind: 'ask',
+          state: 'Not delivered: stopped',
+          note: '',
+        }
+      }
+
       return (reply.accepted || reply.state === 'delivered') && reply.decision ? {
         kind: 'decision',
         state: reply.decision.liftsHold ? 'Hydra lifted Hold' : 'Decision',

@@ -256,6 +256,8 @@ export function hydraMessages({
     if (message.stopped) {
       entry.receipt = 'failed'
       entry.waiting = 'stopped'
+      entry.sentAgain = owned.some(item => item.message.text === message.text
+        && item.message.at > message.at)
       continue
     }
 

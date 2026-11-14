@@ -1125,6 +1125,16 @@ export function HydraChat({
               toolDetails={view.toolDetails}
               thinkingDetails={view.thinkingDetails}
               sendAgain={sendAgain}
+              sendableNow={({ entry }) => {
+                if (!entry.replyId) {
+                  return hosted && working && !holding
+                }
+
+                const worker = entry.task ? state.cards[entry.task] : undefined
+
+                return worker?.agent?.host === 'pnyx'
+                  && (worker.sessionActivity ?? worker.activity) === 'working'
+              }}
               sendNow={async ({
                 id,
                 task,

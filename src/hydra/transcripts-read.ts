@@ -50,6 +50,8 @@ export interface ThreadEntry {
   received?: string
   // Why a queued message still waits, when Pnyx knows.
   waiting?: string
+  // A stopped message the owner already sent again.
+  sentAgain?: boolean
   delivery?: {
     agent?: {
       state: ReplyState
