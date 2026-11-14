@@ -282,6 +282,7 @@ export function createHost({
     stoppedFor,
     startOperation,
     endOperation,
+    stoppedByOwner,
   } = createHydraOperations({
     hydraId,
     queuedHydra,
@@ -937,6 +938,7 @@ export function createHost({
     providerOf,
     digest,
     environment,
+    armWake,
     host: () => host,
   })
 
@@ -1033,6 +1035,7 @@ export function createHost({
 
   // A stop that ends a compaction, an upgrade or an agent change cancels what waited behind it; the commands Pnyx itself handles are not messages to Hydra.
   const stopHeldInputs = () => {
+    stoppedByOwner()
     turns.cancel()
     note({
       fn: ({ writer }) => stopHydraInputs({
@@ -1468,18 +1471,10 @@ export function createHost({
             at: at(),
           }),
         })
-        const state = loadHydra({ hydraId }).state
-        const change = state.hydraAgentChange
 
-        // A change left holding nothing has nothing to ask about; what arrived for Hydra meanwhile can wake it.
-        if (change && change.state !== 'running' && !heldOwnerMessages({ state }).length) {
-          changeAgent({
-            change: {
-              ...change,
-              state: 'cancelled',
-            },
-          })
-          armWake()
+        // A waiting change left holding nothing is withdrawn.
+        if (!heldOwnerMessages({ state: loadHydra({ hydraId }).state }).length) {
+          resendHeldMessages()
         }
 
         return { cancelled: cancel }

@@ -19,7 +19,7 @@ import { nativeIdle } from '#workers/native-session.ts'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { agentSettings } from './agent-choice.ts'
+import { agentSettings, hydraCandidate, withAccount } from './agent-choice.ts'
 import { heldOwnerMessages } from './chat-queue.ts'
 import { hydraDelivery } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
@@ -173,6 +173,7 @@ export function createAgentSwitch({
   providerOf,
   digest,
   environment,
+  armWake,
   host,
 }: {
   hydraId: string
@@ -219,9 +220,37 @@ export function createAgentSwitch({
   }): Provider
   digest({ remember }: { remember?: boolean }): Promise<string>
   environment({ hydra }: { hydra?: boolean }): NodeJS.ProcessEnv
+  armWake(): void
   host(): Host
 }) {
   let agentChangeAbort: AbortController | undefined
+
+  // Withdraws the change and sends its held messages again, each weighed against the agent the owner chooses now.
+  const withdraw = ({ change }: { change: HydraAgentChange }) => {
+    const held = heldOwnerMessages({ state: loadHydra({ hydraId }).state })
+    changeAgent({
+      change: {
+        ...change,
+        state: 'cancelled',
+      },
+    })
+
+    // A change left holding nothing has nothing to ask about; what arrived for Hydra meanwhile can wake it.
+    if (!held.length) {
+      armWake()
+    }
+
+    for (const message of held) {
+      background({
+        name: 'Hydra held message',
+        run: () => host().hydra({
+          id: message.id,
+          text: hydraDelivery({ message }),
+          actor: message.actor,
+        }),
+      })
+    }
+  }
 
   const runAgentChange: Host['changeAgent'] = ({
     id,
@@ -286,6 +315,31 @@ export function createAgentSwitch({
               resolve,
               HYDRA_TURN_POLL_MS,
             ))
+          }
+
+          // The catalog loads before the owner's choice is read, so no choice lands between reading it and acting on it.
+          const offered = await host().models({
+            harness: change.next.harness,
+            account: change.next.account,
+          })
+            .catch(() => [])
+          signal.throwIfAborted()
+          // A choice the owner made while this change waited for Hydra's turn to end replaces it, as it does while a change waits.
+          const moved = await agentChangeKind({
+            previous: change.next,
+            next: withAccount({
+              agent: hydraCandidate({
+                state: loadHydra({ hydraId }).state,
+                dispatch: effectiveDispatch().dispatch,
+              }),
+            }),
+            models: async () => offered,
+          })
+
+          if (moved) {
+            withdraw({ change })
+
+            return
           }
 
           if (choice === 'neither') {
@@ -557,31 +611,13 @@ export function createAgentSwitch({
   }
 
   const resendHeldMessages = () => {
-    const state = loadHydra({ hydraId }).state
-    const change = state.hydraAgentChange
+    const change = loadHydra({ hydraId }).state.hydraAgentChange
 
     if (!change || change.state === 'running') {
       return
     }
 
-    const held = heldOwnerMessages({ state })
-    changeAgent({
-      change: {
-        ...change,
-        state: 'cancelled',
-      },
-    })
-
-    for (const message of held) {
-      background({
-        name: 'Hydra held message',
-        run: () => host().hydra({
-          id: message.id,
-          text: hydraDelivery({ message }),
-          actor: message.actor,
-        }),
-      })
-    }
+    withdraw({ change })
   }
 
   return {

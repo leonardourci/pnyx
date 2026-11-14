@@ -15,6 +15,8 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 
 ## Control flow
 
+- Clear beats short. Fewer lines is not the goal; a new reader should follow the code on first read. Write three plain named steps instead of one chained line, and avoid a clever trick, a long call chain or a nested condition. Code that needs a comment to say what it does needs a clearer shape instead.
+- Reuse before writing: search for an existing helper, component or platform feature first, and keep each rule or state in one place.
 - Put guard clauses first: check invalid cases at the top, `return` or `throw`, and let the main flow read after them without extra indentation.
 - In new code, avoid nesting ternaries: a second level of branching reads better as a small named helper.
 - Write conditions in their positive form. A `const skip = !known` flag feeding an inverted branch makes the reader flip it twice.
