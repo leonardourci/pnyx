@@ -316,22 +316,24 @@ export function createAgentSwitch({
             ))
           }
 
-          // A choice the owner made while this change waited for Hydra's turn to end replaces it, as it does while a change waits.
-          const chosen = withAccount({
-            agent: hydraCandidate({
-              state: loadHydra({ hydraId }).state,
-              dispatch: effectiveDispatch().dispatch,
-            }),
+          // The catalog loads before the owner's choice is read, so no choice lands between reading it and acting on it.
+          const offered = await host().models({
+            harness: change.next.harness,
+            account: change.next.account,
           })
+            .catch(() => [])
+          signal.throwIfAborted()
+          // A choice the owner made while this change waited for Hydra's turn to end replaces it, as it does while a change waits.
           const moved = await agentChangeKind({
             previous: change.next,
-            next: chosen,
-            models: () => host().models({
-              harness: chosen.harness,
-              account: chosen.account,
+            next: withAccount({
+              agent: hydraCandidate({
+                state: loadHydra({ hydraId }).state,
+                dispatch: effectiveDispatch().dispatch,
+              }),
             }),
+            models: async () => offered,
           })
-          signal.throwIfAborted()
 
           if (moved) {
             withdraw({ change })
