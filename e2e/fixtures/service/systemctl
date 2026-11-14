@@ -1,5 +1,0 @@
-#!/bin/sh
-# Stands in for systemd: records each call and starts the server.
-echo "systemctl $*" >> "$FAKE_SERVICE_LOG"
-nohup "$PNYX_TEST_NODE" "$PNYX_TEST_CLI" serve > /dev/null 2>&1 &
-exit 0

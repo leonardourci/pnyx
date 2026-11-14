@@ -86,28 +86,21 @@ const BUILD_STEP: Step = {
     'build',
   ],
 }
+// The integration files and the browser journeys, which need the built CLI and page.
+const TESTS: Step = {
+  name: 'tests',
+  command: 'pnpm',
+  args: [
+    'exec',
+    'vitest',
+    'run',
+  ],
+  needs: 'build',
+}
 const EVERYTHING: Step[] = [
   ...STATIC_CHECKS,
   BUILD_STEP,
-  {
-    name: 'unit tests',
-    command: 'node',
-    args: [
-      'scripts/verification/test.ts',
-      'unit',
-    ],
-    needs: 'build',
-  },
-  // One file at a time, so at most the test process and one pnyx-axi run at once.
-  {
-    name: 'scenarios',
-    command: 'node',
-    args: [
-      'scripts/verification/test.ts',
-      'scenarios',
-    ],
-    needs: 'build',
-  },
+  TESTS,
 ]
 
 const LOGS = mkdtempSync(join(
@@ -211,11 +204,8 @@ function selection({ defaultRef }: { defaultRef: string }) {
   let testName = 'changed tests'
 
   if (required.tests === 'skills') {
-    testName = 'skill tests'
-
-    for (const path of SKILL_TESTS) {
-      tests.add(path)
-    }
+    testName = 'integration tests'
+    tests.add('--project=integration')
   }
 
   for (const path of required.changedTests) {
@@ -234,13 +224,12 @@ function selection({ defaultRef }: { defaultRef: string }) {
     steps.push(
       BUILD_STEP,
       {
+        ...TESTS,
         name: testName,
-        command: 'node',
         args: [
-          'scripts/verification/test.ts',
+          ...TESTS.args,
           ...tests,
         ],
-        needs: 'build',
       },
     )
   }
@@ -250,13 +239,6 @@ function selection({ defaultRef }: { defaultRef: string }) {
     steps,
   }
 }
-
-// These exercise installation, generated contracts, catalog text and worker conventions.
-const SKILL_TESTS = [
-  'src/hydra/catalog.test.ts',
-  'e2e/hydra.test.ts',
-  'e2e/tasks.test.ts',
-]
 
 // The first line gh printed for a failed call.
 function failure({ error }: { error: unknown }): string {

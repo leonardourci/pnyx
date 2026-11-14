@@ -1,4 +1,4 @@
-// Plain TypeScript, so node --test can import the reveal rules directly.
+// Plain TypeScript, so the tests can import the reveal rules directly.
 import type { Token, Tokens } from 'marked'
 
 // Letters typed in the last EDGE ms are still fading in.
