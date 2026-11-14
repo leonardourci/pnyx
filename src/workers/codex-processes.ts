@@ -4,6 +4,7 @@ import { log } from '#app/diagnostics.ts'
 
 const readProcessTable = promisify(execFile)
 const PROCESS_TABLE_BYTES = 8 * 1024 * 1024
+const MS_PER_SECOND = 1000
 // How `ps` prints a byte it cannot show: a newline as \012, a tab as \011, a byte above ASCII as M- and its low bits.
 const PRINTED_BYTE = /\\[0-7]{3}|M-./g
 const NOT_ALPHANUMERIC = /[^A-Za-z0-9]/g
@@ -107,12 +108,14 @@ function warn({
 // Cleanup is best effort: a failure is logged and never stops the turn or the session.
 export function codexProcesses({ pid }: { pid?: number }) {
   let baseline: Promise<ProcessTable | undefined> = Promise.resolve(undefined)
+  let began = 0
   const foreground = new Map<string, string[]>()
 
   return {
     // Reads the processes that already run, off the turn's critical path; capture and ready wait for it.
     begin() {
       foreground.clear()
+      began = Date.now()
       baseline = pid ? processes().catch((error: unknown) => {
         warn({
           operation: 'codex.processes.baseline',
@@ -161,6 +164,7 @@ export function codexProcesses({ pid }: { pid?: number }) {
         return await captureForeground({
           pid,
           earlier,
+          began,
           keys: [...foreground.values()].flat(),
         })
       } catch (error) {
@@ -178,15 +182,21 @@ export function codexProcesses({ pid }: { pid?: number }) {
 async function captureForeground({
   pid,
   earlier,
+  began,
   keys,
 }: {
   pid: number
   earlier: ProcessTable
+  began: number
   keys: string[]
 }) {
   const table = await processes()
   const roots = [...table.values()].filter(process => {
-    if (earlier.get(process.pid)?.start === process.start || process.pid === pid) {
+    // The baseline read lands after the turn began and `ps` times whole seconds, so earlier means before that second.
+    const beganSecond = Math.floor(began / MS_PER_SECOND) * MS_PER_SECOND
+    const startedBefore = !(Date.parse(process.start) >= beganSecond)
+
+    if (earlier.get(process.pid)?.start === process.start && startedBefore || process.pid === pid) {
       return false
     }
 

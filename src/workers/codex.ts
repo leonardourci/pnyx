@@ -1324,15 +1324,7 @@ export function codexProvider({
           })
 
           // Cleanup runs after the interrupt is accepted, so a slow process table never delays Stop.
-          stoppedCommands = (async () => {
-            const cleanups = [
-              await early,
-              await processes.capture(),
-            ]
-            const stopped = await Promise.all(cleanups.map(cleanup => cleanup()))
-
-            return [...new Set(stopped.flat())]
-          })()
+          stoppedCommands = (async () => (await early)())()
         }
 
         const interruptStartedTurn = async () => {
@@ -1747,7 +1739,13 @@ export function codexProvider({
                 error = String(object({ value: terminal?.error }).message ?? 'Codex ended without a successful result')
               }
 
-              const stoppedProcesses = await stoppedCommands
+              // Commands announced while the turn was stopping are known only once it ends.
+              const stoppedProcesses = interrupted ? [
+                ...new Set([
+                  ...await stoppedCommands ?? [],
+                  ...await (await processes.capture())(),
+                ]),
+              ] : undefined
               emit({
                 event: {
                   type: 'result',
