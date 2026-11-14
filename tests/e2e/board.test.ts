@@ -160,3 +160,149 @@ test(
     expect(await updates.getByText('Brief updated').count()).toBeGreaterThan(0)
   },
 )
+
+test(
+  'a Hydra can be hidden and restored without closing its page or removing its work',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'visible-work',
+        '--title',
+        'Keep this work',
+      ],
+    })
+    const name = (await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra.name as string
+    const held: (() => void)[] = []
+    let refuse = true
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+          socket.onMessage(message => {
+            const sent = JSON.parse(String(message)) as {
+              type?: string
+              name?: string
+              id?: string
+              scope?: string
+            }
+
+            if (sent.type === 'command' && sent.name === 'settings') {
+              held.push(() => {
+                if (refuse) {
+                  refuse = false
+                  socket.send(JSON.stringify({
+                    type: 'error',
+                    scope: sent.scope,
+                    id: sent.id,
+                    error: 'Visibility refused',
+                    saved: false,
+                    code: 'VALIDATION_ERROR',
+                  }))
+                } else {
+                  server.send(message)
+                }
+              })
+
+              return
+            }
+
+            server.send(message)
+          })
+        },
+      ),
+    })
+    const panel = page.getByRole(
+      'region',
+      {
+        name: 'Hydras',
+        exact: true,
+      },
+    )
+    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
+    await panel.locator(`[data-hydra="${hydra.id}"]`).hover()
+    await panel.getByRole(
+      'button',
+      {
+        name: `Hide ${name}`,
+        exact: true,
+      },
+    ).click()
+    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor({ state: 'detached' })
+    await until({
+      what: 'the held visibility write',
+      check: () => held.length === 1,
+    })
+    held.shift()!()
+    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
+    await page.getByText(
+      'Visibility refused',
+      { exact: true },
+    ).waitFor()
+    await panel.locator(`[data-hydra="${hydra.id}"]`).hover()
+    await panel.getByRole(
+      'button',
+      {
+        name: `Hide ${name}`,
+        exact: true,
+      },
+    ).click()
+    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor({ state: 'detached' })
+    await until({
+      what: 'the accepted visibility write',
+      check: () => held.length === 1,
+    })
+    held.shift()!()
+    expect(page.url()).toContain(`/hydra/${hydra.id}/`)
+    await page.getByRole(
+      'button',
+      {
+        name: 'Keep this work',
+        exact: true,
+      },
+    ).waitFor()
+    await page.reload()
+    await page.getByRole(
+      'button',
+      {
+        name: 'Keep this work',
+        exact: true,
+      },
+    ).waitFor()
+    expect(await panel.locator(`[data-hydra="${hydra.id}"]`).count()).toBe(0)
+    await panel.getByRole(
+      'button',
+      {
+        name: 'Show hidden Hydras',
+        exact: true,
+      },
+    ).click()
+    await panel.getByRole(
+      'button',
+      {
+        name: `Restore ${name}`,
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the restore visibility write',
+      check: () => held.length === 1,
+    })
+    held.shift()!()
+    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
+    await page.close()
+  },
+)
