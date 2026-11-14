@@ -1,2 +1,0 @@
-{"type":"user","timestamp":"2026-11-06T00:00:01Z","message":{"role":"user","content":"Explain it"}}
-{"type":"assistant","timestamp":"2026-11-06T00:00:02Z","message":{"role":"assistant","content":[{"type":"text","text":"Saved answer"}]}}
