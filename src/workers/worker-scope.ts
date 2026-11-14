@@ -13,7 +13,7 @@ export const WORKER_SCOPE_CODE = 'WORKER_SCOPE'
 const WORKER_SCOPE = 'A worker writes only to its own task: task status, task ask, task report, task report-review, task refresh-links, task inbox, task source, link, and hydra send --task <its task>'
 
 // Subcommands a worker runs on any task or Hydra: reads, and commands that refuse a worker themselves. One listed with no subcommand is open whole.
-const READS: Record<string, string[]> = {
+const OPEN: Record<string, string[]> = {
   debug: [],
   oracle: [],
   page: [],
@@ -190,7 +190,7 @@ export function checkWorkerScope({
 
   const {
     values,
-    positionals,
+    positionals: words,
   } = parseArgs({
     args,
     options: OPTIONS,
@@ -198,10 +198,9 @@ export function checkWorkerScope({
     strict: false,
   })
   const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
-  const reads = READS[name]
-  const words = positionals
+  const open = OPEN[name]
 
-  if (reads && (!reads.length || reads.some(path => startsWith({
+  if (open && (!open.length || open.some(path => startsWith({
     args: words,
     path,
   })))) {
