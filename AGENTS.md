@@ -20,6 +20,8 @@ Functions take one destructured object parameter; no-argument functions and sign
 
 Node runs the source directly through its type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests run on Vitest and never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: each test file gets a scratch home, its own copy of a migrated database and random ports, and fixtures live in `tests/setup/fixtures/`. `docs/testing.md` describes the suite.
 
+Every change adds or updates tests for its new or changed behaviour. Integration tests go in `tests/<area>.test.ts`, run through real `pnyx-axi` commands and the page's data calls against a scratch home and Postgres, with tricky edge cases in the same file. A browser journey in `tests/e2e/` is only for what needs a real page. Shared setup goes in `tests/setup/`. A test must survive a rename or refactor that keeps behaviour; write no duplicate, cosmetic or snapshot tests. A bug fix starts with a test that reproduces the bug, and the PR shows that each new test fails without its change.
+
 ## Layout
 
 One folder per feature. Code for a feature lives in its folder. Inside a feature, split a file when it holds unrelated concerns and keep closely related code together, as [follow-conventions](.agents/skills/follow-conventions/SKILL.md#files-and-concerns) describes. The root README introduces Pnyx; usage and setup references live in `docs/`; tests and the test harness are described in `docs/testing.md`. Do not add speculative code.

@@ -29,6 +29,8 @@ A run starts one throwaway PostgreSQL cluster on a random port, with logical rep
 
 ## Writing a test
 
+Every change adds or updates the tests for its new or changed behaviour. A bug fix starts with a test that reproduces the bug. Before the PR is ready, revert the change in a throwaway copy, run each new test and see it fail; the PR's Validation names the test and what failed.
+
 Add to the area's file, or start a new `tests/<area>.test.ts` for a new area. A file starts its server once:
 
 ```ts
@@ -68,6 +70,7 @@ Rules:
 - Use the IDs a command returned. Expected values are written out, not computed.
 - Edge cases of tricky logic go in the same area file, calling the function directly only when the server cannot reach the case cheaply.
 - A browser journey earns its place only for what needs a real page: rendering, scrolling, live updates.
+- No duplicate, cosmetic or snapshot tests, and none that break on a rename that keeps behaviour. A new case that fits an existing test becomes assertions in it.
 - Nothing outside the test's scratch folders: never a real home, agent, terminal or GitHub.
 - A test that pins a known bug is wrong; skip it with a note naming the task that fixes the bug. `tests/access.test.ts` and `tests/hooks.test.ts` each hold one such skipped case.
 - A hook, or any command a harness waits on, is judged by its outcome (it ended by itself, exit code, output), never by a wall-clock bound.
