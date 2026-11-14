@@ -5,7 +5,7 @@ import { findProject } from '#projects/read.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadHydra, requireHydra } from '#app/store.ts'
 import { SYNONYMS } from './synonyms.ts'
 import { KINDS, type Hit, type Kind, type Match } from './model.ts'
 import { SNIPPETS } from './search.ts'
@@ -98,6 +98,8 @@ const oracleCommand = guard({
         'VALIDATION_ERROR',
       )
     }
+
+    requireHydra({ hydraId })
 
     const state = loadHydra({ hydraId }).state
     const card = values.card === undefined
