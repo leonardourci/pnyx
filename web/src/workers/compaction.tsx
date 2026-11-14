@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { CompactInput, Compaction } from '#workers/compaction/model.ts'
-import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -72,14 +71,19 @@ export function CompactionRow({ operation }: { operation: Compaction }) {
 export function CompactionQueue({
   inputs,
   sendNow,
+  removable,
   remove,
   disabled,
+  connected,
 }: {
   inputs: CompactInput[]
   sendNow({ id }: { id: string }): Promise<void>
-  // Cancels the message so Hydra never gets it; a queued /upgrade is not a message and has none.
+  // The server's queued messages; a queued /upgrade is an operation, and a message still being sent is not there yet.
+  removable: Set<string>
+  // Cancels the message so Hydra never receives it.
   remove({ id }: { id: string }): Promise<void>
   disabled: boolean
+  connected: boolean
 }) {
   if (!inputs.length) {
     return null
@@ -93,9 +97,9 @@ export function CompactionQueue({
           <Tooltip content="Send now">
             <Button aria-label="Send now" disabled={disabled} onClick={() => void sendNow({ id: input.id })}><Icon name="send" size={14} /></Button>
           </Tooltip>
-          {input.text !== UPGRADE_COMMAND && (
+          {removable.has(input.id) && (
             <Tooltip content="Remove">
-              <Button aria-label="Remove" onClick={() => remove({ id: input.id })}><Icon name="close" size={14} /></Button>
+              <Button aria-label="Remove" disabled={!connected} onClick={() => remove({ id: input.id })}><Icon name="close" size={14} /></Button>
             </Tooltip>
           )}
         </div>
