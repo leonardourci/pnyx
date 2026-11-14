@@ -887,7 +887,7 @@ test(
     ).waitFor()
     // The stopped message belongs to the older pages, so it waits for them instead of sitting above what loaded.
     expect(await conversation.getByText('draft the notes').count()).toBe(0)
-    expect((await timeline({ page }))[0]).not.toMatch(/^\/inscribe/)
+    expect(await conversation.getByText('Not delivered').count()).toBe(0)
 
     await conversation.hover()
     await until({
@@ -908,10 +908,10 @@ test(
     await page.locator(LOADING).waitFor({ state: 'detached' })
     expect(await timeline({ page })).toEqual([
       expect.stringMatching(/^draft the note/),
-      expect.stringMatching(/^Draft/),
-      expect.stringMatching(/^\/inscribe/),
-      expect.stringMatching(/^\/inscribe/),
+      '/inscribe',
+      '/inscribe',
       'inscribed',
     ])
+    await conversation.getByText('Not delivered').waitFor()
   },
 )
