@@ -15,7 +15,7 @@ import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydrasDir } from './home-migration.ts'
-import { localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { reportStartup, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
@@ -27,7 +27,7 @@ import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
-import { log } from './diagnostics.ts'
+import { flushLogs, log } from './diagnostics.ts'
 import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
 import { hydraExists } from './store.ts'
 import { query } from '#store/postgres.ts'
@@ -114,14 +114,29 @@ export async function startServer({
 }): Promise<RunningServer> {
   const starting = performance.now()
   const releaseClaim = claimServer()
+
+  try {
+    query({
+      schema: 'migrate',
+      timeoutMs: 10 * 60_000,
+      progress: reportStartup,
+      statements: [],
+    })
+  } catch (error) {
+    releaseClaim()
+    throw error
+  }
+
   const logs = startServerLogs({
     settings: readSettings().settings,
     processLineMs: options.processLineMs,
   })
+
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload: MAX_MESSAGE_BYTES,
   })
+  let importing = true
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
   const pendingLogs = new Map<string, () => void>()
@@ -778,6 +793,10 @@ export async function startServer({
 
   // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
   const mountAll = () => {
+    if (importing) {
+      return
+    }
+
     for (const id of hydraIds()) {
       const before = skipped[id]
 
@@ -930,6 +949,7 @@ export async function startServer({
         operation: 'server.stop',
         ms: performance.now() - stopping,
       })
+      await flushLogs()
       logs.close()
       releaseClaim()
     }
@@ -940,6 +960,21 @@ export async function startServer({
   try {
     named = await mount({ id: hydraId })
     await mount({ id: 'default' })
+
+    for (const id of hydraIds()) {
+      try {
+        await mount({ id })
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'hydra.skipped',
+          hydraId: id,
+          error: error as Error,
+        })
+      }
+    }
+
+    importing = false
     const startSettings = readSettings()
     mirrorSettings(startSettings)
     mirroredRevision = startSettings.revision
@@ -951,7 +986,7 @@ export async function startServer({
       UPGRADE_CHECK_MS,
     ).unref()
 
-    // After the first mount, which creates the home's database that zero-cache replicates.
+    // All legacy imports finish before Zero starts building its first replica.
     if (zeroCache) {
       zero = startZeroCache({
         queryUrl: `http://127.0.0.1:${bound}${ZERO_QUERY_PATH}`,
@@ -984,7 +1019,6 @@ export async function startServer({
     ms: performance.now() - starting,
   })
 
-  await Promise.allSettled(hydraIds().map(id => mount({ id })))
   background({
     name: 'name Hydras',
     run: nameUnnamedHydras,

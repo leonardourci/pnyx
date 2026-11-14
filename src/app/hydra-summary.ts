@@ -2,7 +2,7 @@ import type { HydraEvent, HydraState } from './model.ts'
 import type { HydraSummary } from './server-hydras.ts'
 import { hydraIdentity } from './server-state.ts'
 import { hostedHydra, hydraConfig } from '#hydra/config.ts'
-import { readInitialEvent } from './event-log.ts'
+import { readEvents } from './event-log.ts'
 import { homeScoped } from '#store/postgres.ts'
 import { projectsFor } from '#projects/read.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -35,7 +35,10 @@ function firstEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
     return known
   }
 
-  const event = readInitialEvent({ hydraId })
+  const event = readEvents({
+    hydraId,
+    limit: 1,
+  })[0] ?? null
 
   if (event) {
     firstEvents.set(

@@ -1,3 +1,4 @@
+import { draft } from './draft.ts'
 import { applyHistory } from '#hydra/history.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
@@ -196,9 +197,14 @@ export function replay({
   state: HydraState
   events: Iterable<HydraEvent>
 }): HydraState {
-  return replayOwned({
-    state: structuredClone(state),
-    events,
+  return draft({
+    state,
+    change: ({ state }) => {
+      replayOwned({
+        state,
+        events,
+      })
+    },
   })
 }
 

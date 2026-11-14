@@ -1049,7 +1049,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-chat .message:is(.tool, .thinking) + .message:is(.tool, .thinking) { margin-top: calc(4px - var(--chat-gap)); }
 
 /* Away from the bottom, the browser keeps what the owner reads in place as images and replies above it grow. */
-.hydra-messages[data-away] { overflow-anchor: auto; }
+
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: var(--text-ui); }
 
@@ -1487,15 +1487,16 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .account-model-add > p { margin: 5px 0 0; text-align: center; font-size: var(--text-meta); color: var(--color-muted); }
 
 .task-updates { flex: 1; min-height: 0; overflow: auto; overflow-wrap: anywhere; padding: 8px 0; }
+.detail.inline .task-updates { overflow: visible; }
 .task-updates-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-inline: 4px; }
 .updates-order { font-size: var(--text-meta); color: var(--color-muted); padding: 2px 6px; }
-.task-updates > ol { list-style: none; margin: 0; padding: 0; }
-.task-updates > ol > li { padding: 8px 4px; border-bottom: 1px solid var(--color-subtle); transition: background-color 110ms ease; }
-.task-updates > ol > li:last-child { border-bottom: 0; }
-.task-updates > ol > li:first-child { padding-top: 6px; }
-.task-updates > ol > li:is(.update-decision, :has(.update-fold, .update-group-toggle, .show-more)):hover { border-radius: 6px; background: color-mix(in srgb, var(--color-hover) 55%, transparent); }
-.task-updates > ol > li:hover .update-fold-chevron { color: var(--color-ink); }
-@media (prefers-reduced-motion: reduce) { .task-updates > ol > li { transition: none; } }
+.task-updates > div[role=list] { list-style: none; margin: 0; padding: 0; }
+.task-updates .update-row { padding: 8px 4px; border-bottom: 1px solid var(--color-subtle); transition: background-color 110ms ease; }
+.task-updates .update-row:last-child { border-bottom: 0; }
+.task-updates .update-row:first-child { padding-top: 6px; }
+.task-updates .update-row:is(.update-decision, :has(.update-fold, .update-group-toggle, .show-more)):hover { border-radius: 6px; background: color-mix(in srgb, var(--color-hover) 55%, transparent); }
+.task-updates .update-row:hover .update-fold-chevron { color: var(--color-ink); }
+@media (prefers-reduced-motion: reduce) { .task-updates .update-row { transition: none; } }
 .update-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin-bottom: 4px; }
 .update-line { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
 .update-line + .update-line { margin-top: 6px; }
@@ -1506,8 +1507,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .update-main time { color: var(--color-muted); font-size: var(--text-meta); line-height: 22px; white-space: nowrap; }
 .card .markdown, .ask .markdown { font-weight: inherit; }
 
-.task-updates > ol > .update-row:not([data-update-group-end]):not(:has(.update-group-toggle[aria-expanded=false])) { border-bottom: 0; }
-.task-updates > ol > .update-row.update-group-continuation { padding-top: 0; }
+.task-updates .update-row:not([data-update-group-end]):not(:has(.update-group-toggle[aria-expanded=false])) { border-bottom: 0; }
+.task-updates .update-row.update-group-continuation { padding-top: 0; }
 .update-group-toggle { display: block; width: 100%; text-align: left; padding: 0; white-space: normal; }
 .update-group-toggle[aria-expanded=true] .update-fold-chevron { transform: rotate(90deg); }
 .update-group-workers > .update-entry, .update-group-changes > .update-entry { padding: 6px 0 0 30px; }
@@ -1713,7 +1714,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 :is(.card, .ask) .markdown :is(th, td) { padding: 3px 5px; }
 :is(.card, .ask) .markdown-table { margin-block: 4px; }
 .card .task-report, .card .card-question { gap: 3px; padding: 6px 8px; }
-.card .task-updates > ol > li { padding-block: 5px; }
+.card .task-updates .update-row { padding-block: 5px; }
 .ask .decision-recommended { flex-shrink: 0; margin: 0; padding: 0 4px; font-size: .85em; }
 .ask .disclosure > summary { padding-block: 3px; }
 :is(.card, .ask) .markdown code { font-size: .95em; }
@@ -2096,3 +2097,5 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .plan-refresh[aria-disabled=true] { cursor: wait; opacity: .45; }
 
 .message-image-fallback { display: inline; font-size: 12px; color: var(--color-muted); }
+
+.messages .measured-row { display: flex; flex-direction: column; gap: var(--chat-gap, 18px); padding-bottom: var(--chat-gap, 18px); }

@@ -67,3 +67,5 @@ When testing an action, hold its server request and assert the visible result be
 ## Pull requests with visible changes
 
 Show before and after screenshots of each changed view side by side in a `Before | After` table, at a reduced width (`<img src="..." width="360">`), in both light and dark themes. Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/`, never in the PR's diff or a gist, and link it as `https://github.com/leonardourci/pnyx/blob/pr-media/pr-<number>/<file>?raw=true`.
+
+Long lists in Activity and chat use @tanstack/react-virtual over Zero’s paged queries for variable row heights; zero-virtual needs fixed row heights.

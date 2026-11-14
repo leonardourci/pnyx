@@ -36,11 +36,11 @@ test(
         transaction: true,
         statements: [
           {
-            text: 'insert into hydras (id, summary, queue) values ($1, \'{}\', \'{}\')',
+            text: 'insert into hydras (id, summary) values ($1, \'{}\')',
             values: ['kept-out'],
           },
           {
-            text: 'insert into hydras (id, summary, queue) values ($1, \'{}\', \'{}\')',
+            text: 'insert into hydras (id, summary) values ($1, \'{}\')',
             values: ['kept-out'],
           },
         ],
@@ -257,5 +257,282 @@ test(
       rows?.[0]?.value,
       record,
     )
+  },
+)
+
+test(
+  'releasing setup connections removes its idle sessions before a service restart and permits reconnecting',
+  async () => {
+    const { closePostgres } = await import('./postgres.ts')
+    const pid = query({ statements: [{ text: 'select pg_backend_pid() as pid' }] })[0]![0]!.pid
+    await closePostgres()
+    const sessions = query({
+      statements: [
+        {
+          text: 'select pid from pg_stat_activity where pid = $1',
+          values: [pid],
+        },
+      ],
+    })[0]
+    assert.deepEqual(
+      sessions,
+      [],
+    )
+    assert.notEqual(
+      query({ statements: [{ text: 'select pg_backend_pid() as pid' }] })[0]![0]!.pid,
+      pid,
+    )
+  },
+)
+
+test(
+  'transaction telemetry reports connection wait and commit separately from statement execution',
+  () => {
+    let timings: import('./postgres.ts').QueryTimings | undefined
+    const started = performance.now()
+    query({
+      transaction: true,
+      statements: [{ text: 'select pg_sleep(0.05)' }],
+      timed: ({ timings: measured }) => {
+        timings = measured
+      },
+    })
+    assert.ok(timings)
+    assert.ok(timings.connectionWaitMs >= 0)
+    assert.ok(timings.commitMs >= 0)
+    assert.ok(
+      performance.now() - started - timings.connectionWaitMs - timings.commitMs >= 40,
+      'statement execution is outside connection and commit timing',
+    )
+  },
+)
+
+test(
+  'a database from #378 migrates its queue without losing events or Hydra state',
+  async () => {
+    const { readFileSync } = await import('node:fs')
+    const { randomUUID } = await import('node:crypto')
+    const database = `migration_${randomUUID().replaceAll(
+      '-',
+      '',
+    )}`
+    const admin = new pg.Client({ database: 'postgres' })
+    await admin.connect()
+    await admin.query(`create database ${database}`)
+    const old = new pg.Client({ database })
+    await old.connect()
+
+    try {
+      await old.query(readFileSync(
+        new URL(
+          './fixtures/postgres-v1.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ))
+      await old.query('insert into hydras (id, seq, summary, queue) values (\'lab\', 7, \'{}\', \'{"waiting":["one"],"reading":[]}\')')
+      const rows = query({
+        schema: 'migrate',
+        url: `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`,
+        statements: [{ text: 'select seq, value from hydras join hydra_values on hydras.id = hydra_values.hydra_id where id = \'lab\' and key = \'queue\'' }],
+      })[0]
+      assert.deepEqual(
+        rows,
+        [
+          {
+            seq: '7',
+            value: {
+              waiting: ['one'],
+              reading: [],
+            },
+          },
+        ],
+      )
+      const published = ({ name }: { name: string }) => query({
+        url: `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${name}`,
+        statements: [{ text: 'select tablename, attnames::text[] as attnames, rowfilter from pg_publication_tables where pubname = \'pnyx_page\' order by tablename' }],
+      })[0]
+      const fresh = `fresh_${randomUUID().replaceAll(
+        '-',
+        '',
+      )}`
+      await admin.query(`create database ${fresh}`)
+      const created = new pg.Client({ database: fresh })
+      await created.connect()
+      await created.query(readFileSync(
+        new URL(
+          './schema.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ))
+      await created.end()
+      assert.deepEqual(
+        published({ name: database }),
+        published({ name: fresh }),
+        'a migrated database replicates exactly what a new one does: no events, and only the columns and keys the page reads',
+      )
+      assert.equal(
+        published({ name: database }).some(row => row.tablename === 'events'),
+        false,
+      )
+      await admin.query(`drop database ${fresh} with (force)`)
+    } finally {
+      await old.end()
+      await admin.query(`drop database ${database} with (force)`)
+      await admin.end()
+    }
+  },
+)
+
+test(
+  'migration removes only debug repeats and transcript copies, preserves all other types and Activity, and is repeatable',
+  async t => {
+    const {
+      readFileSync,
+    } = await import('node:fs')
+    const { randomUUID } = await import('node:crypto')
+    const { EVENT_TYPES } = await import('#app/model.ts')
+    const {
+      openLogs,
+      closeLogs,
+    } = await import('#app/diagnostics.ts')
+    openLogs()
+    t.after(() => closeLogs())
+    const database = `prune_${randomUUID().replaceAll(
+      '-',
+      '',
+    )}`
+    const admin = new pg.Client({ database: 'postgres' })
+    await admin.connect()
+    await admin.query(`create database ${database}`)
+    const old = new pg.Client({ database })
+    await old.connect()
+    const backup = join(
+      process.env.PNYX_HOME!,
+      'original-events.jsonl',
+    )
+    writeFileSync(
+      backup,
+      'original JSONL backup stays unchanged\n',
+    )
+    const beforeBackup = readFileSync(backup)
+
+    try {
+      await old.query(readFileSync(
+        new URL(
+          './fixtures/postgres-v1.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ))
+
+      for (const hydraId of [
+        'lab',
+        'another',
+      ]) {
+        await old.query(
+          'insert into hydras (id, seq, summary) values ($1, $2, \'{}\')',
+          [
+            hydraId,
+            EVENT_TYPES.length,
+          ],
+        )
+
+        for (const [
+          index,
+          type,
+        ] of EVENT_TYPES.entries()) {
+          const event = {
+            id: `event-${index}`,
+            seq: index + 1,
+            type,
+            data: {
+              source: {
+                adapter: 'hooks',
+                objectId: 'worker',
+                generation: 2 ** 40,
+                observedAt: '2026-11-13T12:00:00.000Z',
+              },
+            },
+          }
+          await old.query(
+            'insert into events (hydra_id, seq, id, type, at, actor, card_id, data) values ($1,$2,$3,$4,$5,\'test\',$6,$7)',
+            [
+              hydraId,
+              event.seq,
+              event.id,
+              type,
+              '2026-11-13T12:00:00.000Z',
+              index % 2 ? 'task-a' : 'task-b',
+              event,
+            ],
+          )
+
+          if (type !== 'card.observed' && type !== 'chat.message') {
+            await old.query(
+              'insert into card_updates (hydra_id, card_id, seq) values ($1,$2,$3)',
+              [
+                hydraId,
+                index % 2 ? 'task-a' : 'task-b',
+                event.seq,
+              ],
+            )
+          }
+        }
+      }
+
+      await old.query(`insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+        select 'lab', 1000 + n, 'scale-' || n,
+          case when n <= 50000 then 'card.observed' else 'card.noted' end,
+          '2026-11-13T12:00:00.000Z', 'test', 'task-a',
+          json_build_object('id', 'scale-' || n, 'seq', 1000 + n,
+            'type', case when n <= 50000 then 'card.observed' else 'card.noted' end,
+            'data', json_build_object('source', json_build_object('adapter', 'hooks', 'objectId', 'worker',
+              'generation', 1099511627776, 'observedAt', '2026-11-13T12:00:00.000Z')))
+        from generate_series(1, 55000) n;
+        insert into card_updates (hydra_id, card_id, seq)
+          select hydra_id, card_id, seq from events where hydra_id = 'lab' and seq > 51000`)
+
+      const surviving = 'select * from events where type not in (\'card.observed\', \'chat.message\') order by hydra_id, seq'
+      const activity = 'select * from card_updates order by hydra_id, card_id, seq'
+      const beforeEvents = (await old.query(surviving)).rows
+      const beforeActivity = (await old.query(activity)).rows
+      const url = `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const results = query({
+          schema: 'migrate',
+          url,
+          statements: [
+            { text: surviving },
+            { text: activity },
+            { text: 'select count(*)::int as count from events where type in (\'card.observed\', \'chat.message\')' },
+          ],
+        })
+        assert.deepEqual(
+          results[0],
+          beforeEvents,
+        )
+        assert.deepEqual(
+          results[1],
+          beforeActivity,
+        )
+        assert.deepEqual(
+          results[2],
+          [{ count: 0 }],
+        )
+      }
+
+      assert.deepEqual(
+        readFileSync(backup),
+        beforeBackup,
+      )
+      assert.ok((await old.query('select generation from source_observations')).rows.every(row => row.generation === 2 ** 40))
+    } finally {
+      await old.end()
+      await admin.query(`drop database ${database} with (force)`)
+      await admin.end()
+    }
   },
 )

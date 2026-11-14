@@ -6,6 +6,7 @@
     "jsx": "react-jsx",
     "lib": [
       "ES2024",
+      "ESNext.Iterator",
       "DOM"
     ],
     "strict": true,

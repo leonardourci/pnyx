@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { runForRequest } from './api-run.ts'
-import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
+import { closeLogs, flushLogs, logsDir, openLogs } from './diagnostics.ts'
 
 test(
   'commands run at once for different clients each report their own exit status',
@@ -79,6 +79,7 @@ test(
         PNYX_HYDRA: 'lab',
       },
     })
+    await flushLogs()
     const lines = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),

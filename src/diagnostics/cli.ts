@@ -1,7 +1,7 @@
 import { COMMON, guard, integer, parse, required } from '#app/cli-support.ts'
 import { logsDir } from '#app/diagnostics.ts'
 import { oneDecimal } from '#app/log-line.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { askHost } from '#app/server-state.ts'
 import { resolve } from 'node:path'
@@ -279,7 +279,7 @@ export const debug = guard({
     }).id : undefined
     const service = serviceRows({ hydraId })
     const page = timeline({
-      events: readEvents({ hydraId }),
+      events: { [Symbol.iterator]: () => scanEvents({ hydraId }) },
       service: service.rows,
       filter: {
         task,

@@ -3,7 +3,7 @@ import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readdirSync, readFil
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { closeLogs, logsDir, openLogs } from '#app/diagnostics.ts'
+import { closeLogs, flushLogs, logsDir, openLogs } from '#app/diagnostics.ts'
 import { watchIntake } from './claude-intake.ts'
 
 const OPENS = '11111111-1111-4111-8111-111111111111'
@@ -128,7 +128,7 @@ test(
 
 test(
   'a transcript Pnyx cannot read is logged and gives no intake, never failing the agent’s turn',
-  t => {
+  async t => {
     const home = mkdtempSync(join(
       tmpdir(),
       'claude-intake-home-',
@@ -225,6 +225,7 @@ test(
       hidden.taken().map(found => found.uuid),
       [OPENS],
     )
+    await flushLogs()
     closeLogs()
     const warned = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(

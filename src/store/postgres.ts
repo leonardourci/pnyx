@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { MessageChannel, receiveMessageOnPort, Worker, type MessagePort } from 'node:worker_threads'
 import { CONFLICT_CODE, HydraError } from './errors.ts'
+import type { ErrorDetails } from './error-details.ts'
 import { configuredPostgres } from '#settings/store.ts'
 import { pnyxHome } from './paths.ts'
 
@@ -31,6 +32,7 @@ export interface Statement {
 
 export interface Request {
   id: number
+  schema?: 'inspect' | 'migrate'
   statements: Statement[]
   transaction: boolean
   // A trial runs every statement and then rolls the transaction back.
@@ -39,14 +41,21 @@ export interface Request {
   statementTimeoutMs?: number
 }
 
-export type Outcome = { results: Record<string, unknown>[][] } | {
-  error: {
-    message: string
-    code?: string
-  }
+export interface QueryTimings {
+  connectionWaitMs: number
+  commitMs: number
 }
 
-export type Reply = { id: number } & Outcome
+export type Outcome = {
+  results: Record<string, unknown>[][]
+  timings: QueryTimings
+} | {
+  error: ErrorDetails
+}
+
+export type Reply = {
+  id: number
+} & Outcome
 
 interface Connection {
   worker: Worker
@@ -165,6 +174,19 @@ function connection({ url }: { url?: string }): Connection {
   return opened
 }
 
+// Setup owns these clients; await their exit before Homebrew's smart shutdown waits for them.
+export async function closePostgres(): Promise<void> {
+  const opened = [...connections.values()]
+  connections.clear()
+  await Promise.all(opened.map(async ({
+    worker,
+    port,
+  }) => {
+    port.close()
+    await worker.terminate()
+  }))
+}
+
 const configuredUrls = new Map<string, string>()
 
 // The postgresUrl setting, read once per home: zero-cache and the held Hydras keep the connection they opened, so a
@@ -225,7 +247,11 @@ export function query({
   url,
   timeoutMs = QUERY_TIMEOUT_MS,
   progress,
+  timed,
+  schema,
 }: {
+  schema?: Request['schema']
+  timed?({ timings }: { timings: QueryTimings }): void
   statements: Statement[]
   transaction?: boolean
   rollback?: boolean
@@ -245,6 +271,7 @@ export function query({
   )
   const request: Request = {
     id,
+    schema,
     statements,
     transaction,
     rollback,
@@ -256,10 +283,6 @@ export function query({
 
   open.port.postMessage(request)
   const deadline = performance.now() + timeoutMs
-  let observed = Atomics.load(
-    open.signal,
-    1,
-  )
   let waited: 'ok' | 'not-equal' | 'timed-out'
 
   do {
@@ -276,15 +299,7 @@ export function query({
         remaining,
       ) : remaining,
     )
-    const advanced = Atomics.load(
-      open.signal,
-      1,
-    )
-
-    if (progress && observed !== advanced) {
-      progress()
-      observed = advanced
-    }
+    progress?.()
   } while (waited === 'timed-out' && performance.now() < deadline)
 
   const reply = receiveMessageOnPort(open.port)?.message as Reply | undefined
@@ -305,10 +320,13 @@ export function query({
   if ('error' in reply) {
     throw new HydraError({
       message: `Postgres: ${reply.error.message}`,
+      cause: reply.error,
       code: failureCode({ code: reply.error.code }),
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running and configured'],
     })
   }
+
+  timed?.({ timings: reply.timings })
 
   return reply.results
 }

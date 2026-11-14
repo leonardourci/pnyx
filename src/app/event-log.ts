@@ -1,243 +1,162 @@
 import type { HydraEvent } from './model.ts'
-import { homeScoped, query } from '#store/postgres.ts'
-import { heldHydra, hydraExists } from './store.ts'
+import { query } from '#store/postgres.ts'
+import { hydraExists } from './store.ts'
 import { hydraDir } from './home-migration.ts'
 import { readLog } from './legacy-log.ts'
 
-// The tasks an event belongs to, under which an index lists it.
-type EventKeys = ({ event }: { event: HydraEvent }) => readonly string[]
-
-type Index = Map<string, HydraEvent[]>
-
-// ponytail: the server keeps every event it has read (65 MB of heap for a 45 MB log); query the events table per
-// card if that is too much.
-// through is the seq the events were read up to, which may pass the last one kept: an imported Hydra's last events
-// can be agent transcript copies that stayed out of Postgres.
-const read = new Map<string, {
-  events: HydraEvent[]
-  through: number
-  indexes: Map<EventKeys, Index>
-}>()
-
-const addToIndex = ({
-  index,
-  keys,
-  events,
-}: {
-  index: Index
-  keys: EventKeys
-  events: readonly HydraEvent[]
-}) => {
-  for (const event of events) {
-    for (const key of keys({ event })) {
-      const listed = index.get(key)
-
-      if (listed) {
-        listed.push(event)
-      } else {
-        index.set(
-          key,
-          [event],
-        )
-      }
-    }
-  }
-}
-
-const eventsAfter = ({
-  hydraId,
-  seq,
-  through,
-  limit,
-}: {
+export interface EventSelection {
   hydraId: string
-  seq: number
-  through?: number
+  cardId?: string
+  cardIds?: string[]
+  types?: string[]
+  after?: number
+  before?: number
+  ids?: string[]
+  seqs?: number[]
   limit?: number
-}): HydraEvent[] => (query({
-  statements: [
-    {
-      text: `select data from events where hydra_id = $1 and seq > $2 and ($3::bigint is null or seq <= $3)
-        order by seq limit $4`,
-      values: [
-        hydraId,
-        seq,
-        through ?? null,
-        limit ?? null,
-      ],
-    },
-  ],
-})[0] as { data: HydraEvent }[]).map(row => row.data)
-
-const extend = ({
-  entry,
-  events,
-}: {
-  entry: NonNullable<ReturnType<typeof read.get>>
-  events: readonly HydraEvent[]
-}) => {
-  // Pushed one by one: a long tail would overflow a spread's argument limit.
-  for (const event of events) {
-    entry.events.push(event)
-  }
-
-  for (const [
-    keys,
-    index,
-  ] of entry.indexes) {
-    addToIndex({
-      index,
-      keys,
-      events,
-    })
-  }
+  descending?: boolean
 }
 
-// The Hydra's events read so far, extended with the ones committed since. A held Hydra's own writes arrive through
-// rememberEvents, so reading it needs no query while it is current. A read inside a write stops at the last commit,
-// so the write's own events still arrive through rememberEvents once it commits.
-function eventLog({ hydraId }: { hydraId: string }) {
-  const key = homeScoped({ hydraId })
-  let entry = read.get(key)
-
-  if (!entry) {
-    entry = {
-      events: [],
-      through: 0,
-      indexes: new Map(),
-    }
-    read.set(
-      key,
-      entry,
-    )
-  }
-
-  const held = heldHydra({ hydraId })?.committed
-
-  if (held !== entry.through) {
-    const events = eventsAfter({
-      hydraId,
-      seq: entry.through,
-    })
-    extend({
-      entry,
-      events,
-    })
-    const lastRead = events.at(-1)?.seq
-
-    // A held Hydra is read up to its last commit; any other up to the last event the query found.
-    if (held !== undefined) {
-      entry.through = held
-    } else if (lastRead !== undefined) {
-      entry.through = lastRead
-    }
-  }
-
-  return entry
-}
-
-// A committed write's events, so the reads that follow see them without a query.
-export function rememberEvents({
+function eventSelection({
   hydraId,
-  from,
-  events,
-}: {
-  hydraId: string
-  from: number
-  events: readonly HydraEvent[]
-}): void {
-  const entry = read.get(homeScoped({ hydraId }))
-
-  if (entry?.through === from) {
-    extend({
-      entry,
-      events,
-    })
-    // Only a write that appended events commits, so there is a last one.
-    entry.through = events.at(-1)!.seq
-  }
-}
-
-export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
-  return eventLog({ hydraId }).events.slice()
-}
-
-// A Hydra's events, from its events.jsonl while it still waits to be imported, for the one-time moves of old values.
-export function eventsOrLegacy({ hydraId }: { hydraId: string }): HydraEvent[] {
-  if (hydraExists({ hydraId })) {
-    return readEvents({ hydraId })
-  }
-
-  return readLog({ dir: hydraDir({ hydraId }) }).events
-}
-
-// The events that `keys` lists under `key`, oldest first, without copying or scanning the rest of the log.
-// A live view: the index is built on first use and grows with each later read, so it always matches the log.
-export function indexedEvents({
-  hydraId,
-  keys,
-  key,
-}: {
-  hydraId: string
-  keys: EventKeys
-  key: string
-}): readonly HydraEvent[] {
-  const log = eventLog({ hydraId })
-  let index = log.indexes.get(keys)
-
-  if (!index) {
-    index = new Map()
-    addToIndex({
-      index,
-      keys,
-      events: log.events,
-    })
-    log.indexes.set(
-      keys,
-      index,
-    )
-  }
-
-  return index.get(key) ?? []
-}
-
-// Events after seq `offset`, at most `limit` of them and none past seq `through`, and the seq of the last one read.
-export function readEventsFrom({
-  hydraId,
-  offset,
-  limit,
-  through,
-}: {
-  hydraId: string
-  offset: number
-  limit?: number
-  through?: number
-}): {
-  events: HydraEvent[]
-  end: number
-} {
-  const events = eventsAfter({
-    hydraId,
-    seq: offset,
-    through,
-    limit,
-  })
+  cardId,
+  cardIds,
+  types,
+  after = 0,
+  before,
+  ids,
+  seqs,
+}: EventSelection) {
+  const cards = cardIds ?? (cardId === undefined ? null : [cardId])
 
   return {
-    events,
-    end: events.at(-1)?.seq ?? offset,
+    where: `where hydra_id = $1 and seq > $2
+      and ($3::text[] is null or card_id = any($3)
+        or (type = 'hydra.message' and (data->'data'->>'task' = any($3)
+          or exists (select 1 from unnest($8::text[]) related(id)
+            where strpos(coalesce(data->'data'->>'text', ''), related.id) > 0)))
+        or (type = 'task.session' and
+          (data->'data'->>'before' = any($3) or data->'data'->>'after' = any($3))))
+      and ($4::text[] is null or type = any($4))
+      and ($5::text[] is null or id = any($5))
+      and ($6::bigint[] is null or seq = any($6))
+      and ($7::bigint is null or seq < $7)
+`,
+    values: [
+      hydraId,
+      after,
+      cards,
+      types ?? null,
+      ids ?? null,
+      seqs ?? null,
+      before ?? null,
+      cards?.flatMap(id => [
+        id,
+        encodeURIComponent(id),
+      ]) ?? null,
+    ],
   }
 }
 
-export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
+export function readEvents({
+  limit,
+  descending = false,
+  ...selection
+}: EventSelection): HydraEvent[] {
+  const {
+    where,
+    values,
+  } = eventSelection(selection)
   const [rows] = query({
     statements: [
       {
-        text: 'select data from events where hydra_id = $1 order by seq limit 1',
-        values: [hydraId],
+        text: `select data from events ${where} order by seq ${descending ? 'desc' : 'asc'} limit $9`,
+        values: [
+          ...values,
+          limit ?? null,
+        ],
       },
     ],
   }) as { data: HydraEvent }[][]
 
-  return rows?.[0]?.data ?? null
+  return rows!.map(row => row.data)
+}
+
+const EVENT_PAGE_SIZE = 200
+
+// Scans that need old history retain only one bounded page, in either direction.
+export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+  const pageAt = ({ bounds }: { bounds: Pick<EventSelection, 'after' | 'before'> }) => readEvents({
+    ...selection,
+    ...bounds,
+    limit: EVENT_PAGE_SIZE,
+  })
+  let page = pageAt({ bounds: {} })
+
+  while (page.length) {
+    yield* page
+
+    if (page.length < EVENT_PAGE_SIZE) {
+      return
+    }
+
+    const edge = page.at(-1)!.seq
+    page = selection.descending
+      ? pageAt({ bounds: { before: edge } })
+      : pageAt({ bounds: { after: edge } })
+  }
+}
+
+// A Hydra's events, from its events.jsonl while it still waits to be imported, for the one-time moves of old values.
+export function eventsOrLegacy({
+  hydraId,
+  types,
+}: {
+  hydraId: string
+  types?: string[]
+}): HydraEvent[] {
+  if (hydraExists({ hydraId })) {
+    return readEvents({
+      hydraId,
+      types,
+    })
+  }
+
+  const events = readLog({ dir: hydraDir({ hydraId }) }).events
+
+  return types ? events.filter(event => types.includes(event.type)) : events
+}
+
+export function eventPositions({
+  hydraId,
+  entries,
+}: {
+  hydraId: string
+  entries: {
+    id: string
+    at?: string
+  }[]
+}): Map<string, number> {
+  const valid = entries.filter(entry => Number.isFinite(Date.parse(entry.at ?? '')))
+  const [rows] = query({
+    statements: [
+      {
+        text: `select coalesce((select min(seq) from events where hydra_id = $1 and at > entry.at),
+      (select coalesce(max(seq), 0) + 1 from events where hydra_id = $1)) as seq
+      from json_array_elements_text($2::json) with ordinality entry(at, position) order by position`,
+        values: [
+          hydraId,
+          JSON.stringify(valid.map(entry => new Date(entry.at!).toISOString())),
+        ],
+      },
+    ],
+  }) as { seq: number }[][]
+
+  return new Map(valid.map((
+    entry,
+    index,
+  ) => [
+    entry.id,
+    Number(rows![index]!.seq),
+  ]))
 }

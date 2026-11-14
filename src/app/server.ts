@@ -23,7 +23,7 @@ import { join } from 'node:path'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
-import { readEventsFrom } from './event-log.ts'
+import { readEvents } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
@@ -243,9 +243,9 @@ export async function mountOwnedHydra({
 
   // Only events that change what GitHub reports or how often it is read make a task's links due.
   const pump = () => {
-    const read = readEventsFrom({
+    const read = readEvents({
       hydraId,
-      offset,
+      after: offset,
     })
 
     const live = heldHydra({ hydraId })
@@ -255,7 +255,7 @@ export async function mountOwnedHydra({
       state = live.state
     }
 
-    for (const event of read.events) {
+    for (const event of read) {
       // A held Hydra's writer has already applied the event to the state this server reads.
       if (live) {
         state = live.state
@@ -307,7 +307,7 @@ export async function mountOwnedHydra({
       }
     }
 
-    offset = read.end
+    offset = (read.at(-1)?.seq ?? offset)
 
     hydrasChanged()
 

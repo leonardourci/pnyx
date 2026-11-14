@@ -321,7 +321,7 @@ export type PushedEvent = EventBase & {
   }
 }
 
-// A push that repeats `of`, its source's last full push, apart from the observation time: only the new time is logged.
+// Legacy repeat records remain replayable; new repeats advance a private observation time.
 export type ObservedEvent = EventBase & {
   type: 'card.observed'
   data: {

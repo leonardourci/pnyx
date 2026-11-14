@@ -1,32 +1,63 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraState, HydraEvent, Decision, SourceRef } from './model.ts'
-import type { ObservedEvent, PushedEvent } from '#tasks/model.ts'
+import type { HydraState, HydraEvent, Decision } from './model.ts'
+import type { PushedEvent } from '#tasks/model.ts'
 import type { Meta } from './command-meta.ts'
 import type { Writer } from './writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { requireReportReview } from '#investigations/inventory.ts'
 import { checkRevision, strip } from '#tasks/push-rules.ts'
+import { sessionId } from '#workers/session-attachments.ts'
+import { observationKey, sessionFacts } from '#tasks/observations.ts'
 import { reduce } from './reducer.ts'
 
-// ponytail: the last full push from each card's source, kept in memory; after a restart the first
-// repeat of each source is logged in full again, which costs bytes, never correctness.
-const lastReports = new Map<string, {
+const REPORT_LIMIT = 200
+const REPORT_MAX_BYTES = 64 * 1024
+interface LastReport {
   report: unknown
-  id: string
-}>()
+  revision: number
+  session: string
+}
+const lastReports = new WeakMap<HydraState, Map<string, LastReport>>()
 
-const reportKey = ({
-  cardId,
-  source,
+const sessionSignature = ({
+  state,
+  event,
 }: {
-  cardId: string
-  source: SourceRef
-}) => [
-  cardId,
-  source.adapter,
-  source.instanceId,
-  source.objectId,
-].join('\0')
+  state: HydraState
+  event: PushedEvent
+}) => {
+  const agent = event.data.agent ?? state.cards[event.cardId]?.agent
+  const session = agent ? state.sessions?.[sessionId({ agent })] : undefined
+  const target = session?.taskId ? state.cards[session.taskId] : undefined
+
+  return JSON.stringify({
+    facts: sessionFacts({ session }),
+    targetRevision: target?.revision,
+  })
+}
+
+const reportCache = ({ state }: { state: HydraState }) => {
+  let cache = lastReports.get(state)
+
+  if (!cache) {
+    cache = new Map()
+    lastReports.set(
+      state,
+      cache,
+    )
+  }
+
+  return cache
+}
+
+const observation = ({ event }: { event: PushedEvent }): Decision => ({
+  skipped: 'unchanged',
+  observation: {
+    cardId: event.cardId,
+    source: event.data.source!,
+    at: event.at,
+  },
+})
 
 // Everything a push reports except when it was made and the derived `before` values.
 const reportOf = ({ event }: { event: PushedEvent }) => ({
@@ -44,76 +75,6 @@ const reportOf = ({ event }: { event: PushedEvent }) => ({
     },
   },
 })
-
-// A push that reports exactly what its source's last full push reported is logged as the new
-// observation time alone, but only when that leaves the card and sessions exactly as the full push would.
-function compacted({
-  state,
-  event,
-  reduced,
-}: {
-  state: HydraState
-  event: PushedEvent
-  reduced: HydraState
-}): Decision {
-  const { source } = event.data
-
-  if (!source) {
-    return { event }
-  }
-
-  const key = reportKey({
-    cardId: event.cardId,
-    source,
-  })
-  const report = reportOf({ event })
-  const last = lastReports.get(key)
-
-  if (last && isDeepStrictEqual(
-    last.report,
-    report,
-  )) {
-    const observed = {
-      ...event,
-      reason: undefined,
-      details: undefined,
-      type: 'card.observed',
-      data: {
-        source,
-        of: last.id,
-      },
-    } as ObservedEvent
-    const result = reduce({
-      state: {
-        ...state,
-        eventIds: {},
-      },
-      event: observed,
-    })
-    const sameCard = isDeepStrictEqual(
-      result.cards[event.cardId],
-      reduced.cards[event.cardId],
-    )
-    const sameSessions = isDeepStrictEqual(
-      result.sessions,
-      reduced.sessions,
-    )
-
-    if (sameCard && sameSessions) {
-      return { event: observed }
-    }
-  }
-
-  lastReports.set(
-    key,
-    {
-      report,
-      id: event.id,
-    },
-  )
-
-  return { event }
-}
 
 export function decided({
   state,
@@ -144,6 +105,26 @@ export function decided({
     card: state.cards[event.cardId],
     ifRevision: meta.ifRevision,
   })
+  const repeated = event.type === 'card.pushed' && event.data.source
+  const cache = reportCache({ state })
+  const key = repeated ? observationKey({
+    cardId: event.cardId,
+    source: event.data.source!,
+  }) : undefined
+  const report = event.type === 'card.pushed' ? reportOf({ event }) : undefined
+  const last = key ? cache.get(key) : undefined
+
+  if (event.type === 'card.pushed' && last && last.revision === card?.revision
+    && last.session === sessionSignature({
+      state,
+      event,
+    }) && isDeepStrictEqual(
+    last.report,
+    report,
+  )) {
+    return observation({ event })
+  }
+
   const before = strip({ card: state.cards[event.cardId] })
   // The reducer reads eventIds only for the duplicate check above; cloning them is half of each decision's cost.
   const reduced = reduce({
@@ -155,7 +136,7 @@ export function decided({
   })
   const after = strip({ card: reduced.cards[event.cardId] })
 
-  if (before && isDeepStrictEqual(
+  if (event.type !== 'card.pushed' && before && isDeepStrictEqual(
     before,
     after,
   ) && isDeepStrictEqual(
@@ -165,11 +146,32 @@ export function decided({
     return { skipped: 'unchanged' }
   }
 
-  return event.type === 'card.pushed' ? compacted({
-    state,
-    event,
-    reduced,
-  }) : { event }
+  if (event.type === 'card.pushed' && event.data.source && key) {
+    const session = sessionSignature({
+      state: reduced,
+      event,
+    })
+
+    const bytes = Buffer.byteLength(JSON.stringify(report)) + Buffer.byteLength(session)
+
+    if (bytes <= REPORT_MAX_BYTES) {
+      cache.delete(key)
+      cache.set(
+        key,
+        {
+          report,
+          revision: reduced.cards[event.cardId]?.revision ?? 0,
+          session,
+        },
+      )
+
+      if (cache.size > REPORT_LIMIT) {
+        cache.delete(cache.keys().next().value!)
+      }
+    }
+  }
+
+  return { event }
 }
 
 export function applyDecision({
@@ -179,6 +181,10 @@ export function applyDecision({
   writer: Writer
   decision: Decision
 }): void {
+  if ('observation' in decision && decision.observation) {
+    writer.observe({ observation: decision.observation })
+  }
+
   if ('event' in decision) {
     writer.append({ event: decision.event })
   }

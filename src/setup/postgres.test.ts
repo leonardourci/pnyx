@@ -228,7 +228,7 @@ test(
 )
 
 test(
-  'setup postgres --check imports each waiting Hydra and rolls it back, leaving its log and folder as they were',
+  'setup postgres --check leaves a waiting home unchanged and reports pending creation',
   async () => {
     const home = process.env.PNYX_HOME!
     const path = waitingLog({
@@ -264,8 +264,8 @@ test(
     })
 
     assert.deepEqual(
-      output.imported,
-      ['waiting'],
+      output.migration,
+      'pending: serve creates the database',
     )
     assert.equal(
       hydraExists({ hydraId: 'waiting' }),

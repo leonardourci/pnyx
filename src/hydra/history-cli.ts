@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents } from '#app/event-log.ts'
+import { eventPositions, readEvents } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { historyBoundary, historyCommand, inscribeOperation, readHistory } from './history.ts'
 import { hydraEntries } from './transcripts-read.ts'
@@ -22,20 +22,42 @@ export function hydraHistoryPage({
   budget?: number
 }) {
   const state = loadHydra({ hydraId }).state
-  const events = readEvents({ hydraId })
   // A cursor h1:<boundary>:<through>:<position> keeps the boundary its first page used.
   const boundary = after === undefined ? historyBoundary({
     state,
     since,
   }) : Number(after.split(':')[1])
 
+  const events = readEvents({
+    hydraId,
+    after: boundary,
+    before: (through ?? state.seq) + 1,
+    types: [
+      'hydra.message',
+      'hydra.helper-finished',
+      'task.created',
+      'task.brief',
+      'task.owner-ask',
+      'task.intent',
+    ],
+  })
+
+  const native = hydraEntries({
+    state,
+    after: readEvents({
+      hydraId,
+      seqs: [boundary],
+    })[0]?.at,
+  })
+
   return readHistory({
+    positions: eventPositions({
+      hydraId,
+      entries: native,
+    }),
     state,
     events,
-    native: hydraEntries({
-      state,
-      after: events.find(event => event.seq === boundary)?.at,
-    }),
+    native,
     since,
     after,
     through,

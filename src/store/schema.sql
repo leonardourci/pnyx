@@ -12,7 +12,8 @@ create table hydras (
   -- Facts the server derives for the page: the Hydra list's entry, and the queue box with the updates waiting for
   -- Hydra and the batch it is reading, which the server writes whenever they change.
   summary json not null,
-  queue json not null default '{"waiting":[],"reading":[]}',
+  -- Retained for one release so the previous build can write its queue after a rollback.
+  queue json not null default '{}',
   -- The size of the events.jsonl this Hydra was imported from, so a log an older Pnyx appended to since is refused.
   imported_bytes bigint check (imported_bytes > 0)
 );
@@ -40,7 +41,8 @@ create table hydra_values (
   primary key (hydra_id, key)
 );
 
--- Every change, in order: a card's Updates tab and the history commands read it.
+-- Every change, in order: a card's Updates tab and the history commands read it, through the server and not through the
+-- page's replica.
 create table events (
   hydra_id text not null references hydras (id) on delete cascade,
   seq bigint not null check (seq > 0),
@@ -54,8 +56,25 @@ create table events (
   unique (hydra_id, id)
 );
 
+create index events_card_history on events (hydra_id, card_id, seq);
+create index events_type_history on events (hydra_id, type, seq);
+create index events_at on events (hydra_id, at);
+
+-- Latest source observation times reject delayed reports across restarts without recording repeat events.
+create table source_observations (
+  hydra_id text not null references hydras (id) on delete cascade,
+  card_id text not null,
+  adapter text not null,
+  instance_id text not null,
+  object_id text not null,
+  generation double precision not null check (generation >= 0),
+  observed_at text not null,
+  seen_at text not null,
+  primary key (hydra_id, card_id, adapter, instance_id, object_id)
+);
+
 -- Each card's Updates tab: the events it lists, which can be listed by several cards, as a message to Hydra is by
--- its task and every task it mentions.
+-- its task and every task it mentions. The server pages it; the page's replica never holds it.
 create table card_updates (
   hydra_id text not null,
   card_id text not null,
@@ -63,6 +82,8 @@ create table card_updates (
   primary key (hydra_id, card_id, seq),
   foreign key (hydra_id, seq) references events (hydra_id, seq) on delete cascade
 );
+
+create index card_updates_event on card_updates (hydra_id, seq);
 
 -- An applied plan's receipt under its id, so the same plan sent again returns it instead of applying twice.
 create table transactions (
@@ -242,9 +263,13 @@ create table sessions (
   primary key (hydra_id, id)
 );
 
--- The tables zero-cache replicates for the page; sessions, transactions and card_private stay with the server.
-create publication pnyx_page for table hydras, settings, upgrade_status, hydra_values, events, card_updates, columns,
-  cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
+-- What zero-cache replicates for the page, and no more: the tables its queries read, hydras without the columns only
+-- the server reads, and hydra_values with only the keys the page reads (src/store/zero-schema.ts PAGE_VALUES). Events,
+-- card_updates, sessions, transactions, source_observations and card_private stay with the server.
+create publication pnyx_page for table hydras (id, config, summary), settings, upgrade_status,
+  hydra_values where (key in ('configured', 'configRevision', 'view', 'viewRevision', 'labelColors', 'projects',
+  'projectsRevision', 'hydraStatus', 'hydraOperation', 'hydraAgent', 'hydraAgentChange', 'helper', 'dispatchProposals',
+  'upgrades', 'queue')), columns, cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
 
 -- The schema version this file creates. A change to the tables bumps it, with a migration for databases on the older
 -- one; a build refuses a database on a version it does not know instead of failing its writes.
@@ -252,4 +277,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (1);
+insert into schema_version (version) values (5);
