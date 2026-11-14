@@ -265,13 +265,54 @@ test(
 )
 
 test(
-  'a pull-request task is done only once GitHub reports its pull request merged',
+  'a pull-request task is done only once GitHub reports its pull request merged, and one with an unreviewed report waits for its review',
   async () => {
     const hydra = await pnyx.hydra()
     await createProject({
       hydra,
       landing: 'pr',
       remote: 'https://github.com/o/shop.git',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Write the cart notes',
+        '--key',
+        'notes',
+        '--project',
+        'shop',
+      ],
+    })
+    const reportFile = join(
+      hydra.folder({ name: 'notes' }),
+      'report.md',
+    )
+    writeFileSync(
+      reportFile,
+      'The cart keeps its items for a week.\n',
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'report',
+        'notes',
+        '--file',
+        reportFile,
+      ],
+    })
+    pullRequest({
+      number: 8,
+      state: 'open',
+    })
+    await hydra.owner({
+      args: [
+        'link',
+        'notes',
+        '--url',
+        'https://github.com/o/shop/pull/8',
+      ],
     })
     await hydra.owner({
       args: [
@@ -321,6 +362,32 @@ test(
     })
 
     pullRequest({
+      number: 8,
+      state: 'merged',
+    })
+    // Its merge is recorded, but done waits for the report's decision inventory, and following goes on for the other pull requests.
+    await until({
+      what: 'the notes pull request to be recorded merged',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'notes',
+          '--full',
+        ],
+      })).task.links[0]?.state === 'merged',
+    })
+    const { task: notes } = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'notes',
+      ],
+    })
+    expect(notes.status).not.toMatch(/^done/)
+    expect(notes.column).not.toBe(await hydra.column({ role: 'done' }))
+
+    pullRequest({
       number: 7,
       state: 'merged',
     })
@@ -342,6 +409,40 @@ test(
     expect(done.status).toContain('https://github.com/o/shop/pull/7')
     expect(done.column).toBe(await hydra.column({ role: 'done' }))
     expect(merges({ number: 7 })).toBe(0)
+
+    const { id: report } = await hydra.owner({
+      args: [
+        'task',
+        'report',
+        'notes',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'report-review',
+        'notes',
+        '--report',
+        report,
+        '--none',
+      ],
+    })
+    const reviewed = await until({
+      what: 'the reviewed report to let the merge finish its task',
+      check: async () => {
+        const { task } = await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'notes',
+          ],
+        })
+
+        return task.status.startsWith('done') && task
+      },
+    })
+    expect(reviewed.status).toContain('https://github.com/o/shop/pull/8')
+    expect(reviewed.column).toBe(await hydra.column({ role: 'done' }))
   },
 )
 
