@@ -110,7 +110,7 @@ export interface HydraAgentChange {
   previous: AgentConfig
   next: AgentConfig
   kind: 'agent' | 'effort'
-  // Cancelled: the owner chose the running agent again, or stopped what the change held.
+  // Cancelled: withdrawn without running, by a new agent choice, Stop, or removing what it held; never stored.
   state: 'requested' | 'running' | 'finished' | 'failed' | 'cancelled'
   choice?: 'inscribe' | 'compact' | 'neither'
   operation?: string

@@ -365,7 +365,7 @@ export function createHydraTurns({
         state: queuedState,
         dispatch: queuedDispatch,
       })
-    const requested = {
+    const chosenAgent = {
       ...desiredAgent,
       account: harnessAccount({
         effective: effectiveDispatch(),
@@ -431,18 +431,18 @@ export function createHydraTurns({
       } : undefined)
       const kind = used && await agentChangeKind({
         previous: used,
-        next: requested,
+        next: chosenAgent,
         models: () => models({
-          harness: requested.harness,
-          account: requested.account,
+          harness: chosenAgent.harness,
+          account: chosenAgent.account,
         }),
       })
       // A model or effort named as what the session already runs with keeps that session.
       const requestedAgent = used && !kind ? {
-        ...requested,
+        ...chosenAgent,
         model: used.model,
         effort: used.effort,
-      } : requested
+      } : chosenAgent
 
       if (used && kind && ownerActor({ actor })) {
         write({

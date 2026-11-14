@@ -18,8 +18,8 @@ const taken = ({
   message: HydraMessage
 }) => `${message.id}:hosted` in state.eventIds
 
-// What was sent to this Hydra since an operation or an agent change stopped it, that no Hydra turn has taken.
-export function heldMessages({ state }: { state: HydraState }) {
+// Messages sent to this Hydra after an operation or a waiting agent change began holding them, that no turn has taken and Stop has not cancelled.
+function heldMessages({ state }: { state: HydraState }) {
   const change = state.hydraAgentChange
   const changeSeq = change ? (state.eventIds[change.id] ?? 1) - 1 : undefined
   const stopSeq = state.hydraOperation?.seq ?? changeSeq
@@ -29,14 +29,18 @@ export function heldMessages({ state }: { state: HydraState }) {
   }
 
   const hydra = hydraConfig({ state }).hydra.id
+  const sentSince = ({ message }: { message: HydraMessage }) =>
+    (state.eventIds[message.id] ?? 0) > stopSeq
 
   return (state.hydraMessages ?? []).filter(message => message.hydra === hydra
-    && !isRoutineMessage({ message }) && !message.stopped
-    && (state.eventIds[message.id] ?? 0) > stopSeq && !taken({
+    && !isRoutineMessage({ message }) && !message.stopped && sentSince({ message }) && !taken({
     state,
     message,
   }))
 }
+
+export const heldOwnerMessages = ({ state }: { state: HydraState }) => heldMessages({ state })
+  .filter(message => ownerActor({ actor: message.actor }))
 
 function hydraQueueView({
   state,
@@ -49,7 +53,6 @@ function hydraQueueView({
   const upgrades = state.upgrades ?? []
   const stopped = state.hydraOperation
   const changingAgent = state.hydraAgentChange
-  // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
   const waiting = heldMessages({ state })
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
@@ -69,9 +72,9 @@ function hydraQueueView({
   const compactionRunning = Boolean(compacting) || runningChange
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
-  // A queued /upgrade waits in the same box, with the same Send now.
   const cancelled = new Set(state.hydraMessages?.filter(message => message.stopped)
     .map(message => message.id))
+  // A queued /upgrade waits in the same box, with the same Send now.
   const compactInputs = [
     ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })
       && !cancelled.has(input.id)) ?? []),
@@ -82,7 +85,7 @@ function hydraQueueView({
       route: 'hydra' as const,
       at: operation.queuedAt,
     })),
-    ...waiting.filter(message => ownerActor({ actor: message.actor })).map(message => ({
+    ...heldOwnerMessages({ state }).map(message => ({
       id: message.id,
       text: message.text,
       actor: message.actor,
