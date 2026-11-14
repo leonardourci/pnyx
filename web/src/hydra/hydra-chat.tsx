@@ -11,6 +11,7 @@ import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { knownCards } from '#tasks/select.ts'
+import { RECENT_THREAD_PAGES, pageCount } from '#hydra/thread-history.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
@@ -710,7 +711,12 @@ export function HydraChat({
         failedOlder.current = undefined
       }
 
-      if (!marker || !stream.current || !olderCursor || loadingEarlier || !connected) {
+      // At the bottom the chat keeps only the recent pages, so an older page read there would be trimmed again.
+      const reading = away || selectedHistory
+      const windowFull = !reading && !!page && pageCount({ page }) >= RECENT_THREAD_PAGES
+      const idle = !olderCursor || loadingEarlier || !connected || windowFull
+
+      if (!marker || !stream.current || idle) {
         return
       }
 
@@ -734,6 +740,9 @@ export function HydraChat({
       olderCursor,
       loadingEarlier,
       connected,
+      away,
+      selectedHistory,
+      page?.pages,
     ],
   )
 
@@ -1097,7 +1106,14 @@ export function HydraChat({
           aria-label="Hydra conversation"
           data-away={away || undefined}
           tabIndex={0}
-          onWheel={ownerScroll}
+          onWheel={event => {
+            ownerScroll()
+
+            // A chat too short to scroll still lets the owner wheel up into its older pages.
+            if (event.deltaY < 0 && event.currentTarget.scrollTop === 0 && olderCursor) {
+              stopFollowing()
+            }
+          }}
           onTouchMove={ownerScroll}
           onKeyDown={event => {
             ownerScroll()
