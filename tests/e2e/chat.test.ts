@@ -160,11 +160,11 @@ const still = async ({ page }: { page: Page }) => {
   return first === JSON.stringify(await view({ page }))
 }
 
-// A Hydra whose chat holds 25 exchanges: three pages of 20 entries, newest first.
-const longConversation = async () => {
+// A Hydra whose chat holds 25 exchanges, or the given number: pages of 20 entries, newest first.
+const longConversation = async ({ exchanges = 25 }: { exchanges?: number } = {}) => {
   const hydra = await pnyx.hydra()
 
-  for (let exchange = 1; exchange <= 25; exchange++) {
+  for (let exchange = 1; exchange <= exchanges; exchange++) {
     pnyx.claude.plan({
       hydra: hydra.id,
       text: `question ${exchange}`,
@@ -529,5 +529,266 @@ test(
     expect(first).toBeLessThan(everything.indexOf('question 4'))
     expect(everything[first - 1]).toBe('/compact')
     expect(everything.indexOf('question 1')).toBeLessThan(first)
+  },
+)
+
+// A window tall enough that the three recent pages sit inside the screen and the older-page margin, as a Hydra chat of
+// folded tool rows does at a normal height. The fake chat's rows are taller, so the test makes the window taller.
+const RECENT_PAGES_IN_RANGE = 5400
+// The recent pages fit without scrolling, so a wheel-up has nothing to scroll.
+const RECENT_PAGES_FIT = 6500
+// 45 exchanges are 90 entries, five pages of 20: more than the three-page recent window.
+const LONG_CHAT_EXCHANGES = 45
+
+// Opens a chat with a window of the given height, and counts the thread reads its page sends and the ResizeObserver
+// loop errors it raises.
+const openCounted = async ({
+  hydraId,
+  height,
+}: {
+  hydraId: string
+  height: number
+}) => {
+  const reads: string[] = []
+  const page = await openHydra({
+    port: pnyx.port(),
+    hydraId,
+    prepare: async ({ page }) => {
+      await page.addInitScript(() => {
+        const counts = { resizeLoops: 0 }
+        Object.assign(
+          window,
+          { counts },
+        )
+        window.addEventListener(
+          'error',
+          event => {
+            if (event.message.includes('ResizeObserver loop')) {
+              counts.resizeLoops++
+            }
+          },
+        )
+      })
+      page.on(
+        'websocket',
+        socket => socket.on(
+          'framesent',
+          frame => {
+            const sent = JSON.parse(String(frame.payload)) as {
+              type?: string
+              name?: string
+            }
+
+            if (sent.type === 'command' && sent.name === 'thread') {
+              reads.push(String(frame.payload))
+            }
+          },
+        ),
+      )
+      await page.setViewportSize({
+        width: 1440,
+        height,
+      })
+    },
+  })
+
+  return {
+    page,
+    reads,
+  }
+}
+
+// The scroll offset and height the chat had at each of the given animation frames, without repeats.
+const watchFrames = ({
+  page,
+  frames,
+}: {
+  page: Page
+  frames: number
+}) => page.evaluate(
+
+  async ({
+    selector,
+    frames,
+  }) => {
+    const scroller = document.querySelector<HTMLElement>(selector)!
+    const steps = new Set<string>()
+
+    for (let frame = 0; frame < frames; frame++) {
+      await new Promise(requestAnimationFrame)
+      steps.add(`${Math.round(scroller.scrollTop)}/${scroller.scrollHeight}`)
+    }
+
+    return [...steps]
+  },
+  {
+    selector: CONVERSATION,
+    frames,
+  },
+)
+
+// The ResizeObserver loop errors the page has raised since it opened.
+const resizeLoopErrors = ({ page }: { page: Page }) => page.evaluate(
+  () => (window as unknown as { counts: { resizeLoops: number } }).counts.resizeLoops,
+)
+
+const WATCHED_FRAMES = 120
+
+test(
+  'resting at the bottom of a long chat during a live turn reads no older page and keeps the view still',
+  async () => {
+    const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
+    const {
+      page,
+      reads,
+    } = await openCounted({
+      hydraId: hydra.id,
+      height: RECENT_PAGES_IN_RANGE,
+    })
+    const conversation = page.locator(CONVERSATION)
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'one more',
+      reply: 'A longer reply that streams in while the owner watches the bottom of the chat.',
+      partial: 'A longer reply that streams in',
+      hold: true,
+    })
+    // The newest three pages, 60 entries, start at question 16.
+    await conversation.getByText(
+      'question 16',
+      { exact: true },
+    ).waitFor()
+    await page.fill(
+      COMPOSER,
+      'one more',
+    )
+    await page.click('[aria-label="Send reply"]')
+    await conversation.getByText('A longer reply that streams in').waitFor()
+    reads.length = 0
+
+    const steps = await watchFrames({
+      page,
+      frames: WATCHED_FRAMES,
+    })
+    turn.release()
+
+    expect(reads).toHaveLength(0)
+    expect(steps).toHaveLength(1)
+    expect(await resizeLoopErrors({ page })).toBe(0)
+  },
+)
+
+test(
+  'a reply that lands while the owner reads further up a long chat leaves the rows in view in place and raises no ResizeObserver loop error',
+  async () => {
+    const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
+    const {
+      page,
+    } = await openCounted({
+      hydraId: hydra.id,
+      height: RECENT_PAGES_IN_RANGE,
+    })
+    const conversation = page.locator(CONVERSATION)
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'one more',
+      reply: 'A longer reply that streams in while the owner reads further up.',
+      partial: 'A longer reply that streams in',
+      hold: true,
+    })
+    await conversation.getByText(
+      'question 16',
+      { exact: true },
+    ).waitFor()
+    await page.fill(
+      COMPOSER,
+      'one more',
+    )
+    await page.click('[aria-label="Send reply"]')
+    await conversation.getByText('A longer reply that streams in').waitFor()
+    await conversation.hover()
+    await page.mouse.wheel(
+      0,
+      -400,
+    )
+    await page.locator(`${CONVERSATION}[data-away]`).waitFor()
+    await until({
+      what: 'the view to hold still',
+      check: () => still({ page }),
+    })
+    const before = await view({ page })
+
+    // The reply lands and streams out while the owner reads on.
+    turn.release()
+    await watchFrames({
+      page,
+      frames: WATCHED_FRAMES,
+    })
+    await conversation.getByText('while the owner reads further up.').waitFor()
+    const after = await view({ page })
+    const kept = Object.keys(before.rows).filter(id => id in after.rows)
+
+    expect(kept.length).toBeGreaterThan(0)
+
+    for (const id of kept) {
+      expect(Math.abs(after.rows[id]! - before.rows[id]!)).toBeLessThanOrEqual(3)
+    }
+
+    // Since the page opened: the stream starting, the reply landing and the owner scrolling up.
+    expect(await resizeLoopErrors({ page })).toBe(0)
+  },
+)
+
+test(
+  'wheeling up in a chat too short to scroll leaves the bottom and keeps the older pages it loads',
+  async () => {
+    const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
+    const {
+      page,
+      reads,
+    } = await openCounted({
+      hydraId: hydra.id,
+      height: RECENT_PAGES_FIT,
+    })
+    const conversation = page.locator(CONVERSATION)
+    await conversation.getByText(
+      'question 16',
+      { exact: true },
+    ).waitFor()
+    expect(await conversation.getByText(
+      'question 1',
+      { exact: true },
+    ).count()).toBe(0)
+    reads.length = 0
+    await watchFrames({
+      page,
+      frames: WATCHED_FRAMES,
+    })
+    expect(reads).toHaveLength(0)
+
+    await conversation.hover()
+    await until({
+      what: 'wheeling up to load the older pages down to the first message',
+      check: async () => {
+        await page.mouse.wheel(
+          0,
+          -400,
+        )
+
+        return await conversation.getByText(
+          'question 1',
+          { exact: true },
+        ).count() > 0
+      },
+    })
+    await page.locator(`${CONVERSATION}[data-away]`).waitFor()
+    await until({
+      what: 'the view to hold still',
+      check: () => still({ page }),
+    })
+    expect(await conversation.getByText(
+      'answer 1',
+      { exact: true },
+    ).count()).toBe(1)
   },
 )
