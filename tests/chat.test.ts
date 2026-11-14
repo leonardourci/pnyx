@@ -487,3 +487,63 @@ test(
     }
   },
 )
+
+test(
+  'Send now ends a running compaction and delivers the message held behind it at once, and only once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'compactable' })
+    const { id } = await hydra.task({ key: 'compactable' })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/compact',
+      compacting: true,
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'reply',
+        'compactable',
+        '--text',
+        '/compact',
+      ],
+    })
+    const held = await hydra.owner({
+      args: [
+        'reply',
+        'compactable',
+        '--text',
+        'carry on with the plan',
+      ],
+    })
+    const heard = () => worker.received.filter(text => text.includes('carry on with the plan')).length
+    // The message waits behind the compaction.
+    await until({
+      what: 'the message to wait behind the running compaction',
+      check: () => rows<{ data: { compaction?: { inputs: { id: string }[] } } }>({
+        text: 'select data from card_bodies where hydra_id = $1 and card_id = $2',
+        values: [
+          hydra.id,
+          id,
+        ],
+      })[0]?.data.compaction?.inputs.some(input => input.id === held.reply.reply),
+    })
+    expect(heard()).toBe(0)
+
+    const page = await hydra.page()
+    expect(await page.send({
+      name: 'compact',
+      args: [
+        id,
+        held.reply.reply,
+      ],
+    })).toMatchObject({ stopped: 'compaction' })
+    page.close()
+
+    await until({
+      what: 'the held message to reach the worker',
+      check: () => heard() === 1,
+    })
+    expect(heard()).toBe(1)
+  },
+)
