@@ -122,3 +122,69 @@ test(
     )
   },
 )
+
+test(
+  'digest recovery reads the latest checkpoint across read boundaries and partial records',
+  async t => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-digest-tail-',
+    ))
+    t.after(() => rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const path = join(
+      root,
+      'session.jsonl',
+    )
+    const digest = `<pnyx-digest>${'é'.repeat(70_000)}</pnyx-digest>`
+    writeFileSync(
+      path,
+      [
+        JSON.stringify({
+          type: 'user',
+          message: { content: '<pnyx-digest>old</pnyx-digest>' },
+        }),
+        JSON.stringify({
+          type: 'system',
+          subtype: 'compact_boundary',
+        }),
+        JSON.stringify({
+          type: 'user',
+          message: { content: digest },
+        }),
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: 'x'.repeat(80_000) },
+        }),
+        '{"partial":',
+      ].join('\n'),
+    )
+    const context = createDigestContext({
+      agent: {
+        provider: 'claude-code',
+        sessionId: 'synthetic',
+        transcriptPath: path,
+      },
+      render: async ({
+        previousDigest,
+        compacted,
+      }) => {
+        assert.equal(
+          compacted,
+          false,
+        )
+
+        return previousDigest ?? ''
+      },
+    })
+    assert.equal(
+      await context(),
+      digest,
+    )
+  },
+)

@@ -1,7 +1,40 @@
-import { createReadStream } from 'node:fs'
-import { createInterface } from 'node:readline'
+import { open } from 'node:fs/promises'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import type { AgentRef } from '#workers/model.ts'
+
+const DIGEST_READ_BYTES = 64 * 1024
+
+function digestRecord({ line }: { line: string }): {
+  digest?: string
+  compacted: boolean
+} | undefined {
+  let record: unknown
+
+  try {
+    record = JSON.parse(line)
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return undefined
+    }
+
+    throw error
+  }
+
+  const parsed = readTranscriptRecord({ record })
+
+  if (parsed.digest) {
+    return {
+      digest: parsed.digest,
+      compacted: false,
+    }
+  }
+
+  if (parsed.contextReset) {
+    return { compacted: true }
+  }
+
+  return undefined
+}
 
 async function lastDigest({ agent }: { agent?: AgentRef }): Promise<{
   digest?: string
@@ -11,41 +44,65 @@ async function lastDigest({ agent }: { agent?: AgentRef }): Promise<{
     return { compacted: false }
   }
 
-  let compacted = false
-  let digest: string | undefined
-  const stream = createReadStream(
-    agent.transcriptPath,
-    { encoding: 'utf8' },
-  )
-  const lines = createInterface({
-    input: stream,
-    crlfDelay: Infinity,
-  })
+  let file: Awaited<ReturnType<typeof open>> | undefined
 
   try {
-    for await (const line of lines) {
-      let record: unknown
+    file = await open(
+      agent.transcriptPath,
+      'r',
+    )
+    let position = (await file.stat()).size
+    let suffix = Buffer.alloc(0)
 
-      try {
-        record = JSON.parse(line)
-      } catch (error) {
-        if (error instanceof SyntaxError) {
+    while (position > 0 || suffix.length) {
+      const size = Math.min(
+        position,
+        DIGEST_READ_BYTES,
+      )
+      position -= size
+      const chunk = Buffer.alloc(size)
+
+      if (size) {
+        await file.read(
+          chunk,
+          0,
+          size,
+          position,
+        )
+      }
+
+      const content = Buffer.concat([
+        chunk,
+        suffix,
+      ])
+      let end = content.length
+
+      for (let index = content.length - 1; index >= 0; index--) {
+        if (content[index] !== 10) {
           continue
         }
 
-        throw error
+        const recovered = digestRecord({
+          line: content.subarray(
+            index + 1,
+            end,
+          ).toString('utf8'),
+        })
+
+        if (recovered) {
+          return recovered
+        }
+
+        end = index
       }
 
-      const parsed = readTranscriptRecord({ record })
+      suffix = content.subarray(
+        0,
+        end,
+      )
 
-      if (parsed.contextReset) {
-        digest = undefined
-        compacted = true
-      }
-
-      if (parsed.digest) {
-        digest = parsed.digest
-        compacted = false
+      if (position === 0) {
+        return digestRecord({ line: suffix.toString('utf8') }) ?? { compacted: false }
       }
     }
   } catch (error) {
@@ -53,14 +110,10 @@ async function lastDigest({ agent }: { agent?: AgentRef }): Promise<{
       throw error
     }
   } finally {
-    lines.close()
-    stream.destroy()
+    await file?.close()
   }
 
-  return {
-    digest,
-    compacted,
-  }
+  return { compacted: false }
 }
 
 export function createDigestContext({
