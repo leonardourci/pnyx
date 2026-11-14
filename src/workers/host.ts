@@ -43,6 +43,18 @@ export { WORKER_COMMANDS } from '#app/command-registry.ts'
 // The agent must not inherit the server's terminal, task or actor.
 export const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
+// A branch a worker creates from a remote branch must not track it, or a plain push under `push.default=upstream` lands there.
+export function untrackedBranches({ env }: { env: NodeJS.ProcessEnv }): Record<string, string> {
+  const count = Number(env.GIT_CONFIG_COUNT)
+  const next = Number.isInteger(count) && count >= 0 ? count : 0
+
+  return {
+    GIT_CONFIG_COUNT: String(next + 1),
+    [`GIT_CONFIG_KEY_${next}`]: 'branch.autoSetupMerge',
+    [`GIT_CONFIG_VALUE_${next}`]: 'false',
+  }
+}
+
 // Hooks report settings of their own, such as the client version or the effort in use; only what Pnyx chooses calls for a new session.
 export function sameChosenSettings({
   current,

@@ -1,5 +1,5 @@
 // pnpm refresh-agent-fixtures, by hand after upgrading the Agent SDK or Codex (never in verify): records one real
-// turn of each into src/test-harness/recordings/ with your logins, in a temporary folder and PNYX_HOME so no hook reaches your Pnyx.
+// turn of each into tests/setup/fixtures/agents/ with your logins, in a temporary folder and PNYX_HOME so no hook reaches your Pnyx.
 import { execFileSync, spawn } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -11,9 +11,10 @@ const OUT = join(
   import.meta.dirname,
   '..',
   '..',
-  'src',
-  'test-harness',
-  'recordings',
+  'tests',
+  'setup',
+  'fixtures',
+  'agents',
 )
 const PROMPT = 'Reply with exactly this sentence and nothing else: Recorded reply.'
 const TIMEOUT_MS = 120_000
@@ -60,7 +61,7 @@ function write({
       2,
     )}\n`,
   )
-  console.log(`wrote src/test-harness/recordings/${name}`)
+  console.log(`wrote tests/setup/fixtures/agents/${name}`)
 }
 
 // System messages that list the local commands, plugins and servers are left out; init keeps only what a session needs.

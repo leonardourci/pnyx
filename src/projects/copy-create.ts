@@ -1,7 +1,7 @@
 import { mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { matchesProject } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, branchStart, commonDir, git, gitProject, taskBranch } from './git.ts'
+import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, taskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
 import { checkout, copiesDir, freshSlot, liveCopy, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
@@ -150,6 +150,7 @@ async function worktreeCopy({
     base,
     start,
   } = await branchStart({ project })
+  await clearDefaultUpstreams({ cwd: project.path })
   const made = ({ path }: { path: string }): TaskCopy => ({
     path,
     project: project.path,
@@ -243,6 +244,7 @@ async function worktreeCopy({
         path,
         branch,
       ] : [
+        '--no-track',
         '-b',
         branch,
         path,
