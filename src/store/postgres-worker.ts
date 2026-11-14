@@ -64,7 +64,12 @@ const SCHEMA = readFileSync(
   'utf8',
 )
 // The page's publication as schema.sql creates it, which a migration sets an older database's to.
-const PAGE_PUBLICATION = /create publication pnyx_page for table[^;]*/.exec(SCHEMA)![0]
+const PAGE_PUBLICATION = /create publication pnyx_page for table[^;]*/.exec(SCHEMA)?.[0] ?? ''
+
+if (!PAGE_PUBLICATION) {
+  throw new Error('schema.sql has no pnyx_page publication')
+}
+
 // schema.sql names its own version, so the number has one source.
 const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(SCHEMA)?.[1])
 
