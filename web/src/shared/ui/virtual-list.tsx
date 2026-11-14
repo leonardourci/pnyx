@@ -53,7 +53,7 @@ export function VirtualList<T>({
     virtual: Record<string, string>
   }): ReactNode
   // The rows reached the first or the last of the list, which is when the next page should load.
-  onEdge?({ edge }: { edge: 'start' | 'end' }): void
+  onEdge?({ edge }: { edge: 'start' | 'end' }): void | Promise<void>
   estimate?: number
   // A list scrolled to its very top keeps showing its first row when rows join above it, as a feed of newest rows does.
   stayAtTop?: boolean

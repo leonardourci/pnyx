@@ -6,6 +6,18 @@ export interface UpdatesList {
   older?: number
 }
 
+// A list that ends carries no cursor at all.
+const listOf = ({
+  events,
+  older,
+}: {
+  events: TaskEvent[]
+  older?: number
+}): UpdatesList => older === undefined ? { events } : {
+  events,
+  older,
+}
+
 export interface UpdatesRead {
   events: TaskEvent[]
   older?: number
@@ -23,7 +35,10 @@ export function withNewest({
   const oldest = read.events.at(-1)?.seq
 
   if (!list || oldest === undefined || read.older === undefined) {
-    return read.older === undefined ? { events: read.events } : read
+    return listOf({
+      events: read.events,
+      older: read.older,
+    })
   }
 
   const newest = list.events[0]?.seq
@@ -36,13 +51,13 @@ export function withNewest({
   // Past the newest page, the list continues where it did before.
   const older = kept.length ? list.older : read.older
 
-  return {
+  return listOf({
     events: [
       ...read.events,
       ...kept,
     ],
-    ...(older === undefined ? {} : { older }),
-  }
+    older,
+  })
 }
 
 // An older page continues the list from its cursor.
@@ -55,11 +70,11 @@ export function withOlder({
 }): UpdatesList {
   const held = new Set(list.events.map(event => event.seq))
 
-  return {
+  return listOf({
     events: [
       ...list.events,
       ...read.events.filter(event => !held.has(event.seq)),
     ],
-    ...(read.older === undefined ? {} : { older: read.older }),
-  }
+    older: read.older,
+  })
 }

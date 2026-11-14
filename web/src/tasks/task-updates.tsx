@@ -115,9 +115,9 @@ export function TaskUpdates({
           items={rows}
           itemKey={({ item }) => item.update.id}
           stayAtTop={!oldestFirst}
-          onEdge={({ edge }) => {
+          onEdge={async ({ edge }) => {
             if (edge === (oldestFirst ? 'start' : 'end')) {
-              older()
+              await older()
             }
           }}
           render={({

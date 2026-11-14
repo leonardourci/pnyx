@@ -2090,7 +2090,7 @@ test(
       }`,
       })
     } finally {
-      await run({ args: ['stop'] }).catch(() => undefined)
+      await run({ args: ['stop'] })
     }
   },
 )
@@ -2134,7 +2134,7 @@ test(
         'no event was written by opening the page',
       )
     } finally {
-      await run({ args: ['stop'] }).catch(() => undefined)
+      await run({ args: ['stop'] })
     }
   },
 )

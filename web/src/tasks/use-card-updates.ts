@@ -11,7 +11,7 @@ export type CardUpdates = {
   loading: boolean
   error: string | undefined
   // Reads the page after the last one held; does nothing while a read is on its way or nothing is older.
-  older(): void
+  older(): Promise<void>
   retry(): void
 }
 
@@ -79,30 +79,36 @@ export function useCardUpdates({
       }
 
       const current = ++reading.current
-      const timer = setTimeout(
-        () => {
-          read({}).then(page => {
-            if (reading.current !== current) {
-              return
-            }
 
-            setHeld(before => ({
-              task,
-              list: withNewest({
-                list: before.task === task ? before.list : undefined,
-                read: page,
-              }),
-            }))
-            setError(undefined)
-            setLoading(false)
-          })
-            .catch((failure: Error) => {
-              if (reading.current === current) {
-                setError(failure.message)
-                setLoading(false)
-              }
-            })
-        },
+      const readNewest = async () => {
+        try {
+          const page = await read({})
+
+          if (reading.current !== current) {
+            return
+          }
+
+          setHeld(before => ({
+            task,
+            list: withNewest({
+              list: before.task === task ? before.list : undefined,
+              read: page,
+            }),
+          }))
+          setError(undefined)
+        } catch (failure) {
+          if (reading.current === current) {
+            setError((failure as Error).message)
+          }
+        }
+
+        if (reading.current === current) {
+          setLoading(false)
+        }
+      }
+
+      const timer = setTimeout(
+        readNewest,
         latest.current ? REFRESH_MS : 0,
       )
 
@@ -120,7 +126,7 @@ export function useCardUpdates({
     list,
     loading: loading && !list,
     error,
-    older: () => {
+    older: async () => {
       const before = latest.current?.older
 
       if (before === undefined || olderReading.current) {
@@ -128,7 +134,9 @@ export function useCardUpdates({
       }
 
       olderReading.current = true
-      read({ before }).then(page => {
+
+      try {
+        const page = await read({ before })
         setHeld(current => current.task === task && current.list ? {
           task,
           list: withOlder({
@@ -136,11 +144,11 @@ export function useCardUpdates({
             read: page,
           }),
         } : current)
-      })
-        .catch((failure: Error) => setError(failure.message))
-        .finally(() => {
-          olderReading.current = false
-        })
+      } catch (failure) {
+        setError((failure as Error).message)
+      } finally {
+        olderReading.current = false
+      }
     },
     retry: () => {
       setError(undefined)

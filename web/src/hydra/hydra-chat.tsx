@@ -700,9 +700,9 @@ export function HydraChat({
 
       const observer = new IntersectionObserver(
         // eslint-disable-next-line pnyx/object-params -- IntersectionObserver owns this callback's signature.
-        reached => {
+        async reached => {
           if (reached.some(entry => entry.isIntersecting)) {
-            void loadOlder()
+            await loadOlder()
           }
         },
         {
