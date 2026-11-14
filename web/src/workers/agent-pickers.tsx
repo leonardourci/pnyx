@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { providerIdOf } from '#workers/providers.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { harnessControls } from '#workers/controls.ts'
