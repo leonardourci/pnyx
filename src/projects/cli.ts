@@ -402,7 +402,7 @@ Remove detaches only; tasks and history stay. Add the path again to re-attach.
 Sharing a folder with another Hydra first names those Hydras and returns confirmation: needed.
 Repeat with --confirm <token> to attach it. Firstmate-linked Hydras list their home’s projects read-only.
 Set saves a named start command; an empty --command clears it. --brings-own-folder declares that the command creates its worker’s folder.
-Workers start in their task's own copy: a git worktree on branch pnyx/<hydra>-<task>, kept under the Hydra's folder.
+Workers start in their task's own copy: a git worktree on branch pnyx/<hydra>-<task> with no upstream, kept under the Hydra's folder.
 --copy sets a command run in the project folder instead; it gets PNYX_TASK, PNYX_TASK_TITLE and PNYX_PROJECT and prints the new folder's path last.
 An empty --copy restores git worktree copies.
 Landing rules say where a worker's job stops. --landing pr (the default): commit, push and open a pull request; --landing branch: commit on the task's branch only.
