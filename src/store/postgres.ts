@@ -1,4 +1,3 @@
-import { log } from '#app/diagnostics.ts'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -33,6 +32,7 @@ export interface Statement {
 
 export interface Request {
   id: number
+  schema?: 'inspect' | 'migrate'
   statements: Statement[]
   transaction: boolean
   // A trial runs every statement and then rolls the transaction back.
@@ -55,10 +55,6 @@ export type Outcome = {
 
 export type Reply = {
   id: number
-  removedDebugRows?: {
-    hydraId: string
-    count: number
-  }[]
 } & Outcome
 
 interface Connection {
@@ -252,7 +248,9 @@ export function query({
   timeoutMs = QUERY_TIMEOUT_MS,
   progress,
   timed,
+  schema,
 }: {
+  schema?: Request['schema']
   timed?({ timings }: { timings: QueryTimings }): void
   statements: Statement[]
   transaction?: boolean
@@ -273,6 +271,7 @@ export function query({
   )
   const request: Request = {
     id,
+    schema,
     statements,
     transaction,
     rollback,
@@ -284,10 +283,6 @@ export function query({
 
   open.port.postMessage(request)
   const deadline = performance.now() + timeoutMs
-  let observed = Atomics.load(
-    open.signal,
-    1,
-  )
   let waited: 'ok' | 'not-equal' | 'timed-out'
 
   do {
@@ -304,15 +299,7 @@ export function query({
         remaining,
       ) : remaining,
     )
-    const advanced = Atomics.load(
-      open.signal,
-      1,
-    )
-
-    if (progress && observed !== advanced) {
-      progress()
-      observed = advanced
-    }
+    progress?.()
   } while (waited === 'timed-out' && performance.now() < deadline)
 
   const reply = receiveMessageOnPort(open.port)?.message as Reply | undefined
@@ -327,15 +314,6 @@ export function query({
       message: `Postgres did not answer within ${timeoutMs / 1000}s`,
       code: 'DATABASE_TIMEOUT',
       help: ['Run `pnyx-axi setup check` to see whether Postgres is running'],
-    })
-  }
-
-  for (const removed of reply.removedDebugRows ?? []) {
-    log({
-      operation: 'events.pruned',
-      hydraId: removed.hydraId,
-      count: removed.count,
-      name: 'card.observed, chat.message',
     })
   }
 

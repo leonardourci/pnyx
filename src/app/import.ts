@@ -6,7 +6,6 @@ import { emptySaved, eventStatements, rowChanges } from './rows.ts'
 import { transactionStatement, type Transaction } from './transactions.ts'
 import { reloadHydra } from './store.ts'
 import { reportStartup } from './server-state.ts'
-import { observationStatement } from '#tasks/observations.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
 
 // Copies of agent transcripts stay out of Postgres; Pnyx reads transcripts where their harness wrote them.
@@ -94,15 +93,25 @@ export function importHydra({
         to: state.seq,
         events: applied({ events }).filter(event => !DIAGNOSTIC_EVENTS.has(event.type)),
       }),
-      ...Object.values(state.cards).flatMap(card =>
-        card.sourceRefs.map(source => observationStatement({
-          hydraId,
-          observation: {
-            cardId: card.id,
-            source,
-            at: source.observedAt ?? card.updatedAt,
-          },
-        }))),
+      {
+        text: `insert into source_observations select * from json_populate_recordset(null::source_observations, $1::json)
+          on conflict (hydra_id, card_id, adapter, instance_id, object_id) do update
+          set generation = excluded.generation, observed_at = excluded.observed_at, seen_at = excluded.seen_at
+          where (source_observations.generation, source_observations.observed_at)
+            <= (excluded.generation, excluded.observed_at)`,
+        values: [
+          JSON.stringify(Object.values(state.cards).flatMap(card => card.sourceRefs.map(source => ({
+            hydra_id: hydraId,
+            card_id: card.id,
+            adapter: source.adapter,
+            instance_id: source.instanceId ?? '',
+            object_id: source.objectId,
+            generation: source.generation ?? 0,
+            observed_at: source.observedAt ?? card.updatedAt,
+            seen_at: source.observedAt ?? card.updatedAt,
+          })))),
+        ],
+      },
       ...rowChanges({
         hydraId,
         state,

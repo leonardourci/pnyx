@@ -332,8 +332,9 @@ test(
       ))
       await old.query('insert into hydras (id, seq, summary, queue) values (\'lab\', 7, \'{}\', \'{"waiting":["one"],"reading":[]}\')')
       const rows = query({
+        schema: 'migrate',
         url: `postgres://${process.env.PGUSER}@${process.env.PGHOST}:${process.env.PGPORT}/${database}`,
-        statements: [{ text: 'select seq, value from hydras join hydra_queues on hydras.id = hydra_queues.hydra_id where id = \'lab\'' }],
+        statements: [{ text: 'select seq, value from hydras join hydra_values on hydras.id = hydra_values.hydra_id where id = \'lab\' and key = \'queue\'' }],
       })[0]
       assert.deepEqual(
         rows,
@@ -389,15 +390,12 @@ test(
   async t => {
     const {
       readFileSync,
-      readdirSync,
     } = await import('node:fs')
     const { randomUUID } = await import('node:crypto')
     const { EVENT_TYPES } = await import('#app/model.ts')
     const {
       openLogs,
       closeLogs,
-      flushLogs,
-      logsDir,
     } = await import('#app/diagnostics.ts')
     openLogs()
     t.after(() => closeLogs())
@@ -484,6 +482,18 @@ test(
         }
       }
 
+      await old.query(`insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
+        select 'lab', 1000 + n, 'scale-' || n,
+          case when n <= 50000 then 'card.observed' else 'card.noted' end,
+          '2026-11-13T12:00:00.000Z', 'test', 'task-a',
+          json_build_object('id', 'scale-' || n, 'seq', 1000 + n,
+            'type', case when n <= 50000 then 'card.observed' else 'card.noted' end,
+            'data', json_build_object('source', json_build_object('adapter', 'hooks', 'objectId', 'worker',
+              'generation', 1099511627776, 'observedAt', '2026-11-13T12:00:00.000Z')))
+        from generate_series(1, 55000) n;
+        insert into card_updates (hydra_id, card_id, seq)
+          select hydra_id, card_id, seq from events where hydra_id = 'lab' and seq > 51000`)
+
       const surviving = 'select * from events where type not in (\'card.observed\', \'chat.message\') order by hydra_id, seq'
       const activity = 'select * from card_updates order by hydra_id, card_id, seq'
       const beforeEvents = (await old.query(surviving)).rows
@@ -492,6 +502,7 @@ test(
 
       for (let attempt = 0; attempt < 2; attempt++) {
         const results = query({
+          schema: 'migrate',
           url,
           statements: [
             { text: surviving },
@@ -513,36 +524,6 @@ test(
         )
       }
 
-      await flushLogs()
-      const pruned = readdirSync(logsDir()).flatMap(name => readFileSync(
-        join(
-          logsDir(),
-          name,
-        ),
-        'utf8',
-      ).split('\n')
-        .filter(Boolean)
-        .map(line => JSON.parse(line)))
-        .filter(line => line.operation === 'events.pruned' && [
-          'lab',
-          'another',
-        ].includes(line.hydraId))
-      assert.deepEqual(
-        pruned.map(line => [
-          line.hydraId,
-          line.count,
-        ]).sort(),
-        [
-          [
-            'another',
-            2,
-          ],
-          [
-            'lab',
-            2,
-          ],
-        ],
-      )
       assert.deepEqual(
         readFileSync(backup),
         beforeBackup,

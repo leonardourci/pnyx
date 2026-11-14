@@ -6,7 +6,6 @@ import type { Ask, Card, NoteKind, TaskDeclaration, TaskKind, TaskStatus } from 
 import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
-import type { HydraQueue } from '#hydra/wakes.ts'
 import type { Reply } from '#workers/model.ts'
 import type { Settings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
@@ -21,18 +20,10 @@ type Stored<T> = unknown extends T ? ReadonlyJSONValue
 const hydras = table('hydras')
   .columns({
     id: string(),
-    seq: number(),
     config: json<Stored<Omit<HydraConfig, 'columns'>>>().optional(),
     summary: json<Stored<HydraSummary>>(),
   })
   .primaryKey('id')
-
-const hydraQueues = table('hydra_queues')
-  .columns({
-    hydra_id: string(),
-    value: json<Stored<HydraQueue>>(),
-  })
-  .primaryKey('hydra_id')
 
 const settings = table('settings')
   .columns({
@@ -260,8 +251,8 @@ const toCard = {
 const cardRelationships = relationships(
   cards,
   ({
-    one,
     many,
+    one,
   }) => ({
     body: one({
       ...ofCard,
@@ -327,13 +318,7 @@ const hydraRelationships = relationships(
   hydras,
   ({
     many,
-    one,
   }) => ({
-    queue: one({
-      sourceField: ['id'],
-      destField: ['hydra_id'],
-      destSchema: hydraQueues,
-    }),
     columns: many({
       sourceField: ['id'],
       destField: ['hydra_id'],
@@ -350,7 +335,6 @@ const hydraRelationships = relationships(
 export const schema = createSchema({
   tables: [
     hydras,
-    hydraQueues,
     settings,
     upgradeStatus,
     hydraValues,
@@ -390,6 +374,7 @@ export const LIST_LIMIT = 100
 
 // The Hydra-wide fields the page reads; the rest of hydra_values is the server's.
 export const PAGE_VALUES = [
+  'queue',
   'configured',
   'configRevision',
   'view',
@@ -404,7 +389,7 @@ export const PAGE_VALUES = [
   'helper',
   'dispatchProposals',
   'upgrades',
-] as const satisfies readonly (keyof HydraState)[]
+] as const satisfies readonly (keyof HydraState | 'queue')[]
 
 type OfHydra = { hydraId: string }
 
@@ -480,7 +465,6 @@ export const queries = defineQueries({
     one: defineQuery(
       hydraArgs,
       ({ args }) => zql.hydras
-        .related('queue')
         .where(
           'id',
           args.hydraId,

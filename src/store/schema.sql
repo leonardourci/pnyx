@@ -12,14 +12,10 @@ create table hydras (
   -- Facts the server derives for the page: the Hydra list's entry, and the queue box with the updates waiting for
   -- Hydra and the batch it is reading, which the server writes whenever they change.
   summary json not null,
+  -- Retained for one release so the previous build can write its queue after a rollback.
+  queue json not null default '{}',
   -- The size of the events.jsonl this Hydra was imported from, so a log an older Pnyx appended to since is refused.
   imported_bytes bigint check (imported_bytes > 0)
-);
-
--- Live queue facts change independently of the Hydra's event sequence.
-create table hydra_queues (
-  hydra_id text primary key references hydras (id) on delete cascade,
-  value json not null
 );
 
 -- The settings every Hydra shares, as the server last applied them.
@@ -64,7 +60,7 @@ create index events_card_history on events (hydra_id, card_id, seq);
 create index events_type_history on events (hydra_id, type, seq);
 create index events_at on events (hydra_id, at);
 
--- Latest source watermarks reject delayed reports across restarts without recording repeat events.
+-- Latest source observation times reject delayed reports across restarts without recording repeat events.
 create table source_observations (
   hydra_id text not null references hydras (id) on delete cascade,
   card_id text not null,
@@ -270,10 +266,10 @@ create table sessions (
 -- What zero-cache replicates for the page, and no more: the tables its queries read, hydras without the columns only
 -- the server reads, and hydra_values with only the keys the page reads (src/store/zero-schema.ts PAGE_VALUES). Events,
 -- card_updates, sessions, transactions, source_observations and card_private stay with the server.
-create publication pnyx_page for table hydras (id, seq, config, summary), hydra_queues, settings, upgrade_status,
+create publication pnyx_page for table hydras (id, config, summary), settings, upgrade_status,
   hydra_values where (key in ('configured', 'configRevision', 'view', 'viewRevision', 'labelColors', 'projects',
   'projectsRevision', 'hydraStatus', 'hydraOperation', 'hydraAgent', 'hydraAgentChange', 'helper', 'dispatchProposals',
-  'upgrades')), columns, cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
+  'upgrades', 'queue')), columns, cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
 
 -- The schema version this file creates. A change to the tables bumps it, with a migration for databases on the older
 -- one; a build refuses a database on a version it does not know instead of failing its writes.

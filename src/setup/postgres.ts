@@ -41,6 +41,7 @@ function server(): Server | HydraError {
   try {
     // Both settings always exist, so the one statement returns exactly one row.
     const row = query({
+      schema: 'inspect',
       statements: [
         {
           text: `select current_setting('wal_level') as wal_level,
@@ -256,6 +257,44 @@ const ready = ({ found }: { found: Server }) => ({
 // upgrade stops before its restart when any Hydra fails; each failure names its Hydra.
 function checkImports(): Output {
   requireReady({ found: server() })
+  const [tables] = query({
+    schema: 'inspect',
+    statements: [{ text: 'select to_regclass(\'public.schema_version\') as name' }],
+  })
+
+  if (!tables?.[0]?.name) {
+    return {
+      postgres: 'ready',
+      database: targetDatabase(),
+      migration: 'pending: serve creates the database',
+    }
+  }
+
+  const [versions] = query({
+    schema: 'inspect',
+    statements: [{ text: 'select max(version)::integer as version from schema_version' }],
+  })
+
+  if (versions?.[0]?.version === 1) {
+    const [counts] = query({
+      schema: 'inspect',
+      statements: [
+        {
+          text: `select type, count(*)::integer as count from events
+        where type in ('card.observed', 'chat.message') group by type`,
+        },
+      ],
+    })
+
+    return {
+      postgres: 'ready',
+      database: targetDatabase(),
+      schema: 1,
+      migration: 'pending: serve migrates after the old server stops',
+      prune: counts,
+    }
+  }
+
   const imported: string[] = []
   const failed: {
     hydra: string
