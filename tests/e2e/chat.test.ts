@@ -709,56 +709,119 @@ test(
   },
 )
 
-test(
-  'wheeling up in a chat too short to scroll leaves the bottom and keeps the older pages it loads',
-  async () => {
-    const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
-    const {
-      page,
-      reads,
-    } = await openCounted({
-      hydraId: hydra.id,
-      height: RECENT_PAGES_FIT,
-    })
-    const conversation = page.locator(CONVERSATION)
-    await conversation.getByText(
-      'question 16',
-      { exact: true },
-    ).waitFor()
-    expect(await conversation.getByText(
-      'question 1',
-      { exact: true },
-    ).count()).toBe(0)
-    reads.length = 0
-    await watchFrames({
-      page,
-      frames: WATCHED_FRAMES,
-    })
-    expect(reads).toHaveLength(0)
-
-    await conversation.hover()
-    await until({
-      what: 'wheeling up to load the older pages down to the first message',
-      check: async () => {
-        await page.mouse.wheel(
-          0,
-          -400,
-        )
-
-        return await conversation.getByText(
-          'question 1',
-          { exact: true },
-        ).count() > 0
-      },
-    })
-    await page.locator(`${CONVERSATION}[data-away]`).waitFor()
-    await until({
-      what: 'the view to hold still',
-      check: () => still({ page }),
-    })
-    expect(await conversation.getByText(
-      'answer 1',
-      { exact: true },
-    ).count()).toBe(1)
+// One upward input of each kind a reader uses to go up.
+const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>> = {
+  wheel: async ({ page }) => {
+    await page.mouse.wheel(
+      0,
+      -400,
+    )
   },
-)
+  PageUp: async ({ page }) => {
+    await page.keyboard.press('PageUp')
+  },
+  touch: async ({ page }) => {
+    const session = await page.context().newCDPSession(page)
+    await session.send(
+      'Emulation.setTouchEmulationEnabled',
+      { enabled: true },
+    )
+    const move = ({
+      type,
+      y,
+    }: {
+      type: 'touchStart' | 'touchMove' | 'touchEnd'
+      y: number
+    }) => session.send(
+      'Input.dispatchTouchEvent',
+      {
+        type,
+        touchPoints: type === 'touchEnd' ? [] : [
+          {
+            x: 700,
+            y,
+          },
+        ],
+      },
+    )
+    await move({
+      type: 'touchStart',
+      y: 300,
+    })
+    await move({
+      type: 'touchMove',
+      y: 360,
+    })
+    await move({
+      type: 'touchMove',
+      y: 420,
+    })
+    await move({
+      type: 'touchEnd',
+      y: 420,
+    })
+    await session.detach()
+  },
+}
+
+for (const input of Object.keys(UPWARD_INPUTS)) {
+  test(
+    `a ${input} up in a chat too short to scroll leaves the bottom and keeps the older pages it loads`,
+    async () => {
+      const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
+      const {
+        page,
+        reads,
+      } = await openCounted({
+        hydraId: hydra.id,
+        height: RECENT_PAGES_FIT,
+      })
+      const conversation = page.locator(CONVERSATION)
+      await conversation.getByText(
+        'question 16',
+        { exact: true },
+      ).waitFor()
+      expect(await conversation.getByText(
+        'question 1',
+        { exact: true },
+      ).count()).toBe(0)
+      reads.length = 0
+      await watchFrames({
+        page,
+        frames: WATCHED_FRAMES,
+      })
+      expect(reads).toHaveLength(0)
+
+      const overflow = await conversation.evaluate(({
+        scrollHeight,
+        clientHeight,
+      }) => scrollHeight - clientHeight)
+
+      expect(overflow).toBeLessThanOrEqual(0)
+
+      await conversation.focus()
+      await conversation.hover()
+      await UPWARD_INPUTS[input]!({ page })
+      await page.locator(`${CONVERSATION}[data-away]`).waitFor()
+      await until({
+        what: 'the older pages to load down to the first message',
+        check: async () => {
+          await UPWARD_INPUTS[input]!({ page })
+
+          return await conversation.getByText(
+            'question 1',
+            { exact: true },
+          ).count() > 0
+        },
+      })
+      await until({
+        what: 'the view to hold still',
+        check: () => still({ page }),
+      })
+      expect(await conversation.getByText(
+        'answer 1',
+        { exact: true },
+      ).count()).toBe(1)
+    },
+  )
+}
