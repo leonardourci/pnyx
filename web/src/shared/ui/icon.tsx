@@ -2,8 +2,8 @@ import { IconRobot } from '@tabler/icons-react'
 import { TABLER_ICONS } from '#web-shared/ui/icons/tabler.ts'
 import { identityIcon } from '#web-shared/ui/icons/identity.ts'
 
-// The identity files' text; identity.test.ts checks every registry entry has its file. Only Vite has
-// import.meta.env and import.meta.glob, so Node tests that render a component get no identity icons.
+// The identity files' text. Only Vite has import.meta.env and import.meta.glob, so code that renders a component
+// outside Vite gets no identity icons.
 const IDENTITY_FILES: Record<string, string> = import.meta.env ? import.meta.glob<string>(
   './icons/identity/*.svg',
   {

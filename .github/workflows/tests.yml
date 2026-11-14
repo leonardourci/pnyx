@@ -50,7 +50,7 @@ jobs:
     # Every run waits for the owner's approval in this environment.
     environment: ci
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,20 +64,29 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm run typecheck
+      # Lint runs beside the build, which takes about as long as the typecheck and ESLint together.
+      - name: Lint and build
+        run: |
+          pnpm run typecheck & typecheck=$!
+          pnpm exec eslint . & eslint=$!
+          pnpm run lint:css & css=$!
+          pnpm run build & build=$!
+          failed=0
+          for job in "$typecheck" "$eslint" "$css" "$build"; do wait "$job" || failed=1; done
+          exit "$failed"
 
-      - name: Lint
-        run: pnpm exec eslint .
+      # Integration files and browser journeys, in a random order; the runner image carries PostgreSQL and Google Chrome.
+      - name: Tests
+        env:
+          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
+        run: pnpm exec vitest run
 
-      - name: CSS lint
-        run: pnpm run lint:css
-
-      - name: Build
-        run: pnpm run build
-
-      - name: Unit tests
-        run: node scripts/verification/test.ts unit
-
-      - name: Flows
-        run: node scripts/verification/test.ts scenarios
+      # The tests' scratch homes and the Postgres log, so a failure only CI shows can be read.
+      - name: Keep the test files
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-files
+          path: ${{ runner.temp }}/test-files
+          retention-days: 3
+          if-no-files-found: ignore

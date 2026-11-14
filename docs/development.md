@@ -6,7 +6,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the issue, review and merge proces
 
 ## Build and test
 
-Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); the test launcher starts its own throwaway cluster on a random port and never uses a running one.
+Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); a test run starts its own throwaway cluster on a random port and never uses a running one. The browser journeys also need Google Chrome.
 
 ```sh
 pnpm install
@@ -21,9 +21,9 @@ Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type l
 
 `pnpm run build` compiles into its own `dist.next.<pid>` folder and renames it to `dist` only after the whole build passed, so a failed or interrupted build leaves the last working `dist`.
 
-Imports across folders use the `package.json` aliases: `#<folder>/<file>.ts` resolves to `src/` and `#web-<folder>/<file>` to `web/src/`. Built code resolves `#…` to `dist/`, so anything that runs TypeScript from `src/` passes `--conditions=source`, or its `#` imports load the built files. The test launcher, `pnpm dev:server` and the Vite scripts pass it. A child the server starts with `execFile` and a login service installed from source take it from `SOURCE_CONDITIONS` in `src/app/source-conditions.ts`. The session-start hook adds it when its CLI is a `.ts` file.
+Imports across folders use the `package.json` aliases: `#<folder>/<file>.ts` resolves to `src/` and `#web-<folder>/<file>` to `web/src/`. Built code resolves `#…` to `dist/`, so anything that runs TypeScript from `src/` passes `--conditions=source`, or its `#` imports load the built files. Vitest (`vitest.config.ts`), `pnpm dev:server` and the Vite scripts pass it. A child the server starts with `execFile` and a login service installed from source take it from `SOURCE_CONDITIONS` in `src/app/source-conditions.ts`. The session-start hook adds it when its CLI is a `.ts` file.
 
-See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conventions](../.agents/skills/follow-conventions/SKILL.md#files-and-concerns) for when to split a file. `pnpm run lint` and `pnpm test` give deterministic verification. The test launcher isolates each file with temporary data and harness folders, discards inherited agent identity, and limits process concurrency. See [Testing](testing.md) for isolation details and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The default test suite has no browser tests: check a page change in the local preview and show it in the pull request's screenshots. [Testing](testing.md#native-clipboard-regression) also describes the opt-in native clipboard regression.
+See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conventions](../.agents/skills/follow-conventions/SKILL.md#files-and-concerns) for when to split a file. `pnpm run lint` and `pnpm test` give deterministic verification. Each test file runs in its own process with a scratch home, its own copy of a migrated database and no inherited agent identity; see [Testing](testing.md) for the layout and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The browser journeys cover the chat and the board; check any other page change in the local preview and show it in the pull request's screenshots.
 
 Owner actions in the app run in the server, which holds each Hydra in memory and is its only writer, so no command waits on another writer's lock. A validation or permission refusal returns its reason at once. The writer applies a command's events to its loaded state, retains changed properties for the lifecycle rules' before-state and records which cards they touched. It then commits the events, those cards' rows and the small rows that read across cards in one Postgres transaction, which updates the Hydra's `seq` only from the value it read. A command that throws or loses that race commits nothing, and the Hydra is read back from its rows. Rows reloaded from Postgres must match a cold replay of the events.
 
@@ -86,9 +86,9 @@ Verification picks checks and reviews from the files changed against that defaul
 | Change kind | Required reviews | Checks |
 | --- | --- | --- |
 | Files under `docs/`, or Markdown outside shipped skills and `fixtures/` folders | `deslop` | None |
-| Shipped skill Markdown under `skills/` | `deslop` | Build and tests that read the shipped skills |
-| Test files (`*.test.ts`) | `audit-tests` | Lint fixes, type checks, ESLint, build when needed, and the changed test files |
-| UI or back-end code, configuration, test helpers or fixtures | `review-code`, `audit-tests`, `deslop` | Full suite: lint fixes, type checks, ESLint, CSS lint, build, unit tests and scenarios |
+| Shipped skill Markdown under `skills/` | `deslop` | Build and the integration tests, which include the one comparing Hydra's folder with the shipped skills |
+| Test files (`tests/**/*.test.ts`) | `audit-tests` | Lint fixes, type checks, ESLint, build when needed, and the changed test files |
+| UI or back-end code, configuration, test helpers or fixtures | `review-code`, `audit-tests`, `deslop` | Full suite: lint fixes, type checks, ESLint, CSS lint, build and every test |
 | Explicit mechanical rename or move | `deslop` | Full suite |
 
 For a mechanical rename or move, run `pnpm verify --mechanical` and put exactly one standalone line, `Change: mechanical (rename)` or `Change: mechanical (move)`, in the PR description. The flag requires the visible declaration and records it in the verification marker. It changes only the required reviews and always runs the full suite. `--mechanical` cannot be combined with `--checks-only`, which never reads or edits the PR description.
@@ -103,7 +103,7 @@ Use `pnpm verify --checks-only` when the environment has read-only GitHub access
 
 The "pnpm verify" check in the "Verify" workflow (`.github/workflows/verify.yml`) runs for every PR, including a stacked PR whose base is another PR's branch, and installs and builds nothing. It runs on `pull_request_target` and checks out its checker scripts from the default branch, so PR code is never checked out. It checks the same description requirements, reads the PR, derives the required review boxes from the PR files (for a stacked PR, its own diff against its base) and requires them to remain ticked, and fails unless the marker names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means files under `docs/` and Markdown outside `skills/` and any `fixtures/` folder, since the shipped skills and test fixtures are read by Pnyx and its tests. Docs-only PRs still need the marker from `pnpm verify`. Only `pnpm verify` writes the line. Anyone who can edit the description could forge a pass, so it is an honesty check, not a signature.
 
-The "Lint, build and tests" check (`.github/workflows/tests.yml`) runs the typecheck, lint, build, unit tests and flows on GitHub. It runs on `pull_request`, forks included, with a read-only token and no secrets, and starts only after a maintainer approves it in the `ci` environment. A newer push cancels the older run. A docs-only change skips the tests, using the same selection as `pnpm verify`, and still reports success. It does nothing while the repository is private.
+The "Lint, build and tests" check (`.github/workflows/tests.yml`) runs the typecheck, lint and build side by side, then the whole test suite in a random order, on GitHub, and uploads the tests' scratch files when a run fails. It runs on `pull_request`, forks included, with a read-only token and no secrets, and starts only after a maintainer approves it in the `ci` environment. A newer push cancels the older run. A docs-only change skips the tests, using the same selection as `pnpm verify`, and still reports success. It does nothing while the repository is private.
 
 Verification does not merge a PR. Merging requires explicit approval.
 

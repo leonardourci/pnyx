@@ -155,30 +155,6 @@ const boundary = ({
     return true // The returned handler is the AXI argv adapter.
   }
 
-  if ([
-    '/test/paseo.test.ts',
-    '/test/start.test.ts',
-  ].some(test => filename.endsWith(test))
-    && owner({
-      node,
-      types: ['VariableDeclarator'],
-    })?.id.name === 'client') {
-    return true // The fake implements the Paseo SDK client's signatures.
-  }
-
-  if (filename.endsWith('/test/host.test.ts')
-    && owner({
-      node,
-      types: ['VariableDeclarator'],
-    })?.id.name === 'query') {
-    return true // The fake implements the Agent SDK's query signatures.
-  }
-
-  if (filename.endsWith('/src/hydra/catalog.test.ts') && node.type === 'TSMethodSignature'
-    && node.key.name === 'after') {
-    return true // The node:test context's cleanup hook.
-  }
-
   if (parent.type === 'CallExpression' && parent.arguments.includes(node)) {
     const name = callName({ node: parent.callee })
 
