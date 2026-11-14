@@ -65,6 +65,8 @@ export interface TurnPlan {
   // Streams this prefix of the reply, then waits for release (or an interrupt) before finishing the turn.
   partial?: string
   hold?: boolean
+  // Claude reports a compaction while the turn waits, as it does for /compact.
+  compacting?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
   refuse?: boolean
 }
@@ -230,6 +232,25 @@ export function fakeClaude() {
           plan.wait,
           stopped,
         ]) : undefined
+
+        if (plan?.compacting) {
+          yield {
+            type: 'system',
+            subtype: 'status',
+            status: 'compacting',
+            uuid: randomUUID(),
+            session_id: id,
+          } as SDKMessage
+          await held
+          yield {
+            type: 'system',
+            subtype: 'status',
+            status: null,
+            compact_result: interrupted ? 'failed' : 'success',
+            uuid: randomUUID(),
+            session_id: id,
+          } as SDKMessage
+        }
 
         for (const recorded of claudeRecording.turn) {
           if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'
