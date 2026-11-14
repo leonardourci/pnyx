@@ -29,7 +29,7 @@ export function reviewBlockers({
     })
 
     return boxes.length !== 1 || boxes[0]?.toLowerCase() !== 'x'
-  }).map(name => `complete ${name} and tick its PR checkbox`)
+  }).map(name => `complete ${name}; put findings on separate lines and use this exact PR checkbox line: - [x] Ran \`${name}\``)
 }
 
 const DESCRIPTION_SECTIONS = [
