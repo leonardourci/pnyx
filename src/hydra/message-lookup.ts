@@ -125,9 +125,7 @@ function decodeCursor({ value }: { value: string }): Cursor {
   return cursor
 }
 
-// A thread's recorded messages, read a window of the log at a time.
 export interface LookupThread {
-  // The messages recorded at log positions after lo, up to and including hi.
   window({
     lo,
     hi,
@@ -135,7 +133,6 @@ export interface LookupThread {
     lo: number
     hi: number
   }): MessageRecord[]
-  // The log position of the message a reference names, when it names one.
   locate({ id }: { id: string }): number | undefined
   // The first and last log positions whose messages can have been recorded at a time.
   around({ time }: { time: number }): {
@@ -153,7 +150,6 @@ const keyOf = ({ message }: { message: MessageRecord }): Key => ({
   id: message.id,
 })
 
-// The messages beyond a key in one direction, a window at a time, nearest first.
 function* walk({
   thread,
   direction,
@@ -211,7 +207,6 @@ function* walk({
   }
 }
 
-// A walk that can be looked at before it is taken from.
 function lookahead({ messages }: { messages: Generator<MessageRecord> }) {
   let head = messages.next()
 

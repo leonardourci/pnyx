@@ -246,7 +246,6 @@ export function nativeWindow({
   return found
 }
 
-// The messages of the one record that starts at a transcript offset, for a reference that names it.
 export function nativeRecord({
   source,
   offset,

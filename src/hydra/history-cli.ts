@@ -25,7 +25,6 @@ const HISTORY_TYPES = [
   'task.intent',
 ]
 
-// Hydra's history window over the log, reading only the events and transcript bytes of that window.
 export function hydraHistoryWindow({
   hydraId,
   state,
@@ -62,7 +61,6 @@ export function hydraHistoryWindow({
   }
 }
 
-// Hydra's history after its boundary, one page, reading only the log and transcripts that page needs.
 export function hydraHistoryPage({
   hydraId,
   since,
@@ -91,7 +89,6 @@ export function hydraHistoryPage({
   })
 }
 
-// The tokens of Hydra's history since a milestone, counted only until limit when one is given.
 export function hydraHistoryTokens({
   hydraId,
   since,

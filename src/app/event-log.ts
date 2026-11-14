@@ -183,7 +183,6 @@ export function eventPositions({
   ]))
 }
 
-// When the log position, or the last position before it, was recorded; undefined before the first event.
 export function eventTime({
   hydraId,
   seq,
@@ -250,7 +249,6 @@ export function seqsAround({
   }
 }
 
-// The log position of the event with this id.
 export function eventSeq({
   hydraId,
   id,
@@ -273,7 +271,6 @@ export function eventSeq({
   return rows![0] && Number(rows![0].seq)
 }
 
-// The log position of a card's reply to the owner, by the reply's id.
 export function replySeq({
   hydraId,
   card,

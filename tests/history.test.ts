@@ -172,7 +172,6 @@ interface Page {
   snapshot: number
 }
 
-// Every page of a range, following each cursor as the next-page hint says.
 async function readAll({
   hydra,
   args,

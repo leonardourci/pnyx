@@ -400,7 +400,6 @@ export interface HistoryMessage {
   text: string
 }
 
-// The history messages recorded at log positions after lo, up to and including hi, in log order.
 export type HistoryWindow = ({
   lo,
   hi,
@@ -426,7 +425,6 @@ function checkedSnapshot({
   }
 }
 
-// The messages of a range one window at a time, from the log position where the first one is wanted.
 function* historyStream({
   window,
   from,
@@ -471,7 +469,6 @@ function* historyStream({
   }
 }
 
-// The estimated tokens of the rendered history, counting only until `limit` when one is given.
 export function historyTokens({
   window,
   boundary,
