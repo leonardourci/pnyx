@@ -5,7 +5,7 @@ import { HydraError } from '#store/errors.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
-import { requestEnv } from '#app/request-context.ts'
+import { workerIdentity } from './worker-identity.ts'
 import type { Meta } from '#app/command-meta.ts'
 
 export const BROWSER_TOOL = 'browser'
@@ -77,12 +77,7 @@ export function recordTools({
 }
 
 export function requireToolAuthority({ meta }: { meta: Meta }): void {
-  const identity = requestEnv()
-  const workerTask = Boolean(identity.PNYX_TASK)
-  const workerSession = Boolean(identity.PNYX_STEERING_WORKER)
-  const workerActor = Boolean(identity.PNYX_ACTOR?.startsWith('worker:')) || meta.actor.startsWith('worker:')
-
-  if (workerTask || workerSession || workerActor) {
+  if (workerIdentity({ actor: meta.actor })) {
     throw new HydraError({
       message: 'Ask Hydra with task ask for a tool grant',
       code: 'HYDRA_ONLY',

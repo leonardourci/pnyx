@@ -17,8 +17,9 @@ import { withWriter, type Writer } from './writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { workerNotesNotice } from '#memory/workers.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { landingWording } from '#tasks/delivery/cli.ts'
-import { requestEnv, requestInvocation } from '#app/request-context.ts'
+import { landingWording } from '#tasks/delivery/rule.ts'
+import { requestInvocation } from '#app/request-context.ts'
+import { defaultActor } from '#workers/worker-identity.ts'
 
 export const HISTORY_LIMIT = 20
 
@@ -157,9 +158,12 @@ export function parse({
   return {
     values,
     positionals: parsed.positionals,
-    hydraId: (values.hydra as string | undefined) ?? DEFAULT_HYDRA,
+    hydraId: commandHydra({ hydra: values.hydra as string | undefined }),
   }
 }
+
+// The Hydra a command line names; without --hydra, the default one. The worker-scope check resolves it the same way.
+export const commandHydra = ({ hydra }: { hydra?: string }): string => hydra ?? DEFAULT_HYDRA
 
 export function required({
   value,
@@ -203,7 +207,7 @@ export function integer({
 export function meta({ values }: { values: Record<string, string | boolean | undefined> }): Meta {
   const m: Meta = {
     at: new Date().toISOString(),
-    actor: (values.actor as string | undefined) ?? (requestEnv().PNYX_ACTOR || 'cli'),
+    actor: (values.actor as string | undefined) ?? defaultActor(),
   }
 
   if (typeof values.reason === 'string') {

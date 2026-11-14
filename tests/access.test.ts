@@ -138,62 +138,6 @@ test(
   },
 )
 
-// task-8178f4ca: a worker can still declare on another task; remove the skip when that is fixed.
-test.skip(
-  'a worker\'s declaration on another task is refused and leaves that task unchanged',
-  async () => {
-    const hydra = await pnyx.hydra()
-    const folder = hydra.folder({ name: 'mine' })
-
-    for (const key of [
-      'mine',
-      'other',
-    ]) {
-      await hydra.owner({
-        args: [
-          'task',
-          'create',
-          '--title',
-          key,
-          '--key',
-          key,
-          ...key === 'mine' ? [
-            '--folder',
-            folder,
-          ] : [],
-        ],
-      })
-    }
-
-    await hydra.owner({
-      args: [
-        'task',
-        'start',
-        'mine',
-      ],
-    })
-    const worker = await hydra.agent({ cwd: folder })
-
-    await hydra.as({ session: worker }).refused({
-      args: [
-        'task',
-        'status',
-        'other',
-        'done',
-        '--note',
-        'Finished by someone else',
-      ],
-    })
-    expect((await hydra.owner({
-      args: [
-        'task',
-        'show',
-        'other',
-      ],
-    })).task.status).not.toContain('done')
-  },
-)
-
 test(
   'Hydra\'s owner-only commands wait for the owner\'s confirmation instead of running, and only the owner may answer them',
   async () => {

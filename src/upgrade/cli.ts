@@ -5,6 +5,7 @@ import { AxiError } from 'axi-sdk-js'
 import { flagError } from '#app/cli-support.ts'
 import { DEFAULT_HYDRA } from '#app/home-migration.ts'
 import { requestEnv } from '#app/request-context.ts'
+import { workerIdentity } from '#workers/worker-identity.ts'
 import { askHost, probeServer } from '#app/server-state.ts'
 import { send } from '#cli/client.ts'
 import { restartPnyx, untilAgentsIdle } from './restart.ts'
@@ -385,7 +386,7 @@ export async function upgradeIn({
   }
 
   // Hydra can only propose it (owner-only); a worker cannot restart the server under everyone.
-  if (requestEnv().PNYX_ACTOR?.startsWith('worker:')) {
+  if (workerIdentity()) {
     throw new AxiError(
       'Only the owner can upgrade Pnyx',
       'OWNER_ONLY',

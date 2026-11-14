@@ -53,6 +53,8 @@ commands:
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
   firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the Hydra, once or on every change
+worker:
+  A worker reads any task or Hydra and writes only its own task (task status|ask|report|report-review|refresh-links|inbox|source, link, hydra send --task); any other write fails with WORKER_SCOPE
 flags:
   --hydra <name>     Hydra to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
