@@ -16,9 +16,27 @@ export default defineConfig({
     execArgv: ['--conditions=source'],
     globalSetup: ['tests/setup/global-setup.ts'],
     setupFiles: ['tests/setup/environment.ts'],
-    include: ['tests/**/*.test.ts'],
-    // A bound for a stuck test, not a speed target: waits inside a test end as soon as their condition holds.
+    // Bounds for a stuck test, not speed targets: every wait ends as soon as its condition holds.
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'integration',
+          include: ['tests/*.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'e2e',
+          include: ['tests/e2e/*.test.ts'],
+          // A browser journey starts zero-cache and Chrome, which a loaded machine slows most.
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+        },
+      },
+    ],
   },
 })
