@@ -434,20 +434,86 @@ function hydraClient({
     return path
   }
 
+  const owner = ({
+    args,
+    input,
+  }: {
+    args: string[]
+    input?: string
+  }) => succeeds({
+    args,
+    input,
+    env: ownerEnv(),
+  })
+
+  // The id of the column with this role on the Hydra's board.
+  const column = async ({ role }: { role: 'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done' }) => (await owner({
+    args: [
+      'column',
+      'list',
+    ],
+  })).columns.find((candidate: { role: string }) => candidate.role === role).id as string
+
+  // The task as `task show` prints it.
+  const task = async ({ key }: { key: string }) => (await owner({
+    args: [
+      'task',
+      'show',
+      key,
+    ],
+  })).task
+
+  // Creates a task in its own folder, starts its worker and waits for the worker's first turn.
+  const startTask = async ({
+    key,
+    harness = 'claude',
+  }: {
+    key: string
+    harness?: 'claude' | 'codex'
+  }) => {
+    const path = folder({ name: key })
+    await owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        `Task ${key}`,
+        '--key',
+        key,
+        '--folder',
+        path,
+        '--brief',
+        `Brief for ${key}`,
+      ],
+    })
+    await owner({
+      args: [
+        'task',
+        'start',
+        key,
+        '--harness',
+        harness,
+      ],
+    })
+    const worker = await agent({ cwd: path })
+    await until({
+      what: `${key}'s first turn`,
+      check: () => worker.answered === 1,
+    })
+
+    return {
+      folder: path,
+      worker,
+    }
+  }
+
   return {
     id: hydraId,
     folder,
-    owner: ({
-      args,
-      input,
-    }: {
-      args: string[]
-      input?: string
-    }) => succeeds({
-      args,
-      input,
-      env: ownerEnv(),
-    }),
+    column,
+    task,
+    startTask,
+    owner,
     ownerRefused: ({
       args,
       input,

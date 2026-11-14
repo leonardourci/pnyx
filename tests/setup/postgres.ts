@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
+import pg from 'pg'
 
 const USER = 'pnyx'
 const MIN_VERSION = 15
@@ -166,3 +167,39 @@ export async function startPostgres({ dir }: { dir: string }) {
     }),
   }
 }
+
+// One statement on a database of the run's cluster, outside Pnyx's own connection.
+export async function sql({
+  database,
+  text,
+  values,
+}: {
+  database: string
+  text: string
+  values?: unknown[]
+}) {
+  const client = new pg.Client({ database })
+  await client.connect()
+
+  try {
+    return (await client.query(
+      text,
+      values,
+    )).rows
+  } finally {
+    await client.end()
+  }
+}
+
+// The schema version this build's schema.sql creates, so a schema change does not edit the tests.
+export const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(readFileSync(
+  join(
+    import.meta.dirname,
+    '..',
+    '..',
+    'src',
+    'store',
+    'schema.sql',
+  ),
+  'utf8',
+))?.[1])
