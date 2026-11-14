@@ -49,7 +49,7 @@ export function HydraAgent({
       inherited={inherited}
       command={command}
       connected={connected}
-      disabled={Boolean(state.hydraAgentChange)}
+      disabled={state.hydraAgentChange?.state === 'running'}
       fastNote="Applies from the next turn. It also applies to every agent this Hydra starts, heads dispatch workers and the routine helper alike, where their model has Fast."
       onChange={save}
 
