@@ -664,20 +664,10 @@ export function HydraChat({
       return
     }
 
-    const height = scroller.scrollHeight
-    const top = scroller.scrollTop
     setLoadingEarlier(true)
 
     try {
       await loadEarlier({ keepFollowing: true })
-
-      // A browser that anchors the scroll to what the owner reads has moved it already; another needs this.
-      const grew = scroller.scrollHeight - height
-      const moved = scroller.scrollTop - top
-
-      if (!chatFollow.following() && moved < grew / 2) {
-        scroller.scrollTop += grew - moved
-      }
     } catch (error) {
       failedOlder.current = olderCursor
       notify({ text: (error as Error).message })

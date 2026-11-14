@@ -758,7 +758,6 @@ test(
         columns,
         command: () => new Promise<Record<string, unknown>>(() => {}),
         connected: true,
-        through: 1,
       },
     ))
 

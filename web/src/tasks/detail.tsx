@@ -31,7 +31,6 @@ export function Detail({
         columns={columnsFor({ state })}
         command={command}
         connected={connected}
-        through={state.seq}
       />
     </section>
   )

@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card } from '#tasks/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { VirtualList } from '#web-shared/ui/virtual-list.tsx'
+import { MeasuredList } from '#web-shared/ui/measured-list.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 import { hasTaskQuestion } from './task-question.ts'
@@ -16,14 +16,11 @@ export function TaskUpdates({
   columns,
   command,
   connected,
-  through,
 }: {
   card: Card
   columns: HydraColumn[]
   command: Command
   connected: boolean
-  // The Hydra's latest seq, which says when to read the newest page again.
-  through: number
 }) {
   const {
     list,
@@ -35,7 +32,7 @@ export function TaskUpdates({
     task: card.id,
     command,
     connected,
-    through,
+    through: card.revision,
   })
   const events = list?.events ?? []
   const [
@@ -111,7 +108,7 @@ export function TaskUpdates({
         </Button>
       </div>
       {shown.length > 0 && (
-        <VirtualList
+        <MeasuredList
           items={rows}
           itemKey={({ item }) => item.update.id}
           stayAtTop={!oldestFirst}
@@ -122,7 +119,6 @@ export function TaskUpdates({
           }}
           render={({
             item,
-            virtual,
           }) => (
             <UpdateRow
               key={item.update.id}
@@ -132,7 +128,6 @@ export function TaskUpdates({
               prefix={id}
               open={nextLayout.open.has(item.group.updates[0]!.id)}
               toggle={() => toggle({ id: item.group.updates[0]!.id })}
-              virtual={virtual}
             />
           )}
         />

@@ -26,7 +26,7 @@ export function useCardUpdates({
   task: string
   command: Command
   connected: boolean
-  // The Hydra's latest seq: a change in it may add an update.
+  // The card's revision changes only when its own facts change.
   through: number
 }): CardUpdates {
   const [
@@ -137,7 +137,7 @@ export function useCardUpdates({
 
       try {
         const page = await read({ before })
-        setHeld(current => current.task === task && current.list ? {
+        setHeld(current => current.task === task && current.list?.older === before ? {
           task,
           list: withOlder({
             list: current.list,

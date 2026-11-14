@@ -210,7 +210,7 @@ export function watchHydra({
     // The queue has its own row, so unrelated event writes retain its identity.
     queue = kept({
       previous: queue,
-      next: (hydra.data?.queue?.value ?? NOTHING_QUEUED) as HydraQueue,
+      next: (hydra.data?.values.find(row => row.key === 'queue')?.value ?? NOTHING_QUEUED) as HydraQueue,
     })
 
     publish({
