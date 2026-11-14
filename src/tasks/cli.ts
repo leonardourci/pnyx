@@ -29,6 +29,7 @@ import { lifecycleMoves } from './lifecycle.ts'
 import { answerPrompt } from '#workers/answers.ts'
 import { decideMove } from './columns-decisions.ts'
 import { requestCwd } from '#app/request-context.ts'
+import { workerIdentity } from '#workers/worker-identity.ts'
 
 const INTENT_LIMIT = 4000
 
@@ -926,7 +927,10 @@ export const card = guard({
       help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for the brief and every note in full`)
     }
 
-    if (!found.notes?.length) {
+    // A worker may not run harvest or reply, so it is not pointed at them.
+    const worker = workerIdentity()
+
+    if (!found.notes?.length && !worker) {
       help.push(`Run \`pnyx-axi harvest --card ${found.id}\` to collect its summaries, decisions and context`)
     }
 
@@ -935,7 +939,7 @@ export const card = guard({
       request,
     }))
 
-    if (asking) {
+    if (asking && !worker) {
       help.unshift(`Run \`pnyx-axi reply ${found.id} --answer ${asking.key} --json <answer>\` to answer its ${asking.kind} (see \`pnyx-axi reply --help\`)`)
     }
 

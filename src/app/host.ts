@@ -503,6 +503,7 @@ export function createHost({
       PNYX_HOSTED: 'hydra',
     } : task ? {
       PNYX_ACTOR: `worker:${task}`,
+      PNYX_WORKER_HOME: pnyxHome(),
       PNYX_STEERING_WORKER: steeringWorker,
       ...untrackedBranches({ env: process.env }),
     } : {}),

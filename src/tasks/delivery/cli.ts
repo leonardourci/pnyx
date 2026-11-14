@@ -1,13 +1,14 @@
-import { type LandingRule } from './model.ts'
-import { guard, WRITE, parse, meta, required, commit } from '#app/cli-support.ts'
+import { guard, WRITE, parse, meta, required, commit, type Options } from '#app/cli-support.ts'
 import { planDeliveryChange } from './plans.ts'
 
-export function landingWording({ rule }: { rule: LandingRule }): string {
-  if (rule.landing === 'branch') {
-    return 'a branch'
-  }
-
-  return `a pull request merged by ${rule.merge}`
+export const LINK_OPTIONS: Options = {
+  ...WRITE,
+  url: { type: 'string' },
+  kind: { type: 'string' },
+  number: { type: 'string' },
+  title: { type: 'string' },
+  state: { type: 'string' },
+  remove: { type: 'boolean' },
 }
 
 export const link = guard({
@@ -18,15 +19,7 @@ export const link = guard({
       hydraId,
     } = parse({
       args,
-      options: {
-        ...WRITE,
-        url: { type: 'string' },
-        kind: { type: 'string' },
-        number: { type: 'string' },
-        title: { type: 'string' },
-        state: { type: 'string' },
-        remove: { type: 'boolean' },
-      },
+      options: LINK_OPTIONS,
       positionals: 1,
     })
     const m = meta({ values })
