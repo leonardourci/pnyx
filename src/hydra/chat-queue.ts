@@ -18,29 +18,39 @@ const taken = ({
   message: HydraMessage
 }) => `${message.id}:hosted` in state.eventIds
 
+// What was sent to this Hydra since an operation or an agent change stopped it, that no Hydra turn has taken.
+export function heldMessages({ state }: { state: HydraState }) {
+  const change = state.hydraAgentChange
+  const changeSeq = change ? (state.eventIds[change.id] ?? 1) - 1 : undefined
+  const stopSeq = state.hydraOperation?.seq ?? changeSeq
+
+  if (stopSeq === undefined) {
+    return []
+  }
+
+  const hydra = hydraConfig({ state }).hydra.id
+
+  return (state.hydraMessages ?? []).filter(message => message.hydra === hydra
+    && !isRoutineMessage({ message }) && !message.stopped
+    && (state.eventIds[message.id] ?? 0) > stopSeq && !taken({
+    state,
+    message,
+  }))
+}
+
 function hydraQueueView({
   state,
-  messages,
   card,
 }: {
   state: HydraState
-  messages: HydraMessage[]
   card?: Card
 }) {
   const compacting = activeCompaction({ card })
   const upgrades = state.upgrades ?? []
   const stopped = state.hydraOperation
-  // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
   const changingAgent = state.hydraAgentChange
-  const changeSeq = changingAgent ? (state.eventIds[changingAgent.id] ?? 1) - 1 : undefined
-  const stopSeq = stopped?.seq ?? changeSeq
-  const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
-    && (state.eventIds[id] ?? 0) > stopSeq
-  const waiting = messages.filter(m => !isRoutineMessage({ message: m })
-    && sentSince(m) && !taken({
-    state,
-    message: m,
-  }))
+  // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
+  const waiting = heldMessages({ state })
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
     ...waiting.map(message => message.id),
@@ -120,7 +130,6 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
   const view = hydraQueueView({
     state,
     card,
-    messages,
   })
 
   const started: string[] = []

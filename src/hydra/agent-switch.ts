@@ -19,7 +19,10 @@ import { nativeIdle } from '#workers/native-session.ts'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { ownerActor } from '#app/actors.ts'
 import { agentSettings } from './agent-choice.ts'
+import { heldMessages } from './chat-queue.ts'
+import { hydraDelivery } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { HydraAgentChange, HydraOperation } from './model.ts'
 import { operationEvent } from './operations.ts'
@@ -552,8 +555,35 @@ export function createAgentSwitch({
     return { state: 'queued' }
   }
 
+  // A new agent choice while a change waits for the owner sends what it holds again: back to the running agent it goes as usual, otherwise the owner is asked again.
+  const agentChosen = () => {
+    const state = loadHydra({ hydraId }).state
+    const change = state.hydraAgentChange
+
+    if (!change || change.state === 'running') {
+      return
+    }
+
+    const held = heldMessages({ state }).filter(message => ownerActor({ actor: message.actor }))
+    changeAgent({
+      change: {
+        ...change,
+        state: 'cancelled',
+      },
+    })
+
+    for (const message of held) {
+      void host().hydra({
+        id: message.id,
+        text: hydraDelivery({ message }),
+        actor: message.actor,
+      })
+    }
+  }
+
   return {
     runAgentChange,
+    agentChosen,
     agentChangeAbort: () => agentChangeAbort,
   }
 }

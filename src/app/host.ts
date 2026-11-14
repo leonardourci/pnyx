@@ -916,6 +916,7 @@ export function createHost({
 
   const {
     runAgentChange,
+    agentChosen,
     agentChangeAbort,
   } = createAgentSwitch({
     hydraId,
@@ -1367,6 +1368,7 @@ export function createHost({
       }) : false
     },
     changeAgent: runAgentChange,
+    agentChosen,
 
     compact: async ({
       card: ref,

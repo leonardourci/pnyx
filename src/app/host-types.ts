@@ -75,6 +75,8 @@ export interface Host {
     id: string
     choice: 'inscribe' | 'compact' | 'neither'
   }): Record<string, unknown>
+  // The owner chose Hydra's agent again; a change waiting on their choice sends what it holds again.
+  agentChosen(): void
   stop({
     card,
     sendNow }
