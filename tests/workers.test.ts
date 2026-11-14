@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
@@ -375,5 +377,223 @@ test(
       sessions,
       text: 'Now update the docs',
     })).toBe(1)
+  },
+)
+
+test(
+  'an answer the agent refuses shows as failed in the task chat, reached nobody, and stays failed after a restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await startedTask({
+      hydra,
+      key: 'refused',
+      harness: 'codex',
+    })
+    const asked = await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'ask',
+        'refused',
+        '--question',
+        'Which export format?',
+      ],
+    })
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Use TSV'),
+      refuse: true,
+    })
+
+    await hydra.owner({
+      args: [
+        'task',
+        'answer',
+        'refused',
+        asked.ask,
+        '--text',
+        'Use TSV',
+      ],
+    })
+
+    const receipt = async () => (await hydra.owner({
+      args: [
+        'task',
+        'chat',
+        'refused',
+      ],
+    })).thread.entries.find((entry: { text: string }) => entry.text.includes('Use TSV'))?.receipt
+    expect(await until({
+      what: 'the refused answer to show failed',
+      check: async () => (await receipt()) === 'failed' && 'failed',
+    })).toBe('failed')
+    expect(worker.answered).toBe(1)
+
+    await pnyx.restart()
+    expect(await receipt()).toBe('failed')
+  },
+)
+
+test(
+  'a worker starts on the first account that is neither signed out nor out of quota, an explicit account is honoured, and no usable account refuses the start',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const root = join(
+      process.env.TMPDIR!,
+      'pnyx-run',
+    )
+    const usable = join(
+      root,
+      'claude-login',
+    )
+    const spent = join(
+      root,
+      'claude-spent',
+    )
+    mkdirSync(spent)
+    writeFileSync(
+      join(
+        spent,
+        'exhausted',
+      ),
+      '',
+    )
+
+    const order = ({ accounts }: { accounts: string[] }) => hydra.owner({
+      args: [
+        'rule',
+        'accounts',
+        '--provider',
+        'claude',
+        '--order',
+        accounts.join(),
+      ],
+    })
+
+    // Every account is read once a minute, so each case names the accounts it reads.
+    const start = async ({
+      key,
+      extra = [],
+    }: {
+      key: string
+      extra?: string[]
+    }) => {
+      const folder = hydra.folder({ name: key })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          key,
+          '--key',
+          key,
+          '--folder',
+          folder,
+        ],
+      })
+      const args = [
+        'task',
+        'start',
+        key,
+        ...extra,
+      ]
+
+      return {
+        folder,
+        args,
+      }
+    }
+
+    for (const [
+      name,
+      folder,
+    ] of [
+        [
+          'claude:spent',
+          spent,
+        ],
+        [
+          'claude:signedout',
+          join(
+            root,
+            'claude-missing',
+          ),
+        ],
+      ]) {
+      await hydra.owner({
+        args: [
+          'account',
+          'set',
+          name!,
+          '--provider',
+          'claude',
+          '--folder',
+          folder!,
+        ],
+      })
+    }
+
+    try {
+      // An account out of quota is passed over for the next one in the order.
+      await order({
+        accounts: [
+          'claude:spent',
+          'claude:test',
+        ],
+      })
+      const fallback = await start({ key: 'fallback' })
+      await hydra.owner({ args: fallback.args })
+      expect((await hydra.agent({ cwd: fallback.folder })).env.CLAUDE_CONFIG_DIR).toBe(usable)
+
+      // The owner's explicit account is used even without quota.
+      const chosen = await start({
+        key: 'chosen',
+        extra: [
+          '--account',
+          'claude:spent',
+        ],
+      })
+      await hydra.owner({ args: chosen.args })
+      expect((await hydra.agent({ cwd: chosen.folder })).env.CLAUDE_CONFIG_DIR).toBe(spent)
+
+      // A signed-out account stops a plain start; only an explicit choice passes over it.
+      await order({
+        accounts: [
+          'claude:signedout',
+          'claude:test',
+        ],
+      })
+      const signedOut = await start({ key: 'signedout' })
+      expect((await hydra.ownerRefused({ args: signedOut.args })).code).toBe('ACCOUNT_SIGNED_OUT')
+      expect(pnyx.claude.sessions.some(session => session.cwd === signedOut.folder)).toBe(false)
+      await hydra.owner({
+        args: [
+          ...signedOut.args,
+          '--harness',
+          'claude',
+        ],
+      })
+      expect((await hydra.agent({ cwd: signedOut.folder })).env.CLAUDE_CONFIG_DIR).toBe(usable)
+
+      // With no usable account the start stops instead of using an unlisted one.
+      await order({ accounts: ['claude:spent'] })
+      const none = await start({ key: 'none' })
+      expect((await hydra.ownerRefused({ args: none.args })).code).toBe('DISPATCH_EXHAUSTED')
+      expect(pnyx.claude.sessions.some(session => session.cwd === none.folder)).toBe(false)
+    } finally {
+      await order({ accounts: ['claude:test'] })
+
+      for (const name of [
+        'claude:spent',
+        'claude:signedout',
+      ]) {
+        await hydra.owner({
+          args: [
+            'account',
+            'remove',
+            name,
+          ],
+        })
+      }
+    }
   },
 )
