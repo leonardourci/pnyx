@@ -8,15 +8,12 @@ import { withWriter } from '#app/writer.ts'
 import { decidePush } from './push.ts'
 import { taskUpdates } from './updates-page.ts'
 
-const titled = ({
-  number,
-  note = '',
-}: {
-  number: number
-  note?: string
-}) => ({
+const titled = ({ number }: { number: number }) => ({ title: `Release ${number}` })
+
+// The last push also carries text far over the 64 KB an item may weigh.
+const heavy = ({ number }: { number: number }) => ({
   title: `Release ${number}`,
-  ...(note ? { activity: note } : {}),
+  activity: 'x'.repeat(200_000),
 })
 
 test(
@@ -36,10 +33,7 @@ test(
             decision: decidePush({
               state: writer.state,
               key: 'ship',
-              input: titled({
-                number,
-                note: number === 7 ? 'x'.repeat(200_000) : '',
-              }),
+              input: number === 7 ? heavy({ number }) : titled({ number }),
               newCardId: number === 1 ? 'ship' : undefined,
               meta: {
                 actor: 'test',

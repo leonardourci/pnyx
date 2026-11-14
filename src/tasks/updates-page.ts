@@ -48,9 +48,18 @@ export function taskUpdates({
     limit,
   )
 
+  const events = page.map(event => capItem({ value: event }))
+
+  if (read.length > limit) {
+    return {
+      task: task.id,
+      events,
+      older: page.at(-1)!.seq,
+    }
+  }
+
   return {
     task: task.id,
-    events: page.map(event => capItem({ value: event })),
-    ...(read.length > limit ? { older: page.at(-1)!.seq } : {}),
+    events,
   }
 }
