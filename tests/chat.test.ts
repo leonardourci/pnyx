@@ -1020,13 +1020,106 @@ test(
   },
 )
 
+type Page = Awaited<ReturnType<Hydra['page']>>
+
 // The agent change waiting for the owner's choice, as the page reads it.
 const agentChange = ({ hydraId }: { hydraId: string }) => rows<{
-  value: { next: { effort?: string } }
+  value: {
+    id: string
+    state: string
+    next: { effort?: string }
+  }
 }>({
   text: 'select value from hydra_values where hydra_id = $1 and key = \'hydraAgentChange\'',
   values: [hydraId],
 })[0]?.value
+
+// The agent Hydra last ran with, as the page's Last used mark reads it.
+const lastRan = ({ hydraId }: { hydraId: string }) => rows<{
+  value: { effort?: string }
+}>({
+  text: 'select value from hydra_values where hydra_id = $1 and key = \'hydraAgent\'',
+  values: [hydraId],
+})[0]?.value
+
+// Claude's catalog runs "opus" at "high" effort when Hydra names neither.
+const chooseAgent = async ({
+  page,
+  agent,
+}: {
+  page: Page
+  agent: Record<string, string>
+}) => {
+  expect((await page.send({
+    name: 'hydra-agent',
+    args: [
+      JSON.stringify({
+        harness: 'claude',
+        ...agent,
+      }),
+    ],
+  })).type).toBe('receipt')
+}
+
+const sendToHydra = ({
+  hydra,
+  text,
+}: {
+  hydra: Hydra
+  text: string
+}) => hydra.owner({
+  args: [
+    'hydra',
+    'send',
+    '--text',
+    text,
+  ],
+})
+
+const answerAgentChange = async ({
+  hydra,
+  page,
+  choice,
+}: {
+  hydra: Hydra
+  page: Page
+  choice: 'compact' | 'neither'
+}) => {
+  const change = await until({
+    what: 'the agent change to wait for the owner',
+    check: () => agentChange({ hydraId: hydra.id }),
+  })
+  expect((await page.send({
+    name: 'hydra-agent-change',
+    args: [
+      change.id,
+      choice,
+    ],
+  })).type).toBe('receipt')
+}
+
+const SUMMARY = 'Handoff summary.'
+
+// The summary turn of an agent change's compaction.
+const planSummary = ({ hydra }: { hydra: Hydra }) => pnyx.claude.plan({
+  hydra: hydra.id,
+  match: ({ text }) => text.includes('Compact the recorded conversation'),
+  reply: SUMMARY,
+  hold: true,
+})
+
+// The session that heard a message after it started from an agent change's summary.
+const heardFromSummary = ({
+  hydra,
+  text,
+}: {
+  hydra: Hydra
+  text: string
+}) => until({
+  what: `a session started from the summary to hear "${text}"`,
+  check: () => pnyx.claude.sessions.find(s => s.env.PNYX_HYDRA === hydra.id
+    && s.received[0]?.includes(SUMMARY) && s.received.some(message => message.includes(text))),
+})
 
 test(
   'choosing the model and effort Hydra already runs with asks nothing, and while a change waits a new choice asks again or sends the held messages left to the same session in order',
@@ -1035,33 +1128,26 @@ test(
     const page = await hydra.page()
     const session = await hydra.chat({ text: 'first message' })
 
-    // Claude's catalog runs "opus" at "high" effort when Hydra names neither, as it did for the first message.
-    const choose = async ({ agent }: { agent: Record<string, string> }) => {
-      expect((await page.send({
-        name: 'hydra-agent',
-        args: [
-          JSON.stringify({
-            harness: 'claude',
-            ...agent,
-          }),
-        ],
-      })).type).toBe('receipt')
-    }
-
-    await choose({ agent: { model: 'sonnet' } })
-    await choose({
+    await chooseAgent({
+      page,
+      agent: { model: 'sonnet' },
+    })
+    await chooseAgent({
+      page,
       agent: {
         model: 'sonnet',
         effort: 'low',
       },
     })
-    await choose({
+    await chooseAgent({
+      page,
       agent: {
         model: 'opus',
         effort: 'low',
       },
     })
-    await choose({
+    await chooseAgent({
+      page,
       agent: {
         model: 'opus',
         effort: 'high',
@@ -1084,7 +1170,10 @@ test(
     })
     expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
 
-    await choose({ agent: { effort: 'low' } })
+    await chooseAgent({
+      page,
+      agent: { effort: 'low' },
+    })
     await hydra.owner({
       args: [
         'hydra',
@@ -1124,12 +1213,18 @@ test(
       what: 'the queued messages to leave out the removed one',
       check: () => queue({ hydraId: hydra.id })?.compactInputs.map(input => input.text).join() === 'held one,held three',
     })
-    await choose({ agent: { effort: 'medium' } })
+    await chooseAgent({
+      page,
+      agent: { effort: 'medium' },
+    })
     await until({
       what: 'the question to name the newly chosen effort',
       check: () => agentChange({ hydraId: hydra.id })?.next.effort === 'medium',
     })
-    await choose({ agent: { effort: 'high' } })
+    await chooseAgent({
+      page,
+      agent: { effort: 'high' },
+    })
     await until({
       what: 'Hydra to hear the held messages',
       check: () => heard({
@@ -1157,31 +1252,183 @@ test(
 )
 
 test(
+  'an agent change answered with Compact only applies at the next turn, and choosing back while it compacts asks nothing afterwards, also after a restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await hydra.chat({ text: 'first message' })
+
+    const compaction = () => rows<{ value: { kind: string } }>({
+      text: 'select value from hydra_values where hydra_id = $1 and key = \'hydraOperation\'',
+      values: [hydra.id],
+    })[0]?.value
+
+    // The owner changes the agent, answers Compact only, and can act while the compaction runs.
+    const compactOnly = async ({
+      agent,
+      held,
+      whileCompacting,
+    }: {
+      agent: Record<string, string>
+      held: string
+      whileCompacting?({ message }: { message: string }): Promise<void>
+    }) => {
+      await chooseAgent({
+        page,
+        agent,
+      })
+      const sent = await sendToHydra({
+        hydra,
+        text: held,
+      })
+      const summary = planSummary({ hydra })
+      await answerAgentChange({
+        hydra,
+        page,
+        choice: 'compact',
+      })
+      await until({
+        what: 'the compaction to run',
+        check: () => compaction()?.kind === 'compaction',
+      })
+      await whileCompacting?.({ message: sent.message })
+      summary.release()
+      await until({
+        what: 'the agent change to end',
+        check: () => !agentChange({ hydraId: hydra.id }) && !compaction(),
+      })
+    }
+
+    await compactOnly({
+      agent: { effort: 'low' },
+      held: 'held for low',
+    })
+    const low = await heardFromSummary({
+      hydra,
+      text: 'held for low',
+    })
+    expect(lastRan({ hydraId: hydra.id })?.effort).toBe('low')
+    expect((await hydra.chat({ text: 'after low' })).id).toBe(low.id)
+
+    const chooseLow = () => chooseAgent({
+      page,
+      agent: { effort: 'low' },
+    })
+    await compactOnly({
+      agent: {},
+      held: 'held for high',
+      whileCompacting: chooseLow,
+    })
+    const back = await heardFromSummary({
+      hydra,
+      text: 'held for high',
+    })
+    expect(back.id).not.toBe(low.id)
+    expect(lastRan({ hydraId: hydra.id })?.effort).toBe('low')
+    expect((await hydra.chat({ text: 'after choosing back' })).id).toBe(back.id)
+
+    // With its only held message removed, no recap follows, so the owner's message after the restart is the first turn.
+    await compactOnly({
+      agent: {},
+      held: 'removed while compacting',
+      whileCompacting: async ({ message }) => {
+        expect(await page.send({
+          name: 'hydra',
+          args: [
+            'cancel',
+            message,
+          ],
+        })).toMatchObject({ cancelled: message })
+        await chooseLow()
+      },
+    })
+    page.close()
+    await pnyx.restart()
+    await sendToHydra({
+      hydra,
+      text: 'after the restart',
+    })
+    const restarted = await heardFromSummary({
+      hydra,
+      text: 'after the restart',
+    })
+
+    expect(restarted.id).not.toBe(back.id)
+    expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
+    expect(pnyx.claude.sessions.filter(s => s.received.some(text => text.includes('removed while compacting')))).toEqual([])
+  },
+)
+
+test(
+  'choosing back while an answered agent change waits for Hydra\'s turn withdraws it, and its held message reaches the same session',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    const session = await hydra.chat({ text: 'first message' })
+
+    for (const choice of [
+      'neither',
+      'compact',
+    ] as const) {
+      const turn = pnyx.claude.plan({
+        hydra: hydra.id,
+        text: `${choice} turn`,
+        partial: 'Working',
+        hold: true,
+      })
+      await hydra.chat({ text: `${choice} turn` })
+      await chooseAgent({
+        page,
+        agent: { effort: 'low' },
+      })
+      await sendToHydra({
+        hydra,
+        text: `held for ${choice}`,
+      })
+      await answerAgentChange({
+        hydra,
+        page,
+        choice,
+      })
+      await until({
+        what: 'the agent change to wait for Hydra\'s turn',
+        check: () => agentChange({ hydraId: hydra.id })?.state === 'running',
+      })
+      await chooseAgent({
+        page,
+        agent: {},
+      })
+      turn.release()
+      await until({
+        what: `Hydra to hear "held for ${choice}"`,
+        check: () => heard({
+          received: session.received,
+          text: `held for ${choice}`,
+        }) === 1,
+      })
+      expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
+      expect(lastRan({ hydraId: hydra.id })?.effort).toBeUndefined()
+    }
+
+    expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toEqual([session])
+    page.close()
+  },
+)
+
+test(
   'Stop, or removing its last held message, ends an agent change waiting for the owner, and Stop also ends the turn Hydra was running',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await hydra.page()
     const session = await hydra.chat({ text: 'first message' })
 
-    const choose = async ({ agent }: { agent: Record<string, string> }) => {
-      expect((await page.send({
-        name: 'hydra-agent',
-        args: [
-          JSON.stringify({
-            harness: 'claude',
-            ...agent,
-          }),
-        ],
-      })).type).toBe('receipt')
-    }
-
-    const send = ({ text }: { text: string }) => hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--text',
-        text,
-      ],
+    const choose = ({ agent }: { agent: Record<string, string> }) => chooseAgent({
+      page,
+      agent,
+    })
+    const send = ({ text }: { text: string }) => sendToHydra({
+      hydra,
+      text,
     })
     const notDelivered = ({ text }: { text: string }) => until({
       what: `"${text}" to read as not delivered`,
