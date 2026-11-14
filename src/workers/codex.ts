@@ -828,13 +828,13 @@ const sandboxPolicy = ({
     networkAccess: true,
   }
 
-// A shell_environment_policy that inherits only core variables would drop Pnyx's own, so they are set explicitly.
+// A shell_environment_policy that inherits only core variables would drop Pnyx's own and its git settings, so they are set explicitly.
 const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fromEntries(Object
   .entries(env)
   .filter(([
     name,
     value,
-  ]) => (name.startsWith('PNYX_') || name.startsWith('CHROME_DEVTOOLS_AXI_')) && value !== undefined)
+  ]) => (name.startsWith('PNYX_') || name.startsWith('CHROME_DEVTOOLS_AXI_') || name.startsWith('GIT_CONFIG_')) && value !== undefined)
   .map(([
     name,
     value,
