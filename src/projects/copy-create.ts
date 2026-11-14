@@ -1,7 +1,7 @@
 import { mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { matchesProject } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, branchStart, commonDir, git, gitProject, taskBranch } from './git.ts'
+import { COPY_TIMEOUT_MS, branchExists, branchStart, commonDir, git, gitProject, taskBranch, clearDefaultUpstream } from './git.ts'
 import { checkCopy } from './copy-check.ts'
 import { checkout, copiesDir, freshSlot, liveCopy, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
@@ -150,6 +150,10 @@ async function worktreeCopy({
     base,
     start,
   } = await branchStart({ project })
+  await clearDefaultUpstream({
+    cwd: project.path,
+    branch,
+  })
   const made = ({ path }: { path: string }): TaskCopy => ({
     path,
     project: project.path,
@@ -239,6 +243,7 @@ async function worktreeCopy({
     args: [
       'worktree',
       'add',
+      '--no-track',
       ...(exists ? [
         path,
         branch,
@@ -377,6 +382,18 @@ export async function taskFolder({
     }
 
     return folder
+  }
+
+  for (const task of Object.values(state.cards)) {
+    const copy = task.copy
+
+    if (copy?.via === 'worktree' && copy.state !== 'removed'
+      && copy.project === project.path && copy.branch && isFolder({ path: copy.path })) {
+      await clearDefaultUpstream({
+        cwd: project.path,
+        branch: copy.branch,
+      })
+    }
   }
 
   // A busy task is the route's own refusal; it gets no copy first.

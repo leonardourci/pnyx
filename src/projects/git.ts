@@ -195,3 +195,53 @@ export const onBranch = async ({ cwd }: { cwd: string }) =>
       'refs/heads',
     ],
   })).out)
+
+export async function clearDefaultUpstream({
+  cwd,
+  branch,
+}: {
+  cwd: string
+  branch: string
+}): Promise<void> {
+  const defaultRef = await originHead({ cwd })
+
+  if (!defaultRef) {
+    return
+  }
+
+  const upstream = await git({
+    cwd,
+    args: [
+      'for-each-ref',
+      '--format=%(upstream:short)',
+      `refs/heads/${branch}`,
+    ],
+  })
+
+  if (!upstream.ok) {
+    throw new HydraError({
+      message: `could not check task branch upstream: ${upstream.err}`,
+      code: 'COPY_FAILED',
+    })
+  }
+
+  if (upstream.out !== defaultRef) {
+    return
+  }
+
+  const cleared = await git({
+    cwd,
+    args: [
+      'branch',
+      '--unset-upstream',
+      branch,
+    ],
+  })
+
+  if (!cleared.ok) {
+    throw new HydraError({
+      message: `could not clear task branch upstream: ${cleared.err}`,
+      code: 'COPY_FAILED',
+    })
+  }
+}
