@@ -1,6 +1,7 @@
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { clip } from './digest.ts'
+import { reportReviewGaps } from '#investigations/inventory.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
 import { unwatchedPullRequests } from '#tasks/delivery/following.ts'
 import { agentActor, hostedHydra, pnyxRunsHydra, reportActor } from './hydra.ts'
@@ -163,11 +164,18 @@ function linkReasons({
   }
 
   if (after.state === 'merged') {
+    // Pnyx does not declare the task done while its report waits for review, so Hydra hears what is missing.
     return before?.state === 'merged' ? [] : [
       {
         kind: 'merged',
         card: card.id,
-        detail: after.url,
+        detail: [
+          after.url,
+          ...reportReviewGaps({
+            state,
+            card,
+          }),
+        ].join('; '),
       },
     ]
   }

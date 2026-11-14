@@ -375,12 +375,13 @@ export function eventWriter({
       effects = true,
     }) {
       storable({ value: event })
-      const harvestedNote = event.actor === 'harvest' && event.type === 'card.noted'
+      // What a worker's transcript recorded is an observation, never another Hydra session's change, so a lease never refuses it.
+      const harvested = event.actor === 'harvest'
       // A message to a task's agent is never refused for the routine helper's lease; it queues like any message.
       const message = !isHelper({ actor: event.actor })
         && (MESSAGE_EVENTS.has(event.type) || deliveringMessage.getStore() === true)
 
-      if (!agentActor({ actor: event.actor }) && !harvestedNote && !message
+      if (!agentActor({ actor: event.actor }) && !harvested && !message
         && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
         const task = event.type === 'hydra.message' ? event.data.task : event.cardId
 
