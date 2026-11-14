@@ -154,6 +154,7 @@ export const COMMAND_REGISTRY = {
         'memory list',
         'stop',
         'send-now',
+        'cancel',
       ],
       own: ['send'],
     },
