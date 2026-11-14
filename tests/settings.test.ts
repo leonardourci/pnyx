@@ -69,6 +69,7 @@ test(
         'list',
       ],
     })).columns.find((column: { role: string }) => column.role === 'queued').id
+    const defaultWidth = await queuedWidth({ hydra: second })
     await first.owner({
       args: [
         'column',
@@ -79,7 +80,7 @@ test(
       ],
     })
     expect(await queuedWidth({ hydra: first })).toBe(600)
-    expect(await queuedWidth({ hydra: second })).toBe(460)
+    expect(await queuedWidth({ hydra: second })).toBe(defaultWidth)
 
     await pnyx.restart()
     expect(await settings({ hydra: second })).toMatchObject({ theme: 'dark' })
@@ -148,5 +149,65 @@ test(
     })
     expect(retried.event).toBe('none: duplicate')
     expect((await settings({ hydra })).theme).toBe('light')
+  },
+)
+
+test(
+  'a settings change made against a stale revision is refused and saves nothing, and the current revision saves it',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const shown = async () => (await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    }))
+    const before = await shown()
+    const stale = before.revision as number
+    // Both values are valid themes; the change must differ from what an earlier test saved.
+    const [
+      changed,
+      other,
+    ] = before.settings.theme === 'dark' ? [
+      'light',
+      'dark',
+    ] : [
+      'dark',
+      'light',
+    ]
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ theme: changed }),
+      ],
+    })
+    const current = (await shown()).revision as number
+    expect(current).toBeGreaterThan(stale)
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ theme: other }),
+        '--if-revision',
+        String(stale),
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    expect((await shown()).settings.theme).toBe(changed)
+
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ theme: other }),
+        '--if-revision',
+        String(current),
+      ],
+    })
+    expect((await shown()).settings.theme).toBe(other)
   },
 )
