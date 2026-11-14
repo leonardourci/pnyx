@@ -11,6 +11,7 @@ import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { knownCards } from '#tasks/select.ts'
+import { RECENT_THREAD_PAGES, pageCount } from '#hydra/thread-history.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
@@ -52,6 +53,11 @@ import { REDUCED_MOTION } from './streaming.tsx'
 const GLIDE = 0.3
 // How far above the screen the top of the conversation is when the next older page starts loading.
 const OLDER_MARGIN = '600px 0px 0px 0px'
+const UP_KEYS = new Set([
+  'PageUp',
+  'ArrowUp',
+  'Home',
+])
 
 // What the chat shows until the server's first queue arrives.
 const EMPTY_CHAT_QUEUE: HydraChatQueue = {
@@ -186,6 +192,7 @@ export function HydraChat({
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
   const glide = useRef(0)
+  const touchY = useRef<number | undefined>(undefined)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
@@ -710,7 +717,12 @@ export function HydraChat({
         failedOlder.current = undefined
       }
 
-      if (!marker || !stream.current || !olderCursor || loadingEarlier || !connected) {
+      // At the bottom the chat keeps only the recent pages, so an older page read there would be trimmed again.
+      const reading = away || selectedHistory
+      const windowFull = !reading && !!page && pageCount({ page }) >= RECENT_THREAD_PAGES
+      const idle = !olderCursor || loadingEarlier || !connected || windowFull
+
+      if (!marker || !stream.current || idle) {
         return
       }
 
@@ -734,6 +746,9 @@ export function HydraChat({
       olderCursor,
       loadingEarlier,
       connected,
+      away,
+      selectedHistory,
+      page?.pages,
     ],
   )
 
@@ -837,6 +852,13 @@ export function HydraChat({
   const stopFollowing = () => {
     chatFollow.stop()
     stopGlide()
+  }
+
+  // A chat too short to scroll has no scroll event to leave the bottom, so an upward wheel, key or touch at its top does.
+  const reachOlder = () => {
+    if (stream.current?.scrollTop === 0 && olderCursor) {
+      stopFollowing()
+    }
   }
 
   const expandRow = ({ target }: { target: EventTarget }) => {
@@ -1097,10 +1119,34 @@ export function HydraChat({
           aria-label="Hydra conversation"
           data-away={away || undefined}
           tabIndex={0}
-          onWheel={ownerScroll}
-          onTouchMove={ownerScroll}
+          onWheel={event => {
+            ownerScroll()
+
+            if (event.deltaY < 0) {
+              reachOlder()
+            }
+          }}
+          onTouchStart={event => {
+            touchY.current = event.touches[0]?.clientY
+          }}
+          onTouchMove={event => {
+            ownerScroll()
+
+            const y = event.touches[0]?.clientY
+
+            if (y !== undefined && touchY.current !== undefined && y > touchY.current) {
+              reachOlder()
+            }
+
+            touchY.current = y
+          }}
           onKeyDown={event => {
             ownerScroll()
+
+            if (UP_KEYS.has(event.key)) {
+              reachOlder()
+            }
+
             expandRow({ target: event.target })
           }}
           onPointerDown={event => {

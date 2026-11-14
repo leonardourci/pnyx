@@ -98,4 +98,4 @@ Rules:
 - `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions and resumed turns, on Claude and Codex.
 - `e2e/board.test.ts`: the live board and a card's Activity in Chrome.
-- `e2e/chat.test.ts`: sending, streaming, Stop, reload and scrolling back through a long chat in Chrome.
+- `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat and resting at its bottom in Chrome.

@@ -54,6 +54,8 @@ export function MeasuredList<T>({
       height: INITIAL_HEIGHT,
     },
     scrollMargin: margin,
+    // Measuring inside the ResizeObserver pass resizes the chat's own observed ancestors and loops that pass.
+    useAnimationFrameWithResizeObserver: true,
     anchorTo: stayAtTop && (!list.current || getScrollElement().scrollTop === 0) ? 'start' : 'end',
   })
   useLayoutEffect(() => {
