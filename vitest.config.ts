@@ -18,6 +18,8 @@ export default defineConfig({
     setupFiles: ['tests/setup/environment.ts'],
     // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order.
     sequence: {
+      // A file's own afterAll hooks, such as stopping its server, run before the setup file deletes its scratch home.
+      hooks: 'stack',
       shuffle: {
         files: true,
         tests: true,

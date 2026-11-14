@@ -156,14 +156,21 @@ for (const signal of [
   )
 }
 
+const removeRoot = () => rmSync(
+  root,
+  {
+    recursive: true,
+    force: true,
+  },
+)
+
 afterAll(async () => {
   await closePostgres()
   keepFiles({ from: root })
-  rmSync(
-    root,
-    {
-      recursive: true,
-      force: true,
-    },
+  removeRoot()
+  // The server's exit handler flushes its log into the home after this hook, so a listener added later removes it again.
+  process.once(
+    'exit',
+    removeRoot,
   )
 })
