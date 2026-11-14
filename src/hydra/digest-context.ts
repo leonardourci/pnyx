@@ -52,42 +52,39 @@ async function lastDigest({ agent }: { agent?: AgentRef }): Promise<{
       'r',
     )
     let position = (await file.stat()).size
-    let suffix = Buffer.alloc(0)
+    // The start of the line that continues into the block read last, in file order; each byte is scanned once.
+    let partial: Buffer[] = []
 
-    while (position > 0 || suffix.length) {
+    while (position > 0) {
       const size = Math.min(
         position,
         DIGEST_READ_BYTES,
       )
       position -= size
-      const chunk = Buffer.alloc(size)
+      const block = Buffer.alloc(size)
+      await file.read(
+        block,
+        0,
+        size,
+        position,
+      )
+      let end = block.length
 
-      if (size) {
-        await file.read(
-          chunk,
-          0,
-          size,
-          position,
-        )
-      }
-
-      const content = Buffer.concat([
-        chunk,
-        suffix,
-      ])
-      let end = content.length
-
-      for (let index = content.length - 1; index >= 0; index--) {
-        if (content[index] !== 10) {
+      for (let index = block.length - 1; index >= 0; index--) {
+        if (block[index] !== 10) {
           continue
         }
 
         const recovered = digestRecord({
-          line: content.subarray(
-            index + 1,
-            end,
-          ).toString('utf8'),
+          line: Buffer.concat([
+            block.subarray(
+              index + 1,
+              end,
+            ),
+            ...partial,
+          ]).toString('utf8'),
         })
+        partial = []
 
         if (recovered) {
           return recovered
@@ -96,15 +93,13 @@ async function lastDigest({ agent }: { agent?: AgentRef }): Promise<{
         end = index
       }
 
-      suffix = content.subarray(
+      partial.unshift(block.subarray(
         0,
         end,
-      )
-
-      if (position === 0) {
-        return digestRecord({ line: suffix.toString('utf8') }) ?? { compacted: false }
-      }
+      ))
     }
+
+    return digestRecord({ line: Buffer.concat(partial).toString('utf8') }) ?? { compacted: false }
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
       throw error
