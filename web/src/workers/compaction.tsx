@@ -68,6 +68,26 @@ export function CompactionRow({ operation }: { operation: Compaction }) {
   )
 }
 
+// Compactions with nothing between them, folded to one line that opens to each.
+export function CompactionRun({ operations }: { operations: Compaction[] }) {
+  const allDone = operations.every(operation => operation.state === 'done')
+  const label = allDone ? `Compacted ${operations.length} times` : `${operations.length} compactions`
+
+  return (
+    <Disclosure
+      className="compaction-run"
+      title={(
+        <span className="compaction-row">
+          <Icon name="context" size={14} />
+          <span>{label}</span>
+        </span>
+      )}
+    >
+      {operations.map(operation => <CompactionRow key={operation.id} operation={operation} />)}
+    </Disclosure>
+  )
+}
+
 export function CompactionQueue({
   inputs,
   sendNow,

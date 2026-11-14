@@ -2099,3 +2099,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .message-image-fallback { display: inline; font-size: 12px; color: var(--color-muted); }
 
 .messages .measured-row { display: flex; flex-direction: column; gap: var(--chat-gap, 18px); padding-bottom: var(--chat-gap, 18px); }
+.compaction-run > summary { display: block; }
+.compaction-run .disclosure-body { display: grid; gap: 6px; padding-left: 22px; }
+.hydra-loading { position: sticky; top: 0; z-index: 2; height: 0; display: flex; justify-content: center; pointer-events: none; }
+.hydra-spinner { margin-top: 6px; width: 16px; height: 16px; border: 2px solid var(--color-line); border-top-color: var(--color-muted); border-radius: 50%; animation: hydra-spin 700ms linear infinite; }
+@keyframes hydra-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .hydra-spinner { animation-duration: 2s; } }
