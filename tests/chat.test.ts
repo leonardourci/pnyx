@@ -861,7 +861,9 @@ test(
       what: 'the compaction to hold both messages as its inputs',
       check: () => compactionInputs({ hydraId: hydra.id })?.length === 2,
     })
-    expect(await cancel({ id: removedInput.message })).toMatchObject({ cancelled: removedInput.message })
+    expect(await cancel({ id: removedInput.message })).toMatchObject({
+      cancelled: removedInput.message,
+    })
     await until({
       what: 'the queued messages to leave out the removed input',
       check: () => queued() === 'kept input',
@@ -893,7 +895,9 @@ test(
       what: 'both messages to wait behind the compaction',
       check: () => queued() === 'removed while held,kept while held',
     })
-    expect(await cancel({ id: removedHeld.message })).toMatchObject({ cancelled: removedHeld.message })
+    expect(await cancel({ id: removedHeld.message })).toMatchObject({
+      cancelled: removedHeld.message,
+    })
     second.release()
     const recap = await until({
       what: 'the recap after the compaction',
