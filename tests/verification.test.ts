@@ -1,4 +1,7 @@
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test } from 'vitest'
+import { stagedBuild } from '../scripts/build/staged.ts'
 import { requiredChecks } from '../scripts/verification/required-checks.ts'
 
 // CI's scope job decides from these paths whether the tests run at all, so a misread here ships untested code.
@@ -35,5 +38,59 @@ test(
       tests: 'changed',
       changedTests: ['tests/access.test.ts'],
     })
+  },
+)
+
+// A failed build must leave the last working dist, which every upgrade's rollback and every test run on it.
+test(
+  'a passing build replaces dist and leaves nothing beside it, and a failing build keeps the old dist',
+  () => {
+    const root = mkdtempSync(join(
+      process.env.TMPDIR!,
+      'staged-',
+    ))
+    const writeBuild = ({
+      version,
+      fail = false,
+    }: {
+      version: string
+      fail?: boolean
+    }) => stagedBuild({
+      root,
+      build: ({ out }) => {
+        mkdirSync(out)
+        writeFileSync(
+          join(
+            out,
+            'built.txt',
+          ),
+          version,
+        )
+
+        if (fail) {
+          throw new Error('type error')
+        }
+      },
+    })
+    const built = () => readFileSync(
+      join(
+        root,
+        'dist',
+        'built.txt',
+      ),
+      'utf8',
+    )
+
+    writeBuild({ version: 'one' })
+    writeBuild({ version: 'two' })
+    expect(built()).toBe('two')
+    expect(readdirSync(root)).toEqual(['dist'])
+
+    expect(() => writeBuild({
+      version: 'broken',
+      fail: true,
+    })).toThrow('type error')
+    expect(built()).toBe('two')
+    expect(readdirSync(root)).toEqual(['dist'])
   },
 )
