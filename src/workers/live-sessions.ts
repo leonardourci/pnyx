@@ -1,6 +1,8 @@
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
+import { stopHydraInputs } from '#hydra/stop-inputs.ts'
+import { stopWorkerInputs } from './stop-inputs.ts'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { logAgentMemory } from './agent-memory.ts'
@@ -104,6 +106,7 @@ export function createLiveSessions({
     input: Record<string, unknown>
     actor: string
     eventId?: string
+    details?: string
   }): void
   interrupt({
     writer,
@@ -663,7 +666,35 @@ export function createLiveSessions({
 
         // A refused input is never confirmed, so nothing will take the owner's messages it carried.
         if (refused) {
+          const carried = entry.carried.get(receipt.inputId) ?? []
+          const steering = entry.delivered.get(receipt.inputId) ?? []
           entry.carried.delete(receipt.inputId)
+          entry.delivered.delete(receipt.inputId)
+
+          for (const id of steering) {
+            entry.steering.delete(id)
+          }
+
+          if (receipt.stopped) {
+            note({
+              fn: ({ writer }) => {
+                stopHydraInputs({
+                  writer,
+                  ids: [
+                    receipt.inputId,
+                    ...carried,
+                  ],
+                  at: at(),
+                })
+                stopWorkerInputs({
+                  writer,
+                  card: writer.state.cards[card.id]!,
+                  ids: steering,
+                  at: at(),
+                })
+              },
+            })
+          }
         }
 
         if (typeof received === 'object' && received.type === 'turn-ended') {
@@ -692,6 +723,7 @@ export function createLiveSessions({
             inputId: activity.receipt.inputId,
             phase: activity.receipt.phase,
             taken: activity.receipt.at,
+            stopped: activity.receipt.stopped,
           })
         }
 
@@ -753,9 +785,11 @@ export function createLiveSessions({
             fn: ({ writer }) => record({
               writer,
               agent: card.agent,
-              input: { activity: 'finished' },
+              input: { activity: outcome.status === 'interrupted' ? 'interrupted' : 'finished' },
               actor: 'pnyx',
-              eventId: `native:${outcome.turn}:finished`,
+              eventId: `native:${outcome.turn}:${outcome.status}`,
+              details: outcome.stoppedProcesses?.length
+                ? `Stopped foreground command processes: ${outcome.stoppedProcesses.join(', ')}` : undefined,
             }),
           })
 
@@ -913,6 +947,11 @@ export function createLiveSessions({
           continue
         }
 
+        // An end reported again after the Stop's own end belongs to the turn already recorded as stopped.
+        if (activity === 'finished' && entry.activity === 'interrupted' && !turnRunning) {
+          continue
+        }
+
         if (activity === 'finished') {
           const owner = compactOwner()
           const unfinished = activeCompaction({ card: owner })
@@ -937,7 +976,6 @@ export function createLiveSessions({
           }
 
           turnRunning = false
-          entry.stopping = false
           entry.tools.clear()
           entry.toolNames.clear()
           entry.thinking.clear()
@@ -945,7 +983,7 @@ export function createLiveSessions({
           entry.replies.finish()
           streamed({ session: key })
 
-          if (card.id === HYDRA_CARD) {
+          if (card.id === HYDRA_CARD && !entry.stopping) {
             turns().turnFinished({
               entry,
               answering,
@@ -974,7 +1012,11 @@ export function createLiveSessions({
           streamed({ session: key })
         }
 
+        // The stop belongs to the turn that ended, even when input is already waiting for the next one.
+        const stopped = activity === 'finished' && entry.stopping
+
         if (activity === 'finished') {
+          entry.stopping = false
           const current = loadHydra({ hydraId }).state.cards[card.id]
           const pending = entry.input.pending({
             includes: ({ steeringIds }) => {
@@ -996,11 +1038,13 @@ export function createLiveSessions({
           }
         }
 
-        if (activity !== entry.activity) {
-          entry.activity = activity
+        const recordedActivity = stopped ? 'interrupted' : activity
+
+        if (recordedActivity !== entry.activity) {
+          entry.activity = recordedActivity
 
           if (card.id === HYDRA_CARD && activity !== 'working') {
-            turns().activityChanged({ activity })
+            turns().activityChanged({ activity: recordedActivity })
           }
 
           note({
@@ -1008,13 +1052,13 @@ export function createLiveSessions({
               const eventId = turns().activityEventId({
                 writer,
                 card,
-                activity,
+                activity: recordedActivity,
               })
 
               record({
                 writer,
                 agent: card.agent,
-                input: { activity },
+                input: { activity: recordedActivity },
                 actor: 'pnyx',
                 eventId,
               })

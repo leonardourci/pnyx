@@ -150,10 +150,15 @@ export interface SteeringMessage {
   queuedFor?: SteeringClaim
   attempts: SteeringAttempt[]
   recovery?: SteeringRecovery[]
+  stopped?: boolean
   ack?: SteeringAck
 }
 
 export type SteeringEvent = EventBase & (
+  | {
+    type: 'task.steering.stopped'
+    data: { messages: string[] }
+  }
   | {
     type: 'task.steering.recovery'
     data: {

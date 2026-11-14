@@ -130,12 +130,19 @@ interface MessageActions {
   remove({ id }: { id: string }): void
   release({ id }: { id: string }): void
   focus({ key }: { key: string }): void
+  sendNow?({
+    id,
+    task,
+  }: {
+    id: string
+    task?: string
+  }): void
   retry?({ id }: { id: string }): void
   sendAgain?({
     task,
     text,
   }: {
-    task: string
+    task?: string
     text: string
   }): void
 }
@@ -167,6 +174,7 @@ const MessageRow = memo(function MessageRow({
   openTask,
   canSendAgain,
   canRetry,
+  canSendNow,
 }: {
   entry: ChatEntry
   fold?: TurnActions
@@ -193,9 +201,12 @@ const MessageRow = memo(function MessageRow({
   openTask?({ id }: { id: string }): void
   canSendAgain: boolean
   canRetry: boolean
+  canSendNow: boolean
 }) {
-  const canResend = canSendAgain && entry.task
-    && (entry.delivery?.agent?.state ?? entry.receipt) === 'delivery_unknown'
+  const state = entry.delivery?.agent?.state ?? entry.receipt
+  const stopped = state === 'failed' && (entry.delivery?.agent?.detail ?? entry.waiting) === 'stopped'
+  const canResend = canSendAgain && (stopped && !entry.sentAgain || entry.task && state === 'delivery_unknown')
+  const deliverNow = canSendNow && state === 'queued'
   const sentAt = sentTime({ entry })
 
   return entry.kind === 'divider' ? (
@@ -325,21 +336,31 @@ const MessageRow = memo(function MessageRow({
             }}
           />
         )}
-        {canResend && (
-          <Button
-            className="send-again"
-            aria-label="Send this message again"
-            onClick={() => actions.current.sendAgain?.({
-              task: entry.task!,
-              text: entry.text,
-            })}
-          >Send again
-          </Button>
-        )}
       </article>
       {ownMessage({ entry }) && !entry.continued && (
         <div className="message-meta" contentEditable={false}>
           <MessageReceipt entry={entry} />
+          {deliverNow && (
+            <InlineButton
+              onClick={() => actions.current.sendNow?.({
+                id: entry.replyId ?? entry.reference ?? entry.id,
+                task: entry.replyId ? entry.task : undefined,
+              })}
+            >
+              Send now
+            </InlineButton>
+          )}
+          {canResend && (
+            <InlineButton
+              aria-label="Send this message again"
+              onClick={() => actions.current.sendAgain?.({
+                task: entry.replyId ? entry.task : undefined,
+                text: entry.text,
+              })}
+            >
+              Send again
+            </InlineButton>
+          )}
           {entry.unsent !== undefined && (
             <span className="unsent" role="alert">
               <Icon name="error" size={14} />Not sent · {entry.unsent}
@@ -416,9 +437,20 @@ export function Messages({
   catalog,
   labelColors,
   sendAgain,
+  sendNow,
+  sendableNow,
   retry,
   answerLeads,
 }: {
+  sendNow?({
+    id,
+    task,
+  }: {
+    id: string
+    task?: string
+  }): void
+  // Whether Send now can work for this message: its agent is Pnyx's own and running a turn.
+  sendableNow?({ entry }: { entry: ChatEntry }): boolean
   retry?({ id }: { id: string }): void
   // The question each answering owner message carries, by message id.
   answerLeads?: Map<string, AnswerLead>
@@ -427,7 +459,7 @@ export function Messages({
     task,
     text,
   }: {
-    task: string
+    task?: string
     text: string
   }): void
   catalog?: Catalog | null
@@ -552,6 +584,7 @@ export function Messages({
     focus: ({ key }) => focusBlock({ element: blockFor({ key }) }),
     retry,
     sendAgain,
+    sendNow,
   }
   const actions = useRef(handlers)
   actions.current = handlers
@@ -1124,6 +1157,7 @@ export function Messages({
                 openTask={openTask ? open : undefined}
                 canSendAgain={sendAgain !== undefined}
                 canRetry={retry !== undefined}
+                canSendNow={sendNow !== undefined && (sendableNow?.({ entry }) ?? true)}
               />
             )
           }}

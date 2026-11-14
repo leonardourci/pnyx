@@ -144,6 +144,20 @@ export function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
   return agent
 }
 
+// Settings an old harvest stored with Fast as on or off read as true or false, as every reader expects.
+export function currentSettings({ settings }: { settings: AgentSettings }): AgentSettings {
+  const { fast } = settings
+
+  if (fast !== 'on' && fast !== 'off') {
+    return settings
+  }
+
+  return {
+    ...settings,
+    fast: String(fast === 'on'),
+  }
+}
+
 // Merges pushed settings into the card's current ones: a string sets a setting and
 // null removes it. Returns the card's whole settings after the push, so the event
 // replays and undoes on its own.

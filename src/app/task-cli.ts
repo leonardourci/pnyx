@@ -41,6 +41,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { moveTask } from '#tasks/move.ts'
 import { requestEnv } from './request-context.ts'
+import { requireStopAuthority } from './stop-authority.ts'
 
 const TASK_DETAIL_LIMIT = 5
 
@@ -362,6 +363,50 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'paseo') {
     return paseoStatus({ url })
+  }
+
+  if (action === 'send-now') {
+    requireStopAuthority({ meta: m })
+    const card = findCard({
+      state: loadHydra({ hydraId }).state,
+      ref: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+    })
+
+    return askHost({
+      hydraId,
+      body: {
+        action: 'send-now',
+        card: card.id,
+        message: required({
+          value: positionals[2],
+          what: 'message id',
+        }),
+        actor: m.actor,
+      },
+    })
+  }
+
+  if (action === 'stop') {
+    requireStopAuthority({ meta: meta({ values }) })
+    const card = findCard({
+      state: loadHydra({ hydraId }).state,
+      ref: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+    })
+
+    return askHost({
+      hydraId,
+      body: {
+        action: 'stop',
+        card: card.id,
+        actor: meta({ values }).actor,
+      },
+    })
   }
 
   if (action === 'continue') {

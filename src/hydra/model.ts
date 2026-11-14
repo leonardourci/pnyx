@@ -56,6 +56,7 @@ export interface HydraMessage {
   hydra: string
   // When Hydra's harness confirmed it took the message.
   received?: string
+  stopped?: boolean
 }
 
 export const isRoutineMessage = ({ message }: { message: HydraMessage }) => message.kind === 'routine'

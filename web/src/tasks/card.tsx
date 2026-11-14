@@ -290,6 +290,8 @@ export const HydraCard = memo(function HydraCard({
   const review = reviewRequests({ card })[0]
   const reviewSummary = review && (!question || question.ask?.kind === 'merge')
   const asked = question?.ask
+  const canStop = connected && card.agent?.host === 'pnyx'
+    && (card.sessionActivity ?? card.activity) === 'working'
   const canAnswer = attention && answerPrompt({
     card,
     request: attention,
@@ -412,6 +414,27 @@ export const HydraCard = memo(function HydraCard({
           labelColors={labelColors}
           tooltips
         >
+          {canStop && (
+            <Button
+              aria-label="Stop worker"
+              title="Stop worker"
+              onClick={async () => {
+                try {
+                  await command({
+                    name: 'task',
+                    args: [
+                      'stop',
+                      card.id,
+                    ],
+                  })
+                } catch (error) {
+                  notify({ text: (error as Error).message })
+                }
+              }}
+            >
+              <Icon name="stop" size={12} />
+            </Button>
+          )}
           {card.agent && (
             <Tooltip
               content={<AgentDetails card={card} command={command} />}

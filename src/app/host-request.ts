@@ -64,8 +64,19 @@ export async function hostRequestUnlocked({
         actor,
       })
 
+    case 'send-now':
     case 'stop':
-      return host.stop()
+      return host.stop({
+        sendNow: body.action === 'send-now' ? field({
+          body,
+          name: 'message',
+        }) : undefined,
+        card: field({
+          body,
+          name: 'card',
+          optional: true,
+        }),
+      })
 
     case 'upgrade':
       return host.upgrade({
