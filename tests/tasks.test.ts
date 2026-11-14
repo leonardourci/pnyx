@@ -318,6 +318,75 @@ test(
 )
 
 test(
+  'a hold is not released by a message sent before it or by one Hydra wrote, and the task still cannot start',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'still-held' })
+    const before = await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Maybe rename the API',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Rename the API',
+        '--key',
+        'still-held',
+        '--folder',
+        folder,
+        '--hold',
+      ],
+    })
+    const byHydra = await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Go ahead with the rename',
+        '--actor',
+        'hydra',
+        '--reason',
+        'Hydra decides to go',
+      ],
+    })
+
+    for (const message of [
+      before.message,
+      byHydra.message,
+    ]) {
+      expect(
+        (await hydra.ownerRefused({
+          args: [
+            'task',
+            'release',
+            'still-held',
+            '--from-message',
+            message,
+            '--reason',
+            'Released',
+          ],
+        })).code,
+        message,
+      ).toBe('VALIDATION_ERROR')
+    }
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'still-held',
+      ],
+    })).code).toBe('TASK_HELD')
+  },
+)
+
+test(
   'a manual move can be undone until the card moves again, and apply --check previews without writing',
   async () => {
     const hydra = await pnyx.hydra()
