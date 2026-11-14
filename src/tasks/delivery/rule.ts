@@ -6,6 +6,14 @@ import { LANDINGS, MERGERS, cardLanding, type Landing, type LandingRule, type Me
 import { investigationLine, reportLine } from '#investigations/report.ts'
 import { projectsFor } from '#projects/read.ts'
 
+export function landingWording({ rule }: { rule: LandingRule }): string {
+  if (rule.landing === 'branch') {
+    return 'a branch'
+  }
+
+  return `a pull request merged by ${rule.merge}`
+}
+
 export const READINESS_INSTRUCTIONS = "Before you report work as done or ready, finish what the brief and your project's instructions require, and check the final result. For code, that means required checks pass on its latest commit. For anything else, it means evidence of the end state: a link, screenshot or output. After later changes, redo the affected checks and refresh the description and evidence."
 
 // The owner's rule for this task when one was recorded, otherwise its project's.

@@ -14,6 +14,7 @@ import { HydraError } from '#store/errors.ts'
 import { clearLogs, logFiles, MB } from './log-files.ts'
 import { PERFORMANCE_WINDOW_MS, SLOWEST_LIMIT, SLOWEST_MAX, performanceReport } from './performance.ts'
 import { DEBUG_LIMIT, DEBUG_MAX, serviceRows, timeline } from './timeline.ts'
+import { workerIdentity, workerRefusal } from '#workers/worker-identity.ts'
 
 const KB = 1024
 
@@ -332,6 +333,10 @@ export const logs = guard({
     })
 
     if (positionals[0] === 'clean') {
+      if (workerIdentity()) {
+        throw workerRefusal({ message: 'logs clean is refused for a worker: it deletes every Hydra\'s log files' })
+      }
+
       const cleared = clearLogs()
 
       return {

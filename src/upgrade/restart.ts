@@ -12,6 +12,7 @@ import { pnyxHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Socket } from 'node:net'
 import { requestEnv } from '#app/request-context.ts'
+import { workerIdentity } from '#workers/worker-identity.ts'
 
 // Sent to a running `pnyx-axi serve` to close it and start it again on the code now on disk.
 export const RESTART_SIGNAL = 'SIGUSR2'
@@ -410,7 +411,7 @@ export async function restart(args: string[]): Promise<Record<string, unknown>> 
 
   const actor = requestEnv().PNYX_ACTOR ?? 'cli'
 
-  if (actor !== 'cli' && actor !== 'owner') {
+  if ((actor !== 'cli' && actor !== 'owner') || workerIdentity()) {
     throw new AxiError(
       'Only the owner can restart Pnyx',
       'OWNER_ONLY',

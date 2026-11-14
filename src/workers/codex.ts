@@ -1469,6 +1469,8 @@ export function codexProvider({
               }
 
               let result: ObjectValue
+              // Codex starts this turn's commands only after this request, so none of them is in the baseline Stop compares against.
+              await processes.ready()
 
               try {
                 result = await rpc.request({

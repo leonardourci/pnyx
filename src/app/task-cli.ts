@@ -40,8 +40,8 @@ import { readThread } from '#hydra/transcripts-read.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { moveTask } from '#tasks/move.ts'
-import { requestEnv } from './request-context.ts'
 import { requireStopAuthority } from './stop-authority.ts'
+import { workerIdentity } from '#workers/worker-identity.ts'
 
 const TASK_DETAIL_LIMIT = 5
 
@@ -588,7 +588,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'move') {
-    if (requestEnv().PNYX_ACTOR?.startsWith('worker:')) {
+    if (workerIdentity({ actor: m.actor })) {
       throw new HydraError({
         message: 'Only the owner or Hydra moves a task to another Hydra',
         code: 'OWNER_ONLY',

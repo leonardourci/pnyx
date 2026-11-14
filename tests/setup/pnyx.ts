@@ -405,6 +405,7 @@ function hydraClient({
       status: run.status,
       code: output.code as string | undefined,
       error: output.error as string | undefined,
+      help: output.help as string[] | undefined,
     }
   }
 
@@ -525,15 +526,35 @@ function hydraClient({
       input,
       env: ownerEnv(),
     }),
-    // pnyx-axi as an agent runs it, with the environment Pnyx started that agent with.
-    as: ({ session }: { session: AgentSession }) => ({
-      run: ({ args }: { args: string[] }) => succeeds({
+    // pnyx-axi as an agent runs it, with the environment Pnyx started that agent with unless a test changes it.
+    as: ({
+      session,
+      env = session.env,
+    }: {
+      session: AgentSession
+      env?: NodeJS.ProcessEnv
+    }) => ({
+      run: ({
         args,
-        env: session.env,
+        input,
+      }: {
+        args: string[]
+        input?: string
+      }) => succeeds({
+        args,
+        env,
+        input,
       }),
-      refused: ({ args }: { args: string[] }) => refused({
+      refused: ({
         args,
-        env: session.env,
+        input,
+      }: {
+        args: string[]
+        input?: string
+      }) => refused({
+        args,
+        env,
+        input,
       }),
     }),
     agent,

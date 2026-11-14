@@ -10,6 +10,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { permissionAttention } from '#workers/permission-rules.ts'
 import { fallbackColumn } from './column-rules.ts'
 import { columnRule } from './column-defaults.ts'
+import { reportReviewGaps } from '#investigations/inventory.ts'
 
 export function cardFacts({
   card,
@@ -20,9 +21,14 @@ export function cardFacts({
 }): CardFact[] {
   const facts: CardFact[] = []
   const prs = card.links.filter(link => link.kind === 'github_pr')
+  // A pull request closed without merging was abandoned; the work landed through the ones that merged.
   const live = prs.filter(link => link.state !== 'closed')
   const allMerged = live.length > 0 && live.every(link => link.state === 'merged')
-  const done = card.status?.state === 'done' || allMerged
+  // A move to Done is refused while a stored report lacks its decision inventory, so merged pull requests count as done only once it is recorded.
+  const done = card.status?.state === 'done' || (allMerged && !reportReviewGaps({
+    state,
+    card,
+  }).length)
   const open = prs.some(link => link.state === 'open')
   const session = state.sessions?.[cardSessionId({ card }) ?? '']
   const observedActivity = session?.sessionActivity ?? session?.activity
