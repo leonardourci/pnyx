@@ -110,27 +110,20 @@ test(
     }
 
     page.close()
-    const texts = loaded.conversation.entries.map(entry => entry.text)
     expect(reads.length).toBeGreaterThan(0)
     const ids = loaded.conversation.entries.map(entry => entry.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(texts.filter(text => text.startsWith('question'))).toHaveLength(EXCHANGES + 1)
-    expect(texts.slice(
-      0,
-      4,
-    )).toEqual([
-      'question 1',
-      'answer 1',
-      'question 2',
-      'answer 2',
-    ])
-    expect(texts.slice(-4)).toEqual([
-      'question 30',
-      'answer 30',
-      'question 31',
-      'answer 31',
-    ])
-    expect(texts.filter(text => text === LONG_REPLY)).toHaveLength(1)
+    // Every message once and in order: each question, then its answer, from the first exchange to the last.
+    expect(loaded.conversation.entries.map(entry => entry.text)).toEqual(Array.from(
+      { length: EXCHANGES + 1 },
+      (
+        _,
+        index,
+      ) => [
+        `question ${index + 1}`,
+        index + 1 === 5 ? LONG_REPLY : `answer ${index + 1}`,
+      ],
+    ).flat())
   },
 )
 
