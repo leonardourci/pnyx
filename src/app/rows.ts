@@ -1,3 +1,4 @@
+import { hash } from 'node:crypto'
 import { restoreObservations, sourceFacts, sessionFacts, type ObservationRow } from '#tasks/observations.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import type { Ask, Card, NoteRef, TaskDeclaration } from '#tasks/model.ts'
@@ -128,8 +129,10 @@ const STRUCTURED = new Set<string>([
 
 // The rows last committed for one Hydra, as JSON, so a write sends only what changed. A row names the group it is
 // rebuilt with, so a write that rebuilds only some groups keeps the others' rows.
+// What the server keeps of each row it saved: a digest of its JSON, enough to tell whether a write changes it, so the
+// saved rows are not a second copy of the state.
 export type SavedRows = Map<string, {
-  json: string
+  digest: string
   group?: string
 }>
 
@@ -646,21 +649,25 @@ export function rowChanges({
         table,
         row,
       })
-      const json = JSON.stringify(comparisonRow({
-        table,
-        row,
-      }))
+      const digest = hash(
+        'sha1',
+        JSON.stringify(comparisonRow({
+          table,
+          row,
+        })),
+        'base64',
+      )
       present.add(key)
 
-      if (next.get(key)?.json === json) {
+      if (next.get(key)?.digest === digest) {
         continue
       }
 
       const group = groups.get(row)
       next.set(
         key,
-        group === undefined ? { json } : {
-          json,
+        group === undefined ? { digest } : {
+          digest,
           group,
         },
       )
