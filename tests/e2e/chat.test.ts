@@ -13,7 +13,7 @@ const CONVERSATION = '[aria-label="Hydra conversation"]'
 const COMPOSER = '[aria-label="Reply to Hydra"]'
 
 test(
-  'the owner\'s message shows at once, the reply streams in, a message sent meanwhile waits queued, Stop ends the turn, and a reload keeps the conversation',
+  'the owner\'s message shows at once, the reply streams in, a message sent meanwhile waits queued, Stop ends the turn and cancels that message until it is sent again, and a reload keeps the conversation',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await openHydra({
@@ -77,8 +77,11 @@ test(
     await conversation.getByText('Queued').waitFor()
 
     await page.click('[aria-label="Stop Hydra"]')
-    await conversation.getByText('Risks: the migration and the new billing page.').waitFor()
+    await conversation.getByText('Not delivered: stopped').waitFor()
     expect(await conversation.textContent()).not.toContain('ship on Thursday')
+    expect(await conversation.textContent()).not.toContain('Risks:')
+    await page.click('[aria-label="Send this message again"]')
+    await conversation.getByText('Risks: the migration and the new billing page.').waitFor()
     // Raw HTML and a javascript: link in a reply show as text, never as a tag or a link.
     expect(await conversation.textContent()).toContain('<img src=x onerror=alert(1)>')
     expect(await conversation.locator('img').count()).toBe(0)
@@ -88,7 +91,8 @@ test(
     await conversation.getByText('Risks: the migration and the new billing page.').waitFor()
     const text = await conversation.textContent() ?? ''
     expect(text.split('Plan the release')).toHaveLength(2)
-    expect(text.split('Also list the risks')).toHaveLength(2)
+    // The stopped message stays beside the copy that was sent again.
+    expect(text.split('Also list the risks')).toHaveLength(3)
     expect(text.split('Risks: the migration and the new billing page.')).toHaveLength(2)
   },
 )

@@ -5,8 +5,8 @@ import { writeFileSync } from 'node:fs'
 const children = []
 const threadId = 'synthetic-stop-thread'
 const turnId = 'synthetic-stop-turn'
-const foregroundCommand = 'echo started > started; sleep 120; echo completed > completed'
-const actionCommand = 'echo started > started-action; sleep 120; echo completed > completed-action'
+const foregroundCommand = 'echo started > started\nsleep 120\necho "a\\\\b" > completed'
+const actionCommand = 'echo started > started-action\nsleep 120\necho "c\\\\d" > completed-action'
 
 function send({ message }) {
   process.stdout.write(JSON.stringify(message) + '\n')

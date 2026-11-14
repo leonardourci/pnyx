@@ -1,9 +1,11 @@
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_SKILLS } from '#setup/skill-names.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
-import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -545,5 +547,288 @@ test(
       check: () => heard() === 1,
     })
     expect(heard()).toBe(1)
+  },
+)
+
+// A message of the owner's as the page shows it in Hydra's chat.
+const chatEntry = async ({
+  hydra,
+  text,
+}: {
+  hydra: Hydra
+  text: string
+}) => {
+  const page = await hydra.page()
+  const { thread } = await page.send({
+    name: 'thread',
+    args: ['$hydra'],
+  }) as {
+    thread: {
+      conversation: {
+        entries: {
+          role: string
+          text: string
+          receipt?: string
+          waiting?: string
+        }[]
+      }
+    }
+  }
+  page.close()
+
+  return thread.conversation.entries.find(entry => entry.role === 'user' && entry.text === text)
+}
+
+test(
+  'Stop cancels the message Hydra had not taken as not delivered, and the same text sent again reaches Hydra once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'draft the notes',
+      partial: 'Draft',
+      hold: true,
+    })
+    const session = await hydra.chat({ text: 'draft the notes' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'also list the risks',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    await until({
+      what: 'the stopped turn to end',
+      check: () => session.answered === 1,
+    })
+
+    await until({
+      what: 'the unread message to read as stopped',
+      check: async () => (await chatEntry({
+        hydra,
+        text: 'also list the risks',
+      }))?.receipt === 'failed',
+    })
+    expect(await chatEntry({
+      hydra,
+      text: 'also list the risks',
+    })).toMatchObject({ waiting: 'stopped' })
+    expect(heard({
+      received: session.received,
+      text: 'also list the risks',
+    })).toBe(0)
+
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'also list the risks',
+      ],
+    })
+    await until({
+      what: 'the message sent again to reach Hydra',
+      check: () => heard({
+        received: session.received,
+        text: 'also list the risks',
+      }) === 1,
+    })
+  },
+)
+
+test(
+  'Stop leaves the message Hydra had already taken as received, even though its confirmation arrives after Stop',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'check the build',
+      partial: 'Checking',
+      hold: true,
+      folds: true,
+    })
+    const session = await hydra.chat({ text: 'check the build' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'and the lint run',
+      ],
+    })
+    await until({
+      what: 'Hydra to take the message into its turn',
+      check: () => heard({
+        received: session.received,
+        text: 'and the lint run',
+      }) === 1,
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    await until({
+      what: 'the stopped turn to end',
+      check: () => session.answered === 2,
+    })
+
+    await until({
+      what: 'the taken message to read as received',
+      check: async () => (await chatEntry({
+        hydra,
+        text: 'and the lint run',
+      }))?.receipt === 'delivered',
+    })
+  },
+)
+
+test(
+  'Stop on a compaction cancels the messages held behind it and leaves Hydra waiting for the owner instead of waking it with a recap',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'warm up',
+      reply: 'Ready.',
+    })
+    const session = await hydra.chat({ text: 'warm up' })
+    await until({
+      what: 'the warm-up answer',
+      check: () => session.answered === 1,
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/compact',
+      compacting: true,
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/compact',
+      ],
+    })
+    await until({
+      what: 'the compaction to run',
+      check: () => session.received.includes('/compact'),
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'held behind the compaction',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })).stopped).toBe('compaction')
+    await until({
+      what: 'the held message to read as stopped',
+      check: async () => (await chatEntry({
+        hydra,
+        text: 'held behind the compaction',
+      }))?.receipt === 'failed',
+    })
+
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'carry on',
+      reply: 'Carrying on.',
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'carry on',
+      ],
+    })
+    await until({
+      what: 'Hydra to answer the owner\'s next message',
+      check: () => heard({
+        received: session.received,
+        text: 'carry on',
+      }) === 1,
+    })
+    expect(session.received.filter(message => message.includes('back after a stop'))).toEqual([])
+    expect(heard({
+      received: session.received,
+      text: 'held behind the compaction',
+    })).toBe(0)
+  },
+)
+
+test(
+  'digest recovery reads the latest checkpoint across read boundaries, partial records and a line far longer than a read',
+  async ({ onTestFinished }) => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-digest-tail-',
+    ))
+    onTestFinished(() => rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const path = join(
+      root,
+      'session.jsonl',
+    )
+    const digest = `<pnyx-digest>${'é'.repeat(70_000)}</pnyx-digest>`
+    writeFileSync(
+      path,
+      [
+        JSON.stringify({
+          type: 'user',
+          message: { content: '<pnyx-digest>old</pnyx-digest>' },
+        }),
+        JSON.stringify({
+          type: 'system',
+          subtype: 'compact_boundary',
+        }),
+        JSON.stringify({
+          type: 'user',
+          message: { content: digest },
+        }),
+        JSON.stringify({
+          type: 'assistant',
+          message: { content: 'x'.repeat(3_000_000) },
+        }),
+        '{"partial":',
+      ].join('\n'),
+    )
+    const context = createDigestContext({
+      agent: {
+        provider: 'claude-code',
+        sessionId: 'synthetic',
+        transcriptPath: path,
+      },
+      render: async ({
+        previousDigest,
+        compacted,
+      }) => {
+        expect(compacted).toBe(false)
+
+        return previousDigest ?? ''
+      },
+    })
+    expect(await context()).toBe(digest)
   },
 )
