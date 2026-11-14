@@ -947,14 +947,16 @@ export async function startServer({
     await mount({ id: 'default' })
 
     for (const id of hydraIds()) {
-      await mount({ id }).catch((error: Error) => {
+      try {
+        await mount({ id })
+      } catch (error) {
         log({
           level: 'warn',
           operation: 'hydra.skipped',
           hydraId: id,
-          error,
+          error: error as Error,
         })
-      })
+      }
     }
 
     importing = false
