@@ -274,6 +274,15 @@ test(
         exact: true,
       },
     ).waitFor()
+    await until({
+      what: 'persisted Hydra visibility',
+      check: async () => (await hydra.owner({
+        args: [
+          'settings',
+          'show',
+        ],
+      })).settings.hiddenHydras.includes(hydra.id),
+    })
     await page.reload()
     await page.getByRole(
       'button',
@@ -282,7 +291,6 @@ test(
         exact: true,
       },
     ).waitFor()
-    expect(await panel.locator(`[data-hydra="${hydra.id}"]`).count()).toBe(0)
     await panel.getByRole(
       'button',
       {
@@ -290,6 +298,14 @@ test(
         exact: true,
       },
     ).click()
+    await panel.getByRole(
+      'button',
+      {
+        name: `Restore ${name}`,
+        exact: true,
+      },
+    ).waitFor()
+    expect(await panel.locator(`[data-hydra="${hydra.id}"]`).count()).toBe(0)
     await panel.getByRole(
       'button',
       {
