@@ -53,6 +53,8 @@ export function applyHydra({
           },
         ]
       }
+    } else if (change.state === 'cancelled') {
+      delete state.hydraAgentChange
     } else {
       state.hydraAgentChange = structuredClone(change)
     }

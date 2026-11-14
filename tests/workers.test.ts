@@ -624,6 +624,11 @@ test(
         'hydra',
         'stop',
       ],
+      [
+        'hydra',
+        'cancel',
+        'anything',
+      ],
     ]) {
       expect((await hydra.as({ session: worker }).refused({ args })).code).toBe('OWNER_ONLY')
     }

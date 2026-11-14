@@ -79,6 +79,7 @@ export function createHydraTurns({
   readThrough,
   handBack,
   armWake,
+  models,
 }: {
   hydraId: string
   live: Map<string, Live>
@@ -140,6 +141,7 @@ export function createHydraTurns({
   readThrough: ReturnType<typeof createWakeQueue>['readThrough']
   handBack: ReturnType<typeof createWakeQueue>['handBack']
   armWake: ReturnType<typeof createWakeQueue>['armWake']
+  models: Host['models']
 }) {
   let hydraTurn = Promise.resolve()
   let wakeTurn = Promise.resolve()
@@ -363,7 +365,7 @@ export function createHydraTurns({
         state: queuedState,
         dispatch: queuedDispatch,
       })
-    const requestedAgent = {
+    const chosenAgent = {
       ...desiredAgent,
       account: harnessAccount({
         effective: effectiveDispatch(),
@@ -398,6 +400,11 @@ export function createHydraTurns({
         return { state: 'queued' }
       }
 
+      // Removed from the queue while it waited in the chain.
+      if (state.hydraMessages?.find(message => message.id === id)?.stopped) {
+        return { state: 'cancelled' }
+      }
+
       if (id.startsWith('helper-outcomes:') && !helperPending()) {
         return { state: 'queued' }
       }
@@ -427,10 +434,29 @@ export function createHydraTurns({
         mode: previous.settings?.mode,
         fast: previous.settings?.fast === 'true',
       } : undefined)
-      const kind = used && agentChangeKind({
+      const kind = used && await agentChangeKind({
         previous: used,
-        next: requestedAgent,
+        next: chosenAgent,
+        models: () => models({
+          harness: chosenAgent.harness,
+          account: chosenAgent.account,
+        }),
       })
+
+      // A Stop while the catalog loaded must not leave a question behind for the message it cancelled.
+      if (generation !== stopGeneration) {
+        return stoppedBefore({
+          id,
+          carried,
+        })
+      }
+
+      // A model or effort named as what the session already runs with keeps that session.
+      const requestedAgent = used && !kind ? {
+        ...chosenAgent,
+        model: used.model,
+        effort: used.effort,
+      } : chosenAgent
 
       if (used && kind && ownerActor({ actor })) {
         write({
