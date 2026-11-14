@@ -697,6 +697,7 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.steering.recovery': return `Steering ${event.data.message} recovery: ${event.data.recovery.result}${event.data.recovery.detail ? `: ${event.data.recovery.detail}` : ''}`
     case 'task.steering.queued': return `Steering ${event.data.message.order} queued: ${event.data.message.id}`
     case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
+    case 'task.steering.cancelled': return 'Steering not delivered: stopped'
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
     case 'chat.message': return 'Conversation copy from an older Pnyx'
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
@@ -752,6 +753,7 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.delivered': return `Hydra turn in ${event.data.session}`
     case 'hydra.agent-change': return `Agent change ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.operation': return `${event.data.kind} ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'hydra.input-cancelled': return 'Messages not delivered: stopped'
     case 'hydra.received': return `Hydra received ${event.data.message}`
     case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`

@@ -434,6 +434,20 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     positionals: 2,
   })
 
+  if (positionals[0] === 'send-now') {
+    return askHost({
+      hydraId,
+      body: {
+        action: 'send-now',
+        message: required({
+          value: positionals[1],
+          what: 'message id',
+        }),
+        actor: meta({ values }).actor,
+      },
+    })
+  }
+
   if (positionals[0] === 'message') {
     return messageLookup({
       values,

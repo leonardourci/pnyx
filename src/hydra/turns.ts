@@ -278,6 +278,8 @@ export function createHydraTurns({
     }
   }
 
+  let stopGeneration = 0
+
   const hydra: Host['hydra'] = ({
     text,
     original,
@@ -316,6 +318,11 @@ export function createHydraTurns({
     }
 
     const queuedState = loadHydra({ hydraId }).state
+
+    if (queuedState.hydraMessages?.find(message => message.id === id)?.stopped) {
+      return Promise.resolve({ state: 'cancelled' })
+    }
+
     const queuedDispatch = effectiveDispatch().dispatch
     const desiredAgent = selected ?? (!ownerActor({ actor }) ? queuedState.hydraAgent : undefined)
       ?? hydraCandidate({
@@ -336,6 +343,7 @@ export function createHydraTurns({
       return Promise.resolve({ state: 'queued' })
     }
 
+    const generation = stopGeneration
     queuedHydra.add(id)
 
     const run = async () => {
@@ -345,7 +353,7 @@ export function createHydraTurns({
 
       let state = loadHydra({ hydraId }).state
 
-      if (stoppedFor({ id })) {
+      if (stoppedFor({ id }) || generation !== stopGeneration) {
         return { state: 'queued' }
       }
 
@@ -489,6 +497,10 @@ export function createHydraTurns({
           throw new Error('Pnyx is stopping')
         }
 
+        if (generation !== stopGeneration) {
+          return { state: 'queued' }
+        }
+
         state = loadHydra({ hydraId }).state
         card = state.cards[HYDRA_CARD]
         const sameIdentity = history && card?.agent?.provider === provider
@@ -536,6 +548,12 @@ export function createHydraTurns({
             signal: controller.signal,
             spawned: children.spawned,
           })
+        }
+
+        if (generation !== stopGeneration) {
+          prepared?.close()
+
+          return { state: 'queued' }
         }
 
         const ref: AgentRef = agent ?? {
@@ -742,6 +760,10 @@ export function createHydraTurns({
           ...presentedTasks,
         ]) {
           mainTasks.add(task)
+        }
+
+        if (generation !== stopGeneration) {
+          return { state: 'queued' }
         }
 
         entry.input.push({
@@ -960,6 +982,9 @@ export function createHydraTurns({
   }
 
   return {
+    cancel: () => {
+      stopGeneration += 1
+    },
     hydraTurn: async () => {
       await wakeTurn
       await hydraTurn

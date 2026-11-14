@@ -26,6 +26,7 @@ test(
       'answered-already:hosted': 5,
       'joins-turn': 6,
       'joins-turn:hosted': 7,
+      stopped: 8,
     }
     state.hydraMessages = [
       owner({ id: 'from-last-week' }),
@@ -40,6 +41,10 @@ test(
       },
       owner({ id: 'answered-already' }),
       owner({ id: 'joins-turn' }),
+      {
+        ...owner({ id: 'stopped' }),
+        stopped: true,
+      },
     ]
     state.eventIds['worker-report'] = 3
     // A message that joins a running turn is pushed alone, so it carries none of the earlier ones.
@@ -67,7 +72,10 @@ test(
       receivedWith({
         state,
         input: 'back:2',
-        carried: recap.carried,
+        carried: [
+          ...recap.carried,
+          'stopped',
+        ],
       }),
       ['sent-while-down'],
     )

@@ -312,6 +312,10 @@ export type HydraChange = EventBase & (
     }
   }
   | {
+    type: 'hydra.input-cancelled'
+    data: { messages: string[] }
+  }
+  | {
     type: 'hydra.agent-used'
     data: import('#workers/model.ts').AgentConfig
   }
@@ -394,6 +398,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.steering.queued',
   'task.steering.notified',
   'task.steering.handled',
+  'task.steering.cancelled',
   'task.steering.recovery',
   'card.pushed',
   'card.observed',
@@ -425,6 +430,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.message',
   'hydra.status',
   'hydra.received',
+  'hydra.input-cancelled',
   'hydra.operation',
   'hydra.agent-used',
   'hydra.delivered',

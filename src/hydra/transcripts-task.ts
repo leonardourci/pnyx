@@ -103,7 +103,7 @@ export function taskReceipt({
     state = 'queued'
   }
 
-  const waiting = state === 'queued' ? waitingReason({ card }) : undefined
+  const waiting = state === 'queued' ? waitingReason({ card }) : receipt.detail
 
   const entry: Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery'> = { receipt: state }
 

@@ -140,7 +140,12 @@ Omit --kind progress for actionable results: queue a report for Hydra to relay; 
 pnyx-axi hydra ask --question <question> [--context <text>] [--choice <label>]... [--recommend <n>] [--details <text> | --details-file <path>]
 Hydra asks an owner decision with no task in chat. Task decisions use task ask --to owner on their card.
 pnyx-axi hydra stop
-hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
+hydra stop ends Hydra's turn and cancels unread messages; routine wakes wait for the owner's next message.
+pnyx-axi hydra send-now <message-id> interrupts the current step to take a queued message.
+pnyx-axi task stop <task> stops that worker and cancels unread messages.
+pnyx-axi task send-now <task> <message-id> interrupts its step to take a queued message.
+Stopped messages stay visible as Not delivered: stopped and offer Send again.
+An owner message denies pending permission prompts on its recipient with that message.
 pnyx-axi hydra usage
 hydra usage prints current context, recorded task totals and plan windows. --task <id> reads a task session.
 pnyx-axi hydra usage refresh [--task <id>] [--force]

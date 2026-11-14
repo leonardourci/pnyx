@@ -1081,3 +1081,41 @@ test(
     )
   },
 )
+
+test(
+  'a stopped owner message stays visibly undelivered after later messages are received',
+  () => {
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'stopped',
+            text: 'Do this first',
+          }),
+          stopped: true,
+        },
+        {
+          ...message({
+            id: 'received',
+            text: 'Continue',
+          }),
+          received: '2026-10-20T10:01:00Z',
+        },
+      ],
+      transcript: [],
+      receipts: true,
+    })
+    assert.equal(
+      entries[0]!.receipt,
+      'failed',
+    )
+    assert.equal(
+      entries[0]!.waiting,
+      'stopped',
+    )
+    assert.equal(
+      entries[1]!.receipt,
+      'delivered',
+    )
+  },
+)

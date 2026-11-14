@@ -253,6 +253,12 @@ export function hydraMessages({
       continue
     }
 
+    if (message.stopped) {
+      entry.receipt = 'failed'
+      entry.waiting = 'stopped'
+      continue
+    }
+
     const copyTime = copyTimes.get(message)
     const received = message.received ?? copyTime
 
