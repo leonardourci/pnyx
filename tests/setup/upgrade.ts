@@ -1,6 +1,6 @@
 // A throwaway Pnyx folder whose fake pnpm runs the commit's own install.sh and build.sh, so a commit decides what fails.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const git = ({
@@ -189,10 +189,108 @@ esac
     { cwd: install },
   )
 
+  // Puts origin and the install folder back on the first commit, its branch and its build, so every test starts from the same folder.
+  const reset = () => {
+    git({
+      cwd: author,
+      args: [
+        'reset',
+        '-q',
+        '--hard',
+        first,
+      ],
+    })
+    git({
+      cwd: author,
+      args: [
+        'push',
+        '-q',
+        '--force',
+        'origin',
+        'main',
+      ],
+    })
+    git({
+      cwd: install,
+      args: [
+        'fetch',
+        '-q',
+        'origin',
+      ],
+    })
+    git({
+      cwd: install,
+      args: [
+        'checkout',
+        '-q',
+        '-f',
+        'main',
+      ],
+    })
+    git({
+      cwd: install,
+      args: [
+        'reset',
+        '-q',
+        '--hard',
+        first,
+      ],
+    })
+    git({
+      cwd: install,
+      args: [
+        'clean',
+        '-q',
+        '-fd',
+      ],
+    })
+
+    for (const branch of git({
+      cwd: install,
+      args: [
+        'branch',
+        '--format=%(refname:short)',
+      ],
+    }).split('\n')
+      .filter(name => name && name !== 'main')) {
+      git({
+        cwd: install,
+        args: [
+          'branch',
+          '-q',
+          '-D',
+          branch,
+        ],
+      })
+    }
+
+    // The mark an upgrade cut in the middle leaves.
+    rmSync(
+      join(
+        install,
+        git({
+          cwd: install,
+          args: [
+            'rev-parse',
+            '--git-path',
+            'pnyx-upgrade-from',
+          ],
+        }),
+      ),
+      { force: true },
+    )
+    execFileSync(
+      'sh',
+      ['build.sh'],
+      { cwd: install },
+    )
+  }
+
   return {
     install,
     first,
     publish,
+    reset,
     head: () => git({
       cwd: install,
       args: [

@@ -65,6 +65,8 @@ export interface TurnPlan {
   // Streams this prefix of the reply, then waits for release (or an interrupt) before finishing the turn.
   partial?: string
   hold?: boolean
+  // Codex answers the turn start with an error, so the agent never takes the message.
+  refuse?: boolean
 }
 
 interface Plan extends TurnPlan {
@@ -498,6 +500,20 @@ export function fakeCodex() {
             text,
             env,
           })
+        }
+
+        if (plan?.refuse) {
+          send({
+            message: {
+              id: message.id,
+              error: {
+                code: -32000,
+                message: 'the app-server refused this turn',
+              },
+            },
+          })
+
+          return
         }
 
         if (message.method === 'turn/steer') {

@@ -178,9 +178,15 @@ function fakeLogins({ root }: { root: string }) {
   writeFileSync(
     quota,
     `#!/usr/bin/env node
+const { existsSync } = require('node:fs')
+const { join } = require('node:path')
 const provider = process.argv[process.argv.indexOf('--provider') + 1]
+// A login folder holding a file named \`exhausted\` has no quota left.
+const folder = process.env.CLAUDE_CONFIG_DIR ?? process.env.CODEX_HOME ?? ''
+const spent = existsSync(join(folder, 'exhausted'))
+const effectiveAvailability = spent ? [{ scope: 'all_models', status: 'known', effectivePercentRemaining: 0 }] : []
 if (process.argv.includes('models')) console.log('{}')
-else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fresh', authStatus: 'usable' } }] }))
+else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fresh', authStatus: 'usable' }, quotaSemantics: { effectiveAvailability } }] }))
 `,
   )
   chmodSync(
