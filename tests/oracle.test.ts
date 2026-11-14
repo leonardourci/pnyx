@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 let pnyx: Pnyx
@@ -284,5 +286,31 @@ test(
     }) as unknown as { hits: Result[] }
     expect(fromPage.hits.map(hit => hit.title)).toEqual(['Roadmap beta'])
     page.close()
+  },
+)
+
+test(
+  'the Oracle refuses a Hydra that does not exist and makes no folder for it',
+  async () => {
+    const run = await pnyxAxi({
+      args: [
+        'oracle',
+        'invoice',
+        '--hydra',
+        'typo-oracle',
+      ],
+      env: process.env,
+    })
+
+    expect(run.status).not.toBe(0)
+    expect(parsed(run)).toMatchObject({
+      code: 'NOT_FOUND',
+      error: 'unknown Hydra: typo-oracle',
+    })
+    expect(existsSync(join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'typo-oracle',
+    ))).toBe(false)
   },
 )
