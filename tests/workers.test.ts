@@ -1037,31 +1037,44 @@ test(
 test(
   'Codex process cleanup that cannot read the process table logs and ends nothing instead of throwing',
   async () => {
-    const tracker = codexProcesses({ pid: process.pid })
     const path = process.env.PATH
-    tracker.command({
-      id: 'foreground',
-      commands: ['sleep 120'],
-      completed: false,
-    })
-    // Without ps, reading the table fails.
-    process.env.PATH = '/nonexistent'
 
-    try {
-      tracker.begin()
-      await tracker.ready()
-      expect(await (await tracker.capture())()).toEqual([])
-    } finally {
-      process.env.PATH = path
+    const unreadable = async <T>({ run }: { run(): Promise<T> }) => {
+      // Without ps, reading the table fails.
+      process.env.PATH = '/nonexistent'
+
+      try {
+        return await run()
+      } finally {
+        process.env.PATH = path
+      }
     }
 
-    // With the baseline unread, nothing can be told apart, so nothing is ended even once ps works again.
-    tracker.command({
+    // A table that cannot be read when Stop captures the commands.
+    const stopping = codexProcesses({ pid: process.pid })
+    stopping.begin()
+    await stopping.ready()
+    stopping.command({
       id: 'foreground',
       commands: ['sleep 120'],
       completed: false,
     })
-    expect(await (await tracker.capture())()).toEqual([])
+    expect(await (await unreadable({ run: () => stopping.capture() }))()).toEqual([])
+
+    // A baseline that could not be read: nothing can be told apart, so nothing is ended even once ps works again.
+    const unbased = codexProcesses({ pid: process.pid })
+    await unreadable({
+      run: async () => {
+        unbased.begin()
+        await unbased.ready()
+      },
+    })
+    unbased.command({
+      id: 'foreground',
+      commands: ['sleep 120'],
+      completed: false,
+    })
+    expect(await (await unbased.capture())()).toEqual([])
   },
 )
 
