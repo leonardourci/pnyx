@@ -36,26 +36,22 @@ export async function until<T>({
   check: () => T | undefined | false | Promise<T | undefined | false>
   timeoutMs?: number
 }): Promise<T> {
-  let last: unknown
+  const end = performance.now() + timeoutMs
+  let value = await check()
 
-  for (const end = performance.now() + timeoutMs; ;) {
-    const value = await check()
-
-    if (value !== undefined && value !== false) {
-      return value
-    }
-
-    last = value
-
+  while (value === undefined || value === false) {
     if (performance.now() > end) {
-      throw new Error(`timed out waiting for ${what} (last: ${String(last)})`)
+      throw new Error(`timed out waiting for ${what} (last: ${String(value)})`)
     }
 
     await new Promise(resolve => setTimeout(
       resolve,
       POLL_MS,
     ))
+    value = await check()
   }
+
+  return value
 }
 
 export interface Run {

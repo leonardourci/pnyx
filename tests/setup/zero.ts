@@ -47,6 +47,7 @@ export async function readRows<Rows>({
         'message',
         (data: Buffer | ArrayBuffer | Buffer[]) => frames.push(text({ data })),
       )
+      // A client zero-cache refuses sees its socket close; the read then answers with no rows.
       this.on(
         'error',
         () => undefined,

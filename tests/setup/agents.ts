@@ -215,14 +215,17 @@ export function fakeClaude() {
         })
         const answer = plan?.reply ?? recordedReply
         let interrupted = false
-        const held = plan ? new Promise<void>(resolve => {
+        // A planned turn waits for its release, or for Pnyx to stop it.
+        const stopped = new Promise<void>(resolve => {
           stop = () => {
             interrupted = true
             resolve()
           }
-
-          void plan.wait.then(resolve)
-        }) : undefined
+        })
+        const held = plan ? Promise.race([
+          plan.wait,
+          stopped,
+        ]) : undefined
 
         for (const recorded of claudeRecording.turn) {
           if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'

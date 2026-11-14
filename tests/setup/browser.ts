@@ -32,11 +32,15 @@ export async function openHydra({
     url: `http://127.0.0.1:${port}/zero/`,
     cookie: `${zeroCookieName({ port })}=${localToken()}`,
   })
-  browser ??= await chromium.launch({
-    channel: 'chrome',
-    headless: true,
-    args: KEYCHAIN_FLAGS,
-  })
+
+  if (!browser) {
+    browser = await chromium.launch({
+      channel: 'chrome',
+      headless: true,
+      args: KEYCHAIN_FLAGS,
+    })
+  }
+
   const page = await (await browser.newContext({
     viewport: {
       width: 1440,
