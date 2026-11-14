@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { git } from './setup/upgrade.ts'
 
 let pnyx: Pnyx
 
@@ -109,7 +110,7 @@ test(
 )
 
 test(
-  'column, project and date filters narrow a search the same way from the page and the CLI, and a bad filter is refused',
+  'column and date filters narrow a search the same way from the page and the CLI, and a bad filter is refused',
   async () => {
     const hydra = await pnyx.hydra()
     const done = (await hydra.owner({
@@ -194,5 +195,99 @@ test(
         'not-a-date',
       ],
     })).code).toBe('VALIDATION_ERROR')
+  },
+)
+
+test(
+  'the project filter keeps only the tasks of the named project, from the CLI and from the page',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const projects = {} as Record<'alpha' | 'beta', string>
+
+    for (const name of [
+      'alpha',
+      'beta',
+    ] as const) {
+      const path = hydra.folder({ name })
+
+      for (const args of [
+        [
+          'init',
+          '-q',
+          '-b',
+          'main',
+        ],
+        [
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'init',
+        ],
+      ]) {
+        git({
+          cwd: path,
+          args,
+        })
+      }
+
+      await hydra.owner({
+        args: [
+          'project',
+          'add',
+          path,
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          `Roadmap ${name}`,
+          '--key',
+          name,
+          '--project',
+          path,
+        ],
+      })
+      projects[name] = path
+    }
+
+    expect((await search({
+      hydra,
+      args: ['roadmap'],
+    }) as Result[]).map(result => result.title).toSorted()).toEqual([
+      'Roadmap alpha',
+      'Roadmap beta',
+    ])
+    expect((await search({
+      hydra,
+      args: [
+        'roadmap',
+        '--project',
+        projects.alpha,
+      ],
+    }) as Result[]).map(result => result.title)).toEqual(['Roadmap alpha'])
+    expect((await search({
+      hydra,
+      args: [
+        'roadmap',
+        '--project',
+        'beta',
+      ],
+    }) as Result[]).map(result => result.title)).toEqual(['Roadmap beta'])
+
+    const page = await hydra.page()
+    const fromPage = await page.send({
+      name: 'oracle',
+      args: [
+        'roadmap',
+        '',
+        '',
+        JSON.stringify({ projects: [projects.beta] }),
+      ],
+    }) as unknown as { hits: Result[] }
+    expect(fromPage.hits.map(hit => hit.title)).toEqual(['Roadmap beta'])
+    page.close()
   },
 )
