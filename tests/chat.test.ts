@@ -7,13 +7,18 @@ beforeAll(async () => {
   pnyx = await startPnyx()
 })
 
-// What the page's queue box reads for this Hydra.
-const queue = ({ hydraId }: { hydraId: string }) => rows<{
-  value: { chat: { working: boolean } }
+// What the page's queue box reads for this Hydra: updates waiting for it, and its chat.
+const queueBox = ({ hydraId }: { hydraId: string }) => rows<{
+  value: {
+    waiting: { kind: string }[]
+    chat: { working: boolean }
+  }
 }>({
   text: 'select value from hydra_values where hydra_id = $1 and key = \'queue\'',
   values: [hydraId],
-})[0]?.value.chat
+})[0]?.value
+
+const queue = ({ hydraId }: { hydraId: string }) => queueBox({ hydraId })?.chat
 
 const heard = ({
   received,
@@ -250,5 +255,101 @@ test(
       ],
     ])
     page.close()
+  },
+)
+
+test(
+  'a worker\'s report and status wait in Hydra\'s queue while it works, then reach it once as one wake, and progress wakes nobody',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'export' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export invoices',
+        '--key',
+        'export',
+        '--folder',
+        folder,
+      ],
+    })
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'review the roadmap',
+      reply: 'Roadmap reviewed.',
+      partial: 'Roadmap',
+      hold: true,
+    })
+    const session = await hydra.chat({ text: 'review the roadmap' })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'export',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    await until({
+      what: 'the worker\'s first turn',
+      check: () => worker.answered === 1,
+    })
+
+    await hydra.as({ session: worker }).run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'export',
+        '--kind',
+        'progress',
+        '--text',
+        'Halfway through the invoices',
+      ],
+    })
+    await hydra.as({ session: worker }).run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'export',
+        '--text',
+        'Export works; ready for review',
+      ],
+    })
+    await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'status',
+        'export',
+        'blocked',
+        '--note',
+        'Need the SFTP password',
+      ],
+    })
+    const waiting = await until({
+      what: 'the report and the status to wait for Hydra',
+      check: () => {
+        const kinds = queueBox({ hydraId: hydra.id })?.waiting.map(update => update.kind)
+
+        return kinds?.includes('declared') && kinds
+      },
+    })
+    expect(waiting).toContain('report')
+    expect(waiting).not.toContain('progress')
+    expect(session.received).toHaveLength(1)
+
+    turn.release()
+    await until({
+      what: 'Hydra to handle the wake',
+      check: () => session.answered === 2 && queueBox({ hydraId: hydra.id })?.waiting.length === 0
+      && queue({ hydraId: hydra.id })?.working === false,
+    })
+    const wake = session.received[1]!
+    expect(wake.split('Export works; ready for review')).toHaveLength(2)
+    expect(wake).toContain('Halfway through the invoices')
+    expect(wake).toContain('Need the SFTP password')
+    expect(session.received).toHaveLength(2)
   },
 )
