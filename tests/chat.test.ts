@@ -395,7 +395,7 @@ test(
       ],
     })
     const { id } = await hydra.task({ key: 'invoices' })
-    // Planned before the worker starts: the helper's batch on the worker's first turn ending takes it and holds the task.
+    // Planned before the worker starts: when its first turn ends, the helper batch gets this held reply and keeps the task leased until release().
     const helperTurn = pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Granted tasks:'),
@@ -418,13 +418,13 @@ test(
       ],
     })
     await hydra.agent({ cwd: folder })
-    await until({
+    const helper = await until({
       what: 'the routine helper to take the worker\'s update',
-      check: () => pnyx.claude.sessions.some(session => session.env.PNYX_HYDRA === hydra.id
+      check: () => pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === hydra.id
         && session.env.PNYX_ACTOR?.startsWith('helper:') && session.received.length > 0),
     })
 
-    // Claude Code stamps its version on each transcript record; Pnyx reads it back from the transcript.
+    // Pnyx harvests the Claude Code version on a transcript record into the card's settings.
     const { sessions } = await hydra.owner({
       args: [
         'task',
@@ -468,6 +468,7 @@ test(
         ],
       })).task.settings?.version === '9.9.9',
     })
+    expect(helper.answered).toBe(0)
 
     helperTurn.release()
   },
