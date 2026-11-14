@@ -598,6 +598,14 @@ test.each([
     repo: 'private-missing',
     rulesError: 'error: HTTP 404: Not Found',
   },
+  {
+    repo: 'private-http-forbidden',
+    rulesError: 'error: HTTP 403: Forbidden',
+  },
+  {
+    repo: 'private-structured-missing',
+    rulesError: 'error: "Resource not found"\ncode: NOT_FOUND',
+  },
 ])(
   'Hydra merges $repo with unreadable branch rules while enforcing approval and readable checks',
   async ({
