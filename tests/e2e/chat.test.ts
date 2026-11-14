@@ -12,6 +12,29 @@ beforeAll(async () => {
 const CONVERSATION = '[aria-label="Hydra conversation"]'
 const COMPOSER = '[aria-label="Reply to Hydra"]'
 
+// The page types about seven letters a frame, so the text has stopped moving a few dozen frames later.
+const streamedText = ({ page }: { page: Page }) => until({
+  what: 'the streamed text to stop moving',
+  check: () => page.evaluate(
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+    async selector => {
+      const read = () => document.querySelector(selector)!.textContent ?? ''
+      const start = read()
+
+      for (let frame = 0; frame < 40; frame++) {
+        await new Promise(requestAnimationFrame)
+
+        if (read() !== start) {
+          return undefined
+        }
+      }
+
+      return start
+    },
+    CONVERSATION,
+  ),
+})
+
 test(
   'the owner\'s message shows at once, the reply streams in, a message sent meanwhile waits queued, Stop ends the turn and cancels that message until it is sent again, and a reload keeps the conversation',
   async () => {
@@ -41,28 +64,7 @@ test(
     await page.click('[aria-label="Send reply"]')
     await conversation.getByText('Plan the release').waitFor()
     await conversation.getByText('Release plan:').waitFor()
-    // The page types about seven letters a frame, so the text has stopped moving a few dozen frames later.
-    const streamed = await until({
-      what: 'the streamed text to stop moving',
-      check: () => page.evaluate(
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
-        async selector => {
-          const read = () => document.querySelector(selector)!.textContent ?? ''
-          const start = read()
-
-          for (let frame = 0; frame < 40; frame++) {
-            await new Promise(requestAnimationFrame)
-
-            if (read() !== start) {
-              return undefined
-            }
-          }
-
-          return start
-        },
-        CONVERSATION,
-      ),
-    })
+    const streamed = await streamedText({ page })
     // Half-written Markdown stays hidden until its closing marker arrives.
     expect(streamed).toContain('Release plan:')
     expect(streamed).not.toContain('**')
@@ -664,6 +666,7 @@ test(
     )
     await page.click('[aria-label="Send reply"]')
     await conversation.getByText('A longer reply that streams in').waitFor()
+    await streamedText({ page })
     reads.length = 0
 
     const steps = await watchFrames({
