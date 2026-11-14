@@ -345,13 +345,141 @@ test(
         'list',
       ],
     })).columns.find((column: { role: string }) => column.role === 'done').id)
-    expect(readFileSync(
+    expect(merges({ number: 7 })).toBe(0)
+  },
+)
+
+// The merge requests the fake GitHub received for a pull request.
+const merges = ({ number }: { number: number }) => readFileSync(
+  join(
+    github,
+    'calls.jsonl',
+  ),
+  'utf8',
+).split('\n')
+  .filter(line => line.includes('PUT') && line.includes(`/pulls/${number}/merge`)).length
+
+test(
+  'Hydra merges a pull request only on the owner\'s Merge answer with green checks, a Hold blocks it, and a merge is submitted once, even after a restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await createProject({
+      hydra,
+      landing: 'pr',
+      remote: 'https://github.com/o/shop.git',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Add the cart',
+        '--key',
+        'gate',
+        '--project',
+        'shop',
+      ],
+    })
+    const url = 'https://github.com/o/shop/pull/21'
+    const publish = ({
+      checks,
+      mergeBehavior,
+    }: {
+      checks: string
+      mergeBehavior?: string
+    }) => writeFileSync(
       join(
         github,
-        'calls.jsonl',
+        'o',
+        'shop',
+        '21.json',
       ),
-      'utf8',
-    )).not.toContain('PUT')
+      JSON.stringify({
+        state: 'open',
+        title: 'Add the cart',
+        head: 'c'.repeat(40),
+        checks,
+        mergeBehavior,
+      }),
+    )
+    publish({ checks: '0 passed, 1 failed, 1 total' })
+    await hydra.owner({
+      args: [
+        'link',
+        'gate',
+        '--url',
+        url,
+      ],
+    })
+    const ask = await until({
+      what: 'the merge question',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'gate',
+          '--full',
+        ],
+      })).task.asks?.find((candidate: { kind: string }) => candidate.kind === 'merge'),
+    })
+    const session = await hydra.chat({ text: 'Review the open pull requests.' })
+    const asHydra = hydra.as({ session })
+    const merge = [
+      'task',
+      'merge',
+      'gate',
+      '--url',
+      url,
+    ]
+
+    await hydra.owner({
+      args: [
+        'task',
+        'answer',
+        'gate',
+        ask.id,
+        '--choice',
+        'Hold',
+      ],
+    })
+    expect((await asHydra.refused({ args: merge })).code).toBe('FORBIDDEN')
+
+    const go = await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Merge PR #21 now.',
+      ],
+    })
+    await asHydra.run({
+      args: [
+        'task',
+        'answer',
+        'gate',
+        ask.id,
+        '--from-message',
+        go.message,
+        '--choice',
+        'Merge',
+        '--reason',
+        'The owner now says to merge this pull request',
+      ],
+    })
+    // Approved, but the checks are red: nothing is submitted.
+    expect((await asHydra.refused({ args: merge })).code).toBe('CONFLICT')
+    expect(merges({ number: 21 })).toBe(0)
+
+    publish({
+      checks: '1 passed, 0 failed, 1 total',
+      mergeBehavior: 'queued',
+    })
+    await asHydra.run({ args: merge })
+    expect(merges({ number: 21 })).toBe(1)
+
+    await pnyx.restart()
+    await asHydra.run({ args: merge })
+    expect(merges({ number: 21 })).toBe(1)
   },
 )
 
