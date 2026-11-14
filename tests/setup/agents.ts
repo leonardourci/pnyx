@@ -45,6 +45,8 @@ export interface AgentSession {
   answered: number
   closed: boolean
   model?: string
+  // Codex: the config Pnyx opened the thread with.
+  config?: Record<string, unknown>
   // Claude: the agent calls a tool that needs permission mid-turn and gets Pnyx's decision.
   useTool?({
     tool,
@@ -482,6 +484,7 @@ export function fakeCodex() {
 
         if (message.method === 'thread/start' || message.method === 'thread/resume') {
           session.resumed = message.method === 'thread/resume'
+          session.config = params.config as Record<string, unknown> | undefined
           session.id = session.resumed ? String(params.threadId) : randomUUID()
           sessions.push(session)
         }
