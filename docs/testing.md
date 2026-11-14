@@ -69,7 +69,7 @@ Rules:
 - Edge cases of tricky logic go in the same area file, calling the function directly only when the server cannot reach the case cheaply.
 - A browser journey earns its place only for what needs a real page: rendering, scrolling, live updates.
 - Nothing outside the test's scratch folders: never a real home, agent, terminal or GitHub.
-- A test that pins a known bug is wrong; skip it with a note naming the task that fixes the bug. `tests/access.test.ts` and `tests/hooks.test.ts` each hold one such skipped case.
+- A test that pins a known bug is wrong; skip it with a note naming the task that fixes the bug. `tests/hooks.test.ts` holds one such skipped case.
 - A hook, or any command a harness waits on, is judged by its outcome (it ended by itself, exit code, output), never by a wall-clock bound.
 
 ## The fakes
@@ -80,7 +80,7 @@ Rules:
 
 ## What each file covers
 
-- `access.test.ts`: a worker's and Hydra's limits, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the page's Zero publication and rows never carry private steering.
+- `access.test.ts`: a worker's limits (its writes stop at its own task) and Hydra's, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the page's Zero publication and rows never carry private steering.
 - `chat.test.ts`: Hydra's chat, the queue, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its column, project and date filters and what it never reads.

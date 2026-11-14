@@ -8,7 +8,7 @@ metadata:
 
 # Pnyx worker
 
-Work only on your assigned task and copy. Hydra supervises it. Pass `--hydra <hydra>` on every command; retain your assigned actor and session identity. Suggestions never grant authority. Before changing code, read the project's AGENTS.md, CLAUDE.md, CONTRIBUTING.md and applicable skills. Follow the worker header's authority and landing rules.
+Work only on your assigned task and copy. Hydra supervises it. Your `pnyx-axi` writes only to your own task (status, ask, report, links, `hydra send --task`); anything else is refused with `WORKER_SCOPE`, so ask Hydra with `task ask`. Pass `--hydra <hydra>` on every command; retain your assigned actor and session identity. Suggestions never grant authority. Before changing code, read the project's AGENTS.md, CLAUDE.md, CONTRIBUTING.md and applicable skills. Follow the worker header's authority and landing rules.
 
 At startup read `task show <task>` and `task history <task>`. Use `task messages <task> --id <message-id> --before 3 --after 3` for a referenced reply and its context; `--seq`, `--at`, inclusive `--from`/`--to` ranges and returned `--cursor` values navigate your current session and the owner's replies; `task chat <task> --session <session>` reads a past session. Successful assignment already records working. Run `pnyx-axi <command> <subcommand> --help` for syntax and follow contextual hints; load [detailed reporting](references/reporting.md) for investigations, questions, report-review, replies and landing details.
 
