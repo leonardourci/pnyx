@@ -487,7 +487,7 @@ export function commandHelp({ command }: { command: string }): string | undefine
   }
 
   if (command === 'settings') {
-    return `usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads; this command never resizes a Hydra. Use view set --hydra <name> for saved widths that also resize that Hydra. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, account?, model, effort?, fast? }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. logs takes off (warnings and errors only), on or detailed, logDays the days of logs kept (1 to ${MAX_LOG_DAYS}) and logMaxMB their total size cap in MB (1 to ${MAX_LOG_MB}). A repeated --event-id saves once, even when nothing changed.`
+    return `usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads; this command never resizes a Hydra. Use view set --hydra <name> for saved widths that also resize that Hydra. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, account?, model, effort?, fast? }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. hiddenHydras takes the Hydra ids hidden from the page list and switcher, without stopping them. logs takes off (warnings and errors only), on or detailed, logDays the days of logs kept (1 to ${MAX_LOG_DAYS}) and logMaxMB their total size cap in MB (1 to ${MAX_LOG_MB}). A repeated --event-id saves once, even when nothing changed.`
   }
 
   return COMMAND_HELP[command]
