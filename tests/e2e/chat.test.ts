@@ -318,7 +318,7 @@ test(
   },
 )
 
-// A Hydra whose chat holds 25 exchanges with a compaction after the 3rd, the 10th and the 22nd.
+// A Hydra whose chat holds 25 exchanges with a compaction after the 3rd, 5th, 21st and 23rd.
 const compactedConversation = async () => {
   const hydra = await pnyx.hydra()
   let compacted = 0
@@ -337,8 +337,9 @@ const compactedConversation = async () => {
 
     if (![
       3,
-      10,
-      22,
+      5,
+      21,
+      23,
     ].includes(exchange)) {
       continue
     }
@@ -366,22 +367,23 @@ const compactedConversation = async () => {
   return hydra
 }
 
-const NOTICES = `${CONVERSATION} .compaction-row`
 const LOADING = '[aria-label="Loading earlier messages"]'
 
-// The conversation's rows top to bottom: each message's text and each compaction notice.
+// The conversation's rendered rows top to bottom: each message's text start, and "compaction" for each notice.
 const timeline = ({ page }: { page: Page }) => page.evaluate(
   // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
   selector => [...document.querySelector(selector)!.querySelectorAll<HTMLElement>('article.message, .compaction-row')]
     .filter(row => !row.querySelector('.compaction-row'))
-    .map(row => row.classList.contains('compaction-row') ? 'compaction' : row.textContent!.replace(
-      /[\u2060\s]+/g,
-      ' ',
-    ).trim()
-      .slice(
-        0,
-        14,
-      )),
+    .map(row => row.classList.contains('compaction-row')
+      ? 'compaction'
+      : row.textContent!.replace(
+        /[\u2060\s]+/g,
+        ' ',
+      ).trim()
+        .slice(
+          0,
+          14,
+        )),
   CONVERSATION,
 )
 
@@ -434,14 +436,9 @@ test(
       'answer 25',
       { exact: true },
     ).waitFor()
-
-    // Only the compaction that happened within the newest messages is there; the older two wait for their pages.
-    expect(await page.locator(NOTICES).count()).toBe(1)
     expect(await page.locator(LOADING).count()).toBe(0)
-    const newest = await timeline({ page })
-    const notice = newest.indexOf('compaction')
-    expect(newest[notice - 1]).toBe('/compact')
 
+    // Scrolling up asks for the first older page, and the spinner shows while it is held.
     await conversation.hover()
     holding = true
     await until({
@@ -456,6 +453,11 @@ test(
       },
     })
     await page.locator(LOADING).waitFor({ state: 'attached' })
+    // The owner reads a little below the top, so an older page lands above what they read.
+    await page.mouse.wheel(
+      0,
+      300,
+    )
     await until({
       what: 'the view to hold still',
       check: () => still({ page }),
@@ -481,7 +483,32 @@ test(
 
     await page.locator(LOADING).waitFor({ state: 'detached' })
 
-    // Scroll on to the first message: every compaction now sits right after the /compact that started it.
+    // At the top of two pages, with the third on its way, the compactions older than them are not piled above the messages.
+    holding = true
+    await until({
+      what: 'scrolling up to ask for the next older page',
+      check: async () => {
+        await page.mouse.wheel(
+          0,
+          -3000,
+        )
+
+        return held.length > 0
+      },
+    })
+    await page.locator(LOADING).waitFor({ state: 'attached' })
+    await until({
+      what: 'the view to hold still at the top of the loaded messages',
+      check: () => still({ page }),
+    })
+    const loaded = await timeline({ page })
+    expect(loaded[0]).not.toBe('compaction')
+
+    holding = false
+    held.splice(0).forEach(release => release())
+    await page.locator(LOADING).waitFor({ state: 'detached' })
+
+    // Scroll on to the first message: the oldest compaction sits after the /compact that started it, between answer 3 and question 4.
     await until({
       what: 'scrolling up to reach the first message',
       check: async () => {
@@ -497,7 +524,6 @@ test(
       },
     })
     const everything = await timeline({ page })
-    // The oldest compaction sits after the /compact that started it, below answer 3 and above question 4, not piled at the top.
     const first = everything.indexOf('compaction')
     expect(first).toBeGreaterThan(everything.indexOf('answer 3'))
     expect(first).toBeLessThan(everything.indexOf('question 4'))
