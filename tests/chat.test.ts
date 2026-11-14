@@ -17,7 +17,10 @@ beforeAll(async () => {
 const queueBox = ({ hydraId }: { hydraId: string }) => rows<{
   value: {
     waiting: { kind: string }[]
-    chat: { working: boolean }
+    chat: {
+      working: boolean
+      compactInputs: { text: string }[]
+    }
   }
 }>({
   text: 'select value from hydra_values where hydra_id = $1 and key = \'queue\'',
@@ -692,7 +695,7 @@ test(
 )
 
 test(
-  'Stop on a compaction cancels the messages held behind it and leaves Hydra waiting for the owner instead of waking it with a recap',
+  'Remove cancels one message held behind a compaction, Stop on it cancels the rest and leaves Hydra waiting for the owner instead of waking it with a recap',
   async () => {
     const hydra = await pnyx.hydra()
     pnyx.claude.plan({
@@ -731,6 +734,36 @@ test(
         'held behind the compaction',
       ],
     })
+    const removed = await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'removed from the queue',
+      ],
+    })
+    await until({
+      what: 'both messages to wait behind the compaction',
+      check: () => queue({ hydraId: hydra.id })?.compactInputs.length === 2,
+    })
+    const page = await hydra.page()
+    expect(await page.send({
+      name: 'hydra',
+      args: [
+        'cancel',
+        removed.message,
+      ],
+    })).toMatchObject({ cancelled: removed.message })
+    page.close()
+    await until({
+      what: 'the queued messages to leave out the removed one',
+      check: () => queue({ hydraId: hydra.id })?.compactInputs.map(input => input.text)
+        .join() === 'held behind the compaction',
+    })
+    expect((await chatEntry({
+      hydra,
+      text: 'removed from the queue',
+    }))?.receipt).toBe('failed')
     expect((await hydra.owner({
       args: [
         'hydra',
@@ -770,6 +803,7 @@ test(
       received: session.received,
       text: 'held behind the compaction',
     })).toBe(0)
+    expect(session.received.some(message => message.includes('removed from the queue'))).toBe(false)
   },
 )
 
@@ -782,7 +816,7 @@ const agentChange = ({ hydraId }: { hydraId: string }) => rows<{
 })[0]?.value
 
 test(
-  'choosing again the model and effort Hydra runs with asks nothing, even after the question showed, and its held messages reach the same session in order',
+  'choosing again the model and effort Hydra runs with asks nothing, even after the question showed, and sends the held messages not removed to the same session in order; Stop cancels what a waiting change holds',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await hydra.page()
@@ -846,7 +880,7 @@ test(
         'held one',
       ],
     })
-    await hydra.owner({
+    const removed = await hydra.owner({
       args: [
         'hydra',
         'send',
@@ -854,9 +888,28 @@ test(
         'held two',
       ],
     })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'held three',
+      ],
+    })
     await until({
       what: 'the effort change to wait for the owner',
       check: () => agentChange({ hydraId: hydra.id })?.next.effort === 'low',
+    })
+    expect(await page.send({
+      name: 'hydra',
+      args: [
+        'cancel',
+        removed.message,
+      ],
+    })).toMatchObject({ cancelled: removed.message })
+    await until({
+      what: 'the queued messages to leave out the removed one',
+      check: () => queue({ hydraId: hydra.id })?.compactInputs.map(input => input.text).join() === 'held one,held three',
     })
     await choose({ agent: { effort: 'medium' } })
     await until({
@@ -865,11 +918,44 @@ test(
     })
     await choose({ agent: { effort: 'high' } })
     await until({
-      what: 'Hydra to hear both held messages',
+      what: 'Hydra to hear the held messages',
       check: () => heard({
         received: session.received,
-        text: 'held two',
+        text: 'held three',
       }) === 1,
+    })
+
+    expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
+    expect((await chatEntry({
+      hydra,
+      text: 'held two',
+    }))?.receipt).toBe('failed')
+
+    await choose({ agent: { effort: 'low' } })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'held four',
+      ],
+    })
+    await until({
+      what: 'the effort change to wait for the owner again',
+      check: () => agentChange({ hydraId: hydra.id }),
+    })
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })).stopped).toBe('agent change')
+    await until({
+      what: 'the stopped message to read as not delivered',
+      check: async () => (await chatEntry({
+        hydra,
+        text: 'held four',
+      }))?.receipt === 'failed',
     })
 
     expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
@@ -877,7 +963,7 @@ test(
       'first message',
       'unchanged agent',
       'held one',
-      'held two',
+      'held three',
     ])
     expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toEqual([session])
     page.close()

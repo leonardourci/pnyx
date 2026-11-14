@@ -142,6 +142,7 @@ Hydra asks an owner decision with no task in chat. Task decisions use task ask -
 pnyx-axi hydra stop
 hydra stop ends Hydra's turn and cancels unread messages; routine wakes wait for the owner's next message.
 pnyx-axi hydra send-now <message-id> interrupts the current step to take a queued message.
+pnyx-axi hydra cancel <message-id> cancels one message held behind a compaction, an upgrade or an agent change.
 pnyx-axi task stop <task> stops that worker and cancels unread messages.
 pnyx-axi task send-now <task> <message-id> interrupts its step to take a queued message.
 Stopped messages stay visible as Not delivered: stopped and offer Send again.

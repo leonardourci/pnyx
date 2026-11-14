@@ -555,8 +555,8 @@ export function createAgentSwitch({
     return { state: 'queued' }
   }
 
-  // A new agent choice while a change waits for the owner sends what it holds again: back to the running agent it goes as usual, otherwise the owner is asked again.
-  const agentChosen = () => {
+  // A change waiting for the owner sends what it still holds again: to the running agent it goes as usual, otherwise the owner is asked again.
+  const reconsiderAgentChange = () => {
     const state = loadHydra({ hydraId }).state
     const change = state.hydraAgentChange
 
@@ -583,7 +583,7 @@ export function createAgentSwitch({
 
   return {
     runAgentChange,
-    agentChosen,
+    reconsiderAgentChange,
     agentChangeAbort: () => agentChangeAbort,
   }
 }

@@ -1,8 +1,10 @@
 import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
 import { stopHydraInputs } from '#hydra/stop-inputs.ts'
+import { heldMessages } from '#hydra/chat-queue.ts'
 import { compactCommand } from '#workers/compact-command.ts'
 import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 import { canonical } from '#store/paths.ts'
+import { ownerActor } from './actors.ts'
 import { background } from './background.ts'
 import { hydraDir } from './home-migration.ts'
 import { nativeIdle } from '#workers/native-session.ts'
@@ -916,7 +918,7 @@ export function createHost({
 
   const {
     runAgentChange,
-    agentChosen,
+    reconsiderAgentChange,
     agentChangeAbort,
   } = createAgentSwitch({
     hydraId,
@@ -1045,14 +1047,29 @@ export function createHost({
   }
 
   const stopHydra = async () => {
-    const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+    const state = loadHydra({ hydraId }).state
+    const card = state.cards[HYDRA_CARD]
     const changing = agentChangeAbort()
+    const waiting = state.hydraAgentChange
 
     if (changing) {
       stopHeldInputs()
       changing.abort(new Error('Compaction cancelled by the owner'))
 
       return { stopped: 'compaction' }
+    }
+
+    // No turn runs while a change waits for the owner's choice, yet it holds their messages.
+    if (waiting) {
+      stopHeldInputs()
+      changeAgent({
+        change: {
+          ...waiting,
+          state: 'cancelled',
+        },
+      })
+
+      return { stopped: 'agent change' }
     }
 
     if (activeCompaction({ card })) {
@@ -1368,7 +1385,7 @@ export function createHost({
       }) : false
     },
     changeAgent: runAgentChange,
-    agentChosen,
+    reconsiderAgentChange,
 
     compact: async ({
       card: ref,
@@ -1433,7 +1450,34 @@ export function createHost({
     stop: async ({
       card: ref = HYDRA_CARD,
       sendNow,
+      cancel,
     } = {}) => {
+      if (cancel) {
+        const state = loadHydra({ hydraId }).state
+        const held = [
+          ...heldMessages({ state }),
+          ...state.cards[HYDRA_CARD]?.compaction?.inputs ?? [],
+        ].filter(message => ownerActor({ actor: message.actor })).map(message => message.id)
+
+        if (!held.includes(cancel)) {
+          throw new HydraError({
+            code: 'NO_ROUTE',
+            message: 'This message is no longer held for Hydra',
+          })
+        }
+
+        note({
+          fn: ({ writer }) => stopHydraInputs({
+            writer,
+            ids: [cancel],
+            at: at(),
+          }),
+        })
+        reconsiderAgentChange()
+
+        return { cancelled: cancel }
+      }
+
       if (sendNow) {
         const state = loadHydra({ hydraId }).state
         const card = findCard({

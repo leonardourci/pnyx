@@ -213,7 +213,7 @@ function saveAgent({
       }
     },
   })
-  agents.agentChosen()
+  agents.reconsiderAgentChange()
   kick()
 
   // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.

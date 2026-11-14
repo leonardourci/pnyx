@@ -1261,6 +1261,19 @@ export function HydraChat({
             notify({ text: (error as Error).message })
           }
         }}
+        remove={async ({ id }) => {
+          try {
+            await command({
+              name: 'hydra',
+              args: [
+                'cancel',
+                id,
+              ],
+            })
+          } catch (error) {
+            notify({ text: (error as Error).message })
+          }
+        }}
       />
       <Composer
         hydraId={hydraId}

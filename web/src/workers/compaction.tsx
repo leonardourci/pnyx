@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { CompactInput, Compaction } from '#workers/compaction/model.ts'
+import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -71,10 +72,13 @@ export function CompactionRow({ operation }: { operation: Compaction }) {
 export function CompactionQueue({
   inputs,
   sendNow,
+  remove,
   disabled,
 }: {
   inputs: CompactInput[]
   sendNow({ id }: { id: string }): Promise<void>
+  // Cancels the message so Hydra never gets it; a queued /upgrade is not a message and has none.
+  remove({ id }: { id: string }): Promise<void>
   disabled: boolean
 }) {
   if (!inputs.length) {
@@ -89,6 +93,11 @@ export function CompactionQueue({
           <Tooltip content="Send now">
             <Button aria-label="Send now" disabled={disabled} onClick={() => void sendNow({ id: input.id })}><Icon name="send" size={14} /></Button>
           </Tooltip>
+          {input.text !== UPGRADE_COMMAND && (
+            <Tooltip content="Remove">
+              <Button aria-label="Remove" onClick={() => void remove({ id: input.id })}><Icon name="close" size={14} /></Button>
+            </Tooltip>
+          )}
         </div>
       ))}
     </Disclosure>

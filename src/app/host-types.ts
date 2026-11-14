@@ -75,14 +75,17 @@ export interface Host {
     id: string
     choice: 'inscribe' | 'compact' | 'neither'
   }): Record<string, unknown>
-  // The owner chose Hydra's agent again; a change waiting on their choice sends what it holds again.
-  agentChosen(): void
+  // A change waiting on the owner's choice sends what it still holds again, to the agent now chosen.
+  reconsiderAgentChange(): void
   stop({
     card,
-    sendNow }
+    sendNow,
+    cancel }
   ?: {
     card?: string
     sendNow?: string
+    // One message held for Hydra, cancelled as Stop cancels them all.
+    cancel?: string
   }): Promise<Record<string, unknown>>
   // Asks for an upgrade as /upgrade does and answers with the one to watch; now restarts a built one at once.
   upgrade({
