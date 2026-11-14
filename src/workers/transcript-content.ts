@@ -83,6 +83,15 @@ export function foundSettings({ settings }: {
   return Object.keys(found).length ? found : undefined
 }
 
+// Fast is stored as true or false; the owner and the agent's /fast command say on or off.
+export function fastWord({ value }: { value: string | undefined }) {
+  if (value === 'true') {
+    return 'on'
+  }
+
+  return value === 'false' ? 'off' : value
+}
+
 export function fastSetting({ fast }: { fast: boolean | undefined }) {
   if (fast === undefined) {
     return undefined

@@ -55,15 +55,7 @@ export function sameChosenSettings({
   return Object.entries(chosen).every(([
     key,
     value,
-  ]) => {
-    const observed = current?.[key]
-
-    if (key === 'fast' && (observed === 'on' || observed === 'off')) {
-      return String(observed === 'on') === value
-    }
-
-    return observed === value
-  })
+  ]) => current?.[key] === value)
 }
 
 export function steeringAssignment({ card }: { card: Card }): string {
