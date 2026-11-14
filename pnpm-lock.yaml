@@ -75,12 +75,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1))
-      chrome-devtools-axi:
-        specifier: 0.1.35
-        version: 0.1.35(zod@4.6.7)
-      chrome-devtools-mcp:
-        specifier: 1.12.0
-        version: 1.12.0(@toon-format/toon@2.3.1)
       eslint:
         specifier: ^10.12.0
         version: 10.12.0(jiti@2.7.0)
@@ -1644,24 +1638,6 @@ packages:
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
     engines: {node: '>= 14.16.0'}
-
-  chrome-devtools-axi@0.1.35:
-    resolution: {integrity: sha512-qeISz6zXNjlY0WxS8CyeL1+D9uLwnWWj37JNblYaSkORN3tY+Dgf6DqSgZa9MQQOpHjo0xu0CDW/tRCsnxmIqg==}
-    engines: {node: '>=20'}
-    hasBin: true
-
-  chrome-devtools-mcp@1.12.0:
-    resolution: {integrity: sha512-lAGpH0zXT1ZdaPefP1KK/MvxwihOlu7VGQ7p4wbhD9OhN17vUC4KWk/ImUYR9DE4s+7r4r0ySV4xr2OkTa7ZMA==}
-    engines: {node: ^20.19.0 || ^22.12.0 || >=23}
-    hasBin: true
-    peerDependencies:
-      '@blackwell-systems/gcf': ^2.2.2
-      '@toon-format/toon': ^4.1.0
-    peerDependenciesMeta:
-      '@blackwell-systems/gcf':
-        optional: true
-      '@toon-format/toon':
-        optional: true
 
   cjs-module-lexer@2.3.0:
     resolution: {integrity: sha512-lmNyBzi6iYiqyrExTctfmjd8tInx+dHu9PBomTfH5RXS53c27JMFJgzNv5TyAnm3PgGf+MLy0+Ws41/HlVxdKQ==}
@@ -4973,20 +4949,6 @@ snapshots:
   chokidar@4.0.3:
     dependencies:
       readdirp: 4.1.2
-
-  chrome-devtools-axi@0.1.35(zod@4.6.7):
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.32.1(zod@4.6.7)
-      '@toon-format/toon': 2.3.1
-      axi-sdk-js: 0.1.13
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - supports-color
-      - zod
-
-  chrome-devtools-mcp@1.12.0(@toon-format/toon@2.3.1):
-    optionalDependencies:
-      '@toon-format/toon': 2.3.1
 
   cjs-module-lexer@2.3.0: {}
 

@@ -50,7 +50,7 @@ jobs:
     # Every run waits for the owner's approval in this environment.
     environment: ci
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,8 +76,6 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Unit tests
-        run: node scripts/verification/test.ts unit
-
-      - name: Flows
-        run: node scripts/verification/test.ts scenarios
+      # Integration files and browser journeys; the runner image carries PostgreSQL and Google Chrome.
+      - name: Tests
+        run: pnpm exec vitest run
