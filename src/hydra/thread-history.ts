@@ -126,7 +126,11 @@ export function mergeThreadPages({
     first: a,
     second: b,
   }))
-  const older = olderPage ? latest.older : before.entries.length ? before.older : latest.older
+  // A page read again keeps how far back the loaded conversation reaches.
+  const loaded = before.entries.length > 0 || before.messagesFrom !== undefined
+  const keep = !olderPage && loaded
+  const older = olderPage || !loaded ? latest.older : before.older
+  const messagesFrom = keep ? before.messagesFrom : latest.messagesFrom
   const pages = olderPage ? pageCount({ page: before }) + pageCount({ page: latest })
     : before.pages ?? pageCount({ page: latest })
 
@@ -136,6 +140,7 @@ export function mergeThreadPages({
     currentTurn: olderPage ? before.currentTurn : latest.currentTurn,
     actions: [...actions.values()],
     older,
+    messagesFrom,
     pages,
   }
 }

@@ -25,6 +25,7 @@ import { isManagedTask } from '#tasks/select.ts'
 import type { TurnActions } from './conversation.ts'
 import type { TurnTiming } from './chat-messages.ts'
 import { threadEntryOrder } from './thread-order.ts'
+import { hydraMessagesOf, messageWindow, MESSAGE_CURSOR } from './message-window.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -96,6 +97,8 @@ export interface ThreadPage {
   }
   actions?: HydraEvent[]
   older?: string
+  // Hydra's conversation holds no message older than this time, which its `older` cursor reads next.
+  messagesFrom?: string
   route: boolean
   via?: string
   routeKind?: ReplyRoute['kind']
@@ -545,7 +548,7 @@ export function latestMessage({
 
 // A cursor carries each sources position, so paging cannot skip transcript
 // chunks when reply receipts also fill the latest page.
-export const THREAD_CURSOR = /^n(?:(\d+)\.)?(\d+:\d+)?;r(\d+:\d+)?$/
+export const THREAD_CURSOR = /^(?:n(?:(\d+)\.)?(\d+:\d+)?;r(\d+:\d+)?|m[\w%.!~*'()-]+)$/
 type LoggedMessage = HydraEvent
 const replyLogs = new Map<string, {
   end: number
@@ -930,6 +933,21 @@ function readThreadPage(
     } : { noRoute: found.reason }),
     watching: 'unknown',
   }
+  const messageCursor = card.id === HYDRA_CARD && before !== undefined
+    ? MESSAGE_CURSOR.exec(before)
+    : null
+
+  // Older messages of a conversation the transcript does not bound: only the window moves back.
+  if (messageCursor) {
+    return {
+      ...result,
+      ...messageWindow({
+        messages: hydraMessagesOf({ state }),
+        before: decodeURIComponent(messageCursor[1]!),
+      }),
+    }
+  }
+
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
   const sourceCursor = match?.[1] === undefined ? undefined : Number(match[1])
   const nativeCursor = match?.[2], replyCursor = match?.[3]
@@ -1159,6 +1177,11 @@ function readThreadPage(
 
   if (candidates.length > page.length || earlierNative) {
     result.older = `n${firstNative ?? emptyNativeCursor ?? carried};r${firstReply ?? replyCursor ?? ''}`
+  } else if (card.id === HYDRA_CARD) {
+    Object.assign(
+      result,
+      messageWindow({ messages: hydraMessagesOf({ state }) }),
+    )
   }
 
   return result
