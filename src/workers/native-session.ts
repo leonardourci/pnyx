@@ -7,6 +7,7 @@ export type NativeResult = {
   turn: string
   inputIds: string[]
   status: TurnOutcome['status']
+  stoppedProcesses?: number[]
   final?: string
   queued?: number
   error?: string
@@ -149,6 +150,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
       turn: result.turn,
       inputIds,
       status: result.status,
+      stoppedProcesses: result.stoppedProcesses,
       at: new Date().toISOString(),
       assistant: [...texts].map(([
         id,
@@ -284,6 +286,12 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
           event.receipt.turn,
         )
         work.runningTurns = [event.receipt.turn]
+      }
+
+      if (event.type === 'input' && event.receipt.phase === 'refused') {
+        work.unsettledInputs = work.unsettledInputs.filter(id => id !== event.receipt.inputId)
+        confirmed.delete(event.receipt.inputId)
+        publishWork()
       }
 
       if (event.type === 'text') {
@@ -479,7 +487,9 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
         value,
       }),
     }),
-    interrupt: () => control({ run: () => native.interrupt() }),
+    interrupt: ({ cancelQueued } = {}) => control({
+      run: () => native.interrupt({ cancelQueued }),
+    }),
     close() {
       try {
         native.close()

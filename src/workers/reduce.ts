@@ -151,8 +151,12 @@ export function applyReplyReceipt({
     state: event.data.state,
     ...(resumes !== undefined ? { resumes } : {}),
     ...(taskMessage ? { route: event.data.route } : {}),
-    ...(taskMessage && event.data.detail ? { detail: event.data.detail } : {}),
   }
+
+  if (event.data.detail) {
+    reply.detail = event.data.detail
+  }
+
   const decision = event.data.decision ?? previous?.decision
   const received = event.data.received ?? previous?.received
 

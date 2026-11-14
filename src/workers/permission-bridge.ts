@@ -413,7 +413,32 @@ export function createPermissionBridge({
     }
   }
 
+  const denyForMessage = ({
+    task,
+    actor,
+    text,
+  }: {
+    task: string
+    actor: string
+    text: string
+  }) => {
+    const card = loadHydra({ hydraId }).state.cards[task]
+
+    for (const request of card?.permissions ?? []) {
+      if (request.status === 'pending' && pending.has(request.id)) {
+        permission({
+          task,
+          request: request.id,
+          choice: 'deny',
+          actor,
+          reason: `The owner answered with a message instead of approving. Their message follows: ${text}`,
+        })
+      }
+    }
+  }
+
   return {
+    denyForMessage,
     expireEntry,
     askPermission,
     permission,

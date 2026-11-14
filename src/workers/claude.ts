@@ -363,6 +363,9 @@ export function claudeProvider({
 
       let running: ReturnType<QueryFn> | undefined
       let closed = false, interrupted = false
+      let inputGeneration = 0
+      const nativeInputs = new Map<string, string>()
+      let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
       const native: NativeSession = {
         id,
@@ -387,7 +390,7 @@ export function claudeProvider({
           // SessionStart fires too early for an SDK hook on startup and resume, so the context leads the first message.
           let fresh = true, manualCompact = false
 
-          const nativeInputs = new Map<string, string>()
+          publish = emit
           const intake = watchIntake({ path })
           // When Claude Code took each input; a folded one is confirmed as soon as it is taken.
           const takenAt = new Map<string, string>()
@@ -398,7 +401,21 @@ export function claudeProvider({
               const { text } = item
               const compact = compactCommand({ text })
               manualCompact ||= compact
+              const generation = inputGeneration
               const message = fresh && context && !compact ? `${await context({})}\n\n${text}` : text
+
+              if (generation !== inputGeneration) {
+                emit({
+                  event: {
+                    type: 'input',
+                    receipt: {
+                      inputId: item.id,
+                      phase: 'refused',
+                    },
+                  },
+                })
+                continue
+              }
 
               if (!compact) {
                 fresh = false
@@ -898,10 +915,38 @@ export function claudeProvider({
             await running.applyFlagSettings({ effortLevel: value as EffortLevel })
           }
         },
-        async interrupt() {
+        async interrupt({ cancelQueued = true } = {}) {
+          if (cancelQueued) {
+            inputGeneration += 1
+          }
+
           if (running) {
             interrupted = true
-            await running.interrupt()
+            // The installed runtime supports queue cancellation before its SDK declaration does.
+            const interrupt = running.interrupt as (
+              { cancelQueued }: { cancelQueued: boolean },
+            ) => ReturnType<ReturnType<QueryFn>['interrupt']>
+            const receipt = await interrupt.call(
+              running,
+              { cancelQueued },
+            )
+
+            for (const uuid of receipt?.cancelled ?? []) {
+              const inputId = nativeInputs.get(uuid)
+
+              if (inputId) {
+                nativeInputs.delete(uuid)
+                publish?.({
+                  event: {
+                    type: 'input',
+                    receipt: {
+                      inputId,
+                      phase: 'refused',
+                    },
+                  },
+                })
+              }
+            }
           }
         },
         close() {

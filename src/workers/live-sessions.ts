@@ -104,6 +104,7 @@ export function createLiveSessions({
     input: Record<string, unknown>
     actor: string
     eventId?: string
+    details?: string
   }): void
   interrupt({
     writer,
@@ -753,9 +754,11 @@ export function createLiveSessions({
             fn: ({ writer }) => record({
               writer,
               agent: card.agent,
-              input: { activity: 'finished' },
+              input: { activity: outcome.status === 'interrupted' ? 'interrupted' : 'finished' },
               actor: 'pnyx',
-              eventId: `native:${outcome.turn}:finished`,
+              eventId: `native:${outcome.turn}:${outcome.status}`,
+              details: outcome.stoppedProcesses?.length
+                ? `Stopped foreground command processes: ${outcome.stoppedProcesses.join(', ')}` : undefined,
             }),
           })
 
@@ -937,7 +940,6 @@ export function createLiveSessions({
           }
 
           turnRunning = false
-          entry.stopping = false
           entry.tools.clear()
           entry.toolNames.clear()
           entry.thinking.clear()
@@ -945,7 +947,7 @@ export function createLiveSessions({
           entry.replies.finish()
           streamed({ session: key })
 
-          if (card.id === HYDRA_CARD) {
+          if (card.id === HYDRA_CARD && !entry.stopping) {
             turns().turnFinished({
               entry,
               answering,
@@ -996,11 +998,18 @@ export function createLiveSessions({
           }
         }
 
-        if (activity !== entry.activity) {
-          entry.activity = activity
+        const stopped = activity === 'finished' && entry.stopping
+        const recordedActivity = stopped ? 'interrupted' : activity
+
+        if (activity === 'finished') {
+          entry.stopping = false
+        }
+
+        if (recordedActivity !== entry.activity) {
+          entry.activity = recordedActivity
 
           if (card.id === HYDRA_CARD && activity !== 'working') {
-            turns().activityChanged({ activity })
+            turns().activityChanged({ activity: recordedActivity })
           }
 
           note({
@@ -1008,13 +1017,13 @@ export function createLiveSessions({
               const eventId = turns().activityEventId({
                 writer,
                 card,
-                activity,
+                activity: recordedActivity,
               })
 
               record({
                 writer,
                 agent: card.agent,
-                input: { activity },
+                input: { activity: recordedActivity },
                 actor: 'pnyx',
                 eventId,
               })

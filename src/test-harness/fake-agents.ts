@@ -724,6 +724,31 @@ export function replayCodex({
           return
         }
 
+        if (message.method === 'turn/interrupt') {
+          const { turnId } = message.params as { turnId: string }
+          send({
+            message: {
+              id: message.id,
+              result: {},
+            },
+          })
+          send({
+            message: {
+              method: 'turn/completed',
+              params: {
+                threadId: session.id,
+                turn: {
+                  id: turnId,
+                  status: 'interrupted',
+                  error: null,
+                },
+              },
+            },
+          })
+
+          return
+        }
+
         const found = answer({ method: message.method })
 
         if (!found) {

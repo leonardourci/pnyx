@@ -6,6 +6,8 @@ import type { QueryFn } from '#workers/claude.ts'
 // The SDK boundary consumes input independently of foreground results, as its native queue does.
 export function claudeNative() {
   const incoming: SDKUserMessage[] = []
+  const interrupts: { cancelQueued?: boolean }[] = []
+  const cancelled: string[] = []
   const outgoing: SDKMessage[] = []
   let wake = () => {}, closed = false, options: Options | undefined
   let inputFailure: unknown
@@ -62,7 +64,14 @@ export function claudeNative() {
         close: () => {
           closed = true; wake()
         },
-        interrupt: async () => {},
+        interrupt: async ({ cancelQueued }: { cancelQueued?: boolean } = {}) => {
+          interrupts.push({ cancelQueued })
+
+          return {
+            cancelled: cancelQueued ? cancelled : [],
+            still_queued: cancelQueued ? [] : cancelled,
+          }
+        },
         setModel: async () => {},
         setPermissionMode: async () => {},
         applyFlagSettings: async () => {},
@@ -74,6 +83,8 @@ export function claudeNative() {
     query,
     options: () => options,
     incoming,
+    interrupts,
+    cancelled,
     delivered: () => delivered,
     closed: () => closed,
     fail({ error }: { error: Error }) {

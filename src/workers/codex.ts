@@ -1,3 +1,4 @@
+import { codexProcesses } from './codex-processes.ts'
 import { HydraError } from '#store/errors.ts'
 import { BROWSER_TOOL } from './tools.ts'
 import { log } from '#app/diagnostics.ts'
@@ -134,7 +135,21 @@ function userQuestions({ value }: { value: unknown }): (Question & { id: string 
   })
 }
 
-function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
+function connection({
+  child,
+  command = () => {},
+}: {
+  child: ChildProcessWithoutNullStreams
+  command?({
+    id,
+    command,
+    completed,
+  }: {
+    id: string
+    command: string
+    completed: boolean
+  }): void
+}) {
   let permission: AskPermission | undefined, activeThread: string | undefined
   let emit: ({ event }: { event: NativeEvent }) => void = () => {}
   const approvals = new Map<string | number, {
@@ -494,6 +509,14 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 
             const item = object({ value: params.item })
 
+            if (item.type === 'commandExecution' && typeof item.id === 'string') {
+              command({
+                id: item.id,
+                command: String(item.command ?? ''),
+                completed: true,
+              })
+            }
+
             const toolDone = message.method === 'item/completed' && TOOL_ITEMS.includes(String(item.type))
 
             if (message.method === 'item/agentMessage/delta' || item.type === 'agentMessage' || item.type === 'reasoning' || toolDone) {
@@ -517,6 +540,14 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               completed: false,
             })
             const item = object({ value: params.item })
+
+            if (item.type === 'commandExecution' && typeof item.id === 'string') {
+              command({
+                id: item.id,
+                command: String(item.command ?? ''),
+                completed: false,
+              })
+            }
 
             if (item.type === 'fileChange' && typeof item.id === 'string') {
               items.set(
@@ -1180,7 +1211,11 @@ export function codexProvider({
       })
       spawned?.({ child })
 
-      const rpc = connection({ child })
+      const processes = codexProcesses({ pid: child.pid })
+      const rpc = connection({
+        child,
+        command: processes.command,
+      })
 
       const close = () => {
         deferredInterrupt?.reject({ error: new Error('The Codex session closed before it could be interrupted') })
@@ -1249,13 +1284,29 @@ export function codexProvider({
 
         const id = thread.id
         let turnId: string | undefined, interrupted = false
-        const stopTurn = () => rpc.request({
-          method: 'turn/interrupt',
-          params: {
-            threadId: id,
-            turnId,
-          },
-        })
+        let stoppedCommands: Promise<number[]> | undefined
+        let continuation: HostedInput | undefined
+        let latestSteering: HostedInput | undefined
+        const carried: HostedInput[] = []
+        let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
+
+        const stopTurn = async () => {
+          const stop = async () => {
+            const cleanup = await processes.capture()
+            await rpc.request({
+              method: 'turn/interrupt',
+              params: {
+                threadId: id,
+                turnId,
+              },
+            })
+
+            return cleanup()
+          }
+
+          stoppedCommands = stop()
+          await stoppedCommands
+        }
 
         const interruptStartedTurn = async () => {
           const waiting = deferredInterrupt
@@ -1283,6 +1334,7 @@ export function codexProvider({
             permission,
             emit,
           }) {
+            publish = emit
             rpc.permissions({
               ask: permission,
               thread: id,
@@ -1301,7 +1353,7 @@ export function codexProvider({
             let incoming = messages.next()
             let inputDone = false
             // Messages that could not join the running turn, because it was ending or being stopped; each opens a turn of its own.
-            const carried: HostedInput[] = []
+
             const turnInput = ({
               text,
               message,
@@ -1325,7 +1377,8 @@ export function codexProvider({
             ]
 
             for (;;) {
-              let message = carried.shift()
+              let message = continuation ?? carried.shift()
+              continuation = undefined
 
               if (message === undefined && inputDone) {
                 return
@@ -1345,6 +1398,9 @@ export function codexProvider({
                 incoming = messages.next()
               }
 
+              await processes.begin()
+              stoppedCommands = undefined
+              latestSteering = undefined
               const said = message.text
               const inputIds = [message.id]
               emit({
@@ -1585,6 +1641,7 @@ export function codexProvider({
                         }),
                       },
                     })
+                    latestSteering = message
                     inputIds.push(message.id)
                     emit({
                       event: {
@@ -1663,6 +1720,7 @@ export function codexProvider({
                 error = String(object({ value: terminal?.error }).message ?? 'Codex ended without a successful result')
               }
 
+              const stoppedProcesses = await stoppedCommands
               emit({
                 event: {
                   type: 'result',
@@ -1670,6 +1728,7 @@ export function codexProvider({
                   inputIds,
                   status,
                   error,
+                  stoppedProcesses,
                   queued: carried.length,
                 },
               })
@@ -1684,8 +1743,33 @@ export function codexProvider({
           }) {
             options[setting] = value
           },
-          async interrupt() {
+          async interrupt({ cancelQueued = true } = {}) {
             interrupted = true
+
+            if (cancelQueued) {
+              continuation = undefined
+
+              for (const message of carried.splice(0)) {
+                publish?.({
+                  event: {
+                    type: 'input',
+                    receipt: {
+                      inputId: message.id,
+                      phase: 'refused',
+                    },
+                  },
+                })
+              }
+            } else if (!carried.length) {
+              continuation = {
+                id: randomUUID(),
+                text: `<pnyx-wake>The owner interrupted your previous step. Answer their latest message now:\n${latestSteering?.text.replace(
+                  /<\/pnyx-wake/gi,
+                  '<\\/pnyx-wake',
+                ) ?? 'Continue with the latest owner request in this thread.'}</pnyx-wake>`,
+                images: [],
+              }
+            }
 
             if (turnId) {
               try {

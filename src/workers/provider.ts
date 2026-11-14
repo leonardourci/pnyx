@@ -157,6 +157,7 @@ export type TurnOutcome = {
   turn: string
   inputIds: string[]
   status: 'completed' | 'interrupted' | 'failed'
+  stoppedProcesses?: number[]
   at: string
   assistant: {
     id: string
@@ -241,7 +242,8 @@ export interface HostedSession {
     value: string
   }): Promise<void>
   // Ends the running turn early; the session stays open for the next message.
-  interrupt(): Promise<void>
+  // eslint-disable-next-line pnyx/object-params -- Optional control options preserve no-argument Stop callers.
+  interrupt(options?: { cancelQueued?: boolean }): Promise<void>
   commands?(): Promise<{
     name: string
     description: string
