@@ -62,6 +62,7 @@ create table events (
 
 create index events_card_history on events (hydra_id, card_id, seq);
 create index events_type_history on events (hydra_id, type, seq);
+create index events_at on events (hydra_id, at);
 
 -- Latest source watermarks reject delayed reports across restarts without recording repeat events.
 create table source_observations (

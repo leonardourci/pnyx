@@ -7,8 +7,7 @@ import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentRef, ReplyState } from '#workers/model.ts'
-import { hydraDir } from '#app/home-migration.ts'
-import { readEventsFrom } from '#app/event-log.ts'
+import { readEvents } from '#app/event-log.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
@@ -550,49 +549,6 @@ export function latestMessage({
 // chunks when reply receipts also fill the latest page.
 export const THREAD_CURSOR = /^(?:n(?:(\d+)\.)?(\d+:\d+)?;r(\d+:\d+)?|m[\w%.!~*'()-]+)$/
 type LoggedMessage = HydraEvent
-const replyLogs = new Map<string, {
-  end: number
-  events: LoggedMessage[]
-}>()
-
-function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
-  const dir = hydraDir({ hydraId })
-  let log = replyLogs.get(dir) ?? {
-    end: 0,
-    events: [],
-  }
-  let read = readEventsFrom({
-    hydraId,
-    offset: log.end,
-  })
-
-  if (!read) {
-    log = {
-      end: 0,
-      events: [],
-    }; read = readEventsFrom({
-      hydraId,
-      offset: 0,
-    })
-  }
-
-  const added = (read?.events ?? []).filter((e): e is LoggedMessage =>
-    (e.type === 'card.replied' && !!e.data.text)
-    || (e.actor === 'hydra' && e.type !== 'hydra.message'))
-  log = {
-    end: read?.end ?? 0,
-    events: added.length ? [
-      ...log.events,
-      ...added,
-    ] : log.events,
-  }
-  replyLogs.set(
-    dir,
-    log,
-  )
-
-  return log.events
-}
 
 // A moved task's owner replies stay in each Hydra it passed through. They are numbered in
 // order across those Hydras, so the reply cursor stays one increasing number; a task that
@@ -612,7 +568,11 @@ function threadEvents({
   })
 
   if (!history.some(entry => entry.hydra !== hydraId)) {
-    return repliedEvents({ hydraId })
+    return readEvents({
+      hydraId,
+      cardId: card.id,
+      types: ['card.replied'],
+    }).filter(event => event.type === 'card.replied' && !!event.data.text)
   }
 
   return history.reverse().map((
@@ -1161,16 +1121,15 @@ function readThreadPage(
   if (card.id === HYDRA_CARD) {
     const firstAt = result.entries[0]?.at
     const beforeAt = excludedAt.toSorted()[0]
-    result.actions = repliedEvents({ hydraId }).filter(event => {
-      const afterStart = firstAt !== undefined && event.at >= firstAt
-      const beforeEnd = beforeAt === undefined || event.at <= beforeAt
-      const inPage = afterStart && beforeEnd
-
-      return inPage && threadAction({
-        event,
-        state,
-      })
-    })
+    result.actions = firstAt === undefined ? [] : readEvents({
+      hydraId,
+      hydraActions: true,
+      atFrom: firstAt,
+      atTo: beforeAt,
+    }).filter(event => threadAction({
+      event,
+      state,
+    }))
   }
 
   const carried = `${sourceCursor === undefined ? '' : `${sourceCursor}.`}${nativeCursor ?? ''}`

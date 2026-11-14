@@ -44,6 +44,11 @@ export interface EventSelection {
   limit?: number
   descending?: boolean
   updates?: boolean
+  // Only events at or after this time, and at or before that one.
+  atFrom?: string
+  atTo?: string
+  // Only what shows in Hydra's chat as its own work: replies with text and the events Hydra itself wrote.
+  hydraActions?: boolean
 }
 
 function eventSelection({
@@ -56,6 +61,9 @@ function eventSelection({
   ids,
   seqs,
   updates = false,
+  atFrom,
+  atTo,
+  hydraActions = false,
 }: EventSelection) {
   const cards = cardIds ?? (cardId === undefined ? null : [cardId])
 
@@ -73,7 +81,11 @@ function eventSelection({
       and ($7::bigint is null or seq < $7)
       and (not $9::boolean or exists (select 1 from card_updates updated
         where updated.hydra_id = events.hydra_id and updated.seq = events.seq
-          and ($3::text[] is null or updated.card_id = any($3))))`,
+          and ($3::text[] is null or updated.card_id = any($3))))
+      and ($10::text is null or at >= $10)
+      and ($11::text is null or at <= $11)
+      and (not $12::boolean or (type = 'card.replied' and coalesce(data->'data'->>'text', '') <> '')
+        or (actor = 'hydra' and type <> 'hydra.message'))`,
     values: [
       hydraId,
       after,
@@ -87,6 +99,9 @@ function eventSelection({
         encodeURIComponent(id),
       ]) ?? null,
       updates,
+      atFrom ?? null,
+      atTo ?? null,
+      hydraActions,
     ],
   }
 }
@@ -103,7 +118,7 @@ export function readEvents({
   const [rows] = query({
     statements: [
       {
-        text: `select data from events ${where} order by seq ${descending ? 'desc' : 'asc'} limit $10`,
+        text: `select data from events ${where} order by seq ${descending ? 'desc' : 'asc'} limit $13`,
         values: [
           ...values,
           limit ?? null,

@@ -143,11 +143,12 @@ async function requireSchema({ client }: { client: pg.Client }): Promise<void> {
         insert into schema_version (version) values (4)`)
       }
 
-      // The page reads no events: a card's Updates come from the server a page at a time.
-      await client.query(`${PAGE_PUBLICATION.replace(
-        'create publication pnyx_page for table',
-        'alter publication pnyx_page set table',
-      )};
+      // The page reads no events, and Hydra's chat reads the actions within the time its page spans.
+      await client.query(`create index events_at on events (hydra_id, at);
+        ${PAGE_PUBLICATION.replace(
+          'create publication pnyx_page for table',
+          'alter publication pnyx_page set table',
+        )};
         insert into schema_version (version) values (5)`)
       await client.query('commit')
       removedDebugRows = removed?.rows.map(row => ({
