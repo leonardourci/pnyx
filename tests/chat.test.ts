@@ -1,4 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
+import { safeEnd } from '#web-shared/ui/reveal.ts'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -351,5 +352,42 @@ test(
     expect(wake).toContain('Halfway through the invoices')
     expect(wake).toContain('Need the SFTP password')
     expect(session.received).toHaveLength(2)
+  },
+)
+
+test(
+  'a streaming reply is shown only up to whole Markdown, and all of it once the reply is final',
+  () => {
+    const shown = ({
+      text,
+      final = false,
+      fenced = false,
+    }: {
+      text: string
+      final?: boolean
+      fenced?: boolean
+    }) => text.slice(
+      0,
+      safeEnd({
+        text,
+        end: text.length,
+        final,
+        fenced,
+      }),
+    )
+
+    expect(shown({ text: 'Ship **on Fri' })).toBe('Ship ')
+    expect(shown({ text: 'Ship **on Friday** after' })).toBe('Ship **on Friday** after')
+    expect(shown({ text: 'Run `pnpm ver' })).toBe('Run ')
+    expect(shown({ text: 'See [the docs](https://exa' })).toBe('See ')
+    expect(shown({ text: '```s' })).toBe('')
+    expect(shown({
+      text: '```sh\npnpm build\n``',
+      fenced: true,
+    })).toBe('```sh\npnpm build\n')
+    expect(shown({
+      text: 'Ship **on Fri',
+      final: true,
+    })).toBe('Ship **on Fri')
   },
 )
