@@ -726,6 +726,8 @@ const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>>
       'Emulation.setTouchEmulationEnabled',
       { enabled: true },
     )
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+    await page.evaluate(() => new Promise(requestAnimationFrame))
     const move = ({
       type,
       y,
@@ -753,12 +755,8 @@ const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>>
       y: 360,
     })
     await move({
-      type: 'touchMove',
-      y: 420,
-    })
-    await move({
       type: 'touchEnd',
-      y: 420,
+      y: 360,
     })
     await session.detach()
   },
