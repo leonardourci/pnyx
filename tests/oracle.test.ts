@@ -113,12 +113,7 @@ test(
   'column and date filters narrow a search the same way from the page and the CLI, and a bad filter is refused',
   async () => {
     const hydra = await pnyx.hydra()
-    const done = (await hydra.owner({
-      args: [
-        'column',
-        'list',
-      ],
-    })).columns.find((column: { role: string }) => column.role === 'done').id
+    const done = await hydra.column({ role: 'done' })
 
     for (const key of [
       'open',

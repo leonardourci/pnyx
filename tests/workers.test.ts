@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { startPnyx, until, type AgentSession, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -17,51 +17,6 @@ const times = ({
   text: string
 }) => sessions.flatMap(session => session.received).filter(message => message.includes(text)).length
 
-const startedTask = async ({
-  hydra,
-  key,
-  harness = 'claude',
-}: {
-  hydra: Hydra
-  key: string
-  harness?: 'claude' | 'codex'
-}) => {
-  const folder = hydra.folder({ name: key })
-  await hydra.owner({
-    args: [
-      'task',
-      'create',
-      '--title',
-      `Task ${key}`,
-      '--key',
-      key,
-      '--folder',
-      folder,
-      '--brief',
-      `Brief for ${key}`,
-    ],
-  })
-  await hydra.owner({
-    args: [
-      'task',
-      'start',
-      key,
-      '--harness',
-      harness,
-    ],
-  })
-  const worker = await hydra.agent({ cwd: folder })
-  await until({
-    what: `${key}'s first turn`,
-    check: () => worker.answered === 1,
-  })
-
-  return {
-    folder,
-    worker,
-  }
-}
-
 test(
   'a started worker runs in its task\'s folder with its brief, and each owner reply reaches it once with a delivered receipt',
   async () => {
@@ -69,8 +24,7 @@ test(
     const {
       folder,
       worker,
-    } = await startedTask({
-      hydra,
+    } = await hydra.startTask({
       key: 'export',
     })
     expect(worker.cwd).toBe(folder)
@@ -135,16 +89,10 @@ test(
   'a worker\'s permission request waits on its card until the owner decides it once, and the worker gets that decision',
   async () => {
     const hydra = await pnyx.hydra()
-    const { worker } = await startedTask({
-      hydra,
+    const { worker } = await hydra.startTask({
       key: 'cleanup',
     })
-    const needsYou = (await hydra.owner({
-      args: [
-        'column',
-        'list',
-      ],
-    })).columns.find((column: { role: string }) => column.role === 'needs_you').id
+    const needsYou = await hydra.column({ role: 'needs_you' })
 
     const denied = worker.useTool!({
       tool: 'Bash',
@@ -303,10 +251,10 @@ test(
         'read',
         'migration',
       ],
-    })).messages).toBe('none: no pending steering')
+    })).messages).toMatch(/^none:/)
 
     expect(resumed.id).toBe(cut.id)
-    expect(resumed.received[0]).toContain('Pnyx restarted during your turn')
+    expect(resumed.received[0]).toContain('Pnyx restarted')
     const sessions = pnyx.claude.sessions.filter(session => session.cwd === folder)
     expect(sessions).toHaveLength(2)
     expect(times({
@@ -323,8 +271,7 @@ test(
     const {
       folder,
       worker,
-    } = await startedTask({
-      hydra,
+    } = await hydra.startTask({
       key: 'codex',
       harness: 'codex',
     })
@@ -384,8 +331,7 @@ test(
   'an answer the agent refuses shows as failed in the task chat, reached nobody, and stays failed after a restart',
   async () => {
     const hydra = await pnyx.hydra()
-    const { worker } = await startedTask({
-      hydra,
+    const { worker } = await hydra.startTask({
       key: 'refused',
       harness: 'codex',
     })

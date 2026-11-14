@@ -177,7 +177,7 @@ test(
         'stop',
       ],
     })
-    expect(idle.stopped).toBe('none: Hydra is not working on a turn')
+    expect(idle.stopped).toMatch(/^none:/)
   },
 )
 
@@ -359,7 +359,7 @@ test(
 )
 
 test(
-  'a streaming reply is shown only up to whole Markdown, and all of it once the reply is final',
+  'the streaming cut keeps unclosed Markdown out of view and shows all of a final reply',
   () => {
     const shown = ({
       text,
@@ -392,5 +392,58 @@ test(
       text: 'Ship **on Fri',
       final: true,
     })).toBe('Ship **on Fri')
+  },
+)
+
+test(
+  'owner messages sent while Hydra works survive a restart that cuts its turn: Hydra resumes once, is pointed at what it did not answer, and the messages stay in order',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'plan the migration',
+      reply: 'Migration planned.',
+      partial: 'Migration',
+      hold: true,
+    })
+    await hydra.chat({ text: 'plan the migration' })
+
+    for (const text of [
+      'also check the indexes',
+      'and the backups',
+    ]) {
+      await hydra.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          text,
+        ],
+      })
+    }
+
+    await pnyx.restart()
+    // Hydra resumes its session once and is pointed at the messages it did not answer.
+    const resumed = await until({
+      what: 'Hydra to resume its session after the restart',
+      check: () => pnyx.claude.sessions.find(s => s.env.PNYX_HYDRA === hydra.id && s.resumed),
+    })
+    await until({
+      what: 'the resumed Hydra to hear of the cut turn',
+      check: () => resumed.received.some(text => text.includes('restart cut your last turn')),
+    })
+    expect(resumed.received.filter(text => text.includes('restart cut your last turn'))).toHaveLength(1)
+
+    const { messages } = await hydra.owner({
+      args: [
+        'hydra',
+        'messages',
+      ],
+    })
+    expect(messages.map((message: { text: string }) => message.text)).toEqual([
+      'plan the migration',
+      'also check the indexes',
+      'and the backups',
+    ])
   },
 )

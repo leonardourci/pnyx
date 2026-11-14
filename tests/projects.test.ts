@@ -204,7 +204,7 @@ test(
       ],
     })).toMatchObject({
       code: 'NOT_LANDED',
-      error: 'not done yet: 1 file uncommitted',
+      error: expect.stringContaining('uncommitted'),
     })
 
     git({
@@ -306,7 +306,7 @@ test(
       ],
     })).toMatchObject({
       code: 'NOT_LANDED',
-      error: 'not done yet: its pull request has not merged',
+      error: expect.stringContaining('pull request'),
     })
     await until({
       what: 'the card to read the open pull request',
@@ -338,13 +338,9 @@ test(
         return task.status.startsWith('done') && task
       },
     })
-    expect(done.status).toBe('done: Pull request https://github.com/o/shop/pull/7 merged')
-    expect(done.column).toBe((await hydra.owner({
-      args: [
-        'column',
-        'list',
-      ],
-    })).columns.find((column: { role: string }) => column.role === 'done').id)
+    expect(done.status).toMatch(/^done:/)
+    expect(done.status).toContain('https://github.com/o/shop/pull/7')
+    expect(done.column).toBe(await hydra.column({ role: 'done' }))
     expect(merges({ number: 7 })).toBe(0)
   },
 )

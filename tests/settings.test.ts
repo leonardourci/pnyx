@@ -24,12 +24,7 @@ const queuedWidth = async ({ hydra }: { hydra: Hydra }) => {
       'show',
     ],
   })
-  const queued = (await hydra.owner({
-    args: [
-      'column',
-      'list',
-    ],
-  })).columns.find((column: { role: string }) => column.role === 'queued').id
+  const queued = await hydra.column({ role: 'queued' })
 
   return view.columnWidths?.[queued] ?? view.defaultColumnWidths[queued]
 }
@@ -63,12 +58,7 @@ test(
     })).toMatchObject({ settings: { theme: 'dark' } })
     page.close()
 
-    const queued = (await first.owner({
-      args: [
-        'column',
-        'list',
-      ],
-    })).columns.find((column: { role: string }) => column.role === 'queued').id
+    const queued = await first.column({ role: 'queued' })
     const defaultWidth = await queuedWidth({ hydra: second })
     await first.owner({
       args: [

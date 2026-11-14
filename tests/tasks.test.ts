@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -7,39 +7,17 @@ beforeAll(async () => {
   pnyx = await startPnyx()
 })
 
-// The board's column ids by their role, as the default columns name them.
-const columns = async ({ hydra }: { hydra: Hydra }) => Object.fromEntries((await hydra.owner({
-  args: [
-    'column',
-    'list',
-  ],
-})).columns.map((column: {
-  id: string
-  role: string
-}) => [
-  column.role,
-  column.id,
-])) as Record<'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done', string>
-
-const task = async ({
-  hydra,
-  key,
-}: {
-  hydra: Hydra
-  key: string
-}) => (await hydra.owner({
-  args: [
-    'task',
-    'show',
-    key,
-  ],
-})).task
-
 test(
   'a task moves across the board as its worker and Hydra report, and its dependent becomes ready once it is done',
   async () => {
     const hydra = await pnyx.hydra()
-    const board = await columns({ hydra })
+    const board = {
+      queued: await hydra.column({ role: 'queued' }),
+      in_progress: await hydra.column({ role: 'in_progress' }),
+      needs_you: await hydra.column({ role: 'needs_you' }),
+      parked: await hydra.column({ role: 'parked' }),
+      done: await hydra.column({ role: 'done' }),
+    }
     const folder = hydra.folder({ name: 'export' })
     await hydra.owner({
       args: [
@@ -74,14 +52,8 @@ test(
         'build',
       ],
     })
-    expect((await task({
-      hydra,
-      key: 'build',
-    })).column).toBe(board.queued)
-    expect((await task({
-      hydra,
-      key: 'ship',
-    })).readiness).toMatchObject({
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
+    expect((await hydra.task({ key: 'ship' })).readiness).toMatchObject({
       ready: false,
       unmet: [expect.objectContaining({ title: 'Build the export' })],
     })
@@ -100,10 +72,7 @@ test(
     const worker = await hydra.agent({ cwd: folder })
     expect(worker.received).toHaveLength(1)
     expect(worker.received[0]).toContain('Write the CSV export')
-    expect((await task({
-      hydra,
-      key: 'build',
-    })).column).toBe(board.in_progress)
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
 
     const again = await hydra.ownerRefused({
       args: [
@@ -129,10 +98,7 @@ test(
         'Only the owner knows the accounting rule',
       ],
     })
-    expect((await task({
-      hydra,
-      key: 'build',
-    })).column).toBe(board.needs_you)
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.needs_you)
 
     await hydra.owner({
       args: [
@@ -149,10 +115,7 @@ test(
       check: () => session.received.some(message => message.includes('No, only open ones')),
     })
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
-    expect((await task({
-      hydra,
-      key: 'build',
-    })).column).toBe(board.in_progress)
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
 
     await hydra.as({ session: worker }).run({
       args: [
@@ -164,17 +127,11 @@ test(
         'Export written',
       ],
     })
-    expect(await task({
-      hydra,
-      key: 'build',
-    })).toMatchObject({
+    expect(await hydra.task({ key: 'build' })).toMatchObject({
       column: board.done,
       status: 'done: Export written',
     })
-    expect((await task({
-      hydra,
-      key: 'ship',
-    })).readiness).toEqual({
+    expect((await hydra.task({ key: 'ship' })).readiness).toEqual({
       ready: true,
       reasons: [],
       unmet: [],
@@ -231,18 +188,9 @@ test(
         'no-such-task',
       ],
     })).code).toBe('NOT_FOUND')
-    expect((await task({
-      hydra,
-      key: 'first',
-    })).readiness.ready).toBe(true)
-    expect((await task({
-      hydra,
-      key: 'alone',
-    })).readiness.ready).toBe(true)
-    expect((await task({
-      hydra,
-      key: 'second',
-    })).readiness.ready).toBe(false)
+    expect((await hydra.task({ key: 'first' })).readiness.ready).toBe(true)
+    expect((await hydra.task({ key: 'alone' })).readiness.ready).toBe(true)
+    expect((await hydra.task({ key: 'second' })).readiness.ready).toBe(false)
 
     await hydra.owner({
       args: [
@@ -253,10 +201,7 @@ test(
         'first',
       ],
     })
-    expect((await task({
-      hydra,
-      key: 'second',
-    })).readiness.ready).toBe(true)
+    expect((await hydra.task({ key: 'second' })).readiness.ready).toBe(true)
   },
 )
 
@@ -390,7 +335,13 @@ test(
   'a manual move can be undone until the card moves again, and apply --check previews without writing',
   async () => {
     const hydra = await pnyx.hydra()
-    const board = await columns({ hydra })
+    const board = {
+      queued: await hydra.column({ role: 'queued' }),
+      in_progress: await hydra.column({ role: 'in_progress' }),
+      needs_you: await hydra.column({ role: 'needs_you' }),
+      parked: await hydra.column({ role: 'parked' }),
+      done: await hydra.column({ role: 'done' }),
+    }
     await hydra.owner({
       args: [
         'task',
@@ -411,10 +362,7 @@ test(
         ],
       })
       expect(preview.confirmation).toBe('needed')
-      expect((await task({
-        hydra,
-        key: 'later',
-      })).column).not.toBe(to)
+      expect((await hydra.task({ key: 'later' })).column).not.toBe(to)
 
       return hydra.owner({
         args: [
@@ -428,20 +376,14 @@ test(
     }
 
     const parked = await move({ to: board.parked })
-    expect((await task({
-      hydra,
-      key: 'later',
-    })).column).toBe(board.parked)
+    expect((await hydra.task({ key: 'later' })).column).toBe(board.parked)
     await hydra.owner({
       args: [
         'undo',
         parked.event.id,
       ],
     })
-    expect((await task({
-      hydra,
-      key: 'later',
-    })).column).toBe(board.queued)
+    expect((await hydra.task({ key: 'later' })).column).toBe(board.queued)
 
     const again = await move({ to: board.parked })
     await move({ to: board.done })
@@ -451,10 +393,7 @@ test(
         again.event.id,
       ],
     })).code).toBe('CONFLICT')
-    expect((await task({
-      hydra,
-      key: 'later',
-    })).column).toBe(board.done)
+    expect((await hydra.task({ key: 'later' })).column).toBe(board.done)
 
     const seq = () => rows<{ seq: string }>({
       text: 'select seq from hydras where id = $1',

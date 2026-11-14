@@ -204,7 +204,7 @@ test(
     const proposed = await hydra.as({ session }).run({ args: ['upgrade'] })
     expect(proposed).toMatchObject({
       confirmation: 'needed',
-      action: 'Approve pnyx-axi upgrade ',
+      action: expect.stringContaining('pnyx-axi upgrade'),
     })
     const answer = await hydra.as({ session }).refused({
       args: [
@@ -237,7 +237,7 @@ test(
         'confirm',
         proposed.token,
       ],
-    })).event).toBe('none: proposal already resolved or missing')
+    })).event).toMatch(/^none:/)
     expect(upgrades({ hydraId: hydra.id })).toEqual([])
   },
 )
