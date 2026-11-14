@@ -321,7 +321,7 @@ export type PushedEvent = EventBase & {
   }
 }
 
-// Legacy repeat records remain replayable; new repeats advance a private watermark.
+// Legacy repeat records remain replayable; new repeats advance a private observation time.
 export type ObservedEvent = EventBase & {
   type: 'card.observed'
   data: {

@@ -583,7 +583,7 @@ const remove = ({
   values: [JSON.stringify(rows)],
 })
 
-// Observation timestamps live in private watermarks and do not dirty public rows.
+// Repeated observations do not change public rows.
 function comparisonRow({
   table,
   row,

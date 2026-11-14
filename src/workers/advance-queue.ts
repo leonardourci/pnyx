@@ -22,7 +22,7 @@ import { checkAttachments, seenAt } from './presence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { scanEvents, findEvent } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './queue.ts'
 import { pendingPermissions } from './permission-rules.ts'
@@ -484,19 +484,18 @@ async function deliverHandoffs({
 
   const current = loadHydra({ hydraId }).state
 
-  return Boolean(findEvent({
+  return Boolean(scanEvents({
     hydraId,
     types: ['task.session'],
-    matches: ({ event }) => {
-      if (event.type !== 'task.session' || !event.data.handoff) {
-        return false
-      }
+  }).find(event => {
+    if (event.type !== 'task.session' || !event.data.handoff) {
+      return false
+    }
 
-      const card = current.cards[event.cardId]
-      const receipt = card?.replies?.find(r => r.id === `brief:${event.id}`)
+    const card = current.cards[event.cardId]
+    const receipt = card?.replies?.find(r => r.id === `brief:${event.id}`)
 
-      return card?.sessionIds?.[0] === event.data.session && (!receipt || receipt.state === 'failed')
-    },
+    return card?.sessionIds?.[0] === event.data.session && (!receipt || receipt.state === 'failed')
   }))
 }
 

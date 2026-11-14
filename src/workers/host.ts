@@ -1,10 +1,11 @@
+import { sessionId } from './session-attachments.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { taskDone } from '#tasks/select.ts'
 import { steeringHeld } from './steering.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { readEvents, findEvent } from '#app/event-log.ts'
+import { readEvents, scanEvents } from '#app/event-log.ts'
 
 export const SETTINGS = [
   'model',
@@ -69,20 +70,18 @@ export const MAX_RESUMES = 3
 
 // How many resumes in a row led to this turn: a resume turn's id names the turn it resumed.
 export function resumesInARow({
-  events,
   turn,
   read,
 }: {
-  events?: HydraEvent[]
   turn: HydraEvent
-  read?({ seq }: { seq: number }): HydraEvent | undefined
+  read({ seq }: { seq: number }): HydraEvent | undefined
 }): number {
   let count = 0
 
   for (let current: HydraEvent | undefined = turn; current?.id.startsWith('resume:');) {
     count++
     const resumed: number = Number(current.id.split(':')[1])
-    current = read ? read({ seq: resumed }) : events?.find(event => event.seq === resumed)
+    current = read({ seq: resumed })
   }
 
   return count
@@ -98,14 +97,21 @@ export function findWorkerTurnToResume({
   state: HydraState
   agent: AgentRef
 }): string | undefined {
-  const lastTurn = findEvent({
+  const session = state.sessions?.[sessionId({ agent })]
+  const cardId = session?.taskId ?? session?.originCardId
+
+  if (!cardId) {
+    return undefined
+  }
+
+  const lastTurn = scanEvents({
+    cardId,
     hydraId,
     types: ['card.pushed'],
     descending: true,
-    matches: ({ event }) => event.type === 'card.pushed' && event.data.activity === 'working'
+  }).find(event => event.type === 'card.pushed' && event.data.activity === 'working'
       && event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider,
-  })
+      && event.data.agent.provider === agent.provider)
 
   if (!lastTurn || resumesInARow({
     turn: lastTurn,

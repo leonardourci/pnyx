@@ -287,7 +287,7 @@ export async function openPage({
   return {
     // The queue box's row: the updates waiting for Hydra and the batch it is reading.
     queue: () => row<{ queue: HydraQueue }>({
-      text: 'select value as queue from hydra_queues where hydra_id = $1',
+      text: 'select value as queue from hydra_values where hydra_id = $1 and key = \'queue\'',
       values: [hydraId],
     })?.queue,
     // Every thread page the server pushed to the subscribed tab, in order.

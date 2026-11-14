@@ -1,8 +1,8 @@
-import { errorDetails } from '#store/error-details.ts'
 import { randomUUID } from 'node:crypto'
-import { appendFile } from 'node:fs'
+import { appendFileSync, createWriteStream, type WriteStream } from 'node:fs'
 import { join } from 'node:path'
 import { inspect } from 'node:util'
+import { errorDetails } from '#store/error-details.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir } from '#store/storage.ts'
 import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type LogMode } from './log-line.ts'
@@ -10,10 +10,10 @@ import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type Lo
 export type { LogLine, LogMode } from './log-line.ts'
 
 const MAX_PAYLOAD_CHARS = 16 * 1024
-const MAX_PENDING_LINES = 200
-const MAX_LINE_BYTES = 64 * 1024
-let pending = 0
-const drained = new Set<() => void>()
+const streams = new Map<string, {
+  stream: WriteStream
+  lines: Set<string>
+}>()
 
 const FAILURE_INSPECT_DEPTH = 2
 const FAILURE_INSPECT_CHARS = 2000
@@ -36,13 +36,8 @@ let file: {
   day: string
   path: string
 } | undefined
-// The day whose file the last cleanup found past the size cap: until it ends that file takes only warnings and
-// errors, and once overfull nothing more, counting the warnings and errors it drops.
-let capped: {
-  day: string
-  overfull: boolean
-} | undefined
-let dropped = 0
+// Full days keep warnings and errors, while action lines stop at the size cap.
+let capped: string | undefined
 
 export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
   mode = next
@@ -50,24 +45,17 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
 
 export const logMode = () => mode
 
-// Set by each cleanup. The first time today's file passes the cap, a warning says why the action lines stop; while
-// it is overfull, each cleanup writes how many warnings and errors it dropped since the last one.
 export function setTodayFull({
   day,
   full,
-  overfull,
   maxBytes,
 }: {
   day: string
   full: boolean
-  overfull: boolean
   maxBytes?: number
 }): void {
-  const filled = full && capped?.day !== day
-  const count = dropped
-  // Cleared first, so these two warnings reach the file however full it is.
+  const filled = full && capped !== day
   capped = undefined
-  dropped = 0
 
   if (filled) {
     log({
@@ -77,18 +65,7 @@ export function setTodayFull({
     })
   }
 
-  if (count) {
-    log({
-      level: 'warn',
-      operation: 'logs.dropped',
-      count,
-    })
-  }
-
-  capped = full ? {
-    day,
-    overfull,
-  } : undefined
+  capped = full ? day : undefined
 }
 
 export function openLogs(): void {
@@ -98,6 +75,8 @@ export function openLogs(): void {
 // The next line opens its day's file again, after cleanup deleted the current one.
 export function releaseLogFile(): void {
   if (file) {
+    streams.get(file.path)?.stream.end()
+    streams.delete(file.path)
     file = undefined
   }
 }
@@ -144,12 +123,7 @@ function append({
     return
   }
 
-  if (capped?.day === day && (capped.overfull || !severe)) {
-    // Action lines stop at the cap by design; only the warnings and errors an overfull day drops are counted.
-    if (severe) {
-      dropped += 1
-    }
-
+  if (capped === day && !severe) {
     return
   }
 
@@ -166,35 +140,37 @@ function append({
       }
     }
 
-    if (pending >= MAX_PENDING_LINES || Buffer.byteLength(text) > MAX_LINE_BYTES) {
-      dropped++
+    const path = file.path
+    let output = streams.get(path)
 
-      return
+    if (!output) {
+      const stream = createWriteStream(
+        path,
+        {
+          flags: 'a',
+          mode: 0o600,
+        },
+      )
+      output = {
+        stream,
+        lines: new Set(),
+      }
+      streams.set(
+        path,
+        output,
+      )
+      stream.on(
+        'error',
+        error => console.error(String(error)),
+      )
     }
 
-    pending++
-    // Diagnostics can be lost on abrupt exit; they never delay the state change they describe.
-    appendFile(
-      file.path,
-      `${text}\n`,
-      { mode: 0o600 },
-      // eslint-disable-next-line pnyx/object-params -- Node owns the filesystem callback signature.
-      error => {
-        pending--
-
-        if (error && severe) {
-          console.error(text)
-          console.error(String(error))
-        }
-
-        if (pending === 0) {
-          for (const resolve of drained) {
-            resolve()
-          }
-
-          drained.clear()
-        }
-      },
+    const line = `${text}\n`
+    const lines = output.lines
+    lines.add(line)
+    output.stream.write(
+      line,
+      () => lines.delete(line),
     )
   } catch (error) {
     // An unwritable log folder must not break the action being logged: a warning or error goes to stderr instead, with the write error.
@@ -209,10 +185,49 @@ function append({
 
 // Graceful shutdown and diagnostics readers can finish outstanding appends without delaying ordinary log calls.
 export async function flushLogs(): Promise<void> {
-  if (pending > 0) {
-    await new Promise<void>(resolve => drained.add(resolve))
-  }
+  const outputs = [...streams.values()]
+  streams.clear()
+  await Promise.all(outputs.map(({ stream }) => new Promise<void>((
+    resolve,
+    reject,
+  ) => {
+    stream.once(
+      'error',
+      reject,
+    )
+    stream.end(resolve)
+  })))
 }
+
+// Node cannot drain a stream after exit starts. Preserve queued diagnostics on fatal exits.
+export function flushLogsSync(): void {
+  for (const [
+    path,
+    {
+      stream,
+      lines,
+    },
+  ] of streams) {
+    stream.destroy()
+
+    try {
+      appendFileSync(
+        path,
+        [...lines].join(''),
+        { mode: 0o600 },
+      )
+    } catch (error) {
+      console.error(String(error))
+    }
+  }
+
+  streams.clear()
+}
+
+process.on(
+  'exit',
+  flushLogsSync,
+)
 
 export function writeLine({
   line,

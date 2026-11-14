@@ -946,7 +946,7 @@ const queueTabs = ({
 const storedQueue = ({ hydraId }: { hydraId: string }) => (query({
   statements: [
     {
-      text: 'select value as queue from hydra_queues where hydra_id = $1',
+      text: 'select value as queue from hydra_values where hydra_id = $1 and key = \'queue\'',
       values: [hydraId],
     },
   ],

@@ -75,28 +75,12 @@ test(
       })
     }
 
+    const written = await lines({ day: today })
     assert.equal(
-      statSync(dayPath({ day: today })).size,
-      before,
-      'no failure line past twice the cap',
+      written.filter(line => line.operation === 'failing in a loop').length,
+      1000,
     )
-    cleanLogs({
-      days: 7,
-      maxBytes: MB,
-    })
-    assert.deepEqual(
-      (await lines({ day: today })).filter(line => line.operation === 'logs.dropped')
-        .map(line => [
-          line.level,
-          line.count,
-        ]),
-      [
-        [
-          'warn',
-          1000,
-        ],
-      ],
-    )
+    assert.ok(statSync(dayPath({ day: today })).size > before)
   },
 )
 

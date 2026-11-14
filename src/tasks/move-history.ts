@@ -11,11 +11,13 @@ export function movedHistory({
   hydraId,
   task,
   matches,
+  types,
   cards = [task],
 }: {
   hydraId: string
   task: string
   cards?: string[]
+  types?: string[]
   matches({ event }: { event: HydraEvent }): boolean
 }): HistoryEntry[] {
   const entries: HistoryEntry[] = []
@@ -24,6 +26,11 @@ export function movedHistory({
   let events = readEvents({
     hydraId,
     cardIds: cards,
+    types: types ? [
+      ...types,
+      'task.moved-in',
+      'task.moved-out',
+    ] : undefined,
   })
 
   while (hydra) {
@@ -48,6 +55,11 @@ export function movedHistory({
     events = readEvents({
       hydraId: from,
       cardIds: cards,
+      types: types ? [
+        ...types,
+        'task.moved-in',
+        'task.moved-out',
+      ] : undefined,
     })
     const departure = events.find(event => event.id === arrival.id && event.type === 'task.moved-out')
     hydra = departure ? from : undefined

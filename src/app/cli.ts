@@ -1,3 +1,4 @@
+import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
 import { AxiError } from 'axi-sdk-js'
@@ -6,7 +7,7 @@ import { taskCommand } from './task-cli.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { readEvents, scanEvents, countEvents } from './event-log.ts'
+import { readEvents, scanEvents } from './event-log.ts'
 import { historyTasks, updateTasks } from '#tasks/updates.ts'
 import { decideUndo } from './undo.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
@@ -95,19 +96,27 @@ export const history = guard({
       cardId,
       types: type ? [type] : undefined,
       before,
-      updates: Boolean(values.updates),
     }
     let matches = 0
     const page: HydraEvent[] = []
     const exactSelection = !workspace && (!cardId || values.updates)
 
     if (exactSelection) {
-      page.push(...readEvents({
-        ...selection,
-        descending: true,
-        limit,
-      }))
-      matches = countEvents(selection)
+      const read = values.updates ? readUpdateEvents({
+        types: selection.types,
+        hydraId,
+        cardId,
+        before,
+        limit: limit + 1,
+      })
+        : readEvents({
+          ...selection,
+          descending: true,
+          limit: limit + 1,
+        })
+      page.push(...read.filter(event => !type || event.type === type))
+      matches = page.length
+      page.splice(limit)
     } else {
       for (const event of scanEvents({
         ...selection,
@@ -123,9 +132,11 @@ export const history = guard({
 
         matches++
 
-        if (page.length < limit) {
-          page.push(event)
+        if (page.length === limit) {
+          break
         }
+
+        page.push(event)
       }
     }
 
@@ -134,7 +145,7 @@ export const history = guard({
     }
 
     const out: Output = {
-      count: `${page.length} of ${matches} ${before === undefined ? 'total' : `before ${before}`}`,
+      count: `${page.length}${matches > limit ? ', more before' : ''}`,
       events: page.map(e => ({
         seq: e.seq,
         id: e.id,

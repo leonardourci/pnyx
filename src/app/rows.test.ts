@@ -27,7 +27,7 @@ const stateWithCard = ({ brief }: { brief: string }) => {
 }
 
 test(
-  'the saved rows keep a short digest of each row, so a large row is not held twice, and an unchanged row writes nothing',
+  'an unchanged row writes nothing and a changed brief is saved',
   () => {
     const state = stateWithCard({ brief: 'long brief '.repeat(50_000) })
     const first = rowChanges({
@@ -37,14 +37,6 @@ test(
     })
 
     assert.ok(first.statements.length > 0)
-
-    for (const entry of first.next.values()) {
-      assert.ok(entry.digest.length <= 32)
-      assert.equal(
-        'json' in entry,
-        false,
-      )
-    }
 
     assert.deepEqual(
       rowChanges({

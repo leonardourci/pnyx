@@ -93,7 +93,6 @@ export function cleanLogs({
   setTodayFull({
     day: today,
     full: retained.full,
-    overfull: retained.overfull,
     maxBytes,
   })
 
@@ -105,7 +104,6 @@ export function clearLogs() {
   setTodayFull({
     day: logDay({ at: new Date().toISOString() }),
     full: false,
-    overfull: false,
   })
 
   return removed

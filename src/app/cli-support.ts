@@ -426,7 +426,10 @@ function originalReceipt(
     intent: Intent
   },
 ): Output {
-  const events = readEvents({ hydraId })
+  const events = readEvents({
+    hydraId,
+    ids: [id],
+  })
   const index = events.findIndex(e => e.id === id && e.seq === seq)
   const original = events[index]!
 

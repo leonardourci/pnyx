@@ -1,4 +1,5 @@
-import { readEvents } from '#app/event-log.ts'
+import { query } from '#store/postgres.ts'
+import type { HydraEvent } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
 import { capItem } from '#store/size-cap.ts'
@@ -35,11 +36,9 @@ export function taskUpdates({
     state: loadHydra({ hydraId }).state,
     ref,
   })
-  const read = readEvents({
+  const read = readUpdateEvents({
     hydraId,
     cardId: task.id,
-    updates: true,
-    descending: true,
     before,
     limit: limit + 1,
   })
@@ -62,4 +61,41 @@ export function taskUpdates({
     task: task.id,
     events,
   }
+}
+
+export function readUpdateEvents({
+  hydraId,
+  cardId,
+  before,
+  limit,
+  types,
+}: {
+  types?: string[]
+  hydraId: string
+  cardId?: string
+  before?: number
+  limit: number
+}): HydraEvent[] {
+  const [rows] = query({
+    statements: [
+      {
+        text: `select distinct on (updated.seq) events.data from card_updates updated join events
+        on events.hydra_id = updated.hydra_id and events.seq = updated.seq
+        where updated.hydra_id = $1 and ($2::text is null or updated.card_id = $2)
+          and ($3::bigint is null or updated.seq < $3)
+          and ($5::text[] is null or events.type = any($5))
+        order by updated.seq desc limit $4`,
+        values: [
+          hydraId,
+          cardId,
+          before ?? null,
+          limit,
+          types ?? null,
+        ],
+      },
+    ],
+  }) as { data: HydraEvent }[][]
+  const read = rows!.map(row => row.data)
+
+  return read
 }

@@ -7,7 +7,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { requireReportReview } from '#investigations/inventory.ts'
 import { checkRevision, strip } from '#tasks/push-rules.ts'
 import { sessionId } from '#workers/session-attachments.ts'
-import { observationKey, sourceFacts, sessionFacts } from '#tasks/observations.ts'
+import { observationKey, sessionFacts } from '#tasks/observations.ts'
 import { reduce } from './reducer.ts'
 
 const REPORT_LIMIT = 200
@@ -136,7 +136,7 @@ export function decided({
   })
   const after = strip({ card: reduced.cards[event.cardId] })
 
-  if (before && isDeepStrictEqual(
+  if (event.type !== 'card.pushed' && before && isDeepStrictEqual(
     before,
     after,
   ) && isDeepStrictEqual(
@@ -147,29 +147,8 @@ export function decided({
   }
 
   if (event.type === 'card.pushed' && event.data.source && key) {
-    const beforeFacts = before && {
-      ...before,
-      sourceRefs: sourceFacts({ refs: before.sourceRefs ?? [] }),
-    }
-    const afterFacts = after && {
-      ...after,
-      sourceRefs: sourceFacts({ refs: after.sourceRefs ?? [] }),
-    }
-    const sessions = new Set([
-      ...Object.keys(state.sessions ?? {}),
-      ...Object.keys(reduced.sessions ?? {}),
-    ])
-    const sameSessions = [...sessions].every(id => isDeepStrictEqual(
-      sessionFacts({ session: state.sessions?.[id] }),
-      sessionFacts({ session: reduced.sessions?.[id] }),
-    ))
-    const unchanged = isDeepStrictEqual(
-      beforeFacts,
-      afterFacts,
-    ) && sameSessions
-    const projected = unchanged ? state : reduced
     const session = sessionSignature({
-      state: projected,
+      state: reduced,
       event,
     })
 
@@ -181,7 +160,7 @@ export function decided({
         key,
         {
           report,
-          revision: projected.cards[event.cardId]?.revision ?? 0,
+          revision: reduced.cards[event.cardId]?.revision ?? 0,
           session,
         },
       )
@@ -189,10 +168,6 @@ export function decided({
       if (cache.size > REPORT_LIMIT) {
         cache.delete(cache.keys().next().value!)
       }
-    }
-
-    if (unchanged) {
-      return observation({ event })
     }
   }
 

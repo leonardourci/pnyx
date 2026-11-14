@@ -1194,7 +1194,7 @@ test(
 )
 
 test(
-  'a private source watermark rejects older hooks after restart without a repeat event',
+  'a private source observation time rejects older hooks after restart without a repeat event',
   () => {
     process.env.PNYX_HOME = sandbox().home
     hookAt({

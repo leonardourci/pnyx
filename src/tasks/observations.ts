@@ -2,7 +2,7 @@ import type { HydraState, SourceRef } from '#app/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import type { Statement } from '#store/postgres.ts'
 import { sameSource, isStaleSource } from './events.ts'
-import { sessionId } from '#workers/session-attachments.ts'
+import { observesPresence, sessionId } from '#workers/session-attachments.ts'
 
 export interface SourceObservation {
   cardId: string
@@ -89,7 +89,11 @@ export function applyObservation({
     return
   }
 
-  if (!session.lastSeen || at > session.lastSeen) {
+  if (observesPresence({
+    adapter: source.adapter,
+    lastSeen: session.lastSeen,
+  })
+    && (!session.lastSeen || at > session.lastSeen)) {
     session.lastSeen = at
   }
 

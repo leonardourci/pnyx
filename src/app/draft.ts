@@ -152,8 +152,8 @@ export function draft<T extends object>({
 
     const branch = proxies.get(value) ?? branches.get(value)
 
-    if (branch && !branch.copy) {
-      return branch.value
+    if (branch ? !branch.copy : !inserted.has(value)) {
+      return branch?.value ?? value
     }
 
     const result = branch?.copy ?? value

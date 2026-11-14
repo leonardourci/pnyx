@@ -4,10 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { query } from '#store/postgres.ts'
-import { historyTasks } from '#tasks/updates.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import type { HydraEvent } from './model.ts'
-import { indexedEvents, readEvents, scanEvents } from './event-log.ts'
+import { readEvents, scanEvents } from './event-log.ts'
 
 beforeEach(() => {
   process.env.PNYX_HOME = mkdtempSync(join(
@@ -136,10 +135,9 @@ test(
       ],
     )
     assert.deepEqual(
-      indexedEvents({
+      readEvents({
         hydraId: 'lab',
-        key: 'task/with:characters',
-        keys: historyTasks,
+        cardId: 'task/with:characters',
       }).map(event => event.id),
       ['tagged'],
     )

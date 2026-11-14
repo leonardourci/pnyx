@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
-import fs, { readdirSync, readFileSync } from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { closeLogs, flushLogs, log, logsDir, openLogs, setLogMode, type LogLine } from './diagnostics.ts'
@@ -123,83 +122,13 @@ test(
 )
 
 test(
-  'a log write that fails keeps no file open and sends the failure to stderr, and the next line lands in the file again',
-  async t => {
-    openLogs()
-    t.after(() => closeLogs())
-    log({ operation: 'before the disk filled' })
-    await flushLogs()
-    const descriptors = () => readdirSync('/dev/fd').length
-    const open = descriptors()
-    const errors = t.mock.method(
-      console,
-      'error',
-      () => {},
-    )
-    const write = fs.appendFile
-    t.mock.method(
-      fs,
-      'appendFile',
-      // eslint-disable-next-line pnyx/object-params -- Node owns the filesystem callback signature.
-      (
-        _path: unknown,
-        _text: unknown,
-        _options: unknown,
-        callback: fs.NoParamCallback,
-      ) => {
-        queueMicrotask(() => callback(Object.assign(
-          new Error('no space left on device'),
-          { code: 'ENOSPC' },
-        )))
-      },
-    )
-    syncBuiltinESMExports()
-
-    for (const attempt of Array.from({ length: 20 }).keys()) {
-      log({
-        level: 'error',
-        operation: 'failed while full',
-        error: `attempt ${attempt}`,
-      })
-    }
-
-    t.mock.method(
-      fs,
-      'appendFile',
-      write,
-    )
-    syncBuiltinESMExports()
-    await flushLogs()
-    assert.ok(
-      descriptors() <= open,
-      'each failed write closed its file',
-    )
-    assert.equal(
-      errors.mock.calls.filter(call => String(call.arguments[0]).includes('"operation":"failed while full"')).length,
-      20,
-    )
-    log({ operation: 'after the disk freed' })
-    await flushLogs()
-    const written = readdirSync(logsDir()).map(name => readFileSync(
-      join(
-        logsDir(),
-        name,
-      ),
-      'utf8',
-    ))
-      .join('')
-    assert.match(
-      written,
-      /"operation":"after the disk freed"/,
-    )
-  },
-)
-
-test(
   'a written line keeps only the known fields, bounds their text, always describes an error, and leaves out what a reader can recover',
   async t => {
     openLogs()
     t.after(() => closeLogs())
+    openLogs()
+    log({ operation: 'initial line' })
+    await flushLogs()
     const before = new Set(readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),
@@ -284,47 +213,52 @@ test(
 )
 
 test(
-  'logging returns before disk completion and bounds outstanding writes',
+  'a burst keeps every line and error in call order',
   async t => {
     openLogs()
     t.after(() => closeLogs())
-    await flushLogs()
-    const complete: (() => void)[] = []
-    t.mock.method(
-      fs,
-      'appendFile',
-      // eslint-disable-next-line pnyx/object-params -- Node owns the filesystem callback signature.
-      (
-        _path: unknown,
-        _text: unknown,
-        _options: unknown,
-        callback: fs.NoParamCallback,
-      ) => {
-        complete.push(() => callback(null))
-      },
-    )
-    syncBuiltinESMExports()
-    t.after(() => {
-      t.mock.restoreAll(); syncBuiltinESMExports()
-    })
 
     for (let index = 0; index < 1000; index++) {
-      log({
-        operation: 'disk stalled',
-        count: index,
-      })
-    }
-
-    assert.equal(
-      complete.length,
-      200,
-      'a stalled disk cannot grow the server queue without a bound',
-    )
-
-    for (const finish of complete) {
-      finish()
+      if (index % 100 === 0) {
+        log({
+          operation: 'burst',
+          count: index,
+          level: 'error',
+          error: 'burst failure',
+        })
+      } else {
+        log({
+          operation: 'burst',
+          count: index,
+        })
+      }
     }
 
     await flushLogs()
+    const lines = readdirSync(logsDir()).flatMap(name => readFileSync(
+      join(
+        logsDir(),
+        name,
+      ),
+      'utf8',
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map(line => JSON.parse(line)))
+      .filter(line => line.operation === 'burst')
+    assert.deepEqual(
+      lines.map(line => line.count),
+      Array.from(
+        { length: 1000 },
+        (
+          _,
+          index,
+        ) => index,
+      ),
+    )
+    assert.equal(
+      lines.filter(line => line.level === 'error').length,
+      10,
+    )
   },
 )

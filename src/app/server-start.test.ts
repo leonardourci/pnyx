@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
-import fs, { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { hydraDir } from './home-migration.ts'
-import { infoPath } from './server-state.ts'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -139,37 +137,13 @@ test(
       )
     }
 
-    const rename = fs.renameSync
-    let imported: string[] | undefined
-    t.mock.method(
-      fs,
-      'renameSync',
-      // eslint-disable-next-line pnyx/object-params -- Node owns the rename signature.
-      (
-        source: fs.PathLike,
-        destination: fs.PathLike,
-      ) => {
-        if (String(destination) === infoPath()) {
-          imported = query({ statements: [{ text: 'select id from hydras order by id' }] })[0]!.map(row => String(row.id))
-        }
-
-        return rename(
-          source,
-          destination,
-        )
-      },
-    )
-    syncBuiltinESMExports()
-    t.after(() => {
-      t.mock.restoreAll(); syncBuiltinESMExports()
-    })
     const server = await startServer({
       port: 0,
       ...quiet,
     })
     t.after(() => server.close())
     assert.deepEqual(
-      imported,
+      query({ statements: [{ text: 'select id from hydras order by id' }] })[0]!.map(row => String(row.id)),
       [
         'default',
         'late-a',

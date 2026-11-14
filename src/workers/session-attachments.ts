@@ -272,7 +272,10 @@ export function observeSession({
       }
     }
 
-    if (!session.lastSeen || event.data.source?.adapter === 'hooks' || event.data.source?.adapter === 'paseo' || event.data.source?.adapter === 'transcript') {
+    if (observesPresence({
+      adapter: event.data.source?.adapter,
+      lastSeen: session.lastSeen,
+    })) {
       session.lastSeen = event.at
     }
 
@@ -324,3 +327,12 @@ export function observeSession({
     }
   }
 }
+
+export const observesPresence = ({
+  adapter,
+  lastSeen,
+}: {
+  adapter?: string
+  lastSeen?: string
+}): boolean =>
+  !lastSeen || adapter === 'hooks' || adapter === 'paseo' || adapter === 'transcript'

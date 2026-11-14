@@ -90,3 +90,36 @@ test(
     )
   },
 )
+
+test(
+  'changing a shared value never mutates an untouched branch of the input',
+  () => {
+    const shared = { count: 1 }
+    const state = {
+      a: shared,
+      b: { nested: shared },
+    }
+    const next = draft({
+      state,
+      change: ({ state }) => {
+        state.a.count = 2
+      },
+    })
+    assert.equal(
+      state.a.count,
+      1,
+    )
+    assert.equal(
+      state.b.nested.count,
+      1,
+    )
+    assert.equal(
+      next.a.count,
+      2,
+    )
+    assert.equal(
+      next.b,
+      state.b,
+    )
+  },
+)
