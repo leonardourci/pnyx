@@ -1,4 +1,5 @@
 import { runProcess } from '#app/run-process.ts'
+import { log } from '#app/diagnostics.ts'
 import { HydraError } from '#store/errors.ts'
 import type { HydraProject } from './model.ts'
 
@@ -196,52 +197,84 @@ export const onBranch = async ({ cwd }: { cwd: string }) =>
     ],
   })).out)
 
-export async function clearDefaultUpstream({
-  cwd,
-  branch,
-}: {
-  cwd: string
-  branch: string
-}): Promise<void> {
-  const defaultRef = await originHead({ cwd })
+// Best effort, so another task's branch config never stops a start: older task branches still track the default branch.
+export async function clearDefaultUpstreams({ cwd }: { cwd: string }): Promise<void> {
+  const head = await git({
+    cwd,
+    args: [
+      'symbolic-ref',
+      '--quiet',
+      'refs/remotes/origin/HEAD',
+    ],
+  })
+  const prefix = 'refs/remotes/origin/'
 
-  if (!defaultRef) {
+  if (!head.ok || !head.out.startsWith(prefix)) {
     return
   }
 
-  const upstream = await git({
+  const defaultMerge = `refs/heads/${head.out.slice(prefix.length)}`
+  const config = await git({
     cwd,
     args: [
-      'for-each-ref',
-      '--format=%(upstream:short)',
-      `refs/heads/${branch}`,
+      'config',
+      '--get-regexp',
+      '^branch\\..*\\.(remote|merge)$',
     ],
   })
 
-  if (!upstream.ok) {
-    throw new HydraError({
-      message: `could not check task branch upstream: ${upstream.err}`,
-      code: 'COPY_FAILED',
-    })
-  }
-
-  if (upstream.out !== defaultRef) {
+  if (!config.ok) {
     return
   }
 
-  const cleared = await git({
-    cwd,
-    args: [
-      'branch',
-      '--unset-upstream',
-      branch,
-    ],
-  })
+  const tracked = new Map<string, {
+    remote?: string
+    merge?: string
+  }>()
 
-  if (!cleared.ok) {
-    throw new HydraError({
-      message: `could not clear task branch upstream: ${cleared.err}`,
-      code: 'COPY_FAILED',
+  for (const line of config.out.split('\n')) {
+    const match = /^branch\.(pnyx\/.+)\.(remote|merge) (.*)$/.exec(line)
+
+    if (match) {
+      const [
+        ,
+        branch,
+        key,
+        value,
+      ] = match
+      tracked.set(
+        branch,
+        {
+          ...tracked.get(branch),
+          [key]: value,
+        },
+      )
+    }
+  }
+
+  for (const [
+    branch,
+    upstream,
+  ] of tracked) {
+    if (upstream.remote !== 'origin' || upstream.merge !== defaultMerge) {
+      continue
+    }
+
+    const cleared = await git({
+      cwd,
+      args: [
+        'branch',
+        '--unset-upstream',
+        branch,
+      ],
     })
+
+    if (!cleared.ok && !cleared.err.includes('has no upstream information')) {
+      log({
+        level: 'warn',
+        operation: 'project.clear-upstream',
+        error: new Error(`could not clear the upstream of ${branch}: ${cleared.err}`),
+      })
+    }
   }
 }
