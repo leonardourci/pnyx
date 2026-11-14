@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, beforeEach, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
-import { building, upgradeFolder } from './setup/upgrade.ts'
+import { building, git, upgradeFolder } from './setup/upgrade.ts'
 
 interface Upgrade {
   id: string
@@ -14,6 +14,7 @@ interface Upgrade {
   failed?: string
   error?: string
   rolledBack?: boolean
+  reasons?: string[]
   from?: string
   to?: string
 }
@@ -36,6 +37,12 @@ beforeAll(async () => {
       restarts++
     },
   })
+})
+
+// Every test starts from the first commit, its build and no restarts, so the tests pass alone and in any order.
+beforeEach(() => {
+  folder.reset()
+  restarts = 0
 })
 
 // The upgrades the page's chat shows for this Hydra, newest last.
@@ -164,10 +171,6 @@ test(
     await until({
       what: 'Hydra to finish its turn',
       check: () => session.answered === 1,
-    })
-    folder.publish({
-      files: { 'install.sh': 'exit 0\n' },
-      message: 'install works again',
     })
   },
 )
@@ -300,7 +303,7 @@ test(
 )
 
 test(
-  'a folder off main or with local changes is refused with every reason, and nothing is pulled',
+  'a folder on another branch, on a detached HEAD or with local changes is refused with every reason, and nothing is pulled',
   async () => {
     const hydra = await pnyx.hydra()
     const previous = folder.head()
@@ -315,12 +318,106 @@ test(
       ),
       'echo local edit\n',
     )
-    await upgrade({ hydra })
-    const refused = await until({
-      what: 'the refusal',
-      check: () => upgrades({ hydra }).find(upgrade => upgrade.state === 'refused'),
+
+    const refusal = async ({ reasons }: { reasons: unknown[] }) => {
+      const before = upgrades({ hydra }).length
+      await upgrade({ hydra })
+      const refused = await until({
+        what: 'the refusal',
+        check: () => upgrades({ hydra }).slice(before)
+          .find(upgrade => upgrade.state === 'refused'),
+      })
+      expect(refused.reasons).toEqual(reasons)
+      expect(folder.head()).toBe(previous)
+    }
+
+    await refusal({ reasons: [expect.stringContaining('build.sh')] })
+
+    git({
+      cwd: folder.install,
+      args: [
+        'checkout',
+        '-q',
+        '-b',
+        'feature',
+      ],
     })
-    expect(refused).toMatchObject({ reasons: ['1 file with local changes: build.sh.'] })
-    expect(folder.head()).toBe(previous)
+    await refusal({
+      reasons: [
+        expect.stringContaining('feature'),
+        expect.stringContaining('build.sh'),
+      ],
+    })
+
+    git({
+      cwd: folder.install,
+      args: [
+        'checkout',
+        '-q',
+        '--detach',
+      ],
+    })
+    await refusal({
+      reasons: [
+        expect.stringContaining('Detached HEAD'),
+        expect.stringContaining('build.sh'),
+      ],
+    })
+  },
+)
+
+test(
+  'a built upgrade also waits while a worker on another Hydra is mid-turn, and restarts once that turn ends',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const other = await pnyx.hydra()
+    const workerFolder = other.folder({ name: 'busy' })
+    await other.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Long job',
+        '--key',
+        'busy',
+        '--folder',
+        workerFolder,
+      ],
+    })
+    const turn = pnyx.claude.plan({
+      hydra: other.id,
+      match: ({ text }) => text.includes('<pnyx-worker'),
+      reply: 'Job done.',
+      partial: 'Job',
+      hold: true,
+    })
+    await other.owner({
+      args: [
+        'task',
+        'start',
+        'busy',
+      ],
+    })
+    const worker = await other.agent({ cwd: workerFolder })
+    folder.publish({
+      files: { 'build.sh': building({ version: 'three' }) },
+      message: 'three',
+    })
+
+    await upgrade({ hydra })
+    await until({
+      what: 'the build to finish and wait for the worker',
+      check: () => upgrades({ hydra }).at(-1)?.steps.some(step => step.step === 'data' && step.state === 'done'),
+    })
+    expect(upgrades({ hydra }).at(-1)?.state).toBe('waiting')
+    expect(worker.answered).toBe(0)
+    expect(restarts).toBe(0)
+
+    turn.release()
+    await until({
+      what: 'the restart once the worker\'s turn ended',
+      check: () => restarts === 1,
+    })
+    expect(worker.answered).toBe(1)
   },
 )
