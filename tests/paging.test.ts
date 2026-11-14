@@ -284,6 +284,7 @@ test(
   async () => {
     const hydra = await pnyx.hydra()
     let answered = 0
+    let compacted = 0
 
     const exchange = async () => {
       answered += 1
@@ -296,7 +297,7 @@ test(
       const session = await hydra.chat({ text: `question ${number}` })
       await until({
         what: `answer ${number}`,
-        check: () => session.answered >= number,
+        check: () => session.answered >= number + compacted,
       })
     }
 
@@ -320,6 +321,7 @@ test(
         check: () => compactions({ hydra }).filter(operation => operation.state !== 'running')
           .length > before,
       })
+      compacted += 1
     }
 
     for (let count = 0; count < 4; count++) {
@@ -381,6 +383,23 @@ test(
       rows: loaded,
     }).map(run => run.length)).toEqual([
       1,
+      1,
+      1,
+    ])
+    // A message at the same millisecond separates the preceding compaction from this one.
+    expect(compactionRuns({
+      operations: [
+        {
+          ...operations[0]!,
+          startedAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          ...operations[1]!,
+          startedAt: '2026-01-01T00:00:00.001Z',
+        },
+      ],
+      rows: [{ at: '2026-01-01T00:00:00.001Z' }],
+    }).map(run => run.length)).toEqual([
       1,
       1,
     ])

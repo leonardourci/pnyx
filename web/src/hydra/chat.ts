@@ -482,7 +482,7 @@ export function compactionRuns({
   let settled = false
 
   for (const operation of operations) {
-    const later = rows.findIndex(row => (row.at ?? '') >= operation.startedAt)
+    const later = rows.findIndex(row => (row.at ?? '') > operation.startedAt)
     const here = later === -1 ? rows.length : later
     const done = operation.state !== 'running'
 
