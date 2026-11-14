@@ -43,8 +43,16 @@ export function messageWindow({
   )
   const first = messages[start]
 
+  if (!first) {
+    return {}
+  }
+
+  if (start === 0) {
+    return { messagesFrom: first.at }
+  }
+
   return {
-    ...first ? { messagesFrom: first.at } : {},
-    ...start > 0 ? { older: `m${encodeURIComponent(first!.id)}` } : {},
+    messagesFrom: first.at,
+    older: `m${encodeURIComponent(first.id)}`,
   }
 }
