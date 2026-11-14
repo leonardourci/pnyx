@@ -53,6 +53,11 @@ import { REDUCED_MOTION } from './streaming.tsx'
 const GLIDE = 0.3
 // How far above the screen the top of the conversation is when the next older page starts loading.
 const OLDER_MARGIN = '600px 0px 0px 0px'
+const UP_KEYS = new Set([
+  'PageUp',
+  'ArrowUp',
+  'Home',
+])
 
 // What the chat shows until the server's first queue arrives.
 const EMPTY_CHAT_QUEUE: HydraChatQueue = {
@@ -187,6 +192,7 @@ export function HydraChat({
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
   const glide = useRef(0)
+  const touchY = useRef<number>()
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
@@ -848,6 +854,13 @@ export function HydraChat({
     stopGlide()
   }
 
+  // A chat too short to scroll has no scroll event to leave the bottom, so an upward wheel, key or touch at its top does.
+  const reachOlder = () => {
+    if (stream.current?.scrollTop === 0 && olderCursor) {
+      stopFollowing()
+    }
+  }
+
   const expandRow = ({ target }: { target: EventTarget }) => {
     if (target instanceof Element && target.closest('summary')) {
       chatFollow.expand({ at: performance.now() })
@@ -1109,14 +1122,31 @@ export function HydraChat({
           onWheel={event => {
             ownerScroll()
 
-            // A chat too short to scroll still lets the owner wheel up into its older pages.
-            if (event.deltaY < 0 && event.currentTarget.scrollTop === 0 && olderCursor) {
-              stopFollowing()
+            if (event.deltaY < 0) {
+              reachOlder()
             }
           }}
-          onTouchMove={ownerScroll}
+          onTouchStart={event => {
+            touchY.current = event.touches[0]?.clientY
+          }}
+          onTouchMove={event => {
+            ownerScroll()
+
+            const y = event.touches[0]?.clientY
+
+            if (y !== undefined && touchY.current !== undefined && y > touchY.current) {
+              reachOlder()
+            }
+
+            touchY.current = y
+          }}
           onKeyDown={event => {
             ownerScroll()
+
+            if (UP_KEYS.has(event.key)) {
+              reachOlder()
+            }
+
             expandRow({ target: event.target })
           }}
           onPointerDown={event => {
