@@ -67,6 +67,8 @@ export interface TurnPlan {
   hold?: boolean
   // Claude reports a compaction while the turn waits, as it does for /compact.
   compacting?: boolean
+  // Claude folds a message sent while the turn waits into it at once, as Claude Code does at a step boundary; its transcript record waits for the turn's end.
+  folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
   refuse?: boolean
 }
@@ -207,8 +209,52 @@ export function fakeClaude() {
       })}\n`,
     )
 
-    async function* run(): AsyncGenerator<SDKMessage> {
+    // Like the SDK, the fake reads Pnyx's messages as they are sent, not one turn at a time.
+    const waiting: SDKUserMessage[] = []
+    const folded: string[] = []
+    const foldedUuids: string[] = []
+    let ended = false, folding = false
+    let nudge = () => {}
+
+    const arrived = () => {
+      while (folding && waiting.length) {
+        const taken = waiting.shift()!
+        const text = textOf({ message: taken })
+        session.received.push(text)
+        folded.push(text)
+        foldedUuids.push(taken.uuid!)
+      }
+
+      nudge()
+    }
+
+    const reading = (async () => {
       for await (const message of prompt) {
+        waiting.push(message)
+        arrived()
+      }
+
+      ended = true
+      nudge()
+    })()
+
+    async function* run(): AsyncGenerator<SDKMessage> {
+      for (;;) {
+        const message = waiting.shift()
+
+        if (!message) {
+          if (ended || session.closed) {
+            await reading
+
+            return
+          }
+
+          await new Promise<void>(resolve => {
+            nudge = resolve
+          })
+          continue
+        }
+
         const text = textOf({ message })
         session.received.push(text)
         record({
@@ -220,6 +266,8 @@ export function fakeClaude() {
           env: session.env,
         })
         const answer = plan?.reply ?? recordedReply
+        folding = Boolean(plan?.folds)
+        arrived()
         let interrupted = false
         // A planned turn waits for its release, or for Pnyx to stop it.
         const stopped = new Promise<void>(resolve => {
@@ -313,7 +361,10 @@ export function fakeClaude() {
             yield {
               ...recorded,
               session_id: id,
-              user_message_uuid: message.uuid,
+              user_message_uuids: [
+                message.uuid,
+                ...foldedUuids.splice(0),
+              ],
               queued_turn_count: 0,
               result: answer,
             } as SDKMessage
@@ -326,6 +377,14 @@ export function fakeClaude() {
         }
 
         stop = undefined
+        folding = false
+
+        for (const text of folded.splice(0)) {
+          record({
+            role: 'user',
+            text,
+          })
+        }
 
         if (interrupted) {
           // Claude Code ends a stopped turn with an error result.
@@ -335,7 +394,10 @@ export function fakeClaude() {
             is_error: true,
             errors: ['Request was aborted.'],
             session_id: id,
-            user_message_uuid: message.uuid,
+            user_message_uuids: [
+              message.uuid,
+              ...foldedUuids.splice(0),
+            ],
             queued_turn_count: 0,
             uuid: randomUUID(),
             duration_ms: 0,
@@ -368,9 +430,20 @@ export function fakeClaude() {
       {
         close: () => {
           session.closed = true
+          nudge()
         },
-        interrupt: async () => {
+        // Claude Code cancels the messages it has not taken only when asked to.
+        interrupt: async ({ cancelQueued }: { cancelQueued?: boolean } = {}) => {
+          const queued = (cancelQueued ? waiting.splice(0) : waiting).map(message => message.uuid!)
           stop?.()
+
+          return cancelQueued ? {
+            cancelled: queued,
+            still_queued: [],
+          } : {
+            cancelled: [],
+            still_queued: queued,
+          }
         },
         setModel: async () => {},
         setPermissionMode: async () => {},
@@ -530,6 +603,30 @@ export function fakeCodex() {
               error: {
                 code: -32000,
                 message: 'the app-server refused this turn',
+              },
+            },
+          })
+
+          return
+        }
+
+        if (message.method === 'turn/interrupt') {
+          send({
+            message: {
+              id: message.id,
+              result: {},
+            },
+          })
+          send({
+            message: {
+              method: 'turn/completed',
+              params: {
+                threadId: session.id,
+                turn: {
+                  id: params.turnId,
+                  status: 'interrupted',
+                  error: null,
+                },
               },
             },
           })

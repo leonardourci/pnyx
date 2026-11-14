@@ -49,6 +49,9 @@ export function inbox() {
     } = {}) {
       return includes ? items.filter(includes).length : items.length
     },
+    clear() {
+      return items.splice(0)
+    },
     end() {
       done = true
       wake?.()

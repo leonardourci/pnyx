@@ -7,6 +7,10 @@ import { decideReply } from './reply-rules.ts'
 import { INTERRUPTED, sessionId, withoutInterrupted } from './session-attachments.ts'
 import { steeringHeld } from './steering.ts'
 import type { createSteeringDelivery } from './steering-delivery.ts'
+import type { createPermissionBridge } from './permission-bridge.ts'
+import { ownerActor } from '#app/actors.ts'
+import { findCard } from '#tasks/push-rules.ts'
+import { loadHydra } from '#app/store.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -30,6 +34,7 @@ export function createHostedDelivery({
   folderOf,
   record,
   holdCompact,
+  denyForMessage,
   open,
   ringSteering,
   unnotifiedSteering,
@@ -62,6 +67,7 @@ export function createHostedDelivery({
     eventId?: string
   }): void
   holdCompact: ReturnType<typeof createCompactionControl>['holdCompact']
+  denyForMessage: ReturnType<typeof createPermissionBridge>['denyForMessage']
   open({ card }: { card: Card & { agent: AgentRef } }): Live
   ringSteering: ReturnType<typeof createSteeringDelivery>['ringSteering']
   unnotifiedSteering: ReturnType<typeof createSteeringDelivery>['unnotifiedSteering']
@@ -127,11 +133,13 @@ export function createHostedDelivery({
     inputId,
     phase,
     taken,
+    stopped,
   }: {
     entry: Live
     inputId: string
     phase: InputReceipt['phase']
     taken?: string
+    stopped?: true
   }) => {
     const pending = entry.pendingDirect.get(inputId)
 
@@ -157,7 +165,7 @@ export function createHostedDelivery({
         card: pending.card,
         inputId,
         state: 'failed',
-        detail: 'the agent refused this message; nothing was delivered',
+        detail: stopped ? 'stopped' : 'the agent refused this message; nothing was delivered',
       })
 
       return
@@ -199,6 +207,16 @@ export function createHostedDelivery({
       throw new HydraError({
         message: 'A notification attempt needs a persisted steering ID',
         code: 'VALIDATION_ERROR',
+      })
+    }
+
+    if (ownerActor({ actor })) {
+      denyForMessage({
+        task: findCard({
+          state: loadHydra({ hydraId }).state,
+          ref,
+        }).id,
+        actor,
       })
     }
 

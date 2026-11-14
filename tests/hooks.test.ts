@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createServer, type Socket } from 'node:net'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { parsed, pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
@@ -342,8 +342,7 @@ test(
   },
 )
 
-// task-c36e45ad: hooks on a Hydra without a legacy events.jsonl are dropped; remove the skip when #389 or another fix lands.
-test.skip(
+test(
   'an outside session reporting with PNYX_HYDRA set lands on that Hydra, not the default one',
   async () => {
     const hydra = await pnyx.hydra()
@@ -384,5 +383,86 @@ test.skip(
         return shown.status === 0 ? parsed(shown).task : undefined
       },
     })).title).toBe('Reported to a named Hydra')
+  },
+)
+
+test(
+  'with the server down a hook keeps its event in the spool of its Hydra, in boards/ for one not yet moved, and drops an unknown Hydra without making a folder',
+  async () => {
+    const home = join(
+      process.env.TMPDIR!,
+      'folders-home',
+    )
+
+    const spool = ({ dir }: { dir: string }) => {
+      const path = join(
+        home,
+        dir,
+        'spool',
+      )
+
+      return existsSync(path) ? readdirSync(path) : []
+    }
+
+    mkdirSync(
+      join(
+        home,
+        'hydras',
+        'h1',
+      ),
+      { recursive: true },
+    )
+    mkdirSync(
+      join(
+        home,
+        'boards',
+        'b1',
+      ),
+      { recursive: true },
+    )
+
+    for (const hydra of [
+      'h1',
+      'b1',
+      'never-created',
+    ]) {
+      expect(await hook({
+        event: 'UserPromptSubmit',
+        payload: {
+          session_id: `folders-${hydra}`,
+          cwd: join(
+            process.env.TMPDIR!,
+            'folders',
+          ),
+          prompt: `Reported to ${hydra}`,
+        },
+        env: {
+          ...process.env,
+          PNYX_HOME: home,
+          PNYX_HYDRA: hydra,
+        },
+      })).toMatchObject({
+        status: 0,
+        stdout: '',
+      })
+    }
+
+    expect(spool({ dir: 'hydras/h1' })).toHaveLength(1)
+    expect(spool({ dir: 'boards/b1' })).toHaveLength(1)
+    expect(existsSync(join(
+      home,
+      'hydras',
+      'b1',
+    ))).toBe(false)
+
+    for (const dir of [
+      'hydras/never-created',
+      'boards/never-created',
+    ]) {
+      expect(existsSync(join(
+        home,
+        dir,
+      ))).toBe(false)
+    }
   },
 )

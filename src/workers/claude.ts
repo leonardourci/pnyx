@@ -1,7 +1,7 @@
 import { claudeTools } from './claude-tools.ts'
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
+import { blockText, foundSettings, injectedDigest, fastSetting, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
@@ -362,7 +362,10 @@ export function claudeProvider({
       }
 
       let running: ReturnType<QueryFn> | undefined
-      let closed = false, interrupted = false
+      let closed = false, interrupted = false, active = false
+      let inputGeneration = 0
+      const nativeInputs = new Map<string, string>()
+      let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
       const native: NativeSession = {
         id,
@@ -386,8 +389,9 @@ export function claudeProvider({
 
           // SessionStart fires too early for an SDK hook on startup and resume, so the context leads the first message.
           let fresh = true, manualCompact = false
+          let unsentContext: string | undefined
 
-          const nativeInputs = new Map<string, string>()
+          publish = emit
           const intake = watchIntake({ path })
           // When Claude Code took each input; a folded one is confirmed as soon as it is taken.
           const takenAt = new Map<string, string>()
@@ -398,7 +402,31 @@ export function claudeProvider({
               const { text } = item
               const compact = compactCommand({ text })
               manualCompact ||= compact
-              const message = fresh && context && !compact ? `${await context({})}\n\n${text}` : text
+              const generation = inputGeneration
+              const rendered = fresh && context && !compact ? await context({}) : undefined
+              const prefix = [
+                unsentContext,
+                rendered,
+              ].filter(Boolean).join('\n\n')
+              const message = prefix ? `${prefix}\n\n${text}` : text
+
+              if (generation !== inputGeneration) {
+                // The rendering already counts as sent for the next digest, so the next input carries it.
+                unsentContext = prefix || undefined
+                emit({
+                  event: {
+                    type: 'input',
+                    receipt: {
+                      inputId: item.id,
+                      phase: 'refused',
+                      stopped: true,
+                    },
+                  },
+                })
+                continue
+              }
+
+              unsentContext = undefined
 
               if (!compact) {
                 fresh = false
@@ -558,7 +586,7 @@ export function claudeProvider({
           })
 
           // The SDK sends each finished block as its own message at index 0, so its text reuses the index it streamed under.
-          let messageId = '', textIndex = 0, active = false, turnId = randomUUID()
+          let messageId = '', textIndex = 0, turnId = randomUUID()
           let compaction: {
             id: string
             trigger: 'manual' | 'auto'
@@ -898,10 +926,45 @@ export function claudeProvider({
             await running.applyFlagSettings({ effortLevel: value as EffortLevel })
           }
         },
-        async interrupt() {
+        async interrupt({ cancelQueued }) {
+          if (cancelQueued) {
+            inputGeneration += 1
+          }
+
           if (running) {
-            interrupted = true
-            await running.interrupt()
+            const wasInterrupted = interrupted
+            interrupted ||= active || nativeInputs.size > 0
+            // The installed runtime supports queue cancellation before its SDK declaration does.
+            const interrupt = running.interrupt as (
+              { cancelQueued }: { cancelQueued: boolean },
+            ) => ReturnType<ReturnType<QueryFn>['interrupt']>
+            const receipt = await interrupt.call(
+              running,
+              { cancelQueued },
+            )
+
+            for (const uuid of receipt?.cancelled ?? []) {
+              const inputId = nativeInputs.get(uuid)
+
+              if (inputId) {
+                nativeInputs.delete(uuid)
+                publish?.({
+                  event: {
+                    type: 'input',
+                    receipt: {
+                      inputId,
+                      phase: 'refused',
+                      stopped: true,
+                    },
+                  },
+                })
+              }
+            }
+
+            // An interrupt that found no turn must not label the next one as interrupted.
+            if (!wasInterrupted && !active && !nativeInputs.size) {
+              interrupted = false
+            }
           }
         },
         close() {
@@ -1020,7 +1083,7 @@ function claudeSettings(
       // A synthetic turn, such as an error, names no real model.
       model: model?.startsWith('<') ? undefined : model,
       effort: transcriptString({ value: record.effort }),
-      fast: onOff({ fast: speed === undefined ? undefined : speed === 'fast' }),
+      fast: fastSetting({ fast: speed === undefined ? undefined : speed === 'fast' }),
       context: requested === undefined ? undefined : /\[1m\]$/i.test(requested) ? '1M' : null,
       client: transcriptString({ value: record.entrypoint }),
       version: transcriptString({ value: record.version }),

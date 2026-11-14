@@ -1,4 +1,6 @@
 import { createDigestContext } from './digest-context.ts'
+import { stopHydraInputs } from './stop-inputs.ts'
+import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { contextNoteBlock, contextTurnNotes } from './context-notes.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate } from './agent-choice.ts'
@@ -59,6 +61,7 @@ export function createHydraTurns({
   note,
   record,
   stoppedFor,
+  denyForMessage,
   helperPending,
   providerOf,
   environment,
@@ -101,6 +104,7 @@ export function createHydraTurns({
     actor: string
   }): void
   stoppedFor: ReturnType<typeof createHydraOperations>['stoppedFor']
+  denyForMessage: ReturnType<typeof createPermissionBridge>['denyForMessage']
   helperPending(): boolean
   providerOf({
     provider,
@@ -278,6 +282,30 @@ export function createHydraTurns({
     }
   }
 
+  let stopGeneration = 0
+
+  // A turn that a Stop overtook never reaches the agent, so the owner's messages it carried read as stopped.
+  const stoppedBefore = ({
+    id,
+    carried,
+  }: {
+    id: string
+    carried: readonly string[]
+  }) => {
+    note({
+      fn: ({ writer }) => stopHydraInputs({
+        writer,
+        ids: [
+          id,
+          ...carried,
+        ],
+        at: at(),
+      }),
+    })
+
+    return { state: 'cancelled' as const }
+  }
+
   const hydra: Host['hydra'] = ({
     text,
     original,
@@ -308,6 +336,14 @@ export function createHydraTurns({
       return Promise.resolve({ state: 'queued' })
     }
 
+    // The owner's message answers a prompt Hydra waits on; a compaction's release repeats a message already answered.
+    if (ownerActor({ actor }) && !release) {
+      denyForMessage({
+        task: HYDRA_CARD,
+        actor,
+      })
+    }
+
     // While a restart, an upgrade or a compaction stops Hydra, everything for it waits in its queue; the recap when it ends tells Hydra.
     if (stoppedFor({ id })) {
       queued()
@@ -316,6 +352,11 @@ export function createHydraTurns({
     }
 
     const queuedState = loadHydra({ hydraId }).state
+
+    if (queuedState.hydraMessages?.find(message => message.id === id)?.stopped) {
+      return Promise.resolve({ state: 'cancelled' })
+    }
+
     const queuedDispatch = effectiveDispatch().dispatch
     const desiredAgent = selected ?? (!ownerActor({ actor }) ? queuedState.hydraAgent : undefined)
       ?? hydraCandidate({
@@ -336,6 +377,7 @@ export function createHydraTurns({
       return Promise.resolve({ state: 'queued' })
     }
 
+    const generation = stopGeneration
     queuedHydra.add(id)
 
     const run = async () => {
@@ -344,6 +386,13 @@ export function createHydraTurns({
       }
 
       let state = loadHydra({ hydraId }).state
+
+      if (generation !== stopGeneration) {
+        return stoppedBefore({
+          id,
+          carried,
+        })
+      }
 
       if (stoppedFor({ id })) {
         return { state: 'queued' }
@@ -489,6 +538,13 @@ export function createHydraTurns({
           throw new Error('Pnyx is stopping')
         }
 
+        if (generation !== stopGeneration) {
+          return stoppedBefore({
+            id,
+            carried,
+          })
+        }
+
         state = loadHydra({ hydraId }).state
         card = state.cards[HYDRA_CARD]
         const sameIdentity = history && card?.agent?.provider === provider
@@ -535,6 +591,15 @@ export function createHydraTurns({
             }) : environment({ hydra: true }),
             signal: controller.signal,
             spawned: children.spawned,
+          })
+        }
+
+        if (generation !== stopGeneration) {
+          prepared?.close()
+
+          return stoppedBefore({
+            id,
+            carried,
           })
         }
 
@@ -742,6 +807,13 @@ export function createHydraTurns({
           ...presentedTasks,
         ]) {
           mainTasks.add(task)
+        }
+
+        if (generation !== stopGeneration) {
+          return stoppedBefore({
+            id,
+            carried,
+          })
         }
 
         entry.input.push({
@@ -960,6 +1032,9 @@ export function createHydraTurns({
   }
 
   return {
+    cancel: () => {
+      stopGeneration += 1
+    },
     hydraTurn: async () => {
       await wakeTurn
       await hydraTurn

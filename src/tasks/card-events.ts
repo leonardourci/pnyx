@@ -1,6 +1,7 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { observeSession, sessionId } from '#workers/session-attachments.ts'
 import { applyReplyReceipt } from '#workers/reduce.ts'
+import { currentSettings } from '#workers/sessions.ts'
 import { refreshTasks } from './columns.ts'
 import { SESSION_TITLE } from './model.ts'
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from './events.ts'
@@ -93,7 +94,7 @@ export function applyCardEvent({
     if (settings === null) {
       delete card.settings
     } else if (settings !== undefined) {
-      card.settings = settings
+      card.settings = currentSettings({ settings })
     }
 
     if (rest.title === null) {

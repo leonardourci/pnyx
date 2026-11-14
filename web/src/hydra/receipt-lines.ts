@@ -64,7 +64,8 @@ function line({
   }
 
   // A failure keeps its reason in view; a wait explains itself on hover or focus.
-  const detail = failed && why ? ` · ${why}` : ''
+  const separator = why === 'stopped' ? ': ' : ' · '
+  const detail = failed && why ? `${separator}${why}` : ''
 
   return {
     key,

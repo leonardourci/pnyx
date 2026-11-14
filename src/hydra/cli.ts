@@ -28,6 +28,7 @@ import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#set
 import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
+import { requireStopAuthority } from '#app/stop-authority.ts'
 import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
@@ -434,6 +435,22 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     positionals: 2,
   })
 
+  if (positionals[0] === 'send-now') {
+    requireStopAuthority({ meta: meta({ values }) })
+
+    return askHost({
+      hydraId,
+      body: {
+        action: 'send-now',
+        message: required({
+          value: positionals[1],
+          what: 'message id',
+        }),
+        actor: meta({ values }).actor,
+      },
+    })
+  }
+
   if (positionals[0] === 'message') {
     return messageLookup({
       values,
@@ -498,6 +515,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (positionals[0] === 'stop' || positionals[0] === 'usage') {
     const action = positionals[0] === 'usage' && positionals[1] === 'refresh'
       ? 'usage-refresh' : positionals[0]
+
+    if (action === 'stop') {
+      requireStopAuthority({ meta: meta({ values }) })
+    }
 
     return readServer({ hydraId }).then(server => server ? askHost({
       hydraId,

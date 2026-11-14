@@ -75,7 +75,13 @@ export interface Host {
     id: string
     choice: 'inscribe' | 'compact' | 'neither'
   }): Record<string, unknown>
-  stop(): Promise<Record<string, unknown>>
+  stop({
+    card,
+    sendNow }
+  ?: {
+    card?: string
+    sendNow?: string
+  }): Promise<Record<string, unknown>>
   // Asks for an upgrade as /upgrade does and answers with the one to watch; now restarts a built one at once.
   upgrade({
     id,

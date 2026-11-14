@@ -19,6 +19,7 @@ export function receivedWith({
   ])
 
   return (state.hydraMessages ?? []).filter(message => message.hydra === config.hydra.id
-    && ownerActor({ actor: message.actor }) && !message.received && taken.has(message.id))
+    && ownerActor({ actor: message.actor }) && !message.received
+    && taken.has(message.id))
     .map(message => message.id)
 }
