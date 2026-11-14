@@ -86,7 +86,7 @@ Verification picks checks and reviews from the files changed against that defaul
 | Change kind | Required reviews | Checks |
 | --- | --- | --- |
 | Files under `docs/`, or Markdown outside shipped skills and `fixtures/` folders | `deslop` | None |
-| Shipped skill Markdown under `skills/` | `deslop` | Build and the integration tests |
+| Shipped skill Markdown under `skills/` | `deslop` | Build and the integration tests, which include the one comparing Hydra's folder with the shipped skills |
 | Test files (`tests/**/*.test.ts`) | `audit-tests` | Lint fixes, type checks, ESLint, build when needed, and the changed test files |
 | UI or back-end code, configuration, test helpers or fixtures | `review-code`, `audit-tests`, `deslop` | Full suite: lint fixes, type checks, ESLint, CSS lint, build and every test |
 | Explicit mechanical rename or move | `deslop` | Full suite |
@@ -103,7 +103,7 @@ Use `pnpm verify --checks-only` when the environment has read-only GitHub access
 
 The "pnpm verify" check in the "Verify" workflow (`.github/workflows/verify.yml`) runs for every PR, including a stacked PR whose base is another PR's branch, and installs and builds nothing. It runs on `pull_request_target` and checks out its checker scripts from the default branch, so PR code is never checked out. It checks the same description requirements, reads the PR, derives the required review boxes from the PR files (for a stacked PR, its own diff against its base) and requires them to remain ticked, and fails unless the marker names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means files under `docs/` and Markdown outside `skills/` and any `fixtures/` folder, since the shipped skills and test fixtures are read by Pnyx and its tests. Docs-only PRs still need the marker from `pnpm verify`. Only `pnpm verify` writes the line. Anyone who can edit the description could forge a pass, so it is an honesty check, not a signature.
 
-The "Lint, build and tests" check (`.github/workflows/tests.yml`) runs the typecheck, lint, build and the whole test suite on GitHub. It runs on `pull_request`, forks included, with a read-only token and no secrets, and starts only after a maintainer approves it in the `ci` environment. A newer push cancels the older run. A docs-only change skips the tests, using the same selection as `pnpm verify`, and still reports success. It does nothing while the repository is private.
+The "Lint, build and tests" check (`.github/workflows/tests.yml`) runs the typecheck, lint and build side by side, then the whole test suite in a random order, on GitHub, and uploads the tests' scratch files when a run fails. It runs on `pull_request`, forks included, with a read-only token and no secrets, and starts only after a maintainer approves it in the `ci` environment. A newer push cancels the older run. A docs-only change skips the tests, using the same selection as `pnpm verify`, and still reports success. It does nothing while the repository is private.
 
 Verification does not merge a PR. Merging requires explicit approval.
 
