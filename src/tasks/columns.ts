@@ -24,12 +24,11 @@ export function cardFacts({
   // A pull request closed without merging was abandoned; the work landed through the ones that merged.
   const live = prs.filter(link => link.state !== 'closed')
   const allMerged = live.length > 0 && live.every(link => link.state === 'merged')
-  // Merged pull requests finish a task only once its stored report's decision inventory is reviewed.
-  const mergedDone = allMerged && !reportReviewGaps({
+  // A move to Done is refused while a stored report lacks its decision inventory, so merged pull requests count as done only once it is recorded.
+  const done = card.status?.state === 'done' || (allMerged && !reportReviewGaps({
     state,
     card,
-  }).length
-  const done = card.status?.state === 'done' || mergedDone
+  }).length)
   const open = prs.some(link => link.state === 'open')
   const session = state.sessions?.[cardSessionId({ card }) ?? '']
   const observedActivity = session?.sessionActivity ?? session?.activity

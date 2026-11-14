@@ -21,7 +21,7 @@ function declareMerged({
     return
   }
 
-  // The board's own done rule; a task whose report awaits review is tried again on the next follow pass.
+  // The same done fact that places cards; a task whose report awaits review is tried again on the next follow pass.
   if (!cardFacts({
     card,
     state: writer.state,
