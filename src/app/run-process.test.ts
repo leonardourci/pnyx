@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { closeLogs, logsDir, openLogs } from './diagnostics.ts'
+import { closeLogs, flushLogs, logsDir, openLogs } from './diagnostics.ts'
 import { runProcess } from './run-process.ts'
 
 test(
@@ -79,6 +79,7 @@ test(
       await runProcess(run)
     }
 
+    await flushLogs()
     const names = readdirSync(logsDir()).flatMap(name => readFileSync(
       join(
         logsDir(),

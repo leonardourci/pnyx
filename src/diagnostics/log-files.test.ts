@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
-import { closeLogs, log, logsDir, openLogs } from '#app/diagnostics.ts'
+import { closeLogs, flushLogs, log, logsDir, openLogs } from '#app/diagnostics.ts'
 import { logDay } from '#app/log-line.ts'
 import { cleanLogs, clearLogs, MB } from './log-files.ts'
 
@@ -32,12 +32,16 @@ const pad = ({
   })}\n`,
 )
 
-const lines = ({ day }: { day: string }) => readFileSync(
-  dayPath({ day }),
-  'utf8',
-).split('\n')
-  .filter(Boolean)
-  .map(text => JSON.parse(text) as Record<string, unknown>)
+const lines = async ({ day }: { day: string }) => {
+  await flushLogs()
+
+  return readFileSync(
+    dayPath({ day }),
+    'utf8',
+  ).split('\n')
+    .filter(Boolean)
+    .map(text => JSON.parse(text) as Record<string, unknown>)
+}
 
 const fresh = ({ t }: { t: TestContext }) => {
   openLogs()
@@ -51,7 +55,7 @@ const fresh = ({ t }: { t: TestContext }) => {
 
 test(
   'once today’s file passes twice the cap, warnings and errors are dropped too, and the next cleanup writes how many',
-  t => {
+  async t => {
     fresh({ t })
     pad({
       day: today,
@@ -81,7 +85,7 @@ test(
       maxBytes: MB,
     })
     assert.deepEqual(
-      lines({ day: today }).filter(line => line.operation === 'logs.dropped')
+      (await lines({ day: today })).filter(line => line.operation === 'logs.dropped')
         .map(line => [
           line.level,
           line.count,
@@ -98,7 +102,7 @@ test(
 
 test(
   'a server that starts with today’s file past the cap keeps action lines out from its first line on',
-  t => {
+  async t => {
     fresh({ t })
     pad({
       day: today,
@@ -117,7 +121,7 @@ test(
     }
 
     assert.equal(
-      lines({ day: today }).filter(line => line.operation === 'after the restart').length,
+      (await lines({ day: today })).filter(line => line.operation === 'after the restart').length,
       0,
     )
   },
@@ -125,7 +129,7 @@ test(
 
 test(
   'a cleanup that finds today past the cap keeps action lines out even when it also deletes an older day',
-  t => {
+  async t => {
     fresh({ t })
     pad({
       day: yesterday,
@@ -153,7 +157,7 @@ test(
       days: 7,
       maxBytes: MB,
     })
-    const written = lines({ day: today })
+    const written = await lines({ day: today })
     assert.equal(
       written.filter(line => line.operation === 'while full').length,
       0,
