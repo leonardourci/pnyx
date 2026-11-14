@@ -12,13 +12,13 @@ Node 22.13 or newer (for the built-in `node:sqlite`), pnpm (the version is pinne
 pnpm install
 pnpm run lint    # tsc --noEmit for the CLI and the web Hydra, then ESLint
 pnpm lint:fix    # ESLint --fix for spacing and line breaks; agents run it before committing
-pnpm test        # builds the CLI and web Hydra, then runs node --test
+pnpm test        # builds the CLI and web Hydra, then runs the Vitest suite
 pnpm run web:dev # Vite dev server for the Hydra
 ```
 
 Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
 
-Tests use Node's built-in test runner and run TypeScript directly through Node's type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: use a temporary `PNYX_HOME`, a random port and fixtures from a `fixtures/` folder beside the code.
+Node runs the source directly through its type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests run on Vitest and never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: each test file gets a scratch home, its own copy of a migrated database and random ports, and fixtures live in `tests/setup/fixtures/`. `docs/testing.md` describes the suite.
 
 ## Layout
 
@@ -46,11 +46,10 @@ One folder per feature. Code for a feature lives in its folder. Inside a feature
 | `web/` | the React + Vite + Tailwind Hydra: its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/`, and one folder per feature beside them |
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `inscribe`, `pnyx-set-up`) |
-| `src/test-harness/` | the shared test harness: the flow runner, fake agents and their recorded sessions, and fake tools |
 | `scripts/build/` | `pnpm run build`, which builds beside `dist` and replaces it only after the build passed |
-| `scripts/verification/` | the isolated test launcher and `pnpm verify` |
+| `scripts/verification/` | `pnpm verify`, its marker and the machine-wide run lock |
 | `scripts/fixtures/` | `pnpm refresh-agent-fixtures`, which records the agent sessions the fakes replay |
-| `e2e/` | the flows: user journeys across features through the real CLI, server and saved files, sharing one server |
+| `tests/` | the test suite: one `<area>.test.ts` per area driving a real server through `pnyx-axi` and the page's data calls, a few browser journeys in `e2e/`, and the shared setup, fakes and fixtures in `setup/` |
 | `docs/media/` | the README's demo GIF |
 
 Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it. For pull requests, follow [write-pull-request](.agents/skills/write-pull-request/SKILL.md). Before PR readiness, run `pnpm verify` to select the required checks and reviews for the changed files. Follow the required checklists in order: `review-code`, `audit-tests`, then `deslop`. These are checklists for humans and agents alike. Tick only the required PR checkboxes after completing them, and describe what you fixed in the PR description. `write-front-end` also applies to changes under `web/`.
