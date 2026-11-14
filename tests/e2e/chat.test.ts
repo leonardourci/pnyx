@@ -317,3 +317,217 @@ test(
     }
   },
 )
+
+// A Hydra whose chat holds 25 exchanges with a compaction after the 3rd, 5th, 21st and 23rd.
+const compactedConversation = async () => {
+  const hydra = await pnyx.hydra()
+  let compacted = 0
+
+  for (let exchange = 1; exchange <= 25; exchange++) {
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: `question ${exchange}`,
+      reply: `answer ${exchange}`,
+    })
+    const session = await hydra.chat({ text: `question ${exchange}` })
+    await until({
+      what: `answer ${exchange}`,
+      check: () => session.answered >= exchange + compacted,
+    })
+
+    if (![
+      3,
+      5,
+      21,
+      23,
+    ].includes(exchange)) {
+      continue
+    }
+
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/compact',
+      compacting: true,
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/compact',
+      ],
+    })
+    compacted += 1
+    await until({
+      what: `compaction ${compacted}`,
+      check: () => session.answered >= exchange + compacted,
+    })
+  }
+
+  return hydra
+}
+
+const LOADING = '[aria-label="Loading earlier messages"]'
+
+// The conversation's rendered rows top to bottom: each message's text start, and "compaction" for each notice.
+const timeline = ({ page }: { page: Page }) => page.evaluate(
+  // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+  selector => [...document.querySelector(selector)!.querySelectorAll<HTMLElement>('article.message, .compaction-row')]
+    .filter(row => !row.querySelector('.compaction-row'))
+    .map(row => row.classList.contains('compaction-row')
+      ? 'compaction'
+      : row.textContent!.replace(
+        /[\u2060\s]+/g,
+        ' ',
+      ).trim()
+        .slice(
+          0,
+          14,
+        )),
+  CONVERSATION,
+)
+
+test(
+  'scrolling to the top loads the older page there with a spinner only while it loads, the view holds still, and each compaction notice sits between the messages around its moment',
+  async () => {
+    const hydra = await compactedConversation()
+
+    const olderReads = new Set<string>()
+    const held: (() => void)[] = []
+    let holding = false
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+          socket.onMessage(message => {
+            const sent = JSON.parse(String(message)) as {
+              type?: string
+              id?: string
+              name?: string
+              args?: string[]
+            }
+
+            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1) {
+              olderReads.add(sent.id!)
+            }
+
+            server.send(message)
+          })
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
+          server.onMessage(message => {
+            const { id } = JSON.parse(String(message)) as { id?: string }
+
+            if (held.length || (holding && id && olderReads.has(id))) {
+              held.push(() => socket.send(message))
+            } else {
+              socket.send(message)
+            }
+          })
+        },
+      ),
+    })
+    const conversation = page.locator(CONVERSATION)
+    await conversation.getByText(
+      'answer 25',
+      { exact: true },
+    ).waitFor()
+    expect(await page.locator(LOADING).count()).toBe(0)
+
+    // Scrolling up asks for the first older page, and the spinner shows while it is held.
+    await conversation.hover()
+    holding = true
+    await until({
+      what: 'scrolling up to ask for an older page',
+      check: async () => {
+        await page.mouse.wheel(
+          0,
+          -2000,
+        )
+
+        return held.length > 0
+      },
+    })
+    await page.locator(LOADING).waitFor({ state: 'attached' })
+    // The owner reads a little below the top, so an older page lands above what they read.
+    await page.mouse.wheel(
+      0,
+      300,
+    )
+    await until({
+      what: 'the view to hold still',
+      check: () => still({ page }),
+    })
+    const before = await view({ page })
+
+    holding = false
+    held.splice(0).forEach(release => release())
+    const after = await until({
+      what: 'the older page to land',
+      check: async () => {
+        const now = await view({ page })
+
+        return now.height > before.height && await still({ page }) && now
+      },
+    })
+    const kept = Object.keys(before.rows).filter(id => id in after.rows)
+    expect(kept.length).toBeGreaterThan(0)
+
+    for (const id of kept) {
+      expect(Math.abs(after.rows[id]! - before.rows[id]!)).toBeLessThanOrEqual(3)
+    }
+
+    await page.locator(LOADING).waitFor({ state: 'detached' })
+
+    // At the top of two pages, with the third on its way, the compactions older than them are not piled above the messages.
+    holding = true
+    await until({
+      what: 'scrolling up to ask for the next older page',
+      check: async () => {
+        await page.mouse.wheel(
+          0,
+          -3000,
+        )
+
+        return held.length > 0
+      },
+    })
+    await page.locator(LOADING).waitFor({ state: 'attached' })
+    await until({
+      what: 'the view to hold still at the top of the loaded messages',
+      check: () => still({ page }),
+    })
+    const loaded = await timeline({ page })
+    expect(loaded[0]).not.toBe('compaction')
+
+    holding = false
+    held.splice(0).forEach(release => release())
+    await page.locator(LOADING).waitFor({ state: 'detached' })
+
+    // Scroll on to the first message: the oldest compaction sits after the /compact that started it, between answer 3 and question 4.
+    await until({
+      what: 'scrolling up to reach the first message',
+      check: async () => {
+        await page.mouse.wheel(
+          0,
+          -2000,
+        )
+
+        return await conversation.getByText(
+          'question 1',
+          { exact: true },
+        ).count() > 0
+      },
+    })
+    const everything = await timeline({ page })
+    const first = everything.indexOf('compaction')
+    expect(first).toBeGreaterThan(everything.indexOf('answer 3'))
+    expect(first).toBeLessThan(everything.indexOf('question 4'))
+    expect(everything[first - 1]).toBe('/compact')
+    expect(everything.indexOf('question 1')).toBeLessThan(first)
+  },
+)
