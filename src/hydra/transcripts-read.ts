@@ -3,7 +3,7 @@ import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs'
+import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -351,35 +351,6 @@ export function hydraSessions({ state }: { state: HydraState }): HydraSession[] 
         agent,
       },
     ] : []
-  })
-}
-
-// The messages of every session Hydra has had, read from their native transcripts. A
-// transcript last written before `after` holds nothing later, so it is skipped.
-export function hydraEntries({
-  state,
-  after,
-}: {
-  state: HydraState
-  after?: string
-}): SessionEntry[] {
-  const written = ({ path }: { path: string }) => after === undefined
-    || (statSync(
-      path,
-      { throwIfNoEntry: false },
-    )?.mtimeMs ?? 0) >= Date.parse(after)
-
-  return hydraSessions({ state }).flatMap(({
-    session,
-    agent,
-  }) => {
-    const path = threadPath({ card: { agent } })
-
-    return path && written({ path }) ? sessionEntries({
-      path,
-      session,
-      boundaries: true,
-    }) : []
   })
 }
 

@@ -249,83 +249,42 @@ export function inscribeOperation({
   }
 }
 
-// A native entry has a time but no log position: it takes the seq of the first event after
-// its time, so milestones and snapshots bound it like the events around it. An entry newer
-// than the log takes the next seq, outside every snapshot taken before it, and entries
-// between two events share one seq.
+// Entries of different sessions can share an id, so a session's entry is known by both.
+export const positionKey = ({ entry }: { entry: ThreadEntry }) => `${entry.session ?? ''}\n${entry.id}`
+
+// A native entry has a time but no log position: it takes the seq of the first event after its time, so milestones and
+// snapshots bound it like the events around it. An entry newer than the log takes the next seq, outside every snapshot
+// taken before it, and entries between two events share one seq.
 export function placeEntries<Entry extends ThreadEntry>({
-  events,
   entries,
   positions,
 }: {
-  positions?: ReadonlyMap<string, number>
-  events: HydraEvent[]
+  positions: ReadonlyMap<string, number>
   entries: Entry[]
 }): {
   seq: number
   entry: Entry
 }[] {
-  if (positions) {
-    return entries.flatMap(entry => {
-      const seq = positions.get(entry.id)
-
-      return seq === undefined ? [] : [
-        {
-          entry,
-          seq,
-        },
-      ]
-    })
-  }
-
-  // A running maximum keeps the search correct when a clock stepped back between appends.
-  let latest = -Infinity
-  const times = events.map(event => {
-    latest = Math.max(
-      latest,
-      Date.parse(event.at),
-    )
-
-    return latest
-  })
-
   return entries.flatMap(entry => {
-    const time = Date.parse(entry.at ?? '')
+    const seq = positions.get(positionKey({ entry }))
 
-    if (Number.isNaN(time)) {
-      return []
-    }
-
-    let low = 0
-    let high = times.length
-
-    while (low < high) {
-      const middle = (low + high) >> 1
-
-      if (times[middle]! <= time) {
-        low = middle + 1
-      } else {
-        high = middle
-      }
-    }
-
-    return [
+    return seq === undefined ? [] : [
       {
-        seq: events[low]?.seq ?? (events.at(-1)?.seq ?? 0) + 1,
         entry,
+        seq,
       },
     ]
   })
 }
 
-function historyMessages({
+export function historyMessages({
   positions,
   events,
   native,
 }: {
   events: HydraEvent[]
   native: SessionEntry[]
-  positions?: ReadonlyMap<string, number>
+  positions: ReadonlyMap<string, number>
 }): {
   seq: number
   text: string
@@ -338,7 +297,6 @@ function historyMessages({
     entry,
   } of placeEntries({
       positions,
-      events,
       entries: native.filter(entry => entry.kind === 'message'
         && entry.role.startsWith('assistant')),
     })) {
@@ -421,17 +379,10 @@ function historyMessages({
       a,
       b,
     ) => {
-      const time = (a.at ?? '').localeCompare(b.at ?? '')
+      const seq = sequences.get(a.messageId ?? a.id)! - sequences.get(b.messageId ?? b.id)!
 
-      if (time) {
-        return time
-      }
-
-      if (a.messageId && a.messageId === b.messageId) {
-        return (a.part ?? 0) - (b.part ?? 0)
-      }
-
-      return sequences.get(a.messageId ?? a.id)! - sequences.get(b.messageId ?? b.id)!
+      return seq || (a.at ?? '').localeCompare(b.at ?? '')
+        || (a.messageId ?? a.id).localeCompare(b.messageId ?? b.id) || (a.part ?? 0) - (b.part ?? 0)
     }),
   })
 
@@ -441,44 +392,142 @@ function historyMessages({
   }))
 }
 
-export function readHistory({
-  positions,
-  state,
-  events,
-  native,
-  since,
-  after,
-  through = state.seq,
-  budget = HISTORY_BUDGET,
-}: {
-  positions?: ReadonlyMap<string, number>
-  state: HydraState
-  events: HydraEvent[]
-  // Hydra's native transcript entries, which carry no log position of their own.
-  native: SessionEntry[]
-  since: string
-  after?: string
-  through?: number
-  budget?: number
-}) {
-  const validBudget = Number.isSafeInteger(budget) && budget > 0
-  const validSnapshot = Number.isSafeInteger(through) && through >= 0 && through <= state.seq
+// How many log positions one read covers, so a statement never runs long however large the range.
+export const HISTORY_WINDOW = 4000
 
-  if (!validBudget || !validSnapshot) {
+export interface HistoryMessage {
+  seq: number
+  text: string
+}
+
+// The history messages recorded at log positions after lo, up to and including hi, in log order.
+export type HistoryWindow = ({
+  lo,
+  hi,
+}: {
+  lo: number
+  hi: number
+}) => HistoryMessage[]
+
+const encoder = new TextEncoder()
+
+function checkedSnapshot({
+  state,
+  through,
+}: {
+  state: HydraState
+  through: number
+}) {
+  if (!Number.isSafeInteger(through) || through < 0 || through > state.seq) {
     throw new HydraError({
       message: '--budget must be positive and --through must name an existing log position',
       code: 'VALIDATION_ERROR',
     })
   }
+}
+
+// The messages of a range one window at a time, from the log position where the first one is wanted.
+function* historyStream({
+  window,
+  from,
+  skip = 0,
+  through,
+}: {
+  window: HistoryWindow
+  from: number
+  skip?: number
+  through: number
+}): Generator<HistoryMessage & { index: number }> {
+  let first = true
+
+  for (let lo = from - 1; lo < through; lo += HISTORY_WINDOW) {
+    const hi = Math.min(
+      lo + HISTORY_WINDOW,
+      through,
+    )
+    const seen = new Map<number, number>()
+
+    for (const message of window({
+      lo,
+      hi,
+    })) {
+      const index = seen.get(message.seq) ?? 0
+      seen.set(
+        message.seq,
+        index + 1,
+      )
+
+      if (message.seq < from || (first && message.seq === from && index < skip)) {
+        continue
+      }
+
+      yield {
+        ...message,
+        index,
+      }
+    }
+
+    first = false
+  }
+}
+
+// The estimated tokens of the rendered history, counting only until `limit` when one is given.
+export function historyTokens({
+  window,
+  boundary,
+  through,
+  limit = Infinity,
+}: {
+  window: HistoryWindow
+  boundary: number
+  through: number
+  limit?: number
+}): number {
+  let bytes = -2
+
+  for (const message of historyStream({
+    window,
+    from: boundary + 1,
+    through,
+  })) {
+    bytes += 2 + encoder.encode(message.text).length
+
+    if (Math.ceil(bytes / 4) >= limit) {
+      break
+    }
+  }
+
+  return Math.ceil(Math.max(
+    bytes,
+    0,
+  ) / 4)
+}
+
+export function historyRange({
+  state,
+  since,
+  after,
+  through = state.seq,
+}: {
+  state: HydraState
+  since: string
+  after?: string
+  through?: number
+}) {
+  checkedSnapshot({
+    state,
+    through,
+  })
 
   let boundary = historyBoundary({
     state,
     since,
   })
-  let position = 0
+  let from = boundary + 1
+  let skip = 0
 
   if (after !== undefined) {
-    const cursor = /^h1:(\d+):(\d+):(\d+)$/.exec(after)
+    const cursor = /^h2:(\d+):(\d+):(\d+):(\d+)$/.exec(after)
 
     if (!cursor) {
       throw new HydraError({
@@ -489,13 +538,16 @@ export function readHistory({
 
     boundary = Number(cursor[1])
     through = Number(cursor[2])
-    position = Number(cursor[3])
+    from = Number(cursor[3])
+    skip = Number(cursor[4])
 
     if (![
       boundary,
       through,
-      position,
-    ].every(Number.isSafeInteger) || boundary > through || through > state.seq) {
+      from,
+      skip,
+    ].every(Number.isSafeInteger) || boundary > through || through > state.seq || from <= boundary
+      || from > through + 1) {
       throw new HydraError({
         message: 'History cursor is outside this log',
         code: 'VALIDATION_ERROR',
@@ -510,35 +562,64 @@ export function readHistory({
     })
   }
 
-  const messages = historyMessages({
-    positions,
-    events,
-    native,
-  })
-    .filter(message => message.seq > boundary && message.seq <= through)
-  const totalTokens = countTokens({ text: messages.map(message => message.text).join('\n\n') })
+  return {
+    boundary,
+    from,
+    skip,
+    through,
+  }
+}
 
-  if (position > messages.length) {
+// One page of the history after its boundary, read from a cursor window by window, so a page costs its own size and not the
+// size of the range. A page ends at a whole message.
+export function readHistory({
+  window,
+  state,
+  since,
+  after,
+  through,
+  budget = HISTORY_BUDGET,
+}: {
+  window: HistoryWindow
+  state: HydraState
+  since: string
+  after?: string
+  through?: number
+  budget?: number
+}) {
+  if (!Number.isSafeInteger(budget) || budget <= 0) {
     throw new HydraError({
-      message: 'History cursor is outside this snapshot',
+      message: '--budget must be positive and --through must name an existing log position',
       code: 'VALIDATION_ERROR',
     })
   }
 
-  const pending = messages.slice(position)
-  const page: typeof messages = []
+  const range = historyRange({
+    state,
+    since,
+    after,
+    through,
+  })
+  const page: HistoryMessage[] = []
 
   let bytes = 0
   let outputBytes = 0
-  const encoder = new TextEncoder()
+  let next: (HistoryMessage & { index: number }) | undefined
 
-  for (const message of pending) {
+  for (const message of historyStream({
+    window,
+    from: range.from,
+    skip: range.skip,
+    through: range.through,
+  })) {
     const separator = page.length ? 2 : 0
     const nextBytes = bytes + separator + encoder.encode(message.text).length
     const encoded = encoder.encode(JSON.stringify(message.text)).length - 2
     const nextOutput = outputBytes + separator * 2 + encoded
 
     if (page.length && (nextBytes > budget * 4 || nextOutput > HISTORY_PAGE_BYTES)) {
+      next = message
+
       break
     }
 
@@ -548,22 +629,19 @@ export function readHistory({
   }
 
   const text = page.map(message => message.text).join('\n\n')
-  const more = page.length < pending.length
-  const end = more ? page.at(-1)!.seq : through
-  const cursor = `h1:${boundary}:${through}:${position + page.length}`
+  const cursor = next ? `h2:${range.boundary}:${range.through}:${next.seq}:${next.index}` : `h2:${range.boundary}:${range.through}:${range.through + 1}:0`
 
   return {
     since,
-    boundary,
-    through: end,
-    snapshot: through,
+    boundary: range.boundary,
+    through: next ? page.at(-1)!.seq : range.through,
+    snapshot: range.through,
     text,
     tokens: countTokens({ text }),
     budget,
-    totalTokens,
-    more,
+    more: next !== undefined,
     after: cursor,
-    note: more
+    note: next
       ? 'More follows. Read the next page with --after before completing inscribe or compaction; carry forward what you learned from this page.'
       : 'End of this history snapshot.',
   }

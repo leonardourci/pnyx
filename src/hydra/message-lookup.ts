@@ -1,10 +1,8 @@
-import type { HydraEvent } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { countTokens } from '#workers/token-count.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { HISTORY_BUDGET } from './history.ts'
-import { messageRecords, type MessageRecord } from './message-records.ts'
-import type { SessionEntry } from './transcripts-read.ts'
+import { compareMessages, type MessageRecord } from './message-records.ts'
 
 const MAX_CURSOR_LENGTH = 4096
 export const MESSAGE_PAGE_BYTES = 20000
@@ -27,13 +25,18 @@ export interface MessageSelection {
   limit?: number
 }
 
+interface Key {
+  seq: number
+  at: string
+  id: string
+}
+
 interface Cursor {
   hydra: string
   card: string
   snapshot: number
-  start: number
-  end: number
-  position: number
+  // The message the page stopped at, which the next page leaves out.
+  key: Key
   direction: 'older' | 'newer'
   from?: string
   to?: string
@@ -88,14 +91,14 @@ function fits({
 }
 
 function encodeCursor({ cursor }: { cursor: Cursor }): string {
-  return `m1:${Buffer.from(JSON.stringify(cursor)).toString('base64url')}`
+  return `m2:${Buffer.from(JSON.stringify(cursor)).toString('base64url')}`
 }
 
 function decodeCursor({ value }: { value: string }): Cursor {
   let cursor: Cursor
 
   try {
-    if (value.length > MAX_CURSOR_LENGTH || !/^m1:[A-Za-z0-9_-]+$/.test(value)) {
+    if (value.length > MAX_CURSOR_LENGTH || !/^m2:[A-Za-z0-9_-]+$/.test(value)) {
       throw new Error('format')
     }
 
@@ -107,14 +110,12 @@ function decodeCursor({ value }: { value: string }): Cursor {
     invalid({ message: 'Invalid message cursor; copy an older or newer cursor from a lookup result' })
   }
 
+  const key = cursor?.key as Partial<Key> | undefined
+
   if (!cursor || typeof cursor !== 'object' || typeof cursor.hydra !== 'string' || typeof cursor.card !== 'string'
-    || ![
-      cursor.snapshot,
-      cursor.start,
-      cursor.end,
-      cursor.position,
-    ].every(value => Number.isSafeInteger(value) && value >= 0)
-    || cursor.start > cursor.position || cursor.position > cursor.end
+    || !Number.isSafeInteger(cursor.snapshot) || cursor.snapshot < 0
+    || !key || typeof key !== 'object' || !Number.isSafeInteger(key.seq) || typeof key.at !== 'string'
+    || typeof key.id !== 'string'
     || (cursor.from !== undefined && typeof cursor.from !== 'string')
     || (cursor.to !== undefined && typeof cursor.to !== 'string')
     || (cursor.direction !== 'older' && cursor.direction !== 'newer')) {
@@ -124,21 +125,114 @@ function decodeCursor({ value }: { value: string }): Cursor {
   return cursor
 }
 
+// A thread's recorded messages, read a window of the log at a time.
+export interface LookupThread {
+  // The messages recorded at log positions after lo, up to and including hi.
+  window({
+    lo,
+    hi,
+  }: {
+    lo: number
+    hi: number
+  }): MessageRecord[]
+  // The log position of the message a reference names, when it names one.
+  locate({ id }: { id: string }): number | undefined
+  // The first and last log positions whose messages can have been recorded at a time.
+  around({ time }: { time: number }): {
+    first: number
+    last: number
+  }
+}
+
+// How many log positions one read covers, so a statement never runs long however large the thread.
+export const LOOKUP_WINDOW = 4000
+
+const keyOf = ({ message }: { message: MessageRecord }): Key => ({
+  seq: message.seq,
+  at: message.at,
+  id: message.id,
+})
+
+// The messages beyond a key in one direction, a window at a time, nearest first.
+function* walk({
+  thread,
+  direction,
+  beyond,
+  min,
+  max,
+  accept,
+}: {
+  thread: LookupThread
+  direction: 'older' | 'newer'
+  beyond?: Key
+  min: number
+  max: number
+  accept: ({ message }: { message: MessageRecord }) => boolean
+}): Generator<MessageRecord> {
+  const sign = direction === 'newer' ? 1 : -1
+  const after = ({ message }: { message: MessageRecord }) => !beyond || sign * compareMessages({
+    a: message,
+    b: beyond,
+  }) > 0
+  const passed = ({ message }: { message: MessageRecord }) => accept({ message })
+    && after({ message })
+
+  if (direction === 'newer') {
+    for (let lo = Math.max(
+      min,
+      beyond?.seq ?? min,
+    ) - 1; lo < max; lo += LOOKUP_WINDOW) {
+      yield* thread.window({
+        lo,
+        hi: Math.min(
+          lo + LOOKUP_WINDOW,
+          max,
+        ),
+      }).filter(message => passed({ message }))
+    }
+
+    return
+  }
+
+  for (let hi = Math.min(
+    max,
+    beyond?.seq ?? max,
+  ); hi >= min;) {
+    const lo = Math.max(
+      hi - LOOKUP_WINDOW,
+      min - 1,
+    )
+    yield* thread.window({
+      lo,
+      hi,
+    }).filter(message => passed({ message }))
+      .reverse()
+    hi = lo
+  }
+}
+
+// A walk that can be looked at before it is taken from.
+function lookahead({ messages }: { messages: Generator<MessageRecord> }) {
+  let head = messages.next()
+
+  return {
+    peek: () => head.done ? undefined : head.value,
+    take: () => {
+      head = messages.next()
+    },
+  }
+}
+
 export function lookupMessages({
-  positions,
+  thread,
   hydraId,
   card = HYDRA_CARD,
-  events,
-  entries,
   snapshot,
   selection = {},
 }: {
-  positions?: ReadonlyMap<string, number>
+  thread: LookupThread
   hydraId: string
   card?: string
-  events: HydraEvent[]
-  // The thread's native transcript entries, with their references.
-  entries: SessionEntry[]
   snapshot: number
   selection?: MessageSelection
 }) {
@@ -241,12 +335,43 @@ export function lookupMessages({
     invalid({ message: '--from must precede --to' })
   }
 
-  const messages = messageRecords({
-    positions,
-    events,
-    entries,
-    card,
-  }).filter(message => {
+  const seqBound = ({
+    bound,
+    side,
+  }: {
+    bound: typeof lower
+    side: 'first' | 'last'
+  }) => {
+    if (!bound) {
+      return side === 'first' ? 1 : snapshot
+    }
+
+    if (bound.kind === 'seq') {
+      return bound.value
+    }
+
+    const found = thread.around({ time: bound.value })
+
+    // A transcript message can sit one position after the last event recorded before it.
+    return side === 'first' ? found.first : found.last + 1
+  }
+
+  const min = Math.max(
+    1,
+    seqBound({
+      bound: lower,
+      side: 'first',
+    }),
+  )
+  const max = Math.min(
+    snapshot,
+    seqBound({
+      bound: upper,
+      side: 'last',
+    }),
+  )
+
+  const accept = ({ message }: { message: MessageRecord }) => {
     if (message.seq > snapshot) {
       return false
     }
@@ -259,37 +384,46 @@ export function lookupMessages({
 
       return (!lower || lowerValue >= lower.value) && (!upper || upperValue <= upper.value)
     })
-  })
-  const start = cursor?.start ?? 0
-  const end = cursor?.end ?? messages.length
-  let position = cursor?.position ?? start
-  const direction = cursor?.direction ?? selection.direction ?? 'newer'
-
-  if (end > messages.length) {
-    invalid({ message: 'This message cursor is outside the recorded snapshot' })
   }
 
-  let anchor: number | undefined
+  const direction = cursor?.direction ?? selection.direction ?? 'newer'
+
+  let anchor: MessageRecord | undefined
 
   if (selectors.length) {
     const time = selection.at === undefined ? undefined : timestamp({ value: selection.at })
-    const matches = messages.map((
-      message,
-      index,
-    ) => ({
-      message,
-      index,
-    })).filter(({ message }) => {
-      if (selection.id !== undefined) {
-        return message.id === selection.id || message.aliases.includes(selection.id)
-      }
+    let candidates: MessageRecord[] = []
 
-      if (selection.seq !== undefined) {
-        return message.sequences.includes(selection.seq)
-      }
+    if (selection.id !== undefined) {
+      const seq = thread.locate({ id: selection.id })
+      candidates = seq === undefined ? [] : thread.window({
+        lo: seq - 1,
+        hi: seq,
+      }).filter(message => message.id === selection.id || message.aliases.includes(selection.id!))
+    } else if (selection.seq !== undefined) {
+      candidates = selection.seq > snapshot ? [] : thread.window({
+        lo: selection.seq - 1,
+        hi: selection.seq,
+      }).filter(message => message.sequences.includes(selection.seq!))
+    } else {
+      const found = thread.around({ time: time! })
 
-      return Date.parse(message.at) === time
-    })
+      for (let lo = found.first - 1; lo < Math.min(
+        found.last + 1,
+        snapshot,
+      ); lo += LOOKUP_WINDOW) {
+        candidates.push(...thread.window({
+          lo,
+          hi: Math.min(
+            lo + LOOKUP_WINDOW,
+            found.last + 1,
+            snapshot,
+          ),
+        }).filter(message => Date.parse(message.at) === time))
+      }
+    }
+
+    const matches = candidates.filter(message => accept({ message }))
 
     if (!matches.length) {
       throw new HydraError({
@@ -304,27 +438,40 @@ export function lookupMessages({
         message: `Several messages match; use --id: ${matches.slice(
           0,
           MESSAGE_PAGE_LIMIT,
-        ).map(({ message }) => `${message.id} (seq ${message.seq})`)
+        ).map(message => `${message.id} (seq ${message.seq})`)
           .join(', ')}`,
       })
     }
 
-    anchor = matches[0].index
-    position = direction === 'older' ? anchor : anchor + 1
-  } else if (!cursor) {
-    position = direction === 'older' ? end : start
+    anchor = matches[0]
   }
+
+  const messagesBeyond = ({
+    side,
+    beyond,
+  }: {
+    side: 'older' | 'newer'
+    beyond?: Key
+  }) => lookahead({
+    messages: walk({
+      thread,
+      direction: side,
+      beyond,
+      min,
+      max,
+      accept,
+    }),
+  })
 
   const page: MessageRecord[] = []
 
   const add = ({
-    index,
+    candidate,
     prepend = false,
   }: {
-    index: number
+    candidate: MessageRecord
     prepend?: boolean
   }) => {
-    const candidate = messages[index]
     const next = prepend ? [
       candidate,
       ...page,
@@ -356,13 +503,17 @@ export function lookupMessages({
     return true
   }
 
-  let first = position
-  let last = position
-
-  if (anchor !== undefined && selection.direction === undefined) {
-    add({ index: anchor })
-    first = anchor
-    last = anchor + 1
+  if (anchor && selection.direction === undefined) {
+    add({ candidate: anchor })
+    const key = keyOf({ message: anchor })
+    const older = messagesBeyond({
+      side: 'older',
+      beyond: key,
+    })
+    const newer = messagesBeyond({
+      side: 'newer',
+      beyond: key,
+    })
     const before = selection.before ?? (selection.budget === undefined ? 0 : MESSAGE_PAGE_LIMIT)
     const after = selection.after ?? (selection.budget === undefined ? 0 : MESSAGE_PAGE_LIMIT)
     let olderOpen = true
@@ -375,91 +526,87 @@ export function lookupMessages({
       ),
       MESSAGE_PAGE_LIMIT,
     ); distance++) {
-      const older = anchor - distance
-      const newer = anchor + distance
-      const takeOlder = olderOpen && distance <= before && older >= start
-      const takeNewer = newerOpen && distance <= after && newer < end
+      const nextOlder = olderOpen && distance <= before ? older.peek() : undefined
+      const nextNewer = newerOpen && distance <= after ? newer.peek() : undefined
 
-      if (!takeOlder && !takeNewer) {
+      if (!nextOlder && !nextNewer) {
         break
       }
 
-      if (takeOlder) {
+      if (nextOlder) {
         olderOpen = add({
-          index: older,
+          candidate: nextOlder,
           prepend: true,
         })
 
         if (olderOpen) {
-          first = older
+          older.take()
         }
       }
 
-      if (takeNewer) {
-        newerOpen = add({ index: newer })
+      if (nextNewer) {
+        newerOpen = add({ candidate: nextNewer })
 
         if (newerOpen) {
-          last = newer + 1
+          newer.take()
         }
       }
     }
-  } else if (direction === 'older') {
-    for (let index = position - 1; index >= start; index--) {
-      if (!add({
-        index,
-        prepend: true,
-      })) {
-        break
-      }
-
-      first = index
-    }
   } else {
-    for (let index = position; index < end; index++) {
-      if (!add({ index })) {
-        break
-      }
+    const beyond = cursor?.key ?? (anchor && keyOf({ message: anchor }))
+    const messages = messagesBeyond({
+      side: direction,
+      beyond,
+    })
 
-      last = index + 1
+    let next = messages.peek()
+
+    while (next && add({
+      candidate: next,
+      prepend: direction === 'older',
+    })) {
+      messages.take()
+      next = messages.peek()
     }
   }
 
   const continuation = ({
-    position,
+    message,
     direction,
   }: {
-    position: number
+    message: MessageRecord
     direction: Cursor['direction']
   }) =>
-    encodeCursor({
-      cursor: {
-        hydra: hydraId,
-        card,
-        snapshot,
-        start,
-        end,
-        position,
-        direction,
-        from,
-        to,
-      },
-    })
+    messagesBeyond({
+      side: direction,
+      beyond: keyOf({ message }),
+    }).peek() ? encodeCursor({
+        cursor: {
+          hydra: hydraId,
+          card,
+          snapshot,
+          key: keyOf({ message }),
+          direction,
+          from,
+          to,
+        },
+      }) : undefined
 
   return {
     hydra: hydraId,
     thread: card === HYDRA_CARD ? 'hydra' : card,
     snapshot,
-    anchor: anchor === undefined ? undefined : messages[anchor].id,
+    anchor: anchor?.id,
     messages: page.map(message => outputMessage({ message })),
     tokens: countTokens({ text: page.map(message => message.text).join('\n\n') }),
     budget,
     limit,
-    older: first > start ? continuation({
-      position: first,
+    older: page.length ? continuation({
+      message: page[0],
       direction: 'older',
     }) : undefined,
-    newer: last < end ? continuation({
-      position: last,
+    newer: page.length ? continuation({
+      message: page.at(-1)!,
       direction: 'newer',
     }) : undefined,
     note: page.length ? 'Whole messages in chronological order. Cursors keep this thread, range and snapshot.' : 'No messages in this selection.',

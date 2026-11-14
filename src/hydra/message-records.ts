@@ -23,7 +23,7 @@ export function messageRecords({
   entries: native = [],
   card = HYDRA_CARD,
 }: {
-  positions?: ReadonlyMap<string, number>
+  positions: ReadonlyMap<string, number>
   events: HydraEvent[]
   entries?: SessionEntry[]
   card?: string
@@ -42,7 +42,6 @@ export function messageRecords({
     alias?: string
   }[] = placeEntries({
     positions,
-    events,
     entries: messages,
   }).map(({
     seq,
@@ -142,5 +141,34 @@ export function messageRecords({
   }).sort((
     a,
     b,
-  ) => Date.parse(a.at) - Date.parse(b.at) || a.seq - b.seq)
+  ) => compareMessages({
+    a,
+    b,
+  }))
+}
+
+// Messages are in log order, so a window of the log holds a run of them. Transcript messages recorded between two events
+// come before the next event's own messages.
+export function compareMessages({
+  a,
+  b,
+}: {
+  a: Pick<MessageRecord, 'seq' | 'at' | 'id'>
+  b: Pick<MessageRecord, 'seq' | 'at' | 'id'>
+}): number {
+  if (a.seq !== b.seq) {
+    return a.seq - b.seq
+  }
+
+  const time = Date.parse(a.at) - Date.parse(b.at)
+
+  if (time) {
+    return time
+  }
+
+  if (a.id === b.id) {
+    return 0
+  }
+
+  return a.id < b.id ? -1 : 1
 }

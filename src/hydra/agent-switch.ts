@@ -26,8 +26,8 @@ import { HYDRA_CARD } from './identity.ts'
 import type { HydraAgentChange, HydraOperation } from './model.ts'
 import { operationEvent } from './operations.ts'
 import { recapText } from './wakes.ts'
-import { hydraHistoryPage } from './history-cli.ts'
-import { canSkipCompaction, compactionContext, historyCommand, inscribeSince, NEITHER_REASON } from './history.ts'
+import { hydraHistoryTokens } from './history-cli.ts'
+import { canSkipCompaction, compactionContext, historyCommand, inscribeSince, NEITHER_LIMIT, NEITHER_REASON } from './history.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { modelOption, type HostedSession, type ModelOption, type Provider } from '#workers/provider.ts'
 
@@ -237,10 +237,11 @@ export function createAgentSwitch({
     }
 
     if (choice === 'neither' && change.kind !== 'effort' && !canSkipCompaction({
-      tokens: hydraHistoryPage({
+      tokens: hydraHistoryTokens({
         hydraId,
         since: 'last-compaction',
-      }).totalTokens,
+        limit: NEITHER_LIMIT,
+      }),
     })) {
       throw new HydraError({
         message: NEITHER_REASON,
@@ -296,12 +297,13 @@ export function createAgentSwitch({
                   at: at(),
                 }),
               })
-              const history = hydraHistoryPage({
+              const tokens = hydraHistoryTokens({
                 hydraId,
                 since: 'last-compaction',
+                limit: NEITHER_LIMIT,
               })
 
-              if (!canSkipCompaction({ tokens: history.totalTokens })) {
+              if (!canSkipCompaction({ tokens })) {
                 throw new HydraError({
                   message: NEITHER_REASON,
                   code: 'VALIDATION_ERROR',
