@@ -121,6 +121,8 @@ export function createHydraOperations({
   // and when it ends Hydra's first turn is the recap of what arrived meanwhile.
   // The first of back-to-back operations: the recap after the last one covers everything since it began.
   let stoppedSince: NonNullable<HydraState['hydraOperation']> | undefined
+  // The owner's Stop ended the running stop and cancelled what waited behind it, so no recap follows.
+  let stoppedByOwner = false
 
   const stoppedFor = ({ id }: { id: string }) => {
     const running = loadHydra({ hydraId }).state.hydraOperation
@@ -168,6 +170,7 @@ export function createHydraOperations({
       }
 
       if (!stoppedSince) {
+        stoppedByOwner = false
         stoppedSince = {
           id,
           kind,
@@ -251,10 +254,11 @@ export function createHydraOperations({
 
         const since = stoppedSince ?? running
         stoppedSince = undefined
-        const hydraCard = state.cards[HYDRA_CARD]
 
-        // The owner's Stop ended it: Hydra waits for their next message instead of a recap.
-        if ((hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted') {
+        // Hydra waits for the owner's next message instead of a recap; a Stop from before the operation leaves what waited to deliver.
+        if (stoppedByOwner) {
+          stoppedByOwner = false
+
           return
         }
 
@@ -297,6 +301,9 @@ export function createHydraOperations({
     stoppedFor,
     startOperation,
     endOperation,
+    stoppedByOwner: () => {
+      stoppedByOwner = true
+    },
   }
 }
 

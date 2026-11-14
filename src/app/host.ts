@@ -282,6 +282,7 @@ export function createHost({
     stoppedFor,
     startOperation,
     endOperation,
+    stoppedByOwner,
   } = createHydraOperations({
     hydraId,
     queuedHydra,
@@ -1034,6 +1035,7 @@ export function createHost({
 
   // A stop that ends a compaction, an upgrade or an agent change cancels what waited behind it; the commands Pnyx itself handles are not messages to Hydra.
   const stopHeldInputs = () => {
+    stoppedByOwner()
     turns.cancel()
     note({
       fn: ({ writer }) => stopHydraInputs({
