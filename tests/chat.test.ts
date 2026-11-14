@@ -1416,7 +1416,7 @@ test(
 )
 
 test(
-  'Stop, or removing its last held message, ends an agent change waiting for the owner, and Stop also ends the turn Hydra was running',
+  'Stop, or removing its last held message, ends an agent change waiting for the owner, Stop also ends the turn Hydra was running, and the next change still delivers what it holds',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await hydra.page()
@@ -1521,6 +1521,31 @@ test(
     })
     expect(session.received.filter(message => message.includes('held'))).toEqual([])
     expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toEqual([session])
+
+    // The next change after a Stop still delivers what it held once its compaction ends.
+    await choose({ agent: { effort: 'low' } })
+    await send({ text: 'cancelled by the stop' })
+    await until({
+      what: 'the effort change to wait for the owner',
+      check: () => agentChange({ hydraId: hydra.id }),
+    })
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })).stopped).toBe('agent change')
+    await send({ text: 'held after the stop' })
+    planSummary({ hydra }).release()
+    await answerAgentChange({
+      hydra,
+      page,
+      choice: 'compact',
+    })
+    await heardFromSummary({
+      hydra,
+      text: 'held after the stop',
+    })
     page.close()
   },
 )
