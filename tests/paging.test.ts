@@ -162,19 +162,27 @@ test(
     }
 
     const page = await hydra.page()
-    const read = async ({ before }: { before?: number }) => await page.send({
-      name: 'task',
-      args: [
+
+    const read = async ({ before }: { before?: number }) => {
+      const args = [
         'updates',
         card.id,
         '--limit',
         '5',
-        ...before === undefined ? [] : [
+      ]
+
+      if (before !== undefined) {
+        args.push(
           '--before',
           String(before),
-        ],
-      ],
-    }) as unknown as UpdatesReceipt
+        )
+      }
+
+      return await page.send({
+        name: 'task',
+        args,
+      }) as unknown as UpdatesReceipt
+    }
 
     const first = await read({})
     expect(first.events.map(event => event.data.after)).toEqual([

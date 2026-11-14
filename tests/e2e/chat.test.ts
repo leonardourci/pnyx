@@ -186,7 +186,7 @@ test.skip(
               args?: string[]
             }
 
-            if (sent.type === 'command' && sent.name === 'thread' && (sent.args?.length ?? 0) > 1) {
+            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1) {
               olderReads.add(sent.id!)
             }
 
