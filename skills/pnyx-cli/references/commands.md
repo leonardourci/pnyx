@@ -37,3 +37,5 @@ Owner questions persist across completed investigations, worker exits and unrela
 `task refresh-links <task>` asks the server to read its open pull requests now, answering `none` when it has none. Otherwise they are read once per minute while the worker works or checks are pending and every 15 minutes when idle; a failed read keeps that schedule, and a link that resolves to no pull request three times waits for a task or link change.
 
 `debug cpu-profile --seconds 10 --out ./idle.cpuprofile --hydra <id>` samples the server's main thread and returns the hottest functions. Only one capture runs at a time; the output file is private, and server shutdown cancels the capture.
+
+Stop a hosted worker with `task stop <task>` or Hydra with `hydra stop`. Stop cancels unread inputs; they remain visible as Not delivered: stopped. Use `task send-now <task> <message-id>` or `hydra send-now <message-id>` to interrupt a step for a queued message. After Stop, routine wakes wait for the owner's next message.

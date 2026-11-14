@@ -549,3 +549,9 @@ When the routine helper is available, safe failed-message recovery uses these sa
 Use `pnyx-axi task tools <task> --available --harness claude|codex [--account <name>] --hydra <id>` to list configured capability names, or omit `--available` to read task grants. Hydra selects additions at dispatch with repeated `task start --tool browser|mcp:<name>|plugin:<id>` flags. The `browser` capability selects one task-owned headless `chrome-devtools-axi` session.
 
 Workers request additions through `task ask`. Hydra runs `task tools <task> --grant <capability>` or `--revoke <capability>` itself; repeat either flag for several names. Pnyx records the selection and resumes the same conversation at a safe native turn boundary. It recovers unapplied changes after restart. No owner confirmation is added to this flow. Tool actions retain their existing write permissions. See [Task tool grants](provider-sessions.md#task-tool-grants) for provider and launch-route behavior.
+
+### Stop and queued messages
+
+`pnyx-axi hydra stop` stops Hydra even while its session opens. `pnyx-axi task stop <task>` stops a hosted worker. Stop cancels unread messages; chat keeps them as **Not delivered: stopped** with **Send again**. Hydra waits for the owner's next message before routine wakes can resume it. Worker questions and permissions remain visible on their cards.
+
+Messages to a busy agent normally join at its next step. **Send now**, `pnyx-axi hydra send-now <message-id>` or `pnyx-axi task send-now <task> <message-id>`, interrupts its current step to take a queued message. Claude uses its public interrupt API. Codex Stop signals only verified foreground command PIDs belonging to that turn, preserving commands already put in the background. An owner message denies the recipient's pending permission prompt with the message as its reason, then delivers the message.
