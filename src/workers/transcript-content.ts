@@ -83,12 +83,12 @@ export function foundSettings({ settings }: {
   return Object.keys(found).length ? found : undefined
 }
 
-export function onOff({ fast }: { fast: boolean | undefined }) {
+export function fastSetting({ fast }: { fast: boolean | undefined }) {
   if (fast === undefined) {
     return undefined
   }
 
-  return fast ? 'on' : 'off'
+  return String(fast)
 }
 
 export function transcriptText({

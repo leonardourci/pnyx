@@ -3,7 +3,7 @@ import { BROWSER_TOOL } from './tools.ts'
 import { log } from '#app/diagnostics.ts'
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
+import { blockText, foundSettings, injectedDigest, fastSetting, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -1787,7 +1787,7 @@ export function readCodexUsage({
 function codexFast({ tier }: { tier: unknown }): string | undefined {
   const value = transcriptString({ value: tier })
 
-  return onOff({ fast: value === undefined ? undefined : value === 'fast' || value === 'priority' })
+  return fastSetting({ fast: value === undefined ? undefined : value === 'fast' || value === 'priority' })
 }
 
 function approval({ value }: { value: unknown }): string | undefined {

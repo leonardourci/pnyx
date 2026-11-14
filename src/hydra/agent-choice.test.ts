@@ -4,7 +4,9 @@ import type { HydraState } from '#app/model.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
 import type { HeadsDispatch } from '#workers/dispatch-config.ts'
-import { hydraCandidate } from './agent-choice.ts'
+import { sameChosenSettings } from '#workers/host.ts'
+import { fastSetting } from '#workers/transcript-content.ts'
+import { agentSettings, hydraCandidate } from './agent-choice.ts'
 
 const noRules: HeadsDispatch = {
   rules: {},
@@ -98,5 +100,38 @@ test(
       }).harness,
       'codex',
     )
+  },
+)
+
+test(
+  'transcript Fast settings keep the chosen running session, including saved legacy values',
+  async () => {
+    for (const fast of [
+      true,
+      false,
+    ]) {
+      const chosen = agentSettings({ agent: { fast } })
+      assert.equal(
+        sameChosenSettings({
+          current: { fast: fastSetting({ fast })! },
+          chosen,
+        }),
+        true,
+      )
+      assert.equal(
+        sameChosenSettings({
+          current: { fast: fast ? 'on' : 'off' },
+          chosen,
+        }),
+        true,
+      )
+      assert.equal(
+        sameChosenSettings({
+          current: { fast: String(!fast) },
+          chosen,
+        }),
+        false,
+      )
+    }
   },
 )

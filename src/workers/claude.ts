@@ -1,7 +1,7 @@
 import { claudeTools } from './claude-tools.ts'
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, injectedDigest, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
+import { blockText, foundSettings, injectedDigest, fastSetting, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
@@ -1020,7 +1020,7 @@ function claudeSettings(
       // A synthetic turn, such as an error, names no real model.
       model: model?.startsWith('<') ? undefined : model,
       effort: transcriptString({ value: record.effort }),
-      fast: onOff({ fast: speed === undefined ? undefined : speed === 'fast' }),
+      fast: fastSetting({ fast: speed === undefined ? undefined : speed === 'fast' }),
       context: requested === undefined ? undefined : /\[1m\]$/i.test(requested) ? '1M' : null,
       client: transcriptString({ value: record.entrypoint }),
       version: transcriptString({ value: record.version }),

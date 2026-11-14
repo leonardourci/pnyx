@@ -124,7 +124,7 @@ test(
       {
         model: 'gpt-6.1',
         effort: 'high',
-        fast: 'on',
+        fast: 'true',
         approval: 'on-request',
         sandbox: 'workspace-write',
         collaboration: 'default',
@@ -165,7 +165,7 @@ test(
       {
         model: 'gpt-6.1-mini',
         effort: 'low',
-        fast: 'off',
+        fast: 'false',
         approval: 'never',
         collaboration: 'plan',
         summary: 'concise',
