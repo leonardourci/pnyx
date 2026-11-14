@@ -806,17 +806,24 @@ export function HydraChat({
     task,
     text,
   }: {
-    task: string
+    task?: string
     text: string
   }) => {
     try {
       await command({
-        name: 'reply',
-        args: [
+        name: task ? 'reply' : 'hydra',
+        args: task ? [
           task,
           text,
           crypto.randomUUID(),
-        ],
+        ]
+          : [
+            'send',
+            '--text',
+            text,
+            '--event-id',
+            crypto.randomUUID(),
+          ],
       })
     } catch (error) {
       notify({ text: (error as Error).message })
@@ -1067,6 +1074,26 @@ export function HydraChat({
               toolDetails={view.toolDetails}
               thinkingDetails={view.thinkingDetails}
               sendAgain={sendAgain}
+              sendNow={async ({
+                id,
+                task,
+              }) => {
+                try {
+                  await command({
+                    name: task ? 'task' : 'hydra',
+                    args: task ? [
+                      'send-now',
+                      task,
+                      id,
+                    ] : [
+                      'send-now',
+                      id,
+                    ],
+                  })
+                } catch (error) {
+                  notify({ text: (error as Error).message })
+                }
+              }}
               retry={retry}
             />
             <DispatchProposals
