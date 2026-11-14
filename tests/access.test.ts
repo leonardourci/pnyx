@@ -1,4 +1,6 @@
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { localToken } from '#app/server-state.ts'
 import { zeroCookieName } from '#app/server-protocol.ts'
@@ -7,6 +9,11 @@ import { openPage, pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pn
 import { readRows, zeroReady } from './setup/zero.ts'
 
 let pnyx: Pnyx
+
+const image = Buffer.from(
+  '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea735819f0000000049454e44ae426082',
+  'hex',
+)
 
 beforeAll(async () => {
   // The page reads Pnyx's data through zero-cache, which only this file needs.
@@ -131,6 +138,62 @@ test(
   },
 )
 
+// task-8178f4ca: a worker can still declare on another task; remove the skip when that is fixed.
+test.skip(
+  'a worker\'s declaration on another task is refused and leaves that task unchanged',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'mine' })
+
+    for (const key of [
+      'mine',
+      'other',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          key,
+          '--key',
+          key,
+          ...key === 'mine' ? [
+            '--folder',
+            folder,
+          ] : [],
+        ],
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'mine',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+
+    await hydra.as({ session: worker }).refused({
+      args: [
+        'task',
+        'status',
+        'other',
+        'done',
+        '--note',
+        'Finished by someone else',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'other',
+      ],
+    })).task.status).not.toContain('done')
+  },
+)
+
 test(
   'Hydra\'s owner-only commands wait for the owner\'s confirmation instead of running, and only the owner may answer them',
   async () => {
@@ -180,6 +243,75 @@ test(
 )
 
 test(
+  'Hydra\'s own permission request waits for the owner: Hydra\'s answer is refused and the owner\'s is accepted once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'clean the build folder' })
+    const decision = session.useTool!({
+      tool: 'Bash',
+      input: { command: 'rm -rf build' },
+    })
+    const [request] = await until({
+      what: 'Hydra\'s permission request',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          '$hydra',
+          '--full',
+        ],
+      })).task.permissions,
+    })
+    const answer = [
+      'task',
+      'permission',
+      '$hydra',
+      request.id,
+      'allow',
+    ]
+
+    // Hydra runs pnyx-axi unasked, so its answer only becomes a proposal, and an answer made in Hydra's name is refused outright.
+    const page = await hydra.page()
+    const proposed = await hydra.as({ session }).run({ args: answer })
+    expect(proposed.confirmation).toBe('needed')
+    expect(await page.send({
+      name: 'task',
+      args: [
+        ...answer.slice(1),
+        '--actor',
+        'hydra',
+        '--reason',
+        'The build folder is safe to remove',
+      ],
+    })).toMatchObject({
+      type: 'error',
+      code: 'NO_ROUTE',
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        '$hydra',
+        '--full',
+      ],
+    })).task.permissions[0].status).toBe('pending')
+
+    page.close()
+    await hydra.owner({
+      args: [
+        'approval',
+        'confirm',
+        proposed.token,
+        '--confirm',
+        proposed.token,
+      ],
+    })
+    expect(await decision).toMatchObject({ behavior: 'allow' })
+    expect((await hydra.ownerRefused({ args: answer })).code).toBe('PERMISSION_CLOSED')
+  },
+)
+
+test(
   'the page\'s socket and files need the local token, its commands stay on its own Hydra, and only the Hydra\'s own files are served',
   async () => {
     const hydra = await pnyx.hydra()
@@ -220,10 +352,6 @@ test(
     page.close()
 
     const base = `http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}`
-    const image = Buffer.from(
-      '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea735819f0000000049454e44ae426082',
-      'hex',
-    )
     const unauthorized = await fetch(
       `${base}/attachments`,
       {
@@ -270,6 +398,134 @@ test(
       headers: { host: 'attacker.example' },
     })
     expect(forged.status).toBe(403)
+  },
+)
+
+test(
+  'an image outside the Hydra\'s folder is never served, whether asked for through .. or through a linked copy folder',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const home = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+    )
+    const token = localToken()
+    mkdirSync(
+      join(
+        home,
+        'copies',
+        'app',
+      ),
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        home,
+        'copies',
+        'app',
+        'logo.png',
+      ),
+      image,
+    )
+    // Two real images beside the Hydra's folder: one at the home's root, one in a folder a copy links to.
+    writeFileSync(
+      join(
+        process.env.PNYX_HOME!,
+        'outside.png',
+      ),
+      image,
+    )
+    const elsewhere = join(
+      process.env.PNYX_HOME!,
+      `${hydra.id}-elsewhere`,
+    )
+    mkdirSync(elsewhere)
+    writeFileSync(
+      join(
+        elsewhere,
+        'secret.png',
+      ),
+      image,
+    )
+    symlinkSync(
+      elsewhere,
+      join(
+        home,
+        'copies',
+        'linked',
+      ),
+    )
+
+    const inside = await raw({ path: `/hydra/${hydra.id}/copies/app/logo.png?token=${token}` })
+    expect(inside.status).toBe(200)
+
+    for (const outside of [
+      `/hydra/${hydra.id}/copies/../../../outside.png?token=${token}`,
+      `/hydra/${hydra.id}/copies/app/../../../../outside.png?token=${token}`,
+      `/hydra/${hydra.id}/copies/linked/secret.png?token=${token}`,
+    ]) {
+      expect(
+        (await raw({ path: outside })).status,
+        outside,
+      ).toBe(404)
+    }
+  },
+)
+
+test(
+  'a command line posted to /api/run needs the local token and writes nothing without it',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const run = ({ authorization }: { authorization?: string } = {}) => fetch(
+      `http://127.0.0.1:${pnyx.port()}/api/run`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...authorization ? { authorization } : {},
+        },
+        body: JSON.stringify({
+          argv: [
+            'task',
+            'create',
+            '--title',
+            'Unauthorized',
+            '--key',
+            'unauthorized',
+            '--hydra',
+            hydra.id,
+          ],
+          cwd: process.cwd(),
+          env: {},
+        }),
+      },
+    )
+
+    for (const authorization of [
+      undefined,
+      'Bearer wrong-token',
+    ]) {
+      const response = await run({ authorization })
+      expect(response.status).toBe(401)
+      expect(await response.json()).toMatchObject({ code: 'UNAUTHORIZED' })
+    }
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'show',
+        'unauthorized',
+      ],
+    })).code).toBe('NOT_FOUND')
+    expect((await run({ authorization: `Bearer ${localToken()}` })).status).toBe(200)
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'unauthorized',
+      ],
+    })).task.title).toBe('Unauthorized')
   },
 )
 
@@ -374,5 +630,94 @@ test(
       },
     })
     expect(references.frames.some(frame => frame.includes(steering))).toBe(false)
+
+    // The steering is on the card, so the card's own detail, the Hydra's row and its latest owner message must not carry it either.
+    const shown = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'shown',
+      ],
+    })).task.id as string
+    const detail = await readRows({
+      url: `${origin}/zero`,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.card.detail({
+        hydraId: hydra.id,
+        ref: shown,
+      })),
+    })
+    expect(detail.rows).toMatchObject({ key: 'shown' })
+    const hydraRow = await readRows({
+      url: `${origin}/zero`,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.hydra.one({ hydraId: hydra.id })),
+    })
+    const ownerMessage = await readRows({
+      url: `${origin}/zero`,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.hydra.ownerMessage({ hydraId: hydra.id })),
+    })
+
+    for (const read of [
+      detail,
+      hydraRow,
+      ownerMessage,
+    ]) {
+      expect(read.frames.some(frame => frame.includes(steering))).toBe(false)
+    }
+  },
+)
+
+test(
+  'zero-cache replicates only the page\'s tables, so a card\'s private steering and the agent sessions never leave the server',
+  async () => {
+    const published = rows<{
+      tablename: string
+      attnames: string[] | null
+      rowfilter: string | null
+    }>({
+      text: 'select tablename, attnames::text[] as attnames, rowfilter from pg_publication_tables where pubname = \'pnyx_page\' order by tablename',
+    })
+    expect(published.map(table => table.tablename)).toEqual([
+      'card_bodies',
+      'card_references',
+      'cards',
+      'columns',
+      'declarations',
+      'hydra_values',
+      'hydras',
+      'links',
+      'messages',
+      'notes',
+      'questions',
+      'replies',
+      'settings',
+      'upgrade_status',
+    ])
+    expect(published.find(table => table.tablename === 'hydras')!.attnames!.sort()).toEqual([
+      'config',
+      'id',
+      'summary',
+    ])
+    // Only the values the page reads, none of the server's own.
+    const keys = [...published.find(table => table.tablename === 'hydra_values')!.rowfilter!.matchAll(/'([A-Za-z]+)'/g)].map(match => match[1])
+    expect(keys.sort()).toEqual([
+      'configRevision',
+      'configured',
+      'dispatchProposals',
+      'helper',
+      'hydraAgent',
+      'hydraAgentChange',
+      'hydraOperation',
+      'hydraStatus',
+      'labelColors',
+      'projects',
+      'projectsRevision',
+      'queue',
+      'upgrades',
+      'view',
+      'viewRevision',
+    ])
   },
 )
