@@ -1,8 +1,7 @@
 import { cpSync, existsSync, lstatSync, mkdirSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-// With PNYX_KEEP_TEST_FILES set to a folder, a run's scratch files are copied there before they are deleted,
-// so a failure that only shows on CI can be read afterwards. Postgres's data stays out; its log is kept.
+// With PNYX_KEEP_TEST_FILES set, a run's scratch files are copied there before deletion, minus Postgres's data, so a CI-only failure can be read.
 export function keepFiles({
   from,
   exclude = [],

@@ -16,8 +16,7 @@ export default defineConfig({
     execArgv: ['--conditions=source'],
     globalSetup: ['tests/setup/global-setup.ts'],
     setupFiles: ['tests/setup/environment.ts'],
-    // Files and the tests in each run in a random order, so a test that needs another one's leftovers fails at once.
-    // A failing run's order repeats with --sequence.seed=<the seed it printed>.
+    // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order.
     sequence: {
       shuffle: {
         files: true,

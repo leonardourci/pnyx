@@ -415,7 +415,6 @@ test(
       ],
     })
 
-    // Every account is read once a minute, so each case names the accounts it reads.
     const start = async ({
       key,
       extra = [],
