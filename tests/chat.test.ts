@@ -773,6 +773,117 @@ test(
   },
 )
 
+// The agent change waiting for the owner's choice, as the page reads it.
+const agentChange = ({ hydraId }: { hydraId: string }) => rows<{
+  value: { next: { effort?: string } }
+}>({
+  text: 'select value from hydra_values where hydra_id = $1 and key = \'hydraAgentChange\'',
+  values: [hydraId],
+})[0]?.value
+
+test(
+  'choosing again the model and effort Hydra runs with asks nothing, even after the question showed, and its held messages reach the same session in order',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    const session = await hydra.chat({ text: 'first message' })
+
+    // Claude's catalog runs "opus" at "high" effort when Hydra names neither, as it did for the first message.
+    const choose = async ({ agent }: { agent: Record<string, string> }) => {
+      expect((await page.send({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            ...agent,
+          }),
+        ],
+      })).type).toBe('receipt')
+    }
+
+    await choose({ agent: { model: 'sonnet' } })
+    await choose({
+      agent: {
+        model: 'sonnet',
+        effort: 'low',
+      },
+    })
+    await choose({
+      agent: {
+        model: 'opus',
+        effort: 'low',
+      },
+    })
+    await choose({
+      agent: {
+        model: 'opus',
+        effort: 'high',
+      },
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'unchanged agent',
+      ],
+    })
+    await until({
+      what: 'Hydra to hear the message sent with its agent chosen again',
+      check: () => heard({
+        received: session.received,
+        text: 'unchanged agent',
+      }) === 1,
+    })
+    expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
+
+    await choose({ agent: { effort: 'low' } })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'held one',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'held two',
+      ],
+    })
+    await until({
+      what: 'the effort change to wait for the owner',
+      check: () => agentChange({ hydraId: hydra.id })?.next.effort === 'low',
+    })
+    await choose({ agent: { effort: 'medium' } })
+    await until({
+      what: 'the question to name the newly chosen effort',
+      check: () => agentChange({ hydraId: hydra.id })?.next.effort === 'medium',
+    })
+    await choose({ agent: { effort: 'high' } })
+    await until({
+      what: 'Hydra to hear both held messages',
+      check: () => heard({
+        received: session.received,
+        text: 'held two',
+      }) === 1,
+    })
+
+    expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
+    expect(session.received.map(message => message.split('\n').at(-1))).toEqual([
+      'first message',
+      'unchanged agent',
+      'held one',
+      'held two',
+    ])
+    expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toEqual([session])
+    page.close()
+  },
+)
+
 test(
   'digest recovery reads the latest checkpoint across read boundaries, partial records and a line far longer than a read',
   async ({ onTestFinished }) => {
