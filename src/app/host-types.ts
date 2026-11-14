@@ -75,12 +75,17 @@ export interface Host {
     id: string
     choice: 'inscribe' | 'compact' | 'neither'
   }): Record<string, unknown>
+  // Cancels an agent change that waits for the owner and sends its held messages again, so they reach the running agent or ask about the agent chosen now.
+  resendHeldMessages(): void
   stop({
     card,
-    sendNow }
+    sendNow,
+    cancel }
   ?: {
     card?: string
     sendNow?: string
+    // One message the queued messages list for Hydra, cancelled as Stop cancels them all.
+    cancel?: string
   }): Promise<Record<string, unknown>>
   // Asks for an upgrade as /upgrade does and answers with the one to watch; now restarts a built one at once.
   upgrade({

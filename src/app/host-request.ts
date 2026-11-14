@@ -65,9 +65,14 @@ export async function hostRequestUnlocked({
       })
 
     case 'send-now':
+    case 'cancel':
     case 'stop':
       return host.stop({
         sendNow: body.action === 'send-now' ? field({
+          body,
+          name: 'message',
+        }) : undefined,
+        cancel: body.action === 'cancel' ? field({
           body,
           name: 'message',
         }) : undefined,

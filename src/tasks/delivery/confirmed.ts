@@ -1,5 +1,6 @@
 import { refreshConfirmedProject } from '#projects/refresh-confirmed.ts'
 import { declareTask } from '#tasks/declarations.ts'
+import { cardFacts } from '#tasks/columns.ts'
 import type { Link } from './model.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 
@@ -20,11 +21,11 @@ function declareMerged({
     return
   }
 
-  // A pull request closed without merging was abandoned; the work landed through the ones that merged.
-  const live = card.links.filter(l => l.kind === 'github_pr' && l.state !== 'closed')
-  const allMerged = live.length > 0 && live.every(l => l.state === 'merged')
-
-  if (!allMerged) {
+  // The same done fact that places cards; a task whose report awaits review is tried again on the next follow pass.
+  if (!cardFacts({
+    card,
+    state: writer.state,
+  }).includes('done')) {
     return
   }
 

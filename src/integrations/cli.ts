@@ -87,7 +87,7 @@ export async function integrations({
         name: 'command',
         status: config.command ? `set: ${config.command}` : 'not set',
         setup: `pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'`,
-        docs: 'Started with PNYX_HOME, PNYX_HYDRA, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
+        docs: 'Started with PNYX_HOME, PNYX_WORKER_HOME, PNYX_HYDRA, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
       },
       {
         name: 'github',

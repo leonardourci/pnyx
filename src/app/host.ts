@@ -1,5 +1,6 @@
 import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
 import { stopHydraInputs } from '#hydra/stop-inputs.ts'
+import { heldOwnerMessages, hydraChatQueue } from '#hydra/chat-queue.ts'
 import { compactCommand } from '#workers/compact-command.ts'
 import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 import { canonical } from '#store/paths.ts'
@@ -503,6 +504,7 @@ export function createHost({
       PNYX_HOSTED: 'hydra',
     } : task ? {
       PNYX_ACTOR: `worker:${task}`,
+      PNYX_WORKER_HOME: pnyxHome(),
       PNYX_STEERING_WORKER: steeringWorker,
       ...untrackedBranches({ env: process.env }),
     } : {}),
@@ -846,6 +848,13 @@ export function createHost({
     readThrough,
     handBack,
     armWake,
+    models: ({
+      harness,
+      account,
+    }) => catalogs.models({
+      harness,
+      account,
+    }),
   })
   const {
     hydraTurn,
@@ -909,6 +918,7 @@ export function createHost({
 
   const {
     runAgentChange,
+    resendHeldMessages,
     agentChangeAbort,
   } = createAgentSwitch({
     hydraId,
@@ -1037,8 +1047,10 @@ export function createHost({
   }
 
   const stopHydra = async () => {
-    const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+    const state = loadHydra({ hydraId }).state
+    const card = state.cards[HYDRA_CARD]
     const changing = agentChangeAbort()
+    const waiting = state.hydraAgentChange
 
     if (changing) {
       stopHeldInputs()
@@ -1065,11 +1077,22 @@ export function createHost({
       return { stopped: 'upgrade' }
     }
 
+    // A change waiting for the owner's choice holds their messages, whether or not a turn runs.
+    if (waiting) {
+      stopHeldInputs()
+      changeAgent({
+        change: {
+          ...waiting,
+          state: 'cancelled',
+        },
+      })
+    }
+
     const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
     const running = turnRunning({ entry })
 
     if (!running && !queuedHydra.size && !entry?.input.pending()) {
-      return { stopped: 'none: Hydra is not working on a turn' }
+      return { stopped: waiting ? 'agent change' : 'none: Hydra is not working on a turn' }
     }
 
     // Messages already in the agent's hands are settled by its own receipts, not here.
@@ -1360,6 +1383,7 @@ export function createHost({
       }) : false
     },
     changeAgent: runAgentChange,
+    resendHeldMessages,
 
     compact: async ({
       card: ref,
@@ -1424,7 +1448,43 @@ export function createHost({
     stop: async ({
       card: ref = HYDRA_CARD,
       sendNow,
+      cancel,
     } = {}) => {
+      if (cancel) {
+        const listed = hydraChatQueue({ state: loadHydra({ hydraId }).state }).compactInputs
+          .some(input => input.id === cancel && !upgradeCommand({ text: input.text }))
+
+        if (!listed) {
+          throw new HydraError({
+            code: 'NO_ROUTE',
+            message: 'This message is no longer queued for Hydra',
+          })
+        }
+
+        write({
+          fn: ({ writer }) => stopHydraInputs({
+            writer,
+            ids: [cancel],
+            at: at(),
+          }),
+        })
+        const state = loadHydra({ hydraId }).state
+        const change = state.hydraAgentChange
+
+        // A change left holding nothing has nothing to ask about; what arrived for Hydra meanwhile can wake it.
+        if (change && change.state !== 'running' && !heldOwnerMessages({ state }).length) {
+          changeAgent({
+            change: {
+              ...change,
+              state: 'cancelled',
+            },
+          })
+          armWake()
+        }
+
+        return { cancelled: cancel }
+      }
+
       if (sendNow) {
         const state = loadHydra({ hydraId }).state
         const card = findCard({

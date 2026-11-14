@@ -20,6 +20,7 @@ import { REPLY_HELP, reply } from '#workers/reply-cli.ts'
 import { workerCommands } from '#workers/workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from '#integrations/cli.ts'
 import { ownerOnly } from '#hydra/hydra-session.ts'
+import { workerScoped } from '#workers/worker-scope.ts'
 import { RESTART_HELP, restart } from '#upgrade/restart.ts'
 import { UPGRADE_HELP, upgrade } from '#upgrade/cli.ts'
 
@@ -133,7 +134,7 @@ export async function runCli({
       }
     }
 
-  const all = ownerOnly({
+  const owned = ownerOnly({
     commands: {
       ...commands,
       ...supervisedCommands({
@@ -163,6 +164,8 @@ export async function runCli({
       }),
     },
   })
+
+  const all = workerScoped({ commands: owned })
 
   // The SDK refuses a leading flag or an unknown command itself, through the process exit code;
   // the status is recorded for the request too, as concurrent commands share that process.

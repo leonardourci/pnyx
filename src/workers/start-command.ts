@@ -161,6 +161,7 @@ export async function startCommand({
     env: {
       PNYX_HOME: pnyxHome(),
       PNYX_HYDRA: hydraId,
+      PNYX_WORKER_HOME: pnyxHome(),
       PNYX_TASK: target,
       PNYX_ROLE: role,
       PNYX_TASK_TITLE: claimed.card?.title ?? 'Hydra',

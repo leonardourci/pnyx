@@ -1,3 +1,4 @@
+import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
@@ -304,6 +305,8 @@ export function HydraChat({
   // An unsent message stays in the chat even while Hydra holds new input in the queue box.
   const shownSends = pending.filter(item => item.failed !== undefined
     || (!holding && !held.has(item.id)))
+  const removable = new Set(chatQueue.compactInputs.filter(input => input.text !== UPGRADE_COMMAND)
+    .map(input => input.id))
   const compactInputs = [
     ...chatQueue.compactInputs,
     ...inFlight.filter(item => holding && !held.has(item.id)).map(item => ({
@@ -1275,6 +1278,8 @@ export function HydraChat({
       />
       <CompactionQueue
         inputs={compactInputs}
+        removable={removable}
+        connected={connected}
         disabled={!connected || (!compacting && !upgrades.some(operation => operation.state === 'queued'))}
         sendNow={async ({ id }) => {
           try {
@@ -1282,6 +1287,19 @@ export function HydraChat({
               name: 'compact',
               args: [
                 HYDRA_CARD,
+                id,
+              ],
+            })
+          } catch (error) {
+            notify({ text: (error as Error).message })
+          }
+        }}
+        remove={async ({ id }) => {
+          try {
+            await command({
+              name: 'hydra',
+              args: [
+                'cancel',
                 id,
               ],
             })

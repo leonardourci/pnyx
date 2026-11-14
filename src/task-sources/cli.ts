@@ -1,4 +1,4 @@
-import { COMMON, integer, meta, parse, required, type Output } from '#app/cli-support.ts'
+import { COMMON, integer, meta, parse, required, type Options, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { steeringClaim } from '#workers/steering.ts'
@@ -9,6 +9,26 @@ import {
   SOURCE_MAX_BYTES, SOURCE_TIMEOUT_MS, sourceById, sourceTask,
 } from './sources.ts'
 
+export const SOURCE_OPTIONS: Options = {
+  ...COMMON,
+  actor: { type: 'string' },
+  executable: { type: 'string' },
+  argv: { type: 'string' },
+  cwd: { type: 'string' },
+  'timeout-ms': { type: 'string' },
+  'max-bytes': { type: 'string' },
+  'max-runs': { type: 'string' },
+  restart: { type: 'string' },
+  expires: { type: 'string' },
+  session: { type: 'string' },
+  generation: { type: 'string' },
+  all: { type: 'boolean' },
+  page: { type: 'string' },
+  after: { type: 'string' },
+  sequence: { type: 'string' },
+  'agent-reply-file': { type: 'string' },
+}
+
 export function sourceCommand({ args }: { args: string[] }): Output {
   const {
     values,
@@ -17,25 +37,7 @@ export function sourceCommand({ args }: { args: string[] }): Output {
   } = parse({
     args,
     positionals: 4,
-    options: {
-      ...COMMON,
-      actor: { type: 'string' },
-      executable: { type: 'string' },
-      argv: { type: 'string' },
-      cwd: { type: 'string' },
-      'timeout-ms': { type: 'string' },
-      'max-bytes': { type: 'string' },
-      'max-runs': { type: 'string' },
-      restart: { type: 'string' },
-      expires: { type: 'string' },
-      session: { type: 'string' },
-      generation: { type: 'string' },
-      all: { type: 'boolean' },
-      page: { type: 'string' },
-      after: { type: 'string' },
-      sequence: { type: 'string' },
-      'agent-reply-file': { type: 'string' },
-    },
+    options: SOURCE_OPTIONS,
   })
   const [
     action,

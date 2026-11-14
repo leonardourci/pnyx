@@ -91,11 +91,19 @@ export function CompactionRun({ operations }: { operations: Compaction[] }) {
 export function CompactionQueue({
   inputs,
   sendNow,
+  removable,
+  remove,
   disabled,
+  connected,
 }: {
   inputs: CompactInput[]
   sendNow({ id }: { id: string }): Promise<void>
+  // The server's queued messages; a queued /upgrade is an operation, and a message still being sent is not there yet.
+  removable: Set<string>
+  // Cancels the message so Hydra never receives it.
+  remove({ id }: { id: string }): Promise<void>
   disabled: boolean
+  connected: boolean
 }) {
   if (!inputs.length) {
     return null
@@ -109,6 +117,11 @@ export function CompactionQueue({
           <Tooltip content="Send now">
             <Button aria-label="Send now" disabled={disabled} onClick={() => void sendNow({ id: input.id })}><Icon name="send" size={14} /></Button>
           </Tooltip>
+          {removable.has(input.id) && (
+            <Tooltip content="Remove">
+              <Button aria-label="Remove" disabled={!connected} onClick={() => remove({ id: input.id })}><Icon name="close" size={14} /></Button>
+            </Tooltip>
+          )}
         </div>
       ))}
     </Disclosure>

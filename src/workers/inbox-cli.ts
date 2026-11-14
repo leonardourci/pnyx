@@ -1,12 +1,29 @@
 import { pendingSteering, steeringClaim } from './steering.ts'
 import { readInput } from '#app/request-context.ts'
-import { integer, meta, parse, required, COMMON, type Output } from '#app/cli-support.ts'
+import { integer, meta, parse, required, COMMON, type Options, type Output } from '#app/cli-support.ts'
 import { HydraError } from '#store/errors.ts'
 import type { SteeringAck, SteeringAttempt, SteeringClaim } from './model.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { acknowledgeSteering, enqueueSteering, inboxTask, recordSteeringAttempt, requireSteeringWorker } from './inbox.ts'
 import { requestEnv } from '#app/request-context.ts'
+
+export const INBOX_OPTIONS: Options = {
+  ...COMMON,
+  actor: { type: 'string' },
+  reason: { type: 'string' },
+  text: { type: 'string' },
+  file: { type: 'string' },
+  source: { type: 'string' },
+  reply: { type: 'string' },
+  session: { type: 'string' },
+  generation: { type: 'string' },
+  outcome: { type: 'string' },
+  note: { type: 'string' },
+  attempt: { type: 'string' },
+  result: { type: 'string' },
+  all: { type: 'boolean' },
+}
 
 export function inboxCommand({ args }: { args: string[] }): Output {
   const {
@@ -16,22 +33,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
   } = parse({
     args,
     positionals: 3,
-    options: {
-      ...COMMON,
-      actor: { type: 'string' },
-      reason: { type: 'string' },
-      text: { type: 'string' },
-      file: { type: 'string' },
-      source: { type: 'string' },
-      reply: { type: 'string' },
-      session: { type: 'string' },
-      generation: { type: 'string' },
-      outcome: { type: 'string' },
-      note: { type: 'string' },
-      attempt: { type: 'string' },
-      result: { type: 'string' },
-      all: { type: 'boolean' },
-    },
+    options: INBOX_OPTIONS,
   })
   const action = positionals[0]
   const ref = required({

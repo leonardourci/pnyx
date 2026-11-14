@@ -321,8 +321,10 @@ export function createCompactionControl({
               }
 
               const marker = input.accepted ? `${input.id}:compact:hosted` : `${input.id}:hosted`
+              const cancelled = loadHydra({ hydraId }).state.hydraMessages
+                ?.find(message => message.id === input.id)?.stopped
               const noOp = reportActor({ actor: input.actor })
-                || (input.id.startsWith('helper-outcomes:') && !helperPending())
+                || (input.id.startsWith('helper-outcomes:') && !helperPending()) || cancelled
 
               if (closing() || (!noOp && !(marker in loadHydra({ hydraId }).state.eventIds))) {
                 return
