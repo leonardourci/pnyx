@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
+import { HYDRA_SKILLS } from '#setup/skill-names.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -445,5 +448,42 @@ test(
       'also check the indexes',
       'and the backups',
     ])
+  },
+)
+
+// The skill text under skills/ is what Pnyx writes into Hydra's folder, so a change to it reaches the agent as written.
+test(
+  'Hydra\'s folder holds the shipped skills as written before its first turn',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'hello' })
+    const shipped = join(
+      import.meta.dirname,
+      '..',
+      'skills',
+    )
+
+    for (const skill of HYDRA_SKILLS) {
+      expect(
+        readFileSync(
+          join(
+            session.cwd,
+            '.agents',
+            'skills',
+            skill,
+            'SKILL.md',
+          ),
+          'utf8',
+        ),
+        skill,
+      ).toBe(readFileSync(
+        join(
+          shipped,
+          skill,
+          'SKILL.md',
+        ),
+        'utf8',
+      ))
+    }
   },
 )
