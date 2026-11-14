@@ -1,4 +1,5 @@
 // Each test file's process: a scratch home, a guarded PATH, no inherited identity and a copy of the migrated template.
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import pg from 'pg'
@@ -103,6 +104,56 @@ const admin = new pg.Client({ database: 'postgres' })
 await admin.connect()
 await admin.query(`create database ${pg.escapeIdentifier(homeDatabase())} template ${pg.escapeIdentifier(inject('template'))} strategy file_copy`)
 await admin.end()
+
+// zero-cache leads its own process group, so a test process stopped from outside would leave it running.
+const stopChildGroups = () => {
+  const listing = spawnSync(
+    '/bin/ps',
+    [
+      '-axo',
+      'pid=,ppid=,pgid=',
+    ],
+    { encoding: 'utf8' },
+  ).stdout
+
+  for (const line of listing.split('\n')) {
+    const [
+      pid,
+      parent,
+      group,
+    ] = line.trim().split(/\s+/)
+      .map(Number)
+
+    if (parent === process.pid && pid === group) {
+      try {
+        process.kill(
+          -pid!,
+          'SIGKILL',
+        )
+      } catch {
+        // Already gone.
+      }
+    }
+  }
+}
+
+process.once(
+  'exit',
+  stopChildGroups,
+)
+
+for (const signal of [
+  'SIGINT',
+  'SIGTERM',
+] as const) {
+  process.once(
+    signal,
+    () => {
+      stopChildGroups()
+      process.exit(1)
+    },
+  )
+}
 
 afterAll(async () => {
   await closePostgres()
