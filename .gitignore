@@ -4,3 +4,4 @@ dist.next.*/
 dist.old/
 *.log
 .DS_Store
+.vitest/
