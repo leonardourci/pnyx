@@ -225,64 +225,71 @@ test(
       }),
       `origin/${first.branch}`,
     )
+    git({
+      cwd: first.path,
+      args: [
+        'push',
+        'origin',
+        'HEAD:refs/heads/main',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'copy',
+        'first',
+        'remove',
+        '--safe',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'detach',
+        'first',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Pooled',
+        '--key',
+        'pooled',
+        '--project',
+        project,
+        '--ask',
+        'Work',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'pooled',
+      ],
+    })
+    const pooled = s.task({ key: 'pooled' }).copy!
+    assert.equal(
+      pooled.path,
+      first.path,
+    )
+    assert.ok(pooled.branch)
+    assert.ok(existsSync(join(
+      pooled.path,
+      'pool-proof',
+    )))
+    assert.equal(
+      git({
+        cwd: pooled.path,
+        args: [
+          'for-each-ref',
+          '--format=%(upstream)',
+          `refs/heads/${pooled.branch}`,
+        ],
+      }),
+      '',
+    )
   },
-)
-git({
-  cwd: first.path,
-  args: [
-    'push',
-    'origin',
-    'HEAD:refs/heads/main',
-  ],
-})
-await s.owner({
-  args: [
-    'task',
-    'copy',
-    'first',
-    'remove',
-    '--safe',
-  ],
-})
-await s.owner({
-  args: [
-    'task',
-    'create',
-    '--title',
-    'Pooled',
-    '--key',
-    'pooled',
-    '--project',
-    project,
-    '--ask',
-    'Work',
-  ],
-})
-await s.owner({
-  args: [
-    'task',
-    'start',
-    'pooled',
-  ],
-})
-const pooled = s.task({ key: 'pooled' }).copy!
-assert.equal(
-  pooled.path,
-  first.path,
-)
-assert.ok(pooled.branch)
-assert.ok(existsSync(join(
-  pooled.path,
-  'pool-proof',
-)))
-assert.equal(
-  git({
-    cwd: pooled.path,
-    args: [
-      'for-each-ref',
-      '--format=%(upstream)',
-      `refs/heads/${pooled.branch}`,
-    ],
-  }),
-  '',
 )
