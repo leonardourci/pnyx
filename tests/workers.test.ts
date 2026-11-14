@@ -1064,3 +1064,52 @@ test(
     expect(await (await tracker.capture())()).toEqual([])
   },
 )
+
+test(
+  'Codex Send now interrupts the step and starts a turn that points at the steered message instead of repeating it',
+  async ({ onTestFinished }) => {
+    const codex = fakeCodex()
+    const held = codex.plan({
+      text: 'start codex',
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
+      cwd: process.env.TMPDIR!,
+      settings: {},
+      env: { PNYX_HYDRA: 'codex-now' },
+      signal: new AbortController().signal,
+    })
+    const {
+      input,
+      events,
+    } = await driven({
+      session,
+      onEnd: ({ end }) => onTestFinished(end),
+    })
+    input.push({
+      id: 'open',
+      text: 'start codex',
+    })
+    await until({
+      what: 'the opening turn',
+      check: () => session.snapshot().work.runningTurns.length === 1,
+    })
+    input.push({
+      id: 'steer',
+      text: 'answer ONLY LATEST_MESSAGE',
+    })
+    await until({
+      what: 'the steered message to be confirmed',
+      check: () => events.some(event => typeof event === 'object' && event.type === 'input'
+        && event.receipt.inputId === 'steer' && event.receipt.phase === 'confirmed'),
+    })
+    await session.interrupt({ cancelQueued: false })
+    await until({
+      what: 'the continuation turn to start',
+      check: () => codex.sessions[0]!.received.length === 3,
+    })
+    expect(codex.sessions[0]!.received[2]).toContain('Answer their latest message above')
+    expect(codex.sessions[0]!.received[2]).not.toContain('LATEST_MESSAGE')
+  },
+)
