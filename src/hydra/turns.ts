@@ -400,6 +400,11 @@ export function createHydraTurns({
         return { state: 'queued' }
       }
 
+      // Removed from the queue while it waited in the chain.
+      if (state.hydraMessages?.find(message => message.id === id)?.stopped) {
+        return { state: 'cancelled' }
+      }
+
       if (id.startsWith('helper-outcomes:') && !helperPending()) {
         return { state: 'queued' }
       }
@@ -437,6 +442,15 @@ export function createHydraTurns({
           account: chosenAgent.account,
         }),
       })
+
+      // A Stop while the catalog loaded must not leave a question behind for the message it cancelled.
+      if (generation !== stopGeneration) {
+        return stoppedBefore({
+          id,
+          carried,
+        })
+      }
+
       // A model or effort named as what the session already runs with keeps that session.
       const requestedAgent = used && !kind ? {
         ...chosenAgent,
