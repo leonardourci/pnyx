@@ -947,6 +947,11 @@ export function createLiveSessions({
           continue
         }
 
+        // An end reported again after the Stop's own end belongs to the turn already recorded as stopped.
+        if (activity === 'finished' && entry.activity === 'interrupted' && !turnRunning) {
+          continue
+        }
+
         if (activity === 'finished') {
           const owner = compactOwner()
           const unfinished = activeCompaction({ card: owner })
