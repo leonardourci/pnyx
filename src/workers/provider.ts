@@ -115,7 +115,7 @@ export type HostedInput = {
 }
 export type InputReceipt = {
   inputId: string
-  // refused: the provider answered the start of its turn with an error, so the agent never got it.
+  // refused: the provider rejected or cancelled this input before the agent received it.
   phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'refused' | 'unknown'
   turn?: string
   // When the harness took the input, by its own record; without it, the receipt's arrival is that moment.

@@ -1229,7 +1229,6 @@ export function createHost({
 
       return { operation }
     },
-    // Stops only Hydra's running turn, or the upgrade running in its place; workers keep going.
     stop: async ({
       card: ref = HYDRA_CARD,
       sendNow,
