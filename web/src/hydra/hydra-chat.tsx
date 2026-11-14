@@ -192,7 +192,7 @@ export function HydraChat({
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
   const glide = useRef(0)
-  const touchY = useRef<number>()
+  const touchY = useRef<number | undefined>(undefined)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
