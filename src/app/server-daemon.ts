@@ -27,7 +27,7 @@ import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
-import { log } from './diagnostics.ts'
+import { flushLogs, log } from './diagnostics.ts'
 import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
 import { hydraExists } from './store.ts'
 import { query } from '#store/postgres.ts'
@@ -935,6 +935,7 @@ export async function startServer({
         operation: 'server.stop',
         ms: performance.now() - stopping,
       })
+      await flushLogs()
       logs.close()
       releaseClaim()
     }
