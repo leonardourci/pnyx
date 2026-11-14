@@ -343,8 +343,9 @@ test(
       { headers: { cookie: `${zeroCookieName({ port: pnyx.port() })}=wrong` } },
     )).status).toBe(401)
 
+    // zero-cache replicates on its own schedule, so each read waits until the replica holds the last change.
     const board = await until({
-      what: 'the board rows to list the shown task',
+      what: 'the board rows to list only the shown task',
       check: async () => {
         const read = await readRows<{ key: string }[]>({
           url: `${origin}/zero`,
@@ -352,21 +353,26 @@ test(
           query: ({ zero }) => zero.materialize(queries.board.cards({ hydraId: hydra.id })),
         })
 
-        return read.rows.length > 0 && read
+        return read.rows.map(card => card.key).join() === 'shown' && read
       },
     })
-    expect(board.rows.map(card => card.key)).toEqual(['shown'])
     expect(board.frames.some(frame => frame.includes(steering))).toBe(false)
 
-    const references = await readRows<{
-      id: string
-      reference?: { data: { status?: { state: string } } }
-    }[]>({
-      url: `${origin}/zero`,
-      cookie,
-      query: ({ zero }) => zero.materialize(queries.cards.references({ hydraId: hydra.id })),
+    const references = await until({
+      what: 'the hidden task\'s reference to carry its blocked status',
+      check: async () => {
+        const read = await readRows<{
+          id: string
+          reference?: { data: { status?: { state: string } } }
+        }[]>({
+          url: `${origin}/zero`,
+          cookie,
+          query: ({ zero }) => zero.materialize(queries.cards.references({ hydraId: hydra.id })),
+        })
+
+        return read.rows.find(row => row.id === parked)?.reference?.data.status?.state === 'blocked' && read
+      },
     })
-    expect(references.rows.find(row => row.id === parked)?.reference?.data.status?.state).toBe('blocked')
     expect(references.frames.some(frame => frame.includes(steering))).toBe(false)
   },
 )

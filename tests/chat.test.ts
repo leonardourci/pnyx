@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
-import { safeEnd } from '#web-shared/ui/reveal.ts'
+import { safeEnd } from '../web/src/shared/ui/reveal.ts'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -58,7 +58,10 @@ test(
       ],
     })
 
-    expect(queue({ hydraId: hydra.id })?.working).toBe(true)
+    await until({
+      what: 'the queue to show Hydra working',
+      check: () => queue({ hydraId: hydra.id })?.working === true,
+    })
     expect(session.answered).toBe(0)
 
     turn.release()

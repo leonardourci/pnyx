@@ -266,7 +266,10 @@ test(
       what: 'the restart once the turn ended',
       check: () => restarts === 1,
     })
-    expect(upgrades({ hydra }).at(-1)?.state).toBe('restarting')
+    await until({
+      what: 'the chat to show the upgrade restarting',
+      check: () => upgrades({ hydra }).at(-1)?.state === 'restarting',
+    })
 
     await pnyx.restart()
     await until({

@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
-import { rows, startPnyx, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -52,9 +52,9 @@ test(
       theme: 'dark',
       doneAfterHours: 0,
     })
-    expect(pageSettings()).toMatchObject({
-      theme: 'dark',
-      doneAfterHours: 0,
+    await until({
+      what: 'the page\'s settings row to hold the change',
+      check: () => pageSettings()?.theme === 'dark' && pageSettings()?.doneAfterHours === 0,
     })
     const page = await second.page()
     expect(await page.send({
