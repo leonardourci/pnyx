@@ -689,6 +689,11 @@ test(
         'send-now',
         'message-1',
       ],
+      [
+        'hydra',
+        'cancel',
+        'message-1',
+      ],
     ]) {
       expect(
         (await asWorker.refused({ args })).code,
