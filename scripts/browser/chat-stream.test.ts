@@ -1941,3 +1941,156 @@ test(
     }
   },
 )
+
+test(
+  'a long conversation opens on its newest page, and scrolling up reads the older pages on its own without moving what the owner reads',
+  async t => {
+    const s = await pnyx.scenario()
+    pnyx.claude.plan({
+      text: 'Start the long conversation',
+      reply: 'Ready for the long conversation.',
+    })
+    await s.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Start the long conversation',
+      ],
+    })
+    await until({
+      what: 'the first turn to finish',
+      check: () => s.state().cards.$hydra?.sessionActivity === 'finished',
+    })
+    const path = s.state().cards.$hydra!.agent!.transcriptPath!
+    const pairs = 150
+    const first = Date.now() + 60_000
+    appendFileSync(
+      path,
+      Array.from(
+        { length: pairs },
+        (
+          _,
+          index,
+        ) => [
+          {
+            type: 'user',
+            timestamp: new Date(first + index * 2000).toISOString(),
+            message: {
+              role: 'user',
+              content: `Earlier question ${index}`,
+            },
+          },
+          {
+            type: 'assistant',
+            timestamp: new Date(first + index * 2000 + 1000).toISOString(),
+            message: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'text',
+                  text: `Earlier answer ${index}`,
+                },
+              ],
+            },
+          },
+        ].map(record => `${JSON.stringify(record)}\n`)
+          .join(''),
+      ).join(''),
+    )
+    const wire = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => wire.close())
+    const latest = (await wire.command({
+      name: 'thread',
+      args: ['$hydra'],
+    })).thread as ThreadPage
+    assert.ok(
+      latest.conversation!.entries.length < pairs,
+      'the first page carries only the newest messages',
+    )
+    assert.ok(latest.older)
+    const {
+      run,
+      evaluate,
+      waitFor,
+    } = await browser({
+      s,
+      session: 'chat-older',
+    })
+
+    try {
+      await run({
+        args: [
+          'open',
+          `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/`,
+        ],
+      })
+      await run({
+        args: [
+          'resize',
+          '1200',
+          '760',
+        ],
+      })
+      await waitFor({
+        what: 'the newest messages',
+        condition: 'document.querySelector(\'.hydra-messages\')?.textContent.includes(\'Earlier answer 149\')',
+      })
+      await evaluate({
+        script: `() => {
+        const rows = () => document.querySelectorAll('.hydra-messages [data-entry-id]').length;
+        window.openedRows = rows();
+        if (window.openedRows >= ${pairs}) throw new Error('The chat opened with its whole conversation: ' + window.openedRows);
+        if ([...document.querySelectorAll('button')].some(button => button.textContent.includes('Older messages'))) throw new Error('An Older messages button is still offered');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await evaluate({
+        script: `async () => {
+        const scroller = document.querySelector('.hydra-messages');
+        const rows = () => scroller.querySelectorAll('[data-entry-id]');
+        const before = rows().length;
+        scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, bubbles: true }));
+        scroller.scrollTop = 0;
+        await new Promise(requestAnimationFrame);
+        const id = rows()[2].dataset.entryId;
+        const find = () => scroller.querySelector('[data-entry-id="' + CSS.escape(id) + '"]');
+        const offset = find().getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('No older page loaded on its own')), ${PAINT_TIMEOUT_MS});
+          const check = () => {
+            if (rows().length > before) { clearTimeout(timer); resolve(); } else { setTimeout(check, 50); }
+          };
+          check();
+        });
+        // The message the owner reads stays where it was while the older rows join above it.
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const anchor = find();
+        if (!anchor) throw new Error('The message the owner reads left the page');
+        const box = anchor.getBoundingClientRect();
+        const view = scroller.getBoundingClientRect();
+        const moved = Math.abs(box.top - view.top - offset);
+        if (box.bottom < view.top || box.top > view.bottom || moved > 4) throw new Error('The message the owner reads moved by ' + moved + 'px');
+        return 'chat-assertion-passed';
+      }`,
+      })
+      await evaluate({
+        script: `async () => {
+        const scroller = document.querySelector('.hydra-messages');
+        for (let step = 0; step < 40; step++) {
+          scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, bubbles: true }));
+          scroller.scrollTop = 0;
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (scroller.textContent.includes('Earlier question 0')) return 'chat-assertion-passed';
+        }
+        throw new Error('The oldest message was never reached by scrolling');
+      }`,
+      })
+    } finally {
+      await run({ args: ['stop'] }).catch(() => undefined)
+    }
+  },
+)
