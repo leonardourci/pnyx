@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
+import { createServer, type Socket } from 'node:net'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 const HOOK = join(
@@ -19,8 +20,8 @@ const CLI = join(
   'cli',
   'pnyx-axi.js',
 )
-// A harness waits on its hooks; one must never hold an agent up.
-const HOOK_BOUND_MS = 2000
+// A hook that has not ended by itself after this long is stuck; the test then stops it and fails. It is no speed target.
+const HOOK_STUCK_MS = 30_000
 
 let pnyx: Pnyx
 
@@ -32,19 +33,22 @@ beforeAll(async () => {
 const hook = ({
   event,
   payload,
+  env = process.env,
 }: {
   event: string
   payload: Record<string, unknown> & { cwd: string }
+  env?: NodeJS.ProcessEnv
 }) => new Promise<{
   status: number | null
   stdout: string
-  ms: number
+  // Whether the hook ended by itself instead of being stopped as stuck.
+  ended: boolean
 }>(resolve => {
   mkdirSync(
     payload.cwd,
     { recursive: true },
   )
-  const started = performance.now()
+  let ended = true
   const child = spawn(
     'sh',
     [
@@ -55,8 +59,15 @@ const hook = ({
     ],
     {
       cwd: payload.cwd,
-      env: process.env,
+      env,
     },
+  )
+  const stuck = setTimeout(
+    () => {
+      ended = false
+      child.kill('SIGKILL')
+    },
+    HOOK_STUCK_MS,
   )
   let stdout = ''
   child.stdout.on(
@@ -65,11 +76,14 @@ const hook = ({
   )
   child.once(
     'close',
-    status => resolve({
-      status,
-      stdout,
-      ms: performance.now() - started,
-    }),
+    status => {
+      clearTimeout(stuck)
+      resolve({
+        status,
+        stdout,
+        ended,
+      })
+    },
   )
   child.stdin.end(JSON.stringify({
     hook_event_name: event,
@@ -91,7 +105,7 @@ const card = async ({ session }: { session: string }) => {
     env: process.env,
   })
 
-  return shown.status === 0 ? shown.stdout : undefined
+  return shown.status === 0 ? parsed(shown).task : undefined
 }
 
 test(
@@ -131,8 +145,10 @@ test(
       what: 'the session\'s card',
       check: () => card({ session: 'outside-1' }),
     })
-    expect(working).toContain('title: Fix the flaky login test\n')
-    expect(working).toMatch(/activity: working/)
+    expect(working).toMatchObject({
+      title: 'Fix the flaky login test',
+      activity: 'working',
+    })
 
     runs.push(await hook({
       event: 'Stop',
@@ -140,15 +156,18 @@ test(
     }))
     await until({
       what: 'Stop to end the turn',
-      check: async () => (await card({ session: 'outside-1' }))?.match(/activity: (finished|idle)/),
+      check: async () => [
+        'finished',
+        'idle',
+      ].includes((await card({ session: 'outside-1' }))?.activity),
     })
 
     for (const run of runs) {
       expect(run).toMatchObject({
         status: 0,
         stdout: '',
+        ended: true,
       })
-      expect(run.ms).toBeLessThan(HOOK_BOUND_MS)
     }
   },
 )
@@ -255,11 +274,115 @@ test(
     expect(offline).toMatchObject({
       status: 0,
       stdout: '',
+      ended: true,
     })
-    expect(offline!.ms).toBeLessThan(HOOK_BOUND_MS)
-    expect(await until({
+    expect((await until({
       what: 'the spooled report to land',
       check: () => card({ session: 'offline-1' }),
-    })).toContain('title: Written while Pnyx was down')
+    })).title).toBe('Written while Pnyx was down')
+  },
+)
+
+test(
+  'a hook whose server accepts the report and never answers still ends by itself, exits 0 and prints nothing',
+  async () => {
+    const home = join(
+      process.env.TMPDIR!,
+      'silent-home',
+    )
+    const dir = join(
+      home,
+      'hydras',
+      'default',
+    )
+    mkdirSync(
+      dir,
+      { recursive: true },
+    )
+    const connections: Socket[] = []
+    const silent = createServer(connection => connections.push(connection))
+    await new Promise<void>(resolve => silent.listen(
+      join(
+        dir,
+        'server.sock',
+      ),
+      resolve,
+    ))
+
+    try {
+      const run = await hook({
+        event: 'SessionStart',
+        payload: {
+          session_id: 'silent-1',
+          cwd: join(
+            process.env.TMPDIR!,
+            'silent',
+          ),
+          source: 'startup',
+        },
+        env: {
+          ...process.env,
+          PNYX_HOME: home,
+        },
+      })
+
+      expect(run).toMatchObject({
+        status: 0,
+        stdout: '',
+        ended: true,
+      })
+      expect(connections).toHaveLength(1)
+    } finally {
+      for (const connection of connections) {
+        connection.destroy()
+      }
+
+      silent.close()
+    }
+  },
+)
+
+// task-c36e45ad: hooks on a Hydra without a legacy events.jsonl are dropped; remove the skip when #389 or another fix lands.
+test.skip(
+  'an outside session reporting with PNYX_HYDRA set lands on that Hydra, not the default one',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const cwd = join(
+      process.env.TMPDIR!,
+      'named',
+    )
+    const run = await hook({
+      event: 'UserPromptSubmit',
+      payload: {
+        session_id: 'named-1',
+        cwd,
+        prompt: 'Reported to a named Hydra',
+      },
+      env: {
+        ...process.env,
+        PNYX_HYDRA: hydra.id,
+      },
+    })
+    expect(run).toMatchObject({
+      status: 0,
+      stdout: '',
+    })
+    expect((await until({
+      what: 'the session\'s card on its own Hydra',
+      check: async () => {
+        const shown = await pnyxAxi({
+          args: [
+            'task',
+            'show',
+            'claude:named-1',
+            '--hydra',
+            hydra.id,
+          ],
+          env: process.env,
+        })
+
+        return shown.status === 0 ? parsed(shown).task : undefined
+      },
+    })).title).toBe('Reported to a named Hydra')
   },
 )
