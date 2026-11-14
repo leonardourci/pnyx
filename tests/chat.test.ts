@@ -1354,6 +1354,7 @@ test(
     })
 
     expect(restarted.id).not.toBe(back.id)
+    expect(lastRan({ hydraId: hydra.id })?.effort).toBe('low')
     expect(agentChange({ hydraId: hydra.id })).toBeUndefined()
     expect(pnyx.claude.sessions.filter(s => s.received.some(text => text.includes('removed while compacting')))).toEqual([])
   },
