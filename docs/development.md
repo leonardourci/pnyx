@@ -75,7 +75,7 @@ pnpm dev
 
 Run `pnpm verify` on a PR's pushed head before it merges. It discovers and fetches origin's default branch, then stops if your branch does not include it. It prints the `git rebase` command for you to run; it never rebases automatically.
 
-Verification picks checks and reviews from the files changed against that default branch. UI and back-end changes run the full suite. Markdown changes require `deslop`; shipped skills also run the tests that read them. Test-only changes require `audit-tests` and run the changed tests with static checks and a build. Mixed changes take the union. The selection does not read whether a change has tests; every change still brings its own, and `review-code` and `audit-tests` check that. Verification continues after a check fails and prints a summary with log paths. Lint failures also print the issues the fixer could not resolve. Review and commit any automatic fixes, push them, and rerun on the clean PR head.
+Verification picks checks and reviews from the files changed against that default branch. UI and back-end changes run the full suite. Markdown changes require `deslop`; shipped skills also run the tests that read them. Test-only changes require `audit-tests` and run the changed tests with static checks and a build. Mixed changes take the union. The selection does not read whether a change has tests; every change to behaviour still brings its own tests, and `review-code` and `audit-tests` check that. Verification continues after a check fails and prints a summary with log paths. Lint failures also print the issues the fixer could not resolve. Review and commit any automatic fixes, push them, and rerun on the clean PR head.
 
 ### Verification by change kind
 
@@ -95,7 +95,7 @@ For a mechanical rename or move, run `pnpm verify --mechanical` and put exactly 
 
 ### Reviews and the marker
 
-Verification lists the required checklists in order: [review-code](../.agents/skills/review-code/SKILL.md), [audit-tests](../.agents/skills/audit-tests/SKILL.md), then [deslop](../.agents/skills/deslop/SKILL.md). Complete those it selects, each covering bugs, tests and simpler, fix findings, tick their matching PR boxes and note fixes or no findings in the description. Agents carry out these steps themselves. The checklists are a declared review, not something the command can perform or prove automatically.
+Verification lists the required checklists in order: [review-code](../.agents/skills/review-code/SKILL.md), [audit-tests](../.agents/skills/audit-tests/SKILL.md), then [deslop](../.agents/skills/deslop/SKILL.md). Complete those it selects, fix findings, tick their matching PR boxes and note fixes or no findings in the description. Together, the selected reviews must cover bugs, tests and simpler. Agents carry out these steps themselves. The checklists are a declared review, not something the command can perform or prove automatically.
 
 Only when every selected check passes, the tree stays clean, HEAD matches the pushed PR head and the required boxes are ticked does verification write the hidden `<!-- pnyx-checks:v1 ... -->` marker. The marker records the tested commit and git tree, plus a mechanical declaration when used; a rerun replaces it.
 

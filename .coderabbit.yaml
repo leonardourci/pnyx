@@ -20,7 +20,7 @@ reviews:
         - Look for broken callers, missed edge cases, and regressions. Follow helper calls outside the diff when correctness depends on them.
         - Flag every change under .github/workflows. A pull_request_target or workflow_run workflow must never check out, build or run code from the PR, and must keep read-only permissions with no secrets beyond the generated GITHUB_TOKEN; treat a break of this as blocking.
         Part 2, tests: each test fails when the behaviour it covers breaks, and nothing user-facing is uncovered.
-        - Check that the PR's tests would fail if the change were reverted. Name any test that would still pass, any behaviour with no test, and any test that is duplicate, cosmetic, a snapshot or tied to implementation details. A bug fix needs a test that reproduces the bug.
+        - For a change to behaviour, check that the PR's tests of that behaviour would fail if the change were reverted. A behaviour-preserving refactor is the exception: its tests should still pass. Name any new test of changed behaviour that would still pass, any behaviour with no test, and any test that is duplicate, cosmetic, a snapshot or tied to implementation details. A bug fix needs a test that reproduces the bug.
         Part 3, simpler: is this the clearest way to get the result? Clear beats short; fewer lines is not the goal, and a new reader should follow the code on first read. Each finding names the replacement and what keeps working. Flag code that:
         - copies something that already exists (name the file and line to reuse);
         - is dead: options, flags or branches nothing uses, or wrappers with one caller;
