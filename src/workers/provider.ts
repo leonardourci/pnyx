@@ -115,11 +115,12 @@ export type HostedInput = {
 }
 export type InputReceipt = {
   inputId: string
-  // refused: the provider rejected or cancelled this input before the agent received it.
+  // refused: the provider did not give this input to the agent; stopped says an owner Stop cancelled it.
   phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'refused' | 'unknown'
   turn?: string
   // When the harness took the input, by its own record; without it, the receipt's arrival is that moment.
   at?: string
+  stopped?: true
 }
 // Submitted means handed to the SDK callback or native pipe, not acknowledged by the model.
 export type AnswerReceipt = {
@@ -242,8 +243,8 @@ export interface HostedSession {
     value: string
   }): Promise<void>
   // Ends the running turn early; the session stays open for the next message.
-  // eslint-disable-next-line pnyx/object-params -- Optional control options preserve no-argument Stop callers.
-  interrupt(options?: { cancelQueued?: boolean }): Promise<void>
+  // cancelQueued also cancels the inputs the agent has not taken; Send now keeps them.
+  interrupt({ cancelQueued }: { cancelQueued: boolean }): Promise<void>
   commands?(): Promise<{
     name: string
     description: string

@@ -56,7 +56,7 @@ export function createSteeringDelivery({
     }
 
     return (card.steering ?? []).filter(message =>
-      !message.ack && !message.cancelled && ids.includes(message.id))
+      !message.ack && !message.stopped && ids.includes(message.id))
       .map(message => message.id)
   }
 
@@ -104,7 +104,7 @@ export function createSteeringDelivery({
       b,
     ) => Number(b.id === card.compaction?.priority)
             - Number(a.id === card.compaction?.priority)).filter(message => {
-      if (message.ack || message.cancelled) {
+      if (message.ack || message.stopped) {
         return false
       }
 

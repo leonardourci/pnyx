@@ -1,6 +1,8 @@
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
+import { stopHydraInputs } from '#hydra/stop-inputs.ts'
+import { stopWorkerInputs } from './stop-inputs.ts'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { logAgentMemory } from './agent-memory.ts'
@@ -664,7 +666,35 @@ export function createLiveSessions({
 
         // A refused input is never confirmed, so nothing will take the owner's messages it carried.
         if (refused) {
+          const carried = entry.carried.get(receipt.inputId) ?? []
+          const steering = entry.delivered.get(receipt.inputId) ?? []
           entry.carried.delete(receipt.inputId)
+          entry.delivered.delete(receipt.inputId)
+
+          for (const id of steering) {
+            entry.steering.delete(id)
+          }
+
+          if (receipt.stopped) {
+            note({
+              fn: ({ writer }) => {
+                stopHydraInputs({
+                  writer,
+                  ids: [
+                    receipt.inputId,
+                    ...carried,
+                  ],
+                  at: at(),
+                })
+                stopWorkerInputs({
+                  writer,
+                  card: writer.state.cards[card.id]!,
+                  ids: steering,
+                  at: at(),
+                })
+              },
+            })
+          }
         }
 
         if (typeof received === 'object' && received.type === 'turn-ended') {
@@ -693,6 +723,7 @@ export function createLiveSessions({
             inputId: activity.receipt.inputId,
             phase: activity.receipt.phase,
             taken: activity.receipt.at,
+            stopped: activity.receipt.stopped,
           })
         }
 
@@ -976,7 +1007,11 @@ export function createLiveSessions({
           streamed({ session: key })
         }
 
+        // The stop belongs to the turn that ended, even when input is already waiting for the next one.
+        const stopped = activity === 'finished' && entry.stopping
+
         if (activity === 'finished') {
+          entry.stopping = false
           const current = loadHydra({ hydraId }).state.cards[card.id]
           const pending = entry.input.pending({
             includes: ({ steeringIds }) => {
@@ -998,12 +1033,7 @@ export function createLiveSessions({
           }
         }
 
-        const stopped = activity === 'finished' && entry.stopping
         const recordedActivity = stopped ? 'interrupted' : activity
-
-        if (activity === 'finished') {
-          entry.stopping = false
-        }
 
         if (recordedActivity !== entry.activity) {
           entry.activity = recordedActivity

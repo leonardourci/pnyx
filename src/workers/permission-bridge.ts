@@ -413,14 +413,13 @@ export function createPermissionBridge({
     }
   }
 
+  // The message itself reaches the agent as its own input, so the denial does not repeat it.
   const denyForMessage = ({
     task,
     actor,
-    text,
   }: {
     task: string
     actor: string
-    text: string
   }) => {
     const card = loadHydra({ hydraId }).state.cards[task]
 
@@ -431,7 +430,7 @@ export function createPermissionBridge({
           request: request.id,
           choice: 'deny',
           actor,
-          reason: `The owner answered with a message instead of approving. Their message follows: ${text}`,
+          reason: 'The owner answered with a message instead of approving. Their message follows.',
         })
       }
     }

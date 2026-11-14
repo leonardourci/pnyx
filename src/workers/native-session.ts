@@ -487,7 +487,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
         value,
       }),
     }),
-    interrupt: ({ cancelQueued } = {}) => control({
+    interrupt: ({ cancelQueued }) => control({
       run: () => native.interrupt({ cancelQueued }),
     }),
     close() {

@@ -98,7 +98,7 @@ export function applyHydra({
     return true
   }
 
-  if (event.type === 'hydra.input-cancelled') {
+  if (event.type === 'hydra.input-stopped') {
     for (const message of state.hydraMessages ?? []) {
       if (event.data.messages.includes(message.id) && !message.received) {
         message.stopped = true

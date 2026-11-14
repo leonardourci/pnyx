@@ -1,19 +1,25 @@
 import type { Writer } from '#app/writer.ts'
 import type { Card } from '#tasks/model.ts'
 import { applyDecision } from '#app/decision.ts'
+import { ownerActor } from '#app/actors.ts'
 import { decideReply } from './reply-rules.ts'
-import { pendingSteering } from './steering.ts'
 
-export function cancelWorkerInputs({
+// The owner's own steering the agent has not read; Hydra's and Pnyx's steering is not the owner's to cancel.
+export const unreadOwnerSteering = ({ card }: { card: Card }) => (card.steering ?? [])
+  .filter(message => !message.ack && !message.stopped && ownerActor({ actor: message.source }))
+
+export function stopWorkerInputs({
   writer,
   card,
+  ids,
   at,
 }: {
   writer: Writer
   card: Card
+  ids: readonly string[]
   at: string
 }) {
-  const messages = pendingSteering({ card })
+  const messages = unreadOwnerSteering({ card }).filter(message => ids.includes(message.id))
 
   if (!messages.length) {
     return
@@ -27,7 +33,7 @@ export function cancelWorkerInputs({
       cardId: card.id,
       actor: 'pnyx',
       at,
-      type: 'task.steering.cancelled',
+      type: 'task.steering.stopped',
       data: { messages: messages.map(message => message.id) },
     },
   })

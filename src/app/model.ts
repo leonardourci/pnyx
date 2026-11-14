@@ -316,7 +316,7 @@ export type HydraChange = EventBase & (
     }
   }
   | {
-    type: 'hydra.input-cancelled'
+    type: 'hydra.input-stopped'
     data: { messages: string[] }
   }
   | {
@@ -402,7 +402,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.steering.queued',
   'task.steering.notified',
   'task.steering.handled',
-  'task.steering.cancelled',
+  'task.steering.stopped',
   'task.steering.recovery',
   'card.pushed',
   'card.observed',
@@ -434,7 +434,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.message',
   'hydra.status',
   'hydra.received',
-  'hydra.input-cancelled',
+  'hydra.input-stopped',
   'hydra.operation',
   'hydra.agent-used',
   'hydra.delivered',

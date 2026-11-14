@@ -11,7 +11,7 @@ export function pendingSteering({ card }: { card: Card }) {
     return []
   }
 
-  return (card.steering ?? []).filter(message => !message.ack && !message.cancelled).sort((
+  return (card.steering ?? []).filter(message => !message.ack && !message.stopped).sort((
     a,
     b,
   ) => Number(b.id === card.compaction?.priority) - Number(a.id === card.compaction?.priority))
@@ -67,7 +67,7 @@ export function applySteering({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  if (event.type !== 'task.steering.cancelled' && event.type !== 'task.steering.queued' && event.type !== 'task.steering.notified' && event.type !== 'task.steering.handled' && event.type !== 'task.steering.recovery') {
+  if (event.type !== 'task.steering.stopped' && event.type !== 'task.steering.queued' && event.type !== 'task.steering.notified' && event.type !== 'task.steering.handled' && event.type !== 'task.steering.recovery') {
     return false
   }
 
@@ -77,10 +77,10 @@ export function applySteering({
     return true
   }
 
-  if (event.type === 'task.steering.cancelled') {
+  if (event.type === 'task.steering.stopped') {
     for (const message of card.steering ?? []) {
       if (!message.ack && event.data.messages.includes(message.id)) {
-        message.cancelled = true
+        message.stopped = true
       }
     }
   } else if (event.type === 'task.steering.queued') {

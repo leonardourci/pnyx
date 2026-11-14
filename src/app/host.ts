@@ -1,4 +1,7 @@
-import { cancelWorkerInputs } from '#workers/stop-inputs.ts'
+import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
+import { stopHydraInputs } from '#hydra/stop-inputs.ts'
+import { compactCommand } from '#workers/compact-command.ts'
+import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 import { canonical } from '#store/paths.ts'
 import { background } from './background.ts'
 import { hydraDir } from './home-migration.ts'
@@ -33,7 +36,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { clip } from '#hydra/digest.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { HYDRA_ACTOR, ownerActor } from './actors.ts'
+import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentRef, AgentSession, Attention } from '#workers/model.ts'
@@ -74,6 +77,9 @@ const RETRY_MS = [
 const midTurnChecks = new Set<() => boolean>()
 
 export const agentsMidTurn = () => [...midTurnChecks].some(check => check())
+
+const pnyxCommand = ({ text }: { text: string }) => compactCommand({ text })
+  || restartCommand({ text }) || upgradeCommand({ text })
 
 export function createHost({
   hydraId,
@@ -737,6 +743,7 @@ export function createHost({
     folderOf,
     record,
     holdCompact,
+    denyForMessage,
     open,
     ringSteering,
     unnotifiedSteering,
@@ -820,6 +827,7 @@ export function createHost({
     note,
     record,
     stoppedFor,
+    denyForMessage,
     helperPending,
     providerOf,
     environment,
@@ -963,6 +971,225 @@ export function createHost({
     startFrom,
     host: () => host,
   })
+
+  // The agent's turn stops at once; the inputs it had not taken are cancelled by the provider's receipts.
+  const interruptEntry = async ({ entry }: { entry: Live }) => {
+    entry.stopping = true
+
+    try {
+      await entry.session?.interrupt({ cancelQueued: true })
+    } catch (error) {
+      entry.stopping = false
+
+      throw error
+    }
+  }
+
+  const turnRunning = ({ entry }: { entry?: Live }) => Boolean(entry?.session
+    && (entry.activity === 'working' || entry.session.snapshot().work.runningTurns.length))
+
+  const markHydraInterrupted = () => {
+    const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+
+    write({
+      fn: ({ writer }) => {
+        if (card?.agent?.host === 'pnyx') {
+          record({
+            writer,
+            agent: card.agent,
+            input: { activity: 'interrupted' },
+            actor: 'pnyx',
+          })
+
+          return
+        }
+
+        applyDecision({
+          writer,
+          decision: decidePush({
+            state: writer.state,
+            key: HYDRA_CARD,
+            input: { activity: 'interrupted' },
+            meta: {
+              at: at(),
+              actor: 'pnyx',
+            },
+          }),
+        })
+      },
+    })
+  }
+
+  // A stop that ends a compaction, an upgrade or an agent change cancels what waited behind it; the commands Pnyx itself handles are not messages to Hydra.
+  const stopHeldInputs = () => {
+    turns.cancel()
+    note({
+      fn: ({ writer }) => stopHydraInputs({
+        writer,
+        ids: (writer.state.hydraMessages ?? [])
+          .filter(message => !pnyxCommand({ text: message.text }))
+          .map(message => message.id),
+        at: at(),
+      }),
+    })
+    markHydraInterrupted()
+  }
+
+  const stopHydra = async () => {
+    const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+    const changing = agentChangeAbort()
+
+    if (changing) {
+      stopHeldInputs()
+      changing.abort(new Error('Compaction cancelled by the owner'))
+
+      return { stopped: 'compaction' }
+    }
+
+    if (activeCompaction({ card })) {
+      stopHeldInputs()
+
+      return host.compact({ card: HYDRA_CARD })
+    }
+
+    const upgrade = upgrades.stop()
+
+    if (upgrade === 'restarting') {
+      return { stopped: 'none: Pnyx is restarting after the upgrade and comes back in a few seconds' }
+    }
+
+    if (upgrade) {
+      stopHeldInputs()
+
+      return { stopped: 'upgrade' }
+    }
+
+    const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
+    const running = turnRunning({ entry })
+
+    if (!running && !queuedHydra.size && !entry?.input.pending()) {
+      return { stopped: 'none: Hydra is not working on a turn' }
+    }
+
+    // Messages already in the agent's hands are settled by its own receipts, not here.
+    const cleared = entry?.input.clear() ?? []
+    turns.cancel()
+    note({
+      fn: ({ writer }) => stopHydraInputs({
+        writer,
+        ids: [
+          ...queuedHydra,
+          ...cleared.flatMap(item => [
+            item.id ?? '',
+            ...item.carried ?? [],
+          ]),
+        ],
+        at: at(),
+      }),
+    })
+    markHydraInterrupted()
+
+    if (!entry?.session) {
+      return { stopped: 'hydra' }
+    }
+
+    expireEntry({ entry })
+
+    if (running) {
+      await interruptEntry({ entry })
+    } else {
+      entry.activity = 'interrupted'
+    }
+
+    return { stopped: 'hydra' }
+  }
+
+  const stopWorker = async ({ ref }: { ref: string }) => {
+    const card = findCard({
+      state: loadHydra({ hydraId }).state,
+      ref,
+    })
+
+    if (card.agent?.host !== 'pnyx') {
+      throw new HydraError({
+        code: 'NO_ROUTE',
+        message: 'Pnyx does not run this task’s agent',
+      })
+    }
+
+    const entry = live.get(sessionId({ agent: card.agent }))
+    const handed = new Set([...entry?.delivered.values() ?? []].flat())
+    const unread = unreadOwnerSteering({ card }).map(message => message.id)
+      .filter(id => !handed.has(id))
+    const running = turnRunning({ entry })
+
+    if (!running && !unread.length && !entry?.input.pending()) {
+      return { stopped: 'none: this task’s agent is not working on a turn' }
+    }
+
+    const cleared = entry?.input.clear() ?? []
+    const clearedSteering = cleared.flatMap(item => item.steeringIds ?? [])
+
+    write({
+      fn: ({ writer }) => {
+        stopWorkerInputs({
+          writer,
+          card: writer.state.cards[card.id]!,
+          ids: [
+            ...unread,
+            ...clearedSteering,
+          ],
+          at: at(),
+        })
+
+        if (running || cleared.length) {
+          interrupt({
+            writer,
+            agent: card.agent!,
+            note: 'The owner stopped this agent',
+          })
+        }
+      },
+    })
+
+    if (!entry) {
+      return { stopped: card.id }
+    }
+
+    expireEntry({ entry })
+
+    // Steering that was not the owner's stays pending and rings again with the next delivery.
+    for (const id of clearedSteering) {
+      entry.steering.delete(id)
+    }
+
+    for (const item of cleared) {
+      const pending = item.id && entry.pendingDirect.get(item.id)
+
+      if (pending && item.id) {
+        directReply({
+          card: pending.card,
+          inputId: item.id,
+          state: 'failed',
+          detail: 'stopped',
+        })
+        entry.pendingDirect.delete(item.id)
+      }
+    }
+
+    if (!entry.session) {
+      retire({
+        key: sessionId({ agent: card.agent }),
+        entry,
+      })
+    } else if (running) {
+      await interruptEntry({ entry })
+    } else {
+      entry.activity = 'interrupted'
+    }
+
+    return { stopped: card.id }
+  }
 
   const host: Host = {
     diagnostics: () => ({
@@ -1118,37 +1345,7 @@ export function createHost({
     },
     models: catalogs.models,
     hydraId,
-    hydra: ({
-      text,
-      original,
-      actor,
-      id,
-      release,
-      selected,
-      history,
-      carried,
-    }) => {
-      const input = {
-        text,
-        original,
-        actor,
-        id,
-        release,
-        selected,
-        history,
-        carried,
-      }
-
-      if (ownerActor({ actor: input.actor })) {
-        denyForMessage({
-          task: HYDRA_CARD,
-          actor: input.actor,
-          text: input.text,
-        })
-      }
-
-      return hydra(input)
-    },
+    hydra,
     agentExhausted: async ({ agent }) => {
       const { account } = accountFor({
         effective: effectiveDispatch(),
@@ -1207,13 +1404,7 @@ export function createHost({
         })
       }
 
-      entry.stopping = true
-
-      try {
-        await entry.session.interrupt()
-      } catch (error) {
-        entry.stopping = false; throw error
-      }
+      await interruptEntry({ entry })
 
       return { stopped: 'compaction' }
     },
@@ -1246,7 +1437,7 @@ export function createHost({
         const steering = card.steering?.find(message => {
           const matchesId = message.id === sendNow || message.reply === sendNow
 
-          return matchesId && !message.cancelled && !message.ack
+          return matchesId && !message.stopped && !message.ack
         })
         const pending = entry?.session?.snapshot().work.unsettledInputs.includes(sendNow)
 
@@ -1259,175 +1450,15 @@ export function createHost({
           })
         }
 
-        await entry.session.interrupt({ cancelQueued: false })
+        // With no turn running the message already opens the next one.
+        if (turnRunning({ entry })) {
+          await entry.session.interrupt({ cancelQueued: false })
+        }
 
         return { sentNow: sendNow }
       }
 
-      if (ref !== HYDRA_CARD) {
-        const card = findCard({
-          state: loadHydra({ hydraId }).state,
-          ref,
-        })
-
-        if (card.agent?.host !== 'pnyx') {
-          throw new HydraError({
-            code: 'NO_ROUTE',
-            message: 'Pnyx does not run this task’s agent',
-          })
-        }
-
-        const entry = live.get(sessionId({ agent: card.agent }))
-
-        write({
-          fn: ({ writer }) => {
-            cancelWorkerInputs({
-              writer,
-              card: writer.state.cards[card.id]!,
-              at: at(),
-            })
-            record({
-              writer,
-              agent: card.agent!,
-              input: { activity: 'interrupted' },
-              actor: 'pnyx',
-            })
-          },
-        })
-
-        if (!entry) {
-          return { stopped: card.id }
-        }
-
-        entry.stopping = true
-        entry.input.clear()
-        expireEntry({ entry })
-
-        for (const [
-          inputId,
-          pending,
-        ] of entry.pendingDirect) {
-          directReply({
-            card: pending.card,
-            inputId,
-            state: 'failed',
-            detail: 'stopped',
-          })
-          entry.pendingDirect.delete(inputId)
-        }
-
-        if (!entry.session) {
-          retire({
-            key: sessionId({ agent: card.agent }),
-            entry,
-          })
-        } else if (entry.activity === 'working' || entry.session.snapshot().work.runningTurns.length) {
-          await entry.session.interrupt()
-        } else {
-          entry.stopping = false
-          entry.activity = 'interrupted'
-        }
-
-        return { stopped: card.id }
-      }
-
-      turns.cancel()
-      note({
-        fn: ({ writer }) => {
-          const messages = (writer.state.hydraMessages ?? [])
-            .filter(message => !message.received && !message.stopped && message.action === 'send'
-            && ownerActor({ actor: message.actor }))
-            .map(message => message.id)
-
-          if (messages.length) {
-            applyDecision({
-              writer,
-              decision: hydraEvent({
-                state: writer.state,
-                cardId: HYDRA_CARD,
-                meta: {
-                  at: at(),
-                  actor: 'pnyx',
-                },
-                change: {
-                  type: 'hydra.input-cancelled',
-                  data: { messages },
-                },
-              }),
-            })
-          }
-        },
-      })
-      const changing = agentChangeAbort()
-
-      if (changing) {
-        changing.abort(new Error('Compaction cancelled by the owner'))
-
-        return { stopped: 'compaction' }
-      }
-
-      const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
-
-      if (activeCompaction({ card })) {
-        return host.compact({ card: HYDRA_CARD })
-      }
-
-      const upgrade = upgrades.stop()
-
-      if (upgrade === 'restarting') {
-        return { stopped: 'none: Pnyx is restarting after the upgrade and comes back in a few seconds' }
-      }
-
-      if (upgrade) {
-        return { stopped: 'upgrade' }
-      }
-
-      const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
-
-      write({
-        fn: ({ writer }) => {
-          if (card?.agent?.host === 'pnyx') {
-            record({
-              writer,
-              agent: card.agent,
-              input: { activity: 'interrupted' },
-              actor: 'pnyx',
-            })
-
-            return
-          }
-
-          applyDecision({
-            writer,
-            decision: decidePush({
-              state: writer.state,
-              key: HYDRA_CARD,
-              input: { activity: 'interrupted' },
-              meta: {
-                at: at(),
-                actor: 'pnyx',
-              },
-            }),
-          })
-        },
-      })
-
-      if (!entry?.session) {
-        return { stopped: 'hydra' }
-      }
-
-      entry.stopping = true
-      entry.input.clear()
-      expireEntry({ entry })
-
-      if (entry.activity === 'working' || entry.session.snapshot().work.runningTurns.length) {
-        await entry.session.interrupt()
-      } else {
-        entry.stopping = false
-        entry.activity = 'interrupted'
-      }
-
-      return { stopped: 'hydra' }
+      return ref === HYDRA_CARD ? stopHydra() : stopWorker({ ref })
     },
     usageViews: usageTracker.usageViews,
     usage: usageTracker.usage,
@@ -1436,39 +1467,7 @@ export function createHost({
 
     continue: continueInPnyx,
 
-    send: ({
-      card: ref,
-      text,
-      actor,
-      steering,
-      attempt,
-      direct,
-      inputId,
-    }) => {
-      const input = {
-        card: ref,
-        text,
-        actor,
-        steering,
-        attempt,
-        direct,
-        inputId,
-      }
-
-      if (ownerActor({ actor: input.actor })) {
-        const card = findCard({
-          state: loadHydra({ hydraId }).state,
-          ref: input.card,
-        })
-        denyForMessage({
-          task: card.id,
-          actor: input.actor,
-          text: input.text,
-        })
-      }
-
-      return send(input)
-    },
+    send,
 
     permission,
 
