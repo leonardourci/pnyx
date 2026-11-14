@@ -9,8 +9,22 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "rewriteRelativeImportExtensions": true,
-    "types": ["node"],
-    "customConditions": ["source"]
+    "types": [
+      "node"
+    ],
+    "customConditions": [
+      "source"
+    ],
+    "lib": [
+      "ES2024",
+      "ESNext.Iterator",
+      "DOM"
+    ]
   },
-  "include": ["src", "scripts", "eslint", "e2e"]
+  "include": [
+    "src",
+    "scripts",
+    "eslint",
+    "e2e"
+  ]
 }

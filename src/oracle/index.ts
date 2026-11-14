@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
 import type { HydraState } from '#app/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { readEventsFrom } from '#app/event-log.ts'
+import { readEvents } from '#app/event-log.ts'
 import { HydraError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
 import { privateDir } from '#store/storage.ts'
@@ -236,19 +236,19 @@ function catchUp({
       seq: 0,
       event: '',
     }
-    const read = readEventsFrom({
+    const read = readEvents({
       hydraId,
-      offset: cursor.pos,
+      after: cursor.pos,
       limit: CATCH_UP_BATCH_EVENTS,
-      through: throughEvents,
+      before: throughEvents + 1,
     })
     const captured = !cursor.event || state.eventIds[cursor.event] === cursor.seq
     // A cursor past this state belongs only while the Hydra still holds the event it stopped at.
-    const ahead = cursor.seq > state.seq && readEventsFrom({
+    const ahead = cursor.seq > state.seq && readEvents({
       hydraId,
-      offset: cursor.seq - 1,
+      after: cursor.seq - 1,
       limit: 1,
-    }).events[0]?.id === cursor.event
+    })[0]?.id === cursor.event
     const belongs = captured || ahead
 
     if (!belongs) {
@@ -279,7 +279,7 @@ function catchUp({
       continue
     }
 
-    if (read.end === cursor.pos) {
+    if ((read.at(-1)?.seq ?? cursor.pos) === cursor.pos) {
       break
     }
 
@@ -295,7 +295,7 @@ function catchUp({
           return
         }
 
-        for (const event of read.events) {
+        for (const event of read) {
           let part = 0
 
           for (const entry of eventDocuments({ event })) {
@@ -310,13 +310,13 @@ function catchUp({
 
         putCursor.run({
           ...cursor,
-          pos: read.end,
-          seq: read.events.at(-1)?.seq ?? cursor.seq,
-          event: read.events.at(-1)?.id ?? cursor.event,
+          pos: (read.at(-1)?.seq ?? cursor.pos),
+          seq: read.at(-1)?.seq ?? cursor.seq,
+          event: read.at(-1)?.id ?? cursor.event,
         })
       },
     })
-    pendingEvents = superseded || read.end < throughEvents
+    pendingEvents = superseded || (read.at(-1)?.seq ?? cursor.pos) < throughEvents
   }
 }
 

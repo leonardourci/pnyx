@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
-import { closeLogs, logsDir, openLogs, setLogMode } from '#app/diagnostics.ts'
+import { closeLogs, flushLogs, logsDir, openLogs, setLogMode } from '#app/diagnostics.ts'
 import { logAgentMemory, treeMemory, watchAgent } from './agent-memory.ts'
 
 const run = promisify(execFile)
@@ -17,16 +17,20 @@ const listing = async ({ args }: { args: string[] }) => (await run(
   { encoding: 'utf8' },
 )).stdout
 
-const lines = () => readdirSync(logsDir()).flatMap(name => readFileSync(
-  join(
-    logsDir(),
-    name,
-  ),
-  'utf8',
-).split('\n'))
-  .filter(Boolean)
-  .map(text => JSON.parse(text) as Record<string, unknown>)
-  .filter(line => line.operation === 'agent.memory')
+const lines = async () => {
+  await flushLogs()
+
+  return readdirSync(logsDir()).flatMap(name => readFileSync(
+    join(
+      logsDir(),
+      name,
+    ),
+    'utf8',
+  ).split('\n'))
+    .filter(Boolean)
+    .map(text => JSON.parse(text) as Record<string, unknown>)
+    .filter(line => line.operation === 'agent.memory')
+}
 
 test(
   'an agent’s memory is its whole process tree’s, read from one listing',
@@ -133,9 +137,9 @@ test(
     const [
       sample,
       turn,
-    ] = lines()
+    ] = await lines()
     assert.equal(
-      lines().length,
+      (await lines()).length,
       2,
       'On reads no agent around its turn',
     )
@@ -182,7 +186,7 @@ test(
     )
     await logAgentMemory()
     assert.equal(
-      lines().length,
+      (await lines()).length,
       2,
       'an agent that exited is no longer listed',
     )

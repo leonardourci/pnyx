@@ -1,5 +1,5 @@
 import { integer, type Output, type Options } from '#app/cli-support.ts'
-import { readEvents } from '#app/event-log.ts'
+import { eventPositions, readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
@@ -58,14 +58,23 @@ export function messageLookup({
     state,
     ref: task,
   }).id
+  const entries = threadEntries({
+    state,
+    card,
+  })
   const page = lookupMessages({
+    positions: eventPositions({
+      hydraId,
+      entries,
+    }),
     hydraId,
     card,
-    events: readEvents({ hydraId }),
-    entries: threadEntries({
-      state,
-      card,
+    events: readEvents({
+      hydraId,
+      cardId: card,
+      types: [card === HYDRA_CARD ? 'hydra.message' : 'card.replied'],
     }),
+    entries,
     snapshot: state.seq,
     selection: {
       id: values.id as string | undefined,

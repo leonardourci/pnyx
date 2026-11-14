@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { hydraDir } from './home-migration.ts'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -109,6 +110,45 @@ test(
     assert.equal(
       summary({ hydraId: 'default' })?.id,
       'default',
+    )
+  },
+)
+
+test(
+  'startup imports every Hydra before publishing the running server',
+  async t => {
+    for (const hydraId of [
+      'default',
+      'late-a',
+      'late-b',
+    ]) {
+      const dir = hydraDir({ hydraId })
+      mkdirSync(
+        dir,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          dir,
+          'events.jsonl',
+        ),
+        readStream({ name: 'lifecycle' }).map(event => JSON.stringify(event))
+          .join('\n') + '\n',
+      )
+    }
+
+    const server = await startServer({
+      port: 0,
+      ...quiet,
+    })
+    t.after(() => server.close())
+    assert.deepEqual(
+      query({ statements: [{ text: 'select id from hydras order by id' }] })[0]!.map(row => String(row.id)),
+      [
+        'default',
+        'late-a',
+        'late-b',
+      ],
     )
   },
 )

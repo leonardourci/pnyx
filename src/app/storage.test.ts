@@ -12,7 +12,7 @@ import { query } from '#store/postgres.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra, reloadHydra } from './store.ts'
-import { readEvents, readEventsFrom } from './event-log.ts'
+import { readEvents } from './event-log.ts'
 import { withWriter } from './writer.ts'
 import { listHydras } from './server-hydras.ts'
 import { acquireLock } from '#store/storage.ts'
@@ -493,28 +493,28 @@ test(
     const events = readStream({ name: 'lifecycle' })
     appendAll({ events })
     const second = events[1]!.seq
-    const read = readEventsFrom({
+    const read = readEvents({
       hydraId: 'default',
-      offset: events[0]!.seq,
+      after: events[0]!.seq,
       limit: 2,
     })
     assert.deepEqual(
-      read.events.map(event => event.seq),
+      read.map(event => event.seq),
       events.slice(
         1,
         3,
       ).map(event => event.seq),
     )
     assert.equal(
-      read.end,
+      read.at(-1)?.seq,
       events[2]!.seq,
     )
     assert.deepEqual(
-      readEventsFrom({
+      readEvents({
         hydraId: 'default',
-        offset: 0,
-        through: second,
-      }).events.map(event => event.seq),
+        after: 0,
+        before: second + 1,
+      }).map(event => event.seq),
       [
         events[0]!.seq,
         second,

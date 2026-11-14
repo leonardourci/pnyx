@@ -264,7 +264,7 @@ export function hydraFromRows({
   return {
     ...emptyHydra(),
     ...values,
-    seq: hydra.seq,
+
     config: kept({
       previous: previous?.config,
       next: config,

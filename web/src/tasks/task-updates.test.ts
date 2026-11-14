@@ -4,12 +4,12 @@ import * as nodeModule from 'node:module'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import type { Zero } from '@rocicorp/zero'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { Card } from '#tasks/model.ts'
 import { type TaskEvent, type TaskUpdate } from '#tasks/updates.ts'
-import { groupUpdates, olderUpdates, taskTimeline, updateLayout } from './task-updates.ts'
+import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
+import { withNewest, withOlder } from './updates-paging.ts'
 
 // Node strips types from .ts but cannot read JSX, so the Updates tab's .tsx files are transpiled as they load.
 // registerHooks exists from Node 22.15.
@@ -586,181 +586,188 @@ test(
   },
 )
 
-// Stands in for the page's Zero client: every card.history view answers at once with the given rows or error. Each is
-// a client of its own, since useQuery shares views by client.
-function historyZero({
-  count,
-  error,
+const seqs = ({ list }: { list: { events: TaskEvent[] } }) => list.events.map(item => item.seq)
+
+const page = ({
+  from,
+  to,
+  older,
 }: {
-  count: number
-  error?: string
-}) {
-  const rows = Array.from(
-    { length: count },
+  from: number
+  to: number
+  older?: number
+}) => {
+  const events = Array.from(
+    { length: from - to + 1 },
     (
       _,
       index,
-    ) => ({
-      hydra_id: 'h',
-      card_id: 'c1',
-      seq: count - index,
-      event: {
-        data: {
-          ...event({
-            seq: count - index,
-            type: 'card.renamed',
-            data: { title: `Title ${count - index}` },
-          }),
-          cardId: 'c1',
-        },
-      },
+    ) => event({
+      seq: from - index,
+      type: 'card.renamed',
     }),
   )
 
-  return {
-    clientID: crypto.randomUUID(),
-    context: undefined,
-    materialize: () => ({
-      // eslint-disable-next-line pnyx/object-params -- Zero's view listener contract.
-      addListener: (listener: (
-        data: unknown,
-        resultType: string,
-        error?: unknown,
-      ) => void) => {
-        listener(
-          error ? [] : rows,
-          error ? 'error' : 'complete',
-          error ? {
-            error: 'app',
-            message: error,
-          } : undefined,
-        )
-
-        return () => {}
-      },
-      destroy() {},
-      updateTTL() {},
-    }),
-  } as unknown as Zero
-}
-
-const renderUpdates = async ({ zero }: { zero: Zero }) => {
-  const { createElement } = await import('react')
-  const { renderToStaticMarkup } = await import('react-dom/server')
-  const { ZeroProvider } = await import('@rocicorp/zero/react')
-  const { TaskUpdates } = await import('./task-updates.tsx')
-
-  return renderToStaticMarkup(createElement(
-    ZeroProvider,
-    {
-      zero,
-      children: createElement(
-        TaskUpdates,
-        {
-          card: {
-            id: 'c1',
-            key: 'c1',
-            title: 'Ship it',
-            column: 'in_progress',
-            workspace: '',
-            tags: [],
-            attention: [],
-            links: [],
-            sourceRefs: [],
-            revision: 1,
-            createdSeq: 1,
-            updatedSeq: 1,
-            updatedAt: '2026-10-13T13:00:00Z',
-          } satisfies Card,
-          columns,
-          hydraId: 'h',
-        },
-      ),
-    },
-  ))
+  return older === undefined ? { events } : {
+    events,
+    older,
+  }
 }
 
 test(
-  'the Updates tab offers older updates only while a page comes back full',
-  { skip: !hooks },
-  async () => {
-    const { HISTORY_PAGE } = await import('#store/zero-schema.ts')
-
-    assert.match(
-      await renderUpdates({ zero: historyZero({ count: HISTORY_PAGE }) }),
-      />Older updates</,
-    )
-    assert.doesNotMatch(
-      await renderUpdates({ zero: historyZero({ count: 3 }) }),
-      /Older updates/,
-    )
-  },
-)
-
-test(
-  'updates Zero cannot read name the error and offer to read them again',
-  { skip: !hooks },
-  async () => {
-    const shown = await renderUpdates({
-      zero: historyZero({
-        count: 0,
-        error: 'query endpoint unreachable',
+  'the newest page read again keeps the older pages it reaches back to touch',
+  () => {
+    const held = withOlder({
+      list: page({
+        from: 200,
+        to: 151,
+        older: 151,
+      }),
+      read: page({
+        from: 150,
+        to: 101,
+        older: 101,
+      }),
+    })
+    const refreshed = withNewest({
+      list: held,
+      read: page({
+        from: 203,
+        to: 154,
+        older: 154,
       }),
     })
 
-    assert.match(
-      shown,
-      /query endpoint unreachable/,
+    assert.deepEqual(
+      seqs({ list: refreshed }),
+      Array.from(
+        { length: 103 },
+        (
+          _,
+          index,
+        ) => 203 - index,
+      ),
     )
-    assert.match(
-      shown,
-      />Try again</,
+    assert.equal(
+      refreshed.older,
+      101,
     )
   },
 )
 
 test(
-  'Older updates stays, disabled, while the page after a full one loads, and leaves once a page comes back short',
-  async () => {
-    const {
-      HISTORY_PAGE,
-      MAX_HISTORY,
-    } = await import('#store/zero-schema.ts')
-    const pressed = HISTORY_PAGE * 2
+  'a newest page that no longer touches what is held replaces it, and a whole short history is kept as read',
+  () => {
+    const held = page({
+      from: 200,
+      to: 151,
+      older: 151,
+    })
+    const jumped = withNewest({
+      list: held,
+      read: page({
+        from: 300,
+        to: 251,
+        older: 251,
+      }),
+    })
 
     assert.equal(
-      olderUpdates({
-        rows: HISTORY_PAGE,
-        limit: pressed,
-        loading: true,
-      }),
-      'loading',
+      jumped.events.length,
+      50,
     )
     assert.equal(
-      olderUpdates({
-        rows: HISTORY_PAGE + 3,
-        limit: pressed,
-        loading: false,
+      jumped.older,
+      251,
+    )
+    assert.deepEqual(
+      withNewest({
+        list: held,
+        read: page({
+          from: 3,
+          to: 1,
+        }),
       }),
-      'hidden',
+      {
+        events: page({
+          from: 3,
+          to: 1,
+        }).events,
+      },
+    )
+  },
+)
+
+test(
+  'an older page continues the list from its cursor without repeating an event, and ends it on the last page',
+  () => {
+    const list = withOlder({
+      list: page({
+        from: 200,
+        to: 151,
+        older: 151,
+      }),
+      read: page({
+        from: 151,
+        to: 102,
+      }),
+    })
+
+    assert.deepEqual(
+      seqs({ list }),
+      Array.from(
+        { length: 99 },
+        (
+          _,
+          index,
+        ) => 200 - index,
+      ),
     )
     assert.equal(
-      olderUpdates({
-        rows: 0,
-        limit: HISTORY_PAGE,
-        loading: true,
-      }),
-      'hidden',
-      'the first page loading shows no Older updates',
+      list.older,
+      undefined,
     )
-    assert.equal(
-      olderUpdates({
-        rows: MAX_HISTORY,
-        limit: MAX_HISTORY,
-        loading: false,
-      }),
-      'hidden',
-      'the Updates tab reads no further than its most',
+  },
+)
+
+test(
+  'the Updates tab shows its loading line until the first page arrives',
+  { skip: !hooks },
+  async () => {
+    const { createElement } = await import('react')
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { TaskUpdates } = await import('./task-updates.tsx')
+    const shown = renderToStaticMarkup(createElement(
+      TaskUpdates,
+      {
+        card: {
+          id: 'c1',
+          key: 'c1',
+          title: 'Ship it',
+          column: 'in_progress',
+          workspace: '',
+          tags: [],
+          attention: [],
+          links: [],
+          sourceRefs: [],
+          revision: 1,
+          createdSeq: 1,
+          updatedSeq: 1,
+          updatedAt: '2026-10-13T13:00:00Z',
+        } satisfies Card,
+        columns,
+        command: () => new Promise<Record<string, unknown>>(() => {}),
+        connected: true,
+      },
+    ))
+
+    assert.match(
+      shown,
+      /Loading updates/,
+    )
+    assert.doesNotMatch(
+      shown,
+      /No updates yet/,
     )
   },
 )

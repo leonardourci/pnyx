@@ -125,6 +125,7 @@ function decodeCursor({ value }: { value: string }): Cursor {
 }
 
 export function lookupMessages({
+  positions,
   hydraId,
   card = HYDRA_CARD,
   events,
@@ -132,6 +133,7 @@ export function lookupMessages({
   snapshot,
   selection = {},
 }: {
+  positions?: ReadonlyMap<string, number>
   hydraId: string
   card?: string
   events: HydraEvent[]
@@ -240,6 +242,7 @@ export function lookupMessages({
   }
 
   const messages = messageRecords({
+    positions,
     events,
     entries,
     card,

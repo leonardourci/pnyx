@@ -13,7 +13,7 @@ const SECRET = 'SECRET-STEERING'
 const QUESTION = 'Ship it on Friday?'
 
 test(
-  'the page\'s Zero rows carry a hidden task\'s status and questions for its chips and answer leads, never a card\'s private steering, and a page of history at a time',
+  'the page\'s Zero rows carry a hidden task\'s status and questions for its chips and answer leads, never a card\'s private steering',
   async () => {
     const s = await pnyx.scenario()
     const origin = `http://127.0.0.1:${pnyx.port()}`
@@ -131,18 +131,6 @@ test(
     assert.equal(
       references.frames.some(frame => frame.includes(SECRET)),
       false,
-    )
-
-    const history = await read<unknown[]>({
-      query: ({ zero }) => zero.materialize(queries.card.history({
-        hydraId,
-        cardId: parked.id,
-        limit: 1,
-      })),
-    })
-    assert.equal(
-      history.rows.length,
-      1,
     )
   },
 )

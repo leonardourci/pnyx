@@ -8,7 +8,7 @@ import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { readTranscriptRecord } from './transcripts.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { threadPath } from '#hydra/transcripts-read.ts'
 
@@ -85,7 +85,13 @@ export function repliesToFollow({
   })
 }
 
-function sentReplies({ events }: { events: HydraEvent[] }): Map<string, Sent> {
+function sentReplies({
+  events,
+  wanted,
+}: {
+  events: Iterable<HydraEvent>
+  wanted: Set<string>
+}): Map<string, Sent> {
   const sent = new Map<string, Sent>()
 
   for (const event of events) {
@@ -94,6 +100,11 @@ function sentReplies({ events }: { events: HydraEvent[] }): Map<string, Sent> {
     }
 
     const key = `${event.cardId}:${event.data.reply}`
+
+    if (!wanted.has(key)) {
+      continue
+    }
+
     const known = sent.get(key)
     const at = Date.parse(event.at)
 
@@ -213,7 +224,21 @@ function replyFollowUps({
     return []
   }
 
-  const sent = sentReplies({ events: readEvents({ hydraId }) })
+  const cards = Object.values(state.cards).filter(card => unconfirmedOriginals({ card }).length)
+  const wanted = new Set(cards.flatMap(card => {
+    const originals = unconfirmedOriginals({ card })
+
+    return (card.replies ?? []).filter(reply => originals.some(original => reply.id === original.id
+      || reply.id.startsWith(`${original.id}${RETRY_MARK}`))).map(reply => `${card.id}:${reply.id}`)
+  }))
+  const sent = sentReplies({
+    wanted,
+    events: scanEvents({
+      hydraId,
+      cardIds: cards.map(card => card.id),
+      types: ['card.replied'],
+    }),
+  })
   const followUps: ReplyFollowUp[] = []
 
   for (const card of Object.values(state.cards)) {

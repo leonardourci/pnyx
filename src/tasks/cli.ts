@@ -371,6 +371,7 @@ export function taskHistory({
   const history = movedHistory({
     hydraId,
     task: task.id,
+    cards: [...ids],
     matches: ({ event: e }) => ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || tagsTask({
       event: e,
       ids,

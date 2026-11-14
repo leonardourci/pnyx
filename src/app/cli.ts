@@ -1,3 +1,4 @@
+import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
 import { AxiError } from 'axi-sdk-js'
@@ -6,8 +7,8 @@ import { taskCommand } from './task-cli.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { indexedEvents, readEvents } from './event-log.ts'
-import { historyTasks, showsUpdate, updateTasks } from '#tasks/updates.ts'
+import { readEvents, scanEvents } from './event-log.ts'
+import { historyTasks, updateTasks } from '#tasks/updates.ts'
 import { decideUndo } from './undo.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
 import { layout, view } from '#preferences/cli.ts'
@@ -68,14 +69,18 @@ export const history = guard({
     const workspace = values.workspace as string | undefined
     // With --updates a card's index already holds just the events Updates shows.
     const keys = values.updates ? updateTasks : historyTasks
-    const indexed = ({ key }: { key: string }) => indexedEvents({
+    // A historical card ID remains readable after the task has moved away.
+    const listed = !!ref && readEvents({
       hydraId,
-      keys,
-      key,
-    })
-    // A ref the log records as some event's own card is a card id and needs no Hydra state;
-    // a task key, an unknown ref or a workspace filter does.
-    const listed = !!ref && indexed({ key: ref }).some(e => e.cardId === ref)
+      cardId: ref,
+      types: [
+        'card.pushed',
+        'task.created',
+        'task.moved-in',
+        'task.moved-out',
+      ],
+      limit: 1,
+    }).length > 0
     const needsState = !!workspace || (!!ref && !listed)
     const state = needsState ? loadHydra({ hydraId }).state : undefined
     const cardId = ref && state ? findCard({
@@ -86,26 +91,61 @@ export const history = guard({
     const inWorkspace = ({ e }: { e: HydraEvent }) =>
       (e.type === 'card.outcome' ? e.data.card.workspace : state?.cards[e.cardId]?.workspace) === workspace
 
-    const source = cardId ? indexed({ key: cardId }) : readEvents({ hydraId })
-    // The log's seq only grows, so the events before --before are a prefix.
-    const end = before === undefined ? source.length : source.findLastIndex(e => e.seq < before) + 1
-    const checksUpdates = values.updates && !cardId
-    const matches = source.slice(
-      0,
-      end,
-    ).filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e }))
-      && (!checksUpdates || showsUpdate({ event: e })))
-    const page = matches.slice(Math.max(
-      0,
-      matches.length - limit,
-    )).reverse()
+    const selection = {
+      hydraId,
+      cardId,
+      types: type ? [type] : undefined,
+      before,
+    }
+    let matches = 0
+    const page: HydraEvent[] = []
+    const exactSelection = !workspace && (!cardId || values.updates)
+
+    if (exactSelection) {
+      const read = values.updates ? readUpdateEvents({
+        types: selection.types,
+        hydraId,
+        cardId,
+        before,
+        limit: limit + 1,
+      })
+        : readEvents({
+          ...selection,
+          descending: true,
+          limit: limit + 1,
+        })
+      page.push(...read.filter(event => !type || event.type === type))
+      matches = page.length
+      page.splice(limit)
+    } else {
+      for (const event of scanEvents({
+        ...selection,
+        descending: true,
+      })) {
+        if (cardId && !keys({ event }).includes(cardId)) {
+          continue
+        }
+
+        if (workspace && !inWorkspace({ e: event })) {
+          continue
+        }
+
+        matches++
+
+        if (page.length === limit) {
+          break
+        }
+
+        page.push(event)
+      }
+    }
 
     if (page.length === 0) {
       return { events: 'none: no matching events' }
     }
 
     const out: Output = {
-      count: `${page.length} of ${matches.length} ${before === undefined ? 'total' : `before ${before}`}`,
+      count: `${page.length}${matches > limit ? ', more before' : ''}`,
       events: page.map(e => ({
         seq: e.seq,
         id: e.id,
@@ -122,7 +162,7 @@ export const history = guard({
       })),
     }
 
-    if (matches.length > limit) {
+    if (matches > limit) {
       const flags = [
         'card',
         'kind',
@@ -163,7 +203,10 @@ export const undo = guard({
       value: positionals[0],
       what: 'event id',
     })
-    const target = readEvents({ hydraId }).find(e => e.id === id)
+    const target = readEvents({
+      hydraId,
+      ids: [id],
+    })[0]
 
     if (!target) {
       throw new AxiError(

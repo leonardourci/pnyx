@@ -166,7 +166,13 @@ function migrate(): void {
     return
   }
 
-  const logs = hydraIds().map(hydraId => eventsOrLegacy({ hydraId }))
+  const logs = hydraIds().map(hydraId => eventsOrLegacy({
+    hydraId,
+    types: [
+      'board.view',
+      'board.configured',
+    ],
+  }))
   const views = logs.flat().filter((event): event is ViewEvent => event.type === 'board.view')
   const view = newest({ events: views })
   const changed = <K extends Legacy>({ key }: { key: K }) => newest({

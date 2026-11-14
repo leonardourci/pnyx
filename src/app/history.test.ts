@@ -144,7 +144,7 @@ test(
     })
     assert.equal(
       page().count,
-      '50 of 60 total',
+      '50, more before',
       'the first page lists the newest 50 of the card\'s notes',
     )
 
@@ -164,7 +164,7 @@ test(
     const latest = page()
     assert.equal(
       latest.count,
-      '50 of 61 total',
+      '50, more before',
     )
     assert.equal(
       Array.isArray(latest.events) && latest.events[0]!.data.text,
@@ -175,7 +175,7 @@ test(
     const older = page({ before: oldest })
     assert.equal(
       older.count,
-      `11 of 11 before ${oldest}`,
+      '11',
     )
     assert.equal(
       older.help,

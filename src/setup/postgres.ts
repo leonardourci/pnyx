@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
-import { configuredUrl, homeDatabase, query } from '#store/postgres.ts'
+import { closePostgres, configuredUrl, homeDatabase, query } from '#store/postgres.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { hydraExists, importLegacy, loadHydra } from '#app/store.ts'
 import { recordExitCode } from '#app/request-context.ts'
@@ -41,6 +41,7 @@ function server(): Server | HydraError {
   try {
     // Both settings always exist, so the one statement returns exactly one row.
     const row = query({
+      schema: 'inspect',
       statements: [
         {
           text: `select current_setting('wal_level') as wal_level,
@@ -256,6 +257,44 @@ const ready = ({ found }: { found: Server }) => ({
 // upgrade stops before its restart when any Hydra fails; each failure names its Hydra.
 function checkImports(): Output {
   requireReady({ found: server() })
+  const [tables] = query({
+    schema: 'inspect',
+    statements: [{ text: 'select to_regclass(\'public.schema_version\') as name' }],
+  })
+
+  if (!tables?.[0]?.name) {
+    return {
+      postgres: 'ready',
+      database: targetDatabase(),
+      migration: 'pending: serve creates the database',
+    }
+  }
+
+  const [versions] = query({
+    schema: 'inspect',
+    statements: [{ text: 'select max(version)::integer as version from schema_version' }],
+  })
+
+  if (versions?.[0]?.version === 1) {
+    const [counts] = query({
+      schema: 'inspect',
+      statements: [
+        {
+          text: `select type, count(*)::integer as count from events
+        where type in ('card.observed', 'chat.message') group by type`,
+        },
+      ],
+    })
+
+    return {
+      postgres: 'ready',
+      database: targetDatabase(),
+      schema: 1,
+      migration: 'pending: serve migrates after the old server stops',
+      prune: counts,
+    }
+  }
+
   const imported: string[] = []
   const failed: {
     hydra: string
@@ -387,6 +426,7 @@ export async function setupPostgres({
       { text: `alter system set max_slot_wal_keep_size = '${MAX_SLOT_WAL}'` },
     ],
   })
+  await closePostgres()
   brewService({ action: 'restart' })
   const restarted = await started()
   // The restart reached another server than the one that took the setting, such as a Postgres not from Homebrew.

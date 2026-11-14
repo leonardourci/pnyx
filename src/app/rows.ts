@@ -1,3 +1,5 @@
+import { hash } from 'node:crypto'
+import { restoreObservations, sourceFacts, sessionFacts, type ObservationRow } from '#tasks/observations.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import type { Ask, Card, NoteRef, TaskDeclaration } from '#tasks/model.ts'
 import type { Link } from '#tasks/delivery/model.ts'
@@ -127,8 +129,10 @@ const STRUCTURED = new Set<string>([
 
 // The rows last committed for one Hydra, as JSON, so a write sends only what changed. A row names the group it is
 // rebuilt with, so a write that rebuilds only some groups keeps the others' rows.
+// What the server keeps of each row it saved: a digest of its JSON, enough to tell whether a write changes it, so the
+// saved rows are not a second copy of the state.
 export type SavedRows = Map<string, {
-  json: string
+  digest: string
   group?: string
 }>
 
@@ -295,6 +299,7 @@ export function cardReference({ card }: { card: Card }): Card {
   const reference: Card = {
     ...card,
     links: card.links.slice(-LIST_LIMIT),
+    sourceRefs: sourceFacts({ refs: card.sourceRefs }),
   }
 
   if (card.asks) {
@@ -578,6 +583,36 @@ const remove = ({
   values: [JSON.stringify(rows)],
 })
 
+// Repeated observations do not change public rows.
+function comparisonRow({
+  table,
+  row,
+}: {
+  table: Table
+  row: Row
+}): Row {
+  if (table === 'sessions') {
+    return {
+      ...row,
+      data: sessionFacts({ session: row.data as AgentSession }),
+    }
+  }
+
+  if (table === 'card_bodies') {
+    const card = row.data as Card
+
+    return {
+      ...row,
+      data: {
+        ...card,
+        sourceRefs: sourceFacts({ refs: card.sourceRefs }),
+      },
+    }
+  }
+
+  return row
+}
+
 // The statements that bring the saved rows to this state, and the saved rows once they commit. touched names what
 // the write changed; without it every row is compared.
 export function rowChanges({
@@ -614,18 +649,25 @@ export function rowChanges({
         table,
         row,
       })
-      const json = JSON.stringify(row)
+      const digest = hash(
+        'sha1',
+        JSON.stringify(comparisonRow({
+          table,
+          row,
+        })),
+        'base64',
+      )
       present.add(key)
 
-      if (next.get(key)?.json === json) {
+      if (next.get(key)?.digest === digest) {
         continue
       }
 
       const group = groups.get(row)
       next.set(
         key,
-        group === undefined ? { json } : {
-          json,
+        group === undefined ? { digest } : {
+          digest,
           group,
         },
       )
@@ -780,6 +822,7 @@ export function loadStatements({ hydraId }: { hydraId: string }): Statement[] {
     'select data from messages where hydra_id = $1 order by position',
     'select id, data from sessions where hydra_id = $1',
     'select id, seq from events where hydra_id = $1',
+    'select card_id, adapter, instance_id, object_id, generation, observed_at, seen_at from source_observations where hydra_id = $1',
   ].map(text => ({
     text,
     values: [hydraId],
@@ -819,6 +862,7 @@ export function stateFromRows({
     messages,
     sessions,
     events,
+    observations,
   ] = results as unknown as [
     Of<{
       seq: string
@@ -853,6 +897,7 @@ export function stateFromRows({
       id: string
       seq: string
     }>,
+    ObservationRow[],
   ]
   const head = hydra[0]
 
@@ -998,6 +1043,11 @@ export function stateFromRows({
   } of events) {
     state.eventIds[id] = Number(seq)
   }
+
+  restoreObservations({
+    state,
+    rows: observations ?? [],
+  })
 
   const loaded = {
     state,

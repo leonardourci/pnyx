@@ -9,7 +9,10 @@ import { reportStartup } from './server-state.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
 
 // Copies of agent transcripts stay out of Postgres; Pnyx reads transcripts where their harness wrote them.
-const TRANSCRIPT_COPY = 'chat.message'
+const DIAGNOSTIC_EVENTS = new Set([
+  'chat.message',
+  'card.observed',
+])
 // A busy Hydra's whole log goes in one transaction, far longer than an ordinary statement's wait.
 const IMPORT_TIMEOUT_MS = 10 * 60_000
 const REPLAY_BATCH_SIZE = 500
@@ -88,8 +91,27 @@ export function importHydra({
         hydraId,
         from: 0,
         to: state.seq,
-        events: applied({ events }).filter(event => event.type !== TRANSCRIPT_COPY),
+        events: applied({ events }).filter(event => !DIAGNOSTIC_EVENTS.has(event.type)),
       }),
+      {
+        text: `insert into source_observations select * from json_populate_recordset(null::source_observations, $1::json)
+          on conflict (hydra_id, card_id, adapter, instance_id, object_id) do update
+          set generation = excluded.generation, observed_at = excluded.observed_at, seen_at = excluded.seen_at
+          where (source_observations.generation, source_observations.observed_at)
+            <= (excluded.generation, excluded.observed_at)`,
+        values: [
+          JSON.stringify(Object.values(state.cards).flatMap(card => card.sourceRefs.map(source => ({
+            hydra_id: hydraId,
+            card_id: card.id,
+            adapter: source.adapter,
+            instance_id: source.instanceId ?? '',
+            object_id: source.objectId,
+            generation: source.generation ?? 0,
+            observed_at: source.observedAt ?? card.updatedAt,
+            seen_at: source.observedAt ?? card.updatedAt,
+          })))),
+        ],
+      },
       ...rowChanges({
         hydraId,
         state,

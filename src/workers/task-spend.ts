@@ -98,7 +98,7 @@ export function spendInputs({
   tasks = declaredTasks({ state }),
 }: {
   state: HydraState
-  events: HydraEvent[]
+  events: Iterable<HydraEvent>
   tasks?: string[]
 }): SpendInputs {
   const configurations: SpendInputs['configurations'] = []
@@ -282,7 +282,7 @@ export function taskSpend({
   task,
 }: {
   state: HydraState
-  events: HydraEvent[]
+  events: Iterable<HydraEvent>
   task: string
 }): TaskSpend {
   return spendFor({

@@ -620,9 +620,13 @@ test(
       what: 'a starting server deleting days past the kept ones',
       check: () => !existsSync(dayFile({ daysAgo: 30 })),
     })
-    const lifecycle = logLines().filter(line => line.operation === 'server.stop' || line.operation === 'server.start')
+    const lifecycle = () => logLines().filter(line => line.operation === 'server.stop' || line.operation === 'server.start')
+    await until({
+      what: 'the restart\'s stop and start lines to be written',
+      check: () => lifecycle().length === 2,
+    })
     assert.deepEqual(
-      lifecycle.map(line => [
+      lifecycle().map(line => [
         line.operation,
         typeof line.ms,
         typeof line.pid,

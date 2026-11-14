@@ -18,6 +18,7 @@ interface AgentMemory {
 }
 
 interface LogFields {
+  payload?: string
   operation: string
   hydraId?: string
   taskId?: string
@@ -37,6 +38,8 @@ interface LogFields {
   // The server's process id: server.start has it, and a failure adds it itself.
   pid?: number
   // How long the action took, from the monotonic clock.
+  connectionWaitMs?: number
+  commitMs?: number
   ms?: number
   bytes?: number
   // Bytes still waiting in the socket after a send.
@@ -74,6 +77,9 @@ interface LogFields {
 // Every field a line may carry besides its operation, id and duration: a line is built from these and nothing else
 // its object holds, and a field added above must be listed here.
 const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | 'ms'>]-?: true } = {
+  connectionWaitMs: true,
+  commitMs: true,
+  payload: true,
   hydraId: true,
   taskId: true,
   sessionId: true,

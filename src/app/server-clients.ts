@@ -11,7 +11,7 @@ import { liveTask } from '#tasks/select.ts'
 import type { AgentUsage } from '#workers/provider.ts'
 import { spendCounter } from '#workers/spend-counter.ts'
 import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
-import { readEvents } from './event-log.ts'
+import { scanEvents } from './event-log.ts'
 import type { createHost } from './host.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
@@ -89,18 +89,6 @@ export function createServerClients({
       card,
       interest: NO_INTEREST,
     })
-  }
-
-  let derivedThrough = -1
-  let derivedHistory: HydraEvent[] = []
-
-  const derivationEvents = () => {
-    if (state().seq !== derivedThrough) {
-      derivedHistory = readEvents({ hydraId })
-      derivedThrough = state().seq
-    }
-
-    return derivedHistory
   }
 
   type Latest = Extract<ServerMessage, { type: 'latest' }>
@@ -340,7 +328,8 @@ export function createServerClients({
       const [written] = query({
         statements: [
           {
-            text: 'update hydras set queue = $2 where id = $1 returning id',
+            text: `insert into hydra_values (hydra_id, key, value) select id, 'queue', $2 from hydras where id = $1
+              on conflict (hydra_id, key) do update set value = excluded.value returning hydra_id`,
             values: [
               hydraId,
               json,
@@ -510,7 +499,13 @@ export function createServerClients({
   const spend = spendCounter({
     inputs: () => spendInputs({
       state: state(),
-      events: derivationEvents(),
+      events: scanEvents({
+        hydraId,
+        types: [
+          'board.configured',
+          'task.session',
+        ],
+      }),
     }),
     onSpend: ({
       spend,

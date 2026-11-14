@@ -1,5 +1,7 @@
 import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
+import { log } from '#app/diagnostics.ts'
+import { redact } from '#oracle/text.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { joinedKey } from '#tasks/push-rules.ts'
@@ -42,6 +44,11 @@ function ingest({
       code: 'VALIDATION_ERROR',
     })
   }
+
+  log({
+    operation: 'hook.push',
+    payload: redact({ text: JSON.stringify(entry) }),
+  })
 
   if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {

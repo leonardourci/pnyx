@@ -1,6 +1,6 @@
 import { meta, required, commit, integer, HISTORY_LIMIT, HISTORY_MAX, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents } from '#app/event-log.ts'
+import { scanEvents } from '#app/event-log.ts'
 import { readServer, askHost } from '#app/server-state.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
@@ -199,8 +199,27 @@ export function hydraMessages({
     })
   }
 
-  const events = readEvents({ hydraId }).filter(e => e.seq > after
-    && (e.type === 'hydra.message' || (e.type === 'task.reminder-due' && !e.data.grouped)))
+  const events = []
+
+  for (const event of scanEvents({
+    hydraId,
+    after,
+    types: [
+      'hydra.message',
+      'task.reminder-due',
+    ],
+  })) {
+    if (event.type === 'task.reminder-due' && event.data.grouped) {
+      continue
+    }
+
+    events.push(event)
+
+    if (events.length > limit) {
+      break
+    }
+  }
+
   const page = events.slice(
     0,
     limit,

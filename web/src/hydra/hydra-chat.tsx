@@ -49,6 +49,8 @@ import { REDUCED_MOTION } from './streaming.tsx'
 
 // The share of the distance to the bottom that following covers per frame.
 const GLIDE = 0.3
+// How far above the screen the top of the conversation is when the next older page starts loading.
+const OLDER_MARGIN = '600px 0px 0px 0px'
 
 // What the chat shows until the server's first queue arrives.
 const EMPTY_CHAT_QUEUE: HydraChatQueue = {
@@ -365,6 +367,9 @@ export function HydraChat({
     setLoadingEarlier,
   ] = useState(false)
   const olderCursor = page?.older
+  const olderMarker = useRef<HTMLDivElement>(null)
+  // The older page whose read failed, which is not read again on its own.
+  const failedOlder = useRef<string>(undefined)
   const conversation = page?.conversation
   const chat = {
     entries: conversation?.entries ?? [],
@@ -594,11 +599,17 @@ export function HydraChat({
   const loadEarlier = async ({
     until,
     message,
+    keepFollowing = false,
   }: {
     until?: string
     message?: string
+    // The owner at the bottom of the chat stays there while older messages join above.
+    keepFollowing?: boolean
   }) => {
-    stopFollowing()
+    if (!keepFollowing) {
+      stopFollowing()
+    }
+
     const session = threadSession.current
     let current = page
 
@@ -643,6 +654,62 @@ export function HydraChat({
       }
     }
   }
+
+  // The next older page loads when the top of the conversation nears the screen, and the messages the owner reads stay
+  // where they are.
+  const loadOlder = async () => {
+    const scroller = stream.current
+
+    if (!scroller || loadingEarlier || !connected || failedOlder.current === olderCursor) {
+      return
+    }
+
+    setLoadingEarlier(true)
+
+    try {
+      await loadEarlier({ keepFollowing: true })
+    } catch (error) {
+      failedOlder.current = olderCursor
+      notify({ text: (error as Error).message })
+    } finally {
+      setLoadingEarlier(false)
+    }
+  }
+
+  useEffect(
+    () => {
+      const marker = olderMarker.current
+
+      if (!connected) {
+        failedOlder.current = undefined
+      }
+
+      if (!marker || !stream.current || !olderCursor || loadingEarlier || !connected) {
+        return
+      }
+
+      const observer = new IntersectionObserver(
+        // eslint-disable-next-line pnyx/object-params -- IntersectionObserver owns this callback's signature.
+        async reached => {
+          if (reached.some(entry => entry.isIntersecting)) {
+            await loadOlder()
+          }
+        },
+        {
+          root: stream.current,
+          rootMargin: OLDER_MARGIN,
+        },
+      )
+      observer.observe(marker)
+
+      return () => observer.disconnect()
+    },
+    [
+      olderCursor,
+      loadingEarlier,
+      connected,
+    ],
+  )
 
   const loadComment = async ({ comment }: { comment: ChatComment }) => {
     stopFollowing()
@@ -1025,23 +1092,7 @@ export function HydraChat({
           }}
         >
           <div className="hydra-stream" ref={content}>
-            {olderCursor && (
-              <Button
-                disabled={loadingEarlier || !connected}
-                onClick={async () => {
-                  setLoadingEarlier(true)
-
-                  try {
-                    await loadEarlier({})
-                  } catch (error) {
-                    notify({ text: (error as Error).message })
-                  } finally {
-                    setLoadingEarlier(false)
-                  }
-                }}
-              >Older messages
-              </Button>
-            )}
+            {olderCursor && <div ref={olderMarker} className="hydra-older" aria-hidden="true" />}
             <Messages
               catalog={catalog}
               labelColors={state.labelColors}

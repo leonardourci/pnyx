@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import pg from 'pg'
-import { schema } from './zero-schema.ts'
+import { PAGE_VALUES, schema } from './zero-schema.ts'
 import { TASK_KINDS, TASK_STATES, NOTE_KINDS } from '#tasks/model.ts'
 import { LINK_KINDS, LINK_STATES } from '#tasks/delivery/model.ts'
 
@@ -15,9 +15,6 @@ const ZERO_TYPES: Record<string, string> = {
   'boolean': 'boolean',
   'json': 'json',
 }
-
-// Replicated with its table, but no query reads it.
-const UNREAD = ['hydras.imported_bytes']
 
 // Each check constraint that restates a TypeScript union, with the values it must allow.
 const UNIONS = {
@@ -75,9 +72,13 @@ test(
         where tc.table_schema = 'public' and tc.constraint_type = 'PRIMARY KEY'
         group by tc.table_name`)
       // zero-cache replicates only these, whole rows; the Zero schema names each of their columns.
-      const { rows: published } = await client.query<{ tablename: string }>(`select tablename from
-        pg_publication_tables where pubname = 'pnyx_page'`)
+      const { rows: published } = await client.query<{
+        tablename: string
+        attnames: string[]
+        rowfilter: string | null
+      }>('select tablename, attnames::text[] as attnames, rowfilter from pg_publication_tables where pubname = \'pnyx_page\'')
       const replicated = new Set(published.map(row => row.tablename))
+      const replicatedColumns = new Set(published.flatMap(row => row.attnames.map(column => `${row.tablename}.${column}`)))
       const { rows: checks } = await client.query<{
         name: string
         definition: string
@@ -97,7 +98,7 @@ test(
       for (const row of columns) {
         const name = `${row.table_name}.${row.column_name}`
 
-        if (replicated.has(row.table_name) && !UNREAD.includes(name)) {
+        if (replicatedColumns.has(name)) {
           inPostgres[name] = {
             type: ZERO_TYPES[row.data_type]!,
             optional: row.is_nullable === 'YES',
@@ -140,6 +141,21 @@ test(
           row.table_name,
           row.columns,
         ])),
+      )
+
+      assert.deepEqual(
+        [...published.find(row => row.tablename === 'hydra_values')!.rowfilter!.matchAll(/'([^']+)'::text/g)].map(match => match[1]).toSorted(),
+        [...PAGE_VALUES].toSorted(),
+        'hydra_values replicates exactly the keys the page reads',
+      )
+      assert.equal(
+        replicated.has('events') || replicated.has('card_updates'),
+        false,
+        'the page reads no events, so no event is replicated',
+      )
+      assert.equal(
+        replicatedColumns.has('hydras.imported_bytes'),
+        false,
       )
 
       for (const [
