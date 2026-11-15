@@ -71,6 +71,16 @@ pnpm dev
 
 `pnpm dev` runs a Pnyx server with its own data folder (`~/.pnyx-dev`, or `PNYX_DEV_HOME`), so it never competes with your installed server for your Hydras, opening its `dev` Hydra under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web app in place as you edit `web/`. Open the URL Vite prints; it forwards the Hydra's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
 
+### Owner-facing trials
+
+For a trial you hand to the owner, use an isolated data home and run under portless when it is installed (`command -v portless`):
+
+```sh
+PNYX_HOME=/path/to/trial portless trial.pnyx pnyx-axi serve
+```
+
+Choose a unique `<name>.pnyx` for each trial and share the stable URL portless prints. Leave `--port` unset: Pnyx reads the `PORT` supplied by portless. Use the same `PNYX_HOME` for every trial command, including `stop`. Without portless, use `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0` and share the printed URL. Automated tests continue using random ports; do not wrap them in portless.
+
 ## Verification
 
 Run `pnpm verify` on a PR's pushed head before it merges. It discovers and fetches origin's default branch, then stops if your branch does not include it. It prints the `git rebase` command for you to run; it never rebases automatically.

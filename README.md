@@ -53,11 +53,13 @@ Open the URL it prints. One server serves all your Hydras; the default address i
 
 Keep that terminal running while you use Pnyx.
 
-For a trial with separate data and a free port:
+For an owner-facing trial with separate data, use portless when it is installed so the owner gets a stable link:
 
 ```sh
-PNYX_HOME=/path/to/trial pnyx-axi serve --port 0
+PNYX_HOME=/path/to/trial portless trial.pnyx pnyx-axi serve
 ```
+
+Choose a unique `<name>.pnyx` for each trial and share the URL portless prints. Leave `--port` unset so Pnyx uses the `PORT` portless supplies. Without portless, run `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0` and share the printed URL. Automated tests keep their random ports.
 
 Use the same `PNYX_HOME` for every command in that trial, including `stop`. A separate home still uses your normal harness logins and global skill folders.
 
