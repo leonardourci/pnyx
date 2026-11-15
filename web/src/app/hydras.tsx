@@ -1,3 +1,4 @@
+import { useSharedSettings, saveSharedSettings } from '#web-settings/shared-settings.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { useCallback, useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import type { HydraProjectSummary, HydraSummary } from '#app/server-hydras.ts'
@@ -132,6 +133,38 @@ export function Hydras({
     over: string
     below: boolean
   } | null>(null)
+  const settings = useSharedSettings()
+  const hiddenIds = settings?.hiddenHydras ?? []
+  const visible = hydras.filter(h => !hiddenIds.includes(h.id))
+  const hidden = hydras.filter(h => hiddenIds.includes(h.id))
+  const [
+    showHidden,
+    setShowHidden,
+  ] = useState(false)
+
+  const visibility = async ({
+    id,
+    hide,
+  }: {
+    id: string
+    hide: boolean
+  }) => {
+    const remaining = hiddenIds.filter(hiddenId => hiddenId !== id)
+    const hiddenHydras = hide ? [
+      ...remaining,
+      id,
+    ] : remaining
+
+    try {
+      await saveSharedSettings({
+        command,
+        patch: { hiddenHydras },
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   const closeMenu = useCallback(
     () => setMenu(null),
     [],
@@ -271,6 +304,7 @@ export function Hydras({
   return (
     <section className="hydras-panel" aria-label="Hydras">
       <div className="hydras-heading"><h2>Hydras</h2>
+        <Button aria-label="Show hidden Hydras" aria-pressed={showHidden} onClick={() => setShowHidden(!showHidden)}><Icon name="review" /></Button>
         <Button
           aria-label="Create Hydra"
           disabled={!connected || !!drafting}
@@ -321,7 +355,7 @@ export function Hydras({
         }}
         onDragEnd={() => setDrop(null)}
       >
-        {hydras.map(h => {
+        {visible.map(h => {
           const active = h.id === current, isOpen = expanded[h.id] ?? active
           const dropClass = drop?.over === h.id ? ` drop-${drop.below ? 'after' : 'before'}` : ''
 
@@ -394,6 +428,16 @@ export function Hydras({
                     <RunningDot id={h.id} working={h.working} />
                   </Button>
                 )}
+                <Button
+                  className="hydra-hide"
+                  aria-label={`Hide ${hydraTitle(h)}`}
+                  disabled={!connected || !settings}
+                  onClick={() => visibility({
+                    id: h.id,
+                    hide: true,
+                  })}
+                ><Icon name="focus" />
+                </Button>
               </div>
               {isOpen && (
                 <div className="hydra-projects" id={`projects-${h.id}`}>
@@ -434,6 +478,26 @@ export function Hydras({
             </div>
           )
         })}
+        {showHidden && (
+          <section className="hidden-hydras" aria-label="Hidden Hydras">
+            <h3>Hidden Hydras</h3>
+            {hidden.length === 0 && <p>No hidden Hydras</p>}
+            {hidden.map(h => (
+              <div className="hydra-row" key={h.id}>
+                <HydraLabel name={h.name} icon={h.icon} />
+                <Button
+                  aria-label={`Restore ${hydraTitle(h)}`}
+                  disabled={!connected || !settings}
+                  onClick={() => visibility({
+                    id: h.id,
+                    hide: false,
+                  })}
+                ><Icon name="review" />
+                </Button>
+              </div>
+            ))}
+          </section>
+        )}
         {drafting && (
           <div className="hydra-branch">
             <div className="hydra-row">
@@ -451,6 +515,16 @@ export function Hydras({
       {menu?.kind === 'hydra' && (
         <ContextMenu label={`${hydraTitle(menu.hydra)} menu`} at={menu.at} close={closeMenu}>
           <Button disabled={!connected} onClick={() => setEditing(menu.hydra.id)}>Edit</Button>
+          <Button
+            disabled={!connected || !settings}
+            onClick={() => {
+              visibility({
+                id: menu.hydra.id,
+                hide: true,
+              }); closeMenu()
+            }}
+          >Hide
+          </Button>
           <Button
             disabled={!connected}
             onClick={() => addProject({ id: menu.hydra.id })}

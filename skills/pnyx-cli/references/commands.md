@@ -40,4 +40,6 @@ Owner questions persist across completed investigations, worker exits and unrela
 
 Stop a hosted worker with `task stop <task>` or Hydra with `hydra stop`; a worker's own request is refused, so ask Hydra with `task ask`. Stop cancels the owner's unread inputs; they remain visible as Not delivered: stopped. Use `task send-now <task> <message-id>` or `hydra send-now <message-id>` to interrupt a step for a queued message, and `hydra cancel <message-id>` to cancel one message held behind a compaction, an upgrade or an agent change. After Stop, routine wakes wait for the owner's next message.
 
+Hide Hydras from the page list and switcher with `settings set --json '{"hiddenHydras":["hydra-2"]}'`. Restore all with `settings set --json '{"hiddenHydras":[]}'`. This shared view setting leaves pages, projects and workers running.
+
 `task merge <task>` checks the task’s merge rule, owner approval, classic protection and reported checks, and binds the request to the verified head. A 403/404 from the branch-rules endpoint means no readable rules there; other evidence failures still refuse the merge.

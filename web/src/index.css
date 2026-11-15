@@ -1236,7 +1236,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .left-panel .brand > svg { color: var(--color-gold); }
 .hydras-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .hydras-heading { display: flex; align-items: center; justify-content: space-between; padding-left: 10px; margin-bottom: 8px; }
-.hydras-heading h2 { font-family: var(--font-sans); color: var(--color-muted); font-size: var(--text-ui); font-weight: 600; }
+.hydras-heading h2 { flex: 1; font-family: var(--font-sans); color: var(--color-muted); font-size: var(--text-ui); font-weight: 600; }
 .hydras-heading .button { padding: 3px 9px; font-size: var(--text-pane); }
 .hydras-heading form { min-width: 0; flex: 1; margin-left: 8px; }
 .hydras-heading form .input { width: 100%; }
@@ -2105,3 +2105,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-spinner { margin-top: 6px; width: 16px; height: 16px; border: 2px solid var(--color-line); border-top-color: var(--color-muted); border-radius: 50%; animation: hydra-spin 700ms linear infinite; }
 @keyframes hydra-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .hydra-spinner { animation-duration: 2s; } }
+
+.hydra-hide { opacity: 0; }
+.hydra-row:hover .hydra-hide, .hydra-row:focus-within .hydra-hide { opacity: 1; }
+@media (hover: none) { .hydra-hide { opacity: 1; } }
+.hidden-hydras { margin-top: 12px; padding: 0 8px; }
+.hidden-hydras h3 { color: var(--color-muted); font-size: var(--text-ui); margin-bottom: 6px; }
+.hidden-hydras .hydra-label { flex: 1; }

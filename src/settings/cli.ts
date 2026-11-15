@@ -46,7 +46,7 @@ export const settings = guard({
           'defaultColumnWidth is the fallback for every existing and future column; defaultColumnWidths holds per-column overrides',
           'Every key applies to every Hydra; a patch names only what changes',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
-          'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once',
+          'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
           'postgresUrl takes a postgres:// URL naming the database that holds Pnyx\'s data, or empty for this home\'s own database through PGHOST, PGPORT and PGUSER; a server restart applies a change, and its password prints as ***',
         ],
