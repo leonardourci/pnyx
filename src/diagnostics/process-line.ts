@@ -20,6 +20,7 @@ const STORAGE_SAMPLE_TIMEOUT_MS = 100
 // One line every 30 seconds by default with the server's CPU, event-loop delay and use, heap and garbage-collection
 // pauses, and one with the memory of every agent the server runs.
 export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
+  const controller = new AbortController()
   const delay = monitorEventLoopDelay({ resolution: LOOP_DELAY_RESOLUTION_MS })
   const gc = {
     count: 0,
@@ -104,7 +105,7 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
 
     background({
       name: 'agent.memory',
-      run: logAgentMemory,
+      run: () => logAgentMemory({ signal: controller.signal }),
     })
 
     since = now
@@ -123,6 +124,7 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
 
   return {
     stop() {
+      controller.abort()
       clearInterval(timer)
       delay.disable()
       observer.disconnect()

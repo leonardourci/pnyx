@@ -120,9 +120,11 @@ export function treeMemory({
 export async function logAgentMemory({
   sessionId,
   name,
+  signal,
 }: {
   sessionId?: string
   name?: string
+  signal?: AbortSignal
 } = {}): Promise<void> {
   const detailed = sessionId !== undefined
   const watched = [...agents].filter(([
@@ -146,6 +148,11 @@ export async function logAgentMemory({
       timeout: LISTING_TIMEOUT_MS,
     },
   )
+
+  if (signal?.aborted) {
+    return
+  }
+
   const roots = watched.map(([pid]) => pid)
   const cachePid = zeroCache?.pid
 
