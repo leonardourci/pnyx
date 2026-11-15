@@ -9,6 +9,8 @@ import { hydraSessions, recordEntries, threadPath, type SessionEntry } from './t
 
 // Each read holds at most this much of a transcript, whatever the file's size.
 const CHUNK_BYTES = 256 * 1024
+// A probe needs only the first timed record after its offset, so it reads a few lines at a time instead of a chunk.
+const PROBE_BYTES = 4 * 1024
 
 export interface NativeSource {
   path: string
@@ -106,7 +108,7 @@ function probe({
       identity: '',
       pos: position,
     },
-    maxBytes: CHUNK_BYTES,
+    maxBytes: PROBE_BYTES,
   })
 
   while (read && read.end > position) {
@@ -128,7 +130,7 @@ function probe({
         identity: '',
         pos: position,
       },
-      maxBytes: CHUNK_BYTES,
+      maxBytes: PROBE_BYTES,
     })
   }
 
