@@ -353,36 +353,40 @@ export async function startServer({
     })
   }
 
-  const http = createServer((
+  const http = createServer(async (
     req,
     res,
   ) => {
     const started = performance.now()
-    const correlationId = randomUUID()
+    const requestId = randomUUID()
     // Paths can contain user input; retain only a known route family.
     const route = /^\/(api|zero-query|zero|health)(?:[/?]|$)/.exec(req.url ?? '')?.[1] ?? 'static'
     res.once(
       'close',
       () => log({
         operation: 'http.request',
-        correlationId,
+        requestId,
         name: route,
         status: res.writableFinished ? String(res.statusCode) : 'aborted',
         ms: performance.now() - started,
         detailed: res.writableFinished && res.statusCode < 400,
       }),
     )
-    void withLogRequest({
-      correlationId,
-      run: () => request({
-        req,
-        res,
-      }),
-    }).catch(error => {
+
+    try {
+      await withLogRequest({
+        requestId,
+        response: res,
+        run: () => request({
+          req,
+          res,
+        }),
+      })
+    } catch (error) {
       log({
         level: 'error',
         operation: 'http.request',
-        correlationId,
+        requestId,
         name: route,
         error,
       })
@@ -409,7 +413,7 @@ export async function startServer({
       } catch {
         res.destroy()
       }
-    })
+    }
   })
 
   http.on(

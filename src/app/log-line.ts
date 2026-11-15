@@ -22,6 +22,7 @@ interface LogFields {
   hydraId?: string
   taskId?: string
   sessionId?: string
+  requestId?: string
   correlationId?: string
   // Joins a failure to its retry.
   operationId?: string
@@ -34,7 +35,7 @@ interface LogFields {
   code?: string
   exitCode?: number
   provider?: string
-  // The server's process id: server.start has it, and a failure adds it itself.
+  // Every server line carries its process id.
   pid?: number
   // How long the action took, from the monotonic clock.
   connectionWaitMs?: number
@@ -43,6 +44,8 @@ interface LogFields {
   bytes?: number
   // Bytes still waiting in the socket after a send.
   backlog?: number
+  repeatCount?: number
+  pages?: number
   count?: number
   // The page's tab, so lines from two tabs stay apart.
   tab?: string
@@ -56,10 +59,12 @@ interface LogFields {
   chatChars?: number
   messages?: number
   elements?: number
-  // The process line: CPU and event-loop use over the interval, loop delay, heap and garbage collection.
-  activeResources?: number
+  // Storage samples.
   logBytes?: number
   databaseBytes?: number
+  zeroRss?: number
+  // The process line: CPU and event-loop use over the interval, loop delay, heap and garbage collection.
+  activeResources?: number
   cpuPercent?: number
   loopUtilization?: number
   loopDelayMs?: number
@@ -84,6 +89,7 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   hydraId: true,
   taskId: true,
   sessionId: true,
+  requestId: true,
   correlationId: true,
   eventSeq: true,
   name: true,
@@ -95,6 +101,8 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   pid: true,
   bytes: true,
   backlog: true,
+  repeatCount: true,
+  pages: true,
   count: true,
   tab: true,
   script: true,
@@ -105,6 +113,7 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   messages: true,
   elements: true,
   activeResources: true,
+  zeroRss: true,
   logBytes: true,
   databaseBytes: true,
   cpuPercent: true,

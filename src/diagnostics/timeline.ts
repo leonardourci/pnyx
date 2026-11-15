@@ -9,8 +9,11 @@ import { logFiles } from './log-files.ts'
 export const DEBUG_LIMIT = 50
 export const DEBUG_MAX = 200
 export const LOG_BYTES = 16 * 1024 * 1024
-// Only warnings and errors carry a level, so other lines are skipped before they are parsed.
-const LEVEL_MARK = '"level":"'
+// Skip action lines before parsing the bounded tail.
+const LEVEL_MARKS = [
+  '"level":"warn"',
+  '"level":"error"',
+]
 const CURSOR_BYTES = 2048
 
 export interface TimelineRow {
@@ -142,10 +145,10 @@ function tailRows({
       const lineStart = offset
       offset = end + 1
 
-      if (!buffer.subarray(
+      if (!LEVEL_MARKS.some(mark => buffer.subarray(
         lineStart,
         end,
-      ).includes(LEVEL_MARK)) {
+      ).includes(mark))) {
         continue
       }
 

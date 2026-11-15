@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, createWriteStream, statSync, type WriteStream } from 'node:fs'
 import { join } from 'node:path'
-import { logCorrelation } from '#diagnostics/context.ts'
+import { repeatedLine, flushRepeatedLines } from '#diagnostics/repeated-lines.ts'
+import { logRequestId } from '#diagnostics/context.ts'
 import { logFailure } from '#diagnostics/log-failure.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir } from '#store/storage.ts'
@@ -45,31 +46,10 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
 
 export const logMode = () => mode
 
-export function setTodayFull({
-  day,
-  full,
-  maxBytes,
-}: {
-  day: string
-  full: boolean
-  maxBytes?: number
-}): void {
+export function setLogBudget({ maxBytes }: { maxBytes?: number }): void {
   if (maxBytes !== undefined) {
     byteLimit = maxBytes
   }
-
-  const filled = full && capped !== day
-  capped = undefined
-
-  if (filled) {
-    log({
-      level: 'warn',
-      operation: 'logs.full',
-      bytes: maxBytes,
-    })
-  }
-
-  capped = full ? day : undefined
 
   if (dropped) {
     const count = dropped
@@ -82,6 +62,7 @@ export function setTodayFull({
       source: 'server',
       pid: process.pid,
       operation: 'logs.dropped',
+      operationId: randomUUID(),
       count,
     }))
   }
@@ -101,6 +82,7 @@ export function releaseLogFile(): void {
 }
 
 export function closeLogs(): void {
+  flushRepeatedLines()
   releaseLogFile()
   toFiles = false
 }
@@ -119,10 +101,6 @@ function append({
       console.error(text)
     }
 
-    return
-  }
-
-  if (capped === day && !severe) {
     return
   }
 
@@ -154,8 +132,15 @@ function append({
     const limit = severe ? byteLimit * FAILURE_ROOM : byteLimit
 
     if (file.bytes + bytes > limit) {
-      if (severe) {
-        dropped += 1
+      dropped += 1
+
+      if (!severe && capped !== day) {
+        capped = day
+        log({
+          level: 'warn',
+          operation: 'logs.full',
+          bytes: byteLimit,
+        })
       }
 
       return
@@ -254,8 +239,10 @@ export function writeLine({
   line,
   source,
   at = new Date().toISOString(),
+  repeated = false,
 }: {
   line: LogLine
+  repeated?: boolean
   source: 'server' | 'web'
   // When it happened, if not now: a page's lines arrive in batches.
   at?: string
@@ -293,7 +280,7 @@ export function writeLine({
       startedAt: ms === undefined ? undefined : new Date(Date.parse(at) - ms).toISOString(),
       source,
       pid: source === 'server' ? process.pid : undefined,
-      correlationId: source === 'server' ? logCorrelation() : undefined,
+      requestId: source === 'server' ? logRequestId() : undefined,
       operation,
       operationId: failureId,
       ...fields,
@@ -308,6 +295,17 @@ export function writeLine({
       console.error(`${operation}: ${String(unbuilt)}`)
     }
 
+    return
+  }
+
+  if (!repeated && repeatedLine({
+    line,
+    write: ({ line }) => writeLine({
+      line,
+      source,
+      repeated: true,
+    }),
+  })) {
     return
   }
 

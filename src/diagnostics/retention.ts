@@ -1,12 +1,8 @@
 import { logDay } from '#app/log-line.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-// Warnings and errors may take today's file to this many times the cap; past it they are dropped and counted.
-const FAILURE_ROOM = 2
 
-// Which day files a cleanup keeps: the last `keepDays` days, today included, then from the newest back only while
-// the total fits in `maxBytes`. Today's file is the one being written, so it stays even when it alone passes the cap;
-// `full` then says only warnings and errors should still go in it, and `overfull` that nothing more should.
+// Keep today's file, then the newest days that fit in the folder budget.
 export function keptDays({
   days,
   keepDays,
@@ -42,7 +38,5 @@ export function keptDays({
 
   return {
     kept,
-    full: todayBytes > maxBytes,
-    overfull: todayBytes > FAILURE_ROOM * maxBytes,
   }
 }

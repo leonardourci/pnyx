@@ -1,19 +1,46 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
+import type { ServerResponse } from 'node:http'
 
-const requests = new AsyncLocalStorage<string>()
+const requests = new AsyncLocalStorage<{
+  id: string
+  open: boolean
+}>()
 
-export const logCorrelation = () => requests.getStore()
+export const logRequestId = () => {
+  const request = requests.getStore()
 
-export function withLogRequest<T>({
+  return request?.open ? request.id : undefined
+}
+
+export async function withLogRequest<T>({
   run,
-  correlationId = randomUUID(),
+  requestId = randomUUID(),
+  response,
 }: {
-  run(): T
-  correlationId?: string
-}): T {
+  run(): Promise<T>
+  requestId?: string
+  response?: Pick<ServerResponse, 'once'>
+}): Promise<T> {
+  const request = {
+    id: requestId,
+    open: true,
+  }
+  response?.once(
+    'close',
+    () => {
+      request.open = false
+    },
+  )
+
   return requests.run(
-    correlationId,
-    run,
+    request,
+    async () => {
+      try {
+        return await run()
+      } finally {
+        request.open = false
+      }
+    },
   )
 }
