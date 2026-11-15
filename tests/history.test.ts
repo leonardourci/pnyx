@@ -381,6 +381,25 @@ test(
       '3501',
       '3502',
     ])
+    expect(Boolean(around.older)).toBe(true)
+    expect(Boolean(around.newer)).toBe(true)
+
+    const last = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--seq',
+        String(replySeq({ k: REPLIES - 1 })),
+        '--before',
+        '1',
+      ],
+    })
+    expect(last.messages.map((message: { text: string }) => /reply-(\d+)/.exec(message.text)![1])).toEqual([
+      '6998',
+      '6999',
+    ])
+    expect(Boolean(last.older)).toBe(true)
+    expect(Boolean(last.newer)).toBe(false)
 
     // Six hundred replies span more than one window of the log.
     const range = [
