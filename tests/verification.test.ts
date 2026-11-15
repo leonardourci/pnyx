@@ -163,8 +163,8 @@ const scopeScript = workflow.jobs.scope.steps.find((step: { id?: string }) => st
 const scopeProgram = `
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
-const { files, count, config, unavailable, changedHead, changedBase } = JSON.parse(input);
-const result = { run: '', checks: [], requestedConfig: null };
+const { files, count, config, unavailable, changedHead, changedBase, previousDocsSuccess } = JSON.parse(input);
+const result = { run: '', checks: [], updates: [], requestedConfig: null };
 let reads = 0;
 const github = {
   rest: {
@@ -184,9 +184,17 @@ const github = {
         return { data: { content: Buffer.from(JSON.stringify(config)).toString('base64') } };
       }
     },
-    checks: { create: async check => result.checks.push(check) }
+    checks: {
+      create: async check => result.checks.push(check),
+      listForRef: () => undefined,
+      update: async check => result.updates.push(check)
+    }
   },
-  paginate: async () => files
+  paginate: async method => method === github.rest.pulls.listFiles ? files : previousDocsSuccess ? [
+    { id: 42, external_id: 'pnyx-docs-scope-1', conclusion: 'success' },
+    { id: 43, external_id: null, conclusion: 'success' },
+    { id: 44, external_id: 'pnyx-docs-scope-2', conclusion: 'success' }
+  ] : []
 };
 const context = { repo: { owner: 'fixture', repo: 'pnyx' }, issue: { number: 1 }, payload: { repository: { default_branch: 'main' }, pull_request: { head: { sha: 'reviewed-head' } } } };
 const core = { warning: () => undefined, setOutput: (name, value) => { result.run = value; } };
@@ -221,6 +229,7 @@ test.each([
         owner: 'fixture',
         repo: 'pnyx',
         name: 'Lint, build and tests',
+        external_id: 'pnyx-docs-scope-1',
         head_sha: 'reviewed-head',
         status: 'completed',
         conclusion: 'success',
@@ -240,6 +249,28 @@ test.each([
     changedBase: false,
     expected: 'true',
     checks: [],
+  },
+  {
+    name: 'source after an earlier docs-only result on the same head',
+    files: [{ filename: 'src/app/server.ts' }],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    changedBase: false,
+    previousDocsSuccess: true,
+    expected: 'true',
+    checks: [],
+    expectedUpdates: [{
+      owner: 'fixture',
+      repo: 'pnyx',
+      check_run_id: 42,
+      status: 'completed',
+      conclusion: 'failure',
+      output: {
+        title: 'Code checks required',
+        summary: 'The current PR scope no longer qualifies for a documentation-only result.',
+      },
+    }],
   },
   {
     name: 'shipped skills',
@@ -346,6 +377,8 @@ test.each([
     unavailable,
     changedHead,
     changedBase,
+    previousDocsSuccess,
+    expectedUpdates = [],
   }) => {
     const runnerTemp = mkdtempSync(join(
       process.env.TMPDIR!,
@@ -393,6 +426,7 @@ test.each([
           unavailable,
           changedHead,
           changedBase,
+          previousDocsSuccess,
         }),
         encoding: 'utf8',
         env: {
@@ -403,6 +437,7 @@ test.each([
     ))
     expect(result.run).toBe(expected)
     expect(result.checks).toEqual(checks)
+    expect(result.updates).toEqual(expectedUpdates)
   },
 )
 

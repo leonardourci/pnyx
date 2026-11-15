@@ -59,10 +59,25 @@ jobs:
               await github.rest.checks.create({
                 ...context.repo,
                 name: 'Lint, build and tests',
+                external_id: `pnyx-docs-scope-${context.issue.number}`,
                 head_sha: head,
                 status: 'completed',
                 conclusion: 'success',
                 output: { title: 'Documentation only', summary: 'No code checks selected by the default-branch policy.' }
               });
+            } else {
+              // Retargeting can change scope without changing the head that holds an earlier success.
+              const checks = await github.paginate(github.rest.checks.listForRef, { ...context.repo, ref: head, per_page: 100 });
+              for (const check of checks) {
+                if (check.external_id === `pnyx-docs-scope-${context.issue.number}` && check.conclusion === 'success') {
+                  await github.rest.checks.update({
+                    ...context.repo,
+                    check_run_id: check.id,
+                    status: 'completed',
+                    conclusion: 'failure',
+                    output: { title: 'Code checks required', summary: 'The current PR scope no longer qualifies for a documentation-only result.' }
+                  });
+                }
+              }
             }
             core.setOutput('run', String(run));
