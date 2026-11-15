@@ -119,9 +119,15 @@ test(
         'settings',
         'set',
         '--json',
-        '{"logs":"detailed"}',
+        '{"logs":"on"}',
       ],
     })
+    await flushLogs()
+    const onStart = logFiles().map(file => readFileSync(
+      file.path,
+      'utf8',
+    ))
+      .join('').length
     const cwd = join(
       process.env.TMPDIR!,
       'outside',
@@ -158,6 +164,24 @@ test(
     expect(working).toMatchObject({
       title: 'Fix the flaky login test',
       activity: 'working',
+    })
+
+    await flushLogs()
+    const onLogs = logFiles().map(file => readFileSync(
+      file.path,
+      'utf8',
+    ))
+      .join('')
+      .slice(onStart)
+    expect(onLogs).not.toContain('hook.push')
+    expect(onLogs).not.toContain('card.observed')
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"logs":"detailed"}',
+      ],
     })
 
     runs.push(await hook({
