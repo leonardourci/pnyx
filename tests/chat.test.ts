@@ -6,6 +6,7 @@ import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_SKILLS } from '#setup/skill-names.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { appendToolCalls } from './setup/transcripts.ts'
 
 let pnyx: Pnyx
 
@@ -754,6 +755,116 @@ test(
         text: 'also list the risks',
       }) === 1,
     })
+  },
+)
+
+test(
+  'a stopped message does not take the copy of the same words sent again later, so it shows at its own time and not above the newer rows of the page that holds that copy',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'draft the notes',
+      partial: 'Draft',
+      hold: true,
+    })
+    const session = await hydra.chat({ text: 'draft the notes' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/inscribe',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    await until({
+      what: 'the stopped turn to end',
+      check: () => session.answered === 1,
+    })
+
+    // A long stretch of tool calls between the stopped message and the same words sent again.
+    await appendToolCalls({
+      session,
+      tools: 50,
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/inscribe',
+      reply: 'inscribed',
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/inscribe',
+      ],
+    })
+    await until({
+      what: 'the message sent again to be answered',
+      check: () => session.answered === 2,
+    })
+
+    type Page = {
+      thread: {
+        entries: { at: string }[]
+        older?: string
+        messages: {
+          id: string
+          stopped?: boolean
+        }[]
+        conversation: {
+          entries: {
+            role: string
+            text: string
+            at: string
+            receipt?: string
+          }[]
+        }
+      }
+    }
+    const page = await hydra.page()
+    const latest = await page.send({
+      name: 'thread',
+      args: ['$hydra'],
+    }) as Page
+    const oldest = latest.thread.entries[0]!.at
+
+    expect(latest.thread.older).toBeDefined()
+    // Nothing shows above the oldest message the page holds, while older ones are still to load.
+    expect(latest.thread.conversation.entries.filter(entry => entry.at < oldest)).toEqual([])
+    expect(latest.thread.messages.filter(message => message.stopped)).toEqual([])
+
+    const stopped = new Set<string>()
+    let cursor = latest.thread.older
+
+    while (cursor) {
+      const older = await page.send({
+        name: 'thread',
+        args: [
+          '$hydra',
+          cursor,
+        ],
+      }) as Page
+
+      for (const message of older.thread.messages.filter(item => item.stopped)) {
+        stopped.add(message.id)
+      }
+
+      cursor = older.thread.older
+    }
+
+    page.close()
+    expect(stopped.size).toBe(1)
+    const sentAgain = latest.thread.conversation.entries.findLast(entry => entry.role === 'user')
+
+    expect(sentAgain).toMatchObject({ receipt: 'delivered' })
   },
 )
 

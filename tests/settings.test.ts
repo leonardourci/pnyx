@@ -201,3 +201,96 @@ test(
     expect((await shown()).settings.theme).toBe(other)
   },
 )
+
+test(
+  'hiding Hydras is shared page state and preserves their tasks and workers',
+  async () => {
+    const first = await pnyx.hydra()
+    const second = await pnyx.hydra()
+    const { worker } = await first.startTask({ key: 'kept' })
+    const before = await first.owner({
+      args: [
+        'task',
+        'show',
+        'kept',
+      ],
+    })
+    await first.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          hiddenHydras: [
+            first.id,
+            second.id,
+          ],
+        }),
+      ],
+    })
+    expect((await settings({ hydra: second })).hiddenHydras).toEqual([
+      first.id,
+      second.id,
+    ])
+    await until({
+      what: 'hidden Hydra ids on the page',
+      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([
+        first.id,
+        second.id,
+      ]),
+    })
+    expect(await first.owner({
+      args: [
+        'task',
+        'show',
+        'kept',
+      ],
+    })).toEqual(before)
+
+    await first.owner({
+      args: [
+        'reply',
+        'kept',
+        '--text',
+        'Continue while hidden',
+      ],
+    })
+    await until({
+      what: 'the hidden Hydra worker receiving a reply',
+      check: () => worker.received.some(text => text.includes('Continue while hidden')),
+    })
+
+    for (const hiddenHydras of [
+      true,
+      ['bad id'],
+      [
+        first.id,
+        first.id,
+      ],
+    ]) {
+      expect((await first.ownerRefused({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({ hiddenHydras }),
+        ],
+      })).code).toBe('VALIDATION_ERROR')
+    }
+
+    await pnyx.restart()
+    expect((await settings({ hydra: first })).hiddenHydras).toEqual([
+      first.id,
+      second.id,
+    ])
+    await first.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"hiddenHydras":[]}',
+      ],
+    })
+    expect((await settings({ hydra: second })).hiddenHydras).toEqual([])
+  },
+)

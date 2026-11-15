@@ -44,6 +44,7 @@ export interface Settings extends SharedView {
   oracleRememberFilters: boolean
   // The Hydra list's order as Hydra ids; the Hydra list decides where ids it does not name go.
   hydraOrder: string[]
+  hiddenHydras: string[]
   logs: LogMode
   logDays: number
   logMaxMB: number
@@ -61,6 +62,7 @@ export const SETTING_KEYS = [
   'helper',
   'oracleRememberFilters',
   'hydraOrder',
+  'hiddenHydras',
   'logs',
   'logDays',
   'logMaxMB',

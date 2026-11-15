@@ -16,6 +16,8 @@ pnpm test        # builds the CLI and web Hydra, then runs the Vitest suite
 pnpm run web:dev # Vite dev server for the Hydra
 ```
 
+For owner-facing trials in this repository, use an isolated `PNYX_HOME` and portless when installed: `PNYX_HOME=<dir> portless <name>.pnyx pnyx-axi serve`. Choose a unique name, leave `--port` unset so Pnyx uses portless's `PORT`, and give the owner the URL portless prints. Without portless, use `--port 0` and share the printed URL. Automated tests keep random ports. See [owner-facing trials](docs/development.md#owner-facing-trials).
+
 Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
 
 Node runs the source directly through its type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests run on Vitest and never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: each test file gets a scratch home, its own copy of a migrated database and random ports, and fixtures live in `tests/setup/fixtures/`. `docs/testing.md` describes the suite.

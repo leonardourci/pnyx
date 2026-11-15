@@ -589,6 +589,218 @@ test(
   },
 )
 
+test.each([
+  {
+    repo: 'private-forbidden',
+    rulesError: 'error: "Insufficient permissions for this action"\ncode: FORBIDDEN',
+  },
+  {
+    repo: 'private-missing',
+    rulesError: 'error: HTTP 404: Not Found',
+  },
+  {
+    repo: 'private-http-forbidden',
+    rulesError: 'error: HTTP 403: Forbidden',
+  },
+  {
+    repo: 'private-structured-missing',
+    rulesError: 'error: "Resource not found"\ncode: NOT_FOUND',
+  },
+])(
+  'Hydra merges $repo with unreadable branch rules while enforcing approval and readable checks',
+  async ({
+    repo,
+    rulesError,
+  }) => {
+    const hydra = await pnyx.hydra()
+    const folder = join(
+      github,
+      'o',
+      repo,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    await createProject({
+      hydra,
+      landing: 'pr',
+      remote: `https://github.com/o/${repo}.git`,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Fix private merge',
+        '--key',
+        'private',
+        '--project',
+        'shop',
+      ],
+    })
+    const head = 'd'.repeat(40)
+    const url = `https://github.com/o/${repo}/pull/22`
+    writeFileSync(
+      join(
+        folder,
+        '22.json',
+      ),
+      JSON.stringify({
+        state: 'open',
+        head,
+        checks: '1 passed, 0 failed, 1 total',
+      }),
+    )
+    const evidenceFile = join(
+      folder,
+      'evidence.json',
+    )
+    const classicRule = {
+      requiresStatusChecks: true,
+      requiredStatusChecks: [
+        {
+          context: 'ci',
+          app: { databaseId: 42 },
+        },
+      ],
+    }
+    const run = {
+      name: 'ci',
+      head_sha: head,
+      app: { id: 42 },
+      status: 'completed',
+      conclusion: 'success',
+    }
+    const publish = ({
+      error = rulesError,
+      check = run,
+      classic = classicRule,
+      rules = [],
+    }: {
+      error?: string
+      check?: typeof run
+      classic?: unknown
+      rules?: unknown
+    } = {}) => writeFileSync(
+      evidenceFile,
+      JSON.stringify({
+        rulesError: error,
+        classicRule: classic,
+        checkRuns: [check],
+        rules,
+      }),
+    )
+    publish()
+    await hydra.owner({
+      args: [
+        'link',
+        'private',
+        '--url',
+        url,
+      ],
+    })
+    const ask = await until({
+      what: 'private repository merge question',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'private',
+          '--full',
+        ],
+      })).task.asks?.find((candidate: { kind: string }) => candidate.kind === 'merge'),
+    })
+    const session = await hydra.chat({ text: 'Review the private repository pull request.' })
+    const asHydra = hydra.as({ session })
+    const merge = [
+      'task',
+      'merge',
+      'private',
+      '--url',
+      url,
+    ]
+    expect((await asHydra.refused({ args: merge })).code).toBe('FORBIDDEN')
+    await hydra.owner({
+      args: [
+        'task',
+        'answer',
+        'private',
+        ask.id,
+        '--choice',
+        'Merge',
+      ],
+    })
+
+    publish({
+      classic: null,
+      check: {
+        ...run,
+        conclusion: 'failure',
+      },
+    })
+    const failed = await asHydra.refused({ args: merge })
+    expect(failed.code).toBe('CONFLICT')
+    expect(failed.error).toContain('check is not green')
+    publish({
+      check: {
+        ...run,
+        status: 'in_progress',
+        conclusion: '',
+      },
+    })
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('check still running'),
+    })
+    publish({
+      check: {
+        ...run,
+        app: { id: 43 },
+      },
+    })
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('missing required check'),
+    })
+    publish({ error: 'error: HTTP 500: server error' })
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('branch rules unreadable'),
+    })
+    publish({
+      error: '',
+      rules: {},
+    })
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('branch rules unreadable'),
+    })
+
+    publish({ classic: {} })
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('classic protection unreadable'),
+    })
+    publish({ classic: null })
+    const result = await asHydra.run({ args: merge })
+    expect(result.merge).toBe('merged')
+    expect(result.head).toBe(head)
+    const calls = readFileSync(
+      join(
+        github,
+        'calls.jsonl',
+      ),
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => JSON.parse(line) as string[])
+    const submissions = calls.filter(args => args.includes('PUT') && args.includes(`/repos/o/${repo}/pulls/22/merge`))
+    expect(submissions).toHaveLength(1)
+    expect(submissions[0]).toContain(`sha=${head}`)
+  },
+)
+
 // git as a worker runs it, which can fail: whether it passed is the result.
 const attempt = ({
   cwd,

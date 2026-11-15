@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   helper: 'auto',
   oracleRememberFilters: false,
   hydraOrder: [],
+  hiddenHydras: [],
   logs: 'on',
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
@@ -277,16 +278,23 @@ export function patchSettings({
     next.logMaxMB = megabytes
   }
 
-  if ('hydraOrder' in patch) {
-    const order = patch.hydraOrder
-    const ids = Array.isArray(order) && order.every(id => typeof id === 'string' && HYDRA_ID.test(id))
-    const once = Array.isArray(order) && new Set(order).size === order.length
-
-    if (!ids || !once) {
-      return invalid({ detail: 'hydraOrder takes a list of Hydra ids, each once' })
+  for (const key of [
+    'hydraOrder',
+    'hiddenHydras',
+  ] as const) {
+    if (!(key in patch)) {
+      continue
     }
 
-    next.hydraOrder = [...order] as string[]
+    const list = patch[key]
+    const ids = Array.isArray(list) && list.every(id => typeof id === 'string' && HYDRA_ID.test(id))
+    const once = Array.isArray(list) && new Set(list).size === list.length
+
+    if (!ids || !once) {
+      return invalid({ detail: `${key} takes a list of Hydra ids, each once` })
+    }
+
+    next[key] = [...list] as string[]
   }
 
   return next
