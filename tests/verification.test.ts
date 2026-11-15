@@ -260,17 +260,19 @@ test.each([
     previousDocsSuccess: true,
     expected: 'true',
     checks: [],
-    expectedUpdates: [{
-      owner: 'fixture',
-      repo: 'pnyx',
-      check_run_id: 42,
-      status: 'completed',
-      conclusion: 'failure',
-      output: {
-        title: 'Code checks required',
-        summary: 'The current PR scope no longer qualifies for a documentation-only result.',
+    expectedUpdates: [
+      {
+        owner: 'fixture',
+        repo: 'pnyx',
+        check_run_id: 42,
+        status: 'completed',
+        conclusion: 'failure',
+        output: {
+          title: 'Code checks required',
+          summary: 'The current PR scope no longer qualifies for a documentation-only result.',
+        },
       },
-    }],
+    ],
   },
   {
     name: 'shipped skills',
