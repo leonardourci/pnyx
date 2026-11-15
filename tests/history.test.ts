@@ -564,6 +564,8 @@ test(
 
     const pageThrough = async ({ direction }: { direction: 'older' | 'newer' }) => {
       const found: number[] = []
+      // Whether each page offers a cursor back the way the walk came: every page but the first.
+      const back: boolean[] = []
       let cursor: string | undefined
       let page: Output
 
@@ -586,8 +588,12 @@ test(
           ],
         })
         found.push(...direction === 'older' ? numbers({ page }).reverse() : numbers({ page }))
+        back.push(Boolean(direction === 'older' ? page.newer : page.older))
         cursor = direction === 'older' ? page.older : page.newer
       } while (cursor)
+
+      expect(back[0]).toBe(false)
+      expect(back.slice(1).every(Boolean)).toBe(true)
 
       return direction === 'older' ? found.reverse() : found
     }
