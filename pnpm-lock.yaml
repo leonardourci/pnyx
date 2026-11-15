@@ -103,8 +103,8 @@ importers:
         specifier: ^8.71.2
         version: 8.71.2(eslint@10.12.0(jiti@2.7.0))(typescript@6.0.3)
       verify:
-        specifier: github:leonardourci/verify#54c5da21109e7f3feb08e3e83fd5c23855895df4
-        version: https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4
+        specifier: github:leonardourci/verify#6d2352837402c499f701ac4b529ba0e6cd338151
+        version: https://codeload.github.com/leonardourci/verify/tar.gz/6d2352837402c499f701ac4b529ba0e6cd338151
       vite:
         specifier: ^8.3.4
         version: 8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1)
@@ -3111,8 +3111,8 @@ packages:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
 
-  verify@https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4:
-    resolution: {gitHosted: true, integrity: sha512-bRarsjCYbZ92Ee3bcyDRuXhwQLwQW03TDZnTXwBfO4zwVMMUw0mcgCC5X8iiCvoWzvVp57g0PSlRRC/oYi9+7w==, tarball: https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4}
+  verify@https://codeload.github.com/leonardourci/verify/tar.gz/6d2352837402c499f701ac4b529ba0e6cd338151:
+    resolution: {gitHosted: true, integrity: sha512-tSUlXm9MiJEltfa8kwsvmIubCPJxOO30wKNZyGWsF4R5suICzTkL15vqckKges7LvkkNihGBzAMBuCWTe7L7CQ==, tarball: https://codeload.github.com/leonardourci/verify/tar.gz/6d2352837402c499f701ac4b529ba0e6cd338151}
     version: 0.1.0
     engines: {node: '>=22.13'}
     hasBin: true
@@ -6373,7 +6373,7 @@ snapshots:
 
   vary@1.1.2: {}
 
-  verify@https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4:
+  verify@https://codeload.github.com/leonardourci/verify/tar.gz/6d2352837402c499f701ac4b529ba0e6cd338151:
     dependencies:
       picomatch: 4.0.7
 
