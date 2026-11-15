@@ -65,7 +65,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",
-    "verify": "github:leonardourci/verify#50c26e399c3c563787213b215c4f84150aade3b0",
+    "verify": "github:leonardourci/verify#9fe2ebadb373565e54bd85d25e19f05e28c3faee",
     "vite": "^8.3.4",
     "vitest": "5.1.0",
     "zustand": "5.1.0"
