@@ -164,7 +164,13 @@ const still = async ({ page }: { page: Page }) => {
 }
 
 // A Hydra whose chat holds 25 exchanges, or the given number: pages of 20 entries, newest first.
-const longConversation = async ({ exchanges = 25 }: { exchanges?: number } = {}) => {
+const longConversation = async ({
+  exchanges = 25,
+  earlyQuestion = false,
+}: {
+  exchanges?: number
+  earlyQuestion?: boolean
+} = {}) => {
   const hydra = await pnyx.hydra()
 
   for (let exchange = 1; exchange <= exchanges; exchange++) {
@@ -178,6 +184,20 @@ const longConversation = async ({ exchanges = 25 }: { exchanges?: number } = {})
       what: `answer ${exchange}`,
       check: () => session.answered === exchange,
     })
+
+    if (earlyQuestion && exchange === 1) {
+      await hydra.as({ session }).run({
+        args: [
+          'task',
+          'ask',
+          '$hydra',
+          '--to',
+          'owner',
+          '--question',
+          'Approve the first release?',
+        ],
+      })
+    }
   }
 
   return hydra
@@ -227,10 +247,13 @@ test(
   },
 )
 
-test(
-  'an older page that lands while the owner holds still at the top leaves what they read in place',
-  async () => {
-    const hydra = await longConversation()
+test.each([
+  { width: 1440 },
+  { width: 390 },
+])(
+  '$width px: older pages keep the reading position, reserve space for loading, and reach an early decision without looping',
+  async ({ width }) => {
+    const hydra = await longConversation({ earlyQuestion: true })
 
     // The server's messages from a reply to an older-page read on wait here while holding, so the test decides when it lands.
     const olderReads = new Set<string>()
@@ -273,6 +296,10 @@ test(
         },
       ),
     })
+    await page.setViewportSize({
+      width,
+      height: 900,
+    })
     const conversation = page.locator(CONVERSATION)
     await conversation.getByText(
       'answer 25',
@@ -300,6 +327,32 @@ test(
       what: 'the view to hold still',
       check: () => still({ page }),
     })
+    const loader = conversation.getByRole(
+      'status',
+      { name: 'Loading earlier messages' },
+    )
+    await loader.waitFor({ state: 'attached' })
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
+    await conversation.evaluate(element => {
+      element.scrollTop = 0
+    })
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
+    const overlaps = await loader.evaluate(element => {
+      const bounds = element.querySelector('span')!.getBoundingClientRect()
+
+      return [...document.querySelectorAll('article[data-entry-id]')].some(row => {
+        const rect = row.getBoundingClientRect()
+
+        return rect.top < bounds.bottom && rect.bottom > bounds.top
+      })
+    })
+    expect(overlaps).toBe(false)
+    expect(await conversation.getByText(
+      'Approve the first release?',
+      { exact: true },
+    ).count()).toBe(0)
     const before = await view({ page })
 
     holding = false
@@ -318,6 +371,39 @@ test(
     for (const id of kept) {
       expect(Math.abs(after.rows[id]! - before.rows[id]!)).toBeLessThanOrEqual(3)
     }
+
+    await until({
+      what: 'the oldest message and its decision to load',
+      check: async () => {
+        await conversation.hover()
+        await page.mouse.wheel(
+          0,
+          -2000,
+        )
+
+        return await conversation.getByText(
+          'question 1',
+          { exact: true },
+        ).count() > 0
+          && await conversation.getByText(
+            'Approve the first release?',
+            { exact: true },
+          ).count() > 0
+      },
+    })
+    await loader.waitFor({ state: 'detached' })
+    await until({
+      what: 'the oldest page to settle',
+      check: () => still({ page }),
+    })
+    const reads = olderReads.size
+    await page.evaluate(async () => {
+      for (let frame = 0; frame < 60; frame++) {
+        await new Promise(requestAnimationFrame)
+      }
+    })
+    expect(olderReads.size).toBe(reads)
+    expect(await loader.count()).toBe(0)
   },
 )
 
