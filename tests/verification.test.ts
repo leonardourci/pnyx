@@ -1,11 +1,19 @@
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, symlinkSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test } from 'vitest'
 import { stagedBuild } from '../scripts/build/staged.ts'
+
+const temporaryFolders: string[] = []
+
+afterEach(() => {
+  for (const folder of temporaryFolders.splice(0)) {
+    rmSync(folder, { recursive: true, force: true })
+  }
+})
 
 const selectorModule = pathToFileURL(createRequire(import.meta.url).resolve('deslop/src/config.js')).href
 const policyRoot = fileURLToPath(new URL(
@@ -324,7 +332,7 @@ test.each([
   },
 ])(
   'CI scope handles $name without executing PR code',
-  async ({
+  ({
     files,
     count,
     expected,
@@ -337,6 +345,7 @@ test.each([
       process.env.TMPDIR!,
       'ci-scope-',
     ))
+    temporaryFolders.push(runnerTemp)
     const modules = join(
       runnerTemp,
       'deslop-scope',
@@ -399,6 +408,7 @@ test(
       process.env.TMPDIR!,
       'staged-',
     ))
+    temporaryFolders.push(root)
     const writeBuild = ({
       version,
       fail = false,

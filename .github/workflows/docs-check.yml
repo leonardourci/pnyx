@@ -35,6 +35,7 @@ jobs:
         id: scope
         with:
           script: |
+            // github-script runs an async function, so the installed ESM selector needs import().
             const { select } = await import(`${process.env.RUNNER_TEMP}/deslop-scope/node_modules/deslop/src/config.js`);
             let run = true;
             const head = context.payload.pull_request.head.sha;
