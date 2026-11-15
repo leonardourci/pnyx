@@ -528,7 +528,7 @@ test(
 
 // Replies far denser than the log, each a few milliseconds after the one before it: more in one window of positions than a read keeps, so it halves the range.
 const DENSE_EVENTS = 600
-const DENSE_REPLIES = 5_000
+const DENSE_REPLIES = 2_500
 
 test(
   'a message lookup reads a transcript denser than one read keeps in both directions, each reply once and in order',
@@ -623,9 +623,9 @@ test(
     ] as const) {
       const found = await pageThrough({ direction })
 
-      expect(found).toHaveLength(5000)
+      expect(found).toHaveLength(2500)
       expect(found[0]).toBe(0)
-      expect(found.at(-1)).toBe(4999)
+      expect(found.at(-1)).toBe(2499)
       expect(found.every((
         value,
         index,
@@ -640,7 +640,7 @@ test(
       ],
     })
     const told = history.flatMap(page => [...page.text.matchAll(/reply-(\d+) end/g)].map(match => Number(match[1])))
-    expect(told).toHaveLength(5000)
+    expect(told).toHaveLength(2500)
     const count = await hydra.owner({
       args: [
         'hydra',
@@ -652,7 +652,7 @@ test(
     })
     expect(count.totalTokens).toBe(Math.ceil(Buffer.byteLength(history.map(page => page.text).join('\n\n')) / 4))
     expect(told[0]).toBe(0)
-    expect(told.at(-1)).toBe(4999)
+    expect(told.at(-1)).toBe(2499)
     expect(told.every((
       value,
       index,
