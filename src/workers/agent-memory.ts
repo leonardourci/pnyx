@@ -22,6 +22,19 @@ interface AgentIds {
 
 // The agent processes the server runs, with the ids their memory is listed under; a session's id is set once it opens.
 const agents = new Map<number, AgentIds>()
+let zeroCache: ChildProcess | undefined
+
+export function watchZeroCache({ child }: { child: ChildProcess }): void {
+  zeroCache = child
+  child.once(
+    'exit',
+    () => {
+      if (zeroCache === child) {
+        zeroCache = undefined
+      }
+    },
+  )
+}
 
 export function watchAgent({
   child,
@@ -117,7 +130,7 @@ export async function logAgentMemory({
     ids,
   ]) => !detailed || ids.sessionId === sessionId)
 
-  if (!watched.length || !logged({
+  if ((!watched.length && zeroCache?.pid === undefined) || !logged({
     mode: logMode(),
     line: { detailed },
   })) {
@@ -133,12 +146,20 @@ export async function logAgentMemory({
       timeout: LISTING_TIMEOUT_MS,
     },
   )
+  const roots = watched.map(([pid]) => pid)
+  const cachePid = zeroCache?.pid
+
+  if (cachePid !== undefined && !detailed) {
+    roots.push(cachePid)
+  }
+
   const trees = treeMemory({
     listing: stdout,
-    roots: watched.map(([pid]) => pid),
+    roots,
   })
   log({
     operation: 'agent.memory',
+    zeroRss: cachePid === undefined ? undefined : trees.get(cachePid),
     name,
     detailed,
     ms: performance.now() - started,

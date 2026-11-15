@@ -24,6 +24,11 @@ interface Line {
   source?: string
   ms?: number
   rss?: number
+  agentRss?: number
+  zeroRss?: number
+  databaseBytes?: number
+  logBytes?: number
+  activeResources?: number
   heapUsed?: number
   cpuPercent?: number
   loopDelayP99Ms?: number
@@ -70,6 +75,17 @@ function readLine({ text }: { text: string }): Line | undefined {
     source: string({ value: record.source }),
     ms: number({ value: record.ms }),
     rss: number({ value: record.rss }),
+    agentRss: Array.isArray(record.agents) ? record.agents.reduce(
+      (
+        sum,
+        agent,
+      ) => sum + (number({ value: asRecord({ value: agent })?.rss }) ?? 0),
+      0,
+    ) : undefined,
+    zeroRss: number({ value: record.zeroRss }),
+    databaseBytes: number({ value: record.databaseBytes }),
+    logBytes: number({ value: record.logBytes }),
+    activeResources: number({ value: record.activeResources }),
     heapUsed: number({ value: record.heapUsed }),
     cpuPercent: number({ value: record.cpuPercent }),
     loopDelayP99Ms: number({ value: record.loopDelayP99Ms }),
@@ -112,6 +128,11 @@ function memoryPoints({ samples }: { samples: Line[] }) {
     at: point.at,
     rssMB: megabytes({ bytes: point.rss }),
     heapMB: megabytes({ bytes: point.heapUsed }),
+    agentsMB: megabytes({ bytes: point.agentRss }),
+    zeroMB: megabytes({ bytes: point.zeroRss }),
+    databaseMB: megabytes({ bytes: point.databaseBytes }),
+    logsMB: megabytes({ bytes: point.logBytes }),
+    activeResources: point.activeResources,
     cpuPercent: point.cpuPercent,
     loopDelayP99Ms: point.loopDelayP99Ms,
   }))
@@ -169,6 +190,29 @@ export async function performanceReport({
 
       if (line.operation === 'process') {
         samples.push(line)
+
+        continue
+      }
+
+      if (line.operation === 'storage' || line.operation === 'agent.memory') {
+        if (line.level === 'debug') {
+          continue
+        }
+
+        const sample = samples.at(-1)
+
+        if (sample) {
+          for (const key of [
+            'agentRss',
+            'zeroRss',
+            'databaseBytes',
+            'logBytes',
+          ] as const) {
+            if (line[key] !== undefined) {
+              sample[key] = line[key]
+            }
+          }
+        }
 
         continue
       }

@@ -15,6 +15,7 @@ const US_PER_MS = 1000
 const PERCENT = 100
 // The loop's share of time keeps two decimals.
 const SHARE_DECIMALS = 100
+const STORAGE_SAMPLE_TIMEOUT_MS = 100
 
 // One line every 30 seconds by default with the server's CPU, event-loop delay and use, heap and garbage-collection
 // pauses, and one with the memory of every agent the server runs.
@@ -83,7 +84,10 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
     background({
       name: 'storage.sample',
       run: () => {
-        const [rows] = query({ statements: [{ text: 'select pg_database_size(current_database())::float8 as bytes' }] })
+        const [rows] = query({
+          statements: [{ text: 'select pg_database_size(current_database())::float8 as bytes' }],
+          timeoutMs: STORAGE_SAMPLE_TIMEOUT_MS,
+        })
         log({
           operation: 'storage',
           databaseBytes: rows?.[0]?.bytes as number,
