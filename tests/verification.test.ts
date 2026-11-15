@@ -69,6 +69,22 @@ test(
       'audit-tests',
       'deslop',
     ])
+    expect(selection({ paths: ['skills/pnyx-cli/fixtures/input.md'] })).toMatchObject({
+      commands: [
+        'lint:fix',
+        'typecheck',
+        'eslint',
+        'css',
+        'build',
+        'tests',
+      ],
+      checks: ['Lint, build and tests'],
+      instructions: [
+        'review-code',
+        'audit-tests',
+        'deslop',
+      ],
+    })
     expect(selection({ paths: ['vitest.config.ts'] }).commands).toContain('tests')
     expect(selection({ paths: ['.github/workflows/tests.yml'] }).commands).toContain('tests')
     expect(selection({

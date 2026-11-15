@@ -10,22 +10,6 @@
   },
   "kinds": [
     {
-      "name": "skill text",
-      "match": [
-        "skills/**/*.md"
-      ],
-      "commands": [
-        "build",
-        "integration"
-      ],
-      "checks": [
-        "Lint, build and tests"
-      ],
-      "instructions": [
-        "deslop"
-      ]
-    },
-    {
       "name": "fixture",
       "match": [
         "**/fixtures/**"
@@ -44,6 +28,22 @@
       "instructions": [
         "review-code",
         "audit-tests",
+        "deslop"
+      ]
+    },
+    {
+      "name": "skill text",
+      "match": [
+        "skills/**/*.md"
+      ],
+      "commands": [
+        "build",
+        "integration"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
         "deslop"
       ]
     },
