@@ -31,7 +31,7 @@
     {
       "name": "fixture",
       "match": [
-        "tests/setup/fixtures/**"
+        "**/fixtures/**"
       ],
       "steps": [
         "lint:fix",

@@ -48,6 +48,22 @@ test(
     expect(selection({ paths: ['src/app/server.ts'] }).steps).toContain('tests')
     expect(selection({ paths: ['tests/setup/pnyx.ts'] }).steps).toContain('tests')
     expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).steps).toContain('tests')
+    expect(selection({ paths: ['src/example/fixtures/input.md'] })).toMatchObject({
+      steps: [
+        'lint:fix',
+        'typecheck',
+        'eslint',
+        'css',
+        'build',
+        'tests',
+      ],
+      checks: ['Lint, build and tests'],
+      skills: [
+        'review-code',
+        'audit-tests',
+        'deslop',
+      ],
+    })
     expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).skills).toEqual([
       'review-code',
       'audit-tests',
