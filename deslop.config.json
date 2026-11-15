@@ -1,8 +1,5 @@
 {
-  "mode": "ci",
-  "localRunCounts": true,
-  "decline": "agent",
-  "steps": {
+  "commands": {
     "lint:fix": "pnpm lint:fix",
     "typecheck": "pnpm typecheck",
     "eslint": "pnpm exec eslint .",
@@ -17,14 +14,14 @@
       "match": [
         "skills/**/*.md"
       ],
-      "steps": [
+      "commands": [
         "build",
         "integration"
       ],
       "checks": [
         "Lint, build and tests"
       ],
-      "skills": [
+      "instructions": [
         "deslop"
       ]
     },
@@ -33,7 +30,7 @@
       "match": [
         "**/fixtures/**"
       ],
-      "steps": [
+      "commands": [
         "lint:fix",
         "typecheck",
         "eslint",
@@ -44,7 +41,7 @@
       "checks": [
         "Lint, build and tests"
       ],
-      "skills": [
+      "instructions": [
         "review-code",
         "audit-tests",
         "deslop"
@@ -56,9 +53,9 @@
         "docs/**",
         "**/*.md"
       ],
-      "steps": [],
+      "commands": [],
       "checks": [],
-      "skills": [
+      "instructions": [
         "deslop"
       ]
     },
@@ -67,7 +64,7 @@
       "match": [
         "**/*.test.ts"
       ],
-      "steps": [
+      "commands": [
         "lint:fix",
         "typecheck",
         "eslint",
@@ -78,7 +75,7 @@
       "checks": [
         "Lint, build and tests"
       ],
-      "skills": [
+      "instructions": [
         "audit-tests"
       ]
     },
@@ -87,7 +84,7 @@
       "match": [
         "web/**"
       ],
-      "steps": [
+      "commands": [
         "lint:fix",
         "typecheck",
         "eslint",
@@ -98,14 +95,19 @@
       "checks": [
         "Lint, build and tests"
       ],
-      "skills": "all"
+      "instructions": [
+        "review-code",
+        "audit-tests",
+        "deslop",
+        "write-front-end"
+      ]
     },
     {
       "name": "back-end",
       "match": [
         "**"
       ],
-      "steps": [
+      "commands": [
         "lint:fix",
         "typecheck",
         "eslint",
@@ -116,17 +118,18 @@
       "checks": [
         "Lint, build and tests"
       ],
-      "skills": [
+      "instructions": [
         "review-code",
         "audit-tests",
         "deslop"
       ]
     }
   ],
-  "skills": {
+  "instructions": {
     "review-code": ".agents/skills/review-code/SKILL.md",
     "audit-tests": ".agents/skills/audit-tests/SKILL.md",
     "deslop": ".agents/skills/deslop/SKILL.md",
     "write-front-end": ".agents/skills/write-front-end/SKILL.md"
-  }
+  },
+  "checkFixAttempts": 1
 }

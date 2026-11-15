@@ -28,7 +28,7 @@
     "dev": "PNYX_HOME=${PNYX_DEV_HOME:-$HOME/.pnyx-dev} pnpm run \"/^(dev:server|web:dev)$/\"",
     "dev:server": "node --conditions=source --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
-    "verify": "verify run",
+    "deslop": "deslop run",
     "refresh-agent-fixtures": "node scripts/fixtures/refresh-agent-fixtures.ts",
     "lint:css": "biome lint . --error-on-warnings"
   },
@@ -56,6 +56,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
+    "deslop": "github:leonardourci/deslop#4252156ccb36f63ca6a5e8af60502440b4273696",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "marked": "^18.1.1",
@@ -65,7 +66,6 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",
-    "verify": "github:leonardourci/verify#9fe2ebadb373565e54bd85d25e19f05e28c3faee",
     "vite": "^8.3.4",
     "vitest": "5.1.0",
     "zustand": "5.1.0"

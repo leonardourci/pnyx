@@ -75,6 +75,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1))
+      deslop:
+        specifier: github:leonardourci/deslop#4252156ccb36f63ca6a5e8af60502440b4273696
+        version: https://codeload.github.com/leonardourci/deslop/tar.gz/4252156ccb36f63ca6a5e8af60502440b4273696
       eslint:
         specifier: ^10.12.0
         version: 10.12.0(jiti@2.7.0)
@@ -102,9 +105,6 @@ importers:
       typescript-eslint:
         specifier: ^8.71.2
         version: 8.71.2(eslint@10.12.0(jiti@2.7.0))(typescript@6.0.3)
-      verify:
-        specifier: github:leonardourci/verify#9fe2ebadb373565e54bd85d25e19f05e28c3faee
-        version: https://codeload.github.com/leonardourci/verify/tar.gz/9fe2ebadb373565e54bd85d25e19f05e28c3faee
       vite:
         specifier: ^8.3.4
         version: 8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1)
@@ -1758,6 +1758,12 @@ packages:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
     engines: {node: '>=6'}
 
+  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/4252156ccb36f63ca6a5e8af60502440b4273696:
+    resolution: {gitHosted: true, integrity: sha512-WjDcPB/6JTnbDoxrTosYcTLUdubpjzMfPM2g8tpmIr8EHV6SYjcglfkWLNnhTsaDbMEYzFp/Q4zqrrWoxFsHtw==, tarball: https://codeload.github.com/leonardourci/deslop/tar.gz/4252156ccb36f63ca6a5e8af60502440b4273696}
+    version: 0.1.0
+    engines: {node: '>=22.13'}
+    hasBin: true
+
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
@@ -3110,12 +3116,6 @@ packages:
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
-
-  verify@https://codeload.github.com/leonardourci/verify/tar.gz/9fe2ebadb373565e54bd85d25e19f05e28c3faee:
-    resolution: {gitHosted: true, integrity: sha512-LkWmKrRAs9TmAs81i5deMI/C53IoSp0Z7ok+BXky5iWDj6OIkUIEs5FHz3+arK0xqglgTr96E2Tiuc3yzWdv/g==, tarball: https://codeload.github.com/leonardourci/verify/tar.gz/9fe2ebadb373565e54bd85d25e19f05e28c3faee}
-    version: 0.1.0
-    engines: {node: '>=22.13'}
-    hasBin: true
 
   vite@8.3.4:
     resolution: {integrity: sha512-IftLE8phJhdNRIGNEV4JCCvfNScoZQVfcXaN8TQropWGJtOHcu+iAB9pHcuGvmEb/kddw0LBe/jS8ztdC6xdiQ==}
@@ -5064,6 +5064,10 @@ snapshots:
 
   dequal@2.0.3: {}
 
+  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/4252156ccb36f63ca6a5e8af60502440b4273696:
+    dependencies:
+      picomatch: 4.0.7
+
   detect-libc@2.1.2: {}
 
   dot-prop@6.0.1:
@@ -6372,10 +6376,6 @@ snapshots:
   uuid@8.3.2: {}
 
   vary@1.1.2: {}
-
-  verify@https://codeload.github.com/leonardourci/verify/tar.gz/9fe2ebadb373565e54bd85d25e19f05e28c3faee:
-    dependencies:
-      picomatch: 4.0.7
 
   vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1):
     dependencies:
