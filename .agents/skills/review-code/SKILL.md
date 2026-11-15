@@ -1,18 +1,15 @@
 ---
 name: review-code
-description: Review a Pnyx diff or branch as an inspector before a PR, in three parts, bugs, tests and simpler (reuse, dead code, duplicated rules, hand-written versions of what the stack provides, hard-to-follow code), returning numbered findings with a severity and a suggested fix each.
+description: Review a Pnyx diff or branch as an inspector before a PR, in three parts, bugs, tests and simpler (reuse, dead code, duplicated rules, hand-written versions of what the stack provides, hard-to-follow code), returning numbered findings with a location, problem and suggested fix each.
 ---
 
 # Review code
 
-The reviewer is an inspector: it reads the diff, runs the checks and returns numbered findings, each with a suggested fix. Applying them is a separate step, done by whoever asked for the review after checking each finding. A review does not authorize commits, pushes or merges.
+The reviewer is an inspector: it reads the diff and test evidence and returns numbered findings, each with a suggested fix. Applying them is a separate step, done by whoever asked for the review after checking each finding. A review does not authorize commits, pushes or merges.
 
-Every review has three parts: **Bugs**, **Tests** and **Simpler**. All three block the merge, and the report has a section for each, even when it says there is nothing to flag. The same three parts apply to CodeRabbit, to independent reviews and to your own pre-PR pass.
+Every review has three parts: **Bugs**, **Tests** and **Simpler**. All three block the merge. Inspect each part and use the caller’s response format, including the verifier’s findings schema when it invokes the review. The same three parts apply to CodeRabbit, to independent reviews and to your own pre-PR pass.
 
-Each finding is tagged:
-
-- **Must fix**: a bug, or a break of a rule in `AGENTS.md` or this checklist. Items below marked must fix always report at this severity.
-- **Recommended**: a judgment call the author can accept, change or decline with a reason. A Simpler finding that the reviewer cannot prove is still raised and still blocks until it is fixed or the PR says why it stays.
+Every finding blocks verification until fixed or declined with a visible reason under the configured policy. Use no severity ranking.
 
 ## Before reading the diff
 
@@ -26,27 +23,27 @@ Each finding is tagged:
 Correctness, races, stale caches, leaks and broken rules.
 
 - [ ] Trace each changed path from input to observable result, including empty input, invalid input, failures, cancellation and recovery. Check permissions at the write boundary and keep useful error feedback.
-- [ ] Check derived caches read by several processes (must fix): a correction or deletion resolves against the persisted records, not one process's memory. Example: the Oracle's `oracle.db` is read by the server and its search workers; if a worker kept a deleted or corrected note in its own memory, another process's search would still return it, so each query catches up from the saved event log and cursors.
-- [ ] Check Pnyx's boundaries (must fix): only `pnyx-axi` writes Hydra state; the event log stays append-only; the reducer stays pure and deterministic; the rows beside the `events` table and Oracle indexes stay derived from events. Hooks stay fast and exit 0, never wait on the network, and print only the session-start summary. Integrations use their own supported read and reply interfaces.
-- [ ] Check the [provider boundaries](../follow-conventions/SKILL.md#provider-boundaries) (must fix): usage parsing stays in each provider adapter; server and UI consume the shared interface and neutral shape, with no provider branches or duplicate counting.
+- [ ] Check derived caches read by several processes: a correction or deletion resolves against the persisted records, not one process's memory. Example: the Oracle's `oracle.db` is read by the server and its search workers; if a worker kept a deleted or corrected note in its own memory, another process's search would still return it, so each query catches up from the saved event log and cursors.
+- [ ] Check Pnyx's boundaries: only `pnyx-axi` writes Hydra state; the event log stays append-only; the reducer stays pure and deterministic; the rows beside the `events` table and Oracle indexes stay derived from events. Hooks stay fast and exit 0, never wait on the network, and print only the session-start summary. Integrations use their own supported read and reply interfaces.
+- [ ] Check the [provider boundaries](../follow-conventions/SKILL.md#provider-boundaries): usage parsing stays in each provider adapter; server and UI consume the shared interface and neutral shape, with no provider branches or duplicate counting.
 - [ ] Use static imports. A dynamic `import()` requires a comment explaining its real need, such as a module that must load lazily.
-- [ ] Check types and function contracts. Functions take one destructured object parameter, except no-argument functions and external API contracts (must fix). TypeScript stays erasable. An `any`, a cast or a non-null assertion that hides an unchecked value is must fix; a narrowing TypeScript cannot infer, with a short reason, is fine.
-- [ ] Name a value with meaning beyond its literal (a timeout, a limit, a retry count) as a constant. Two sites repeating the same value without a shared constant is must fix.
-- [ ] Check errors stay visible. A caught and dropped error with no reason given and no log or user feedback is must fix. A failure the user should see keeps its message through the CLI, server and page.
+- [ ] Check types and function contracts. Functions take one destructured object parameter, except no-argument functions and external API contracts. TypeScript stays erasable. An `any`, a cast or a non-null assertion that hides an unchecked value is a finding; a narrowing TypeScript cannot infer, with a short reason, is fine.
+- [ ] Name a value with meaning beyond its literal (a timeout, a limit, a retry count) as a constant. Two sites repeating the same value without a shared constant is a finding.
+- [ ] Check errors stay visible. A caught and dropped error with no reason given and no log or user feedback is a finding. A failure the user should see keeps its message through the CLI, server and page.
 - [ ] Check timers, watchers, locks and subprocesses for cleanup on failure and shutdown. Keep ordering, retry limits and session ownership across asynchronous work.
 - [ ] Reject unbounded waits, including `for (;;)` and `while (true)` polling without a deadline or attempt limit. Bad: `while (true) { if (await ready()) break }`. Good: `await waitFor({ ready, timeoutMs: 5000 })`, where timeout fails with the last observed state.
 - [ ] For UI changes, check loading, empty and error states, keyboard access and the existing UI primitives. Use Hydra, Oracle and inscribe consistently.
-- [ ] Flag every change under `.github/workflows`. A `pull_request_target` or `workflow_run` workflow must never check out, build or run the PR's code, for example a checkout of `github.event.pull_request.head.sha` or `head.ref`, or scripts from the PR, and must keep read-only permissions and use no secrets except the generated `GITHUB_TOKEN` for trusted code (must fix).
-- [ ] Check docs, CLI help and hints describe the resulting behavior, in the same change (must fix).
-- [ ] Review comments and prose using `deslop`. Keep a comment only for a constraint or non-obvious reason; remove narration and stale claims (must fix). Keep each prose paragraph on one source line.
-- [ ] Run `pnpm verify` for the branch's checks. The lint fixer cannot settle unused variables or lines over 100 characters; report those. Respect any explicit test hold and report skipped checks as pending.
+- [ ] Flag every change under `.github/workflows`. A `pull_request_target` or `workflow_run` workflow must never check out, build or run the PR's code, for example a checkout of `github.event.pull_request.head.sha` or `head.ref`, or scripts from the PR, and must keep read-only permissions and use no secrets except the generated `GITHUB_TOKEN` for trusted code.
+- [ ] Check docs, CLI help and hints describe the resulting behavior, in the same change.
+- [ ] Review comments and prose using `deslop`. Keep a comment only for a constraint or non-obvious reason; remove narration and stale claims. Keep each prose paragraph on one source line.
+- [ ] Inspect the check evidence supplied by verification. Remain read-only and non-interactive; report missing evidence instead of running commands.
 
 ## Tests
 
 Each test fails when the behaviour it covers breaks, and nothing user-facing is uncovered. [audit-tests](../audit-tests/SKILL.md) holds the full checklist; this part reads its result.
 
-- [ ] Check that the change brings tests for each new or changed behaviour, in the layout of [Testing](../../../docs/testing.md), and that a bug fix has a test that reproduces the bug. A behaviour change with no such test is must fix; a behaviour-preserving refactor needs none, and its existing tests should still pass; [audit-tests](../audit-tests/SKILL.md) judges their quality.
-- [ ] Match changed behavior to tests using [audit-tests](../audit-tests/SKILL.md). Read the assertions; a test name alone proves nothing. Tests assert user-visible behavior through public APIs, keep logic out of the expected values, and use real dependencies, faking only third-party services, AI providers and the network. A bug fix ships a test that fails with only the fix reverted (must fix).
+- [ ] Check that the change brings tests for each new or changed behaviour, in the layout of [Testing](../../../docs/testing.md), and that a bug fix has a test that reproduces the bug. A behaviour change with no such test is a finding; a behaviour-preserving refactor needs none, and its existing tests should still pass; [audit-tests](../audit-tests/SKILL.md) judges their quality.
+- [ ] Match changed behavior to tests using [audit-tests](../audit-tests/SKILL.md). Read the assertions; a test name alone proves nothing. Tests assert user-visible behavior through public APIs, keep logic out of the expected values, and use real dependencies, faking only third-party services, AI providers and the network. A bug fix ships a test that fails with only the fix reverted.
 - [ ] In tests, use IDs returned by setup or the operation under test. Bad: `taskShow({ id: 'task-1' })` after creating a task. Good: `taskShow({ id: created.id })`. Fixed IDs belong only in synthetic input whose identity is the contract.
 - [ ] Do not match exact event sequence numbers read in separate operations: another writer can append between reads. Bad: `assert.equal(reply.seq, previouslyRead.seq + 1)`. Good: find the reply by its returned ID in one event snapshot, then assert its payload and causal link.
 
@@ -65,7 +62,7 @@ A "looks off" item the reviewer cannot prove still blocks. The fixer either fixe
 
 ## Reporting
 
-Report Bugs, Tests and Simpler as three sections. List findings in each by importance, must fix first, each with its tag, file and line, the failing behavior or broken rule, and a suggested fix. Keep observations the author should decide apart from findings to apply. Report suites plainly: a red suite is red, with the failing lines. Every must-fix finding is resolved, and each declined recommendation gets a reason. Once complete, tick **Ran `review-code`** in the PR and describe what you fixed (or say no findings).
+Report Bugs, Tests and Simpler findings with a file, location, concrete problem and suggested fix. Use the verifier’s response schema when invoked by verify. Use no severity ranks. Every finding must be fixed or declined with a visible reason. Record the result in the PR description; do not tick review boxes.
 
 When asked to open or update a PR for a branch this review has not covered, say so and offer to run it first.
 

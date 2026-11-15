@@ -16,8 +16,4 @@
 
 ## Review
 
-Complete [review-code](https://github.com/leonardourci/pnyx/blob/main/.agents/skills/review-code/SKILL.md), [audit-tests](https://github.com/leonardourci/pnyx/blob/main/.agents/skills/audit-tests/SKILL.md) and [deslop](https://github.com/leonardourci/pnyx/blob/main/.agents/skills/deslop/SKILL.md), then note fixes or no findings in the description.
-
-- [ ] Ran `review-code`
-- [ ] Ran `audit-tests`
-- [ ] Ran `deslop`
+Record the shared verifier’s review findings and fixes, or its clean result. Include any visible declines and pending checks. The exact-commit marker supplies the evidence; do not add review checkboxes.

@@ -32,6 +32,6 @@ A cleanup removes complexity the job didn't ask for without changing what the co
 - [ ] Keep the diff small and mechanical, one logical change per commit, so a reviewer can compare old and new arm by arm. Update or delete guidance the cleanup made stale in the same change.
 - [ ] Scan what you added for new shorthand: `git diff origin/main -U0 -- '*.ts' '*.tsx' | grep -E '^\+.*(\.then\(|\bvoid [a-zA-Z(]|\?\?=|\|\|=|&&=|\.\.\.\(|for \(;;\)|while \(true\))'`. Name any you keep on purpose in the PR, with its reason.
 
-Record meaningful fixes and any intentional exception. Once complete, tick **Ran `deslop`** in the PR and note what you changed (or say no findings).
+Record meaningful fixes and any intentional exception. Record what changed or that the review was clean. The verifier’s marker supplies the evidence.
 
 For an agent: edit the assigned text yourself, keep the author's meaning, and report any validation gap honestly. This checklist grants no extra authority to commit, publish or send text.
