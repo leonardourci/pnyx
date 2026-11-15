@@ -279,7 +279,7 @@ pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
 Gives this task alone a landing rule other than its project's, or prints the rule it follows. Owner, or Hydra on the owner's word.
 pnyx-axi task merge <id> [--url <pull request>]
 Merges the task's linked pull request with a merge commit and records it. Hydra needs --merge hydra or the owner's Merge approval for that link,
-and never merges while a check is red or still running.
+and never merges while a check is red or still running. A 403/404 from branch rules means no readable rules there; other merge gates still apply.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]

@@ -89,7 +89,28 @@ async function readBranchRequirements({
   base: string
   required: RequiredCheck[]
 }): Promise<void> {
-  const rules = await pages({ path: `/repos/${repo}/rules/branches/${encodeURIComponent(base)}` })
+  let rules: unknown[]
+
+  try {
+    rules = await pages({ path: `/repos/${repo}/rules/branches/${encodeURIComponent(base)}` })
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error
+    }
+
+    const stdout = 'stdout' in error && typeof error.stdout === 'string' ? error.stdout : ''
+    const stderr = 'stderr' in error && typeof error.stderr === 'string' ? error.stderr : ''
+    const output = `${stdout}\n${stderr}`
+    const unavailable = /HTTP (?:403|404)\b/.test(output)
+      || /^code: (?:FORBIDDEN|NOT_FOUND)$/m.test(output)
+
+    if (!unavailable) {
+      throw error
+    }
+
+    // GitHub can hide branch rules on private repositories; the other evidence still applies.
+    return
+  }
 
   for (const value of rules) {
     const rule = object({ value })

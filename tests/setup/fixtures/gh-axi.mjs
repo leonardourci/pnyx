@@ -31,6 +31,16 @@ if (args[0] === 'api') {
   const query = args.find(arg => arg.startsWith('query=')) ?? ''
   const route = args.find(arg => arg.startsWith('/'))
   const pulls = /^\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)(\/merge)?$/.exec(route ?? '')
+  const repository = /owner:\s*"([^"]+)",name:\s*"([^"]+)"/.exec(query)
+  const routeRepo = route?.match(/^\/repos\/([^/]+\/[^/]+)/)?.[1]
+  const queryRepo = repository ? `${repository[1]}/${repository[2]}` : undefined
+  const repo = routeRepo ?? queryRepo
+  const evidenceFile = repo ? join(
+    root,
+    repo,
+    'evidence.json',
+  ) : undefined
+  const evidence = evidenceFile && existsSync(evidenceFile) ? read({ file: evidenceFile }) : {}
   const queued = /pullRequest\(number:(\d+)\)/.exec(query)
 
   if (pulls) {
@@ -99,11 +109,17 @@ if (args[0] === 'api') {
     const isInMergeQueue = Boolean(read({ file }).queued)
     payload({ value: { data: { repository: { pullRequest: { isInMergeQueue } } } } })
   } else if (args.includes('graphql')) {
-    payload({ value: { data: { repository: { ref: { branchProtectionRule: null } } } } })
+    const branchProtectionRule = evidence.classicRule ?? null
+    payload({ value: { data: { repository: { ref: { branchProtectionRule } } } } })
   } else if (route?.includes('/rules/branches/')) {
-    payload({ value: [] })
+    if (evidence.rulesError) {
+      console.log(evidence.rulesError)
+      process.exit(1)
+    }
+
+    payload({ value: evidence.rules ?? [] })
   } else if (route?.includes('/check-runs')) {
-    payload({ value: { check_runs: [] } })
+    payload({ value: { check_runs: evidence.checkRuns ?? [] } })
   } else if (route?.includes('/statuses')) {
     payload({ value: [] })
   } else {
