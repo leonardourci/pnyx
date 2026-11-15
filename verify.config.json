@@ -1,0 +1,132 @@
+{
+  "mode": "ci",
+  "localRunCounts": true,
+  "decline": "agent",
+  "steps": {
+    "lint:fix": "pnpm lint:fix",
+    "typecheck": "pnpm typecheck",
+    "eslint": "pnpm exec eslint .",
+    "css": "pnpm lint:css",
+    "build": "pnpm build",
+    "tests": "pnpm exec vitest run",
+    "integration": "pnpm exec vitest run --project=integration"
+  },
+  "kinds": [
+    {
+      "name": "skill text",
+      "match": [
+        "skills/**/*.md"
+      ],
+      "steps": [
+        "build",
+        "integration"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "skills": [
+        "deslop"
+      ]
+    },
+    {
+      "name": "fixture",
+      "match": [
+        "tests/setup/fixtures/**"
+      ],
+      "steps": [
+        "lint:fix",
+        "typecheck",
+        "eslint",
+        "css",
+        "build",
+        "tests"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "skills": [
+        "review-code",
+        "audit-tests",
+        "deslop"
+      ]
+    },
+    {
+      "name": "docs",
+      "match": [
+        "docs/**",
+        "**/*.md"
+      ],
+      "steps": [],
+      "checks": [],
+      "skills": [
+        "deslop"
+      ]
+    },
+    {
+      "name": "tests",
+      "match": [
+        "**/*.test.ts"
+      ],
+      "steps": [
+        "lint:fix",
+        "typecheck",
+        "eslint",
+        "css",
+        "build",
+        "tests"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "skills": [
+        "audit-tests"
+      ]
+    },
+    {
+      "name": "UI",
+      "match": [
+        "web/**"
+      ],
+      "steps": [
+        "lint:fix",
+        "typecheck",
+        "eslint",
+        "css",
+        "build",
+        "tests"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "skills": "all"
+    },
+    {
+      "name": "back-end",
+      "match": [
+        "**"
+      ],
+      "steps": [
+        "lint:fix",
+        "typecheck",
+        "eslint",
+        "css",
+        "build",
+        "tests"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "skills": [
+        "review-code",
+        "audit-tests",
+        "deslop"
+      ]
+    }
+  ],
+  "skills": {
+    "review-code": ".agents/skills/review-code/SKILL.md",
+    "audit-tests": ".agents/skills/audit-tests/SKILL.md",
+    "deslop": ".agents/skills/deslop/SKILL.md",
+    "write-front-end": ".agents/skills/write-front-end/SKILL.md"
+  }
+}

@@ -1,43 +1,66 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import { stagedBuild } from '../scripts/build/staged.ts'
-import { requiredChecks } from '../scripts/verification/required-checks.ts'
+import { select, validateConfig } from 'verify/config'
 
-// CI's scope job decides from these paths whether the tests run at all, so a misread here ships untested code.
 test(
-  'a change runs the tests its paths call for: none for docs, the changed files for tests, the skill readers for skills and everything for code',
+  'the shared verifier selects the Pnyx checks and review skills for each changed kind',
   () => {
-    const scope = ({ paths }: { paths: string[] }) => requiredChecks({ paths }).tests
+    const config = validateConfig({
+      root: fileURLToPath(new URL(
+        '..',
+        import.meta.url,
+      )),
+      config: JSON.parse(readFileSync(
+        new URL(
+          '../verify.config.json',
+          import.meta.url,
+        ),
+        'utf8',
+      )),
+    })
+    const selection = ({ paths }: { paths: string[] }) => select({
+      config,
+      paths,
+    })
 
-    expect(scope({ paths: ['docs/testing.md'] })).toBe('none')
-    expect(scope({ paths: ['README.md'] })).toBe('none')
-    expect(scope({ paths: ['tests/access.test.ts'] })).toBe('changed')
-    expect(scope({ paths: ['skills/pnyx-cli/SKILL.md'] })).toBe('skills')
-    expect(scope({ paths: ['src/app/server.ts'] })).toBe('full')
-    expect(scope({ paths: ['web/src/hydra/hydra-chat.tsx'] })).toBe('full')
-    // Setup and fixtures are not tests themselves, but every test file runs on them.
-    expect(scope({ paths: ['tests/setup/pnyx.ts'] })).toBe('full')
-    expect(scope({ paths: ['tests/setup/fixtures/gh-axi.mjs'] })).toBe('full')
-    expect(scope({ paths: ['vitest.config.ts'] })).toBe('full')
-    expect(scope({ paths: ['.github/workflows/tests.yml'] })).toBe('full')
-    // Docs beside code never lower the scope, and no known paths means the full suite.
-    expect(scope({
+    expect(selection({ paths: ['docs/testing.md'] })).toMatchObject({
+      steps: [],
+      checks: [],
+      skills: ['deslop'],
+    })
+    expect(selection({ paths: ['README.md'] })).toMatchObject({
+      steps: [],
+      checks: [],
+    })
+    expect(selection({ paths: ['skills/pnyx-cli/SKILL.md'] })).toMatchObject({
+      steps: [
+        'build',
+        'integration',
+      ],
+      checks: ['Lint, build and tests'],
+      skills: ['deslop'],
+    })
+    expect(selection({ paths: ['tests/access.test.ts'] }).steps).toContain('tests')
+    expect(selection({ paths: ['web/src/hydra/hydra-chat.tsx'] }).skills).toContain('write-front-end')
+    expect(selection({ paths: ['src/app/server.ts'] }).steps).toContain('tests')
+    expect(selection({ paths: ['tests/setup/pnyx.ts'] }).steps).toContain('tests')
+    expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).steps).toContain('tests')
+    expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).skills).toEqual([
+      'review-code',
+      'audit-tests',
+      'deslop',
+    ])
+    expect(selection({ paths: ['vitest.config.ts'] }).steps).toContain('tests')
+    expect(selection({ paths: ['.github/workflows/tests.yml'] }).steps).toContain('tests')
+    expect(selection({
       paths: [
         'docs/testing.md',
         'src/app/server.ts',
       ],
-    })).toBe('full')
-    expect(scope({ paths: [] })).toBe('full')
-    expect(requiredChecks({
-      paths: [
-        'tests/access.test.ts',
-        'docs/testing.md',
-      ],
-    })).toMatchObject({
-      tests: 'changed',
-      changedTests: ['tests/access.test.ts'],
-    })
+    }).steps).toContain('tests')
   },
 )
 

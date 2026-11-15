@@ -102,6 +102,9 @@ importers:
       typescript-eslint:
         specifier: ^8.71.2
         version: 8.71.2(eslint@10.12.0(jiti@2.7.0))(typescript@6.0.3)
+      verify:
+        specifier: github:leonardourci/verify#54c5da21109e7f3feb08e3e83fd5c23855895df4
+        version: https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4
       vite:
         specifier: ^8.3.4
         version: 8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1)
@@ -3107,6 +3110,12 @@ packages:
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
+
+  verify@https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4:
+    resolution: {gitHosted: true, integrity: sha512-bRarsjCYbZ92Ee3bcyDRuXhwQLwQW03TDZnTXwBfO4zwVMMUw0mcgCC5X8iiCvoWzvVp57g0PSlRRC/oYi9+7w==, tarball: https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4}
+    version: 0.1.0
+    engines: {node: '>=22.13'}
+    hasBin: true
 
   vite@8.3.4:
     resolution: {integrity: sha512-IftLE8phJhdNRIGNEV4JCCvfNScoZQVfcXaN8TQropWGJtOHcu+iAB9pHcuGvmEb/kddw0LBe/jS8ztdC6xdiQ==}
@@ -6363,6 +6372,10 @@ snapshots:
   uuid@8.3.2: {}
 
   vary@1.1.2: {}
+
+  verify@https://codeload.github.com/leonardourci/verify/tar.gz/54c5da21109e7f3feb08e3e83fd5c23855895df4:
+    dependencies:
+      picomatch: 4.0.7
 
   vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1):
     dependencies:

@@ -28,7 +28,7 @@
     "dev": "PNYX_HOME=${PNYX_DEV_HOME:-$HOME/.pnyx-dev} pnpm run \"/^(dev:server|web:dev)$/\"",
     "dev:server": "node --conditions=source --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
-    "verify": "node scripts/verification/verify.ts",
+    "verify": "verify run",
     "refresh-agent-fixtures": "node scripts/fixtures/refresh-agent-fixtures.ts",
     "lint:css": "biome lint . --error-on-warnings"
   },
@@ -65,6 +65,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",
+    "verify": "github:leonardourci/verify#54c5da21109e7f3feb08e3e83fd5c23855895df4",
     "vite": "^8.3.4",
     "vitest": "5.1.0",
     "zustand": "5.1.0"
