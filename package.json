@@ -56,7 +56,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
-    "deslop": "github:leonardourci/deslop#4252156ccb36f63ca6a5e8af60502440b4273696",
+    "deslop": "github:leonardourci/deslop#9e7ba7d11b6e76c7d99c46b395959957d2105621",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "marked": "^18.1.1",
