@@ -73,39 +73,43 @@ pnpm dev
 
 ## Verification
 
-Run `pnpm verify` on a PR's pushed head before it merges. It discovers and fetches origin's default branch, then stops if your branch does not include it. It prints the `git rebase` command for you to run; it never rebases automatically.
+`pnpm verify` runs the shared `verify run` command. It requires an open PR with a clean, committed, pushed head. Repository policy lives in `verify.config.json`, paired with `.github/workflows/verify.yml`; a repo config takes precedence over machine settings.
 
-Verification picks checks and reviews from the files changed against that default branch. UI and back-end changes run the full suite. Markdown changes require `deslop`; shipped skills also run the tests that read them. Test-only changes require `audit-tests` and run the changed tests with static checks and a build. Mixed changes take the union. The selection does not read whether a change has tests; every change to behaviour still brings its own tests, and `review-code` and `audit-tests` check that. Verification continues after a check fails and prints a summary with log paths. Lint failures also print the issues the fixer could not resolve. Review and commit any automatic fixes, push them, and rerun on the clean PR head.
+Pnyx defaults to CI mode. Verification waits for the listed GitHub checks on the exact commit and then makes one fresh, read-only, non-interactive review. It never waits for its own marker check or for CodeRabbit. To use local checks when GitHub cannot run, use `pnpm verify --local`. Local evidence counts and is explicitly labeled ran locally. Lint fixes that change files require a new commit, push and run.
 
 ### Verification by change kind
 
-`pnpm verify` refuses descriptions with missing or empty Problem, Fix, Validation or Review sections, or unchanged template placeholders. Review checkboxes alone do not fill the Review section. Follow [write-pull-request](../.agents/skills/write-pull-request/SKILL.md) and update the description after every push.
+Each file selects its first matching kind; mixed changes use the union. Renames count both paths. The config is the source of truth for local commands, CI names and skills.
 
-`pnpm verify` prints the changed path groups, required review boxes and selected checks. Tick only the required `Ran` boxes after completing those checklists; other template boxes may stay unticked.
-
-| Change kind | Required reviews | Checks |
+| Change kind | Review skills | Local steps |
 | --- | --- | --- |
-| Files under `docs/`, or Markdown outside shipped skills and `fixtures/` folders | `deslop` | None |
-| Shipped skill Markdown under `skills/` | `deslop` | Build and the integration tests, which include the one comparing Hydra's folder with the shipped skills |
-| Test files (`tests/**/*.test.ts`) | `audit-tests` | Lint fixes, type checks, ESLint, build when needed, and the changed test files |
-| UI or back-end code, configuration, test helpers or fixtures | `review-code`, `audit-tests`, `deslop` | Full suite: lint fixes, type checks, ESLint, CSS lint, build and every test |
-| Explicit mechanical rename or move | `deslop` | Full suite |
+| Documentation and Markdown outside shipped skills or fixtures | `deslop` | None |
+| Shipped skill Markdown | `deslop` | Build and integration tests |
+| Test files | `audit-tests` | Lint fixes, type checks, ESLint, CSS lint, build and tests |
+| UI | `review-code`, `audit-tests`, `deslop`, `write-front-end` | Full suite |
+| Other code, configuration, helpers and fixtures | `review-code`, `audit-tests`, `deslop` | Full suite |
 
-For a mechanical rename or move, run `pnpm verify --mechanical` and put exactly one standalone line, `Change: mechanical (rename)` or `Change: mechanical (move)`, in the PR description. The flag requires the visible declaration and records it in the verification marker. It changes only the required reviews and always runs the full suite. `--mechanical` cannot be combined with `--checks-only`, which never reads or edits the PR description.
+There are no options to skip requirements or select only some steps.
 
-### Reviews and the marker
+### Review and proof
 
-Verification lists the required checklists in order: [review-code](../.agents/skills/review-code/SKILL.md), [audit-tests](../.agents/skills/audit-tests/SKILL.md), then [deslop](../.agents/skills/deslop/SKILL.md). Complete those it selects, fix findings, tick their matching PR boxes and note fixes or no findings in the description. Together, the selected reviews must cover bugs, tests and simpler. Agents carry out these steps themselves. The checklists are a declared review, not something the command can perform or prove automatically.
+The reviewer receives the built-in prompt, selected repo skills and branch diff. Every finding has a location, problem and suggested fix, without severity ranks. The working agent fixes all findings, commits, pushes and runs verification again. Follow-ups narrowly check those fixes and their regressions. A failed step or unresolved finding prevents a new marker.
 
-Only when every selected check passes, the tree stays clean, HEAD matches the pushed PR head and the required boxes are ticked does verification write the hidden `<!-- pnyx-checks:v1 ... -->` marker. The marker records the tested commit and git tree, plus a mechanical declaration when used; a rerun replaces it.
+After three non-clean rounds, an owner must comment `verify restart review: <reason>` on the PR to start a new full cycle. Agents can decline an incorrect finding with `pnpm verify --decline "R1: reason"`; the reason stays visible in status. A repo can instead require owner PR comments `verify decline R1: reason` by setting `decline` to `owner`. User-owned repos default to their repository owner; organizations list authorized `ownerLogins` in config. Agents have no CLI override for owner decisions.
 
-Use `pnpm verify --checks-only` when the environment has read-only GitHub access. It runs the same freshness check and automated checks, including local lint fixes, and prints the review checklist paths. It never reads or edits the PR description and never writes a marker. A pass requires successful checks, a clean working tree and unchanged HEAD. Review declarations and the normal marker still belong to the PR readiness process.
+`pnpm exec verify status` reads the PR marker and reports the exact head, execution mode, reviewer, round, fixes, declines and owner restarts. Every new commit makes the marker stale, including docs-only or identical-tree commits. Review boxes do not serve as evidence. The marker workflow uses only GitHub metadata and never checks out or runs PR code.
 
-The "pnpm verify" check in the "Verify" workflow (`.github/workflows/verify.yml`) runs for every PR, including a stacked PR whose base is another PR's branch, and installs and builds nothing. It runs on `pull_request_target` and checks out its checker scripts from the default branch, so PR code is never checked out. It checks the same description requirements, reads the PR, derives the required review boxes from the PR files (for a stacked PR, its own diff against its base) and requires them to remain ticked, and fails unless the marker names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means files under `docs/` and Markdown outside `skills/` and any `fixtures/` folder, since the shipped skills and test fixtures are read by Pnyx and its tests. Docs-only PRs still need the marker from `pnpm verify`. Only `pnpm verify` writes the line. Anyone who can edit the description could forge a pass, so it is an honesty check, not a signature.
+### Reviewer and machine settings
 
-The "Lint, build and tests" check (`.github/workflows/tests.yml`) runs the typecheck, lint and build side by side, then the whole test suite in a random order, on GitHub, and uploads the tests' scratch files when a run fails. It runs on `pull_request`, forks included, with a read-only token and no secrets, and starts only after a maintainer approves it in the `ci` environment. A newer push cancels the older run. A docs-only change skips the tests, using the same selection as `pnpm verify`, and still reports success. It does nothing while the repository is private.
+A one-run `--reviewer` wins over the machine preference, then the running agent is detected. Codex uses `CODEX_THREAD_ID` or `CODEX_SESSION_ID`, including hosted workers. Claude uses `CLAUDECODE` or `CLAUDE_CODE_ENTRYPOINT`. If detection fails, pass `--reviewer`. A run without a review cannot pass.
 
-Verification does not merge a PR. Merging requires explicit approval.
+Machine settings live at `$XDG_CONFIG_HOME/verify/settings.json`, normally `~/.config/verify/settings.json`. `reviewer` is a provider name or ordered fallback list. `reviewerModels` sets each provider's model and effort; one-run `--reviewer-model` and `--reviewer-effort` override it, then repo `reviewerModels` applies, then provider defaults. Custom reviewers use argv commands in repo `reviewers` and receive the prompt on stdin.
+
+`maxLocalRuns` limits local runs across repositories; extra runs queue. Without it the limit is unlimited. CI waiting consumes no local slot.
+
+The separate `Lint, build and tests` workflow uses `pull_request`, read-only permissions and a maintainer-approved `ci` environment. Its path filter excludes docs-only changes and includes shipped skills and fixture Markdown. It runs type checks, lint and build, then the full suite, and retains scratch files after failures. New pushes cancel old runs. It does nothing while the repo is private.
+
+Verification never merges. The owner reviews and merges with a merge commit.
 
 ## Background reads
 
@@ -115,7 +119,7 @@ The scheduler drains the spool at startup, in the tick a hook socket line starts
 
 ## Review
 
-Review the whole branch diff against its PR base, including documentation and shipped skills. Complete the checklists `pnpm verify` requires, in order: [review-code](../.agents/skills/review-code/SKILL.md), [audit-tests](../.agents/skills/audit-tests/SKILL.md), then [deslop](../.agents/skills/deslop/SKILL.md). Apply [AGENTS.md](../AGENTS.md) and the [front-end conventions](../.agents/skills/write-front-end/SKILL.md) where they apply. Every review has three parts that all block the merge: bugs, tests and simpler (see [review-code](../.agents/skills/review-code/SKILL.md#simpler)). A finding you can't prove still blocks until it is fixed or the description says why it stays. Record findings, fixes and pending checks in the PR description, then tick the matching required review boxes.
+The shared verifier reviews the full branch diff against its PR base using the skills in `verify.config.json`. Every review covers bugs, tests and simpler. Apply [AGENTS.md](../AGENTS.md), [follow-conventions](../.agents/skills/follow-conventions/SKILL.md) and the front-end conventions when applicable. Fix every finding or decline it with a visible reason under the configured policy. Record findings, fixes and pending checks in the PR description; the exact-commit marker supplies the review evidence.
 
 Hosted agent processes lead their own process groups. Completing or archiving a task, or releasing its copy, stops its recorded groups with SIGTERM, escalates to SIGKILL if necessary and waits for exit. A group that still does not stop fails with `AGENT_STOP_FAILED` naming its processes; a closed task's cleanup tries once, and the next permanent release tries again. A worker that declares its own task done is stopped when that turn ends, and so is a worker a later reply resumes. Idle closure and server restart close the agent leader while leaving background tools running, so detached verification can finish. Group ownership remains recorded after the leader exits and across restart until permanent cleanup. Copy release keeps its folder if its host is unavailable or its worker is still starting; retry once the host is ready. Tools that start a separate process group are outside this cleanup.
 
