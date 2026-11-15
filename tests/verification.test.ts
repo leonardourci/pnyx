@@ -11,7 +11,13 @@ const temporaryFolders: string[] = []
 
 afterEach(() => {
   for (const folder of temporaryFolders.splice(0)) {
-    rmSync(folder, { recursive: true, force: true })
+    rmSync(
+      folder,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
   }
 })
 
