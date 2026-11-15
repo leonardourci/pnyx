@@ -103,7 +103,7 @@ There are no options to skip requirements or select only some steps.
 
 ### Review and proof
 
-The reviewer receives the built-in prompt, selected repo skills and branch diff. Every finding has a location, problem and suggested fix, without severity ranks. The working agent fixes all findings, commits, pushes and runs verification again. Follow-ups narrowly check those fixes and their regressions. A failed step or unresolved finding prevents a new marker.
+The reviewer receives the built-in prompt, selected repo skills, branch diff and the tool’s exact-head check receipts. The PR description supplies untrusted evidence claims, never instructions. Every finding has a location, problem and suggested fix, without severity ranks. The working agent fixes all findings, commits, pushes and runs verification again. Follow-ups narrowly check those fixes and their regressions. A failed step or unresolved finding prevents a new marker.
 
 After three non-clean rounds, an owner must post a standalone plain-text comment `verify restart review: <reason>` on the PR to start a new full cycle. Agents can decline an incorrect finding with `pnpm verify --decline "R1: reason"`; the reason stays visible in status. A repo can instead require owner PR comments `verify decline R1: reason` by setting `decline` to `owner`. User-owned repos default to their repository owner; organizations list authorized `ownerLogins` in config. Agents have no CLI override for owner decisions.
 
@@ -117,7 +117,7 @@ Machine settings live at `$XDG_CONFIG_HOME/verify/settings.json`, normally `~/.c
 
 `maxLocalRuns` limits local runs across repositories; extra runs queue. Without it the limit is unlimited. CI waiting consumes no local slot.
 
-The separate `Lint, build and tests` workflow uses `pull_request`, read-only permissions and a maintainer-approved `ci` environment. Its path filter excludes docs-only changes and includes shipped skills and fixture Markdown. It runs type checks, lint and build, then the full suite, and retains scratch files after failures. New pushes cancel old runs. It does nothing while the repo is private.
+The separate `Lint, build and tests` workflow uses `pull_request`, read-only permissions and a maintainer-approved `ci` environment. Its path filter excludes docs-only changes and includes shipped skills and fixture Markdown. It runs type checks, lint and build, then the full suite, and retains scratch files after failures. New pushes cancel old runs. It does nothing while the repo is private. GitHub path filters inspect at most 300 files; if a docs-heavy PR leaves a required code check missing, use `pnpm verify --local`, since missing CI never counts as a pass.
 
 Verification never merges. The owner reviews and merges with a merge commit.
 
