@@ -2,6 +2,7 @@ import { beforeAll, expect, test } from 'vitest'
 import type { Page } from 'playwright-core'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { appendToolCalls } from '../setup/transcripts.ts'
 
 let pnyx: Pnyx
 
@@ -823,3 +824,94 @@ for (const input of Object.keys(UPWARD_INPUTS)) {
     },
   )
 }
+
+test(
+  'a stopped /inscribe never shows above older messages still to load, so scrolling up at the top of a long working stretch loads them and stops',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'draft the notes',
+      partial: 'Draft',
+      hold: true,
+    })
+    const session = await hydra.chat({ text: 'draft the notes' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/inscribe',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    await until({
+      what: 'the stopped turn to end',
+      check: () => session.answered === 1,
+    })
+    await appendToolCalls({
+      session,
+      tools: 120,
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/inscribe',
+      reply: 'inscribed',
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/inscribe',
+      ],
+    })
+    await until({
+      what: 'the message sent again to be answered',
+      check: () => session.answered === 2,
+    })
+
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const conversation = page.locator(CONVERSATION)
+    await conversation.getByText(
+      'inscribed',
+      { exact: true },
+    ).waitFor()
+    // The stopped message belongs to the older pages, so it waits for them instead of sitting above what loaded.
+    expect(await conversation.getByText('draft the notes').count()).toBe(0)
+    expect(await conversation.getByText('Not delivered').count()).toBe(0)
+
+    await conversation.hover()
+    await until({
+      what: 'scrolling up to reach the first message',
+      check: async () => {
+        await page.mouse.wheel(
+          0,
+          -2000,
+        )
+
+        return await conversation.getByText('draft the notes').count() > 0
+      },
+    })
+    await until({
+      what: 'the view to hold still',
+      check: () => still({ page }),
+    })
+    await page.locator(LOADING).waitFor({ state: 'detached' })
+    expect(await timeline({ page })).toEqual([
+      expect.stringMatching(/^draft the note/),
+      '/inscribe',
+      '/inscribe',
+      'inscribed',
+    ])
+    await conversation.getByText('Not delivered').waitFor()
+  },
+)
