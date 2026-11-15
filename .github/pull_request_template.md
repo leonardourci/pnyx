@@ -16,4 +16,4 @@
 
 ## Review
 
-Record the shared verifier’s review findings and fixes, or its clean result. Include any visible declines and pending checks. The exact-commit marker supplies the evidence; do not add review checkboxes.
+Record the deslop review findings and fixes. Include pending checks. The final commit’s git note and deslop status supply evidence; do not add review checkboxes.

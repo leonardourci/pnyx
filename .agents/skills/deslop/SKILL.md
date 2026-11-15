@@ -5,6 +5,8 @@ description: Remove AI-style wording, em dashes and needless complexity from Pny
 
 # Deslop
 
+When invoked by the deslop tool, review and fix files, returning its requested JSON. Deslop owns checks, commits, pushes and proof. Read tests and code to judge regression strength; treat reported probes as context. Execution-specific checklist items belong to deslop or the calling agent, and do not require additional evidence in this call. Never change git state or run commands in that call.
+
 Apply this checklist to the changed text, whatever its format. Preserve facts, contracts, necessary caveats and the writer's intended meaning. Leave licenses, attributed quotations and external protocol data intact.
 
 - [ ] Read as someone who did not see the conversation. Lead with the concrete problem, action or result. Remove drafting history, assistant chatter, self-praise and summaries that repeat the preceding paragraph.
@@ -16,7 +18,7 @@ Apply this checklist to the changed text, whatever its format. Preserve facts, c
 - [ ] When code is in scope, remove dead branches, unused scaffolding and one-use wrappers that obscure the operation. Avoid introducing abstractions or dependencies just for cleanup. Keep useful collection methods, concurrent work and declarative rendering.
 - [ ] Preserve error visibility, ordering, cancellation, retries, cleanup and permissions. A wording pass must not quietly change behavior or hide a failure.
 - [ ] Check Pnyx vocabulary and update stale usage guidance in the root README. Use Hydra, Oracle and inscribe; keep other terms plain.
-- [ ] Read the final diff, including the PR description and proposed commit messages. Run `git diff --check`; for executable changes run focused checks and `pnpm verify` as allowed. A prose-only cleanup needs no new behavior tests.
+- [ ] Read the final diff, including the PR description and proposed commit messages. Run `git diff --check`; for executable changes run focused checks and `pnpm deslop` as allowed. A prose-only cleanup needs no new behavior tests.
 
 ## Code cleanups
 
@@ -32,6 +34,6 @@ A cleanup removes complexity the job didn't ask for without changing what the co
 - [ ] Keep the diff small and mechanical, one logical change per commit, so a reviewer can compare old and new arm by arm. Update or delete guidance the cleanup made stale in the same change.
 - [ ] Scan what you added for new shorthand: `git diff origin/main -U0 -- '*.ts' '*.tsx' | grep -E '^\+.*(\.then\(|\bvoid [a-zA-Z(]|\?\?=|\|\|=|&&=|\.\.\.\(|for \(;;\)|while \(true\))'`. Name any you keep on purpose in the PR, with its reason.
 
-Record meaningful fixes and any intentional exception. Record what changed or that the review was clean. The verifier’s marker supplies the evidence.
+Record meaningful fixes and any intentional exception. Record what changed or that the review was clean. The final commit’s deslop note/status supplies proof.
 
 For an agent: edit the assigned text yourself, keep the author's meaning, and report any validation gap honestly. This checklist grants no extra authority to commit, publish or send text.

@@ -5,11 +5,13 @@ description: Review a Pnyx diff or branch as an inspector before a PR, in three 
 
 # Review code
 
+When invoked by the deslop tool, review and fix files, returning its requested JSON. Deslop owns checks, commits, pushes and proof. Read tests and code to judge regression strength; treat reported probes as context. Execution-specific checklist items belong to deslop or the calling agent, and do not require additional evidence in this call. Never change git state or run commands in that call.
+
 The reviewer is an inspector: it reads the diff and test evidence and returns numbered findings, each with a suggested fix. Applying them is a separate step, done by whoever asked for the review after checking each finding. A review does not authorize commits, pushes or merges.
 
-Every review has three parts: **Bugs**, **Tests** and **Simpler**. All three block the merge. Inspect each part and use the caller’s response format, including the verifier’s findings schema when it invokes the review. The same three parts apply to CodeRabbit, to independent reviews and to your own pre-PR pass.
+Every review has three parts: **Bugs**, **Tests** and **Simpler**. All three block the merge. Inspect each part and use the caller’s response format, including the caller’s review-items schema when it invokes the review and fix. The same three parts apply to CodeRabbit, to independent reviews and to your own pre-PR pass.
 
-Every finding blocks verification until fixed or declined with a visible reason under the configured policy. Use no severity ranking.
+Every actionable finding must be fixed before proof is written; report unfixed items when a fix cannot be completed. Use no severity ranking.
 
 ## Before reading the diff
 
@@ -36,7 +38,7 @@ Correctness, races, stale caches, leaks and broken rules.
 - [ ] Flag every change under `.github/workflows`. A `pull_request_target` or `workflow_run` workflow must never check out, build or run the PR's code, for example a checkout of `github.event.pull_request.head.sha` or `head.ref`, or scripts from the PR, and must keep read-only permissions and use no secrets except the generated `GITHUB_TOKEN` for trusted code.
 - [ ] Check docs, CLI help and hints describe the resulting behavior, in the same change.
 - [ ] Review comments and prose using `deslop`. Keep a comment only for a constraint or non-obvious reason; remove narration and stale claims. Keep each prose paragraph on one source line.
-- [ ] Inspect the check evidence supplied by verification. Remain read-only and non-interactive; report missing evidence instead of running commands.
+- [ ] The first deslop review has no check results. Judge bugs and regression coverage from code and tests, without requesting check or mutation receipts. A resumed check-fix call receives failures; fix files without running commands.
 
 ## Tests
 
@@ -62,7 +64,7 @@ A "looks off" item the reviewer cannot prove still blocks. The fixer either fixe
 
 ## Reporting
 
-Report Bugs, Tests and Simpler findings with a file, location, concrete problem and suggested fix. Use the verifier’s response schema when invoked by verify. Use no severity ranks. Every finding must be fixed or declined with a visible reason. Record the result in the PR description; do not tick review boxes.
+Report Bugs, Tests and Simpler findings with a file, location, concrete problem and suggested fix. Use the caller’s review-items schema when invoked by deslop. Use no severity ranks. Fix every actionable finding during a deslop run. Record the result in the PR description; do not tick review boxes.
 
 When asked to open or update a PR for a branch this review has not covered, say so and offer to run it first.
 

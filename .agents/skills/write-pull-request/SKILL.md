@@ -13,7 +13,7 @@ Use the [PR template](../../../.github/pull_request_template.md) and the checks 
 - [ ] **Validation:** name the checks actually run and their results. State failures, skipped checks and pending checks honestly. For each new or changed test, record the behavior or past bug it guards and the flip result required by [audit-tests](../audit-tests/SKILL.md). Include before/after media for visible changes; say when there is no visible UI change.
 - [ ] **Review:** record findings and fixes, or no findings, from each required checklist in order, covering bugs, tests and simpler. Use the exact-commit marker as review evidence; do not add self-ticked boxes.
 - [ ] Remove the template placeholders. Keep all five headings, each with substantive text; hidden comments and examples do not count. Verification records the checks and fresh review for the exact commit.
-- [ ] After every push, compare the description with the final diff and current validation. Rewrite stale claims, changed scope and validation gaps. Preserve the hidden verification marker; rerun `pnpm verify` on the pushed head after editing the body.
+- [ ] After every push, compare the description with the final diff and current validation. Rewrite stale claims, changed scope and validation gaps. The proof lives on the commit, so editing the PR body does not invalidate it. Run deslop again after code changes.
 - [ ] Read the final title, body and changed code comments using [deslop](../deslop/SKILL.md). Use plain English, keep enough context to assess the change and remove session history.
 
 ## File structure changes

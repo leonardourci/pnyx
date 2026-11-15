@@ -7,9 +7,9 @@ description: Create or change a GitHub Actions workflow in .github/workflows for
 
 A check that runs on changes that cannot affect it, or fails for reasons unrelated to the change, teaches people to ignore red. Pick every trigger and permission on purpose.
 
-- [ ] Say first what the workflow proves (the `pnpm verify` marker, the test suite), then trigger it only on the inputs that can change that result: the source it checks, `package.json`, `pnpm-lock.yaml` and the workflow file itself. A check every PR needs, such as the `pnpm verify` marker check, takes no path filter.
+- [ ] Say first what the workflow proves (for example, the test suite), then trigger it only on the inputs that can change that result: the source it checks, `package.json`, `pnpm-lock.yaml` and the workflow file itself. Deslop publishes commit status from its own code; it installs no marker workflow.
 - [ ] Keep docs-only changes out of code checks. GitHub applies `paths` patterns in order and the last match wins, so put `'!**/*.md'` after the positive patterns, then add back the Markdown that code reads: `'skills/**'` for the shipped skills and `'**/fixtures/**'`.
-- [ ] Treat every pull request as untrusted, since anyone can open one from a fork. A `pull_request_target` workflow runs with base-branch secrets and permissions, so it must never check out, install or run PR code; read the PR through the API only, as `verify.yml` does. A workflow that runs PR code uses `pull_request` and starts only after a maintainer approves it.
+- [ ] Treat every pull request as untrusted, since anyone can open one from a fork. A `pull_request_target` workflow runs with base-branch secrets and permissions, so it must never check out, install or run PR code; read metadata through the API only. A workflow that runs PR code uses `pull_request` and starts only after a maintainer approves it.
 - [ ] Grant the least `permissions` the job needs, declared at the top of the file, and pass `persist-credentials: false` to `actions/checkout` unless a later step pushes. Never print a secret or pass one to PR code.
 - [ ] Set `timeout-minutes` on every job and a `concurrency` group per PR with `cancel-in-progress: true`, so a new push replaces the old run.
 - [ ] Use a Node version the project supports and the pnpm version it pins, so CI fails for the same reasons a contributor's machine would.
