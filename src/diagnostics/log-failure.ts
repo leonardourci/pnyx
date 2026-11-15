@@ -27,7 +27,9 @@ export function logFailure({
   }
 
   const code = 'code' in error && typeof error.code === 'string' && SAFE_CODE.test(error.code) ? error.code : undefined
-  const stack = error.stack?.split('\n').slice(error.message.split('\n').length)
+  const header = error.message ? `${error.name}: ${error.message}\n` : `${error.name}\n`
+  const frames = error.stack?.startsWith(header) ? error.stack.slice(header.length) : undefined
+  const stack = frames?.split('\n')
     .filter(line => /^\s+at /.test(line))
     .slice(
       0,

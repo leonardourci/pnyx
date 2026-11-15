@@ -1,3 +1,4 @@
+import { logPageLines } from '#diagnostics/page-lines.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { spoolDir } from '#store/storage.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
@@ -154,6 +155,19 @@ test(
       )
     }
 
+    logPageLines({
+      value: [
+        {
+          operation: 'page.privacy',
+          level: 'error',
+          error: {
+            name: 'Error',
+            message: 'x'.repeat(200),
+            stack: 'Error: ' + 'x'.repeat(200) + '\n    at private-page-secret\n    at app.js:1:2',
+          },
+        },
+      ],
+    })
     logZeroOutput({ line: 'worker=cache private-zero-value' })
     log({
       operation: 'privacy.probe',
@@ -209,16 +223,24 @@ test(
       provider: 'cache',
       name: expect.stringMatching(/^[a-f0-9]{64}$/),
     }))
-    const scanStart = recorded.length
-    const scanned = [...scanEvents({ hydraId: hydra.id })]
-    await flushLogs()
-    const scanLines = lines().slice(scanStart)
-      .filter(line => line.operation === 'events.read')
-    expect(scanLines).toEqual([
+    const scan = await withLogRequest({
+      requestId: 'scan-probe',
+      run: async () => {
+        const events = [...scanEvents({ hydraId: hydra.id })]
+        await flushLogs()
+
+        return {
+          count: events.length,
+          lines: lines().filter(line => line.operation === 'events.read'
+        && line.requestId === 'scan-probe'),
+        }
+      },
+    })
+    expect(scan.lines).toEqual([
       expect.objectContaining({
         name: 'scan',
         pages: 1,
-        count: scanned.length,
+        count: scan.count,
       }),
     ])
     const command = recorded.filter(line => line.operation === 'command.cli'
@@ -228,7 +250,7 @@ test(
       operation: 'http.request',
       requestId: command.requestId,
     }))
-    expect(JSON.stringify(recorded)).not.toMatch(/private-owner-message|private-worker-message|private-request-value|private-message-frame|private-zero-value/)
+    expect(JSON.stringify(recorded)).not.toMatch(/private-owner-message|private-worker-message|private-request-value|private-message-frame|private-zero-value|private-page-secret/)
   },
 )
 
@@ -502,6 +524,9 @@ test(
       }),
     ])
     expect(JSON.stringify(failure)).not.toContain('private')
+    const mismatched = new Error('safe header')
+    mismatched.stack = 'Error: safe header but truncated\n    at private-custom-message'
+    expect(logFailure({ error: mismatched }).stack).toBeUndefined()
   },
 )
 
