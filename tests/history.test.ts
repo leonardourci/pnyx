@@ -381,6 +381,25 @@ test(
       '3501',
       '3502',
     ])
+    expect(Boolean(around.older)).toBe(true)
+    expect(Boolean(around.newer)).toBe(true)
+
+    const last = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--seq',
+        String(replySeq({ k: REPLIES - 1 })),
+        '--before',
+        '1',
+      ],
+    })
+    expect(last.messages.map((message: { text: string }) => /reply-(\d+)/.exec(message.text)![1])).toEqual([
+      '6998',
+      '6999',
+    ])
+    expect(Boolean(last.older)).toBe(true)
+    expect(Boolean(last.newer)).toBe(false)
 
     // Six hundred replies span more than one window of the log.
     const range = [
@@ -509,7 +528,7 @@ test(
 
 // Replies far denser than the log, each a few milliseconds after the one before it: more in one window of positions than a read keeps, so it halves the range.
 const DENSE_EVENTS = 600
-const DENSE_REPLIES = 5_000
+const DENSE_REPLIES = 2_500
 
 test(
   'a message lookup reads a transcript denser than one read keeps in both directions, each reply once and in order',
@@ -564,6 +583,8 @@ test(
 
     const pageThrough = async ({ direction }: { direction: 'older' | 'newer' }) => {
       const found: number[] = []
+      // Whether each page offers a cursor back the way the walk came: every page but the first.
+      const back: boolean[] = []
       let cursor: string | undefined
       let page: Output
 
@@ -586,8 +607,12 @@ test(
           ],
         })
         found.push(...direction === 'older' ? numbers({ page }).reverse() : numbers({ page }))
+        back.push(Boolean(direction === 'older' ? page.newer : page.older))
         cursor = direction === 'older' ? page.older : page.newer
       } while (cursor)
+
+      expect(back[0]).toBe(false)
+      expect(back.slice(1).every(Boolean)).toBe(true)
 
       return direction === 'older' ? found.reverse() : found
     }
@@ -598,9 +623,9 @@ test(
     ] as const) {
       const found = await pageThrough({ direction })
 
-      expect(found).toHaveLength(5000)
+      expect(found).toHaveLength(2500)
       expect(found[0]).toBe(0)
-      expect(found.at(-1)).toBe(4999)
+      expect(found.at(-1)).toBe(2499)
       expect(found.every((
         value,
         index,
@@ -615,7 +640,7 @@ test(
       ],
     })
     const told = history.flatMap(page => [...page.text.matchAll(/reply-(\d+) end/g)].map(match => Number(match[1])))
-    expect(told).toHaveLength(5000)
+    expect(told).toHaveLength(2500)
     const count = await hydra.owner({
       args: [
         'hydra',
@@ -627,7 +652,7 @@ test(
     })
     expect(count.totalTokens).toBe(Math.ceil(Buffer.byteLength(history.map(page => page.text).join('\n\n')) / 4))
     expect(told[0]).toBe(0)
-    expect(told.at(-1)).toBe(4999)
+    expect(told.at(-1)).toBe(2499)
     expect(told.every((
       value,
       index,

@@ -1,5 +1,7 @@
 import { getHeapSpaceStatistics } from 'node:v8'
 import { monitorEventLoopDelay, performance, PerformanceObserver } from 'node:perf_hooks'
+import { logFiles } from './log-files.ts'
+import { query } from '#store/postgres.ts'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { oneDecimal, SAMPLE_MS } from '#app/log-line.ts'
@@ -13,6 +15,7 @@ const US_PER_MS = 1000
 const PERCENT = 100
 // The loop's share of time keeps two decimals.
 const SHARE_DECIMALS = 100
+const STORAGE_SAMPLE_TIMEOUT_MS = 100
 
 // One line every 30 seconds by default with the server's CPU, event-loop delay and use, heap and garbage-collection
 // pauses, and one with the memory of every agent the server runs.
@@ -67,6 +70,7 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
       loopDelayMs: loopDelay({ ns: delay.mean }),
       loopDelayP99Ms: loopDelay({ ns: delay.percentile(LOOP_DELAY_PERCENTILE) }),
       loopDelayMaxMs: loopDelay({ ns: delay.max }),
+      activeResources: process.getActiveResourcesInfo().length,
       heapUsed: memory.heapUsed,
       heapTotal: memory.heapTotal,
       heapLarge: large?.space_used_size,
@@ -75,6 +79,27 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
       gcCount: gc.count,
       gcMs: oneDecimal({ value: gc.ms }),
       gcMaxMs: oneDecimal({ value: gc.maxMs }),
+    })
+
+    background({
+      name: 'storage.sample',
+      run: () => {
+        const [rows] = query({
+          statements: [{ text: 'select pg_database_size(current_database())::float8 as bytes' }],
+          timeoutMs: STORAGE_SAMPLE_TIMEOUT_MS,
+        })
+        log({
+          operation: 'storage',
+          databaseBytes: rows?.[0]?.bytes as number,
+          logBytes: logFiles().reduce(
+            (
+              sum,
+              file,
+            ) => sum + file.bytes,
+            0,
+          ),
+        })
+      },
     })
 
     background({

@@ -1,6 +1,8 @@
+import { flushLogs } from '#app/diagnostics.ts'
+import { logFiles } from '#diagnostics/log-files.ts'
 import { spawn } from 'node:child_process'
 import { createServer, type Socket } from 'node:net'
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { parsed, pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
@@ -111,7 +113,21 @@ const card = async ({ session }: { session: string }) => {
 test(
   'an outside session\'s hooks keep its card: the prompt names it, Stop ends its turn, and every hook exits 0 at once',
   async () => {
-    await pnyx.hydra()
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"logs":"on"}',
+      ],
+    })
+    await flushLogs()
+    const onStart = logFiles().map(file => readFileSync(
+      file.path,
+      'utf8',
+    ))
+      .join('').length
     const cwd = join(
       process.env.TMPDIR!,
       'outside',
@@ -150,6 +166,24 @@ test(
       activity: 'working',
     })
 
+    await flushLogs()
+    const onLogs = logFiles().map(file => readFileSync(
+      file.path,
+      'utf8',
+    ))
+      .join('')
+      .slice(onStart)
+    expect(onLogs).not.toContain('hook.push')
+    expect(onLogs).not.toContain('card.observed')
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"logs":"detailed"}',
+      ],
+    })
+
     runs.push(await hook({
       event: 'Stop',
       payload: base,
@@ -161,6 +195,16 @@ test(
         'idle',
       ].includes((await card({ session: 'outside-1' }))?.activity),
     })
+
+    await flushLogs()
+    const logs = logFiles().map(file => readFileSync(
+      file.path,
+      'utf8',
+    ))
+      .join('')
+    expect(logs).toContain('hook.push')
+    expect(logs).not.toContain('Fix the flaky login test')
+    expect(logs).not.toContain('with more detail below')
 
     for (const run of runs) {
       expect(run).toMatchObject({

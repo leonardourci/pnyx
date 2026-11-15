@@ -13,7 +13,12 @@ export default defineConfig({
   },
   test: {
     pool: 'forks',
-    execArgv: ['--conditions=source'],
+    execArgv: [
+      '--conditions=source',
+      // Worker threads started from TypeScript run Node's WebAssembly type stripper, and Node 24 can free a tiered-up
+      // wrapper of its calls twice when one ends, killing the process (nodejs/node#66366); untiered calls never reach it.
+      '--wasm-wrapper-tiering-budget=2147483647',
+    ],
     globalSetup: ['tests/setup/global-setup.ts'],
     setupFiles: ['tests/setup/environment.ts'],
     // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order.

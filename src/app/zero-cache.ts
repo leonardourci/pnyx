@@ -1,3 +1,4 @@
+import { watchZeroCache } from '#workers/agent-memory.ts'
 import { fork, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import http, { type IncomingMessage, type ServerResponse } from 'node:http'
@@ -183,19 +184,7 @@ export function startZeroCache({
     createInterface({ input: stream }).on(
       'line',
       line => {
-        // Named queries enforce reads; this cache exposes no client mutations or upstream permission rules.
-        const permissionsAdvice = line.includes('No upstream permissions deployed.')
-          || line.includes("Run 'npx zero-deploy-permissions")
-
-        if (!line.trim() || permissionsAdvice) {
-          return
-        }
-
-        log({
-          level: 'warn',
-          operation: 'zero.output',
-          name: line,
-        })
+        logZeroOutput({ line })
       },
     )
   }
@@ -290,6 +279,7 @@ export function startZeroCache({
       },
     )
     child = started
+    watchZeroCache({ child: started })
     forwardOutput({ stream: started.stdout })
     forwardOutput({ stream: started.stderr })
     started.on(
@@ -589,4 +579,22 @@ export function startZeroCache({
       clearTimeout(killTimer)
     },
   }
+}
+
+export function logZeroOutput({ line }: { line: string }): void {
+  // Named queries enforce reads; this cache exposes no client mutations or upstream permission rules.
+  const permissionsAdvice = line.includes('No upstream permissions deployed.')
+    || line.includes("Run 'npx zero-deploy-permissions")
+
+  if (!line.trim() || permissionsAdvice) {
+    return
+  }
+
+  log({
+    level: 'warn',
+    operation: 'zero.output',
+    name: createHash('sha256').update(line)
+      .digest('hex'),
+    provider: /\bworker=([A-Za-z0-9_-]{1,64})\b/.exec(line)?.[1],
+  })
 }

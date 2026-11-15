@@ -1,22 +1,19 @@
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, createWriteStream, type WriteStream } from 'node:fs'
+import { appendFileSync, createWriteStream, statSync, type WriteStream } from 'node:fs'
 import { join } from 'node:path'
-import { inspect } from 'node:util'
-import { errorDetails } from '#store/error-details.ts'
+import { repeatedLine, flushRepeatedLines } from '#diagnostics/repeated-lines.ts'
+import { logRequestId } from '#diagnostics/context.ts'
+import { logFailure } from '#diagnostics/log-failure.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir } from '#store/storage.ts'
 import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type LogMode } from './log-line.ts'
 
 export type { LogLine, LogMode } from './log-line.ts'
 
-const MAX_PAYLOAD_CHARS = 16 * 1024
 const streams = new Map<string, {
   stream: WriteStream
   lines: Set<string>
 }>()
-
-const FAILURE_INSPECT_DEPTH = 2
-const FAILURE_INSPECT_CHARS = 2000
 
 export const logsDir = () => join(
   pnyxHome(),
@@ -38,6 +35,10 @@ let file: {
 } | undefined
 // Full days keep warnings and errors, while action lines stop at the size cap.
 let capped: string | undefined
+let byteLimit = Infinity
+const dayBytes = new Map<string, number>()
+let dropped = 0
+const FAILURE_ROOM = 2
 
 export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
   mode = next
@@ -45,27 +46,64 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
 
 export const logMode = () => mode
 
-export function setTodayFull({
-  day,
-  full,
+export function setLogBudget({
   maxBytes,
+  days,
 }: {
-  day: string
-  full: boolean
   maxBytes?: number
+  days?: {
+    day: string
+    bytes: number
+  }[]
 }): void {
-  const filled = full && capped !== day
-  capped = undefined
-
-  if (filled) {
-    log({
-      level: 'warn',
-      operation: 'logs.full',
-      bytes: maxBytes,
-    })
+  if (maxBytes !== undefined) {
+    byteLimit = maxBytes
   }
 
-  capped = full ? day : undefined
+  if (days !== undefined) {
+    const retained = new Map(days.map(day => [
+      day.day,
+      Math.max(
+        day.bytes,
+        dayBytes.get(day.day) ?? 0,
+      ),
+    ]))
+
+    if (file && !retained.has(file.day)) {
+      retained.set(
+        file.day,
+        dayBytes.get(file.day) ?? 0,
+      )
+    }
+
+    dayBytes.clear()
+
+    for (const [
+      day,
+      bytes,
+    ] of retained) {
+      dayBytes.set(
+        day,
+        bytes,
+      )
+    }
+  }
+
+  if (dropped) {
+    const count = dropped
+    dropped = 0
+    // stderr remains available even when the JSONL budget is exhausted.
+    console.error(JSON.stringify({
+      v: 1,
+      at: new Date().toISOString(),
+      level: 'warn',
+      source: 'server',
+      pid: process.pid,
+      operation: 'logs.dropped',
+      operationId: randomUUID(),
+      count,
+    }))
+  }
 }
 
 export function openLogs(): void {
@@ -82,28 +120,9 @@ export function releaseLogFile(): void {
 }
 
 export function closeLogs(): void {
+  flushRepeatedLines()
   releaseLogFile()
   toFiles = false
-}
-
-function failure({ error }: { error: unknown }) {
-  if (error instanceof Error) {
-    return errorDetails({ error })
-  }
-
-  return {
-    message: typeof error === 'string' ? error : inspect(
-      error,
-      {
-        customInspect: false,
-        depth: FAILURE_INSPECT_DEPTH,
-        maxStringLength: FAILURE_INSPECT_CHARS,
-      },
-    ).slice(
-      0,
-      FAILURE_INSPECT_CHARS,
-    ),
-  }
 }
 
 function append({
@@ -123,10 +142,6 @@ function append({
     return
   }
 
-  if (capped === day && !severe) {
-    return
-  }
-
   try {
     if (file?.day !== day) {
       releaseLogFile()
@@ -138,9 +153,65 @@ function append({
           dayFile({ day }),
         ),
       }
+
+      let bytes = dayBytes.get(day) ?? 0
+
+      try {
+        bytes = Math.max(
+          bytes,
+          statSync(file.path).size,
+        )
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error
+        }
+      }
+
+      dayBytes.set(
+        day,
+        bytes,
+      )
     }
 
+    const currentBytes = dayBytes.get(day) ?? 0
     const path = file.path
+    const olderBytes = [...dayBytes].reduce(
+      (
+        sum,
+        [
+          otherDay,
+          bytes,
+        ],
+      ) => otherDay === day ? sum : sum + bytes,
+      0,
+    )
+    const allowance = Math.max(
+      0,
+      byteLimit - olderBytes,
+    )
+
+    const bytes = Buffer.byteLength(text) + 1
+    const limit = severe ? allowance * FAILURE_ROOM : allowance
+
+    if (currentBytes + bytes > limit) {
+      dropped += 1
+
+      if (!severe && capped !== day) {
+        capped = day
+        log({
+          level: 'warn',
+          operation: 'logs.full',
+          bytes: allowance,
+        })
+      }
+
+      return
+    }
+
+    dayBytes.set(
+      day,
+      currentBytes + bytes,
+    )
     let output = streams.get(path)
 
     if (!output) {
@@ -233,8 +304,10 @@ export function writeLine({
   line,
   source,
   at = new Date().toISOString(),
+  repeated = false,
 }: {
   line: LogLine
+  repeated?: boolean
   source: 'server' | 'web'
   // When it happened, if not now: a page's lines arrive in batches.
   at?: string
@@ -258,7 +331,7 @@ export function writeLine({
     if (LOG_FIELDS.has(key)) {
       fields[key] = typeof value === 'string' ? value.slice(
         0,
-        key === 'payload' ? MAX_PAYLOAD_CHARS : TEXT_MAX,
+        TEXT_MAX,
       ) : value
     }
   }
@@ -268,10 +341,11 @@ export function writeLine({
     text = JSON.stringify({
       v: 1,
       at,
-      level,
+      level: level ?? (detailed ? 'debug' : 'info'),
+      startedAt: ms === undefined ? undefined : new Date(Date.parse(at) - ms).toISOString(),
       source,
-      // A failure keeps the process id, to match it with a crash or the system's own logs.
-      pid: level && source === 'server' ? process.pid : undefined,
+      pid: source === 'server' ? process.pid : undefined,
+      requestId: source === 'server' ? logRequestId() : undefined,
       operation,
       operationId: failureId,
       ...fields,
@@ -279,13 +353,24 @@ export function writeLine({
       // Detailed lines come many a second, so the lines around them carry the server's memory.
       rss: source === 'server' && !detailed ? process.memoryUsage.rss() : undefined,
       // An error line describes its error even when what was thrown is undefined.
-      error: level === 'error' || (level && error !== undefined) ? failure({ error }) : undefined,
+      error: level === 'error' || (level && error !== undefined) ? logFailure({ error }) : undefined,
     })
   } catch (unbuilt) {
     if (level) {
       console.error(`${operation}: ${String(unbuilt)}`)
     }
 
+    return
+  }
+
+  if (!repeated && repeatedLine({
+    line,
+    write: ({ line }) => writeLine({
+      line,
+      source,
+      repeated: true,
+    }),
+  })) {
     return
   }
 

@@ -520,6 +520,12 @@ export function lookupMessages({
     return true
   }
 
+  // Whether a message lies beyond each end of the page, which decides its cursors.
+  const beyondPage = {
+    older: false,
+    newer: false,
+  }
+
   if (anchor && selection.direction === undefined) {
     add({ candidate: anchor })
     const key = keyOf({ message: anchor })
@@ -569,6 +575,9 @@ export function lookupMessages({
         }
       }
     }
+
+    beyondPage.older = older.peek() !== undefined
+    beyondPage.newer = newer.peek() !== undefined
   } else {
     const beyond = cursor?.key ?? (anchor && keyOf({ message: anchor }))
     const messages = messagesBeyond({
@@ -585,6 +594,11 @@ export function lookupMessages({
       messages.take()
       next = messages.peek()
     }
+
+    // The walk yields every message past `beyond` in order, so the one that did not fit is the next past the page, and
+    // the message at `beyond` itself lies behind it.
+    beyondPage[direction] = next !== undefined
+    beyondPage[direction === 'older' ? 'newer' : 'older'] = beyond !== undefined
   }
 
   const continuation = ({
@@ -594,20 +608,17 @@ export function lookupMessages({
     message: MessageRecord
     direction: Cursor['direction']
   }) =>
-    messagesBeyond({
-      side: direction,
-      beyond: keyOf({ message }),
-    }).peek() ? encodeCursor({
-        cursor: {
-          hydra: hydraId,
-          card,
-          snapshot,
-          key: keyOf({ message }),
-          direction,
-          from,
-          to,
-        },
-      }) : undefined
+    beyondPage[direction] ? encodeCursor({
+      cursor: {
+        hydra: hydraId,
+        card,
+        snapshot,
+        key: keyOf({ message }),
+        direction,
+        from,
+        to,
+      },
+    }) : undefined
 
   return {
     hydra: hydraId,

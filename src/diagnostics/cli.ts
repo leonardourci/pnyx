@@ -337,7 +337,7 @@ export const logs = guard({
         throw workerRefusal({ message: 'logs clean is refused for a worker: it deletes every Hydra\'s log files' })
       }
 
-      const cleared = clearLogs()
+      const cleared = clearLogs({ maxBytes: readSettings().settings.logMaxMB * MB })
 
       return {
         deleted: cleared.files ? fileCount({ count: cleared.files }) : 'none: no log files',

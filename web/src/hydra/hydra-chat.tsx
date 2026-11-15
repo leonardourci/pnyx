@@ -392,7 +392,12 @@ export function HydraChat({
     selectedTask,
     draft,
   })
-  const shownDecisions = decisions
+  const shownDecisions = noticesInTimeline({
+    notices: decisions,
+    at: ({ notice }) => notice.at,
+    rows: chat.entries,
+    older: olderCursor !== undefined,
+  })
   const inline = new Map(shownDecisions.map(decision => [
     decision.id,
     <ChatDecisionCard
@@ -1171,12 +1176,13 @@ export function HydraChat({
           }}
         >
           <div className="hydra-stream" ref={content}>
-            {olderCursor && <div ref={olderMarker} className="hydra-older" aria-hidden="true" />}
-            {loadingEarlier && (
-              <div className="hydra-loading" role="status" aria-label="Loading earlier messages">
-                <span className="hydra-spinner" aria-hidden="true" />
-              </div>
-            )}
+            <div ref={olderMarker} className="hydra-older">
+              {loadingEarlier && (
+                <div className="hydra-loading" role="status" aria-label="Loading earlier messages">
+                  <span className="hydra-spinner" aria-hidden="true" />
+                </div>
+              )}
+            </div>
             <Messages
               catalog={catalog}
               labelColors={state.labelColors}
