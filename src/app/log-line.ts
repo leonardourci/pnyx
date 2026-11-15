@@ -18,7 +18,6 @@ interface AgentMemory {
 }
 
 interface LogFields {
-  payload?: string
   operation: string
   hydraId?: string
   taskId?: string
@@ -58,6 +57,9 @@ interface LogFields {
   messages?: number
   elements?: number
   // The process line: CPU and event-loop use over the interval, loop delay, heap and garbage collection.
+  activeResources?: number
+  logBytes?: number
+  databaseBytes?: number
   cpuPercent?: number
   loopUtilization?: number
   loopDelayMs?: number
@@ -79,7 +81,6 @@ interface LogFields {
 const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | 'ms'>]-?: true } = {
   connectionWaitMs: true,
   commitMs: true,
-  payload: true,
   hydraId: true,
   taskId: true,
   sessionId: true,
@@ -103,6 +104,9 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   chatChars: true,
   messages: true,
   elements: true,
+  activeResources: true,
+  logBytes: true,
+  databaseBytes: true,
   cpuPercent: true,
   loopUtilization: true,
   loopDelayMs: true,

@@ -1,22 +1,18 @@
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, createWriteStream, type WriteStream } from 'node:fs'
+import { appendFileSync, createWriteStream, statSync, type WriteStream } from 'node:fs'
 import { join } from 'node:path'
-import { inspect } from 'node:util'
-import { errorDetails } from '#store/error-details.ts'
+import { logCorrelation } from '#diagnostics/context.ts'
+import { logFailure } from '#diagnostics/log-failure.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir } from '#store/storage.ts'
 import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type LogMode } from './log-line.ts'
 
 export type { LogLine, LogMode } from './log-line.ts'
 
-const MAX_PAYLOAD_CHARS = 16 * 1024
 const streams = new Map<string, {
   stream: WriteStream
   lines: Set<string>
 }>()
-
-const FAILURE_INSPECT_DEPTH = 2
-const FAILURE_INSPECT_CHARS = 2000
 
 export const logsDir = () => join(
   pnyxHome(),
@@ -35,9 +31,13 @@ let toFiles = false
 let file: {
   day: string
   path: string
+  bytes: number
 } | undefined
 // Full days keep warnings and errors, while action lines stop at the size cap.
 let capped: string | undefined
+let byteLimit = Infinity
+let dropped = 0
+const FAILURE_ROOM = 2
 
 export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
   mode = next
@@ -54,6 +54,10 @@ export function setTodayFull({
   full: boolean
   maxBytes?: number
 }): void {
+  if (maxBytes !== undefined) {
+    byteLimit = maxBytes
+  }
+
   const filled = full && capped !== day
   capped = undefined
 
@@ -66,6 +70,21 @@ export function setTodayFull({
   }
 
   capped = full ? day : undefined
+
+  if (dropped) {
+    const count = dropped
+    dropped = 0
+    // stderr remains available even when the JSONL budget is exhausted.
+    console.error(JSON.stringify({
+      v: 1,
+      at: new Date().toISOString(),
+      level: 'warn',
+      source: 'server',
+      pid: process.pid,
+      operation: 'logs.dropped',
+      count,
+    }))
+  }
 }
 
 export function openLogs(): void {
@@ -84,26 +103,6 @@ export function releaseLogFile(): void {
 export function closeLogs(): void {
   releaseLogFile()
   toFiles = false
-}
-
-function failure({ error }: { error: unknown }) {
-  if (error instanceof Error) {
-    return errorDetails({ error })
-  }
-
-  return {
-    message: typeof error === 'string' ? error : inspect(
-      error,
-      {
-        customInspect: false,
-        depth: FAILURE_INSPECT_DEPTH,
-        maxStringLength: FAILURE_INSPECT_CHARS,
-      },
-    ).slice(
-      0,
-      FAILURE_INSPECT_CHARS,
-    ),
-  }
 }
 
 function append({
@@ -137,10 +136,32 @@ function append({
           logsDir(),
           dayFile({ day }),
         ),
+        bytes: 0,
+      }
+
+      try {
+        file.bytes = statSync(file.path).size
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error
+        }
       }
     }
 
     const path = file.path
+
+    const bytes = Buffer.byteLength(text) + 1
+    const limit = severe ? byteLimit * FAILURE_ROOM : byteLimit
+
+    if (file.bytes + bytes > limit) {
+      if (severe) {
+        dropped += 1
+      }
+
+      return
+    }
+
+    file.bytes += bytes
     let output = streams.get(path)
 
     if (!output) {
@@ -258,7 +279,7 @@ export function writeLine({
     if (LOG_FIELDS.has(key)) {
       fields[key] = typeof value === 'string' ? value.slice(
         0,
-        key === 'payload' ? MAX_PAYLOAD_CHARS : TEXT_MAX,
+        TEXT_MAX,
       ) : value
     }
   }
@@ -268,10 +289,11 @@ export function writeLine({
     text = JSON.stringify({
       v: 1,
       at,
-      level,
+      level: level ?? (detailed ? 'debug' : 'info'),
+      startedAt: ms === undefined ? undefined : new Date(Date.parse(at) - ms).toISOString(),
       source,
-      // A failure keeps the process id, to match it with a crash or the system's own logs.
-      pid: level && source === 'server' ? process.pid : undefined,
+      pid: source === 'server' ? process.pid : undefined,
+      correlationId: source === 'server' ? logCorrelation() : undefined,
       operation,
       operationId: failureId,
       ...fields,
@@ -279,7 +301,7 @@ export function writeLine({
       // Detailed lines come many a second, so the lines around them carry the server's memory.
       rss: source === 'server' && !detailed ? process.memoryUsage.rss() : undefined,
       // An error line describes its error even when what was thrown is undefined.
-      error: level === 'error' || (level && error !== undefined) ? failure({ error }) : undefined,
+      error: level === 'error' || (level && error !== undefined) ? logFailure({ error }) : undefined,
     })
   } catch (unbuilt) {
     if (level) {

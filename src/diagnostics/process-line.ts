@@ -1,5 +1,7 @@
 import { getHeapSpaceStatistics } from 'node:v8'
 import { monitorEventLoopDelay, performance, PerformanceObserver } from 'node:perf_hooks'
+import { logFiles } from './log-files.ts'
+import { query } from '#store/postgres.ts'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { oneDecimal, SAMPLE_MS } from '#app/log-line.ts'
@@ -67,6 +69,7 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
       loopDelayMs: loopDelay({ ns: delay.mean }),
       loopDelayP99Ms: loopDelay({ ns: delay.percentile(LOOP_DELAY_PERCENTILE) }),
       loopDelayMaxMs: loopDelay({ ns: delay.max }),
+      activeResources: process.getActiveResourcesInfo().length,
       heapUsed: memory.heapUsed,
       heapTotal: memory.heapTotal,
       heapLarge: large?.space_used_size,
@@ -75,6 +78,24 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
       gcCount: gc.count,
       gcMs: oneDecimal({ value: gc.ms }),
       gcMaxMs: oneDecimal({ value: gc.maxMs }),
+    })
+
+    background({
+      name: 'storage.sample',
+      run: () => {
+        const [rows] = query({ statements: [{ text: 'select pg_database_size(current_database())::float8 as bytes' }] })
+        log({
+          operation: 'storage',
+          databaseBytes: rows?.[0]?.bytes as number,
+          logBytes: logFiles().reduce(
+            (
+              sum,
+              file,
+            ) => sum + file.bytes,
+            0,
+          ),
+        })
+      },
     })
 
     background({
