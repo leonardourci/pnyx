@@ -1,5 +1,6 @@
+import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { timingSafeEqual } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { dirname } from 'node:path'
 import { mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
@@ -356,14 +357,33 @@ export async function startServer({
     req,
     res,
   ) => {
-    void request({
-      req,
-      res,
+    const started = performance.now()
+    const correlationId = randomUUID()
+    // Paths can contain user input; retain only a known route family.
+    const route = /^\/(api|zero-query|zero|health)(?:[/?]|$)/.exec(req.url ?? '')?.[1] ?? 'static'
+    res.once(
+      'close',
+      () => log({
+        operation: 'http.request',
+        correlationId,
+        name: route,
+        status: res.writableFinished ? String(res.statusCode) : 'aborted',
+        ms: performance.now() - started,
+        detailed: res.writableFinished && res.statusCode < 400,
+      }),
+    )
+    void withLogRequest({
+      correlationId,
+      run: () => request({
+        req,
+        res,
+      }),
     }).catch(error => {
       log({
         level: 'error',
         operation: 'http.request',
-        name: `${req.method} ${req.url?.split('?')[0] ?? '/'}`,
+        correlationId,
+        name: route,
         error,
       })
 

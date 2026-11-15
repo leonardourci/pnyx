@@ -1,3 +1,4 @@
+import { log } from './diagnostics.ts'
 import type { HydraEvent } from './model.ts'
 import { query } from '#store/postgres.ts'
 import { hydraExists } from './store.ts'
@@ -58,6 +59,8 @@ function eventSelection({
   }
 }
 
+const SLOW_READ_MS = 100
+
 export function readEvents({
   limit,
   descending = false,
@@ -67,6 +70,7 @@ export function readEvents({
     where,
     values,
   } = eventSelection(selection)
+  const started = performance.now()
   const [rows] = query({
     statements: [
       {
@@ -78,6 +82,16 @@ export function readEvents({
       },
     ],
   }) as { data: HydraEvent }[][]
+
+  const ms = performance.now() - started
+  log({
+    operation: 'events.read',
+    detailed: ms < SLOW_READ_MS,
+    hydraId: selection.hydraId,
+    taskId: selection.cardId,
+    count: rows!.length,
+    ms,
+  })
 
   return rows!.map(row => row.data)
 }
