@@ -61,11 +61,12 @@ function eventSelection({
 
 const SLOW_READ_MS = 100
 
-export function readEvents({
+function selectedEvents({
   limit,
   descending = false,
+  measured = true,
   ...selection
-}: EventSelection): HydraEvent[] {
+}: EventSelection & { measured?: boolean }): HydraEvent[] {
   const {
     where,
     values,
@@ -84,40 +85,71 @@ export function readEvents({
   }) as { data: HydraEvent }[][]
 
   const ms = performance.now() - started
-  log({
-    operation: 'events.read',
-    detailed: ms < SLOW_READ_MS,
-    hydraId: selection.hydraId,
-    taskId: selection.cardId,
-    count: rows!.length,
-    ms,
-  })
+
+  if (measured) {
+    log({
+      operation: 'events.read',
+      detailed: ms < SLOW_READ_MS,
+      hydraId: selection.hydraId,
+      taskId: selection.cardId,
+      count: rows!.length,
+      ms,
+    })
+  }
 
   return rows!.map(row => row.data)
+}
+
+export function readEvents({ ...selection }: EventSelection): HydraEvent[] {
+  return selectedEvents(selection)
 }
 
 const EVENT_PAGE_SIZE = 200
 
 // Scans that need old history retain only one bounded page, in either direction.
 export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
-  const pageAt = ({ bounds }: { bounds: Pick<EventSelection, 'after' | 'before'> }) => readEvents({
-    ...selection,
-    ...bounds,
-    limit: EVENT_PAGE_SIZE,
-  })
-  let page = pageAt({ bounds: {} })
+  const started = performance.now()
+  let pages = 0
+  let count = 0
 
-  while (page.length) {
-    yield* page
+  const pageAt = ({ bounds }: { bounds: Pick<EventSelection, 'after' | 'before'> }) => {
+    pages += 1
 
-    if (page.length < EVENT_PAGE_SIZE) {
-      return
+    return selectedEvents({
+      ...selection,
+      ...bounds,
+      limit: EVENT_PAGE_SIZE,
+      measured: false,
+    })
+  }
+
+  try {
+    let page = pageAt({ bounds: {} })
+
+    while (page.length) {
+      count += page.length
+      yield* page
+
+      if (page.length < EVENT_PAGE_SIZE) {
+        return
+      }
+
+      const edge = page.at(-1)!.seq
+      page = selection.descending
+        ? pageAt({ bounds: { before: edge } })
+        : pageAt({ bounds: { after: edge } })
     }
-
-    const edge = page.at(-1)!.seq
-    page = selection.descending
-      ? pageAt({ bounds: { before: edge } })
-      : pageAt({ bounds: { after: edge } })
+  } finally {
+    const ms = performance.now() - started
+    log({
+      operation: 'events.read',
+      name: 'scan',
+      hydraId: selection.hydraId,
+      count,
+      pages,
+      ms,
+      detailed: ms < SLOW_READ_MS,
+    })
   }
 }
 

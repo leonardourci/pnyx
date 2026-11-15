@@ -91,6 +91,10 @@ export function runProcess({
       settled = true
       log({
         operation: 'exec',
+        detailed: status === 0 && !error && quietGit({
+          command,
+          args,
+        }),
         name: runName({
           command,
           args,
@@ -188,6 +192,10 @@ export async function runFile({
   } finally {
     log({
       operation: 'exec',
+      detailed: exitCode === 0 && quietGit({
+        command,
+        args,
+      }),
       name: runName({
         command,
         args,
@@ -197,4 +205,18 @@ export async function runFile({
       ms: performance.now() - started,
     })
   }
+}
+
+function quietGit({
+  command,
+  args,
+}: {
+  command: string
+  args: string[]
+}): boolean {
+  return basename(command) === 'git' && [
+    'rev-parse',
+    'symbolic-ref',
+    'remote',
+  ].includes(args[0] ?? '')
 }
