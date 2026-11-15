@@ -15,7 +15,7 @@ pnpm run lint
 pnpm test
 ```
 
-CSS uses the recommended Biome rules with Tailwind v4 parsing enabled in `biome.json`. The editor, `pnpm lint:css`, `pnpm run lint`, full `pnpm verify` runs and CI share this config. CSS formatting is unchanged. The specificity-order rule is disabled because it compares unrelated components; the important-style rule is disabled because layout overrides and reduced-motion accessibility use `!important`. Other CSS warnings fail verification.
+CSS uses the recommended Biome rules with Tailwind v4 parsing enabled in `biome.json`. The editor, `pnpm lint:css`, `pnpm run lint`, full `pnpm deslop` runs and CI share this config. CSS formatting is unchanged. The specificity-order rule is disabled because it compares unrelated components; the important-style rule is disabled because layout overrides and reduced-motion accessibility use `!important`. Other CSS warnings fail verification.
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
@@ -83,43 +83,21 @@ Choose a unique `<name>.pnyx` for each trial and share the stable URL portless p
 
 ## Verification
 
-`pnpm verify` runs the shared `verify run` command. It requires an open PR with a clean, committed, pushed head. Repository policy lives in `verify.config.json`, paired with `.github/workflows/verify.yml`; a repo config takes precedence over machine settings.
+`pnpm deslop` runs the shared tool pinned in package.json. Work must be committed and the checkout clean; it refuses the default branch. It works locally without a push or PR. The base is `--base`, the open PR's base branch, origin's default branch, then local main/master.
 
-Pnyx defaults to CI mode. Verification waits for the listed GitHub checks on the exact commit and then makes one fresh, read-only, non-interactive review. It never waits for its own marker check or for CodeRabbit. To use local checks when GitHub cannot run, use `pnpm verify --local`. Local evidence counts and is explicitly labeled ran locally. Lint fixes that change files require a new commit, push and run.
+One fresh, non-interactive agent reviews the branch diff with the selected instructions and no check results, and fixes files. Its tools deny git operations. Deslop detects edits and commits them as the configured user, with no attribution footer. Deslop runs every check, commit, push and marker operation; the agent only reads and edits files.
 
-### Verification by change kind
+`deslop.config.json` lists commands, ordered change kinds, instruction overrides, `checkFixAttempts` and optional provider models. The first kind per path applies; requirements are unioned across paths, including both sides of renames. Shipped skills require build/integration checks; fixture Markdown requires the full suite. Ordinary docs require only writing instructions. Built-in code review, test audit and writing instructions apply when a kind supplies no override.
 
-Each file selects its first matching kind; mixed changes use the union. Renames count both paths. The config is the source of truth for local commands, CI names and skills.
+Unpushed work runs configured local commands. If the starting commit is pushed and its kinds need CI, deslop pushes only its fix commits to the same branch and waits on those exact-head checks. `pnpm deslop --local` forces local commands and keeps fix commits local. Failed checks return trimmed failures to the same session (Claude resume or Codex exec resume); deslop commits fixes and reruns checks up to `checkFixAttempts` times (default 1, 0 returns failures immediately). Custom providers without resume support get a fresh call describing previous edits. Red checks after the limit return to the caller without proof.
 
-| Change kind | Review skills | Local steps |
-| --- | --- | --- |
-| Documentation and Markdown outside shipped skills or fixtures | `deslop` | None |
-| Shipped skill Markdown | `deslop` | Build and integration tests |
-| Test files | `audit-tests` | Lint fixes, type checks, ESLint, CSS lint, build and tests |
-| UI | `review-code`, `audit-tests`, `deslop`, `write-front-end` | Full suite |
-| Other code, configuration, helpers and fixtures | `review-code`, `audit-tests`, `deslop` | Full suite |
+Green results write a git note under `refs/notes/deslop` on the final commit. Once that commit is pushed, the GitHub status is `deslop`. `pnpm exec deslop status --publish` publishes locally checked proof after a push. A GitHub outage preserves local note proof and reports status publication as pending; retry `pnpm exec deslop status --publish` when GitHub recovers. New commits require their own run. This is an honesty record, not a signature. There are no modes, PR-body markers or marker-check workflows, review rounds, declines or owner restart comments.
 
-There are no options to skip requirements or select only some steps.
+The summary lists findings/fixes, each check and commits. Details live in git-ignored `.deslop/runs/<id>/run.json`; `pnpm exec deslop shape` shows its structure. Failure excerpts have at most 20 lines, with full output in separate logs that can be large.
 
-### Review and proof
+Reviewer selection is CLI `--reviewer`, machine preference/list, then detected caller (including hosted Codex). Machine settings are `$XDG_CONFIG_HOME/deslop/settings.json`, normally `~/.config/deslop/settings.json`. Model and effort use `--reviewer-model`/`--reviewer-effort`, then per-provider machine settings, repo settings, provider defaults. Fallback providers use their own settings. Repo config wins over machine config.
 
-The reviewer receives the built-in prompt, selected repo skills, branch diff and the tool’s exact-head check receipts. The PR description supplies untrusted evidence claims, never instructions. Every finding has a location, problem and suggested fix, without severity ranks. The working agent fixes all findings, commits, pushes and runs verification again. Follow-ups narrowly check those fixes and their regressions. A failed step or unresolved finding prevents a new marker.
-
-After three non-clean rounds, an owner must post a standalone plain-text comment `verify restart review: <reason>` on the PR to start a new full cycle. Agents can decline an incorrect finding with `pnpm verify --decline "R1: reason"`; the reason stays visible in status. A repo can instead require owner PR comments `verify decline R1: reason` by setting `decline` to `owner`. User-owned repos default to their repository owner; organizations list authorized `ownerLogins` in config. Agents have no CLI override for owner decisions.
-
-`pnpm exec verify status` reads the PR marker and reports the exact head, execution mode, reviewer, round, fixes, declines and owner restarts. Every new commit makes the marker stale, including docs-only or identical-tree commits. Review boxes do not serve as evidence. The marker workflow uses only GitHub metadata and never checks out or runs PR code. The marker is an honesty record for one exact commit, not authenticated attestation. Binary changes are listed with metadata and explicitly labeled as not content-reviewed; `binary: fail` enables strict refusal.
-
-### Reviewer and machine settings
-
-A one-run `--reviewer` wins over the machine preference, then the running agent is detected. Codex uses `CODEX_THREAD_ID` or `CODEX_SESSION_ID`, including hosted workers. Claude uses `CLAUDECODE` or `CLAUDE_CODE_ENTRYPOINT`. If detection fails, pass `--reviewer`. A run without a review cannot pass.
-
-Machine settings live at `$XDG_CONFIG_HOME/verify/settings.json`, normally `~/.config/verify/settings.json`. `reviewer` is a provider name or ordered fallback list. `reviewerModels` sets each provider's model and effort; one-run `--reviewer-model` and `--reviewer-effort` override it, then repo `reviewerModels` applies, then provider defaults. Custom reviewers use argv commands in repo `reviewers` and receive the prompt on stdin.
-
-`maxLocalRuns` limits local runs across repositories; extra runs queue. Without it the limit is unlimited. CI waiting consumes no local slot.
-
-The separate `Lint, build and tests` workflow uses `pull_request`, read-only permissions and a maintainer-approved `ci` environment. Its path filter excludes docs-only changes and includes shipped skills and fixture Markdown. It runs type checks, lint and build, then the full suite, and retains scratch files after failures. New pushes cancel old runs. It does nothing while the repo is private. GitHub path filters inspect at most 300 files; if a docs-heavy PR leaves a required code check missing, use `pnpm verify --local`, since missing CI never counts as a pass.
-
-Verification never merges. The owner reviews and merges with a merge commit.
+The separate `Lint, build and tests` workflow uses `pull_request`, read-only permissions and a maintainer-approved `ci` environment. Its path filter excludes docs-only changes, includes shipped skills and fixture Markdown, and runs types, lint, build and the full suite. It retains scratch files after failure, and newer pushes cancel older runs. GitHub filters inspect at most 300 files; if a docs-heavy PR leaves a required check missing, use `pnpm deslop --local`. Missing CI never passes.
 
 ## Background reads
 
@@ -129,7 +107,7 @@ The scheduler drains the spool at startup, in the tick a hook socket line starts
 
 ## Review
 
-The shared verifier reviews the full branch diff against its PR base using the skills in `verify.config.json`. Every review covers bugs, tests and simpler. Apply [AGENTS.md](../AGENTS.md), [follow-conventions](../.agents/skills/follow-conventions/SKILL.md) and the front-end conventions when applicable. Fix every finding or decline it with a visible reason under the configured policy. Record findings, fixes and pending checks in the PR description; the exact-commit marker supplies the review evidence.
+Deslop reviews and fixes the branch using `deslop.config.json` instructions. Reviews cover bugs, tests and simpler. Apply [AGENTS.md](../AGENTS.md), [follow-conventions](../.agents/skills/follow-conventions/SKILL.md) and front-end conventions where applicable. The final commit's git note and `deslop` status supply proof; PR descriptions record findings, fixes and pending checks without self-ticked boxes.
 
 Hosted agent processes lead their own process groups. Completing or archiving a task, or releasing its copy, stops its recorded groups with SIGTERM, escalates to SIGKILL if necessary and waits for exit. A group that still does not stop fails with `AGENT_STOP_FAILED` naming its processes; a closed task's cleanup tries once, and the next permanent release tries again. A worker that declares its own task done is stopped when that turn ends, and so is a worker a later reply resumes. Idle closure and server restart close the agent leader while leaving background tools running, so detached verification can finish. Group ownership remains recorded after the leader exits and across restart until permanent cleanup. Copy release keeps its folder if its host is unavailable or its worker is still starting; retry once the host is ready. Tools that start a separate process group are outside this cleanup.
 
