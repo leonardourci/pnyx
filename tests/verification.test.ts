@@ -1,7 +1,9 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from 'vitest'
+import { Script } from 'node:vm'
+import { parse } from 'yaml'
+import { expect, test, vi } from 'vitest'
 import { stagedBuild } from '../scripts/build/staged.ts'
 import { select, validateConfig } from 'verify/config'
 
@@ -77,6 +79,190 @@ test(
         'src/app/server.ts',
       ],
     }).steps).toContain('tests')
+  },
+)
+
+const markerHead = 'a'.repeat(40)
+const passingMarker = {
+  version: 1,
+  head: markerHead,
+  mode: 'ci',
+  steps: {
+    passed: true,
+    names: ['Lint, build and tests'],
+  },
+  review: {
+    clean: true,
+    provider: 'codex',
+    round: 1,
+  },
+  finishedAt: '2026-01-01T00:00:00Z',
+}
+const markerLine = ({ marker }: { marker: Record<string, unknown> }) => `<!-- verify:v1 ${JSON.stringify(marker)} -->`
+const passingBody = markerLine({ marker: passingMarker })
+const markerWorkflow = parse(readFileSync(
+  new URL(
+    '../.github/workflows/verify.yml',
+    import.meta.url,
+  ),
+  'utf8',
+))
+const markerScript = new Script(`(async () => {${markerWorkflow.jobs.marker.steps[0].with.script}})()`)
+
+test.each([
+  {
+    name: 'passed CI',
+    body: passingBody,
+    localRunCounts: false,
+    accepted: true,
+  },
+  {
+    name: 'accepted local fallback',
+    body: markerLine({
+      marker: {
+        ...passingMarker,
+        mode: 'local',
+      },
+    }),
+    localRunCounts: true,
+    accepted: true,
+  },
+  {
+    name: 'refused local fallback',
+    body: markerLine({
+      marker: {
+        ...passingMarker,
+        mode: 'local',
+      },
+    }),
+    localRunCounts: false,
+    accepted: false,
+  },
+  {
+    name: 'stale head',
+    body: markerLine({
+      marker: {
+        ...passingMarker,
+        head: 'b'.repeat(40),
+      },
+    }),
+    localRunCounts: true,
+    accepted: false,
+  },
+  {
+    name: 'duplicate markers',
+    body: `${passingBody}\n${passingBody}`,
+    localRunCounts: true,
+    accepted: false,
+  },
+  {
+    name: 'missing marker',
+    body: 'A pull request without verification',
+    localRunCounts: true,
+    accepted: false,
+  },
+  {
+    name: 'malformed marker',
+    body: '<!-- verify:v1 {invalid} -->',
+    localRunCounts: true,
+    accepted: false,
+  },
+  {
+    name: 'failed checks',
+    body: markerLine({
+      marker: {
+        ...passingMarker,
+        steps: {
+          passed: false,
+          names: ['tests'],
+        },
+      },
+    }),
+    localRunCounts: true,
+    accepted: false,
+  },
+  {
+    name: 'unclean review',
+    body: markerLine({
+      marker: {
+        ...passingMarker,
+        review: {
+          clean: false,
+          provider: 'codex',
+          round: 1,
+        },
+      },
+    }),
+    localRunCounts: true,
+    accepted: false,
+  },
+  {
+    name: 'missing review',
+    body: markerLine({
+      marker: {
+        ...passingMarker,
+        review: undefined,
+      },
+    }),
+    localRunCounts: true,
+    accepted: false,
+  },
+  {
+    name: 'exhausted review rounds',
+    body: markerLine({
+      marker: {
+        ...passingMarker,
+        review: {
+          clean: true,
+          provider: 'codex',
+          round: 4,
+        },
+      },
+    }),
+    localRunCounts: true,
+    accepted: false,
+  },
+])(
+  'the marker workflow handles $name',
+  async ({
+    body,
+    localRunCounts,
+    accepted,
+  }) => {
+    const failed = vi.fn()
+    const getContent = vi.fn(async () => ({ data: { content: Buffer.from(JSON.stringify({ localRunCounts })).toString('base64') } }))
+    await markerScript.runInNewContext({
+      Buffer,
+      github: {
+        rest: {
+          pulls: {
+            get: async () => ({
+              data: {
+                body,
+                head: { sha: markerHead },
+              },
+            }),
+          },
+          repos: { getContent },
+        },
+      },
+      context: {
+        repo: {
+          owner: 'example',
+          repo: 'project',
+        },
+        issue: { number: 1 },
+        payload: { repository: { default_branch: 'main' } },
+      },
+      core: { setFailed: failed },
+    })
+    expect(failed.mock.calls.length === 0).toBe(accepted)
+    expect(getContent).toHaveBeenCalledWith({
+      owner: 'example',
+      repo: 'project',
+      path: 'verify.config.json',
+      ref: 'main',
+    })
   },
 )
 
