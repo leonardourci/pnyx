@@ -1,7 +1,7 @@
+import { basename } from 'node:path'
 import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
 import { log } from '#app/diagnostics.ts'
-import { redact } from '#oracle/text.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { joinedKey } from '#tasks/push-rules.ts'
@@ -34,8 +34,10 @@ const HOOKS = 'hooks'
 function ingest({
   writer,
   entry,
+  bytes,
 }: {
   writer: Writer
+  bytes: number
   entry: Record<string, unknown>
 }): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
@@ -47,7 +49,10 @@ function ingest({
 
   log({
     operation: 'hook.push',
-    payload: redact({ text: JSON.stringify(entry) }),
+    detailed: true,
+    correlationId: entry.id,
+    hydraId: basename(writer.dir),
+    bytes,
   })
 
   if (!isHookEnvelope({ value: entry })) {
@@ -312,12 +317,15 @@ export function drainSpool({ writer }: {
 
   for (const file of spoolFiles({ dir: writer.dir })) {
     try {
+      const text = readFileSync(
+        file,
+        'utf8',
+      )
+
       for (const id of ingest({
         writer,
-        entry: JSON.parse(readFileSync(
-          file,
-          'utf8',
-        )) as Record<string, unknown>,
+        entry: JSON.parse(text) as Record<string, unknown>,
+        bytes: Buffer.byteLength(text),
       })) {
         harvest.add(id)
       }

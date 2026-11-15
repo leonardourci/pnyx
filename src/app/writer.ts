@@ -359,6 +359,7 @@ export function eventWriter({
       })
       log({
         operation: 'card.observed',
+        detailed: true,
         hydraId,
         taskId: observation.cardId,
         name: observation.source.adapter,

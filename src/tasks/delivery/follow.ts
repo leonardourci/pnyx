@@ -215,8 +215,17 @@ export async function followPullRequests({
     let status: PullRequestStatus | undefined
     const started = schedule?.generation({ task: card.id })
 
+    const reading = performance.now()
+
     try {
       status = await readStatus({ url: link.url })
+      log({
+        operation: 'follow.read',
+        hydraId,
+        taskId: card.id,
+        status: status ? 'found' : 'missing',
+        ms: performance.now() - reading,
+      })
     } catch (error) {
       schedule?.read({
         card,
@@ -227,6 +236,7 @@ export async function followPullRequests({
       log({
         level: 'warn',
         operation: 'follow.read',
+        ms: performance.now() - reading,
         hydraId,
         taskId: card.id,
         error,

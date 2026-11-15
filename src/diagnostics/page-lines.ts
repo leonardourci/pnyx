@@ -20,12 +20,14 @@ const finite = ({ value }: { value: unknown }) => typeof value === 'number' && N
 // The page sends its error's name, message and stack; an Error rebuilt from them is recorded like a server error.
 function pageError({ value }: { value: unknown }): Error {
   const record = asRecord({ value })
-  const error = new Error(text({ value: record?.message }) ?? 'unknown page error')
+  const message = text({ value: record?.message })
+  const error = new Error(message ?? 'unknown page error')
   error.name = text({ value: record?.name }) ?? 'Error'
-  error.stack = text({
+  // At the wire limit the message may be truncated while its stack still holds the full header.
+  error.stack = message !== undefined && message.length < TEXT_MAX ? text({
     value: record?.stack,
     max: STACK_MAX,
-  })
+  }) : undefined
 
   return error
 }

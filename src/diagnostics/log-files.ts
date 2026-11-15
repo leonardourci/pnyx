@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { DAY_FILE, logsDir, releaseLogFile, setTodayFull } from '#app/diagnostics.ts'
+import { DAY_FILE, logsDir, releaseLogFile, setLogBudget } from '#app/diagnostics.ts'
 import { logDay } from '#app/log-line.ts'
 import { keptDays } from './retention.ts'
 
@@ -71,7 +71,7 @@ function remove({ files }: { files: LogFile[] }) {
   }
 }
 
-// Deletes the days the retention rule does not keep, and tells the writer when today's file alone passes the cap.
+// Older retained files share the folder budget with today's appends.
 export function cleanLogs({
   days,
   maxBytes,
@@ -90,20 +90,19 @@ export function cleanLogs({
     today,
   })
   const removed = remove({ files: files.filter(file => !retained.kept.has(file.day)) })
-  setTodayFull({
-    day: today,
-    full: retained.full,
+  setLogBudget({
     maxBytes,
+    days: files.filter(file => retained.kept.has(file.day)),
   })
 
   return removed
 }
 
-export function clearLogs() {
+export function clearLogs({ maxBytes }: { maxBytes: number }) {
   const removed = remove({ files: logFiles() })
-  setTodayFull({
-    day: logDay({ at: new Date().toISOString() }),
-    full: false,
+  setLogBudget({
+    maxBytes,
+    days: [],
   })
 
   return removed
