@@ -1,7 +1,7 @@
+import { basename } from 'node:path'
 import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
-import { log } from '#app/diagnostics.ts'
-import { redact } from '#oracle/text.ts'
+import { log, logMode } from '#app/diagnostics.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { joinedKey } from '#tasks/push-rules.ts'
@@ -45,10 +45,15 @@ function ingest({
     })
   }
 
-  log({
-    operation: 'hook.push',
-    payload: redact({ text: JSON.stringify(entry) }),
-  })
+  if (logMode() === 'detailed') {
+    log({
+      operation: 'hook.push',
+      detailed: true,
+      correlationId: entry.id,
+      hydraId: basename(writer.dir),
+      bytes: Buffer.byteLength(JSON.stringify(entry)),
+    })
+  }
 
   if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {
