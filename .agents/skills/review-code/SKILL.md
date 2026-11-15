@@ -7,7 +7,7 @@ description: Review a Pnyx diff or branch as an inspector before a PR, in three 
 
 When invoked by the deslop tool, review and fix files, returning its requested JSON. Deslop owns checks, commits, pushes and proof. Read tests and code to judge regression strength; treat reported probes as context. Execution-specific checklist items belong to deslop or the calling agent, and do not require additional evidence in this call. Never change git state or run commands in that call.
 
-The reviewer is an inspector: it reads the diff and test evidence and returns numbered findings, each with a suggested fix. Applying them is a separate step, done by whoever asked for the review after checking each finding. A review does not authorize commits, pushes or merges.
+For a standalone inspection, read the diff and test evidence and return numbered findings with suggested fixes; the caller applies them separately. In a deslop call, fix files directly and return its requested review items. Neither review authorizes the agent to commit, push or merge.
 
 Every review has three parts: **Bugs**, **Tests** and **Simpler**. All three block the merge. Inspect each part and use the caller’s response format, including the caller’s review-items schema when it invokes the review and fix. The same three parts apply to CodeRabbit, to independent reviews and to your own pre-PR pass.
 
@@ -15,7 +15,7 @@ Every actionable finding must be fixed before proof is written; report unfixed i
 
 ## Before reading the diff
 
-- [ ] Verify the goal: read the PR's Intent and linked issue, state the goal in one line, and check every requested outcome against the diff. Flag missing outcomes, claims the diff does not deliver and unasked additions.
+- [ ] Verify the goal from the request and diff; for a standalone PR inspection, also read its Intent and linked issue. Check every requested outcome against the diff. Flag missing outcomes, claims the diff does not deliver and unasked additions.
 - [ ] Diff against the branch the PR targets, including uncommitted changes. A stacked PR reviews against its parent branch, not `main`.
 - [ ] Read the intended behavior, `AGENTS.md` and [follow-conventions](../follow-conventions/SKILL.md). For `web/`, also read [write-front-end](../write-front-end/SKILL.md); for a cleanup or refactor, [deslop](../deslop/SKILL.md).
 - [ ] If the tree mixes work from another branch, drop changes the base already has, unless the drift is deliberate here.
