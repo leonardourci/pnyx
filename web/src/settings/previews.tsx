@@ -469,7 +469,7 @@ function exampleDays({
       ...file,
       kept: retained.kept.has(file.day),
     })),
-    full: retained.full,
+    full: files[0]!.size > maxMB,
   }
 }
 
