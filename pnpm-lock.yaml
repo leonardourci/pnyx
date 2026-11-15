@@ -76,8 +76,8 @@ importers:
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1))
       deslop:
-        specifier: github:leonardourci/deslop#9e7ba7d11b6e76c7d99c46b395959957d2105621
-        version: https://codeload.github.com/leonardourci/deslop/tar.gz/9e7ba7d11b6e76c7d99c46b395959957d2105621
+        specifier: github:leonardourci/deslop#70df30c4e5ac4b58b655c3b95d65bc6b22db5ba6
+        version: https://codeload.github.com/leonardourci/deslop/tar.gz/70df30c4e5ac4b58b655c3b95d65bc6b22db5ba6
       eslint:
         specifier: ^10.12.0
         version: 10.12.0(jiti@2.7.0)
@@ -1758,8 +1758,8 @@ packages:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
     engines: {node: '>=6'}
 
-  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/9e7ba7d11b6e76c7d99c46b395959957d2105621:
-    resolution: {gitHosted: true, integrity: sha512-YwE71FuJ0+7k8TD5L6XPfuBJG0Vk/Y6/Wrs4KUDzdGiSWdkPpQKO8eamcYhwRIuoVRSrnhTDe6b5ICouwW9a6g==, tarball: https://codeload.github.com/leonardourci/deslop/tar.gz/9e7ba7d11b6e76c7d99c46b395959957d2105621}
+  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/70df30c4e5ac4b58b655c3b95d65bc6b22db5ba6:
+    resolution: {gitHosted: true, integrity: sha512-WkfvZGmHH497nru/y3c+FP+jPyAVcJ75vYM07G5hDwJihrBrULzvX2JNgJTvfcBUxzuB/20Jx1ShSg4FQv4ztg==, tarball: https://codeload.github.com/leonardourci/deslop/tar.gz/70df30c4e5ac4b58b655c3b95d65bc6b22db5ba6}
     version: 0.1.0
     engines: {node: '>=22.13'}
     hasBin: true
@@ -5064,7 +5064,7 @@ snapshots:
 
   dequal@2.0.3: {}
 
-  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/9e7ba7d11b6e76c7d99c46b395959957d2105621:
+  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/70df30c4e5ac4b58b655c3b95d65bc6b22db5ba6:
     dependencies:
       picomatch: 4.0.7
 

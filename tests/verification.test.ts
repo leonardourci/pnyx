@@ -1,39 +1,73 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { parse } from 'yaml'
 import { expect, test } from 'vitest'
 import { stagedBuild } from '../scripts/build/staged.ts'
-import { select, validateConfig } from 'deslop/config'
+
+const selectorModule = pathToFileURL(createRequire(import.meta.url).resolve('deslop/src/config.js')).href
+const policyRoot = fileURLToPath(new URL(
+  '..',
+  import.meta.url,
+))
+const selectionProgram = `
+import { readFileSync } from 'node:fs';
+import { select, validateConfig } from ${JSON.stringify(selectorModule)};
+let input = '';
+for await (const chunk of process.stdin) input += chunk;
+const { root, paths } = JSON.parse(input);
+const config = validateConfig({ root, config: JSON.parse(readFileSync(root + '/deslop.config.json', 'utf8')) });
+console.log(JSON.stringify(select({ config, paths })));
+`
+interface Selection {
+  commands: string[]
+  checks: string[]
+  requiredChecks: string[]
+  instructions: string[]
+}
 
 test(
   'the shared verifier selects the Pnyx checks and review skills for each changed kind',
   () => {
-    const config = validateConfig({
-      root: fileURLToPath(new URL(
-        '..',
+    const selection = ({ paths }: { paths: string[] }): Selection => JSON.parse(execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        selectionProgram,
+      ],
+      {
+        input: JSON.stringify({
+          root: policyRoot,
+          paths,
+        }),
+        encoding: 'utf8',
+      },
+    ))
+    const config = JSON.parse(readFileSync(
+      new URL(
+        '../deslop.config.json',
         import.meta.url,
-      )),
-      config: JSON.parse(readFileSync(
-        new URL(
-          '../deslop.config.json',
-          import.meta.url,
-        ),
-        'utf8',
-      )),
-    })
-    const selection = ({ paths }: { paths: string[] }) => select({
-      config,
-      paths,
-    })
+      ),
+      'utf8',
+    ))
+    expect(config.publishLocal).toBe(false)
+    expect(selection({ paths: ['src/app/server.ts'] }).requiredChecks).toEqual(['Lint, build and tests'])
+    expect(selection({ paths: ['docs/testing.md'] }).requiredChecks).toEqual([])
 
     expect(selection({ paths: ['docs/testing.md'] })).toMatchObject({
       commands: [],
-      checks: [],
-      instructions: ['deslop'],
+      checks: ['Lint, build and tests'],
+      instructions: [
+        'project',
+        'deslop',
+      ],
     })
     expect(selection({ paths: ['README.md'] })).toMatchObject({
       commands: [],
-      checks: [],
+      checks: ['Lint, build and tests'],
     })
     expect(selection({ paths: ['skills/pnyx-cli/SKILL.md'] })).toMatchObject({
       commands: [
@@ -41,7 +75,10 @@ test(
         'integration',
       ],
       checks: ['Lint, build and tests'],
-      instructions: ['deslop'],
+      instructions: [
+        'project',
+        'deslop',
+      ],
     })
     expect(selection({ paths: ['tests/access.test.ts'] }).commands).toContain('tests')
     expect(selection({ paths: ['web/src/hydra/hydra-chat.tsx'] }).instructions).toContain('write-front-end')
@@ -59,12 +96,14 @@ test(
       ],
       checks: ['Lint, build and tests'],
       instructions: [
+        'project',
         'review-code',
         'audit-tests',
         'deslop',
       ],
     })
     expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).instructions).toEqual([
+      'project',
       'review-code',
       'audit-tests',
       'deslop',
@@ -80,6 +119,7 @@ test(
       ],
       checks: ['Lint, build and tests'],
       instructions: [
+        'project',
         'review-code',
         'audit-tests',
         'deslop',
@@ -93,6 +133,214 @@ test(
         'src/app/server.ts',
       ],
     }).commands).toContain('tests')
+  },
+)
+
+const workflow = parse(readFileSync(
+  new URL(
+    '../.github/workflows/docs-check.yml',
+    import.meta.url,
+  ),
+  'utf8',
+))
+const scopeScript = workflow.jobs.scope.steps.find((step: { id?: string }) => step.id === 'scope').with.script
+const scopeProgram = `
+let input = '';
+for await (const chunk of process.stdin) input += chunk;
+const { files, count, config, unavailable, changedHead } = JSON.parse(input);
+const result = { run: '', checks: [], requestedConfig: null };
+let reads = 0;
+const github = {
+  rest: {
+    pulls: {
+      get: async () => {
+        if (reads > 0 && unavailable === 'head') throw new Error('head unavailable');
+        return { data: { changed_files: count, head: { sha: reads++ > 0 && changedHead ? 'new-head' : 'reviewed-head' } } };
+      },
+      listFiles: () => undefined
+    },
+    repos: {
+      getContent: async ({ path, ref }) => {
+        if (path !== 'deslop.config.json' || ref !== 'main') throw new Error('untrusted config request');
+        if (unavailable === true) throw new Error('config unavailable');
+        result.requestedConfig = { path, ref };
+        return { data: { content: Buffer.from(JSON.stringify(config)).toString('base64') } };
+      }
+    },
+    checks: { create: async check => result.checks.push(check) }
+  },
+  paginate: async () => files
+};
+const context = { repo: { owner: 'fixture', repo: 'pnyx' }, issue: { number: 1 }, payload: { repository: { default_branch: 'main' }, pull_request: { head: { sha: 'reviewed-head' } } } };
+const core = { warning: () => undefined, setOutput: (name, value) => { result.run = value; } };
+await (async () => { ${scopeScript} })();
+console.log(JSON.stringify(result));
+`
+
+test.each([
+  {
+    name: 'ordinary docs',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    expected: 'false',
+    checks: [
+      {
+        owner: 'fixture',
+        repo: 'pnyx',
+        name: 'Lint, build and tests',
+        head_sha: 'reviewed-head',
+        status: 'completed',
+        conclusion: 'success',
+        output: {
+          title: 'Documentation only',
+          summary: 'No code checks selected by the default-branch policy.',
+        },
+      },
+    ],
+  },
+  {
+    name: 'source',
+    files: [{ filename: 'src/app/server.ts' }],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'shipped skills',
+    files: [{ filename: 'skills/pnyx-cli/SKILL.md' }],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'fixture Markdown',
+    files: [{ filename: 'skills/pnyx-cli/fixtures/input.md' }],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'code renamed into docs',
+    files: [
+      {
+        filename: 'docs/new.md',
+        previous_filename: 'src/old.ts',
+      },
+    ],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'incomplete file list',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 301,
+    unavailable: false,
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'unavailable config',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 1,
+    unavailable: true,
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'head recheck unavailable',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 1,
+    unavailable: 'head',
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'head moved while reading files',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 1,
+    unavailable: false,
+    changedHead: true,
+    expected: 'true',
+    checks: [],
+  },
+])(
+  'CI scope handles $name without executing PR code',
+  async ({
+    files,
+    count,
+    expected,
+    checks,
+    unavailable,
+    changedHead,
+  }) => {
+    const runnerTemp = mkdtempSync(join(
+      process.env.TMPDIR!,
+      'ci-scope-',
+    ))
+    const modules = join(
+      runnerTemp,
+      'deslop-scope',
+      'node_modules',
+    )
+    mkdirSync(
+      modules,
+      { recursive: true },
+    )
+    symlinkSync(
+      fileURLToPath(new URL(
+        '../node_modules/deslop',
+        import.meta.url,
+      )),
+      join(
+        modules,
+        'deslop',
+      ),
+    )
+    const config = JSON.parse(readFileSync(
+      new URL(
+        '../deslop.config.json',
+        import.meta.url,
+      ),
+      'utf8',
+    ))
+    const result = JSON.parse(execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        scopeProgram,
+      ],
+      {
+        input: JSON.stringify({
+          files,
+          count,
+          config,
+          unavailable,
+          changedHead,
+        }),
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          RUNNER_TEMP: runnerTemp,
+        },
+      },
+    ))
+    expect(result.run).toBe(expected)
+    expect(result.checks).toEqual(checks)
   },
 )
 

@@ -26,10 +26,12 @@
         "Lint, build and tests"
       ],
       "instructions": [
+        "project",
         "review-code",
         "audit-tests",
         "deslop"
-      ]
+      ],
+      "ciRequired": true
     },
     {
       "name": "skill text",
@@ -44,8 +46,10 @@
         "Lint, build and tests"
       ],
       "instructions": [
+        "project",
         "deslop"
-      ]
+      ],
+      "ciRequired": true
     },
     {
       "name": "docs",
@@ -54,8 +58,11 @@
         "**/*.md"
       ],
       "commands": [],
-      "checks": [],
+      "checks": [
+        "Lint, build and tests"
+      ],
       "instructions": [
+        "project",
         "deslop"
       ]
     },
@@ -76,8 +83,10 @@
         "Lint, build and tests"
       ],
       "instructions": [
+        "project",
         "audit-tests"
-      ]
+      ],
+      "ciRequired": true
     },
     {
       "name": "UI",
@@ -96,11 +105,13 @@
         "Lint, build and tests"
       ],
       "instructions": [
+        "project",
         "review-code",
         "audit-tests",
         "deslop",
         "write-front-end"
-      ]
+      ],
+      "ciRequired": true
     },
     {
       "name": "back-end",
@@ -119,17 +130,21 @@
         "Lint, build and tests"
       ],
       "instructions": [
+        "project",
         "review-code",
         "audit-tests",
         "deslop"
-      ]
+      ],
+      "ciRequired": true
     }
   ],
   "instructions": {
+    "project": "AGENTS.md",
     "review-code": ".agents/skills/review-code/SKILL.md",
     "audit-tests": ".agents/skills/audit-tests/SKILL.md",
     "deslop": ".agents/skills/deslop/SKILL.md",
     "write-front-end": ".agents/skills/write-front-end/SKILL.md"
   },
-  "checkFixAttempts": 1
+  "checkFixAttempts": 1,
+  "publishLocal": false
 }
