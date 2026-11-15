@@ -530,6 +530,84 @@ test(
   },
 )
 
+test(
+  'stopping the resource sampler ignores an in-flight process listing',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const home = hydra.folder({ name: 'stopped-sampler' })
+    const result = await runProcess({
+      command: process.execPath,
+      args: [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        `
+      import childProcess from 'node:child_process';
+      import { promisify } from 'node:util';
+      import { syncBuiltinESMExports } from 'node:module';
+      import { setImmediate } from 'node:timers/promises';
+      import { readFileSync } from 'node:fs';
+      import { openLogs, closeLogs, log, flushLogs } from '#app/diagnostics.ts';
+      import { logFiles } from '#diagnostics/log-files.ts';
+      import { closePostgres } from '#store/postgres.ts';
+
+      let complete;
+      let started;
+      const listingStarted = new Promise(resolve => { started = resolve; });
+      const original = childProcess.execFile;
+      const listing = () => new Promise(resolve => {
+        complete = () => resolve({ stdout: process.pid + ' 1 8192\\n' });
+        started();
+      });
+      childProcess.execFile = (...args) => original(...args);
+      childProcess.execFile[promisify.custom] = listing;
+      syncBuiltinESMExports();
+      // Import after installing the external process gate, before promisify captures execFile.
+      const { startProcessLines } = await import('#diagnostics/process-line.ts');
+      const { watchZeroCache } = await import('#workers/agent-memory.ts');
+      openLogs();
+      watchZeroCache({ child: process });
+      const sampler = startProcessLines({ every: 1 });
+      const LISTING_WAIT_MS = 10000;
+      const timeout = setTimeout(() => { throw new Error('process listing did not start'); }, LISTING_WAIT_MS);
+      await listingStarted;
+      clearTimeout(timeout);
+      sampler.stop();
+      log({ operation: 'agent.memory', agents: [{ hydraId: 'synthetic', rss: 2097152 }], zeroRss: 3145728 });
+      await flushLogs();
+      complete();
+      await setImmediate();
+      await flushLogs();
+      const memory = logFiles().flatMap(file => readFileSync(file.path, 'utf8').trim().split('\\n').map(JSON.parse))
+        .filter(line => line.operation === 'agent.memory');
+      console.log(JSON.stringify(memory));
+      closeLogs();
+      await closePostgres();
+      `,
+      ],
+      env: {
+        ...process.env,
+        PNYX_HOME: home,
+      },
+    })
+    expect(
+      result.status,
+      result.stderr,
+    ).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual([
+      expect.objectContaining({
+        agents: [
+          {
+            hydraId: 'synthetic',
+            rss: 2097152,
+          },
+        ],
+        zeroRss: 3145728,
+      }),
+    ])
+  },
+)
+
 // The database is this file's scratch clone. Stall only its metadata function, restoring the original definition.
 test(
   'a stalled storage sample reports its short database timeout',
