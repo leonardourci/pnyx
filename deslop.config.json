@@ -10,6 +10,31 @@
   },
   "kinds": [
     {
+      "name": "workflow",
+      "match": [
+        ".github/workflows/**"
+      ],
+      "commands": [
+        "lint:fix",
+        "typecheck",
+        "eslint",
+        "css",
+        "build",
+        "tests"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
+        "project",
+        "review-code",
+        "audit-tests",
+        "deslop",
+        "write-ci-workflow"
+      ],
+      "ciRequired": true
+    },
+    {
       "name": "fixture",
       "match": [
         "**/fixtures/**"
@@ -143,7 +168,8 @@
     "review-code": ".agents/skills/review-code/SKILL.md",
     "audit-tests": ".agents/skills/audit-tests/SKILL.md",
     "deslop": ".agents/skills/deslop/SKILL.md",
-    "write-front-end": ".agents/skills/write-front-end/SKILL.md"
+    "write-front-end": ".agents/skills/write-front-end/SKILL.md",
+    "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md"
   },
   "checkFixAttempts": 1,
   "publishLocal": false

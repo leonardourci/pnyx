@@ -127,6 +127,7 @@ test(
     })
     expect(selection({ paths: ['vitest.config.ts'] }).commands).toContain('tests')
     expect(selection({ paths: ['.github/workflows/tests.yml'] }).commands).toContain('tests')
+    expect(selection({ paths: ['.github/workflows/tests.yml'] }).instructions).toContain('write-ci-workflow')
     expect(selection({
       paths: [
         'docs/testing.md',
@@ -178,6 +179,15 @@ console.log(JSON.stringify(result));
 `
 
 test.each([
+  {
+    name: 'empty file list',
+    files: [],
+    count: 0,
+    unavailable: false,
+    changedHead: false,
+    expected: 'true',
+    checks: [],
+  },
   {
     name: 'ordinary docs',
     files: [{ filename: 'docs/testing.md' }],
