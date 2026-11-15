@@ -91,17 +91,8 @@ export function cleanLogs({
   })
   const removed = remove({ files: files.filter(file => !retained.kept.has(file.day)) })
   setLogBudget({
-    maxBytes: Math.max(
-      0,
-      maxBytes - files.filter(file => file.day !== today && retained.kept.has(file.day))
-        .reduce(
-          (
-            sum,
-            file,
-          ) => sum + file.bytes,
-          0,
-        ),
-    ),
+    maxBytes,
+    days: files.filter(file => retained.kept.has(file.day)),
   })
 
   return removed
@@ -109,7 +100,10 @@ export function cleanLogs({
 
 export function clearLogs({ maxBytes }: { maxBytes: number }) {
   const removed = remove({ files: logFiles() })
-  setLogBudget({ maxBytes })
+  setLogBudget({
+    maxBytes,
+    days: [],
+  })
 
   return removed
 }

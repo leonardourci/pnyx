@@ -32,11 +32,11 @@ let toFiles = false
 let file: {
   day: string
   path: string
-  bytes: number
 } | undefined
 // Full days keep warnings and errors, while action lines stop at the size cap.
 let capped: string | undefined
 let byteLimit = Infinity
+const dayBytes = new Map<string, number>()
 let dropped = 0
 const FAILURE_ROOM = 2
 
@@ -46,9 +46,47 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
 
 export const logMode = () => mode
 
-export function setLogBudget({ maxBytes }: { maxBytes?: number }): void {
+export function setLogBudget({
+  maxBytes,
+  days,
+}: {
+  maxBytes?: number
+  days?: {
+    day: string
+    bytes: number
+  }[]
+}): void {
   if (maxBytes !== undefined) {
     byteLimit = maxBytes
+  }
+
+  if (days !== undefined) {
+    const retained = new Map(days.map(day => [
+      day.day,
+      Math.max(
+        day.bytes,
+        dayBytes.get(day.day) ?? 0,
+      ),
+    ]))
+
+    if (file && !retained.has(file.day)) {
+      retained.set(
+        file.day,
+        dayBytes.get(file.day) ?? 0,
+      )
+    }
+
+    dayBytes.clear()
+
+    for (const [
+      day,
+      bytes,
+    ] of retained) {
+      dayBytes.set(
+        day,
+        bytes,
+      )
+    }
   }
 
   if (dropped) {
@@ -114,24 +152,48 @@ function append({
           logsDir(),
           dayFile({ day }),
         ),
-        bytes: 0,
       }
 
+      let bytes = dayBytes.get(day) ?? 0
+
       try {
-        file.bytes = statSync(file.path).size
+        bytes = Math.max(
+          bytes,
+          statSync(file.path).size,
+        )
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
           throw error
         }
       }
+
+      dayBytes.set(
+        day,
+        bytes,
+      )
     }
 
+    const currentBytes = dayBytes.get(day) ?? 0
     const path = file.path
+    const olderBytes = [...dayBytes].reduce(
+      (
+        sum,
+        [
+          otherDay,
+          bytes,
+        ],
+      ) => otherDay === day ? sum : sum + bytes,
+      0,
+    )
+    const allowance = Math.max(
+      0,
+      byteLimit - olderBytes,
+    )
 
     const bytes = Buffer.byteLength(text) + 1
-    const limit = severe ? byteLimit * FAILURE_ROOM : byteLimit
+    const limit = severe ? allowance * FAILURE_ROOM : allowance
 
-    if (file.bytes + bytes > limit) {
+    if (currentBytes + bytes > limit) {
       dropped += 1
 
       if (!severe && capped !== day) {
@@ -139,14 +201,17 @@ function append({
         log({
           level: 'warn',
           operation: 'logs.full',
-          bytes: byteLimit,
+          bytes: allowance,
         })
       }
 
       return
     }
 
-    file.bytes += bytes
+    dayBytes.set(
+      day,
+      currentBytes + bytes,
+    )
     let output = streams.get(path)
 
     if (!output) {

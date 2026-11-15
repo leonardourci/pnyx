@@ -552,3 +552,56 @@ test(
     }
   },
 )
+
+test(
+  'a UTC rollover charges buffered earlier files before the next cleanup',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const home = hydra.folder({ name: 'rollover-logs' })
+    const module = new URL(
+      '../src/app/diagnostics.ts',
+      import.meta.url,
+    ).href
+    const result = await runProcess({
+      command: process.execPath,
+      args: [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        `
+      import { openLogs, closeLogs, writeLine, setLogBudget, flushLogs } from ${JSON.stringify(module)};
+      openLogs();
+      setLogBudget({ maxBytes: 4000 });
+      for (let i = 0; i < 8; i++) {
+        writeLine({ source: 'server', at: '2026-01-01T23:59:59.000Z',
+          line: { operation: 'rollover', name: 'x'.repeat(200) } });
+      }
+      for (let i = 0; i < 20; i++) {
+        writeLine({ source: 'server', at: '2026-01-02T00:00:00.000Z',
+          line: { operation: 'rollover', name: 'x'.repeat(200) } });
+      }
+      await flushLogs();
+      closeLogs();
+    `,
+      ],
+      env: {
+        ...process.env,
+        PNYX_HOME: home,
+      },
+    })
+    expect(result.status).toBe(0)
+    const first = readFileSync(join(
+      home,
+      'logs',
+      '2026-01-01.jsonl',
+    ))
+    const second = readFileSync(join(
+      home,
+      'logs',
+      '2026-01-02.jsonl',
+    ))
+    expect(first.byteLength).toBeGreaterThan(0)
+    expect(second.byteLength).toBeGreaterThan(0)
+    expect(first.byteLength + second.byteLength).toBeLessThanOrEqual(4000)
+  },
+)
