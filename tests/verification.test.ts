@@ -65,6 +65,7 @@ test(
         'deslop',
       ],
     })
+    expect(selection({ paths: ['.github/workflows/README.md'] }).commands).toEqual([])
     expect(selection({ paths: ['README.md'] })).toMatchObject({
       commands: [],
       checks: ['Lint, build and tests'],
@@ -148,7 +149,7 @@ const scopeScript = workflow.jobs.scope.steps.find((step: { id?: string }) => st
 const scopeProgram = `
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
-const { files, count, config, unavailable, changedHead } = JSON.parse(input);
+const { files, count, config, unavailable, changedHead, changedBase } = JSON.parse(input);
 const result = { run: '', checks: [], requestedConfig: null };
 let reads = 0;
 const github = {
@@ -156,7 +157,8 @@ const github = {
     pulls: {
       get: async () => {
         if (reads > 0 && unavailable === 'head') throw new Error('head unavailable');
-        return { data: { changed_files: count, head: { sha: reads++ > 0 && changedHead ? 'new-head' : 'reviewed-head' } } };
+        const reread = reads++ > 0;
+        return { data: { changed_files: count, head: { sha: reread && changedHead ? 'new-head' : 'reviewed-head' }, base: { ref: reread && changedBase === 'ref' ? 'other' : 'main', sha: reread && changedBase === true ? 'new-base' : 'reviewed-base' } } };
       },
       listFiles: () => undefined
     },
@@ -185,15 +187,20 @@ test.each([
     count: 0,
     unavailable: false,
     changedHead: false,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
   {
     name: 'ordinary docs',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 1,
+    files: [
+      { filename: 'docs/testing.md' },
+      { filename: '.github/workflows/README.md' },
+    ],
+    count: 2,
     unavailable: false,
     changedHead: false,
+    changedBase: false,
     expected: 'false',
     checks: [
       {
@@ -216,6 +223,7 @@ test.each([
     count: 1,
     unavailable: false,
     changedHead: false,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
@@ -225,6 +233,7 @@ test.each([
     count: 1,
     unavailable: false,
     changedHead: false,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
@@ -234,6 +243,7 @@ test.each([
     count: 1,
     unavailable: false,
     changedHead: false,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
@@ -248,6 +258,7 @@ test.each([
     count: 1,
     unavailable: false,
     changedHead: false,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
@@ -257,6 +268,7 @@ test.each([
     count: 301,
     unavailable: false,
     changedHead: false,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
@@ -266,6 +278,7 @@ test.each([
     count: 1,
     unavailable: true,
     changedHead: false,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
@@ -275,6 +288,27 @@ test.each([
     count: 1,
     unavailable: 'head',
     changedHead: false,
+    changedBase: false,
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'base branch changed at the same commit',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    changedBase: 'ref',
+    expected: 'true',
+    checks: [],
+  },
+  {
+    name: 'base moved while reading files',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 1,
+    unavailable: false,
+    changedHead: false,
+    changedBase: true,
     expected: 'true',
     checks: [],
   },
@@ -284,6 +318,7 @@ test.each([
     count: 1,
     unavailable: false,
     changedHead: true,
+    changedBase: false,
     expected: 'true',
     checks: [],
   },
@@ -296,6 +331,7 @@ test.each([
     checks,
     unavailable,
     changedHead,
+    changedBase,
   }) => {
     const runnerTemp = mkdtempSync(join(
       process.env.TMPDIR!,
@@ -341,6 +377,7 @@ test.each([
           config,
           unavailable,
           changedHead,
+          changedBase,
         }),
         encoding: 'utf8',
         env: {

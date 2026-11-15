@@ -12,7 +12,7 @@
     {
       "name": "workflow",
       "match": [
-        ".github/workflows/**"
+        ".github/workflows/*.{yml,yaml}"
       ],
       "commands": [
         "lint:fix",

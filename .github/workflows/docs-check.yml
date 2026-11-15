@@ -48,7 +48,7 @@ jobs:
                 const selection = select({ config, paths });
                 run = selection.commands.length > 0 || selection.requiredChecks.length > 0;
                 const { data: current } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
-                if (current.head.sha !== head) run = true;
+                if (current.head.sha !== head || current.base.ref !== pr.base.ref || current.base.sha !== pr.base.sha) run = true;
               }
             } catch (error) {
               run = true;
