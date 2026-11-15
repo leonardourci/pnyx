@@ -248,11 +248,11 @@ test(
 )
 
 test.each([
-  1440,
-  390,
+  { width: 1440 },
+  { width: 390 },
 ])(
-  '%ipx: older pages keep the reading position, reserve space for loading, and reach an early decision without looping',
-  async width => {
+  '$width px: older pages keep the reading position, reserve space for loading, and reach an early decision without looping',
+  async ({ width }) => {
     const hydra = await longConversation({ earlyQuestion: true })
 
     // The server's messages from a reply to an older-page read on wait here while holding, so the test decides when it lands.
