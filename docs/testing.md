@@ -94,7 +94,7 @@ Rules:
 - `migration.test.ts`: the migration from #378's schema at live size.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
-- `verification.test.ts`: which tests a change's paths call for, and the staged build.
+- `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.
 - `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions and resumed turns, on Claude and Codex.
 - `e2e/board.test.ts`: the live board and a card's Activity in Chrome.
