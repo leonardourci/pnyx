@@ -18,6 +18,8 @@ On recovery, read your task and steering inbox before repeating side effects. Pr
 
 Use `task parent <task> <parent|none>` to nest an existing task or detach it. Nesting has one level; a task with children cannot become a child.
 
+Use `task arrange <task> [--before <task>]` for visual order within a project and parent. `task reorder --behind` remains the worker queue command. Project columns use `view set` workspace layout; lifecycle `column` commands remain compatibility controls.
+
 Use `task create --before <task>` to insert a task before an existing task in its destination column with one event.
 
 Narrow Oracle before its result limit with `oracle <words> --column <id> --project <name|path> --since <date>`; column and project flags can repeat for alternatives.

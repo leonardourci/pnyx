@@ -1,49 +1,51 @@
 ---
 name: pnyx-arrange-columns
-description: Use when you are Hydra and are about to move or reorder a card, or create, rename, describe, rule, reorder, delete or resize a Hydra column.
+description: Use when you are Hydra and are about to assign a task to a project, nest or arrange tasks, resize project columns, or inspect legacy lifecycle placement rules.
 user-invocable: false
 metadata:
   internal: true
 ---
 
-# Hydra columns
+# Arrange work
 
-Each column has a rule that code applies without a model. The digest lists column names, task counts and descriptions. Read `pnyx-axi column list --hydra <hydra>` for placement rules before changing columns. When the owner asks for a column change, write or update its rule so future events and commands place cards there automatically.
+The page groups tasks by project. Ideas is first and contains tasks with no project.
+Labels do not create project columns. A project may group several repositories;
+each repository retains its own copies, start command, landing rules and memory.
 
-## Move a card
+- Read `project list --hydra <hydra>` before choosing a repository. Use
+  `project add <path>` for a repository, or for a folder with repositories directly
+  beneath it. Use `project group <name> <repo-path>...` to group attached repositories.
+- Use `task rename <task> --project <repo-path>` to assign a repository. An empty
+  project clears the assignment. A child appears beneath its parent and retains
+  its own repository and worker.
+- `task parent <task> <parent|none>` nests or detaches. There is one level;
+  a task with children cannot become a child. Detaching returns it to its project.
+- `task arrange <task> [--before <task>]` sets visual order within a project and
+  parent. State groups stay needs you, running, waiting/queued/paused, then done.
+  `task reorder --behind` still changes a worker queue, not visual order.
+- `view set --json '{"workspace":{"projectOrder":["ideas","<project-id>"],"projectWidths":{"<project-id>":560},"foldedProjects":[]}}'`
+  saves project layout. Project ids are repository paths or the group's id.
+  Widths have a 280px minimum and no maximum. `collapsed` and `chatCollapsed`
+  fold the Hydra and its chat. Pass `--hydra <hydra>` on every command.
 
-Pnyx computes facts from the recorded worker state, owner questions, discussion hold, pull requests, task kind, completion, reminders and queue. The first column in display order with a matching rule wins. Successful starts and queue handoffs record working; owner questions, permissions, merge and go questions, or due reminders go to Needs you. Worker `needs_you` and `blocked` notes stay In progress for Hydra to resolve. A worker paused for checks stays In progress; an owner pause or an ended worker with unfinished work goes to Parked. Held unfinished work stays in Backlog (the Queued role), marked Talking, until a real go question puts it in Needs you. Checked done declarations and all non-abandoned linked pull requests merging place completed work in Done, even with a discussion hold. The hold remains and applies again if the task reopens. A finished turn or successful session never declares completion. On Firstmate-linked Hydras, Firstmate's records own placement.
+A repository can have only one Hydra. New duplicate attachments are refused.
+Existing duplicates remain usable and Setup and Settings ask the owner for a keeper.
+Only the owner runs `project keep <repo-path> --hydra <keeper>`. It moves every task
+and records each move, or lists all blockers and moves nothing. Never choose for him.
 
-Use `move` for an owner request or an exceptional correction with a reason. A manual placement, including one in a custom column, holds until the next change in the matching rule's destination. Ordinary activity, repeated status notes and edits that match the same destination leave it alone.
+## Lifecycle compatibility
 
-```sh
-pnyx-axi move <task> <column> --reason "<why>" --hydra <hydra>
-```
+Lifecycle columns remain internal compatibility state. Their rules still drive
+completion, queues, manual overrides and Firstmate mirrors. They do not create
+visible project columns. Ordinary activity and declarations update state automatically;
+do not create or move lifecycle columns to organize the page.
 
-Inspect the proposed action, then repeat the command with `--confirm <token>`.
+Use the legacy `column list`, `column rule`, `column create|rename|describe|reorder|delete`
+and `move` commands only for an explicit lifecycle-rule request or a correction.
+Read their help and inspect the confirmation before repeating with its token.
+Firstmate still owns its mirrored lifecycle placement. Existing `column resize`
+and `layout` values remain available for old clients; use `view set` for project widths.
 
-Rely on the worker's checked done declaration or Pnyx's merge transition. If completion evidence is missing, ask the worker to record it and declare the result. Do not repeat its status or move the card to Done yourself. Passing local checks alone is not completion.
-
-## Change columns
-
-Use `column rule <id> --when "<fact>[,<fact>]" --reason "<why>"` to replace a column's rule. Commas mean AND; repeat `--when` for OR. Prefix a fact with `!` to negate it. Use `--clear` instead of `--when` for manual placement only. Inspect the confirmation's rules and affected cards before repeating it with its token. New custom columns start manual only; put a custom column before broader matching columns when it should win.
-
-Facts:
-- `worker:none`, `worker:working`, `worker:checks`, `worker:blocked`, `worker:hydra`, `worker:paused`, `worker:ended`;
-- `owner-question`, `held`, `reminder-due`, `queued` (queued behind a worker), `done`;
-- `pr:none`, `pr:draft`, `pr:open`, `pr:pending`, `pr:green`, `pr:red`, `pr:merged`, `pr:closed`;
-- `kind:build`, `kind:investigation`.
-
-Pull request facts can coexist, including facts from different linked pull requests. Green and red require recorded checks; an absent summary is neither. Keep Needs you for real owner questions and reminders, and keep held work in Backlog. Exclude those facts when writing a broader custom rule:
-
-```sh
-pnyx-axi column rule custom:research --when "kind:investigation,!done,!held,!owner-question,!reminder-due" --reason "Keep investigations together" --hydra <hydra>
-```
-
-
-- `column create --title "<name>" --description "<when and why>"`, `column rename <id> --title "<name>"` and `column describe <id> --description "<when and why>"` maintain the columns.
-- `column reorder <id> --before <id>` moves a column; `column delete <id> --to <remaining-id>` deletes it and places its cards in the destination. A Firstmate-linked Hydra's default columns cannot be deleted.
-- Card moves, column reorders, rule edits and deletes first return `confirmation: needed` and a token: inspect the action and repeat the exact command with `--confirm <token>`. A changed target needs a new confirmation.
-- `column resize <id> --width <pixels>` and `hydra resize --width <pixels>` change widths; `layout show` reports them and their defaults, and `layout reset` restores the default widths.
-
-Pass `--hydra <hydra>` and `--reason "<why>"` on each.
+Rely on checked completion and recorded PR merges. A finished turn or passing local
+checks does not declare completion. Done retention keeps its existing task overrides
+and shared default of 24 hours. Parents stay open while any child is unfinished.

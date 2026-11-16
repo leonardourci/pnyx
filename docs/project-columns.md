@@ -44,38 +44,49 @@ Grouping A is settled. Labels do not define columns.
 
 ## Layers and current state
 
-- [x] Read source design, feedback and existing contributor rules.
-- [x] Record settled design and migration inventory here.
-- [ ] Automatic connection/query recovery with regression evidence.
-- [ ] Project and repository grouping, ownership and CLI contracts.
-- [ ] One-level parent changes and rollups with CLI and API validation. The parent command and optimistic projection are implemented; rollups and gestures remain.
-- [ ] Shared multi-Hydra connection views and slim header.
-- [ ] Project grids, compact cards and in-place full detail/chat.
-- [ ] Folding, resize persistence, physical drag/reorder/nesting and motion.
-- [ ] Targeted checks and synthetic before/after screenshots in both themes.
-- [ ] Commit and push layers to a linked draft PR.
+The core and UI layers are implemented in the draft PR. The live-app pass covers desktop and phone; the final readiness reviews and full verification are deliberately held.
+
+- [x] Read settled design and record its migration decisions.
+- [x] Automatic stopped-client/query recovery and bounded connection logs.
+- [x] Project groups, deterministic duplicate refusal and atomic keeper choice.
+- [x] One-level parent changes, rollups and parent completion/retention.
+- [x] Shared multi-Hydra data/threads, horizontal axis and slim header.
+- [x] Project grids, compact cards and inline details with worker chat.
+- [x] Persisted folds/sizes, shared hover actions, drag ranking/nesting/detach and motion.
+- [x] Global Oracle waiting list/search and cross-Hydra task navigation.
+- [x] Run desktop/phone interaction and restart/drop proof. Upload the synthetic media to the PR.
+- [x] Commit the implementation in layers. Push and refresh the same draft PR at the checkpoint.
+- [ ] Later: deslop dogfood, readiness reviews and full verification, when Hydra lifts the hold.
 
 ## Migration inventory
 
 | Existing behavior | Deliberate destination | Implementation |
 | --- | --- | --- |
-| Lifecycle moves tasks into role columns | Existing lifecycle facts determine state; project determines position | Pending |
-| Custom status columns and placement rules | Retire status grouping deliberately; preserve replay of historical events | Pending |
-| Done timestamps set by Done column entry | Timestamp state becoming done; keep hide-after and 24-hour retention | Pending |
-| Queue needs a queued-role column | Queue remains functional with a queued state independent of placement | Pending |
-| Firstmate role columns and locked defaults | Mirror facts into state without locking project columns | Pending |
-| Manual move overrides lifecycle placement | Project change moves a task; rank reorders within state | Pending |
-| Column CLI and saved widths/order | Project layout commands and persisted project widths/order/folds | Pending |
-| Column skills and Hydra digest | Teach project selection and report per-project state counts | Pending |
-| Parent specified only at creation | One task parent command sets or removes it; reject cycles and deeper nesting | Implemented and integration tested |
-| One folder is one project | Project groups repositories; repo folder attaches alone; folder of repos attaches as a group | Pending |
-| Same project may attach to several Hydras | Refuse a second owner for projects and repositories | Pending |
-| Copies, start and landing configured per project | Preserve settings on the repository where the worker runs | Pending |
-| Memory keyed by normalized remote | Keep memory per repository | Pending |
-| One selected Hydra supplies page data | Retained scopes share one WebSocket and Zero client across visible Hydras | Pending |
-| Query/client failure offers manual Retry | Automatically rebuild failed reads with bounded backoff | Implemented; stopped-authentication browser regression passes |
+| Lifecycle placement in role columns | Keep role columns as compatibility facts; render by project and factual state | Preserved. No history rewrite |
+| Custom status columns and rules | Continue applying their rules internally; no visible status columns | Preserved. The column CLI remains a lifecycle control |
+| Done timestamps and hide overrides | Keep existing retention; parents finish only after their children | Implemented. Default remains 24 hours |
+| Queued-role column and worker queues | Keep queue placement and handoff guards | Preserved. `task reorder --behind` stays a queue operation |
+| Firstmate locked status columns | Keep mirror placement guards; group the view by project | Preserved. Keeper selection lists Firstmate blockers |
+| Manual placement overrides | Keep lifecycle override events; project edits choose visible position | Preserved. `task arrange` changes visual rank |
+| Column widths/order and CLI | Preserve old values for old clients; workspace view fields own project layout | Implemented through `view set`, not legacy `column resize` |
+| Column skills and digest | Describe project arrangement and per-project state counts; explain legacy controls | Updated |
+| Parent specified only at creation | `task parent` sets/clears it, rejecting cycles and deeper nesting | Implemented; prior integration cases passed |
+| One folder is one project | Repo attaches alone; folder of direct child repos creates a group; `project group` groups attachments | Implemented atomically |
+| Repo attached to several Hydras | Keep legacy duplicates flagged; owner chooses keeper; refuse new duplicates | Implemented in Setup, Settings and CLI; prior integration cases passed |
+| Per-project copies/start/landing/memory | Keep them on each repository | Preserved |
+| Hidden Hydra preferences | Honor old hidden choices as folded strips until the owner explicitly unfolds them; new layout uses folding | Implemented |
+| Selected Hydra alone supplies data | All visible scopes share one WebSocket and Zero client; retain each open card's thread | Implemented |
+| Query/client failure requires Retry | Automatically rebuild failed reads with backoff and reconcile retained edits/open cards | Implemented; prior stopped-auth browser regression passed |
+| Hydra sequence absent from Zero | Replicate it with schema 6 publication upgrade, so confirmations settle | Proved by an app fold, sequence 28→29 and cleared pending state |
+| Free-text project labels | Ideas with a plain tag until assignment | Implemented per ask-204158 |
 
-## Open implementation questions
+## Legacy project values
+
+Free-text project values with no matching repository go into Ideas. Keep the stored
+value and show it as a small plain tag. No temporary columns are created. Assigning
+a real repository moves the task into its project's column (Hydra answer ask-204158).
+
+## Ownership decisions
 
 Existing duplicate attachments keep working after upgrade and no task moves automatically. Setup and Settings must name each duplicated repository and its Hydras, asking which Hydra keeps it. Only the owner's explicit pick moves tasks, recording every move. New duplicate attachments are refused deterministically. Cover continued operation of flagged duplicates, refusal of new duplicates, and recorded task moves after the owner's pick. This migration policy was settled by Hydra in answer ask-203840.
 
@@ -84,6 +95,31 @@ Keeper selection is all or nothing. If any task cannot move (including live work
 No alternative visual design is open. Any newly discovered product or architecture
 choice goes to Hydra before implementing dependent work. Historical events must
 remain replayable. Existing behavior continues until its replacement is tested.
+
+## Running-app evidence
+
+The isolated server uses real Postgres, Zero and the app, with fake provider
+boundaries and synthetic tasks. Headless Chrome was run under the shared slot.
+Desktop captures use 1440×960 and 1920×1080; phone captures use 390×844.
+
+- Inline card settles at 660×520. Explicit window is 980px wide; closing it leaves
+  the next card click inline. Parent children and cross-project tags remain visible.
+- Physical reordering records `card.moved`; nesting on the pill persists; detaching
+  returns the task to Ideas. A 920px project shows three cards per row; Home
+  returns its width to the 280px minimum. No maximum is imposed.
+- Folded Hydra is 58px wide and lists projects. A project chip unfolds it.
+  Wheel scrolling snaps to the next Hydra's leading edge.
+- Forced socket drops preserve the open card DOM and reconcile a title edited
+  while disconnected. A real stop/start of the isolated server preserves that DOM.
+  Logged sequences show stale 49→reconciled 50, then stale 50→reconciled 50 on restart.
+- Reload preserves the open card, unsent worker draft and horizontal position.
+  The browser paths reported no page errors.
+- Lint, CLI/web type checks and the build pass. Full verification remains held.
+
+The behavior pass fixed a missing replicated sequence that left edits pending,
+a server-only planner imported by the browser, opening measured before size settled,
+horizontal snap coordinates, a resize preview that skipped its save, and scope
+isolation for keyboard, theme, drafts and open task streams.
 
 ## Validation direction
 

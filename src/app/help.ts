@@ -17,9 +17,9 @@ description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
-  project add|list|set|remove                   Attach, list or detach projects
+  project add|group|keep|list|set|remove      Attach repositories, group projects or choose a keeper
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|parent|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
+  task create|list|show|rename|parent|arrange|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
@@ -242,8 +242,12 @@ Long fields are cut to 1,000 characters with their total length. The newest five
 pnyx-axi task refresh-links <id>
 Reads the task's open pull requests now instead of at their next poll, discarding a read in flight; task show lists what was read.
 pnyx-axi task parent <task> <parent|none> [--event-id <id>]
+pnyx-axi task arrange <task> [--before <task>] [--event-id <id>]
+Arrange changes visual order within a project and parent; the page keeps state groups together.
+Task reorder --behind remains the worker queue operation.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
---project adds a compact project label; an empty value clears it.
+--project assigns a repository name/path; an empty value returns the task to Ideas.
+Unmatched legacy values stay as plain tags in Ideas.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold | --wait-for <task> [--ready-when task-done|pr-opened|pr-merged]]
 Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.
