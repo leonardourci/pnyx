@@ -121,3 +121,5 @@
 
 .hydra-workspace.app, .workspace-chat { interpolate-size: allow-keywords; transition: width 240ms, min-width 240ms; }
 @media (prefers-reduced-motion: reduce) { .hydra-workspace.app, .workspace-chat { transition: none; } }
+
+.hydra-workspace.app { overflow: clip; }

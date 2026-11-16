@@ -633,10 +633,12 @@ export function HydraView({
     ))
   }
 
-  const oracleIds = hydra.workspaces.map(workspace => workspace.navigation.hydraId).join(':')
+  const oracleIds = hydra.workspaces.filter(workspace => workspace.connected)
+    .map(workspace => workspace.navigation.hydraId)
+    .join(':')
   const searchCommand = useMemo(
     () => workspaceSearch({
-      ids: oracleIds.split(':'),
+      ids: oracleIds.split(':').filter(Boolean),
       commandFor: hydra.commandFor,
     }),
     [
