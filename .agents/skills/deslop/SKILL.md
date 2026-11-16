@@ -30,7 +30,7 @@ A cleanup removes complexity the job didn't ask for without changing what the co
 - [ ] Review file splits using [follow-conventions](../follow-conventions/SKILL.md#files-and-concerns). Recommend changing a split that adds indirection without a clear job or scatters closely related code.
 - [ ] Keep every path's outcome. When a `.catch(() => fallback)` becomes `try`/`catch`, the fallback value and the errors that reach it stay the same. Serialized work stays serialized, independent work stays concurrent, and retries, cleanup in `finally` and the message the user sees stay as they were.
 - [ ] Keep the diff small and mechanical, one logical change per commit, so a reviewer can compare old and new arm by arm. Update or delete guidance the cleanup made stale in the same change.
-- [ ] Scan what you added for new shorthand: `git diff origin/main -U0 -- '*.ts' '*.tsx' | grep -E '^\+.*(\.then\(|\bvoid [a-zA-Z(]|\?\?=|\|\|=|&&=|\.\.\.\(|for \(;;\)|while \(true\))'`. Name any you keep on purpose in the PR, with its reason.
+- [ ] Scan added code in the supplied diff for new shorthand. In standalone use, read the diff against the PR's target branch, including uncommitted changes. Name any shorthand you keep on purpose in the PR, with its reason.
 
 Record meaningful fixes and any intentional exception. Record what changed or that the review was clean. The final commit’s deslop note/status supplies proof.
 

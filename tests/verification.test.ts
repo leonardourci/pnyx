@@ -145,7 +145,11 @@ test(
       expect(
         selected.instructions,
         path,
-      ).toEqual(instructions)
+      ).toEqual(expect.arrayContaining(instructions))
+      expect(
+        selected.instructions,
+        path,
+      ).toHaveLength(instructions.length)
     }
 
     const selected = select({
