@@ -535,3 +535,106 @@ test(
     })).code).toBe('VALIDATION_ERROR')
   },
 )
+
+test(
+  'parent retention waits for every child and reopens when a child resumes',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'family',
+        '--title',
+        'Release',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'part',
+        '--title',
+        'Export',
+        '--parent',
+        'family',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'family',
+        'done',
+        '--note',
+        'Parent work completed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'part',
+        'done',
+        '--note',
+        'Child completed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })[0]?.done_at).toBeTypeOf('string')
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'part',
+        'working',
+        '--note',
+        'Child resumed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+    await pnyx.restart()
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+  },
+)
