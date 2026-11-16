@@ -19,10 +19,11 @@ Grouping A is settled. Labels do not define columns.
   each repository has one project. A project can group several repositories.
 - Project columns resize from a minimum of 280px with no maximum. Their grids
   fit as many compact cards per row as their width allows.
-- A closed card has two lines: state pill, age, repository tag when needed and
-  provider icon (model and existing usage panel on hover); then chevron and title.
+- A closed card has three rows: state pill, age and provider icon (model and
+  existing usage panel on hover); chevron and title; repository tag and other labels.
+  Root and sub-task cards share this layout. Ideas without labels omit the empty row.
   Only parents have chevrons. A parent rolls up state and completed-part count.
-  Compact state and age labels leave room for repository names. Full state details
+  Compact state and age labels leave room for progress. Full state details
   remain on hover; tags stay inside the card and wrap instead of losing text.
 - Order is needs you, running, waiting/paused/queued, done. Dragging reorders within
   a state group. Done tasks disappear after 24 hours, honoring task hide overrides.
@@ -51,7 +52,7 @@ Grouping A is settled. Labels do not define columns.
 
 ## Layers and current state
 
-The core and UI layers are implemented in the draft PR. The live-app pass covers desktop and phone. Main now includes deslop, and the branch is completing its focused regression coverage before the final gate and CI.
+The core and UI layers are implemented. The live-app pass covers desktop and phone. The previous head passed deslop and required CI; the settled three-row card change is repeating that gate with new browser evidence.
 
 - [x] Read settled design and record its migration decisions.
 - [x] Automatic stopped-client/query recovery and bounded connection logs.
@@ -63,7 +64,7 @@ The core and UI layers are implemented in the draft PR. The live-app pass covers
 - [x] Global Oracle waiting list/search and cross-Hydra task navigation.
 - [x] Run desktop/phone interaction and restart/drop proof. Upload the synthetic media to the PR.
 - [x] Commit the implementation in layers. Push and refresh the same draft PR at the checkpoint.
-- [ ] Finish the deslop dogfood pass, focused regression flips and required CI before readiness.
+- [ ] Refresh deslop and required CI for the settled three-row closed cards. The five focused regression flips passed on the preceding head.
 
 ## Migration inventory
 
@@ -99,13 +100,13 @@ Existing duplicate attachments keep working after upgrade and no task moves auto
 
 Keeper selection is all or nothing. If any task cannot move (including live workers, PRs in flight, parent/dependency links, Firstmate mirrors and active sources), refuse with every blocking task and reason. Move nothing and defer nothing. The owner retries after settling the blockers (Hydra answer ask-203909).
 
-## Open card-layout choice
+## Closed-card layout
 
-The owner is comparing the fitted two-line card with a three-line card that puts
-the repository and other chips below the title. Capture the same cards side by
-side at minimum and typical widths in both themes. Keep two lines in the app
-until the owner picks. The three-line version is a browser-only comparison, with
-no product switch or hidden implementation.
+The owner picked three rows in asks 206506 and 206510 (steer r207057). Repository
+and other labels sit below the title on every closed card, including sub-tasks.
+Repository tags remain visible even in a single-repository project. Legacy free-text
+projects keep their plain tag in Ideas. Open cards keep their existing metadata
+and editable context. This replaces the two-row comparison; there is no layout switch.
 
 Any other newly discovered product or architecture choice goes to Hydra before
 dependent work. Historical events remain replayable.
@@ -149,7 +150,7 @@ widths of 280, 740 and 944px. They confirm control separation, readable reposito
 tags, no horizontal column scroll and cards beside a 660×520 open card. Physical
 reorder and nesting still persist. A dropped socket and a restart through portless
 retain the open card and reconcile fresh Zero data even when the internal port
-changes. The comparison captures show 258px and 360px cards in both themes.
+changes. The comparison captures show 258px and 360px cards in both themes. The settled three-row layout was then checked on the real trial at card widths 258, 353 and 514px, including indented children down to 232px, in both themes. Repository and label rows stay inside their cards; the existing open-card metadata and context remain available.
 
 ## Validation and readiness
 
@@ -157,13 +158,14 @@ The owner first asked for running-app proof and held new tests. With deslop merg
 
 Two fresh deslop passes retained eight fixes: stale active-Hydra effects, project and card resize previews retained after saving, stale drag targets, folding that unmounted card state, reused grouping event IDs, unscoped composer focus and an unchecked browser-test callback. Both stopped with the test audit incomplete. The five focused regressions now have passing baselines and failing mutations in a throwaway copy. The affected suites also retain their existing task and Activity coverage; the retired hide-Hydra journey is folded into the current fold/draft flow.
 
-After its quick local commands pass, ask Hydra for CI approval with the waiting run URL and exact SHA. Required checks are `deslop` and `Lint, build and tests`. Confirm the final commit's deslop note and status, report the green head and findings, then mark PR #410 ready. Keep the isolated owner trial running on the latest build and keep two-line cards until the owner chooses otherwise.
+After its quick local commands pass, ask Hydra for CI approval with the waiting run URL and exact SHA. Required checks are `deslop` and `Lint, build and tests`. Confirm the final commit's deslop note and status, report the green head and findings, then mark PR #410 ready. Keep the isolated owner trial running on the latest build with the settled three-row closed cards.
 
 ## Focused regression proof
 
 | Behavior | Mutation | Failing observation |
 | --- | --- | --- |
 | Repository grouping | Reuse the group ID for repeated command event IDs | The third repository task never enters Suite |
+| Closed-card labels | Omit the closed-card label row | The grouped repository tag is absent; the passing flow also checks labels through open/close and the legacy Ideas tag |
 | Visual arrangement | Ignore the arrange operation | The rendered order stays unchanged |
 | Parent retention | Suppress all-children completion | The parent's completion timestamp remains absent |
 | Folding identity | Unmount folded project content | The original open card is disconnected |
