@@ -542,19 +542,53 @@ test(
         what: 'initial card order',
         check: async () => (await cards.allTextContents()).join('|') === 'First task|Second task|Third task',
       })
-      await hydra.owner({
-        args: [
-          'task',
-          'arrange',
-          'c',
-          '--before',
-          'a',
-        ],
-      })
+      const first = cards.filter({ hasText: 'First task' })
+      const third = cards.filter({ hasText: 'Third task' })
+      await third.scrollIntoViewIfNeeded()
+      await first.scrollIntoViewIfNeeded()
+      const from = await third.boundingBox(), to = await first.boundingBox()
+
+      if (!from || !to) {
+        throw new Error('The drag cards are not visible')
+      }
+
+      await page.mouse.move(
+        from.x + 12,
+        from.y + 8,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        to.x + 8,
+        to.y + 3,
+        { steps: 15 },
+      )
       await until({
-        what: 'rearranged cards',
-        check: async () => (await cards.allTextContents()).join('|') === 'Third task|First task|Second task',
+        what: 'cards slide aside while the pointer is still held',
+        check: async () => {
+          const moved = await first.boundingBox()
+
+          return !!moved && moved.y > to.y + 1
+            && (await cards.allTextContents()).join('|') === 'Third task|First task|Second task'
+        },
       })
+      const ghost = page.locator('.physical-ghost')
+      const lifted = await ghost.boundingBox()
+
+      if (!lifted) {
+        throw new Error('The lifted card is not visible')
+      }
+
+      expect(lifted.y).toBeLessThan(from.y)
+      await until({
+        what: "the following card fills the dragged card's original position",
+        check: async () => {
+          const filled = await cards.filter({ hasText: 'Second task' }).boundingBox()
+
+          return !!filled && filled.y >= from.y - 3
+        },
+      })
+      await page.mouse.up()
+      await ghost.waitFor({ state: 'detached' })
       await page.reload()
       await until({
         what: 'saved card order',

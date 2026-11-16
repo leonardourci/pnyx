@@ -59,7 +59,7 @@ export function HoverActions({
       }
 
       const show = (event: Event) => {
-        if (hiding || (event.type === 'focusin' && !keyboardFocus())) {
+        if (hiding || card.closest('[data-dragging]') || (event.type === 'focusin' && !keyboardFocus())) {
           return
         }
 

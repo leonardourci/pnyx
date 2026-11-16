@@ -2,7 +2,10 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
 
 const START_DISTANCE = 6
-const SETTLE_MS = 180
+const SETTLE_MS = 200
+const DROP_MS = 220
+const MOVE_AGAIN_PX = 10
+const DRAG_EASING = 'cubic-bezier(.22,1,.36,1)'
 const EDGE_MARGIN = 48
 const SCROLL_STEP = 16
 export interface PhysicalMove {
@@ -52,6 +55,50 @@ export function movedOrder<T>({
   return remaining
 }
 
+function layoutBounds({ element }: { element: HTMLElement }) {
+  const rect = element.getBoundingClientRect()
+  let dx = 0, dy = 0
+
+  for (let parent: HTMLElement | null = element; parent; parent = parent.parentElement) {
+    const transform = new DOMMatrixReadOnly(getComputedStyle(parent).transform)
+    dx += transform.m41
+    dy += transform.m42
+  }
+
+  return new DOMRect(
+    rect.left - dx,
+    rect.top - dy,
+    rect.width,
+    rect.height,
+  )
+}
+
+function distanceToPoint({
+  rect,
+  x,
+  y,
+}: {
+  rect: DOMRect
+  x: number
+  y: number
+}) {
+  const dx = Math.max(
+    rect.left - x,
+    0,
+    x - rect.right,
+  )
+  const dy = Math.max(
+    rect.top - y,
+    0,
+    y - rect.bottom,
+  )
+
+  return Math.hypot(
+    dx,
+    dy,
+  )
+}
+
 export function usePhysicalDrag({
   root,
   move,
@@ -79,9 +126,18 @@ export function usePhysicalDrag({
 
       let source: HTMLElement | null = null
       let ghost: HTMLElement | null = null
+      let lifted: HTMLElement | null = null
+      let slot: HTMLElement | null = null
+      let hovered: HTMLElement | null = null
+      let settling = false
+      let movedAt: {
+        x: number
+        y: number
+      } | null = null
       let x = 0, y = 0
       let origin: DOMRect | undefined
       let latest: PhysicalMove | null = null
+      let placement: PhysicalMove | null = null
       let frame = 0, scrollFrame = 0
       let pointerX = 0, pointerY = 0
       let suppressClick = false
@@ -138,8 +194,12 @@ export function usePhysicalDrag({
       }
 
       const cleanup = () => {
-        ghost?.remove(); ghost = null
+        ghost?.remove(); ghost = null; lifted = null
+        slot?.removeAttribute('data-drag-slot'); slot = null
+        hovered?.removeAttribute('data-drag-hover'); hovered?.removeAttribute('data-nest-armed'); hovered = null
+        surface.querySelectorAll('[data-drag-excluded]').forEach(element => element.removeAttribute('data-drag-excluded'))
         source?.removeAttribute('data-lifted'); source = null
+        settling = false; movedAt = null; latest = null; placement = null
         surface.removeAttribute('data-dragging'); surface.removeAttribute('data-drag-parent')
         cancelAnimationFrame(frame)
         cancelAnimationFrame(scrollFrame)
@@ -147,7 +207,7 @@ export function usePhysicalDrag({
       }
 
       const down = (event: PointerEvent) => {
-        if (event.button !== 0 || !(event.target instanceof Element)) {
+        if (settling || event.button !== 0 || !(event.target instanceof Element)) {
           return
         }
 
@@ -171,17 +231,21 @@ export function usePhysicalDrag({
 
         source = candidate
         x = event.clientX; y = event.clientY
-        origin = source.getBoundingClientRect()
-        latest = null
+        slot = source.dataset.sortKind === 'task'
+          ? source.closest<HTMLElement>('[data-child],.task-family') ?? source : source
+        origin = slot.getBoundingClientRect()
+        latest = null; movedAt = null
       }
 
       // eslint-disable-next-line pnyx/object-params -- PointerEvent listener, also replayed during edge scrolling.
       const pointer = (event: PointerEvent) => {
         pointerX = event.clientX; pointerY = event.clientY
 
-        if (!source || !origin) {
+        if (settling || !source || !origin || !slot) {
           return
         }
+
+        const sourceScope = source.dataset.sortScope
 
         if (!ghost && Math.hypot(
           event.clientX - x,
@@ -193,28 +257,66 @@ export function usePhysicalDrag({
         event.preventDefault()
 
         if (!ghost) {
-          ghost = source.cloneNode(true) as HTMLElement
-          ghost.classList.add('physical-ghost')
-          ghost.removeAttribute('id'); ghost.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'))
-          ghost.inert = true; ghost.setAttribute(
+          ghost = document.createElement('div')
+          ghost.className = 'physical-ghost project-cards'
+          lifted = slot.cloneNode(true) as HTMLElement
+          lifted.removeAttribute('id')
+          lifted.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'))
+          Object.assign(
+            lifted.style,
+            {
+              position: 'relative',
+              left: '0',
+              top: '0',
+              width: '100%',
+              margin: '0',
+              transformOrigin: `${x - origin.left}px ${y - origin.top}px`,
+            },
+          )
+          ghost.append(lifted)
+          ghost.inert = true
+          ghost.setAttribute(
             'aria-hidden',
             'true',
           )
           Object.assign(
             ghost.style,
             {
-              width: `${origin.width}px`,
-              height: `${Math.min(
-                origin.height,
-                130,
-              )}px`,
               left: `${origin.left}px`,
               top: `${origin.top}px`,
+              width: `${origin.width}px`,
+              height: `${origin.height}px`,
             },
           )
           document.body.append(ghost)
+
+          if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            lifted.animate(
+              [
+                { transform: 'none' },
+                { transform: 'scale(1.035) rotate(-1deg)' },
+              ],
+              {
+                duration: SETTLE_MS,
+                easing: DRAG_EASING,
+                fill: 'forwards',
+              },
+            )
+          }
+
           source.dataset.lifted = 'true'
+          slot.dataset.dragSlot = 'true'
+          surface.querySelectorAll<HTMLElement>('.card-menu:popover-open').forEach(element => element.hidePopover())
+          window.getSelection()?.removeAllRanges()
           surface.dataset.dragging = source.dataset.sortKind
+
+          if (source.dataset.sortKind === 'task') {
+            surface.querySelectorAll<HTMLElement>('[data-sort-kind=task]').forEach(element => {
+              if (element.dataset.sortScope !== sourceScope) {
+                element.dataset.dragExcluded = 'true'
+              }
+            })
+          }
 
           if (source.dataset.hasChildren === 'true') {
             surface.dataset.dragParent = 'true'
@@ -223,17 +325,88 @@ export function usePhysicalDrag({
           scrollFrame = requestAnimationFrame(autoScroll)
         }
 
-        ghost.style.transform = `translate3d(${event.clientX - x}px, ${event.clientY - y}px, 0) scale(1.02)`
+        const dy = source.dataset.sortKind === 'project' ? 0 : event.clientY - y
+        ghost.style.transform = `translate3d(${event.clientX - x}px, ${dy}px, 0)`
         const hit = document.elementFromPoint(
           event.clientX,
           event.clientY,
         )
-        const target = hit?.closest<HTMLElement>('[data-sort-id]')
+        let target = hit?.closest<HTMLElement>('[data-sort-id]')
 
         const project = hit?.closest<HTMLElement>('.project-column')
         const hydra = source.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace ?? ''
 
-        if (source.dataset.parent && project && !hit?.closest('.card')
+        const sourceHydra = source.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace
+        const targetHydra = target?.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace
+
+        const hover = source.dataset.sortKind === 'task' && target?.dataset.sortKind === 'task'
+          && sourceHydra === targetHydra && target !== source && !target.dataset.parent
+          && target.dataset.sortId !== source.dataset.parent ? target : null
+
+        if (hover !== hovered) {
+          hovered?.removeAttribute('data-drag-hover')
+          hovered?.removeAttribute('data-nest-armed')
+          hovered = hover
+
+          if (hovered) {
+            hovered.dataset.dragHover = 'true'
+          }
+        }
+
+        const pill = hovered?.querySelector<HTMLElement>('[data-subtask-drop]')
+        const pillRect = pill?.getBoundingClientRect()
+        const nest = !!pillRect?.width && source.dataset.hasChildren !== 'true'
+          && distanceToPoint({
+            rect: pillRect,
+            x: event.clientX,
+            y: event.clientY,
+          }) === 0
+
+        if (hovered) {
+          hovered.toggleAttribute(
+            'data-nest-armed',
+            nest,
+          )
+        }
+
+        if (lifted) {
+          const tucked = lifted.dataset.tucked === 'true'
+
+          if (tucked !== nest) {
+            const before = getComputedStyle(lifted).transform
+            lifted.getAnimations().forEach(animation => animation.cancel())
+            lifted.dataset.tucked = String(nest)
+            lifted.animate(
+              [
+                { transform: before },
+                { transform: nest ? 'scale(.5)' : 'scale(1.035) rotate(-1deg)' },
+              ],
+              {
+                duration: SETTLE_MS,
+                easing: DRAG_EASING,
+                fill: 'forwards',
+              },
+            )
+          }
+        }
+
+        if (latest?.nest && !nest) {
+          latest = placement
+          flushSync(() => callbacks.current.move({ preview: placement }))
+        }
+
+        if (source.dataset.sortKind !== 'hydra' && sourceHydra !== targetHydra) {
+          return
+        }
+
+        const parent = source.dataset.parent ? source.closest<HTMLElement>('.task-family') : null
+        const outsideParent = parent && distanceToPoint({
+          rect: layoutBounds({ element: parent }),
+          x: event.clientX,
+          y: event.clientY,
+        }) > 0
+
+        if (outsideParent && project && !nest
           && project.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace === hydra) {
           latest = {
             id: source.dataset.sortId!,
@@ -251,26 +424,43 @@ export function usePhysicalDrag({
           return
         }
 
-        if (target === source) {
-          latest = null
-          callbacks.current.move({ preview: null })
+        if (source.dataset.sortKind === 'task' && !nest) {
+          const home = source.closest('.project-column')
 
-          return
+          if (project !== home && !source.dataset.parent) {
+            return
+          }
+
+          const slotRect = layoutBounds({ element: slot })
+
+          if (distanceToPoint({
+            rect: slotRect,
+            x: event.clientX,
+            y: event.clientY,
+          }) === 0) {
+            return
+          }
+
+          const candidates = [...surface.querySelectorAll<HTMLElement>('[data-sort-kind=task]')]
+            .filter(element => element !== source
+              && element.dataset.sortScope === sourceScope)
+          target = candidates.sort((
+            a,
+            b,
+          ) =>
+            distanceToPoint({
+              rect: layoutBounds({ element: a }),
+              x: event.clientX,
+              y: event.clientY,
+            })
+            - distanceToPoint({
+              rect: layoutBounds({ element: b }),
+              x: event.clientX,
+              y: event.clientY,
+            }))[0]
         }
 
-        if (!target || target.dataset.sortKind !== source.dataset.sortKind) {
-          latest = null
-          callbacks.current.move({ preview: null })
-
-          return
-        }
-
-        const sourceHydra = source.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace
-        const targetHydra = target.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace
-
-        if (source.dataset.sortKind !== 'hydra' && sourceHydra !== targetHydra) {
-          latest = null; callbacks.current.move({ preview: null })
-
+        if (!target || target === source || target.dataset.sortKind !== source.dataset.sortKind) {
           return
         }
 
@@ -281,14 +471,17 @@ export function usePhysicalDrag({
           return
         }
 
-        const rect = target.getBoundingClientRect()
-        const horizontal = source.dataset.sortKind !== 'task'
-        const sourceRect = source.getBoundingClientRect()
-        const sameRow = Math.abs(sourceRect.top - rect.top) < rect.height / 2
-        const across = horizontal || sameRow
-        const before = across ? event.clientX < rect.left + rect.width / 2
-          : event.clientY < rect.top + rect.height / 2
-        const nest = !!hit?.closest('[data-subtask-drop]') && source.dataset.hasChildren !== 'true'
+        const grouped = target.dataset.hasChildren === 'true'
+        const targetBox = grouped ? target.closest<HTMLElement>('.task-family') ?? target : target
+        const rect = layoutBounds({ element: targetBox })
+        let before = event.clientX < rect.left + rect.width / 2
+
+        if (source.dataset.sortKind === 'task') {
+          before = grouped ? event.clientY < rect.top + rect.height / 2
+            : event.clientY < rect.top || (event.clientY <= rect.bottom
+              && event.clientX < rect.left + rect.width / 2)
+        }
+
         const preview: PhysicalMove = {
           id: source.dataset.sortId!,
           over: target.dataset.sortId!,
@@ -304,9 +497,33 @@ export function usePhysicalDrag({
           return
         }
 
+        if (!nest && movedAt && Math.hypot(
+          event.clientX - movedAt.x,
+          event.clientY - movedAt.y,
+        ) < MOVE_AGAIN_PX) {
+          return
+        }
+
+        movedAt = {
+          x: event.clientX,
+          y: event.clientY,
+        }
         latest = preview
-        const selector = source.dataset.sortKind === 'hydra' ? '.hydra-workspace,.hydra-chip'
-          : `[data-sort-kind="${source.dataset.sortKind}"]`
+
+        if (!nest) {
+          placement = preview
+        }
+
+        let selector = `[data-sort-kind="${source.dataset.sortKind}"]`
+
+        if (source.dataset.sortKind === 'hydra') {
+          selector = '.hydra-workspace,.hydra-chip'
+        }
+
+        if (source.dataset.sortKind === 'task') {
+          selector = source.dataset.parent ? '[data-child]' : '.task-family'
+        }
+
         const siblings = [...surface.querySelectorAll<HTMLElement>(selector)]
         const previous = new Map(siblings.map(element => [
           element,
@@ -320,11 +537,12 @@ export function usePhysicalDrag({
           }
 
           for (const element of siblings) {
-            if (element === source || !element.isConnected) {
+            if (element === slot || !element.isConnected) {
               continue
             }
 
-            const old = previous.get(element)!, now = element.getBoundingClientRect()
+            const old = previous.get(element)!, now = layoutBounds({ element })
+            element.getAnimations().forEach(animation => animation.cancel())
             const dx = old.left - now.left, dy = old.top - now.top
 
             if (Math.abs(dx) + Math.abs(dy) > 1) {
@@ -335,7 +553,7 @@ export function usePhysicalDrag({
                 ],
                 {
                   duration: SETTLE_MS,
-                  easing: 'cubic-bezier(.2,.8,.2,1)',
+                  easing: DRAG_EASING,
                 },
               )
             }
@@ -353,7 +571,52 @@ export function usePhysicalDrag({
           0,
         )
         const result = ghost ? latest : null
-        cleanup()
+
+        if (!ghost || !slot || !origin || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          cleanup()
+
+          if (result) {
+            callbacks.current.drop({ preview: result })
+          }
+
+          return
+        }
+
+        settling = true
+        cancelAnimationFrame(scrollFrame)
+        const target = result?.nest
+          ? surface.querySelector<HTMLElement>(`[data-sort-kind=task][data-sort-id="${CSS.escape(result.over)}"]`) : slot
+        const landing = (target ?? slot).getBoundingClientRect()
+        const moving = ghost
+        const translate = `translate(${landing.left - origin.left}px, ${landing.top - origin.top}px)`
+        const ending = result?.nest ? {
+          transform: `${translate} scale(.35)`,
+          opacity: 0,
+        }
+          : {
+            transform: translate,
+            opacity: 1,
+          }
+        const animation = ghost.animate(
+          [
+            {
+              transform: ghost.style.transform,
+              opacity: 1,
+            },
+            ending,
+          ],
+          {
+            duration: DROP_MS,
+            easing: DRAG_EASING,
+            fill: 'forwards',
+          },
+        )
+
+        animation.onfinish = () => {
+          if (ghost === moving) {
+            cleanup()
+          }
+        }
 
         if (result) {
           callbacks.current.drop({ preview: result })
