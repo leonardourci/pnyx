@@ -30,7 +30,7 @@ jobs:
       # Install the reviewed selector, never a dependency supplied by the PR.
       - name: Install trusted selector
         continue-on-error: true
-        run: npm install --prefix "$RUNNER_TEMP/deslop-scope" --ignore-scripts --no-audit --no-fund --package-lock=false github:leonardourci/deslop#398226fb0d637520df7d6fdfdf9898e4e1533888
+        run: npm install --prefix "$RUNNER_TEMP/deslop-scope" --ignore-scripts --no-audit --no-fund --package-lock=false github:leonardourci/deslop#e7c248c3be3de930a8ff2138b8a93e1cf9deac08
 
       - uses: actions/github-script@v8
         id: scope

@@ -29,7 +29,7 @@
         "project",
         "review-code",
         "audit-tests",
-        "deslop",
+        "kill-ai-slop",
         "write-ci-workflow"
       ],
       "ciRequired": true
@@ -54,7 +54,7 @@
         "project",
         "review-code",
         "audit-tests",
-        "deslop"
+        "kill-ai-slop"
       ],
       "ciRequired": true
     },
@@ -72,7 +72,7 @@
       ],
       "instructions": [
         "project",
-        "deslop"
+        "kill-ai-slop"
       ],
       "ciRequired": true
     },
@@ -88,7 +88,7 @@
       ],
       "instructions": [
         "project",
-        "deslop"
+        "kill-ai-slop"
       ]
     },
     {
@@ -133,7 +133,7 @@
         "project",
         "review-code",
         "audit-tests",
-        "deslop",
+        "kill-ai-slop",
         "write-front-end"
       ],
       "ciRequired": true
@@ -158,7 +158,7 @@
         "project",
         "review-code",
         "audit-tests",
-        "deslop"
+        "kill-ai-slop"
       ],
       "ciRequired": true
     }
@@ -167,7 +167,7 @@
     "project": "AGENTS.md",
     "review-code": ".agents/skills/review-code/SKILL.md",
     "audit-tests": ".agents/skills/audit-tests/SKILL.md",
-    "deslop": ".agents/skills/deslop/SKILL.md",
+    "kill-ai-slop": ".agents/skills/deslop/SKILL.md",
     "write-front-end": ".agents/skills/write-front-end/SKILL.md",
     "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md"
   },

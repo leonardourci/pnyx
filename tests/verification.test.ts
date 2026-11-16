@@ -28,18 +28,20 @@ const policyRoot = fileURLToPath(new URL(
 ))
 const selectionProgram = `
 import { readFileSync } from 'node:fs';
-import { select, validateConfig } from ${JSON.stringify(selectorModule)};
+import { select, validateConfig, instructionsFor } from ${JSON.stringify(selectorModule)};
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
 const { root, paths } = JSON.parse(input);
 const config = validateConfig({ root, config: JSON.parse(readFileSync(root + '/deslop.config.json', 'utf8')) });
-console.log(JSON.stringify(select({ config, paths })));
+const selected = select({ config, paths });
+console.log(JSON.stringify({ ...selected, reviewText: instructionsFor({ root, config, selection: selected }) }));
 `
 interface Selection {
   commands: string[]
   checks: string[]
   requiredChecks: string[]
   instructions: string[]
+  reviewText: string
 }
 
 test(
@@ -68,6 +70,35 @@ test(
       'utf8',
     ))
     expect(config.publishLocal).toBe(false)
+    const reviewText = selection({ paths: ['src/app/server.ts'] }).reviewText
+    expect(reviewText).toContain(readFileSync(
+      join(
+        policyRoot,
+        'AGENTS.md',
+      ),
+      'utf8',
+    ))
+    expect(reviewText).toContain(readFileSync(
+      join(
+        policyRoot,
+        '.agents/skills/review-code/SKILL.md',
+      ),
+      'utf8',
+    ))
+    expect(reviewText).toContain(readFileSync(
+      join(
+        policyRoot,
+        '.agents/skills/audit-tests/SKILL.md',
+      ),
+      'utf8',
+    ))
+    expect(reviewText).toContain(readFileSync(
+      join(
+        policyRoot,
+        '.agents/skills/deslop/SKILL.md',
+      ),
+      'utf8',
+    ))
     expect(selection({ paths: ['src/app/server.ts'] }).requiredChecks).toEqual(['Lint, build and tests'])
     expect(selection({ paths: ['docs/testing.md'] }).requiredChecks).toEqual([])
 
@@ -75,8 +106,8 @@ test(
       commands: [],
       checks: ['Lint, build and tests'],
       instructions: [
+        'kill-ai-slop',
         'project',
-        'deslop',
       ],
     })
     expect(selection({ paths: ['.github/workflows/README.md'] }).commands).toEqual([])
@@ -91,8 +122,8 @@ test(
       ],
       checks: ['Lint, build and tests'],
       instructions: [
+        'kill-ai-slop',
         'project',
-        'deslop',
       ],
     })
     expect(selection({ paths: ['tests/access.test.ts'] }).commands).toContain('tests')
@@ -111,17 +142,17 @@ test(
       ],
       checks: ['Lint, build and tests'],
       instructions: [
-        'project',
         'review-code',
         'audit-tests',
-        'deslop',
+        'kill-ai-slop',
+        'project',
       ],
     })
     expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).instructions).toEqual([
-      'project',
       'review-code',
       'audit-tests',
-      'deslop',
+      'kill-ai-slop',
+      'project',
     ])
     expect(selection({ paths: ['skills/pnyx-cli/fixtures/input.md'] })).toMatchObject({
       commands: [
@@ -134,10 +165,10 @@ test(
       ],
       checks: ['Lint, build and tests'],
       instructions: [
-        'project',
         'review-code',
         'audit-tests',
-        'deslop',
+        'kill-ai-slop',
+        'project',
       ],
     })
     expect(selection({ paths: ['vitest.config.ts'] }).commands).toContain('tests')
