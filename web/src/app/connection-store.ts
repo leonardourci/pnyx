@@ -100,6 +100,10 @@ export function createHydraConnection({
   let zeroState: ConnectionState['name'] | undefined
   let installationViews: ReturnType<WatchInstallation> | undefined
   let watchdog: ReturnType<typeof setInterval> | undefined
+  let readRecovery: ReturnType<typeof setTimeout> | undefined
+  let readAttempt = 0
+  let refreshingReads = false
+  let staleSince: number | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
     scope: `${namespace}/hydras`,
@@ -628,6 +632,7 @@ export function createHydraConnection({
       failed: ({ message }: { message: string }) => {
         scope.loadError = message
         scope.readFailed = true
+        recoverReads()
         publish()
       },
     }
@@ -666,10 +671,19 @@ export function createHydraConnection({
       },
       failure: ({ message = '' }: { message?: string }) => {
         installationError = message
+        recoverReads()
         publish()
       },
       connection: ({ state }: { state: ConnectionState['name'] }) => {
+        if (zeroState !== state) {
+          log({
+            operation: 'page.zero',
+            status: state,
+          })
+        }
+
         zeroState = state
+        recoverReads()
         publish()
       },
     }
@@ -694,9 +708,105 @@ export function createHydraConnection({
 
     for (const scope of scopes.values()) {
       if (scope.subscribed) {
-        readData({ scope })
+        const refs = scope.page?.filter((
+          _,
+          index,
+        ) => scope.page?.[index - 1] === '--card') ?? []
+        void readData({ scope }).open({ refs })
+          .catch((error: unknown) => {
+            log({
+              level: 'warn',
+              operation: 'page.zero',
+              hydraId: scope.id,
+              error,
+            })
+          })
       }
     }
+  }
+
+  const readsFailed = () => {
+    const stopped = !!(zeroState && ZERO_STOPPED[zeroState])
+    const queryFailed = [...scopes.values()].some(scope => scope.subscribed && scope.readFailed)
+
+    return stopped || !!installationError || queryFailed
+  }
+
+  function recoverReads() {
+    if (!active || !readsFailed() || readRecovery || refreshingReads) {
+      return
+    }
+
+    if (staleSince === undefined) {
+      staleSince = performance.now()
+      log({
+        operation: 'page.recovery',
+        status: 'stale',
+      })
+    }
+
+    readRecovery = setTimeout(
+      async () => {
+        readRecovery = undefined
+
+        if (!active || !readsFailed()) {
+          return
+        }
+
+        if (socket?.readyState !== WebSocket.OPEN) {
+          recoverReads()
+
+          return
+        }
+
+        const version = generation
+        refreshingReads = true
+        log({
+          operation: 'page.recovery',
+          status: 'retry',
+          count: readAttempt,
+        })
+
+        try {
+          if (zeroState && ZERO_STOPPED[zeroState]) {
+            // Refresh the HttpOnly data cookie before replacing an unauthenticated client.
+            const response = await fetch(
+              location.href,
+              {
+                cache: 'no-store',
+                signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
+              },
+            )
+
+            if (!active || version !== generation) {
+              return
+            }
+
+            if (response.ok) {
+              reopenZero()
+            }
+          } else {
+            installationViews?.retry()
+
+            for (const scope of scopes.values()) {
+              if (scope.subscribed && scope.readFailed) {
+                scope.views?.retry()
+              }
+            }
+          }
+        } catch (error) {
+          log({
+            level: 'warn',
+            operation: 'page.recovery',
+            error,
+          })
+        } finally {
+          refreshingReads = false
+          recoverReads()
+        }
+      },
+      reconnectDelay({ attempt: readAttempt++ }),
+    )
   }
 
   // A card the page is still creating has no row yet, so it is on its way rather than missing.
@@ -754,10 +864,22 @@ export function createHydraConnection({
     })
     scope.hasSnapshot = true
 
+    scope.readFailed = false
+
     if (scope.ready) {
       clearTimeout(scope.subscriptionTimer)
       scope.loadError = ''
-      scope.readFailed = false
+    }
+
+    if (staleSince !== undefined && !readsFailed()) {
+      log({
+        operation: 'page.recovery',
+        status: 'reconciled',
+        hydraId: scope.id,
+        ms: performance.now() - staleSince,
+      })
+      staleSince = undefined
+      readAttempt = 0
     }
 
     confirmSaves({ scope })
@@ -1112,6 +1234,7 @@ export function createHydraConnection({
         count: failures > 0 ? failures : undefined,
       })
       failures = 0
+      recoverReads()
       publish()
     }
 
@@ -1278,7 +1401,7 @@ export function createHydraConnection({
       scope.readFailed = false
       scope.subscribed = false
 
-      if (zeroState === 'closed') {
+      if (zeroState && ZERO_STOPPED[zeroState]) {
         reopenZero()
       } else {
         installationViews?.retry()
@@ -1349,6 +1472,8 @@ export function createHydraConnection({
         generation++
         clearTimeout(reconnect)
         clearInterval(watchdog)
+        clearTimeout(readRecovery)
+        readRecovery = undefined
         socket?.close()
         socket = null
         disconnected()

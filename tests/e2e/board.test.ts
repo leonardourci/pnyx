@@ -323,3 +323,84 @@ test(
     await page.close()
   },
 )
+
+test(
+  'the page reconciles tasks automatically after its data connection stops for authentication',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'recovery',
+        '--title',
+        'Before data recovery',
+      ],
+    })
+    let interrupt: (() => void) | undefined
+    let connections = 0
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: async ({ page }) => {
+        await page.routeWebSocket(
+          /\/zero\//,
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the route callback.
+          socket => {
+            connections++
+            const server = socket.connectToServer()
+
+            interrupt = () => {
+              socket.send(JSON.stringify([
+                'error',
+                {
+                  kind: 'AuthInvalidated',
+                  message: 'Test access expired',
+                },
+              ]))
+              server.close()
+            }
+          },
+        )
+      },
+    })
+
+    try {
+      await page.getByRole(
+        'button',
+        {
+          name: 'Before data recovery',
+          exact: true,
+        },
+      ).waitFor()
+      interrupt!()
+      await hydra.owner({
+        args: [
+          'task',
+          'rename',
+          'recovery',
+          '--title',
+          'After data recovery',
+        ],
+      })
+      await page.getByRole(
+        'button',
+        {
+          name: 'After data recovery',
+          exact: true,
+        },
+      ).waitFor()
+      expect(connections).toBeGreaterThan(1)
+      expect(await page.getByRole(
+        'button',
+        {
+          name: 'Before data recovery',
+          exact: true,
+        },
+      ).count()).toBe(0)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
