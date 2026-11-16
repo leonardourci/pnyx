@@ -405,6 +405,10 @@ export function usePhysicalDrag({
         }
 
         if (source.dataset.sortKind !== 'hydra' && sourceHydra !== targetHydra) {
+          latest = null
+          placement = null
+          callbacks.current.move({ preview: null })
+
           return
         }
 
@@ -437,6 +441,10 @@ export function usePhysicalDrag({
           const home = source.closest('.project-column')
 
           if (project !== home && !source.dataset.parent) {
+            latest = null
+            placement = null
+            callbacks.current.move({ preview: null })
+
             return
           }
 

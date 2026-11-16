@@ -694,12 +694,6 @@ export function HydraView({
   })
 
   const openChat = async ({ id }: { id: string }) => {
-    if (id === navigation.hydraId) {
-      openHydra()
-
-      return
-    }
-
     try {
       await navigate({
         url: new URL(

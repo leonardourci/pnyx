@@ -542,6 +542,8 @@ test(
         what: 'initial card order',
         check: async () => (await cards.allTextContents()).join('|') === 'First task|Second task|Third task',
       })
+      const connected = page.locator(`[data-hydra-workspace="${hydra.id}"][data-connected=true]`)
+      await connected.waitFor()
       const first = cards.filter({ hasText: 'First task' })
       const third = cards.filter({ hasText: 'Third task' })
       await third.scrollIntoViewIfNeeded()
@@ -592,6 +594,41 @@ test(
       await page.reload()
       await until({
         what: 'saved card order',
+        check: async () => (await cards.allTextContents()).join('|') === 'Third task|First task|Second task',
+      })
+      await connected.waitFor()
+      await first.scrollIntoViewIfNeeded()
+      await third.scrollIntoViewIfNeeded()
+      const cancelledFrom = await first.boundingBox()
+      const cancelledTo = await third.boundingBox()
+
+      if (!cancelledFrom || !cancelledTo) {
+        throw new Error('The drag cards are not visible after reload')
+      }
+
+      await page.mouse.move(
+        cancelledFrom.x + 12,
+        cancelledFrom.y + 8,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        cancelledTo.x + 8,
+        cancelledTo.y + 3,
+        { steps: 15 },
+      )
+      await until({
+        what: 'valid preview before cancelling the drag',
+        check: async () => (await cards.allTextContents()).join('|') === 'First task|Third task|Second task',
+      })
+      await page.mouse.move(
+        0,
+        0,
+      )
+      await page.mouse.up()
+      await ghost.waitFor({ state: 'detached' })
+      await page.reload()
+      await until({
+        what: 'dropping outside the workspace preserves saved order',
         check: async () => (await cards.allTextContents()).join('|') === 'Third task|First task|Second task',
       })
     } finally {
