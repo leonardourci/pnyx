@@ -164,6 +164,7 @@ export const PAGE_TEXT_FIELDS = [
   'script',
 ] as const
 export const PAGE_NUMBER_FIELDS = [
+  'eventSeq',
   'ms',
   'count',
   'blockingMs',

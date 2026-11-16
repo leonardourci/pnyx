@@ -225,6 +225,12 @@ export function createHydraConnection({
       }) => {
         if (name === 'page') {
           scope.page = args
+          scope.threads.retain({
+            cards: args.filter((
+              _,
+              index,
+            ) => args[index - 1] === '--card'),
+          })
           // The answer comes from Zero; the server only learns which cards' activity to send.
           // Losing this send is safe: every subscribe sends scope.page again.
           command({
@@ -323,12 +329,12 @@ export function createHydraConnection({
 
   const selection = () => scopeFor({ id: selected })
 
-  let shown: {
+  const shown = new Map<string, {
     view: HydraState
     spend: Scope['spend']
     usage: Scope['usage']
     state: HydraState
-  } | undefined
+  }>()
 
   // Live spend and usage join only their own cards, so every other card keeps its identity between publishes.
   const liveView = ({
@@ -338,7 +344,7 @@ export function createHydraConnection({
     scope: Scope
     view: HydraState
   }): HydraState => {
-    const previous = shown
+    const previous = shown.get(scope.id)
     const sameReadings = previous !== undefined && previous.spend === scope.spend
       && previous.usage === scope.usage
 
@@ -369,7 +375,7 @@ export function createHydraConnection({
       }
     }
 
-    shown = {
+    const next = {
       view,
       spend: scope.spend,
       usage: scope.usage,
@@ -379,11 +385,15 @@ export function createHydraConnection({
       },
     }
 
-    return shown.state
+    shown.set(
+      scope.id,
+      next,
+    )
+
+    return next.state
   }
 
-  const visible = () => {
-    const scope = selection()
+  const visible = ({ scope = selection() }: { scope?: Scope } = {}) => {
     const resource = scope.resource.snapshot()
 
     let recovery: {
@@ -435,6 +445,19 @@ export function createHydraConnection({
       creating: !!scope.creation && scope.id.startsWith('pending-'),
       error: scope.creation && scope.failed ? '' : scope.error,
       hydraThread: scope.thread,
+      taskThreads: Object.fromEntries((scope.page ?? []).filter((
+        _,
+        index,
+        args,
+      ) => args[index - 1] === '--card')
+        .map(ref => {
+          const id = resource.view.keys[ref] ?? ref
+
+          return [
+            id,
+            scope.threads.read({ card: id }),
+          ]
+        })),
       hydraQueue: scope.queue,
       upgrade,
       latest: scope.latest,
@@ -545,7 +568,9 @@ export function createHydraConnection({
     }
 
     for (const scope of scopes.values()) {
-      if (scope.id === selected || scope.id.startsWith('pending-')) {
+      const displayed = hydras.snapshot().view.some(hydra => hydra.id === scope.id)
+
+      if (displayed || scope.id === selected || scope.id.startsWith('pending-')) {
         continue
       }
 
@@ -644,10 +669,29 @@ export function createHydraConnection({
     return scope.views
   }
 
+  const markStale = () => {
+    if (staleSince !== undefined || ![...scopes.values()].some(scope => scope.hasSnapshot)) {
+      return
+    }
+
+    staleSince = performance.now()
+    log({
+      operation: 'page.recovery',
+      status: 'stale',
+      hydraId: selected,
+      eventSeq: selection().resource.snapshot().confirmed.seq,
+    })
+  }
+
   const readInstallation = () => {
     const options = {
       hydras: ({ rows }: { rows: HydraSummary[] }) => {
         updateHydras({ rows })
+
+        for (const hydra of rows) {
+          subscribe({ scope: scopeFor({ id: hydra.id }) })
+        }
+
         publish()
       },
       settings: ({
@@ -683,6 +727,11 @@ export function createHydraConnection({
         }
 
         zeroState = state
+
+        if (state !== 'connected') {
+          markStale()
+        }
+
         recoverReads()
         publish()
       },
@@ -737,13 +786,7 @@ export function createHydraConnection({
       return
     }
 
-    if (staleSince === undefined) {
-      staleSince = performance.now()
-      log({
-        operation: 'page.recovery',
-        status: 'stale',
-      })
-    }
+    markStale()
 
     readRecovery = setTimeout(
       async () => {
@@ -871,10 +914,11 @@ export function createHydraConnection({
       scope.loadError = ''
     }
 
-    if (staleSince !== undefined && !readsFailed()) {
+    if (staleSince !== undefined && zeroState === 'connected' && !readsFailed()) {
       log({
         operation: 'page.recovery',
         status: 'reconciled',
+        eventSeq: state.seq,
         hydraId: scope.id,
         ms: performance.now() - staleSince,
       })
@@ -981,6 +1025,10 @@ export function createHydraConnection({
         watchSubscription({ scope })
         subscribe({ scope: selection() })
 
+        for (const hydra of hydras.snapshot().view) {
+          subscribe({ scope: scopeFor({ id: hydra.id }) })
+        }
+
         for (const request of requests.values()) {
           subscribe({ scope: request.scope })
         }
@@ -1073,6 +1121,7 @@ export function createHydraConnection({
   }
 
   const disconnected = () => {
+    markStale()
     physicalHydra = null
     listed = false
 
@@ -1371,6 +1420,14 @@ export function createHydraConnection({
 
   return {
     snapshot: () => snapshot,
+    workspaces: () => {
+      const ids = new Set([
+        selected,
+        ...hydras.snapshot().view.map(hydra => hydra.id),
+      ])
+
+      return [...ids].map(id => visible({ scope: scopeFor({ id }) }))
+    },
     // eslint-disable-next-line pnyx/object-params -- React useSyncExternalStore subscription contract.
     subscribe: (listener: () => void) => {
       listeners.add(listener)
