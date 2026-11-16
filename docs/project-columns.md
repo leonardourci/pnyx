@@ -77,6 +77,8 @@ Grouping A is settled. Labels do not define columns.
 
 ## Open implementation questions
 
+Existing duplicate attachments keep working after upgrade and no task moves automatically. Setup and Settings must name each duplicated repository and its Hydras, asking which Hydra keeps it. Only the owner's explicit pick moves tasks, recording every move. New duplicate attachments are refused deterministically. Cover continued operation of flagged duplicates, refusal of new duplicates, and recorded task moves after the owner's pick. This migration policy was settled by Hydra in answer ask-203840.
+
 No alternative visual design is open. Any newly discovered product or architecture
 choice goes to Hydra before implementing dependent work. Historical events must
 remain replayable. Existing behavior continues until its replacement is tested.
