@@ -256,6 +256,30 @@ test.each([
     status: 0,
   },
   {
+    name: 'test-only changes',
+    paths: ['tests/access.test.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'shared test setup',
+    paths: ['tests/setup/pnyx.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'test configuration',
+    paths: ['vitest.config.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'hidden configuration',
+    paths: ['.coderabbit.yaml'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
     name: 'source mixed with docs',
     paths: [
       'docs/testing.md',

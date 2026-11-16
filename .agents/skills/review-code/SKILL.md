@@ -55,7 +55,7 @@ Ask of every changed line: is this the clearest way to get the result? Clear bea
 - [ ] It is hard to follow: it needs a comment to say what it does, or it is a packed one-liner, a long call chain, a clever trick or a nested condition. New and changed code reads as plain named steps, with no conditional spread (`...(x ? { a } : {})`), no logical assignment picking a value (`??=`, `||=`, `&&=`), no `||` or `??` default whose case the names don't make obvious, no bare `void` on a promise, no `.then` chain and no `for (;;)` or `while (true)` wait. Existing uses are not rewritten unless the change touches them.
 - [ ] Code is placed badly, using [follow-conventions](../follow-conventions/SKILL.md#files-and-concerns): unrelated concerns piling into one file, a split that scatters closely related code, or a file that only wraps another. Keep feature code in its feature folder and avoid speculative abstractions and dependencies.
 
-A "looks off" item the reviewer cannot prove still blocks. In a deslop run, an item left unfixed fails the run (`UNFIXED`); the caller resolves it and reruns deslop. In standalone reviews, fix it or record in the PR why it stays.
+A "looks off" item the reviewer cannot prove still blocks. In a deslop run, an item left unfixed fails the run (`UNFIXED`); the caller resolves it and reruns deslop. In standalone reviews, report it for the caller to fix or explain in the PR.
 
 ## Reporting
 
