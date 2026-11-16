@@ -2,14 +2,17 @@
 
 This is the living spec for task task-ecfe3cac-541d-4dd5-a876-5cc8229f2365.
 The source is the settled talk task task-d8d6de12-aab7-474e-ad13-2a01b8f01de1,
-its feedback rounds 1–9, and its final Lavish page. Later rounds 10–11 put the
-Oracle near the top centre and remove the separate Waiting on you button.
+its feedback rounds 1–9, and its final Lavish page. Later rounds remove the
+separate Waiting on you button. Owner follow-up r207090 puts the Oracle beside
+Settings on the header's right and gives Settings its own page.
 Grouping A is settled. Labels do not define columns.
 
 ## Settled behavior
 
 - A slim header replaces the sidebar. Hydra chips show waiting counts and navigate
   to each Hydra's own chat and composer. The Oracle finds waiting work across Hydras.
+  Settings opens at `/hydra/<id>/settings/` as a full page. Closing it preserves the
+  workspace's open cards, unsent drafts and horizontal position; Back and reload work.
 - Hydras sit side by side on a horizontal axis that snaps to each Hydra. Each has
   its own chat, project chips and project columns. Hydras, chats and projects fold.
   A folded Hydra also lists its projects. A control folds all projects together.
@@ -31,12 +34,16 @@ Grouping A is settled. Labels do not define columns.
   all existing details and worker chat side by side, minimum 560×440, no maximum.
   It initially opens at 660px. Switching cards in a column retains column width.
   Window mode is an explicit action and never changes the next click's behavior.
-  Neighboring cards flow beside an expanded family and below it. A wider project
+  Neighboring cards fill available spaces before, beside and below an expanded family. A wider project
   keeps enough room for a closed card beside it; children include their indent in
   the required width. Columns scroll vertically, with no horizontal scrollbar.
 - One level of sub-tasks, compact and indented beneath their parent. Cross-project
   children show their project. Each retains its own worker, PR and lifecycle.
-- During dragging, other cards make space immediately. Only dropping on the small
+- During dragging, the full card or family follows the pointer. A marked landing
+  slot moves through the layout as other cards slide aside and fill its origin.
+  Position checks use the resting layout so slides do not bounce. A drop settles
+  into its slot; pill nesting tucks the lifted card around the pointer. Hover menus
+  and text selection stay out of the gesture. Other states stay visibly distinct. Only dropping on the small
   central sub-task pill nests a card. The rest of a card reorders it. A task with
   children cannot become a child. Dragging out or the hover menu removes a parent;
   a detached task returns to its own project's column.
@@ -63,6 +70,7 @@ The core and UI layers are implemented. The live-app pass covers desktop and pho
 - [x] Persisted folds/sizes, shared hover actions, drag ranking/nesting/detach and motion.
 - [x] Global Oracle waiting list/search and cross-Hydra task navigation.
 - [x] Run desktop/phone interaction and restart/drop proof. Upload the synthetic media to the PR.
+- [x] Give Settings its own page, move the Oracle beside it, fill earlier card gaps and match the settled physical drag behavior.
 - [x] Commit the implementation in layers. Push and refresh the same draft PR at the checkpoint.
 - [ ] Refresh deslop and required CI for the settled three-row closed cards. The five focused regression flips passed on the preceding head.
 
@@ -143,14 +151,18 @@ than 24 hours. Keep that instance running until Hydra says the owner is finished
 
 The trial exposed crowded metadata, independently sticky project chips and empty
 space beside an open card. The toolbar now moves as one unit, chat headers reserve
-space for their controls, metadata fits narrow cards and native flow fills the
-space beside expanded cards. Position animations keep the reflow continuous.
+space for their controls, metadata fits narrow cards and measured placement fills free space before and
+beside expanded cards. Position animations keep the reflow continuous.
 The browser checks cover both themes at 390, 760, 1440 and 1920px, and project
 widths of 280, 740 and 944px. They confirm control separation, readable repository
 tags, no horizontal column scroll and cards beside a 660×520 open card. Physical
 reorder and nesting still persist. A dropped socket and a restart through portless
 retain the open card and reconcile fresh Zero data even when the internal port
 changes. The comparison captures show 258px and 360px cards in both themes. The settled three-row layout was then checked on the real trial at card widths 258, 353 and 514px, including indented children down to 232px, in both themes. Repository and label rows stay inside their cards; the existing open-card metadata and context remain available.
+
+The r207090 pass checks Settings at 390, 1440 and 1920px in both themes, including direct reload, Back, the Oracle on Settings and the retained card/draft/offset on close. The opened phone-card example was checked at minimum, typical and wide project widths. Later cards fill its earlier gaps, with no overlaps or horizontal column scroll. Physical drag was checked at the same widths and both themes; neighbors move before release, the landing slot leaves the origin, the order survives reload, pill nesting works and dragging out returns the child to Ideas. A separate headless page exercises the settled Lavish gesture for comparison.
+
+All eight project-view browser cases pass. The existing fold/draft flow now covers the Settings route and reload. Visual arrangement uses a real held-pointer drag and checks live displacement and origin filling before release. One new packing case pins backfilling before an open card. Each changed flow fails under its corresponding mutation in a throwaway copy.
 
 ## Validation and readiness
 
@@ -166,7 +178,9 @@ After its quick local commands pass, ask Hydra for CI approval with the waiting 
 | --- | --- | --- |
 | Repository grouping | Reuse the group ID for repeated command event IDs | The third repository task never enters Suite |
 | Closed-card labels | Omit the closed-card label row | The grouped repository tag is absent; the passing flow also checks labels through open/close and the legacy Ideas tag |
-| Visual arrangement | Ignore the arrange operation | The rendered order stays unchanged |
+| Visual arrangement | Omit the live drag preview; earlier proof also ignored arrangement persistence | Neighbors never move while the pointer is held; the earlier mutation loses the saved order |
+| Dense packing | Prefer the lowest free space over earlier gaps | The later card no longer fills the earlier space beside the open family |
+| Settings page | Remove the server's Settings-route support | Reload returns to the Hydra instead of Settings |
 | Parent retention | Suppress all-children completion | The parent's completion timestamp remains absent |
 | Folding identity | Unmount folded project content | The original open card is disconnected |
 | Worker reply recovery | Omit worker reply sending | The worker never receives the reply after reconnect |
