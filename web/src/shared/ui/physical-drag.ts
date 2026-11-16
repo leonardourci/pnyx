@@ -252,6 +252,8 @@ export function usePhysicalDrag({
         }
 
         if (target === source) {
+          latest = null
+          callbacks.current.move({ preview: null })
           return
         }
 
@@ -272,6 +274,8 @@ export function usePhysicalDrag({
         }
 
         if (source.dataset.sortKind === 'project' && target.dataset.sortDisabled === 'true') {
+          latest = null
+          callbacks.current.move({ preview: null })
           return
         }
 

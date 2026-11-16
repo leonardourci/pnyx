@@ -103,9 +103,15 @@ export function ProjectColumn({
           value={width}
           min={minimum}
           onPreview={({ value }) => setPreview(value)}
-          onCommit={({ value }) => save({
-            patch: { workspace: { projectWidths: { [column.id]: value } } },
-          })}
+          onCommit={async ({ value }) => {
+            try {
+              return await save({
+                patch: { workspace: { projectWidths: { [column.id]: value } } },
+              })
+            } finally {
+              setPreview(null)
+            }
+          }}
         />
       )}
     </section>

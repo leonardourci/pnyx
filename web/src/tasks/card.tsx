@@ -701,9 +701,15 @@ export const HydraCard = memo(function HydraCard({
           min={OPEN_CARD_MIN_HEIGHT}
           tabIndex={selected ? 0 : tabIndex}
           onPreview={({ value }) => setPreview(value)}
-          onCommit={({ value }) => save({
-            patch: { cardHeights: { [card.id]: value } },
-          })}
+          onCommit={async ({ value }) => {
+            try {
+              return await save({
+                patch: { cardHeights: { [card.id]: value } },
+              })
+            } finally {
+              setPreview(null)
+            }
+          }}
         />
       )}
       {selected && (
@@ -712,9 +718,15 @@ export const HydraCard = memo(function HydraCard({
           value={width}
           min={OPEN_CARD_MIN_WIDTH}
           onPreview={({ value }) => setWidthPreview(value)}
-          onCommit={({ value }) => save({
-            patch: { workspace: { cardWidths: { [card.id]: value } } },
-          })}
+          onCommit={async ({ value }) => {
+            try {
+              return await save({
+                patch: { workspace: { cardWidths: { [card.id]: value } } },
+              })
+            } finally {
+              setWidthPreview(null)
+            }
+          }}
         />
       )}
     </article>

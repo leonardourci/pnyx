@@ -204,7 +204,7 @@ export function HydraView({
         open,
       )
     },
-    [],
+    [active],
   )
   useEffect(
     () => {
@@ -344,7 +344,7 @@ export function HydraView({
         document.title = title
       }
     },
-    [title],
+    [title, active],
   )
   const save = useSaveView({
     state,
