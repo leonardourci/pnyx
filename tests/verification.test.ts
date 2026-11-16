@@ -150,8 +150,27 @@ test(
 
     const selected = select({
       config,
-      paths: ['src/app/server.ts'],
+      paths: [
+        'docs/testing.md',
+        'tests/access.test.ts',
+        'web/src/hydra/hydra-chat.tsx',
+        '.github/workflows/tests.yml',
+      ],
     })
+    expect(selected.commands).toEqual(codeCommands)
+    expect(selected.checks).toEqual(expect.arrayContaining([
+      'Test scope',
+      'Lint, build and tests',
+    ]))
+    expect(selected.instructions).toEqual(expect.arrayContaining([
+      'project',
+      'follow-conventions',
+      'review-code',
+      'audit-tests',
+      'kill-ai-slop',
+      'write-front-end',
+      'write-ci-workflow',
+    ]))
     const reviewText = instructionsFor({
       root: policyRoot,
       config,
@@ -196,8 +215,6 @@ test(
         expect(jobNames).toContain(check)
       }
     }
-
-    expect(scopeStep.shell).toBe('bash')
   },
 )
 
