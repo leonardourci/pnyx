@@ -2,13 +2,6 @@ name: Tests
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
-    paths:
-      - '**'
-      - '!docs/**'
-      - '!**/*.md'
-      - 'skills/**'
-      - '**/fixtures/**'
 
 permissions:
   contents: read
@@ -18,9 +11,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Test scope
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tests: ${{ steps.scope.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: npm install --prefix "$RUNNER_TEMP/deslop-scope" --ignore-scripts --no-audit --no-fund --package-lock=false github:leonardourci/deslop#e7c248c3be3de930a8ff2138b8a93e1cf9deac08
+
+      - id: scope
+        run: |
+          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/paths"
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs'
+            const { select } = await import(process.env.RUNNER_TEMP + '/deslop-scope/node_modules/deslop/src/config.js')
+            const config = JSON.parse(readFileSync('deslop.config.json', 'utf8'))
+            const paths = readFileSync(process.argv[1], 'utf8').split('\n').filter(Boolean)
+            if (!paths.length) throw new Error('Empty change list')
+            const selected = select({ config, paths })
+            const tests = selected.commands.length || selected.requiredChecks.length ? 'all' : 'none'
+            console.log('tests=' + tests)
+          " "$RUNNER_TEMP/paths" >> "$GITHUB_OUTPUT"
+
   test:
     name: Lint, build and tests
-    if: ${{ !github.event.repository.private }}
+    needs: scope
+    # A failed scope runs tests; a docs-only skip still satisfies branch protection.
+    if: ${{ !cancelled() && !github.event.repository.private && !(needs.scope.result == 'success' && needs.scope.outputs.tests == 'none') }}
     # Every run waits for the owner's approval in this environment.
     environment: ci
     runs-on: ubuntu-24.04

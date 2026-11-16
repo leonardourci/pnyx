@@ -1,11 +1,12 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
 import { afterEach, expect, test } from 'vitest'
+import { git } from './setup/upgrade.ts'
 import { stagedBuild } from '../scripts/build/staged.ts'
 
 const temporaryFolders: string[] = []
@@ -114,7 +115,7 @@ test(
 
     expect(selection({ paths: ['docs/testing.md'] })).toMatchObject({
       commands: [],
-      checks: ['Lint, build and tests'],
+      checks: ['Test scope'],
       instructions: [
         'kill-ai-slop',
         'project',
@@ -123,7 +124,7 @@ test(
     expect(selection({ paths: ['.github/workflows/README.md'] }).commands).toEqual([])
     expect(selection({ paths: ['README.md'] })).toMatchObject({
       commands: [],
-      checks: ['Lint, build and tests'],
+      checks: ['Test scope'],
     })
     expect(selection({ paths: ['skills/pnyx-cli/SKILL.md'] })).toMatchObject({
       commands: ['build'],
@@ -182,267 +183,215 @@ test(
 
 const workflow = parse(readFileSync(
   new URL(
-    '../.github/workflows/docs-check.yml',
+    '../.github/workflows/tests.yml',
     import.meta.url,
   ),
   'utf8',
 ))
-const scopeScript = workflow.jobs.scope.steps.find((step: { id?: string }) => step.id === 'scope').with.script
-const scopeProgram = `
-let input = '';
-for await (const chunk of process.stdin) input += chunk;
-const { files, count, config, unavailable, changedHead, changedBase, previousDocsSuccess } = JSON.parse(input);
-const result = { run: '', checks: [], updates: [], requestedConfig: null };
-let reads = 0;
-const github = {
-  rest: {
-    pulls: {
-      get: async () => {
-        if (reads > 0 && unavailable === 'head') throw new Error('head unavailable');
-        const reread = reads++ > 0;
-        return { data: { changed_files: count, head: { sha: reread && changedHead ? 'new-head' : 'reviewed-head' }, base: { ref: reread && changedBase === 'ref' ? 'other' : 'main', sha: reread && changedBase === true ? 'new-base' : 'reviewed-base' } } };
-      },
-      listFiles: () => undefined
-    },
-    repos: {
-      getContent: async ({ path, ref }) => {
-        if (path !== 'deslop.config.json' || ref !== 'main') throw new Error('untrusted config request');
-        if (unavailable === true) throw new Error('config unavailable');
-        result.requestedConfig = { path, ref };
-        return { data: { content: Buffer.from(JSON.stringify(config)).toString('base64') } };
-      }
-    },
-    checks: {
-      create: async check => result.checks.push(check),
-      listForRef: () => undefined,
-      update: async check => result.updates.push(check)
-    }
-  },
-  paginate: async method => method === github.rest.pulls.listFiles ? files : previousDocsSuccess ? [
-    { id: 42, external_id: 'pnyx-docs-scope-1', conclusion: 'success' },
-    { id: 43, external_id: null, conclusion: 'success' },
-    { id: 44, external_id: 'pnyx-docs-scope-2', conclusion: 'success' }
-  ] : []
-};
-const context = { repo: { owner: 'fixture', repo: 'pnyx' }, issue: { number: 1 }, payload: { repository: { default_branch: 'main' }, pull_request: { head: { sha: 'reviewed-head' } } } };
-const core = { warning: () => undefined, setOutput: (name, value) => { result.run = value; } };
-await (async () => { ${scopeScript} })();
-console.log(JSON.stringify(result));
-`
+const scopeScript = workflow.jobs.scope.steps.find((step: { id?: string }) => step.id === 'scope').run
 
 test.each([
   {
-    name: 'empty file list',
-    files: [],
-    count: 0,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
-  },
-  {
     name: 'ordinary docs',
-    files: [
-      { filename: 'docs/testing.md' },
-      { filename: '.github/workflows/README.md' },
+    paths: [
+      'docs/testing.md',
+      '.github/workflows/README.md',
     ],
-    count: 2,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    expected: 'false',
-    checks: [
-      {
-        owner: 'fixture',
-        repo: 'pnyx',
-        name: 'Lint, build and tests',
-        external_id: 'pnyx-docs-scope-1',
-        head_sha: 'reviewed-head',
-        status: 'completed',
-        conclusion: 'success',
-        output: {
-          title: 'Documentation only',
-          summary: 'No code checks selected by the default-branch policy.',
-        },
-      },
-    ],
+    output: 'tests=none\n',
+    status: 0,
   },
   {
     name: 'source',
-    files: [{ filename: 'src/app/server.ts' }],
-    count: 1,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
-  },
-  {
-    name: 'source after an earlier docs-only result on the same head',
-    files: [{ filename: 'src/app/server.ts' }],
-    count: 1,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    previousDocsSuccess: true,
-    expected: 'true',
-    checks: [],
-    expectedUpdates: [
-      {
-        owner: 'fixture',
-        repo: 'pnyx',
-        check_run_id: 42,
-        status: 'completed',
-        conclusion: 'failure',
-        output: {
-          title: 'Code checks required',
-          summary: 'The current PR scope no longer qualifies for a documentation-only result.',
-        },
-      },
-    ],
-  },
-  {
-    name: 'selector unavailable after an earlier docs-only result',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 1,
-    unavailable: 'selector',
-    changedHead: false,
-    changedBase: false,
-    previousDocsSuccess: true,
-    expected: 'true',
-    checks: [],
-    expectedUpdates: [
-      {
-        owner: 'fixture',
-        repo: 'pnyx',
-        check_run_id: 42,
-        status: 'completed',
-        conclusion: 'failure',
-        output: {
-          title: 'Code checks required',
-          summary: 'The current PR scope no longer qualifies for a documentation-only result.',
-        },
-      },
-    ],
+    paths: ['src/new.ts'],
+    output: 'tests=all\n',
+    status: 0,
   },
   {
     name: 'shipped skills',
-    files: [{ filename: 'skills/pnyx-cli/SKILL.md' }],
-    count: 1,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
+    paths: ['skills/pnyx-cli/SKILL.md'],
+    output: 'tests=all\n',
+    status: 0,
   },
   {
     name: 'fixture Markdown',
-    files: [{ filename: 'skills/pnyx-cli/fixtures/input.md' }],
-    count: 1,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
+    paths: ['skills/pnyx-cli/fixtures/input.md'],
+    output: 'tests=all\n',
+    status: 0,
   },
   {
     name: 'code renamed into docs',
-    files: [
-      {
-        filename: 'docs/new.md',
-        previous_filename: 'src/old.ts',
-      },
-    ],
-    count: 1,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
+    paths: [],
+    rename: true,
+    output: 'tests=all\n',
+    status: 0,
   },
   {
-    name: 'incomplete file list',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 301,
-    unavailable: false,
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
+    name: 'empty diff',
+    paths: [],
+    output: '',
+    status: 1,
   },
   {
     name: 'unavailable config',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 1,
-    unavailable: true,
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
+    paths: ['docs/testing.md'],
+    missingConfig: true,
+    output: '',
+    status: 1,
   },
   {
-    name: 'head recheck unavailable',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 1,
-    unavailable: 'head',
-    changedHead: false,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
-  },
-  {
-    name: 'base branch changed at the same commit',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 1,
-    unavailable: false,
-    changedHead: false,
-    changedBase: 'ref',
-    expected: 'true',
-    checks: [],
-  },
-  {
-    name: 'base moved while reading files',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 1,
-    unavailable: false,
-    changedHead: false,
-    changedBase: true,
-    expected: 'true',
-    checks: [],
-  },
-  {
-    name: 'head moved while reading files',
-    files: [{ filename: 'docs/testing.md' }],
-    count: 1,
-    unavailable: false,
-    changedHead: true,
-    changedBase: false,
-    expected: 'true',
-    checks: [],
+    name: 'unavailable selector',
+    paths: ['docs/testing.md'],
+    missingSelector: true,
+    output: '',
+    status: 1,
   },
 ])(
-  'CI scope handles $name without executing PR code',
+  'CI scope handles $name from the merge diff',
   ({
-    files,
-    count,
-    expected,
-    checks,
-    unavailable,
-    changedHead,
-    changedBase,
-    previousDocsSuccess,
-    expectedUpdates = [],
+    paths,
+    rename = false,
+    missingConfig = false,
+    missingSelector = false,
+    output,
+    status,
   }) => {
     const runnerTemp = mkdtempSync(join(
       tmpdir(),
       'ci-scope-',
     ))
     temporaryFolders.push(runnerTemp)
+    const root = join(
+      runnerTemp,
+      'repo',
+    )
+    mkdirSync(
+      join(
+        root,
+        'src',
+      ),
+      { recursive: true },
+    )
+    const configPath = join(
+      root,
+      'deslop.config.json',
+    )
+    writeFileSync(
+      configPath,
+      readFileSync(join(
+        policyRoot,
+        'deslop.config.json',
+      )),
+    )
+    writeFileSync(
+      join(
+        root,
+        'src/old.ts',
+      ),
+      'export {}\n',
+    )
+    git({
+      cwd: root,
+      args: [
+        'init',
+        '--initial-branch=main',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'add',
+        '.',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'commit',
+        '-m',
+        'base',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'switch',
+        '-c',
+        'change',
+      ],
+    })
+
+    for (const path of paths) {
+      mkdirSync(
+        dirname(join(
+          root,
+          path,
+        )),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          root,
+          path,
+        ),
+        'fixture\n',
+      )
+    }
+
+    if (rename) {
+      mkdirSync(join(
+        root,
+        'docs',
+      ))
+      git({
+        cwd: root,
+        args: [
+          'mv',
+          'src/old.ts',
+          'docs/renamed.md',
+        ],
+      })
+    }
+
+    if (missingConfig) {
+      rmSync(configPath)
+    }
+
+    git({
+      cwd: root,
+      args: [
+        'add',
+        '-A',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'change',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'switch',
+        'main',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'merge',
+        '--no-ff',
+        'change',
+        '-m',
+        'merge',
+      ],
+    })
     const modules = join(
       runnerTemp,
-      'deslop-scope',
-      'node_modules',
+      'deslop-scope/node_modules',
     )
     mkdirSync(
       modules,
@@ -450,7 +399,7 @@ test.each([
     )
     symlinkSync(
       fileURLToPath(new URL(
-        unavailable === 'selector' ? '../missing-selector' : '../node_modules/deslop',
+        missingSelector ? '../missing-selector' : '../node_modules/deslop',
         import.meta.url,
       )),
       join(
@@ -458,41 +407,38 @@ test.each([
         'deslop',
       ),
     )
-    const config = JSON.parse(readFileSync(
-      new URL(
-        '../deslop.config.json',
-        import.meta.url,
-      ),
-      'utf8',
-    ))
-    const result = JSON.parse(execFileSync(
-      process.execPath,
+    const outputPath = join(
+      runnerTemp,
+      'output',
+    )
+    const result = spawnSync(
+      '/bin/bash',
       [
-        '--input-type=module',
         '-e',
-        scopeProgram,
+        '-o',
+        'pipefail',
+        '-c',
+        scopeScript,
       ],
       {
-        input: JSON.stringify({
-          files,
-          count,
-          config,
-          unavailable,
-          changedHead,
-          changedBase,
-          previousDocsSuccess,
-        }),
+        cwd: root,
         encoding: 'utf8',
         timeout: CHILD_PROCESS_TIMEOUT_MS,
         env: {
           ...process.env,
           RUNNER_TEMP: runnerTemp,
+          GITHUB_OUTPUT: outputPath,
         },
       },
-    ))
-    expect(result.run).toBe(expected)
-    expect(result.checks).toEqual(checks)
-    expect(result.updates).toEqual(expectedUpdates)
+    )
+    expect(
+      result.status,
+      result.stderr,
+    ).toBe(status)
+    expect(readFileSync(
+      outputPath,
+      'utf8',
+    )).toBe(output)
   },
 )
 

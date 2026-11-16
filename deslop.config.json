@@ -79,7 +79,7 @@
       ],
       "commands": [],
       "checks": [
-        "Lint, build and tests"
+        "Test scope"
       ],
       "instructions": [
         "project",
