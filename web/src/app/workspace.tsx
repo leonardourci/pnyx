@@ -984,7 +984,7 @@ export function HydraView({
               ))}
             </nav>
             <Button aria-label="Fold all projects" onClick={toggleAllProjects}>
-              <Icon name="chevron_right" />
+              <Icon name="fold_columns" />
             </Button>
             <Button
               aria-label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}

@@ -5,7 +5,8 @@ import {
   IconBolt, IconBoltFilled, IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck,
   IconChevronDown, IconChevronRight, IconCircleArrowUp, IconClipboardList, IconClock, IconCode,
   IconCopy, IconCpu, IconCube, IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye,
-  IconEyeCheck, IconFileText, IconFolder, IconGauge, IconGitFork, IconGitPullRequest, IconHammer,
+  IconEyeCheck, IconFileText, IconFold, IconFolder, IconGauge, IconGitFork, IconGitPullRequest,
+  IconHammer,
   IconHourglass, IconLink, IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize,
   IconMessage, IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil,
   IconPencilCheck, IconPhoto, IconPinned, IconPinnedFilled, IconPlayerStopFilled,
@@ -21,6 +22,7 @@ import {
 // Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
 export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   search: IconSearch,
+  fold_columns: IconFold,
   restart: IconRotateClockwise,
   upgrade: IconCircleArrowUp,
   fix: IconTool,

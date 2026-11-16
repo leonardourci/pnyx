@@ -123,5 +123,12 @@ export function Icon({
     name,
   ) && TABLER_ICONS[name]) || IconRobot
 
-  return <Mark aria-hidden="true" size={size} stroke={LINE_PX * TABLER_BOX / size} />
+  return (
+    <Mark
+      aria-hidden="true"
+      className={name === 'fold_columns' ? 'icon-fold-columns' : undefined}
+      size={size}
+      stroke={LINE_PX * TABLER_BOX / size}
+    />
+  )
 }
