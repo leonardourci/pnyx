@@ -13,6 +13,7 @@ Grouping A is settled. Labels do not define columns.
 - Hydras sit side by side on a horizontal axis that snaps to each Hydra. Each has
   its own chat, project chips and project columns. Hydras, chats and projects fold.
   A folded Hydra also lists its projects. A control folds all projects together.
+  Its shared fold icon points inward horizontally toward a vertical divider.
 - Ideas is the first column and contains tasks without a project. Attaching a
   project moves a task into that project's column. Each project has one Hydra;
   each repository has one project. A project can group several repositories.
@@ -125,9 +126,14 @@ isolation for keyboard, theme, drafts and open task streams.
 
 The owner now wants proof through the running app, using an isolated server and a headless browser at desktop and phone sizes. Add no more automated or integration tests during this build. Keep the existing passing additions. Exercise layout, opening/folding, drag animations, Hydra snapping, immediate edits and recovery after restart and dropped connections; retain screenshots or short recordings in the draft PR. Test additions and the audit follow during the later deslop pass.
 
-## Review hold
+## Readiness dependency
 
-Keep this work on a draft PR. Do not run full pnpm verify, request CI approval,
-request owner review, or mark ready until Hydra explicitly lifts the hold. The
-owner intends a deslop dogfood pass before green. Targeted checks still apply to
-each layer. Browser work uses the shared heavy slot and an isolated home.
+Keep this work on draft PR #410 until deslop lands through PR #405 (task
+`task-987457cc-b114-430f-ac63-1e08fdbc9ace`). The horizontal fold-icon correction
+is applied and checked before waiting for that dependency.
+
+On resumption, merge origin/main into this branch and follow the merged deslop
+configuration for whole-branch review and fixes, quick local checks and tests in
+CI. Ask Hydra for CI approval with the run URL and exact head. Report the green
+head and deslop findings/fixes before marking ready. Browser work continues to
+use the shared heavy slot and an isolated home.
