@@ -43,6 +43,7 @@ Grouping A is settled. Labels do not define columns.
 - Project and Hydra order can be changed from their content or navigation chips,
   including folded strips. All reversible edits appear immediately and reconcile
   through the existing pending resource, preserving DOM identity.
+- Vertical chat gestures stay in their chat; only horizontal gestures move the Hydra axis. Chat retains its own follow/anchor controller.
 - Scroll, resizing and opening feel continuous. Expansion, folding and dragging
   animate without jumps. Reduced motion is respected.
 - Restart, dropped and slept connections reconcile without a manual reload.
@@ -169,3 +170,9 @@ After its quick local commands pass, ask Hydra for CI approval with the waiting 
 | Worker reply recovery | Omit worker reply sending | The worker never receives the reply after reconnect |
 
 The passing reply flow drops the first command before the server receives it, then checks delivery acknowledgement and exactly one worker delivery after reconnection. Native steering envelopes can contain the same prose; counting every text occurrence is not a delivery assertion.
+
+## CI compatibility pass
+
+The first full CI run exposed old chat journeys that selected conversations globally and a privacy allowlist that omitted the new public sequence. Chat selectors, paging counters, loader checks and touch input now target their own workspace/conversation. The privacy assertion still names every allowed field explicitly, including `seq`.
+
+The scoped journeys also reproduced competing scroll controllers and vertical gestures moving the horizontal Hydra axis. Keep chat's existing follow/anchor controller and give the axis horizontal gestures only. The affected chat and access suites pass all 19 cases after those fixes.
