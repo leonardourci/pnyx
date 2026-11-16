@@ -16,4 +16,4 @@
 
 ## Review
 
-Record the deslop review findings and fixes. Include pending checks. The final commit’s git note and deslop status supply evidence; do not add review checkboxes.
+<!-- Findings and fixes from the deslop review, and any pending checks. -->

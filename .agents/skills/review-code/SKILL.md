@@ -5,13 +5,9 @@ description: Review a Pnyx diff or branch as an inspector before a PR, in three 
 
 # Review code
 
-When invoked by the deslop tool, review and fix files, returning its requested JSON. Deslop owns checks, commits, pushes and proof. Read tests and code to judge regression strength; treat reported probes as context. Execution-specific checklist items belong to deslop or the calling agent, and do not require additional evidence in this call. Never change git state or run commands in that call.
+In a deslop run, fix findings in place; otherwise report them for the caller.
 
-For a standalone inspection, read the diff and test evidence and return numbered findings with suggested fixes; the caller applies them separately. In a deslop call, fix files directly and return its requested review items. Neither review authorizes the agent to commit, push or merge.
-
-Every review has three parts: **Bugs**, **Tests** and **Simpler**. All three block the merge. Inspect each part and use the caller’s response format, including the caller’s review-items schema when it invokes the review and fix. The same three parts apply to CodeRabbit, to independent reviews and to your own pre-PR pass.
-
-Every actionable finding must be fixed before proof is written; report unfixed items when a fix cannot be completed. Use no severity ranking.
+Every review has three parts: **Bugs**, **Tests** and **Simpler**. All three block the merge. The same three parts apply to CodeRabbit, independent reviews and your own pre-PR pass.
 
 ## Before reading the diff
 
@@ -35,10 +31,9 @@ Correctness, races, stale caches, leaks and broken rules.
 - [ ] Check timers, watchers, locks and subprocesses for cleanup on failure and shutdown. Keep ordering, retry limits and session ownership across asynchronous work.
 - [ ] Reject unbounded waits, including `for (;;)` and `while (true)` polling without a deadline or attempt limit. Bad: `while (true) { if (await ready()) break }`. Good: `await waitFor({ ready, timeoutMs: 5000 })`, where timeout fails with the last observed state.
 - [ ] For UI changes, check loading, empty and error states, keyboard access and the existing UI primitives. Use Hydra, Oracle and inscribe consistently.
-- [ ] Flag every change under `.github/workflows` and apply [write-ci-workflow](../write-ci-workflow/SKILL.md). A `pull_request_target` or `workflow_run` workflow must never check out, build or run the PR's code, for example a checkout of `github.event.pull_request.head.sha` or `head.ref`, or scripts from the PR. Keep permissions read-only. Scope selection uses the trusted pinned selector on PR data; it runs no PR scripts or lifecycle hooks. Builds and tests wait for the `ci` environment's approval.
+- [ ] For changes under `.github/workflows`, apply [write-ci-workflow](../write-ci-workflow/SKILL.md).
 - [ ] Check docs, CLI help and hints describe the resulting behavior, in the same change.
 - [ ] Review comments and prose using `deslop`. Keep a comment only for a constraint or non-obvious reason; remove narration and stale claims. Keep each prose paragraph on one source line.
-- [ ] The first deslop review has no check results. Judge bugs and regression coverage from code and tests, without requesting check or mutation receipts. A resumed check-fix call receives failures; fix files without running commands.
 
 ## Tests
 
@@ -60,11 +55,11 @@ Ask of every changed line: is this the clearest way to get the result? Clear bea
 - [ ] It is hard to follow: it needs a comment to say what it does, or it is a packed one-liner, a long call chain, a clever trick or a nested condition. New and changed code reads as plain named steps, with no conditional spread (`...(x ? { a } : {})`), no logical assignment picking a value (`??=`, `||=`, `&&=`), no `||` or `??` default whose case the names don't make obvious, no bare `void` on a promise, no `.then` chain and no `for (;;)` or `while (true)` wait. Existing uses are not rewritten unless the change touches them.
 - [ ] Code is placed badly, using [follow-conventions](../follow-conventions/SKILL.md#files-and-concerns): unrelated concerns piling into one file, a split that scatters closely related code, or a file that only wraps another. Keep feature code in its feature folder and avoid speculative abstractions and dependencies.
 
-A "looks off" item the reviewer cannot prove still blocks. The fixer either fixes it or writes in the PR why it stays.
+A "looks off" item the reviewer cannot prove still blocks. In a deslop run, an item left unfixed fails the run (`UNFIXED`); the caller resolves it and reruns deslop. In standalone reviews, fix it or record in the PR why it stays.
 
 ## Reporting
 
-Report Bugs, Tests and Simpler findings with a file, location, concrete problem and suggested fix. Use the caller’s review-items schema when invoked by deslop. Use no severity ranks. Fix every actionable finding during a deslop run. Record the result in the PR description; do not tick review boxes.
+Report Bugs, Tests and Simpler findings with a file, location, concrete problem and suggested fix. In a deslop call, use its review-items schema without severity ranks and fix every finding. Standalone reviews and CodeRabbit use Must fix / Should fix. Record findings and fixes in the PR description.
 
 When asked to open or update a PR for a branch this review has not covered, say so and offer to run it first.
 

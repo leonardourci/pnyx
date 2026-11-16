@@ -5,8 +5,6 @@ description: Remove AI-style wording, em dashes and needless complexity from Pny
 
 # Deslop
 
-When invoked by the deslop tool, review and fix files, returning its requested JSON. Deslop owns checks, commits, pushes and proof. Read tests and code to judge regression strength; treat reported probes as context. Execution-specific checklist items belong to deslop or the calling agent, and do not require additional evidence in this call. Never change git state or run commands in that call.
-
 Apply this checklist to the changed text, whatever its format. Preserve facts, contracts, necessary caveats and the writer's intended meaning. Leave licenses, attributed quotations and external protocol data intact.
 
 - [ ] Read as someone who did not see the conversation. Lead with the concrete problem, action or result. Remove drafting history, assistant chatter, self-praise and summaries that repeat the preceding paragraph.
@@ -18,7 +16,7 @@ Apply this checklist to the changed text, whatever its format. Preserve facts, c
 - [ ] When code is in scope, remove dead branches, unused scaffolding and one-use wrappers that obscure the operation. Avoid introducing abstractions or dependencies just for cleanup. Keep useful collection methods, concurrent work and declarative rendering.
 - [ ] Preserve error visibility, ordering, cancellation, retries, cleanup and permissions. A wording pass must not quietly change behavior or hide a failure.
 - [ ] Check Pnyx vocabulary and update stale usage guidance in the root README. Use Hydra, Oracle and inscribe; keep other terms plain.
-- [ ] Read the final diff, including the PR description and proposed commit messages. Run `git diff --check`; for executable changes run focused checks and `pnpm deslop` as allowed. A prose-only cleanup needs no new behavior tests.
+- [ ] Read the final diff, including the PR description and proposed commit messages. For standalone use, run `git diff --check`. A prose-only cleanup needs no new behavior tests.
 
 ## Code cleanups
 

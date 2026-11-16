@@ -21,7 +21,7 @@ pnpm exec vitest run --project integration  # everything but the browser journey
 pnpm exec vitest run -t "Stop ends"         # tests whose name matches
 ```
 
-The tests run the built CLI and serve the built page, so run `pnpm run build` after changing code under `src/` or `web/` before a focused run. `pnpm deslop` and CI build first.
+The tests run the built CLI and serve the built page, so run `pnpm run build` after changing code under `src/` or `web/` before a focused run. CI builds first.
 
 Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Postgres log there before they are deleted; CI does this and uploads the folder when a run fails.
 

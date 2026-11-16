@@ -15,7 +15,7 @@ pnpm run lint
 pnpm test
 ```
 
-CSS uses the recommended Biome rules with Tailwind v4 parsing enabled in `biome.json`. The editor, `pnpm lint:css`, `pnpm run lint`, full `pnpm deslop` runs and CI share this config. CSS formatting is unchanged. The specificity-order rule is disabled because it compares unrelated components; the important-style rule is disabled because layout overrides and reduced-motion accessibility use `!important`. Other CSS warnings fail verification.
+CSS uses the recommended Biome rules with Tailwind v4 parsing enabled in `biome.json`. The editor, `pnpm lint:css`, `pnpm run lint`, `pnpm deslop` and CI share this config. CSS formatting is unchanged. The specificity-order rule is disabled because it compares unrelated components; the important-style rule is disabled because layout overrides and reduced-motion accessibility use `!important`. Other CSS warnings fail verification.
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
@@ -83,23 +83,32 @@ Choose a unique `<name>.pnyx` for each trial and share the stable URL portless p
 
 ## Verification
 
-`pnpm deslop` runs the shared tool pinned in package.json. Work must be committed and the checkout clean; it refuses the default branch. No PR is required. A local run can complete without a push only when its selected kinds do not require CI. The base is `--base`, the open PR's base branch, origin's default branch, then local main/master.
+Run `pnpm deslop` on clean, committed work. Pushed runs need an open pull request: `Tests` runs only on pull requests, and deslop waits for its checks. See [deslop's README](https://github.com/leonardourci/deslop#readme) for tool usage and proof details.
 
-One fresh, non-interactive agent reviews the branch diff with the selected instructions and no check results, and fixes files. Its tools deny git operations. Deslop detects edits and commits them as the configured user, with no attribution footer. During the review/fix call, deslop runs every check, commit, push and marker operation; its agent only reads and edits files. The calling agent may prepare and commit input and run local checks before CI approval.
+`deslop.config.json` selects the first matching kind for each path and combines their requirements. The local code commands below are `pnpm lint:fix`, `pnpm typecheck`, `pnpm lint:css` and `pnpm build`. The full integration and browser suite runs in CI. `checkFixAttempts` is 0: check failures return to the caller for a fix and a new run.
 
-`deslop.config.json` lists commands, ordered change kinds, instruction overrides, `checkFixAttempts` and optional provider models. The first kind per path applies; requirements are unioned across paths, including both sides of renames. Shipped skills run a local build. Code and fixture kinds run lint fixing, type checks, ESLint, CSS lint and build locally. The complete integration and browser test suite runs only in required CI; machine-load timeouts in local tests do not gate CI approval. Ordinary docs require only writing instructions. Pnyx explicitly includes AGENTS.md and its selected skills. The root `instructions` map replaces the shipped `review-code`, `audit-tests` and `kill-ai-slop` skills with Pnyx's contributor files; the `kill-ai-slop` entry points to the local `deslop` skill. Kinds select these names alongside Pnyx's workflow and front-end instructions. Machine-only `DESLOP_INSTRUCTIONS` entries override individual skills or disable them with `false`. Deslop's fallback ESLint stays enabled; Pnyx's code command list already runs ESLint, so no duplicate fallback pass is needed.
+| Kind | Local commands | CI check | Review instructions |
+|---|---|---|---|
+| Workflow | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop, write-ci-workflow |
+| Fixture | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop |
+| Shipped skill text | None | Lint, build and tests | Project, deslop |
+| Docs | None | Test scope | Project, deslop |
+| Tests | Code commands | Lint, build and tests | Project, conventions, audit-tests |
+| UI | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop, write-front-end |
+| Back-end | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop |
 
-Unpushed work runs configured local commands. Kinds with `ciRequired` run their local commands first, even on pushed branches. Deslop pushes only its own fix commits to the same branch and waits on those exact-head checks after local commands pass. `pnpm deslop --local` forces local commands and keeps fix commits local. This repository sets `checkFixAttempts` to 0, so failed checks return to the caller without another agent fix or proof. If configured above 0, failed checks return trimmed failures to the same session (Claude resume or Codex exec resume); deslop commits fixes and reruns checks up to that limit. Custom providers without resume support get a fresh call describing previous edits. After each local command, deslop commits that command’s nonignored edits as `deslop: <command>`. An edited sequence gets one proof pass; unstable commands are reported without an edit-until-stable loop.
+Project means `AGENTS.md`; conventions means `follow-conventions`. The instruction map uses Pnyx's contributor skills for `review-code`, `audit-tests` and `kill-ai-slop` (the local deslop skill).
 
-Green results write a git note under `refs/notes/deslop` on the final commit. `publishLocal` is explicitly false. The `deslop` GitHub status requires the selected CI checks to pass on that exact pushed commit; local checks alone do not publish success. Code, test, UI, fixture and shipped-skill kinds set `ciRequired`, including for `--local`: it cannot complete until the final commit is pushed and those checks pass; otherwise it returns `CI_REQUIRED` without proof. `pnpm exec deslop status --publish` publishes locally checked proof after a push. Required CI must pass before proof; an outage while publishing preserves the git note for a later publication retry; no pending status is posted. Retry `pnpm exec deslop status --publish` when GitHub recovers. New commits require their own run. This is an honesty record, not a signature. There are no modes, PR-body markers or marker-check workflows, review rounds, declines or owner restart comments.
+`Tests` runs on `pull_request` with read-only permissions, no secrets and no path filters. `Test scope` installs the selector from package.json without lifecycle hooks and reads the merge diff, including both paths of renames. It runs tests when the selection names `Lint, build and tests`. Docs-only changes skip that job, satisfying branch protection. The docs kind names `Test scope` because deslop requires a successful CI check to publish proof. A failed scope job still runs tests behind the approved `ci` environment. Description edits start no run; new pushes cancel older runs.
 
-The summary lists findings/fixes, each check and commits. Details live in git-ignored `.deslop/runs/<id>/run.json`; `pnpm exec deslop shape` shows its structure. Failure excerpts have at most 20 lines, with full output in separate logs that can be large.
+The PR controls the workflow, selector spec and config, so changes to those files need owner review. The read-only token, absence of secrets and approval-gated tests limit what untrusted code can do.
 
-Reviewer selection is CLI `--reviewer`, machine preference/list, then detected caller (including hosted Codex). Machine settings are `$XDG_CONFIG_HOME/deslop/settings.json`, normally `~/.config/deslop/settings.json`. Model and effort use `--reviewer-model`/`--reviewer-effort`, then per-provider machine settings, repo settings, provider defaults. Fallback providers use their own settings. Machine skill overrides win over repo overrides, which win over shipped skills.
+For CI approval:
 
-The `Tests` workflow uses `pull_request`, read-only permissions and no path filters. Its small `Test scope` job checks out the merge commit, imports deslop's pinned selector and reads the repository config plus the diff against the first parent. Renames include both paths. The scope job runs only the trusted selector, with no PR scripts or lifecycle hooks. Docs-only changes skip `Lint, build and tests`, which satisfies GitHub's required check; deslop waits for `Test scope` success for the docs kind. Code kinds require `Lint, build and tests` success before proof. A failed scope job still runs tests behind the maintainer-approved `ci` environment. Description edits do not trigger this workflow. Scratch files are retained after failure and newer pushes cancel older runs. Main requires `deslop` and `Lint, build and tests`; no synthetic statuses or write permissions are needed.
-
-For CI approval, run `pnpm deslop` on clean committed work pushed to the PR branch. Code kinds run the quick local sequence: `pnpm lint:fix`, `pnpm typecheck`, `pnpm exec eslint .`, `pnpm lint:css` and `pnpm build`. The required `Lint, build and tests` CI job runs the complete test suite before proof. Wait for all local commands to pass, then record `git rev-parse HEAD` and confirm it matches the PR head. Ask Hydra with that SHA, the local results in the run logs and the waiting CI run URL. Deslop finishes proof after GitHub passes on the same commit. Any new commit, including a deslop fix, needs new local checks and CI approval for that head. Branch-rule changes are left to the owner when merging.
+1. Push committed work to the PR branch and run `pnpm deslop`.
+2. Wait for the local commands to pass. Record the final `git rev-parse HEAD`, confirm it matches the PR head, and collect the local results from the deslop logs.
+3. Ask Hydra for approval with that SHA, the local results and the waiting CI run URL.
+4. After CI passes, confirm deslop wrote proof for the same commit. Any new commit needs its own checks and approval.
 
 ## Background reads
 
@@ -108,8 +117,6 @@ Pull request reads run once per minute while the worker works, checks are pendin
 The scheduler drains the spool at startup, in the tick a hook socket line starts and after the spool folder's watcher fires; unrelated ticks do not list it. A failed drain retains the dirty flag and retries after one second. `debug cpu-profile --out <file>` samples the server's main thread without an inspector listener. Profile with an isolated daemon and private fixture data during development.
 
 ## Review
-
-Deslop reviews and fixes the branch using `deslop.config.json` instructions. Reviews cover bugs, tests and simpler. Apply [AGENTS.md](../AGENTS.md), [follow-conventions](../.agents/skills/follow-conventions/SKILL.md) and front-end conventions where applicable. The final commit's git note and `deslop` status supply proof; PR descriptions record findings, fixes and pending checks without self-ticked boxes.
 
 Hosted agent processes lead their own process groups. Completing or archiving a task, or releasing its copy, stops its recorded groups with SIGTERM, escalates to SIGKILL if necessary and waits for exit. A group that still does not stop fails with `AGENT_STOP_FAILED` naming its processes; a closed task's cleanup tries once, and the next permanent release tries again. A worker that declares its own task done is stopped when that turn ends, and so is a worker a later reply resumes. Idle closure and server restart close the agent leader while leaving background tools running, so detached verification can finish. Group ownership remains recorded after the leader exits and across restart until permanent cleanup. Copy release keeps its folder if its host is unavailable or its worker is still starting; retry once the host is ready. Tools that start a separate process group are outside this cleanup.
 
