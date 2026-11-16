@@ -10,8 +10,9 @@ beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
 })
 
-const CONVERSATION = '[aria-label="Hydra conversation"]'
-const COMPOSER = '[aria-label="Reply to Hydra"]'
+const ACTIVE_WORKSPACE = '[data-hydra-workspace][data-active=true]'
+const CONVERSATION = `${ACTIVE_WORKSPACE} [aria-label="Hydra conversation"]`
+const COMPOSER = `${ACTIVE_WORKSPACE} [aria-label="Reply to Hydra"]`
 
 // The page types about seven letters a frame, so the text has stopped moving a few dozen frames later.
 const streamedText = ({ page }: { page: Page }) => until({
@@ -62,7 +63,7 @@ test(
       COMPOSER,
       'Plan the release',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('Plan the release').waitFor()
     await conversation.getByText('Release plan:').waitFor()
     const streamed = await streamedText({ page })
@@ -76,14 +77,14 @@ test(
       COMPOSER,
       'Also list the risks',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('Queued').waitFor()
 
-    await page.click('[aria-label="Stop Hydra"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Stop Hydra"]`)
     await conversation.getByText('Not delivered: stopped').waitFor()
     expect(await conversation.textContent()).not.toContain('ship on Thursday')
     expect(await conversation.textContent()).not.toContain('Risks:')
-    await page.click('[aria-label="Send this message again"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send this message again"]`)
     await conversation.getByText('Risks: the migration and the new billing page.').waitFor()
     // Raw HTML and a javascript: link in a reply show as text, never as a tag or a link.
     expect(await conversation.textContent()).toContain('<img src=x onerror=alert(1)>')
@@ -122,7 +123,7 @@ test(
       COMPOSER,
       'Summarize the plan',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('Plan:').waitFor()
     const partial = await conversation.textContent() ?? ''
     expect(partial).not.toContain('**')
@@ -273,10 +274,11 @@ test.each([
               type?: string
               id?: string
               name?: string
+              scope?: string
               args?: string[]
             }
 
-            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1) {
+            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1 && (!sent.scope || sent.scope === hydra.id)) {
               olderReads.add(sent.id!)
             }
 
@@ -342,7 +344,7 @@ test.each([
     const overlaps = await loader.evaluate(element => {
       const bounds = element.querySelector('span')!.getBoundingClientRect()
 
-      return [...document.querySelectorAll('article[data-entry-id]')].some(row => {
+      return [...element.closest('[aria-label="Hydra conversation"]')!.querySelectorAll('article[data-entry-id]')].some(row => {
         const rect = row.getBoundingClientRect()
 
         return rect.top < bounds.bottom && rect.bottom > bounds.top
@@ -456,7 +458,7 @@ const compactedConversation = async () => {
   return hydra
 }
 
-const LOADING = '[aria-label="Loading earlier messages"]'
+const LOADING = `${ACTIVE_WORKSPACE} [aria-label="Loading earlier messages"]`
 
 // The conversation's rendered rows top to bottom: each message's text start, and "compaction" for each notice.
 const timeline = ({ page }: { page: Page }) => page.evaluate(
@@ -498,10 +500,11 @@ test(
               type?: string
               id?: string
               name?: string
+              scope?: string
               args?: string[]
             }
 
-            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1) {
+            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1 && (!sent.scope || sent.scope === hydra.id)) {
               olderReads.add(sent.id!)
             }
 
@@ -666,9 +669,10 @@ const openCounted = async ({
             const sent = JSON.parse(String(frame.payload)) as {
               type?: string
               name?: string
+              scope?: string
             }
 
-            if (sent.type === 'command' && sent.name === 'thread') {
+            if (sent.type === 'command' && sent.name === 'thread' && (!sent.scope || sent.scope === hydraId)) {
               reads.push(String(frame.payload))
             }
           },
@@ -751,7 +755,7 @@ test(
       COMPOSER,
       'one more',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('A longer reply that streams in').waitFor()
     await streamedText({ page })
     reads.length = 0
@@ -808,6 +812,13 @@ const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>>
     await page.keyboard.press('PageUp')
   },
   touch: async ({ page }) => {
+    const bounds = await page.locator(CONVERSATION).boundingBox()
+
+    if (!bounds) {
+      throw new Error('Conversation is not visible')
+    }
+
+    const x = bounds.x + bounds.width / 2
     const session = await page.context().newCDPSession(page)
     await session.send(
       'Emulation.setTouchEmulationEnabled',
@@ -827,7 +838,7 @@ const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>>
         type,
         touchPoints: type === 'touchEnd' ? [] : [
           {
-            x: 700,
+            x,
             y,
           },
         ],
