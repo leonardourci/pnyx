@@ -3,6 +3,7 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { usePhysicalDrag, movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
 import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
+import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
 import { projectColumns, taskProjectColumn } from '#web-tasks/project-view.ts'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
@@ -22,6 +23,11 @@ export function App() {
   const current = hydra.navigation.hydraId
   const axis = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
+  const alignment = useRef<AbortController | null>(null)
+  useEffect(
+    () => () => alignment.current?.abort(),
+    [],
+  )
   useSmoothScroll({
     root: axis,
     content: track,
@@ -311,6 +317,20 @@ export function App() {
       block: 'nearest',
     })
     group?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus({ preventScroll: true })
+    alignment.current?.abort()
+    const controller = new AbortController()
+    alignment.current = controller
+
+    if (group && await afterSteadyLayout({
+      element: group,
+      signal: controller.signal,
+    })) {
+      group.scrollIntoView({
+        behavior: scrollBehavior(),
+        inline: 'start',
+        block: 'nearest',
+      })
+    }
   }
 
   return (

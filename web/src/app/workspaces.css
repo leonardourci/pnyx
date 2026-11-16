@@ -30,7 +30,7 @@
 .task-family { min-width: 0; }
 .task-family.family-open { grid-column: 1 / -1; }
 .subtasks { margin: 7px 0 0 17px; padding-left: 8px; border-left: 1px solid var(--color-line); display: flex; flex-direction: column; gap: 7px; }
-.project-cards .card { min-height: 0; width: 100%; max-width: none; margin: 0; padding: 9px 11px 10px; border-radius: 10px; transition: border-color 150ms, box-shadow 150ms, height 240ms, width 240ms; }
+.project-cards .card { min-height: 0; min-width: 0; width: 100%; max-width: none; margin: 0; padding: 9px 11px 10px; border-radius: 10px; transition: border-color 150ms, box-shadow 150ms, height 240ms, width 240ms, min-height 240ms, min-width 240ms; }
 .project-cards .card.selected { min-width: 560px; min-height: 440px; max-height: none; }
 .project-cards .card:not(.selected) .card-content { gap: 6px; overflow: visible; }
 .project-cards .card:not(.selected) .card-open { font-weight: 500; font-size: var(--text-ui); line-height: 1.45; display: block; white-space: normal; }
