@@ -207,6 +207,18 @@ test.each([
     status: 0,
   },
   {
+    name: 'source mixed with docs',
+    paths: ['docs/testing.md', 'src/new.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'workflow',
+    paths: ['.github/workflows/example.yml'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
     name: 'shipped skills',
     paths: ['skills/pnyx-cli/SKILL.md'],
     output: 'tests=all\n',
