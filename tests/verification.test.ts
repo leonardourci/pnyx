@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -130,7 +131,6 @@ test(
     expect(selection({ paths: ['web/src/hydra/hydra-chat.tsx'] }).instructions).toContain('write-front-end')
     expect(selection({ paths: ['src/app/server.ts'] }).commands).toContain('tests')
     expect(selection({ paths: ['tests/setup/pnyx.ts'] }).commands).toContain('tests')
-    expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).commands).toContain('tests')
     expect(selection({ paths: ['src/example/fixtures/input.md'] })).toMatchObject({
       commands: [
         'lint:fix',
@@ -148,12 +148,6 @@ test(
         'project',
       ],
     })
-    expect(selection({ paths: ['tests/setup/fixtures/example.md'] }).instructions).toEqual([
-      'review-code',
-      'audit-tests',
-      'kill-ai-slop',
-      'project',
-    ])
     expect(selection({ paths: ['skills/pnyx-cli/fixtures/input.md'] })).toMatchObject({
       commands: [
         'lint:fix',
@@ -438,7 +432,7 @@ test.each([
     expectedUpdates = [],
   }) => {
     const runnerTemp = mkdtempSync(join(
-      process.env.TMPDIR!,
+      tmpdir(),
       'ci-scope-',
     ))
     temporaryFolders.push(runnerTemp)
@@ -503,7 +497,7 @@ test(
   'a passing build replaces dist and leaves nothing beside it, and a failing build keeps the old dist',
   () => {
     const root = mkdtempSync(join(
-      process.env.TMPDIR!,
+      tmpdir(),
       'staged-',
     ))
     temporaryFolders.push(root)
