@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 let pnyx: Pnyx
@@ -1238,5 +1238,252 @@ test(
       cwd: pooled.path,
       branch: pooled.branch,
     })).toBe('')
+  },
+)
+
+test(
+  'attaching a repository to another Hydra refuses without moving existing work',
+  async () => {
+    const owner = await pnyx.hydra()
+    const other = await pnyx.hydra()
+    const path = owner.folder({ name: 'owned-project' })
+    await owner.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const task = await owner.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Keep this work',
+        '--project',
+        path,
+      ],
+    })
+    const refused = await other.ownerRefused({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    expect(refused.code).toBe('CONFLICT')
+    expect(refused.error).toContain(owner.id)
+    expect((await owner.task({ key: task.card.id })).title).toBe('Keep this work')
+    expect((await other.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toBe('none: no projects attached')
+  },
+)
+
+test(
+  'legacy duplicates stay usable until an atomic keeper choice clears all task blockers',
+  async () => {
+    const owner = await pnyx.hydra()
+    const path = owner.folder({ name: 'legacy-shared' })
+    await owner.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const id = 'legacy-project-owner'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${JSON.stringify({
+        v: 1,
+        seq: 1,
+        id: 'legacy-project',
+        at: '2026-10-21T10:01:00Z',
+        actor: 'cli',
+        cardId: '$projects',
+        type: 'hydra.project',
+        data: {
+          before: null,
+          after: {
+            path,
+            name: 'legacy-shared',
+            detached: false,
+          },
+          sharedWith: [],
+        },
+      })}\n`,
+    )
+    const legacy = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    const task = await legacy.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Legacy work',
+        '--project',
+        path,
+      ],
+    })
+    expect((await legacy.task({ key: task.card.id })).project).toBe('legacy-shared')
+    await legacy.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const setupRun = await pnyxAxi({
+      env: process.env,
+      args: [
+        'setup',
+        'check',
+        '--hydra',
+        legacy.id,
+      ],
+    })
+    expect(setupRun.status).toBe(1)
+    const setup = parsed(setupRun)
+    expect(setup.missing).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: `project-owner:${path}`,
+        missing: expect.stringContaining(owner.id),
+        by: 'owner',
+      }),
+    ]))
+    expect(setup.missing.find((item: { name: string }) => item.name === `project-owner:${path}`).missing).toContain(legacy.id)
+    expect((await owner.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path,
+        state: 'attached',
+      }),
+    ]))
+    const dependent = await legacy.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Dependent work',
+        '--project',
+        path,
+      ],
+    })
+    const free = await legacy.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Independent work',
+        '--project',
+        path,
+      ],
+    })
+    await legacy.owner({
+      args: [
+        'task',
+        'depend',
+        dependent.card.id,
+        '--on',
+        task.card.id,
+      ],
+    })
+    const refused = await owner.ownerRefused({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })
+    expect(refused.code).toBe('CONFLICT')
+    expect(refused.error).toContain(task.card.id)
+    expect(refused.error).toContain(dependent.card.id)
+    expect((await legacy.task({ key: free.card.id })).title).toBe('Independent work')
+    expect((await legacy.task({ key: task.card.id })).title).toBe('Legacy work')
+    expect((await legacy.task({ key: dependent.card.id })).title).toBe('Dependent work')
+    expect((await owner.ownerRefused({
+      args: [
+        'task',
+        'show',
+        free.card.id,
+      ],
+    })).code).toBe('NOT_FOUND')
+    await legacy.owner({
+      args: [
+        'task',
+        'undepend',
+        dependent.card.id,
+        '--on',
+        task.card.id,
+      ],
+    })
+    const kept = await owner.owner({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })
+    expect(kept.moved).toEqual(expect.arrayContaining([
+      task.card.id,
+      dependent.card.id,
+      free.card.id,
+    ]))
+    expect((await owner.task({ key: task.card.id })).title).toBe('Legacy work')
+    expect((await owner.task({ key: dependent.card.id })).title).toBe('Dependent work')
+    expect((await owner.task({ key: free.card.id })).title).toBe('Independent work')
+    expect(rows({
+      text: 'select hydra_id, type from events where card_id = $1 and type in (\'task.moved-in\', \'task.moved-out\') order by type',
+      values: [task.card.id],
+    })).toEqual([
+      {
+        hydra_id: owner.id,
+        type: 'task.moved-in',
+      },
+      {
+        hydra_id: legacy.id,
+        type: 'task.moved-out',
+      },
+    ])
+    expect((await legacy.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual([
+      expect.objectContaining({
+        path,
+        state: 'detached',
+      }),
+    ])
+    expect((await owner.owner({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })).moved).toEqual([])
   },
 )

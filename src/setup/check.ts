@@ -7,7 +7,7 @@ import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#worke
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
 import { skillStatus } from './skills.ts'
 import { projectMemoryView } from '#memory/project-memory.ts'
-import { projectsFor } from '#projects/read.ts'
+import { projectsFor, sharingHydras } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
@@ -174,6 +174,24 @@ export async function setupCheck({
     project,
     status,
   } of profiles) {
+    const duplicates = sharingHydras({
+      hydraId,
+      path: project.path,
+    })
+
+    if (duplicates.length) {
+      const hydras = [
+        hydraId,
+        ...duplicates.map(hydra => hydra.id),
+      ].sort().join(', ')
+      items.push({
+        name: `project-owner:${project.path}`,
+        missing: `repository ${project.path} is attached to Hydras ${hydras}`,
+        by: 'owner',
+        fix: `Choose its keeper with pnyx-axi project keep ${JSON.stringify(project.path)} --hydra <keeper>`,
+      })
+    }
+
     if (status === 'missing') {
       items.push({
         name: `profile:${project.name}`,
