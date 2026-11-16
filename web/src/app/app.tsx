@@ -4,7 +4,8 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { usePhysicalDrag, movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
 import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
 import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
-import { projectColumns, taskProjectColumn } from '#web-tasks/project-view.ts'
+import { projectColumns, taskProjectColumn, statusPriority, taskRollup } from '#web-tasks/project-view.ts'
+import { rankOf } from '#tasks/select.ts'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
@@ -179,6 +180,22 @@ export function App() {
         })
         const childCards = Object.values(workspace.state.cards).filter(item =>
           item.parentId === card.parentId)
+          .sort((
+            a,
+            b,
+          ) => statusPriority({
+            status: taskRollup({
+              state: workspace.state,
+              card: a,
+              actions: workspace.actions,
+            }).status,
+          }) - statusPriority({
+            status: taskRollup({
+              state: workspace.state,
+              card: b,
+              actions: workspace.actions,
+            }).status,
+          }) || rankOf({ card: a }) - rankOf({ card: b }))
         const siblings = card.parentId ? childCards
           : columns.find(column => column.id === taskProjectColumn({
             state: workspace.state,

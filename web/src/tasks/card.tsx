@@ -453,7 +453,7 @@ export const HydraCard = memo(function HydraCard({
                   args: [
                     'hold',
                     card.id,
-                    '--message',
+                    '--reason',
                     'Paused by owner',
                     '--event-id',
                     crypto.randomUUID(),

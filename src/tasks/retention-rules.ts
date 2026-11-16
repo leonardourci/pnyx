@@ -83,6 +83,7 @@ export function refreshDone({
 
     if (complete) {
       const completed = parts.flatMap(part => part.doneAt ? [part.doneAt] : [])
+      completed.push(parent.doneAt ?? at)
 
       if (parent.status?.state === 'done') {
         completed.push(parent.status.at)

@@ -171,7 +171,7 @@ export function HydraView({
   const [
     projectRequest,
     setProjectRequest,
-  ] = useState(new URLSearchParams(location.search).has('add-project'))
+  ] = useState(active && new URLSearchParams(location.search).has('add-project'))
   // The search Settings opens with when the Oracle sends a setting there; it also remounts the page for it.
   const [
     settingsQuery,
