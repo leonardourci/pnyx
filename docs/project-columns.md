@@ -48,7 +48,7 @@ Grouping A is settled. Labels do not define columns.
 - [x] Record settled design and migration inventory here.
 - [ ] Automatic connection/query recovery with regression evidence.
 - [ ] Project and repository grouping, ownership and CLI contracts.
-- [ ] One-level parent changes and rollups with CLI and API validation.
+- [ ] One-level parent changes and rollups with CLI and API validation. The parent command and optimistic projection are implemented; rollups and gestures remain.
 - [ ] Shared multi-Hydra connection views and slim header.
 - [ ] Project grids, compact cards and in-place full detail/chat.
 - [ ] Folding, resize persistence, physical drag/reorder/nesting and motion.
@@ -67,13 +67,13 @@ Grouping A is settled. Labels do not define columns.
 | Manual move overrides lifecycle placement | Project change moves a task; rank reorders within state | Pending |
 | Column CLI and saved widths/order | Project layout commands and persisted project widths/order/folds | Pending |
 | Column skills and Hydra digest | Teach project selection and report per-project state counts | Pending |
-| Parent specified only at creation | One task parent command sets or removes it; reject cycles and deeper nesting | Pending |
+| Parent specified only at creation | One task parent command sets or removes it; reject cycles and deeper nesting | Implemented and integration tested |
 | One folder is one project | Project groups repositories; repo folder attaches alone; folder of repos attaches as a group | Pending |
 | Same project may attach to several Hydras | Refuse a second owner for projects and repositories | Pending |
 | Copies, start and landing configured per project | Preserve settings on the repository where the worker runs | Pending |
 | Memory keyed by normalized remote | Keep memory per repository | Pending |
 | One selected Hydra supplies page data | Retained scopes share one WebSocket and Zero client across visible Hydras | Pending |
-| Query/client failure offers manual Retry | Automatically rebuild failed reads with bounded backoff | Pending |
+| Query/client failure offers manual Retry | Automatically rebuild failed reads with bounded backoff | Implemented; stopped-authentication browser regression passes |
 
 ## Open implementation questions
 
