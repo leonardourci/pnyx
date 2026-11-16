@@ -33,12 +33,13 @@ jobs:
       - id: scope
         shell: bash
         run: |
-          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/paths"
+          git diff --no-renames --name-only -z HEAD^1 HEAD > "$RUNNER_TEMP/paths"
           node --input-type=module -e "
             import { readFileSync } from 'node:fs'
+            // The selector is installed in the runner's temporary directory, resolved at runtime.
             const { select } = await import(process.env.RUNNER_TEMP + '/deslop-scope/node_modules/deslop/src/config.js')
             const config = JSON.parse(readFileSync('deslop.config.json', 'utf8'))
-            const paths = readFileSync(process.argv[1], 'utf8').split('\n').filter(Boolean)
+            const paths = readFileSync(process.argv[1], 'utf8').split('\0').filter(Boolean)
             if (!paths.length) throw new Error('Empty change list')
             const selected = select({ config, paths })
             const tests = selected.checks.includes('Lint, build and tests') ? 'all' : 'none'

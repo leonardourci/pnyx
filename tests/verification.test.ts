@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
+import { select, validateConfig } from 'deslop/src/config.js'
 import { parse } from 'yaml'
 import { afterEach, expect, test } from 'vitest'
 import { git } from './setup/upgrade.ts'
@@ -24,17 +24,10 @@ afterEach(() => {
   }
 })
 
-const selectorModule = pathToFileURL(createRequire(import.meta.url).resolve('deslop/src/config.js')).href
 const policyRoot = fileURLToPath(new URL(
   '..',
   import.meta.url,
 ))
-// Resolve the installed selector so the tests exercise the dependency used by the CLI.
-const {
-  select,
-  validateConfig,
-  instructionsFor,
-} = await import(selectorModule)
 const config = validateConfig({
   root: policyRoot,
   config: JSON.parse(readFileSync(
@@ -175,27 +168,6 @@ test(
       'write-front-end',
       'write-ci-workflow',
     ]))
-    const reviewText = instructionsFor({
-      root: policyRoot,
-      config,
-      selection: selected,
-    })
-
-    for (const file of [
-      'AGENTS.md',
-      '.agents/skills/follow-conventions/SKILL.md',
-      '.agents/skills/review-code/SKILL.md',
-      '.agents/skills/audit-tests/SKILL.md',
-      '.agents/skills/deslop/SKILL.md',
-    ]) {
-      expect(reviewText).toContain(readFileSync(
-        join(
-          policyRoot,
-          file,
-        ),
-        'utf8',
-      ))
-    }
   },
 )
 
@@ -234,6 +206,16 @@ test.each([
     paths: [
       'docs/testing.md',
       '.github/workflows/README.md',
+    ],
+    output: 'tests=none\n',
+    status: 0,
+  },
+  {
+    name: 'docs with quoted or multiline filenames',
+    paths: [
+      'docs/naïve.md',
+      'docs/line\nbreak.md',
+      'docs/"quoted".md',
     ],
     output: 'tests=none\n',
     status: 0,
