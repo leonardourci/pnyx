@@ -208,7 +208,13 @@ const scopeScript = scopeStep.run
 test(
   'every configured CI check names a workflow job',
   () => {
-    const jobNames = Object.values(workflow.jobs).map((job: { name: string }) => job.name)
+    const jobNames = Object.values(workflow.jobs).map(job => {
+      if (typeof job !== 'object' || job === null || !('name' in job)) {
+        throw new Error('Workflow job must have a name')
+      }
+
+      return job.name
+    })
 
     for (const kind of config.kinds) {
       for (const check of kind.checks) {
