@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { workspaceResults, type OracleWorkspace } from './workspaces.ts'
 import { tokens } from '#oracle/query.ts'
 import { searchFilters } from './filters.ts'
 import type { HydraState } from '#app/model.ts'
@@ -14,6 +15,7 @@ import { composing } from '#web-shared/ime.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { SearchBar,type SearchBadge } from '#web-shared/ui/search-bar.tsx'
+import { projectColumns } from '#web-tasks/project-view.ts'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useEffect,useId,useRef,useState,type KeyboardEvent,type MouseEvent } from 'react'
 import { createPortal,flushSync } from 'react-dom'
@@ -55,6 +57,8 @@ const onBackdrop = ({ event }: { event: MouseEvent<HTMLDialogElement> }) => {
 
 export function Oracle({
   state,
+  workspaces,
+  searchCommand,
   cardActions,
   view,
   command,
@@ -79,6 +83,8 @@ export function Oracle({
   openChat,
 }: {
   state: HydraState
+  workspaces: OracleWorkspace[]
+  searchCommand: Command
   cardActions: Record<string, CurrentAction>
   view: ViewPreferences
   command: Command
@@ -95,11 +101,29 @@ export function Oracle({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
-  openTask({ id }: { id: string }): unknown
+  openTask({
+    id,
+    hydra,
+  }: {
+    id: string
+    hydra?: string
+  }): unknown
   // Opens the task and Hydra's composer, ready to reply about it.
-  answerTask({ id }: { id: string }): void
+  answerTask({
+    id,
+    hydra,
+  }: {
+    id: string
+    hydra?: string
+  }): void
   openHydra(): void
-  selectProject({ path }: { path: string }): void
+  selectProject({
+    path,
+    hydra,
+  }: {
+    path: string
+    hydra?: string
+  }): void
   openSettings({ query }: { query: string }): void
   createTask({ column }: { column: string }): void
   createColumn(): void
@@ -145,7 +169,7 @@ export function Oracle({
   const [
     badgeIds,
     setBadgeIds,
-  ] = useState(() => [hydraBadge.id])
+  ] = useState<string[]>([])
   const [
     chosen,
     setChosen,
@@ -189,11 +213,15 @@ export function Oracle({
   const listId = useId()
 
   const columns = columnsFor({ state })
-  const options = filterOptions({
-    hydra: hydraBadge,
-    columns,
-    projects,
-  })
+  const options = [
+    ...filterOptions({
+      hydra: hydraBadge,
+      columns,
+      projects,
+    }),
+    ...workspaces.filter(item => item.hydra.id !== hydra.id)
+      .map(item => hydraFilter({ hydra: item.hydra })),
+  ]
   // Badges keep only ids, so a renamed column or Hydra shows its new name and a deleted one drops out.
   const badges = badgeIds.flatMap(id => options.filter(option => option.id === id))
   // A request is not a search, so Ask mode reads no filters and sends no query.
@@ -209,9 +237,15 @@ export function Oracle({
     ],
   )
   const found = useFoundCards({
-    command,
+    command: searchCommand,
     query: open ? text : '',
-    revision: state.seq,
+    revision: workspaces.reduce(
+      (
+        sum,
+        workspace,
+      ) => sum + workspace.state.seq,
+      0,
+    ),
     filters: searchFilters({
       badges,
       now: filterNow,
@@ -223,7 +257,12 @@ export function Oracle({
     options,
   }) : []
   const actions: OracleAction[] = open ? oracleActions({
-    columns,
+    columns: projectColumns({
+      state,
+      cards: Object.values(state.cards),
+      actions: cardActions,
+      order: [],
+    }),
     scope: origin.current.scope,
   }) : []
   const now = Date.now()
@@ -234,17 +273,28 @@ export function Oracle({
     state,
     hydra,
   }) : []
-  const groups = open && !ask ? oracleResults({
-    state,
+  const globalGroups = open && !ask ? workspaceResults({
+    workspaces,
     hits: found.hits,
-    projects,
+    text,
+    badges,
+    now,
+  }) : []
+  const localGroups = open && !ask && (text || badges.length) ? oracleResults({
+    state,
+    hits: [],
+    projects: [],
     actions,
     cardActions,
     hydra,
     text,
     badges,
     now,
-  }) : []
+  }).filter(group => group.label === 'Settings and actions') : []
+  const groups = open && !ask ? [
+    ...globalGroups,
+    ...localGroups,
+  ] : []
   const results = groups.flatMap(group => group.results)
   const resultKey = JSON.stringify([
     text,
@@ -329,7 +379,7 @@ export function Oracle({
       setAsk(null)
 
       if (reset) {
-        setBadgeIds(ids ?? [hydraBadge.id])
+        setBadgeIds(ids ?? [])
       }
 
       if (opening !== undefined) {
@@ -458,9 +508,15 @@ export function Oracle({
 
     const openCard = ({ id }: { id: string }) => {
       if (elsewhere) {
-        answerTask({ id })
+        answerTask({
+          id,
+          hydra: result.hydra,
+        })
       } else {
-        openTask({ id })
+        openTask({
+          id,
+          hydra: result.hydra,
+        })
       }
     }
 
@@ -477,7 +533,10 @@ export function Oracle({
 
         break
       case 'project':
-        selectProject({ path: result.summary.path })
+        selectProject({
+          path: result.summary.path,
+          hydra: result.hydra,
+        })
         break
       case 'action':
         runAction({ entry: result.action })
@@ -797,8 +856,9 @@ export function Oracle({
   const dimmed = found.pending && !token && !ask
   const empty = token ? <p className="oracle-empty">Nothing matches “{token.text}” here. Esc drops it.</p> : <p className="oracle-empty">{nothing}</p>
   const listLabel = token ? MENU_LABEL : 'Oracle results'
-  const searchPlaceholder = 'Search tasks, conversations, projects and settings; > filters; ask to ask a Hydra'
+  const searchPlaceholder = 'Search…'
 
+  const previewWorkspace = workspaces.find(item => item.hydra.id === shownResult?.hydra)
   const palette = (
     <dialog
       ref={dialog}
@@ -889,7 +949,6 @@ export function Oracle({
               <AskPreview
                 to={ask.picking ? pickedTarget : askTarget}
                 request={query}
-                picking={ask.picking}
                 sending={ask.sending}
                 checking={ask.checking === true}
                 error={ask.error}
@@ -899,8 +958,8 @@ export function Oracle({
             {!ask && shownResult && (
               <ResultPreview
                 result={shownResult}
-                state={state}
-                cardActions={cardActions}
+                state={previewWorkspace?.state ?? state}
+                cardActions={previewWorkspace?.actions ?? cardActions}
                 terms={terms}
                 doneAfterHours={shared?.doneAfterHours}
                 connected={connected}

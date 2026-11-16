@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Hit } from '#oracle/model.ts'
+import type { ScopedHit as Hit } from './workspaces.ts'
 import type { SearchFilters } from '#oracle/filters.ts'
 import type { Command } from '#web-app/connection.ts'
 

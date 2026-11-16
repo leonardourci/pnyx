@@ -1,6 +1,5 @@
 import { tokens } from '#oracle/query.ts'
 import type { HydraState } from '#app/model.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
 import { KEY_ACTIONS, type KeyScope } from '#preferences/keyboard.ts'
 
 // Keys that open, close or type into the Oracle itself are no use as its rows.
@@ -59,7 +58,10 @@ export function oracleActions({
   columns,
   scope,
 }: {
-  columns: HydraColumn[]
+  columns: {
+    id: string
+    title: string
+  }[]
   scope: KeyScope
 }): OracleAction[] {
   return [
@@ -80,9 +82,9 @@ export function oracleActions({
     })),
     {
       id: 'action:column',
-      label: 'New column',
+      label: 'Add project',
       words: 'create add layout',
-      does: 'Enter adds a column at the end of the Hydra and lets you name it.',
+      does: 'Attach a repository or a folder of repositories.',
       run: 'column',
     },
     ...KEY_ACTIONS.filter(entry => !OWN_KEYS.includes(entry.id) && entry.scopes.includes(scope))

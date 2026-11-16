@@ -26,6 +26,7 @@ const readAnchor = ({ target }: { target: HTMLElement }): HydraAnchor | undefine
 
 export function useHydraKeyboard({
   state,
+  hydraId,
   groups,
   page,
   setPage,
@@ -41,6 +42,7 @@ export function useHydraKeyboard({
   openSettings,
 }: {
   state: HydraState
+  hydraId: string
   groups: ColumnCards[]
   page: string
   setPage({ page }: { page: string }): void
@@ -63,6 +65,12 @@ export function useHydraKeyboard({
   useEffect(
     () => {
       const track = (event: FocusEvent) => {
+        const workspace = (event.target as HTMLElement).closest<HTMLElement>('[data-hydra-workspace]')
+
+        if (workspace?.dataset.hydraWorkspace !== hydraId) {
+          return
+        }
+
         const anchor = readAnchor({ target: event.target as HTMLElement })
 
         if (anchor) {
@@ -88,7 +96,7 @@ export function useHydraKeyboard({
         track,
       )
     },
-    [],
+    [hydraId],
   )
 
   const leaveField = () => {

@@ -1,3 +1,5 @@
+import { statusLabel } from '#tasks/card-status.ts'
+import { taskRollup } from '#web-tasks/project-view.ts'
 import { tokens } from '#oracle/query.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
@@ -8,7 +10,7 @@ import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { searchSettings,SETTING_ICONS,SETTINGS_CATALOG,SETTINGS_SECTIONS,type SettingsMatch } from '#web-settings/catalog.ts'
 import { relativeTime } from '#web-tasks/brief.ts'
-import { columnsFor,filterCards } from '#web-tasks/view.ts'
+import { filterCards } from '#web-tasks/view.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
 import { nameMatches,passes,TYPE_LABELS,type Candidate,type Filter,type FilterToken } from './filters.ts'
 import { ACTION_ICONS,matchesCommand,oraclePanels,type OracleAction,type OraclePanel } from './oracle-catalog.ts'
@@ -16,6 +18,7 @@ import { ACTION_ICONS,matchesCommand,oraclePanels,type OracleAction,type OracleP
 interface Shown extends Candidate {
   id: string
   title: string
+  hydraName?: string
 }
 
 export type OracleResult = Shown & ({
@@ -64,6 +67,7 @@ const taskResult = ({
   kind: 'task',
   title: card.title,
   hydra: hydra.id,
+  hydraName: hydra.name,
   column: card.column,
   project: card.project,
   at: card.updatedAt,
@@ -87,6 +91,7 @@ const conversationResult = ({
   kind: 'conversation',
   title: `${hydra.name}’s chat`,
   hydra: hydra.id,
+  hydraName: hydra.name,
   at,
   hit,
 })
@@ -102,6 +107,7 @@ const taskConversation = ({
   kind: 'conversation',
   title: card.title,
   hydra: hydra.id,
+  hydraName: hydra.name,
   project: card.project,
   at: card.updatedAt,
   card,
@@ -141,6 +147,7 @@ const panelResult = ({
   kind: 'panel',
   title: panel.label,
   hydra: hydra.id,
+  hydraName: hydra.name,
   panel,
 })
 
@@ -270,6 +277,7 @@ export function oracleResults({
       kind: 'project',
       title: project.name,
       hydra: hydra.id,
+      hydraName: hydra.name,
       project: project.path,
       summary: project,
     }))
@@ -369,7 +377,13 @@ export function resultMeta({
 }): string {
   switch (result.kind) {
     case 'task':
-      return `${columnsFor({ state }).find(column => column.id === result.card.column)?.title ?? ''} · ${relativeTime({
+      return `${result.hydraName ?? ''} · ${statusLabel({
+        status: taskRollup({
+          state,
+          card: result.card,
+          actions: {},
+        }).status,
+      })} · ${relativeTime({
         at: result.at,
         now,
       })}`

@@ -1,0 +1,113 @@
+import type { HydraState } from '#app/model.ts'
+import type { HydraProjectSummary } from '#app/server-hydras.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
+import type { Hit } from '#oracle/model.ts'
+import type { Command } from '#web-app/connection.ts'
+import { taskRollup } from '#web-tasks/project-view.ts'
+import type { Filter } from './filters.ts'
+import { oracleResults, type OracleResult } from './results.ts'
+
+export type ScopedHit = Hit & { hydra?: string }
+export interface OracleWorkspace {
+  state: HydraState
+  hydra: {
+    id: string
+    name: string
+    icon: string
+  }
+  projects: HydraProjectSummary[]
+  actions: Record<string, CurrentAction>
+}
+
+export function workspaceSearch({
+  ids,
+  commandFor,
+}: {
+  ids: string[]
+  commandFor({ id }: { id: string }): Command
+}): Command {
+  return async ({
+    name,
+    args,
+  }) => {
+    const receipts = await Promise.all(ids.map(async id => {
+      const receipt = await commandFor({ id })({
+        name,
+        args,
+      })
+      const hits = Array.isArray(receipt.hits) ? receipt.hits as Hit[] : []
+
+      return hits.map(hit => ({
+        ...hit,
+        hydra: id,
+      }))
+    }))
+
+    return { hits: receipts.flat() }
+  }
+}
+
+export function workspaceResults({
+  workspaces,
+  hits,
+  text,
+  badges,
+  now,
+}: {
+  workspaces: OracleWorkspace[]
+  hits: ScopedHit[]
+  text: string
+  badges: Filter[]
+  now: number
+}) {
+  const merged = new Map<string, OracleResult[]>()
+
+  for (const workspace of workspaces) {
+    const groups = oracleResults({
+      state: workspace.state,
+      hits: hits.filter(hit => hit.hydra === workspace.hydra.id),
+      projects: workspace.projects,
+      actions: [],
+      cardActions: workspace.actions,
+      hydra: workspace.hydra,
+      text,
+      badges,
+      now,
+    })
+
+    for (const group of groups) {
+      const results = group.results.filter(result => {
+        if (text || badges.length) {
+          return result.kind !== 'setting' && result.kind !== 'panel'
+        }
+
+        return result.kind === 'task' && taskRollup({
+          state: workspace.state,
+          card: result.card,
+          actions: workspace.actions,
+        }).status.kind === 'asks'
+      }).map(result => ({
+        ...result,
+        id: `${workspace.hydra.id}:${result.id}`,
+      }))
+      const label = !text && !badges.length ? 'Needs you' : group.label
+      merged.set(
+        label,
+        [
+          ...(merged.get(label) ?? []),
+          ...results,
+        ],
+      )
+    }
+  }
+
+  return [...merged].filter(([
+    , results,
+  ]) => results.length).map(([
+    label,
+    results,
+  ]) => ({
+    label,
+    results,
+  }))
+}

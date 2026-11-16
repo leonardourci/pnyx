@@ -1,896 +1,340 @@
-import { HYDRA_MARK } from '#hydra/hydra-names.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { taskMention } from '#hydra/mentions.ts'
-import { viewFor } from '#preferences/view.ts'
-import { pickView } from '#settings/settings.ts'
-import { lockedColumn } from '#tasks/column-rules.ts'
-import type { Card } from '#tasks/model.ts'
-import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { useChatDrafts } from '#web-hydra/chat-drafts.ts'
-import { HydraComposerSources } from '#web-hydra/composer-sources.tsx'
-import { HydraChat } from '#web-hydra/hydra-chat.tsx'
-import { HydraLabel } from '#web-hydra/hydra-title.tsx'
-import { storageKey } from '#web-hydra/outbox.ts'
-import { Oracle } from '#web-oracle/oracle.tsx'
-import { useHydraKeyboard } from '#web-preferences/keyboard-hydra.tsx'
-import { focusElement,KeyboardProvider } from '#web-preferences/keyboard-registry.tsx'
-import { useSaveView } from '#web-preferences/save-view.ts'
-import { useViewTheme } from '#web-preferences/view-theme.ts'
-import { useProjectFilter } from '#web-projects/project-filter.ts'
-import { useProjectsResource } from '#web-projects/project-resource.ts'
-import { SettingsPage } from '#web-settings/settings-page.tsx'
-import { useSharedSettings } from '#web-settings/shared-settings.ts'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
-import { useKept,useStableActions } from '#web-shared/stable.ts'
-import { useScrollingClass } from '#web-shared/use-scrolling-class.ts'
-import { HydraCard } from '#web-tasks/card.tsx'
-import { Column } from '#web-tasks/column.tsx'
-import { Detail } from '#web-tasks/detail.tsx'
-import { argument } from '#web-tasks/optimistic.ts'
-import { TaskCreate,type TaskDraft } from '#web-tasks/task-create.tsx'
-import { useTaskNavigation } from '#web-tasks/task-navigation.ts'
-import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
-import { useTaskReferences } from '#web-tasks/task-references.ts'
-import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
-import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
-import { useCallback,useEffect,useRef,useState,type CSSProperties } from 'react'
+import { usePhysicalDrag, movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
+import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
+import { projectColumns, taskProjectColumn } from '#web-tasks/project-view.ts'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
-import { Hydras } from './hydras.tsx'
-import { Panel } from './panel.tsx'
-import { hydraViews,openingView,restoreView,showingPage,usePersistView } from './restore.ts'
-import { hydraTitle,pageTitle } from './view.ts'
+import { placements } from './hydra-order.ts'
+import { reportRender } from './render-log.ts'
+import { HydraView } from './workspace.tsx'
 
 export function App() {
+  const rendering = performance.now()
+  useLayoutEffect(() => reportRender({
+    name: 'hydra-workspaces',
+    ms: performance.now() - rendering,
+  }))
   const hydra = useHydra()
 
-  return <HydraView key={hydra.viewKey} hydra={hydra} />
-}
-
-function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
-  const {
-    state,
-    command,
-    connected,
-    offline,
-    hydraThread,
-    hydraQueue,
-    upgrade,
-    latest,
-    actions,
-    navigation,
-    navigate,
-    loading,
-    loaded,
-    error,
-    checking,
-  } = hydra
-  useEffect(
-    () => {
-      if (hydra.creating) {
-        setPage({ page: 'hydra' })
-        const frame = requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
-
-        return () => cancelAnimationFrame(frame)
-      }
-    },
-    [hydra.viewKey],
-  )
-  const installationPending = useInstallationPending()
-  const { intents: projectPending } = useProjectsResource({
-    command,
-    connected,
-    revision: state.projectsRevision,
-  })
-  const restoreKey = storageKey({ key: 'restore' })
-  const commentsKey = storageKey({
-    key: 'comments',
-    hydraId: navigation.hydraId,
-  })
-  const [restored] = useState(() => hydraViews.get(hydra.viewKey)
-    ?? restoreView({ key: restoreKey }))
-  const [
-    pageView,
-    setPageView,
-  ] = useState(() => openingView({ restored }))
-  const {
-    page,
-    panel,
-    selected: selectedRef,
-    expanded,
-    revealed,
-  } = pageView
-  const setPage = ({ page }: { page: string }) => setPageView(view => showingPage({
-    view,
-    page,
-  }))
-  const [
-      notice,
-      setNotice,
-    ] = useState<{ text: string } | null>(null), [
-      newColumn,
-      setNewColumn,
-    ] = useState<string | null>(null)
-  const [
-    settingsVisited,
-    setSettingsVisited,
-  ] = useState(page === 'settings')
-  useEffect(
-    () => {
-      if (page === 'settings') {
-        setSettingsVisited(true)
-      }
-    },
-    [page],
-  )
-  // The view persistence reads the same record the chat's saves write into.
-  const drafts = useRef<Record<string, string>>(restored.drafts ?? {})
-  const chatDrafts = useChatDrafts({
-    text: drafts.current[HYDRA_CARD] ?? '',
-    commentsKey,
-    saveText: ({ text }) => {
-      drafts.current[HYDRA_CARD] = text
-
-      try {
-        const saved = restoreView({ key: restoreKey })
-        sessionStorage.setItem(
-          restoreKey,
-          JSON.stringify({
-            ...saved,
-            drafts: drafts.current,
-          }),
-        )
-      } catch { /* The mounted chat retains the draft when storage is blocked. */ }
-    },
+  const current = hydra.navigation.hydraId
+  const axis = useRef<HTMLDivElement>(null)
+  const track = useRef<HTMLDivElement>(null)
+  useSmoothScroll({
+    root: axis,
+    content: track,
+    horizontal: true,
+    snapKey: hydra.navigation.hydras.map(item => item.id).join(':'),
   })
   const [
-    creatingTask,
-    setCreatingTask,
-  ] = useState<{
-    column: string
-    parent?: string
-    draft?: TaskDraft
-    version: number
-  } | null>(null)
-  const taskFormVersion = useRef(0)
-  // Another Hydra's Add project request waits in the URL until that Hydra opens.
+    preview,
+    setPreview,
+  ] = useState<PhysicalMove | null>(null)
   const [
-    projectRequest,
-    setProjectRequest,
-  ] = useState(new URLSearchParams(location.search).has('add-project'))
-  // The search Settings opens with when the Oracle sends a setting there; it also remounts the page for it.
-  const [
-    settingsQuery,
-    setSettingsQuery,
+    rootError,
+    setRootError,
   ] = useState('')
-  const [
-    accountSetup,
-    setAccountSetup,
-  ] = useState<'claude' | 'codex'>()
-  useEffect(
-    () => {
-      const open = (event: Event) => {
-        const requested = (event as CustomEvent<{ harness?: 'claude' | 'codex' }>).detail.harness
-        setAccountSetup(requested ?? 'claude')
-        setSettingsQuery('Accounts')
-        setPage({ page: 'settings' })
-      }
-
-      window.addEventListener(
-        ACCOUNT_SETTINGS,
-        open,
-      )
-
-      return () => window.removeEventListener(
-        ACCOUNT_SETTINGS,
-        open,
-      )
-    },
-    [],
-  )
-  useEffect(
-    () => {
-      if (page !== 'settings') {
-        setAccountSetup(undefined)
-      }
-    },
-    [page],
-  )
-  // The Oracle's palette draws inside the page, so it takes the page's text sizes.
-  const [
-    layer,
-    setLayer,
-  ] = useState<HTMLDivElement | null>(null)
-  const {
-    project,
-    projectReferences,
-    resolveProject,
-    filterProject,
-  } = useProjectFilter()
-  useEffect(
-    () => {
-      if (!notice) {
-        return
-      }
-
-      const timer = setTimeout(
-        () => setNotice(null),
-        5000,
-      )
-
-      return () => clearTimeout(timer)
-    },
-    [notice],
-  )
-
-  const notify = useCallback(
-    ({ text }: { text: string }) => {
-      setNotice({ text })
-    },
+  const rootNotify = useCallback(
+    ({ text }: { text: string }) => setRootError(text),
     [],
   )
   const edits = useHydraEdits({
-    hydras: navigation.hydras,
-    command,
-    notify,
+    hydras: hydra.navigation.hydras,
+    command: hydra.command,
+    notify: rootNotify,
   })
-  useEffect(
-    () => {
-      if (projectRequest && state.config?.hydra.kind === 'firstmate') {
-        notify({ text: 'Firstmate manages this Hydra’s projects.' }); setProjectRequest(false)
-      }
-    },
-    [
-      projectRequest,
-      state.config?.hydra.kind,
-      notify,
-    ],
-  )
-  useScrollingClass()
-  const {
-    selected,
-    expandedIds,
-    cards,
-    columns,
-    cancelOpen,
-    clearSelection,
-    expand,
-    open,
-    revealTask,
-    close,
-    openHydra,
-  } = useTaskNavigation({
-    state,
-    command,
-    connected,
-    notify,
-    view: pageView,
-    setView: setPageView,
-    project,
-    projectReferences,
-  })
-  usePersistView({
-    viewKey: hydra.viewKey,
-    key: restoreKey,
-    selected,
-    expanded,
-    revealed,
-    page,
-    panel,
-    drafts: drafts.current,
-    scroll: restored.scroll,
-    seq: state.seq,
-  })
-  const shared = useSharedSettings()
-  const view = viewFor({
-    state,
-    settings: shared && pickView({ view: shared }),
-  })
-  const references = useTaskReferences({
-    state,
-    actions,
-    connected,
-  })
-  useViewTheme({ view })
+  const orderedHydras = preview?.kind === 'hydra' ? movedOrder({
+    items: edits.hydras,
+    ...preview,
+    key: ({ item }) => item.id,
+  }) : edits.hydras
+  const workspaces = [...hydra.workspaces].sort((
+    a,
+    b,
+  ) =>
+    orderedHydras.findIndex(item => item.id === a.navigation.hydraId)
+    - orderedHydras.findIndex(item => item.id === b.navigation.hydraId))
+  usePhysicalDrag({
+    root: axis,
+    move: ({ preview }) => setPreview(preview),
+    drop: ({ preview }) => {
+      const commit = async () => {
+        if (preview.kind === 'hydra') {
+          const index = orderedHydras.findIndex(item => item.id === preview.id)
 
-  const startUpgrade = async () => {
-    try {
-      await command({
-        name: 'hydra',
-        args: [
-          'send',
-          `--text=${UPGRADE_COMMAND}`,
+          for (const placement of placements({
+            hydras: edits.hydras,
+            id: preview.id,
+            index,
+          })) {
+            await edits.move(placement)
+          }
+
+          return
+        }
+
+        const workspace = hydra.workspaces.find(item => item.navigation.hydraId === preview.hydra)
+
+        if (!workspace) {
+          return
+        }
+
+        const command = hydra.commandFor({ id: preview.hydra })
+        const event = crypto.randomUUID()
+
+        if (preview.kind === 'project') {
+          const columns = projectColumns({
+            state: workspace.state,
+            cards: Object.values(workspace.state.cards),
+            actions: workspace.actions,
+            order: workspace.state.view?.workspace?.projectOrder ?? [],
+          })
+          const ordered = movedOrder({
+            items: columns,
+            ...preview,
+            key: ({ item }) => item.id,
+          })
+          await command({
+            name: 'view',
+            args: [
+              'set',
+              '--json',
+              JSON.stringify({ workspace: { projectOrder: ordered.map(item => item.id) } }),
+              '--event-id',
+              event,
+            ],
+          })
+
+          return
+        }
+
+        const card = workspace.state.cards[preview.id], target = workspace.state.cards[preview.over]
+
+        if (card?.parentId && preview.detach) {
+          await command({
+            name: 'task',
+            args: [
+              'parent',
+              card.id,
+              'none',
+              '--event-id',
+              event,
+            ],
+          })
+
+          return
+        }
+
+        if (!card || !target) {
+          return
+        }
+
+        if (preview.nest) {
+          await command({
+            name: 'task',
+            args: [
+              'parent',
+              card.id,
+              target.id,
+              '--event-id',
+              event,
+            ],
+          })
+
+          return
+        }
+
+        if (card.parentId && !target.parentId) {
+          await command({
+            name: 'task',
+            args: [
+              'parent',
+              card.id,
+              'none',
+              '--event-id',
+              event,
+            ],
+          })
+
+          return
+        }
+
+        if (preview.scope !== preview.targetScope) {
+          return
+        }
+
+        const columns = projectColumns({
+          state: workspace.state,
+          cards: Object.values(workspace.state.cards),
+          actions: workspace.actions,
+          order: [],
+        })
+        const childCards = Object.values(workspace.state.cards).filter(item =>
+          item.parentId === card.parentId)
+        const siblings = card.parentId ? childCards
+          : columns.find(column => column.id === taskProjectColumn({
+            state: workspace.state,
+            card,
+          }))?.cards ?? []
+        const ordered = movedOrder({
+          items: siblings,
+          ...preview,
+          key: ({ item }) => item.id,
+        })
+        const next = ordered[ordered.findIndex(item => item.id === card.id) + 1]
+        const args = [
+          'arrange',
+          card.id,
           '--event-id',
-          crypto.randomUUID(),
-        ],
-      })
-    } catch (error) {
-      notify({ text: (error as Error).message })
-    }
-  }
+          event,
+        ]
 
-  const shownHydra = edits.hydras.find(h => h.id === navigation.hydraId)
-  const title = pageTitle({
-    page,
-    cards: state.cards,
-    selected,
-    needsYou: columns.find(c => c.role === 'needs_you')?.id,
-    hydra: shownHydra && hydraTitle(shownHydra),
+        if (next) {
+          args.push(
+            '--before',
+            next.id,
+          )
+        }
+
+        await command({
+          name: 'task',
+          args,
+        })
+      }
+
+      commit().catch((error: Error) => setRootError(error.message))
+    },
   })
-  useHydraFavicon({ icon: shownHydra?.icon })
+
   useEffect(
     () => {
-      document.title = title
-    },
-    [title],
-  )
-  const save = useSaveView({
-    state,
-    command,
-    notify,
-  })
-
-  const createTask = ({
-    column,
-    parent,
-  }: {
-    column: string
-    parent?: string
-  }) => {
-    setPage({ page: 'hydra' }); filterProject({ path: '' }); clearSelection()
-    taskFormVersion.current++
-    const refused = hydra.edits.findLast(intent => {
-      const {
-        name,
-        args,
-      } = intent.patch
-      const attempt = argument({
-        args,
-        flag: '--event-id',
-      }) ?? intent.id
-      const matchesForm = argument({
-        args,
-        flag: '--column',
-      }) === column
-        && argument({
-          args,
-          flag: '--parent',
-        }) === parent
-
-      return intent.stage === 'refused' && name === 'task' && args[0] === 'create'
-        && matchesForm && !state.keys[`task:${attempt}`]
-    })
-    const draft = refused && {
-      title: argument({
-        args: refused.patch.args,
-        flag: '--title',
-      }) ?? '',
-      prompt: argument({
-        args: refused.patch.args,
-        flag: '--ask',
-      }) ?? '',
-      attempt: argument({
-        args: refused.patch.args,
-        flag: '--event-id',
-      }) ?? refused.id,
-    }
-    setCreatingTask({
-      column,
-      version: taskFormVersion.current,
-      draft,
-      ...(parent ? { parent } : {}),
-    })
-    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-create [aria-label="Task title"]' })))
-  }
-
-  const createColumn = () => {
-    const id = `custom:${crypto.randomUUID()}`
-    setPage({ page: 'hydra' }); setNewColumn(id)
-    void command({
-      name: 'column',
-      args: [
-        'create',
-        '--id',
-        id,
-        '--title',
-        'New column',
-        '--if-revision',
-        String(state.configRevision ?? 0),
-        '--event-id',
-        crypto.randomUUID(),
-      ],
-    }).catch((error: Error) => {
-      setNewColumn(current => current === id ? null : current)
-      notify({ text: error.message })
-    })
-  }
-
-  const keyboard = useHydraKeyboard({
-    state,
-    groups: columns.map(c => ({
-      id: c.id,
-      cards: cards.filter(card => card.column === c.id).map(card => card.id),
-    })),
-    page,
-    setPage,
-    selected,
-    open,
-    close,
-    command,
-    connected,
-    notify,
-    newColumn: newColumn !== null,
-    cancelColumn: () => setNewColumn(null),
-    togglePanel: () => setPageView(view => ({
-      ...view,
-      panel: !view.panel,
-    })),
-    openSettings: () => {
-      if (page === 'settings') {
-        setPage({ page: 'hydra' })
-
+      if (!hydra.loaded) {
         return
       }
 
-      openSettings({ query: settingsQuery })
-    },
-  })
-
-  const answerTask = ({ card }: { card: Card }) => {
-    setPageView(view => ({
-      ...view,
-      panel: true,
-    }))
-    chatDrafts.setDraft({
-      text: `${chatDrafts.read().text}\nFor ${taskMention({
-        id: card.id,
-        title: card.title,
-      })}: `.trimStart(),
-    })
-    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
-  }
-
-  // Board cards redraw only for their own changes, so what they call keeps its identity.
-  const cardActions = useStableActions({
-    actions: {
-      notify,
-      answer: answerTask,
-      onEdit: cancelOpen,
-      save,
-      recoverSelection: ({ id }: { id: string }) => setPageView(view => {
-        const recovered = view.selected && view.expanded.length
-
-        return recovered ? view : {
-          ...view,
-          selected: view.selected ?? id,
-          expanded: view.expanded.length ? view.expanded : [id],
-        }
-      }),
-      open: ({
-        id,
-        pointer,
-        focusPanel,
-      }: {
-        id: string
-        pointer?: boolean
-        focusPanel?: boolean
-      }) => {
-        if (expandedIds.includes(id)) {
-          close({ id })
-
-          return Promise.resolve(false)
-        }
-
-        return open({
-          id,
-          pointer,
-          focusPanel,
+      document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(current)}"]`)
+        ?.scrollIntoView({
+          inline: 'start',
+          block: 'nearest',
         })
-      },
     },
-  })
-  const cardView = useKept({ value: view })
-
-  const answerTaskById = ({ id }: { id: string }) => {
-    const card = state.cards[id]
-
-    if (!card) {
-      return
-    }
-
-    open({
-      id,
-      focusPanel: false,
-    })
-    answerTask({ card })
-  }
-
-  const openSettings = ({ query }: { query: string }) => {
-    setAccountSetup(undefined); setSettingsQuery(query); setPage({ page: 'settings' })
-    requestAnimationFrame(() => focusElement({ selector: '.settings-page .search-bar-input' }))
-  }
-
-  const selectProject = ({ path }: { path: string }) => {
-    filterProject({ path }); clearSelection(); setPage({ page: 'hydra' })
-  }
-
-  // The same command Hydra's composer sends the owner's message with, scoped to the chosen Hydra.
-  const askHydra = ({
-    id,
-    text,
-    event,
-    onChecking,
-  }: {
-    id: string
-    text: string
-    event: string
-    onChecking(): void
-  }) => hydra.commandFor({ id })({
-    name: 'hydra',
-    args: [
-      'send',
-      `--text=${text}`,
-      '--event-id',
-      event,
+    [
+      current,
+      hydra.loaded,
     ],
-    onChecking,
-  })
+  )
 
-  const openChat = async ({ id }: { id: string }) => {
-    if (id === navigation.hydraId) {
-      openHydra()
+  useEffect(
+    () => {
+      const surface = axis.current
 
-      return
-    }
+      if (!surface) {
+        return
+      }
 
-    try {
-      await navigate({
-        url: new URL(
-          `/hydra/${encodeURIComponent(id)}/`,
-          location.href,
-        ).href,
-      })
-      requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
-    } catch (error) {
-      notify({ text: error instanceof Error ? error.message : String(error) })
-    }
-  }
+      const follow = () => {
+        if (surface.dataset.dragging) {
+          return
+        }
 
-  // The Oracle names the Hydra as its list does, never by its id.
-  const oracleHydra = {
-    id: navigation.hydraId,
-    name: shownHydra ? hydraTitle(shownHydra) : 'Hydra',
-    icon: shownHydra?.icon ?? HYDRA_MARK,
-  }
-  const askTargets = edits.hydras.map(h => ({
-    id: h.id,
-    name: hydraTitle(h),
-    icon: h.icon ?? HYDRA_MARK,
-  }))
-  const opening = navigation.hydras.find(h => h.id === loading)
-  const retryLabel = hydra.creating ? 'Retry creating Hydra' : 'Retry loading Hydra'
-  const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
-  const otherProjects = others.flatMap(h => h.projects.map(p => ({
-    name: p.name,
-    path: p.path,
-    hydra: hydraTitle(h),
-  })))
+        const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
+        const left = surface.getBoundingClientRect().left + padding
+        const destination = [...surface.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
+          .find(element => Math.abs(element.getBoundingClientRect().left - left) < 2)
+          ?.dataset.hydraWorkspace
 
-  const addProject = async ({ id }: { id: string }) => {
-    if (id === navigation.hydraId) {
-      setPage({ page: 'hydra' }); setProjectRequest(true)
+        if (destination && destination !== current) {
+          hydra.navigate({ url: `/hydra/${encodeURIComponent(destination)}/` })
+            .catch((error: Error) => setRootError(error.message))
+        }
+      }
 
-      return
-    }
+      surface.addEventListener(
+        'scrollend',
+        follow,
+      )
 
-    const url = new URL(
-      `/hydra/${encodeURIComponent(id)}/`,
+      return () => surface.removeEventListener(
+        'scrollend',
+        follow,
+      )
+    },
+    [
+      current,
+      hydra.navigate,
+    ],
+  )
+
+  useHydraFavicon({ icon: hydra.navigation.hydras.find(item => item.id === current)?.icon })
+
+  const navigate = async ({
+    url,
+    replace,
+  }: {
+    url: string
+    replace?: boolean
+  }) => {
+    const destination = new URL(
+      url,
       location.href,
-    )
-    url.searchParams.set(
-      'add-project',
-      '1',
-    )
-
-    try {
-      await navigate({ url: url.href })
-    } catch (error) {
-      notify({ text: (error as Error).message })
-    }
+    ).pathname.split('/')[2]!
+    const opening = hydra.commandFor({ id: destination })({
+      name: 'view',
+      args: [
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: {
+            collapsed: false,
+            chatCollapsed: false,
+          },
+        }),
+        '--event-id',
+        crypto.randomUUID(),
+      ],
+    })
+    opening.catch((error: Error) => setRootError(error.message))
+    await hydra.navigate({
+      url,
+      replace,
+    })
+    const id = new URL(
+      url,
+      location.href,
+    ).pathname.split('/')[2]!
+    const group = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(id)}"]`)
+    group?.scrollIntoView({
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      inline: 'start',
+      block: 'nearest',
+    })
+    group?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus({ preventScroll: true })
   }
 
   return (
-    <KeyboardProvider
-      prefs={cardView.keyboard}
-      onAction={keyboard.onAction}
-      leaveField={keyboard.leaveField}
-      hints={keyboard.hints.length > 0}
-      hintKey={keyboard.hintKey}
-    >
-      <HydraComposerSources
-        state={state}
-        command={command}
-        connected={connected}
-        references={references}
-        openTask={revealTask}
-        notify={notify}
-        otherProjects={otherProjects}
-      >
-        <div
-          ref={setLayer}
-          className="app"
-          data-seq={state.seq}
-          data-connected={connected}
-          style={{
-            '--text-ui': `${view.fontSize}px`,
-            '--text-chat': `${view.chatFontSize}px`,
-            '--text-code': `${view.codeFontSize}px`,
-          } as CSSProperties}
-        >
-          <Panel
-            shown={panel}
-            connected={connected}
-            offline={offline}
-            upgrade={upgrade}
-            startUpgrade={startUpgrade}
-            page={page}
-            navigate={({ page }) => {
-              setSettingsQuery(''); setPage({ page })
+    <div ref={axis} className="workspace-axis" aria-label="Hydras">
+      <div ref={track} className="workspace-track">
+        {rootError && <div className="notice" role="alert">{rootError}<Button aria-label="Dismiss" onClick={() => setRootError('')}><Icon name="close" /></Button></div>}
+        {workspaces.map(workspace => (
+          <HydraView
+            key={workspace.viewKey}
+            active={workspace.navigation.hydraId === current}
+            edits={{
+              ...edits,
+              hydras: orderedHydras,
             }}
-            oracle={(
-              <Oracle
-                state={state}
-                cardActions={actions}
-                view={view}
-                command={command}
-                connected={connected}
-                hydra={oracleHydra}
-                projects={shownHydra?.projects ?? []}
-                layer={layer}
-                save={save}
-                notify={notify}
-                upgrade={upgrade}
-                startUpgrade={startUpgrade}
-                openTask={open}
-                answerTask={answerTaskById}
-                openHydra={openHydra}
-                selectProject={selectProject}
-                openSettings={openSettings}
-                createTask={createTask}
-                createColumn={createColumn}
-                action={keyboard.onAction}
-                hydras={askTargets}
-                send={askHydra}
-                openChat={openChat}
-              />
-            )}
-          >
-            <Hydras
-              createHydra={hydra.createHydra}
-              editHydra={edits.edit}
-              moveHydra={edits.move}
-              command={command}
-              connected={connected}
-              notify={notify}
-              hydras={edits.hydras}
-              current={navigation.hydraId}
-              navigate={navigate}
-              loading={!!loading}
-              project={project}
-              resolveProject={resolveProject}
-              selectProject={({ path }) => {
-                filterProject({ path: project === path ? '' : path }); clearSelection(); setPage({ page: 'hydra' })
-              }}
-              showHydra={() => {
-                setPage({ page: 'hydra' }); filterProject({ path: '' })
-              }}
-              addProject={addProject}
-            />
-          </Panel>
-          <main
-            className="shell"
-            aria-busy={!!loading || !loaded}
-            data-hydra={navigation.hydraId}
-            data-provisional={hydra.creating || undefined}
-          >
-            {(loading || !loaded || hydra.offline) && (
-              <p className="loading-status" role="status">
-                {hydra.offline && 'Connection lost. Reconnecting automatically.'}
-                {!hydra.offline && <>{hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…</>}
-              </p>
-            )}
-            {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.dismissError}>Dismiss</Button></p>}
-            {hydra.recovery && (
-              <p className="error-banner" role="alert">
-                {hydra.recovery.message}
-                {hydra.recovery.action === 'retry' && <Button onClick={hydra.retryHydra}>{retryLabel}</Button>}
-                {hydra.recovery.action === 'reload' && <Button onClick={() => location.reload()}>Reload page</Button>}
-              </p>
-            )}
-            {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
-            <PendingStatus
-              intents={[
-                ...hydra.intents,
-                ...installationPending,
-                ...projectPending,
-              ]}
-            />
-            {page === 'hydra' && (
-              <>
-                <div className="hydra-page">
-                  <HydraChat
-                    hydraId={navigation.hydraId}
-                    identity={shownHydra && {
-                      name: shownHydra.name,
-                      icon: shownHydra.icon,
-                      taken: edits.hydras.filter(h => h.id !== shownHydra.id).map(h => h.name),
-                    }}
-                    editHydra={({
-                      name,
-                      icon,
-                    }) => edits.edit({
-                      id: navigation.hydraId,
-                      name,
-                      icon,
-                    })}
-                    addProject={() => addProject({ id: navigation.hydraId })}
-                    projectRequest={projectRequest}
-                    projectRequested={() => setProjectRequest(false)}
-                    state={state}
-                    liveThread={hydraThread}
-                    action={actions[HYDRA_CARD]}
-                    taskActions={actions}
-                    selectedTask={selectedRef}
-                    queue={hydraQueue}
-                    command={command}
-                    connected={connected}
-                    openTask={revealTask}
-                    notify={notify}
-                    view={view}
-                    save={save}
-                    drafts={chatDrafts}
-                  />
-                  <TaskReferencesProvider references={references} openTask={revealTask}>
-                    <div className="hydra-main">
-                      <div className="work-area inline">
-                        <div className="hydra-space">
-                          <div className="kanban" aria-label="Work columns">
-                            {columns.map(c => {
-                              const items = cards.filter(card => card.column === c.id)
-                              const remembered = keyboard.remembered[c.id]
-                              const rememberedShown = items.some(i => i.id === remembered)
-                              const focusable = rememberedShown ? remembered : items[0]?.id
-
-                              return (
-                                <Column
-                                  key={c.id}
-                                  {...c}
-                                  cards={items}
-                                  view={view}
-                                  save={save}
-                                  command={command}
-                                  notify={notify}
-                                  revision={state.configRevision ?? 0}
-                                  connected={connected}
-                                  columnIds={columns.map(c => c.id)}
-                                  locked={lockedColumn({
-                                    state,
-                                    id: c.id,
-                                  })}
-                                  editingTitle={newColumn === c.id}
-                                  titleFinished={() => setNewColumn(null)}
-                                  createTask={createTask}
-                                >
-                                  {creatingTask?.column === c.id && (
-                                    <TaskCreate
-                                      key={`${c.id}:${creatingTask.parent ?? ''}`}
-                                      {...creatingTask}
-                                      before={items[0]?.id}
-                                      command={command}
-                                      connected={connected}
-                                      notify={notify}
-                                      cancel={() => setCreatingTask(null)}
-                                      recover={({ draft }) => {
-                                        if (taskFormVersion.current === creatingTask.version) {
-                                          setCreatingTask({
-                                            ...creatingTask,
-                                            draft,
-                                          })
-                                        }
-
-                                        const key = `task:${draft.attempt}`
-                                        setPageView(view => ({
-                                          ...view,
-                                          selected: view.selected === key ? null : view.selected,
-                                          expanded: view.expanded.filter(id => id !== key),
-                                        }))
-                                      }}
-                                      submitted={({ id }) => {
-                                        setCreatingTask(null); expand({
-                                          id,
-                                          column: c.id,
-                                        })
-                                      }}
-                                    />
-                                  )}
-                                  {items.map(item => (
-                                    <HydraCard
-                                      key={item.key}
-                                      card={item}
-                                      labelColors={state.labelColors}
-                                      doneAfterHours={shared?.doneAfterHours}
-                                      notify={cardActions.notify}
-                                      latest={latest[item.id]}
-                                      action={actions[item.id]}
-                                      answer={cardActions.answer}
-                                      selected={expandedIds.includes(item.id)}
-                                      onEdit={cardActions.onEdit}
-                                      recoverSelection={cardActions.recoverSelection}
-                                      view={cardView}
-                                      save={cardActions.save}
-                                      open={cardActions.open}
-                                      command={command}
-                                      connected={connected}
-                                      tabIndex={focusable === item.id ? 0 : -1}
-                                    >
-                                      {expandedIds.includes(item.id) && (
-                                        <Detail
-                                          card={item}
-                                          state={state}
-                                          command={command}
-                                          connected={connected}
-                                        />
-                                      )}
-                                    </HydraCard>
-                                  ))}
-                                </Column>
-                              )
-                            })}
-                            <div className="add-column">
-                              <Button
-                                disabled={!connected}
-                                onClick={createColumn}
-                              ><Icon name="plus" />Add column
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </TaskReferencesProvider>
-                </div>
-              </>
-            )}
-            {(settingsVisited || page === 'settings') && (
-              <SettingsPage
-                key={settingsQuery}
-                initialQuery={settingsQuery}
-                accountSetup={accountSetup}
-                hidden={page !== 'settings'}
-                state={state}
-                connected={connected}
-                view={view}
-                save={save}
-                command={command}
-                notify={notify}
-                upgrade={upgrade}
-                startUpgrade={startUpgrade}
-              />
-            )}
-          </main>
-          {notice && (
-            <div className="notice" role="status">
-              <span>{notice.text}</span>
-              <Button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
-                <Icon name="close" />
-              </Button>
-            </div>
-          )}
-        </div>
-      </HydraComposerSources>
-    </KeyboardProvider>
+            preview={preview}
+            hydra={{
+              ...hydra,
+              ...workspace,
+              navigate,
+              command: hydra.commandFor({ id: workspace.navigation.hydraId }),
+            }}
+          />
+        ))}
+      </div>
+    </div>
   )
 }

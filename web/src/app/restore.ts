@@ -64,26 +64,34 @@ export function restoreView({ key }: { key: string }): Restore {
   }
 }
 
-const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
-  .map(el => [
-    el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban',
-    el,
-  ] as const)
+const workspaceElement = ({ workspace }: { workspace: string }) =>
+  document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(workspace)}"]`)
+
+const scrollers = ({ workspace }: { workspace: string }) =>
+  [...(workspaceElement({ workspace })?.querySelectorAll<HTMLElement>('.column-cards') ?? [])]
+    .map(element => [
+      element.closest('[data-column]')!.getAttribute('data-column')!,
+      element,
+    ] as const)
 
 export const hydraViews = new Map<string, Restore>()
 
 function persistView({
+  workspace,
+  keepAxis = false,
   key,
   viewKey,
   value,
 }: {
   key: string
+  workspace: string
+  keepAxis?: boolean
   viewKey?: string
   value: Restore
 }) {
   const restored: Restore = {
     ...value,
-    scroll: Object.fromEntries(scrollers().map(([
+    scroll: Object.fromEntries(scrollers({ workspace }).map(([
       key,
       el,
     ]) => [
@@ -93,6 +101,22 @@ function persistView({
         el.scrollTop,
       ],
     ])),
+  }
+
+  const group = workspaceElement({ workspace })
+  const axis = group?.closest<HTMLElement>('.workspace-axis')
+  const oldAxis = restoreView({ key }).scroll?.workspaceAxis
+
+  if (oldAxis) {
+    restored.scroll!.workspaceAxis = oldAxis
+  }
+
+  if (keepAxis && group?.dataset.active === 'true' && axis) {
+    const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
+    restored.scroll!.workspaceAxis = [
+      axis.getBoundingClientRect().left + padding - group.getBoundingClientRect().left,
+      0,
+    ]
   }
 
   if (viewKey !== undefined) {
@@ -113,6 +137,7 @@ function persistView({
 }
 
 export function usePersistView({
+  workspace,
   viewKey,
   key,
   selected,
@@ -125,12 +150,14 @@ export function usePersistView({
   seq,
 }: Restore & {
   viewKey: string
+  workspace: string
   key: string
   seq: number
 }) {
   useLayoutEffect(
     () => () => {
       persistView({
+        workspace,
         key: key,
         viewKey: viewKey,
         value: {
@@ -159,6 +186,8 @@ export function usePersistView({
     () => {
       const keep = () => {
         persistView({
+          workspace,
+          keepAxis: true,
           key: key,
           value: {
             selected,
@@ -198,10 +227,23 @@ export function usePersistView({
       if (scroll && seq > 0) {
         pendingScroll.current = undefined
         requestAnimationFrame(() => {
+          const group = workspaceElement({ workspace })
+          const axis = group?.closest<HTMLElement>('.workspace-axis')
+          const offset = scroll.workspaceAxis
+
+          if (offset && group?.dataset.active === 'true' && axis) {
+            const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
+            axis.scrollTo({
+              left: axis.scrollLeft + group.getBoundingClientRect().left
+              - axis.getBoundingClientRect().left - padding + offset[0],
+              behavior: 'instant',
+            })
+          }
+
           for (const [
             key,
             el,
-          ] of scrollers()) {
+          ] of scrollers({ workspace })) {
             const [
               left,
               top,

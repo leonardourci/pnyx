@@ -35,20 +35,27 @@ export async function afterSteadyLayout({
   element: HTMLElement
   signal: AbortSignal
 }): Promise<boolean> {
-  let top = element.getBoundingClientRect().top
+  let bounds = element.getBoundingClientRect()
 
   for (let checks = 0; checks < 15; checks++) {
     if (!await afterTaskLayout({ signal })) {
       return false
     }
 
-    const next = element.getBoundingClientRect().top
+    const next = element.getBoundingClientRect()
+    const steady = [
+      'top',
+      'left',
+      'width',
+      'height',
+    ].every(key =>
+      next[key as keyof DOMRect] === bounds[key as keyof DOMRect])
 
-    if (next === top) {
+    if (steady) {
       return true
     }
 
-    top = next
+    bounds = next
   }
 
   return !signal.aborted
@@ -143,7 +150,8 @@ export async function scrollTask({
   element: HTMLElement
   signal: AbortSignal
 }): Promise<boolean> {
-  const kanban = element.closest<HTMLElement>('.kanban')
+  const kanban = element.closest<HTMLElement>('.workspace-axis')
+    ?? element.closest<HTMLElement>('.kanban')
   const column = element.closest<HTMLElement>('[data-column]')
   const cards = element.closest<HTMLElement>('.column-cards')
 

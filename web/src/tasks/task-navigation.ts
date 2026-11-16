@@ -1,3 +1,4 @@
+import { taskProjectColumn } from './project-view.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { showingPage, type PageView } from '#web-app/restore.ts'
@@ -12,6 +13,7 @@ const VISIBLE_TAB_PANEL = '.card-panel:not([hidden])'
 
 export function useTaskNavigation({
   state,
+  hydraId,
   command,
   connected,
   notify,
@@ -21,6 +23,7 @@ export function useTaskNavigation({
   projectReferences,
 }: {
   state: HydraState
+  hydraId: string
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -197,6 +200,7 @@ export function useTaskNavigation({
     ids: expanded.map(id => state.keys[id] ?? id),
     cards: state.cards,
     pending: pendingColumns.current,
+    state,
   })
   useEffect(
     () => {
@@ -216,6 +220,7 @@ export function useTaskNavigation({
           ids: ids.map(id => state.keys[id] ?? id),
           cards: state.cards,
           pending: pendingColumns.current,
+          state,
         })
         const unchanged = ids.length === next.length && ids.every((
           id,
@@ -306,7 +311,7 @@ export function useTaskNavigation({
       view: current,
       page: 'hydra',
     }))
-    requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(hydraId)}"] .hydra-chat textarea` }))
   }
 
   const keepRevealed = ({ id }: { id: string }) => {
@@ -358,6 +363,7 @@ export function useTaskNavigation({
         ],
         cards: currentCards.current,
         pending: pendingColumns.current,
+        state,
       }),
       selected: id,
       page: 'hydra',
@@ -444,6 +450,38 @@ export function useTaskNavigation({
         }
       }
 
+      if (!pointer) {
+        const card = currentCards.current[id]
+        const column = card && taskProjectColumn({
+          state,
+          card,
+        })
+        const workspace = state.view?.workspace
+
+        if (column && (workspace?.collapsed || workspace?.foldedProjects.includes(column))) {
+          command({
+            name: 'view',
+            args: [
+              'set',
+              '--json',
+              JSON.stringify({
+                workspace: {
+                  collapsed: false,
+                  foldedProjects: (workspace?.foldedProjects ?? []).filter(item => item !== column),
+                },
+              }),
+              '--event-id',
+              crypto.randomUUID(),
+            ],
+          }).catch((error: Error) => notify({ text: error.message }))
+        }
+
+        expand({
+          id,
+          focus: false,
+        })
+      }
+
       if (pointer) {
         const card = await openFromPointer({
           id,
@@ -459,7 +497,10 @@ export function useTaskNavigation({
 
       const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"]`)
 
-      if (!element || !await scrollTask({
+      if (!element || !await afterSteadyLayout({
+        element,
+        signal,
+      }) || !await scrollTask({
         element,
         signal,
       })) {

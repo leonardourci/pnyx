@@ -1,9 +1,19 @@
 import { useEffect } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 
-export function useViewTheme({ view }: { view: ViewPreferences }) {
+export function useViewTheme({
+  view,
+  active = true,
+}: {
+  view: ViewPreferences
+  active?: boolean
+}) {
   useEffect(
     () => {
+      if (!active) {
+        return
+      }
+
       const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
 
       const apply = () => {
@@ -20,6 +30,9 @@ export function useViewTheme({ view }: { view: ViewPreferences }) {
         apply,
       )
     },
-    [view.theme],
+    [
+      view.theme,
+      active,
+    ],
   )
 }

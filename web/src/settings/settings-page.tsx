@@ -7,6 +7,8 @@ import { DEFAULT_LOG_DAYS, DEFAULT_LOG_MAX_MB, DEFAULT_SETTINGS, MAX_LOG_DAYS, M
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
+import type { HydraSummary } from '#app/server-hydras.ts'
+import { RepositoryOwnership } from '#web-projects/ownership.tsx'
 import { About } from '#web-app/about.tsx'
 import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
 import { keyActionsMatching } from '#web-preferences/key-search.ts'
@@ -546,6 +548,8 @@ function Empty({
 }
 
 export function SettingsPage({
+  hydras,
+  commandFor,
   state,
   connected,
   view,
@@ -558,6 +562,8 @@ export function SettingsPage({
   accountSetup,
   hidden = false,
 }: Saving & {
+  hydras: HydraSummary[]
+  commandFor({ id }: { id: string }): Command
   state: HydraState
   connected: boolean
   command: Command
@@ -711,6 +717,7 @@ export function SettingsPage({
         <h1 data-settings-heading tabIndex={-1}>Settings</h1>
         <p>Apply to every Hydra · changes save as you make them</p>
       </header>
+      <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />
       <div className="settings-search" ref={sticky}>
         <SearchBar
           label="Search settings"

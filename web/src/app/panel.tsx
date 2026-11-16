@@ -31,13 +31,13 @@ export function Panel({
   const settingsKey = keys({ id: 'settings' })
 
   return (
-    <aside className="left-panel" aria-label="Pnyx navigation" hidden={!shown}>
+    <header className="topbar" aria-label="Pnyx navigation" hidden={!shown}>
       <div className="brand"><Icon name="pnyx" size={24} /><span>pnyx</span>{offline && <span className="offline" role="status">offline</span>}{connected && <UpgradeHint status={upgrade} upgrade={startUpgrade} />}</div>
+      {children}
       {oracle}
       <nav aria-label="Main pages">
         <Button aria-label="Settings" aria-pressed={settings} onClick={() => navigate({ page: settings ? 'hydra' : 'settings' })}><Icon name="settings" /><span>Settings</span>{settingsKey && <kbd>{settingsKey}</kbd>}</Button>
       </nav>
-      {children}
-    </aside>
+    </header>
   )
 }
