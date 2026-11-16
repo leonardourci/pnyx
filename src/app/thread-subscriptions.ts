@@ -128,14 +128,35 @@ export function createThreadSubscriptions({
   }): boolean
   agents(): Pick<ReturnType<typeof createHost>, 'thread'>
 }) {
-  const subscriptions = new Map<HydraClient, Subscription>()
-  const hydraSubscriptions = new Map<HydraClient, Subscription>()
-  const threadSubscriptions = [
-    subscriptions,
-    hydraSubscriptions,
-  ]
-  const subscriptionMap = ({ card }: { card: string }) =>
-    card === HYDRA_CARD ? hydraSubscriptions : subscriptions
+  const maps = new Map<string, Map<HydraClient, Subscription>>()
+
+  const threadSubscriptions = () => {
+    for (const [
+      card,
+      map,
+    ] of maps) {
+      if (!map.size) {
+        maps.delete(card)
+      }
+    }
+
+    return [...maps.values()]
+  }
+
+  const subscriptionMap = ({ card }: { card: string }) => {
+    let map = maps.get(card)
+
+    if (!map) {
+      map = new Map<HydraClient, Subscription>()
+      maps.set(
+        card,
+        map,
+      )
+    }
+
+    return map
+  }
+
   const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
   const liveThreadTimers = new Map<Subscription, ReturnType<typeof setTimeout>>()
   const liveSentAt = new WeakMap<Subscription, number>()
@@ -403,7 +424,7 @@ export function createThreadSubscriptions({
     resync?: boolean
   }) => {
     if (invalidate || resync) {
-      for (const map of threadSubscriptions) {
+      for (const map of threadSubscriptions()) {
         const sub = map.get(ws)
 
         if (sub) {
@@ -447,7 +468,7 @@ export function createThreadSubscriptions({
       return
     }
 
-    for (const map of threadSubscriptions) {
+    for (const map of threadSubscriptions()) {
       const sub = map.get(ws), card = sub && state().cards[sub.card]
 
       if (!card || (only && sub !== only)) {
@@ -880,8 +901,31 @@ export function createThreadSubscriptions({
     )
   }
 
+  const retainThreads = ({
+    ws,
+    cards,
+  }: {
+    ws: HydraClient
+    cards: string[]
+  }) => {
+    for (const map of threadSubscriptions()) {
+      const sub = map.get(ws)
+
+      if (!sub || sub.card === HYDRA_CARD || cards.includes(sub.card)) {
+        continue
+      }
+
+      sub.watcher?.close()
+      clearTimeout(liveThreadTimers.get(sub))
+      liveThreadTimers.delete(sub)
+      threadDelivery.cancel({ key: sub })
+      map.delete(ws)
+    }
+  }
+
   return {
     threadSubscriptions,
+    retainThreads,
     subscriptionMap,
     threadTimers,
     liveThreadTimers,

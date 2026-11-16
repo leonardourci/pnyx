@@ -58,7 +58,7 @@ export function createServerClients({
   hydraId: string
   state(): HydraState
   agents(): Pick<ReturnType<typeof createHost>, 'queue' | 'usageViews'>
-  threadSubscriptions: Map<HydraClient, Subscription>[]
+  threadSubscriptions(): Map<HydraClient, Subscription>[]
   bindThread({
     ws,
     card,
@@ -457,7 +457,7 @@ export function createServerClients({
         })
       }
 
-      for (const map of threadSubscriptions) {
+      for (const map of threadSubscriptions()) {
         const sub = map.get(ws)
 
         // A view change that switches this card's traces on or off changes its page.
