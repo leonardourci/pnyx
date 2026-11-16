@@ -336,6 +336,8 @@ test(
         'recovery',
         '--title',
         'Before data recovery',
+        '--brief',
+        'Recovery details before',
       ],
     })
     let interrupt: (() => void) | undefined
@@ -373,7 +375,12 @@ test(
           name: 'Before data recovery',
           exact: true,
         },
+      ).click()
+      await page.getByText(
+        'Recovery details before',
+        { exact: true },
       ).waitFor()
+      expect(interrupt).toBeTypeOf('function')
       interrupt!()
       await hydra.owner({
         args: [
@@ -388,6 +395,36 @@ test(
         'button',
         {
           name: 'After data recovery',
+          exact: true,
+        },
+      ).waitFor()
+      await hydra.owner({
+        args: [
+          'task',
+          'brief',
+          'recovery',
+          '--brief',
+          'Recovery details after',
+        ],
+      })
+      await page.getByText(
+        'Recovery details after',
+        { exact: true },
+      ).waitFor()
+      await pnyx.restart()
+      await hydra.owner({
+        args: [
+          'task',
+          'rename',
+          'recovery',
+          '--title',
+          'After server restart',
+        ],
+      })
+      await page.getByRole(
+        'button',
+        {
+          name: 'After server restart',
           exact: true,
         },
       ).waitFor()
