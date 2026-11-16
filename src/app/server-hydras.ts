@@ -20,6 +20,7 @@ export interface HydraProjectSummary {
   asks: number
 }
 export interface HydraSummary {
+  asks?: number
   creationAttempt?: string
   identity?: string
   id: string
