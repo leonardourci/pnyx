@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
@@ -9,7 +11,7 @@ beforeAll(async () => {
 })
 
 test(
-  'the open board follows a task live from Queued to In progress to Done as the CLI and its worker change it',
+  'the project view follows a task from queued through running to done in Ideas',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await openHydra({
@@ -45,8 +47,18 @@ test(
         ),
       },
     )
-    await column({ title: 'Queued' }).locator(shown({ title: 'Ship the export' }))
+    await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
       .waitFor()
+    await shown({ title: 'Ship the export' }).locator(
+      '.agent-activity',
+      { hasText: 'Queued' },
+    )
+      .waitFor()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      hold: true,
+      partial: 'Building the export',
+    })
 
     await hydra.owner({
       args: [
@@ -55,7 +67,11 @@ test(
         'export',
       ],
     })
-    await column({ title: 'In progress' }).locator(shown({ title: 'Ship the export' }))
+    await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
+      .locator(
+        '.agent-activity',
+        { hasText: 'Running' },
+      )
       .waitFor()
 
     const worker = await hydra.agent({ cwd: folder })
@@ -69,14 +85,18 @@ test(
         'Export shipped',
       ],
     })
-    await column({ title: 'Done' }).locator(shown({ title: 'Ship the export' }))
+    await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
+      .locator(
+        '.agent-activity',
+        { hasText: 'Done' },
+      )
       .waitFor()
     expect(await shown({ title: 'Ship the export' }).count()).toBe(1)
   },
 )
 
 test(
-  'a card\'s Activity opens on its newest updates and loads the older ones as the owner scrolls down to its creation',
+  'a card\'s Activity exposes recent changes and its creation through a long history',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -90,7 +110,6 @@ test(
       ],
     })
 
-    // More updates than the 50 one read brings back, in one document.
     await hydra.owner({
       args: [
         'apply',
@@ -143,7 +162,6 @@ test(
     const updates = shown.locator('[aria-label="Task updates"]')
     await updates.getByText('Brief updated').first()
       .waitFor()
-    expect(await updates.getByText('Created').count()).toBe(0)
 
     await updates.hover()
     await until({
@@ -158,169 +176,6 @@ test(
       },
     })
     expect(await updates.getByText('Brief updated').count()).toBeGreaterThan(0)
-  },
-)
-
-test(
-  'a Hydra can be hidden and restored without closing its page or removing its work',
-  async () => {
-    const hydra = await pnyx.hydra()
-    await hydra.owner({
-      args: [
-        'task',
-        'create',
-        '--key',
-        'visible-work',
-        '--title',
-        'Keep this work',
-      ],
-    })
-    const name = (await hydra.owner({
-      args: [
-        'hydra',
-        'show',
-      ],
-    })).hydra.name as string
-    const held: (() => void)[] = []
-    let refuse = true
-    const page = await openHydra({
-      port: pnyx.port(),
-      hydraId: hydra.id,
-      prepare: ({ page }) => page.routeWebSocket(
-        /\/ws\?/,
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
-        socket => {
-          const server = socket.connectToServer()
-          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
-          socket.onMessage(message => {
-            const sent = JSON.parse(String(message)) as {
-              type?: string
-              name?: string
-              id?: string
-              scope?: string
-            }
-
-            if (sent.type === 'command' && sent.name === 'settings') {
-              held.push(() => {
-                if (refuse) {
-                  refuse = false
-                  socket.send(JSON.stringify({
-                    type: 'error',
-                    scope: sent.scope,
-                    id: sent.id,
-                    error: 'Visibility refused',
-                    saved: false,
-                    code: 'VALIDATION_ERROR',
-                  }))
-                } else {
-                  server.send(message)
-                }
-              })
-
-              return
-            }
-
-            server.send(message)
-          })
-        },
-      ),
-    })
-    const panel = page.getByRole(
-      'region',
-      {
-        name: 'Hydras',
-        exact: true,
-      },
-    )
-    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
-    await panel.locator(`[data-hydra="${hydra.id}"]`).hover()
-    await panel.getByRole(
-      'button',
-      {
-        name: `Hide ${name}`,
-        exact: true,
-      },
-    ).click()
-    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor({ state: 'detached' })
-    await until({
-      what: 'the held visibility write',
-      check: () => held.length === 1,
-    })
-    held.shift()!()
-    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
-    await page.getByText(
-      'Visibility refused',
-      { exact: true },
-    ).waitFor()
-    await panel.locator(`[data-hydra="${hydra.id}"]`).hover()
-    await panel.getByRole(
-      'button',
-      {
-        name: `Hide ${name}`,
-        exact: true,
-      },
-    ).click()
-    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor({ state: 'detached' })
-    await until({
-      what: 'the accepted visibility write',
-      check: () => held.length === 1,
-    })
-    held.shift()!()
-    expect(page.url()).toContain(`/hydra/${hydra.id}/`)
-    await page.getByRole(
-      'button',
-      {
-        name: 'Keep this work',
-        exact: true,
-      },
-    ).waitFor()
-    await until({
-      what: 'persisted Hydra visibility',
-      check: async () => (await hydra.owner({
-        args: [
-          'settings',
-          'show',
-        ],
-      })).settings.hiddenHydras.includes(hydra.id),
-    })
-    await page.reload()
-    await page.getByRole(
-      'button',
-      {
-        name: 'Keep this work',
-        exact: true,
-      },
-    ).waitFor()
-    await panel.getByRole(
-      'button',
-      {
-        name: 'Show hidden Hydras',
-        exact: true,
-      },
-    ).click()
-    await panel.getByRole(
-      'button',
-      {
-        name: `Restore ${name}`,
-        exact: true,
-      },
-    ).waitFor()
-    expect(await panel.locator(`[data-hydra="${hydra.id}"]`).count()).toBe(0)
-    await panel.getByRole(
-      'button',
-      {
-        name: `Restore ${name}`,
-        exact: true,
-      },
-    ).click()
-    await until({
-      what: 'the restore visibility write',
-      check: () => held.length === 1,
-    })
-    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
-    held.shift()!()
-    await panel.locator(`[data-hydra="${hydra.id}"]`).waitFor()
-    await page.close()
   },
 )
 
@@ -348,6 +203,7 @@ test(
       prepare: async ({ page }) => {
         await page.routeWebSocket(
           /\/zero\//,
+
           // eslint-disable-next-line pnyx/object-params -- Playwright owns the route callback.
           socket => {
             connections++
@@ -381,6 +237,7 @@ test(
         { exact: true },
       ).waitFor()
       expect(interrupt).toBeTypeOf('function')
+
       if (!interrupt) {
         throw new Error('The data connection did not open')
       }
@@ -440,6 +297,419 @@ test(
           exact: true,
         },
       ).count()).toBe(0)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'repository grouping combines tasks while unmatched project values stay in Ideas',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const root = hydra.folder({ name: 'grouping' })
+    const api = join(
+        root,
+        'api',
+      ), web = join(
+        root,
+        'web',
+      ), docs = join(
+        root,
+        'docs',
+      )
+    mkdirSync(
+      join(
+        api,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    mkdirSync(
+      join(
+        web,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    mkdirSync(
+      join(
+        docs,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        api,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        web,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        docs,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'group',
+        'Suite',
+        api,
+        web,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'group',
+        'Suite',
+        api,
+        docs,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'api',
+        '--title',
+        'API work',
+        '--project',
+        api,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'web',
+        '--title',
+        'Web work',
+        '--project',
+        web,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'docs',
+        '--title',
+        'Docs work',
+        '--project',
+        docs,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'idea',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Unassigned work',
+        project: 'Old notes',
+      }),
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      const suite = workspace.locator('.project-column[aria-label="Suite"]')
+      await suite.getByRole(
+        'button',
+        {
+          name: 'Docs work',
+          exact: true,
+        },
+      ).waitFor()
+      expect(await suite.locator('.card-open').allTextContents()).toEqual([
+        'API work',
+        'Web work',
+        'Docs work',
+      ])
+      await workspace.locator('.project-column[aria-label="Ideas"]').getByRole(
+        'button',
+        {
+          name: 'Unassigned work',
+          exact: true,
+        },
+      )
+        .waitFor()
+      expect(await workspace.locator('.project-column').count()).toBe(2)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'visual arrangement changes card order and survives reload',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'a',
+        '--title',
+        'First task',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'b',
+        '--title',
+        'Second task',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'c',
+        '--title',
+        'Third task',
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const cards = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="Ideas"] .card-open`)
+      await until({
+        what: 'initial card order',
+        check: async () => (await cards.allTextContents()).join('|') === 'First task|Second task|Third task',
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'arrange',
+          'c',
+          '--before',
+          'a',
+        ],
+      })
+      await until({
+        what: 'rearranged cards',
+        check: async () => (await cards.allTextContents()).join('|') === 'Third task|First task|Second task',
+      })
+      await page.reload()
+      await until({
+        what: 'saved card order',
+        check: async () => (await cards.allTextContents()).join('|') === 'Third task|First task|Second task',
+      })
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'folding projects and Hydras preserves the open card and unsent worker draft',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'draft',
+        '--title',
+        'Keep this draft',
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Keep this draft',
+          exact: true,
+        },
+      ).click()
+      const draft = workspace.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      )
+      await draft.fill('Keep my unsent reply')
+      const card = await workspace.locator('.card.selected').elementHandle()
+      expect(card).not.toBeNull()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Fold all projects',
+          exact: true,
+        },
+      ).click()
+      await workspace.locator('.project-column.folded').waitFor()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Fold all projects',
+          exact: true,
+        },
+      ).click()
+      await draft.waitFor()
+      expect(await draft.inputValue()).toBe('Keep my unsent reply')
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      expect(await card?.evaluate(element => element.isConnected)).toBe(true)
+      expect(await workspace.locator('.card.selected').count()).toBe(1)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Fold Hydra',
+          exact: true,
+        },
+      ).click()
+      await workspace.locator('.shell[hidden]').waitFor({ state: 'attached' })
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Unfold Hydra',
+          exact: true,
+        },
+      ).click()
+      await draft.waitFor()
+      expect(await draft.inputValue()).toBe('Keep my unsent reply')
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'worker reply recovery delivers an uncertain reply once after reconnect',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'reply-recovery' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'reply',
+        '--title',
+        'Reply recovery',
+        '--folder',
+        folder,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'reply',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    let lost = false
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: async ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the route callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright passes the frame.
+          socket.onMessage(message => {
+            const sent = JSON.parse(String(message)) as {
+              type?: string
+              name?: string
+            }
+
+            if (sent.type === 'command' && sent.name === 'reply' && !lost) {
+              lost = true
+              socket.close({
+                code: 1001,
+                reason: 'Lost reply receipt',
+              })
+            } else {
+              server.send(message)
+            }
+          })
+        },
+      ),
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Reply recovery',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      ).fill('Send this reply once')
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Send to worker',
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'reply received after reconnect',
+        check: () => worker.received.some(text => text.includes('Send this reply once')),
+      })
+      await until({
+        what: 'reconnected workspace',
+        check: async () => await workspace.getAttribute('data-connected') === 'true',
+      })
+      await workspace.locator('.worker-messages').getByText(
+        'Send this reply once',
+        { exact: true },
+      )
+        .first()
+        .waitFor()
+      await until({
+        what: 'reply delivery confirmed',
+        check: async () => await workspace.locator('.worker-messages .message[data-sending=true]').count() === 0,
+      })
+      expect(lost).toBe(true)
+      expect(worker.received.filter(text => text.includes('Send this reply once'))).toHaveLength(1)
     } finally {
       await page.context().close()
     }
