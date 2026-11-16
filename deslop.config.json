@@ -171,6 +171,6 @@
     "write-front-end": ".agents/skills/write-front-end/SKILL.md",
     "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md"
   },
-  "checkFixAttempts": 1,
+  "checkFixAttempts": 0,
   "publishLocal": false
 }
