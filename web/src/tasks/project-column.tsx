@@ -35,6 +35,10 @@ export function ProjectColumn({
   })
   const folded = view.workspace.foldedProjects.includes(column.id)
   const saved = view.workspace.projectWidths[column.id] ?? (column.id === 'ideas' ? PROJECT_MIN_WIDTH : DEFAULT_PROJECT_WIDTH)
+  const savedWidth = Math.max(
+    saved,
+    expandedWidth || PROJECT_MIN_WIDTH,
+  )
   const width = Math.max(
     preview ?? saved,
     expandedWidth || PROJECT_MIN_WIDTH,
@@ -56,6 +60,7 @@ export function ProjectColumn({
     <section
       className={`project-column column ${folded ? 'folded' : ''}`}
       data-column={column.id}
+      data-resizing={preview !== null}
       data-sort-id={column.id}
       data-sort-kind="project"
       data-sort-scope="projects"
@@ -79,7 +84,7 @@ export function ProjectColumn({
       {!folded && (
         <Resize
           label={`Resize ${column.title}`}
-          value={width}
+          value={savedWidth}
           min={PROJECT_MIN_WIDTH}
           onPreview={({ value }) => setPreview(value)}
           onCommit={({ value }) => save({
