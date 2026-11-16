@@ -30,6 +30,17 @@ export function taskProjectColumn({
   })
 }
 
+interface Rollup {
+  status: ObservedStatus
+  children: Card[]
+  done: number
+}
+const rollups = new WeakMap<HydraState, {
+  actions: Record<string, CurrentAction>
+  children: Map<string, Card[]>
+  tasks: Map<string, Rollup>
+}>()
+
 export function taskRollup({
   state,
   card,
@@ -39,6 +50,49 @@ export function taskRollup({
   card: Card
   actions: Record<string, CurrentAction>
 }) {
+  let cached = rollups.get(state)
+
+  if (!cached || cached.actions !== actions) {
+    const children = new Map<string, Card[]>()
+
+    for (const child of Object.values(knownCards({ state }))) {
+      if (!child.parentId) {
+        continue
+      }
+
+      const siblings = children.get(child.parentId) ?? []
+      siblings.push(child); children.set(
+        child.parentId,
+        siblings,
+      )
+    }
+
+    cached = {
+      actions,
+      children,
+      tasks: new Map(),
+    }
+    rollups.set(
+      state,
+      cached,
+    )
+  }
+
+  const previous = cached.tasks.get(card.id)
+
+  if (previous) {
+    return previous
+  }
+
+  const save = ({ result }: { result: Rollup }) => {
+    cached.tasks.set(
+      card.id,
+      result,
+    )
+
+    return result
+  }
+
   const observed = observedStatus({
     card,
     state,
@@ -50,14 +104,16 @@ export function taskRollup({
       kind: 'queued',
       text: 'queued',
     } : observed
-  const children = Object.values(knownCards({ state })).filter(child => child.parentId === card.id)
+  const children = cached.children.get(card.id) ?? []
 
   if (!children.length) {
-    return {
-      status: own,
-      children,
-      done: 0,
-    }
+    return save({
+      result: {
+        status: own,
+        children,
+        done: 0,
+      },
+    })
   }
 
   const parts = children.map(child => observedStatus({
@@ -96,11 +152,13 @@ export function taskRollup({
     }
   }
 
-  return {
-    status,
-    children,
-    done,
-  }
+  return save({
+    result: {
+      status,
+      children,
+      done,
+    },
+  })
 }
 
 export function statusPriority({ status }: { status: ObservedStatus }) {
