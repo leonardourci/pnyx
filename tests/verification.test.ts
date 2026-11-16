@@ -275,6 +275,30 @@ test.each([
     ],
   },
   {
+    name: 'selector unavailable after an earlier docs-only result',
+    files: [{ filename: 'docs/testing.md' }],
+    count: 1,
+    unavailable: 'selector',
+    changedHead: false,
+    changedBase: false,
+    previousDocsSuccess: true,
+    expected: 'true',
+    checks: [],
+    expectedUpdates: [
+      {
+        owner: 'fixture',
+        repo: 'pnyx',
+        check_run_id: 42,
+        status: 'completed',
+        conclusion: 'failure',
+        output: {
+          title: 'Code checks required',
+          summary: 'The current PR scope no longer qualifies for a documentation-only result.',
+        },
+      },
+    ],
+  },
+  {
     name: 'shipped skills',
     files: [{ filename: 'skills/pnyx-cli/SKILL.md' }],
     count: 1,
@@ -398,7 +422,7 @@ test.each([
     )
     symlinkSync(
       fileURLToPath(new URL(
-        '../node_modules/deslop',
+        unavailable === 'selector' ? '../missing-selector' : '../node_modules/deslop',
         import.meta.url,
       )),
       join(

@@ -29,17 +29,18 @@ jobs:
 
       # Install the reviewed selector, never a dependency supplied by the PR.
       - name: Install trusted selector
+        continue-on-error: true
         run: npm install --prefix "$RUNNER_TEMP/deslop-scope" --ignore-scripts --no-audit --no-fund --package-lock=false github:leonardourci/deslop#398226fb0d637520df7d6fdfdf9898e4e1533888
 
       - uses: actions/github-script@v8
         id: scope
         with:
           script: |
-            // github-script runs an async function, so the installed ESM selector needs import().
-            const { select } = await import(`${process.env.RUNNER_TEMP}/deslop-scope/node_modules/deslop/src/config.js`);
             let run = true;
             const head = context.payload.pull_request.head.sha;
             try {
+              // github-script runs an async function, so the installed ESM selector needs import().
+              const { select } = await import(`${process.env.RUNNER_TEMP}/deslop-scope/node_modules/deslop/src/config.js`);
               const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
               const files = await github.paginate(github.rest.pulls.listFiles, { ...context.repo, pull_number: context.issue.number, per_page: 100 });
               if (files.length > 0 && files.length === pr.changed_files && pr.head.sha === head) {
