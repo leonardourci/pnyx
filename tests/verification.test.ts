@@ -25,7 +25,9 @@ afterEach(() => {
 })
 
 // Deslop ships JavaScript without declarations; resolve its installed module for runtime import.
-const selectorModule = pathToFileURL(createRequire(import.meta.url).resolve('deslop/src/config.js')).href
+const require = createRequire(import.meta.url)
+const selectorPath = require.resolve('deslop/src/config.js')
+const selectorModule = pathToFileURL(selectorPath).href
 const {
   select,
   validateConfig,
@@ -188,6 +190,8 @@ test(
       '.agents/skills/review-code/SKILL.md',
       '.agents/skills/audit-tests/SKILL.md',
       '.agents/skills/deslop/SKILL.md',
+      '.agents/skills/write-front-end/SKILL.md',
+      '.agents/skills/write-ci-workflow/SKILL.md',
     ]) {
       expect(reviewText).toContain(readFileSync(
         join(
