@@ -78,12 +78,14 @@
 .subtask-drop:hover { background: var(--color-gold-fill); color: var(--color-gold-ink); }
 .card { interpolate-size: allow-keywords; }
 @media (prefers-reduced-motion: reduce) { .project-column.column { transition: none; } }
-.hydra-workspace-bar { position: relative; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 2px 8px; }
-.hydra-drag-name { display: flex; align-items: center; gap: 6px; font: 700 21px var(--font-brand); cursor: grab; touch-action: none; }
-.project-chips { display: flex; gap: 5px; position: sticky; left: 16px; background: var(--color-background); }
-.project-chips .button { border: 1px solid var(--color-column-line); border-radius: 999px; padding: 3px 9px; font-size: var(--text-meta); touch-action: none; }
+.hydra-workspace-bar { position: sticky; left: 16px; z-index: 5; display: flex; align-items: center; flex: none; width: max-content; max-width: calc(100vw - 56px); gap: 10px; min-height: 38px; padding: 0 2px 8px; background: var(--color-background); }
+.hydra-workspace-bar > .button { flex: none; }
+.hydra-drag-name { display: flex; align-items: center; flex: none; gap: 6px; min-width: 0; max-width: calc(100vw - 160px); font: 700 21px var(--font-brand); cursor: grab; touch-action: none; }
+.hydra-drag-name .hydra-label { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-chips { display: flex; gap: 5px; min-width: 0; overflow: auto hidden; }
+.project-chips .button { flex: none; border: 1px solid var(--color-column-line); border-radius: 999px; padding: 3px 9px; font-size: var(--text-meta); touch-action: none; }
 .hydra-workspace[data-collapsed=true].app { width: 58px; min-width: 58px; }
-.hydra-workspace[data-collapsed=true] .hydra-workspace-bar { flex-direction: column; height: 100%; align-items: center; }
+.hydra-workspace[data-collapsed=true] .hydra-workspace-bar { position: relative; left: auto; flex-direction: column; width: 100%; max-width: none; height: 100%; align-items: center; }
 .hydra-workspace[data-collapsed=true] .hydra-drag-name { writing-mode: vertical-rl; }
 .hydra-workspace[data-collapsed=true] .project-chips { flex-direction: column; position: static; overflow-y: auto; min-height: 0; }
 .hydra-workspace[data-collapsed=true] .project-chips .button { writing-mode: vertical-rl; }
@@ -91,6 +93,8 @@
 .workspace-chat { position: relative; height: 100%; flex: none; }
 .chat-content { height: 100%; }
 .chat-content > .hydra-chat { height: 100%; }
+.workspace-chat .hydra-head { padding-right: 48px; }
+.workspace-chat .hydra-title .hydra-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-fold.button { position: absolute; right: 7px; top: 12px; z-index: 4; padding: 4px; }
 .workspace-chat.collapsed { width: 40px; border: 1px solid var(--color-line); border-radius: 10px; }
 .workspace-chat.collapsed .chat-fold { left: 5px; right: 5px; }
