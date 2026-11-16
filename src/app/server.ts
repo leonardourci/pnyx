@@ -592,6 +592,7 @@ export async function mountOwnedHydra({
       ws,
       message: {
         type: 'hello',
+        stateSeq: state.seq,
         build: buildId(),
         hydraId: identity,
         installation: hydraIdentity({ hydraId: '' }),

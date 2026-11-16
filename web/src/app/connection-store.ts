@@ -437,7 +437,10 @@ export function createHydraConnection({
         view: resource.view,
       }) : shell({ scope }),
       viewKey: scope.viewKey,
-      connected: scope.ready && socket?.readyState === WebSocket.OPEN,
+      storageHydra: scope.identity,
+      connected: scope.ready && socket?.readyState === WebSocket.OPEN
+        && (zeroState === undefined || zeroState === 'connected')
+        && resource.confirmed.seq >= (scope.expectedSeq ?? 0),
       offline,
       loaded: scope.hasSnapshot || scope.failed,
       loading: scope.ready || scope.failed ? '' : scope.id,
@@ -683,6 +686,30 @@ export function createHydraConnection({
     })
   }
 
+  const reconcileReads = () => {
+    if (staleSince === undefined || zeroState !== 'connected' || !physicalHydra || readsFailed()) {
+      return
+    }
+
+    const waiting = [...scopes.values()].some(scope => scope.subscribed
+      && (!scope.ready || !scope.hasSnapshot
+        || scope.resource.snapshot().confirmed.seq < (scope.expectedSeq ?? 0)))
+
+    if (waiting) {
+      return
+    }
+
+    log({
+      operation: 'page.recovery',
+      status: 'reconciled',
+      hydraId: selected,
+      eventSeq: selection().resource.snapshot().confirmed.seq,
+      ms: performance.now() - staleSince,
+    })
+    staleSince = undefined
+    readAttempt = 0
+  }
+
   const readInstallation = () => {
     const options = {
       hydras: ({ rows }: { rows: HydraSummary[] }) => {
@@ -730,6 +757,8 @@ export function createHydraConnection({
 
         if (state !== 'connected') {
           markStale()
+        } else {
+          reconcileReads()
         }
 
         recoverReads()
@@ -914,17 +943,7 @@ export function createHydraConnection({
       scope.loadError = ''
     }
 
-    if (staleSince !== undefined && zeroState === 'connected' && !readsFailed()) {
-      log({
-        operation: 'page.recovery',
-        status: 'reconciled',
-        eventSeq: state.seq,
-        hydraId: scope.id,
-        ms: performance.now() - staleSince,
-      })
-      staleSince = undefined
-      readAttempt = 0
-    }
+    reconcileReads()
 
     confirmSaves({ scope })
     publish(); flush()
@@ -1034,6 +1053,7 @@ export function createHydraConnection({
         }
       }
 
+      scope.expectedSeq = message.stateSeq
       scope.identity = message.hydraId
 
       if (!scope.restoredSaves) {
@@ -1101,6 +1121,7 @@ export function createHydraConnection({
 
       scope.subscriptionAttempt = 0
       scope.ready = true
+      reconcileReads()
       scope.failed = false
       attempt = 0
 
