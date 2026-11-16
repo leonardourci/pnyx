@@ -36,7 +36,7 @@
 .project-cards .card-title-row { align-items: flex-start; gap: 5px; }
 .subtask-toggle.button { flex: none; padding: 2px 0; min-width: 14px; }
 .subtask-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
-.project-cards .card-state { flex-wrap: nowrap; gap: 4px; min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
+.project-cards .card-state { flex-wrap: nowrap; gap: 2px; min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
 .project-cards .card-state .agent-activity { gap: 4px; padding-inline: 5px; }
 .project-cards .card-state > .tooltip-anchor:has(.agent-activity) { flex-shrink: 1; }
 .project-cards .card-state > .tooltip-anchor:has(.task-label) { flex-shrink: 0; max-width: 50%; overflow: visible; }
