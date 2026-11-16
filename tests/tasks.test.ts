@@ -437,3 +437,101 @@ test(
     })).code).toBe('NOT_FOUND')
   },
 )
+
+test(
+  'tasks can be nested, moved between parents and detached with one level enforced',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const parent = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export',
+      ],
+    })
+    const other = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Import',
+      ],
+    })
+    const child = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'CSV',
+      ],
+    })
+    const leaf = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Headers',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        parent.card.id,
+      ],
+    })
+    expect((await hydra.task({ key: child.card.id })).parent).toBe(parent.card.id)
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        parent.card.id,
+        child.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        leaf.card.id,
+        child.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        parent.card.id,
+        other.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        other.card.id,
+      ],
+    })
+    expect((await hydra.task({ key: child.card.id })).parent).toBe(other.card.id)
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        'none',
+      ],
+    })
+    expect((await hydra.task({ key: child.card.id })).parent).toBe('none')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        child.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+  },
+)

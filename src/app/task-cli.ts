@@ -983,6 +983,51 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
   }
 
+  if (action === 'parent') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+    const parent = required({
+      value: positionals[2],
+      what: 'parent task or none',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'card.pushed',
+        card: ref,
+      },
+      decide: ({ state }) => {
+        const task = findCard({
+          state,
+          ref,
+        })
+        const target = parent === 'none' ? undefined : findCard({
+          state,
+          ref: parent,
+        })
+        const managedTarget = target !== undefined && isManagedTask({ card: target })
+
+        if (isManagedTask({ card: task }) || managedTarget) {
+          throw new HydraError({
+            message: 'Choose work tasks for a parent and sub-task',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        return decidePush({
+          state,
+          key: task.key,
+          input: { parent: target?.id ?? null },
+          meta: m,
+        })
+      },
+    })
+  }
+
   if (action === 'rename') {
     if (values.title === undefined && values.project === undefined) {
       throw new HydraError({
@@ -1036,7 +1081,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, parent, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }

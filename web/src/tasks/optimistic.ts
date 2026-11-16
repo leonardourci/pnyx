@@ -221,6 +221,23 @@ export function optimisticState({
       return update({ patch: { asks } })
     }
 
+    if (action === 'parent') {
+      const parentRef = args[2]
+
+      if (parentRef === 'none') {
+        return update({ patch: { parentId: undefined } })
+      }
+
+      const parent = state.cards[parentRef ?? ''] ?? state.cards[state.keys[parentRef ?? ''] ?? '']
+      const hasChildren = Object.values(state.cards).some(child => child.parentId === card.id)
+
+      if (!parent || parent.id === card.id || parent.parentId || hasChildren) {
+        return state
+      }
+
+      return update({ patch: { parentId: parent.id } })
+    }
+
     if (action === 'rename') {
       const title = option({ flag: '--title' }), project = option({ flag: '--project' })
 

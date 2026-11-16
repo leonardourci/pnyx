@@ -42,6 +42,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
   ],
   hold: [],
   release: ['from-message'],
+  parent: [],
   rename: [
     'title',
     'project',
@@ -116,7 +117,7 @@ export function validateLocalTaskFlags({
     })
   }
 
-  const count = action === 'create' ? 1 : action === 'status' ? 3 : 2
+  const count = action === 'create' ? 1 : (action === 'status' || action === 'parent') ? 3 : 2
 
   if (positionals.length > count) {
     throw new HydraError({
@@ -139,7 +140,7 @@ export async function localTaskCommand({
   hydraId: string
   meta: Meta
 }): Promise<Output | undefined> {
-  if (!action || action === 'rename' || !Object.hasOwn(
+  if (!action || action === 'rename' || action === 'parent' || !Object.hasOwn(
     ACTION_FLAGS,
     action,
   )) {

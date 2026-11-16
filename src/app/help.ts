@@ -19,7 +19,7 @@ commands:
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|list|set|remove                   Attach, list or detach projects
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
+  task create|list|show|rename|parent|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
@@ -241,6 +241,7 @@ pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task refresh-links <id>
 Reads the task's open pull requests now instead of at their next poll, discarding a read in flight; task show lists what was read.
+pnyx-axi task parent <task> <parent|none> [--event-id <id>]
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
