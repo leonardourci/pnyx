@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
+import { HOVER_CLAIM } from './tooltip.tsx'
 
 const START_DISTANCE = 6
 const SETTLE_MS = 200
@@ -306,7 +307,15 @@ export function usePhysicalDrag({
 
           source.dataset.lifted = 'true'
           slot.dataset.dragSlot = 'true'
-          surface.querySelectorAll<HTMLElement>('.card-menu:popover-open').forEach(element => element.hidePopover())
+          document.dispatchEvent(new CustomEvent(
+            HOVER_CLAIM,
+            {
+              detail: {
+                id: 'physical-drag',
+                anchor: source,
+              },
+            },
+          ))
           window.getSelection()?.removeAllRanges()
           surface.dataset.dragging = source.dataset.sortKind
 

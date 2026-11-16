@@ -76,7 +76,7 @@ export function Tooltip({
   }
 
   const show = () => {
-    if (disabled) {
+    if (disabled || anchor.current?.closest('[data-dragging]')) {
       return
     }
 
