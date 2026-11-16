@@ -258,7 +258,7 @@ export function App() {
       }
 
       const follow = () => {
-        if (surface.dataset.dragging) {
+        if (surface.dataset.dragging || hydra.navigation.page === 'settings') {
           return
         }
 
@@ -287,6 +287,7 @@ export function App() {
     [
       current,
       hydra.navigate,
+      hydra.navigation.page,
     ],
   )
 
@@ -303,6 +304,21 @@ export function App() {
       url,
       location.href,
     ).pathname.split('/')[2]!)
+    const settings = new URL(
+      url,
+      location.href,
+    ).pathname.endsWith('/settings/')
+    const returning = hydra.navigation.page === 'settings' && destination === current
+
+    if (settings || returning) {
+      await hydra.navigate({
+        url,
+        replace,
+      })
+
+      return
+    }
+
     const opening = hydra.commandFor({ id: destination })({
       name: 'view',
       args: [
@@ -347,7 +363,12 @@ export function App() {
   }
 
   return (
-    <div ref={axis} className="workspace-axis" aria-label="Hydras">
+    <div
+      ref={axis}
+      className="workspace-axis"
+      data-page={hydra.navigation.page}
+      aria-label="Hydras"
+    >
       <div ref={track} className="workspace-track">
         {rootError && <div className="notice" role="alert">{rootError}<Button aria-label="Dismiss" onClick={() => setRootError('')}><Icon name="close" /></Button></div>}
         {workspaces.map(workspace => (

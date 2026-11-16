@@ -467,6 +467,7 @@ export function createHydraConnection({
       actions: scope.actions,
       navigation: {
         hydraId: scope.id,
+        page: scope.id === selected && (location.pathname.endsWith('/settings/') || new URLSearchParams(location.search).has('settings')) ? 'settings' : 'hydra',
         hydras: hydras.snapshot().view.map(hydra => {
           const preview = scopes.get(hydra.id)?.resource.snapshot().view.config
 
@@ -1373,7 +1374,7 @@ export function createHydraConnection({
       location.href,
     )
 
-    if (next.origin !== origin || !/^\/hydra\/[a-z0-9._-]+\/$/.test(next.pathname)) {
+    if (next.origin !== origin || !/^\/hydra\/[a-z0-9._-]+\/(?:settings\/)?$/.test(next.pathname)) {
       throw new CommandFailure({
         message: 'Invalid Hydra URL',
         code: 'VALIDATION_ERROR',

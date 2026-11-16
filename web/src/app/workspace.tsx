@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { HYDRA_MARK, pickName } from '#hydra/hydra-names.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMention } from '#hydra/mentions.ts'
@@ -46,7 +47,7 @@ import { useHydraEdits } from './hydra-edits.ts'
 import { movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
 import { HydraChips } from './hydra-chips.tsx'
 import { Panel } from './panel.tsx'
-import { hydraViews,openingView,restoreView,showingPage,usePersistView } from './restore.ts'
+import { hydraViews,openingView,restoreView,usePersistView } from './restore.ts'
 import { hydraTitle,pageTitle } from './view.ts'
 
 export function HydraView({
@@ -109,16 +110,19 @@ export function HydraView({
     setPageView,
   ] = useState(() => openingView({ restored }))
   const {
-    page,
     panel,
     selected: selectedRef,
     expanded,
     revealed,
   } = pageView
-  const setPage = ({ page }: { page: string }) => setPageView(view => showingPage({
-    view,
-    page,
-  }))
+  const page = navigation.page
+
+  const setPage = ({ page }: { page: string }) => {
+    const suffix = page === 'settings' ? 'settings/' : ''
+    navigate({ url: `/hydra/${encodeURIComponent(navigation.hydraId)}/${suffix}` })
+      .catch((error: Error) => notify({ text: error.message }))
+  }
+
   const [
     notice,
     setNotice,
@@ -273,7 +277,10 @@ export function HydraView({
     command,
     connected,
     notify,
-    view: pageView,
+    view: {
+      ...pageView,
+      page: 'hydra',
+    },
     setView: setPageView,
     project: '',
     projectReferences: [],
@@ -550,7 +557,7 @@ export function HydraView({
 
   const openSettings = ({ query }: { query: string }) => {
     setAccountSetup(undefined); setSettingsQuery(query); setPage({ page: 'settings' })
-    requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] .settings-page .search-bar-input` }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-settings-hydra="${CSS.escape(navigation.hydraId)}"] .search-bar-input` }))
   }
 
   const selectProject = ({ path }: { path: string }) => {
@@ -872,6 +879,7 @@ export function HydraView({
           className="app hydra-workspace"
           data-hydra-workspace={navigation.hydraId}
           data-active={active}
+          data-page={page}
           data-collapsed={view.workspace.collapsed}
           data-seq={state.seq}
           data-connected={connected}
@@ -1023,186 +1031,195 @@ export function HydraView({
                 ...projectPending,
               ]}
             />
-            {page === 'hydra' && (
-              <>
-                <div className="hydra-page">
-                  <div className={`workspace-chat ${view.workspace.chatCollapsed ? 'collapsed' : ''}`}>
-                    <Button
-                      className="chat-fold"
-                      aria-label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
-                      onClick={toggleChat}
-                    ><Icon name="chevron_right" />
-                    </Button>
-                    <div className="chat-content" hidden={view.workspace.chatCollapsed}>
-                      <HydraChat
-                        hydraId={navigation.hydraId}
-                        identity={shownHydra && {
-                          name: shownHydra.name,
-                          icon: shownHydra.icon,
-                          taken: edits.hydras.filter(h => h.id !== shownHydra.id).map(h => h.name),
-                        }}
-                        editHydra={({
-                          name,
-                          icon,
-                        }) => edits.edit({
-                          id: navigation.hydraId,
-                          name,
-                          icon,
-                        })}
-                        addProject={() => addProject({ id: navigation.hydraId })}
-                        projectRequest={projectRequest}
-                        projectRequested={() => setProjectRequest(false)}
-                        state={state}
-                        liveThread={hydraThread}
-                        action={actions[HYDRA_CARD]}
-                        taskActions={actions}
-                        selectedTask={selectedRef}
-                        queue={hydraQueue}
-                        command={command}
-                        connected={connected}
-                        openTask={revealTask}
-                        notify={notify}
-                        view={view}
-                        save={save}
-                        drafts={chatDrafts}
-                      />
-                    </div>
-                  </div>
+            <div className="hydra-page">
+              <div className={`workspace-chat ${view.workspace.chatCollapsed ? 'collapsed' : ''}`}>
+                <Button
+                  className="chat-fold"
+                  aria-label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
+                  onClick={toggleChat}
+                ><Icon name="chevron_right" />
+                </Button>
+                <div className="chat-content" hidden={view.workspace.chatCollapsed}>
+                  <HydraChat
+                    hydraId={navigation.hydraId}
+                    identity={shownHydra && {
+                      name: shownHydra.name,
+                      icon: shownHydra.icon,
+                      taken: edits.hydras.filter(h => h.id !== shownHydra.id).map(h => h.name),
+                    }}
+                    editHydra={({
+                      name,
+                      icon,
+                    }) => edits.edit({
+                      id: navigation.hydraId,
+                      name,
+                      icon,
+                    })}
+                    addProject={() => addProject({ id: navigation.hydraId })}
+                    projectRequest={projectRequest}
+                    projectRequested={() => setProjectRequest(false)}
+                    state={state}
+                    liveThread={hydraThread}
+                    action={actions[HYDRA_CARD]}
+                    taskActions={actions}
+                    selectedTask={selectedRef}
+                    queue={hydraQueue}
+                    command={command}
+                    connected={connected}
+                    openTask={revealTask}
+                    notify={notify}
+                    view={view}
+                    save={save}
+                    drafts={chatDrafts}
+                  />
+                </div>
+              </div>
 
-                  <TaskReferencesProvider references={references} openTask={revealTask}>
-                    <div className="hydra-main">
-                      <div className="work-area inline">
-                        <div className="hydra-space">
-                          <div className="kanban" aria-label="Work columns">
-                            {columns.map(c => {
-                              const items = c.cards
-                              const openIds = expandedIds.filter(id => {
-                                const card = state.cards[id]
+              <TaskReferencesProvider references={references} openTask={revealTask}>
+                <div className="hydra-main">
+                  <div className="work-area inline">
+                    <div className="hydra-space">
+                      <div className="kanban" aria-label="Work columns">
+                        {columns.map(c => {
+                          const items = c.cards
+                          const openIds = expandedIds.filter(id => {
+                            const card = state.cards[id]
 
-                                return card && taskProjectColumn({
-                                  state,
-                                  card,
-                                }) === c.id
-                              })
+                            return card && taskProjectColumn({
+                              state,
+                              card,
+                            }) === c.id
+                          })
 
-                              const openedWidths = openIds.map(id => expandedTaskWidth({
-                                card: state.cards[id]!,
-                                widths: view.workspace.cardWidths,
-                              }))
-                              const expandedWidth = Math.max(
-                                0,
-                                ...openedWidths,
-                              )
+                          const openedWidths = openIds.map(id => expandedTaskWidth({
+                            card: state.cards[id]!,
+                            widths: view.workspace.cardWidths,
+                          }))
+                          const expandedWidth = Math.max(
+                            0,
+                            ...openedWidths,
+                          )
 
-                              return (
-                                <ProjectColumn
-                                  key={c.id}
-                                  column={c}
-                                  view={view}
-                                  save={save}
-                                  expandedWidth={expandedWidth}
-                                  create={() => createTask({
-                                    column: queuedColumn,
-                                    project: c.repositories.length === 1
-                                      ? c.repositories[0] : undefined,
-                                    group: c.id,
+                          return (
+                            <ProjectColumn
+                              key={c.id}
+                              column={c}
+                              view={view}
+                              save={save}
+                              expandedWidth={expandedWidth}
+                              create={() => createTask({
+                                column: queuedColumn,
+                                project: c.repositories.length === 1
+                                  ? c.repositories[0] : undefined,
+                                group: c.id,
+                              })}
+                            >
+                              {creatingTask?.group === c.id && (
+                                <TaskCreate
+                                  key={`${c.id}:${creatingTask.parent ?? ''}`}
+                                  {...creatingTask}
+                                  repositories={c.repositories.map(path => ({
+                                    value: path,
+                                    label: path.split('/').at(-1) ?? path,
+                                  }))}
+                                  before={items.find(item => item.column === queuedColumn)?.id}
+                                  command={command}
+                                  connected={connected}
+                                  notify={notify}
+                                  cancel={() => setCreatingTask(null)}
+                                  recover={({ draft }) => {
+                                    if (taskFormVersion.current === creatingTask.version) {
+                                      setCreatingTask({
+                                        ...creatingTask,
+                                        draft,
+                                      })
+                                    }
+
+                                    const key = `task:${draft.attempt}`
+                                    setPageView(view => ({
+                                      ...view,
+                                      selected: view.selected === key ? null : view.selected,
+                                      expanded: view.expanded.filter(id => id !== key),
+                                    }))
+                                  }}
+                                  submitted={({ id }) => {
+                                    setCreatingTask(null); expand({
+                                      id,
+                                      column: c.id,
+                                    })
+                                  }}
+                                />
+                              )}
+                              {items.map(item => (
+                                <TaskFamily
+                                  key={item.key}
+                                  card={item}
+                                  state={state}
+                                  actions={actions}
+                                  selected={expandedIds}
+                                  cardWidths={view.workspace.cardWidths}
+                                  preview={preview}
+                                  renderCard={({
+                                    card,
+                                    ...family
+                                  }) => renderCard({
+                                    card,
+                                    ...family,
+                                    column: c,
                                   })}
-                                >
-                                  {creatingTask?.group === c.id && (
-                                    <TaskCreate
-                                      key={`${c.id}:${creatingTask.parent ?? ''}`}
-                                      {...creatingTask}
-                                      repositories={c.repositories.map(path => ({
-                                        value: path,
-                                        label: path.split('/').at(-1) ?? path,
-                                      }))}
-                                      before={items.find(item => item.column === queuedColumn)?.id}
-                                      command={command}
-                                      connected={connected}
-                                      notify={notify}
-                                      cancel={() => setCreatingTask(null)}
-                                      recover={({ draft }) => {
-                                        if (taskFormVersion.current === creatingTask.version) {
-                                          setCreatingTask({
-                                            ...creatingTask,
-                                            draft,
-                                          })
-                                        }
-
-                                        const key = `task:${draft.attempt}`
-                                        setPageView(view => ({
-                                          ...view,
-                                          selected: view.selected === key ? null : view.selected,
-                                          expanded: view.expanded.filter(id => id !== key),
-                                        }))
-                                      }}
-                                      submitted={({ id }) => {
-                                        setCreatingTask(null); expand({
-                                          id,
-                                          column: c.id,
-                                        })
-                                      }}
-                                    />
-                                  )}
-                                  {items.map(item => (
-                                    <TaskFamily
-                                      key={item.key}
-                                      card={item}
-                                      state={state}
-                                      actions={actions}
-                                      selected={expandedIds}
-                                      cardWidths={view.workspace.cardWidths}
-                                      preview={preview}
-                                      renderCard={({
-                                        card,
-                                        ...family
-                                      }) => renderCard({
-                                        card,
-                                        ...family,
-                                        column: c,
-                                      })}
-                                    />
-                                  ))}
-                                </ProjectColumn>
-                              )
-                            })}
-                            <div className="add-column">
-                              <Button disabled={!connected} onClick={createColumn}><Icon name="plus" />Project</Button>
-                            </div>
-                          </div>
+                                />
+                              ))}
+                            </ProjectColumn>
+                          )
+                        })}
+                        <div className="add-column">
+                          <Button disabled={!connected} onClick={createColumn}><Icon name="plus" />Project</Button>
                         </div>
                       </div>
                     </div>
-                  </TaskReferencesProvider>
+                  </div>
                 </div>
-              </>
-            )}
-            {(settingsVisited || page === 'settings') && (
-              <SettingsPage
-                hydras={navigation.hydras}
-                commandFor={hydra.commandFor}
-                key={settingsQuery}
-                initialQuery={settingsQuery}
-                accountSetup={accountSetup}
-                hidden={page !== 'settings'}
-                state={state}
-                connected={connected}
-                view={view}
-                save={save}
-                command={command}
-                notify={notify}
-                upgrade={upgrade}
-                startUpgrade={startUpgrade}
-              />
+              </TaskReferencesProvider>
+            </div>
+            {(settingsVisited || page === 'settings') && createPortal(
+              <div
+                className="settings-route"
+                data-settings-hydra={navigation.hydraId}
+                hidden={!active || page !== 'settings'}
+                style={{
+                  '--text-ui': `${view.fontSize}px`,
+                  '--text-chat': `${view.chatFontSize}px`,
+                  '--text-code': `${view.codeFontSize}px`,
+                } as CSSProperties}
+              >
+                <SettingsPage
+                  hydras={navigation.hydras}
+                  commandFor={hydra.commandFor}
+                  key={settingsQuery}
+                  initialQuery={settingsQuery}
+                  accountSetup={accountSetup}
+                  hidden={page !== 'settings'}
+                  state={state}
+                  connected={connected}
+                  view={view}
+                  save={save}
+                  command={command}
+                  notify={notify}
+                  upgrade={upgrade}
+                  startUpgrade={startUpgrade}
+                />
+              </div>,
+              document.body,
             )}
           </main>
-          {notice && (
+          {notice && createPortal(
             <div className="notice" role="status">
               <span>{notice.text}</span>
               <Button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
                 <Icon name="close" />
               </Button>
-            </div>
+            </div>,
+            document.body,
           )}
         </div>
       </HydraComposerSources>

@@ -31,7 +31,7 @@ export function openingView({ restored }: { restored: Restore }): PageView {
   const lastOpened = restored.expanded?.at(-1) ?? null
 
   return {
-    page: search.has('settings') || restored.page === 'settings' ? 'settings' : 'hydra',
+    page: 'hydra',
     panel: restored.panel ?? true,
     selected: openProject ? null : restored.selected ?? lastOpened,
     expanded: openProject ? [] : opened,

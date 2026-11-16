@@ -3,9 +3,9 @@
 .topbar { position: fixed; inset: 0 0 auto; z-index: 70; display: flex; align-items: center; height: 50px; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--color-line); background: var(--color-background); }
 .topbar[hidden] { display: none; }
 .topbar .brand { display: flex; align-items: center; gap: 8px; color: var(--color-gold); flex-shrink: 0; }
-.topbar > nav:last-child { margin-left: 0; }
+.topbar > nav:last-child { display: flex; align-items: center; gap: 6px; flex: none; margin-left: auto; }
 .topbar > nav:last-child > .button > :is(span, kbd) { display: none; }
-.topbar .oracle-trigger { flex: 0 0 auto; margin-left: auto; width: 32px; padding: 6px; }
+.topbar .oracle-trigger { flex: 0 0 auto; margin-left: 0; width: 32px; padding: 6px; }
 .topbar .oracle-trigger > :is(span, kbd) { display: none; }
 .hydra-chips { display: flex; align-items: center; gap: 6px; overflow: auto hidden; min-width: 0; }
 .hydra-chip.button { border: 1px solid var(--color-line); border-radius: 999px; padding: 4px 10px; gap: 7px; white-space: nowrap; flex: none; }
@@ -46,7 +46,12 @@
 .project-cards .card-agent { margin-left: auto; }
 .task-progress { flex-shrink: 0; padding-left: 4px; border-left: 1px solid currentcolor; font-variant-numeric: tabular-nums; }
 .project-cards .card.selected .card-content { min-height: 0; }
-.hydra-workspace .settings-page { width: calc(100vw - 64px); min-height: 0; overflow: auto; }
+.workspace-axis[data-page=settings] { overflow: hidden; }
+.workspace-axis[data-page=settings] .workspace-track { visibility: hidden; }
+.workspace-axis[data-page=settings] :is(.topbar:not([hidden]), .oracle-palette) { visibility: visible; }
+.settings-route { position: fixed; inset: 50px 0 0; z-index: 65; display: flex; background: var(--color-background); }
+.settings-route[hidden] { display: none; }
+.settings-route > .settings-page { width: 100%; min-width: 0; }
 .oracle-palette { margin-top: 64px; height: min(660px, calc(100dvh - 86px)); }
 @media (max-width: 760px) {
   .workspace-axis { gap: 8px; padding: 58px 6px 6px; scroll-padding-inline: 6px; }
@@ -118,11 +123,6 @@
 
 @media (pointer: coarse) { .workspace-axis.lenis { scroll-snap-type: x proximity; } }
 
-.topbar > nav:last-child { margin-left: auto; }
-@media (min-width: 761px) {
-  .topbar .hydra-chips { max-width: calc(50vw - 150px); }
-  .topbar .oracle-trigger { position: absolute; left: 50%; transform: translateX(-50%); margin-left: 0; }
-}
 
 .project-column.column[data-resizing=true] { transition: none; }
 

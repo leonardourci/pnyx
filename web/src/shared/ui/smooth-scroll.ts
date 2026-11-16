@@ -65,7 +65,7 @@ export function useSmoothScroll({
       const sizes = new ResizeObserver(resize)
       sizes.observe(inner)
       const observer = new MutationObserver(() => {
-        if (wrapper.dataset.dragging) {
+        if (wrapper.dataset.dragging || wrapper.dataset.page === 'settings') {
           lenis.stop()
         } else {
           lenis.start()
@@ -75,7 +75,10 @@ export function useSmoothScroll({
         wrapper,
         {
           attributes: true,
-          attributeFilter: ['data-dragging'],
+          attributeFilter: [
+            'data-dragging',
+            'data-page',
+          ],
         },
       )
 

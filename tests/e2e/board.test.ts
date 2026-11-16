@@ -567,7 +567,7 @@ test(
 )
 
 test(
-  'sub-tasks keep state order while folding preserves the open card and worker draft',
+  'sub-tasks keep state order while folding and Settings preserve the open card and draft',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -661,6 +661,42 @@ test(
       await workspace.getByRole(
         'button',
         {
+          name: 'Settings',
+          exact: true,
+        },
+      ).click()
+      await page.waitForURL(`**/hydra/${hydra.id}/settings/`)
+      await page.getByRole(
+        'region',
+        {
+          name: 'Settings',
+          exact: true,
+        },
+      ).waitFor()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Close Settings',
+          exact: true,
+        },
+      ).click()
+      await page.waitForURL(`**/hydra/${hydra.id}/`)
+      await page.goBack()
+      await page.getByRole(
+        'region',
+        {
+          name: 'Settings',
+          exact: true,
+        },
+      ).waitFor()
+      await page.goForward()
+      await draft.waitFor()
+      expect(await draft.inputValue()).toBe('Keep my unsent reply')
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      expect(await card?.evaluate(element => element.isConnected)).toBe(true)
+      await workspace.getByRole(
+        'button',
+        {
           name: 'Fold Hydra',
           exact: true,
         },
@@ -677,6 +713,31 @@ test(
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
       expect(await card?.evaluate(element => element.isConnected)).toBe(true)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Settings',
+          exact: true,
+        },
+      ).click()
+      await page.waitForURL(`**/hydra/${hydra.id}/settings/`)
+      await page.reload()
+      await page.getByRole(
+        'region',
+        {
+          name: 'Settings',
+          exact: true,
+        },
+      ).waitFor()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Close Settings',
+          exact: true,
+        },
+      ).click()
+      await draft.waitFor()
+      expect(await draft.inputValue()).toBe('Keep my unsent reply')
     } finally {
       await page.context().close()
     }

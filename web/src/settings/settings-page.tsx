@@ -715,7 +715,6 @@ export function SettingsPage({
     >
       <header className="settings-head">
         <h1 data-settings-heading tabIndex={-1}>Settings</h1>
-        <p>Apply to every Hydra · changes save as you make them</p>
       </header>
       <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />
       <div className="settings-search" ref={sticky}>
