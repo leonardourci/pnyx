@@ -208,7 +208,10 @@ test.each([
   },
   {
     name: 'source mixed with docs',
-    paths: ['docs/testing.md', 'src/new.ts'],
+    paths: [
+      'docs/testing.md',
+      'src/new.ts',
+    ],
     output: 'tests=all\n',
     status: 0,
   },
