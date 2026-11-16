@@ -42,13 +42,24 @@ export function useSmoothScroll({
           distanceThreshold: '20%',
         },
       ) : undefined
-      snap?.addElements(
-        [...wrapper.querySelectorAll<HTMLElement>('[data-hydra-workspace]')],
-        { align: 'start' },
-      )
-      const sizes = new ResizeObserver(() => {
-        lenis.resize(); snap?.resize()
-      })
+      let removeSnaps: (() => void)[] = []
+
+      const resize = () => {
+        lenis.resize()
+        removeSnaps.forEach(remove => remove())
+        const padding = parseFloat(getComputedStyle(wrapper).scrollPaddingLeft) || 0
+        const left = wrapper.getBoundingClientRect().left
+        removeSnaps = [...wrapper.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
+          .flatMap(element => snap ? [
+            snap.add(Math.max(
+              0,
+              element.getBoundingClientRect().left - left + wrapper.scrollLeft - padding,
+            )),
+          ] : [])
+      }
+
+      resize()
+      const sizes = new ResizeObserver(resize)
       sizes.observe(inner)
       const observer = new MutationObserver(() => {
         if (wrapper.dataset.dragging) {
@@ -66,7 +77,8 @@ export function useSmoothScroll({
       )
 
       return () => {
-        observer.disconnect(); sizes.disconnect(); snap?.destroy(); lenis.destroy()
+        observer.disconnect(); sizes.disconnect(); removeSnaps.forEach(remove => remove())
+        snap?.destroy(); lenis.destroy()
       }
     },
     [

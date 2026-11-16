@@ -153,7 +153,7 @@ export function usePhysicalDrag({
 
         const control = event.target.closest('button,input,textarea,select,a,.resize,[contenteditable=true]')
 
-        if (control && !control.hasAttribute('data-sort-id')) {
+        if (control && !control.matches('[data-sort-id],[data-column-heading]')) {
           return
         }
 

@@ -5,6 +5,7 @@ import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraChatQueue } from '#hydra/chat-queue.ts'
 import { hostedHydra,hydraConfig } from '#hydra/config.ts'
+import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
@@ -190,6 +191,10 @@ export function HydraChat({
     setAway,
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
+  useSmoothScroll({
+    root: stream,
+    content,
+  })
   const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
   const glide = useRef(0)
   const touchY = useRef<number | undefined>(undefined)
