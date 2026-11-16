@@ -8,7 +8,7 @@ import { Resize } from '#web-shared/ui/resize.tsx'
 import { ProjectCounts } from './project-counts.tsx'
 import type { ProjectColumnData } from './project-view.ts'
 import { CARD_GAP, CLOSED_CARD_MIN_WIDTH, PROJECT_CONTENT_INSET } from './project-layout.ts'
-import { useFlowMotion } from '#web-shared/ui/flow-motion.ts'
+import { useProjectPacking } from './project-packing.ts'
 
 export function ProjectColumn({
   column,
@@ -31,7 +31,7 @@ export function ProjectColumn({
   ] = useState<number | null>(null)
   const scroll = useRef<HTMLDivElement>(null)
   const grid = useRef<HTMLDivElement>(null)
-  useFlowMotion({ root: grid })
+  useProjectPacking({ root: grid })
   useSmoothScroll({
     root: scroll,
     content: grid,

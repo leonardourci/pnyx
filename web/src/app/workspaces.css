@@ -28,7 +28,7 @@
 .project-column.folded .project-column-heading > .button:first-child > svg { transform: none; }
 .project-cards.column-cards { display: block; padding: 8px; overflow: hidden auto; min-height: 0; flex: 1; }
 .project-cards.column-cards[hidden] { display: none; }
-.task-family { float: left; min-width: 0; width: var(--closed-card-width); margin: 0 var(--card-gap) var(--card-gap) 0; }
+.task-family { min-width: 0; width: var(--closed-card-width); }
 .subtasks { margin: 7px 0 0; padding-left: calc(var(--subtask-indent) - 1px); border-left: 1px solid var(--color-line); display: flex; flex-direction: column; gap: 7px; }
 .project-cards .card { min-height: 0; min-width: 0; width: 100%; max-width: none; margin: 0; padding: 9px 11px 10px; border-radius: 10px; transition: border-color 150ms, box-shadow 150ms, height 240ms, width 240ms, min-height 240ms, min-width 240ms; }
 .project-cards .card.selected { min-width: 560px; min-height: 440px; max-height: none; }
@@ -75,7 +75,7 @@
 .worker-composer textarea { min-height: 44px; }
 .workspace-track { display: flex; align-items: stretch; gap: 12px; height: 100%; width: max-content; }
 .workspace-axis.lenis { scroll-snap-type: none; scroll-behavior: auto; }
-.project-card-grid { display: flow-root; position: relative; min-height: 100%; margin-right: calc(-1 * var(--card-gap)); }
+.project-card-grid { position: relative; min-height: 100%; margin-right: calc(-1 * var(--card-gap)); }
 .project-column.column { transition: width 240ms cubic-bezier(.2,.8,.2,1); }
 .physical-ghost { position: fixed !important; z-index: 1000; margin: 0 !important; pointer-events: none !important; box-shadow: 0 16px 36px var(--color-shadow); border-color: var(--color-gold-line) !important; opacity: .96; overflow: hidden; will-change: transform; }
 [data-lifted] { opacity: .24; }
@@ -130,3 +130,6 @@
 @media (prefers-reduced-motion: reduce) { .hydra-workspace.app, .workspace-chat { transition: none; } }
 
 .hydra-workspace.app { overflow: clip; }
+
+.project-card-grid > * { position: absolute; }
+.project-card-grid > :not(.task-family) { width: calc(100% - var(--card-gap)); }

@@ -745,6 +745,95 @@ test(
 )
 
 test(
+  'later cards fill space before and beside an open card',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const add = ({
+      key,
+      parent,
+    }: {
+      key: string
+      parent?: string
+    }) => hydra.owner({
+      args: [
+        'push',
+        '--key',
+        key,
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: key,
+        parent,
+      }),
+    })
+    await add({ key: 'First group' })
+    await add({ key: 'Second' })
+    await add({ key: 'Third' })
+    await add({ key: 'Fourth' })
+    await add({ key: 'Open this' })
+    await add({ key: 'Fill the gap' })
+    await add({
+      key: 'First part',
+      parent: 'First group',
+    })
+    await add({
+      key: 'Second part',
+      parent: 'First group',
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectWidths: { ideas: 944 } } }),
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of First group',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Open this',
+          exact: true,
+        },
+      ).click()
+      const open = workspace.locator('.card.selected')
+      const filler = workspace.getByRole(
+        'button',
+        {
+          name: 'Fill the gap',
+          exact: true,
+        },
+      )
+      await until({
+        what: 'a later card fills the earlier space beside the open family',
+        check: async () => {
+          const expanded = await open.boundingBox()
+          const filled = await filler.boundingBox()
+
+          return !!expanded && !!filled && filled.y < expanded.y
+        },
+      })
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
   'worker reply recovery delivers an uncertain reply once after reconnect',
   async () => {
     const hydra = await pnyx.hydra()
