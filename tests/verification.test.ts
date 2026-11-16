@@ -9,6 +9,7 @@ import { afterEach, expect, test } from 'vitest'
 import { stagedBuild } from '../scripts/build/staged.ts'
 
 const temporaryFolders: string[] = []
+const CHILD_PROCESS_TIMEOUT_MS = 30_000
 
 afterEach(() => {
   for (const folder of temporaryFolders.splice(0)) {
@@ -61,6 +62,7 @@ test(
           paths,
         }),
         encoding: 'utf8',
+        timeout: CHILD_PROCESS_TIMEOUT_MS,
       },
     ))
     const config = JSON.parse(readFileSync(
@@ -481,6 +483,7 @@ test.each([
           previousDocsSuccess,
         }),
         encoding: 'utf8',
+        timeout: CHILD_PROCESS_TIMEOUT_MS,
         env: {
           ...process.env,
           RUNNER_TEMP: runnerTemp,
