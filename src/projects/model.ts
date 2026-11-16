@@ -1,6 +1,10 @@
 import type { Landing, Merger } from '#tasks/delivery/model.ts'
 
 export interface HydraProject {
+  group?: {
+    id: string
+    name: string
+  }
   path: string
   name: string
   detached: boolean

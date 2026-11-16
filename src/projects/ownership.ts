@@ -50,7 +50,10 @@ function migrationPlan({
     cards,
   }) => {
     if (state.config?.hydra.kind === 'firstmate') {
-      return [`Hydra ${id}: Firstmate owns its project attachments`]
+      const reason = 'Firstmate owns its project attachment and task moves'
+
+      return cards.length ? cards.map(card => `${card.id} (${card.title}): ${reason}`)
+        : [`Hydra ${id}: ${reason}`]
     }
 
     return cards.flatMap(card => {

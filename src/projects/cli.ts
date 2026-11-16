@@ -1,3 +1,4 @@
+import { childRepositories, attachProjectGroup, projectGroupCommand } from './group-cli.ts'
 import { keepProject } from './ownership.ts'
 import { requestCwd } from '#app/request-context.ts'
 import { sameProjectPath } from './identity.ts'
@@ -16,6 +17,10 @@ import { findProject, projectFolder, projectName, projectRows, sharingHydras } f
 import { parseLanding, parseMerger } from '#tasks/delivery/rule.ts'
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
+  if (args[0] === 'group') {
+    return projectGroupCommand({ args })
+  }
+
   if (args[0] === 'worker-notes') {
     return projectMemoryCommand({
       args: [
@@ -315,6 +320,21 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       }).path
   }
 
+  if (action === 'add') {
+    const repositories = childRepositories({ path })
+
+    if (repositories.length) {
+      return attachProjectGroup({
+        hydraId,
+        paths: repositories,
+        name: projectName({ path }),
+        groupId: path,
+        meta: m,
+        attach: true,
+      })
+    }
+  }
+
   const result = withRegistryLock({
     fn: () => commit({
       hydraId,
@@ -393,7 +413,11 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 }
 
 export const project = guard({ handler: projectCommand })
-export const PROJECT_HELP = `pnyx-axi project keep <path> --hydra <keeper>
+export const PROJECT_HELP = `pnyx-axi project group <name> <repo-path>... [--hydra <id>]
+Groups attached repositories into one project column, preserving each repository's settings and memory.
+Project add accepts a repository folder or a parent folder whose direct children are repositories.
+A parent folder attaches those repositories as a named project in one transaction.
+pnyx-axi project keep <path> --hydra <keeper>
 Moves a legacy duplicate repository to its chosen Hydra atomically; any blocking task refuses the whole move.
 pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. For every project and Hydra, use owner worker-notes.
