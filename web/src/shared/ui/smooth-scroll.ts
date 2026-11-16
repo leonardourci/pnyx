@@ -31,7 +31,7 @@ export function useSmoothScroll({
         wrapper,
         content: inner,
         orientation: horizontal ? 'horizontal' : 'vertical',
-        gestureOrientation: horizontal ? 'both' : 'vertical',
+        gestureOrientation: horizontal ? 'horizontal' : 'vertical',
         smoothWheel: true,
         autoRaf: true,
         lerp: SCROLL_LERP,
