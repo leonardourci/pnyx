@@ -50,7 +50,7 @@ Grouping A is settled. Labels do not define columns.
 
 ## Layers and current state
 
-The core and UI layers are implemented in the draft PR. The live-app pass covers desktop and phone; the final readiness reviews and full verification are deliberately held.
+The core and UI layers are implemented in the draft PR. The live-app pass covers desktop and phone. Main now includes deslop, and the branch is completing its focused regression coverage before the final gate and CI.
 
 - [x] Read settled design and record its migration decisions.
 - [x] Automatic stopped-client/query recovery and bounded connection logs.
@@ -62,7 +62,7 @@ The core and UI layers are implemented in the draft PR. The live-app pass covers
 - [x] Global Oracle waiting list/search and cross-Hydra task navigation.
 - [x] Run desktop/phone interaction and restart/drop proof. Upload the synthetic media to the PR.
 - [x] Commit the implementation in layers. Push and refresh the same draft PR at the checkpoint.
-- [ ] Later: deslop dogfood, readiness reviews and full verification, when Hydra lifts the hold.
+- [ ] Finish the deslop dogfood pass, focused regression flips and required CI before readiness.
 
 ## Migration inventory
 
@@ -127,7 +127,7 @@ Desktop captures use 1440×960 and 1920×1080; phone captures use 390×844.
   Logged sequences show stale 49→reconciled 50, then stale 50→reconciled 50 on restart.
 - Reload preserves the open card, unsent worker draft and horizontal position.
   The browser paths reported no page errors.
-- Lint, CLI/web type checks and the build pass. Full verification remains held.
+- Lint, CLI/web type checks and the build pass. Full integration and browser suites run in required CI.
 
 The behavior pass fixed a missing replicated sequence that left edits pending,
 a server-only planner imported by the browser, opening measured before size settled,
@@ -150,18 +150,22 @@ reorder and nesting still persist. A dropped socket and a restart through portle
 retain the open card and reconcile fresh Zero data even when the internal port
 changes. The comparison captures show 258px and 360px cards in both themes.
 
-## Validation direction
+## Validation and readiness
 
-The owner now wants proof through the running app, using an isolated server and a headless browser at desktop and phone sizes. Add no more automated or integration tests during this build. Keep the existing passing additions. Exercise layout, opening/folding, drag animations, Hydra snapping, immediate edits and recovery after restart and dropped connections; retain screenshots or short recordings in the draft PR. Test additions and the audit follow during the later deslop pass.
+The owner first asked for running-app proof and held new tests. With deslop merged through PR #405, Hydra explicitly requested focused regressions for grouping, visual arrangement, parent retention, folding identity and worker reply recovery. Keep one behavior flow for each, using public commands, saved page facts and rendered behavior; record a failing mutation for each in a throwaway copy. The full suite runs in CI.
 
-## Readiness dependency
+Two fresh deslop passes retained eight fixes: stale active-Hydra effects, project and card resize previews retained after saving, stale drag targets, folding that unmounted card state, reused grouping event IDs, unscoped composer focus and an unchecked browser-test callback. Both stopped with the test audit incomplete. The five focused regressions now have passing baselines and failing mutations in a throwaway copy. The affected suites also retain their existing task and Activity coverage; the retired hide-Hydra journey is folded into the current fold/draft flow.
 
-Keep this work on draft PR #410 until deslop lands through PR #405 (task
-`task-987457cc-b114-430f-ac63-1e08fdbc9ace`). The horizontal fold-icon correction
-is applied and checked before waiting for that dependency.
+After its quick local commands pass, ask Hydra for CI approval with the waiting run URL and exact SHA. Required checks are `deslop` and `Lint, build and tests`. Confirm the final commit's deslop note and status, report the green head and findings, then mark PR #410 ready. Keep the isolated owner trial running on the latest build and keep two-line cards until the owner chooses otherwise.
 
-On resumption, merge origin/main into this branch and follow the merged deslop
-configuration for whole-branch review and fixes, quick local checks and tests in
-CI. Ask Hydra for CI approval with the run URL and exact head. Report the green
-head and deslop findings/fixes before marking ready. Browser work continues to
-use the shared heavy slot and an isolated home.
+## Focused regression proof
+
+| Behavior | Mutation | Failing observation |
+| --- | --- | --- |
+| Repository grouping | Reuse the group ID for repeated command event IDs | The third repository task never enters Suite |
+| Visual arrangement | Ignore the arrange operation | The rendered order stays unchanged |
+| Parent retention | Suppress all-children completion | The parent's completion timestamp remains absent |
+| Folding identity | Unmount folded project content | The original open card is disconnected |
+| Worker reply recovery | Omit worker reply sending | The worker never receives the reply after reconnect |
+
+The passing reply flow drops the first command before the server receives it, then checks delivery acknowledgement and exactly one worker delivery after reconnection. Native steering envelopes can contain the same prose; counting every text occurrence is not a delivery assertion.
