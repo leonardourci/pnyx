@@ -3,6 +3,7 @@ import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { Hit } from '#oracle/model.ts'
 import type { Command } from '#web-app/connection.ts'
+import { knownCards } from '#tasks/select.ts'
 import { taskRollup } from '#web-tasks/project-view.ts'
 import type { Filter } from './filters.ts'
 import { oracleResults, type OracleResult } from './results.ts'
@@ -86,10 +87,16 @@ export function workspaceResults({
           card: result.card,
           actions: workspace.actions,
         }).status.kind === 'asks'
-      }).map(result => ({
-        ...result,
-        id: `${workspace.hydra.id}:${result.id}`,
-      }))
+      }).map(result => {
+        const parent = result.kind === 'task' && result.card.parentId
+          ? knownCards({ state: workspace.state })[result.card.parentId] : undefined
+
+        return {
+          ...result,
+          title: parent ? `${parent.title} › ${result.title}` : result.title,
+          id: `${workspace.hydra.id}:${result.id}`,
+        }
+      })
       const label = !text && !badges.length ? 'Needs you' : group.label
       merged.set(
         label,
