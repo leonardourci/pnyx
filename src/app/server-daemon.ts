@@ -247,7 +247,7 @@ export async function startServer({
       const mount = served.get(id)
 
       if (!mount) {
-        if ((req.method === 'GET' || req.method === 'HEAD') && rest === '/'
+        if ((req.method === 'GET' || req.method === 'HEAD') && (rest === '/' || rest === '/settings/')
           && hydraIds().includes(id)) {
           return serveStatic({
             res,
