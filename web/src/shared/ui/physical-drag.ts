@@ -444,20 +444,18 @@ export function usePhysicalDrag({
           const candidates = [...surface.querySelectorAll<HTMLElement>('[data-sort-kind=task]')]
             .filter(element => element !== source
               && element.dataset.sortScope === sourceScope)
-          target = candidates.sort((
+          const targets = candidates.map(element => ({
+            element,
+            distance: distanceToPoint({
+              rect: layoutBounds({ element }),
+              x: event.clientX,
+              y: event.clientY,
+            }),
+          }))
+          target = targets.sort((
             a,
             b,
-          ) =>
-            distanceToPoint({
-              rect: layoutBounds({ element: a }),
-              x: event.clientX,
-              y: event.clientY,
-            })
-            - distanceToPoint({
-              rect: layoutBounds({ element: b }),
-              x: event.clientX,
-              y: event.clientY,
-            }))[0]
+          ) => a.distance - b.distance)[0]?.element
         }
 
         if (!target || target === source || target.dataset.sortKind !== source.dataset.sortKind) {
@@ -524,7 +522,10 @@ export function usePhysicalDrag({
           selector = source.dataset.parent ? '[data-child]' : '.task-family'
         }
 
-        const siblings = [...surface.querySelectorAll<HTMLElement>(selector)]
+        const sortingHydras = source.dataset.sortKind === 'hydra'
+        const siblings = [...surface.querySelectorAll<HTMLElement>(selector)].filter(element =>
+          sortingHydras
+          || element.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace === hydra)
         const previous = new Map(siblings.map(element => [
           element,
           element.getBoundingClientRect(),
