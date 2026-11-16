@@ -1,5 +1,4 @@
 import type { HTMLAttributes } from 'react'
-import { Icon } from '#web-shared/ui/icon.tsx'
 
 // A div with the button role rather than a <button>, so the card can still be dragged by its title.
 export function CardTitle({
@@ -34,7 +33,6 @@ export function CardTitle({
         }
       }}
     >
-      {expanded && <span className="card-brief-chevron" aria-hidden="true"><Icon name="chevron_right" size={13} /></span>}
       {title}
     </div>
   )
