@@ -72,7 +72,6 @@ export function Oracle({
   startUpgrade,
   openTask,
   answerTask,
-  openHydra,
   selectProject,
   openSettings,
   createTask,
@@ -116,7 +115,6 @@ export function Oracle({
     id: string
     hydra?: string
   }): void
-  openHydra(): void
   selectProject({
     path,
     hydra,
@@ -528,7 +526,7 @@ export function Oracle({
         if (result.card) {
           openCard({ id: result.card.id })
         } else {
-          openHydra()
+          openChat({ id: result.hydra ?? hydra.id })
         }
 
         break

@@ -732,6 +732,14 @@ test(
       await workspace.getByRole(
         'button',
         {
+          name: 'Fold chat',
+          exact: true,
+        },
+      ).click()
+      await workspace.locator('.workspace-chat.collapsed').waitFor()
+      await workspace.getByRole(
+        'button',
+        {
           name: 'Settings',
           exact: true,
         },
@@ -761,6 +769,7 @@ test(
         },
       ).waitFor()
       await page.goForward()
+      await workspace.locator('.workspace-chat.collapsed').waitFor()
       await draft.waitFor()
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
@@ -800,13 +809,37 @@ test(
           exact: true,
         },
       ).waitFor()
+      const identity = await hydra.owner({
+        args: [
+          'hydra',
+          'show',
+        ],
+      })
+      const name = identity.hydra.name
       await workspace.getByRole(
         'button',
         {
-          name: 'Close Settings',
+          name: 'Oracle',
           exact: true,
         },
       ).click()
+      await page.getByRole(
+        'combobox',
+        {
+          name: 'Oracle',
+          exact: true,
+        },
+      ).fill('kind:conversations')
+      await page.getByRole('option').filter({ hasText: 'Conversations' })
+        .click()
+      await page.getByRole('option').filter({ hasText: `${name}’s chat` })
+        .click()
+      await until({
+        what: 'Oracle opens the folded chat from Settings',
+        check: async () => page.url().endsWith(`/hydra/${hydra.id}/`)
+          && await workspace.locator('.workspace-chat:not(.collapsed)').count() === 1,
+      })
+
       await draft.waitFor()
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
     } finally {

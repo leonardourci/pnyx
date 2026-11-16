@@ -304,21 +304,6 @@ export function App() {
       url,
       location.href,
     ).pathname.split('/')[2]!)
-    const settings = new URL(
-      url,
-      location.href,
-    ).pathname.endsWith('/settings/')
-    const returning = hydra.navigation.page === 'settings' && destination === current
-
-    if (settings || returning) {
-      await hydra.navigate({
-        url,
-        replace,
-      })
-
-      return
-    }
-
     const opening = hydra.commandFor({ id: destination })({
       name: 'view',
       args: [
@@ -375,6 +360,7 @@ export function App() {
           <HydraView
             key={workspace.viewKey}
             active={workspace.navigation.hydraId === current}
+            navigatePage={hydra.navigate}
             edits={{
               ...edits,
               hydras: orderedHydras,

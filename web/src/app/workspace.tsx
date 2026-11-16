@@ -55,8 +55,10 @@ export function HydraView({
   active,
   edits,
   preview,
+  navigatePage,
 }: {
   hydra: ReturnType<typeof useHydra>
+  navigatePage: ReturnType<typeof useHydra>['navigate']
   active: boolean
   edits: ReturnType<typeof useHydraEdits>
   preview: PhysicalMove | null
@@ -118,8 +120,12 @@ export function HydraView({
   const page = navigation.page
 
   const setPage = ({ page }: { page: string }) => {
+    if (page === navigation.page) {
+      return
+    }
+
     const suffix = page === 'settings' ? 'settings/' : ''
-    navigate({ url: `/hydra/${encodeURIComponent(navigation.hydraId)}/${suffix}` })
+    navigatePage({ url: `/hydra/${encodeURIComponent(navigation.hydraId)}/${suffix}` })
       .catch((error: Error) => notify({ text: error.message }))
   }
 
@@ -208,7 +214,12 @@ export function HydraView({
         open,
       )
     },
-    [active],
+    [
+      active,
+      navigation.hydraId,
+      navigation.page,
+      navigatePage,
+    ],
   )
   useEffect(
     () => {
@@ -270,7 +281,6 @@ export function HydraView({
     open,
     revealTask,
     close,
-    openHydra,
   } = useTaskNavigation({
     state,
     hydraId: navigation.hydraId,
@@ -918,7 +928,6 @@ export function HydraView({
                   hydra,
                   answer: true,
                 })}
-                openHydra={openHydra}
                 selectProject={oracleTarget}
                 openSettings={openSettings}
                 createTask={({ column: group }) => {
