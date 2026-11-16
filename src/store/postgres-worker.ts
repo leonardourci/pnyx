@@ -134,7 +134,24 @@ async function requireSchema({
           'create publication pnyx_page for table',
           'alter publication pnyx_page set table',
         )};
-        insert into schema_version (version) values (5)`)
+        insert into schema_version (version) values (6)`)
+      await client.query('commit')
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    }
+
+    return
+  }
+
+  if (current === 5 && migrate) {
+    await client.query('begin')
+
+    try {
+      await client.query(`${PAGE_PUBLICATION.replace(
+        'create publication pnyx_page for table',
+        'alter publication pnyx_page set table',
+      )}; insert into schema_version (version) values (6)`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')
