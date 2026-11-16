@@ -1,43 +1,562 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { expect, test } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { parse } from 'yaml'
+import { afterEach, expect, test } from 'vitest'
+import { git } from './setup/upgrade.ts'
 import { stagedBuild } from '../scripts/build/staged.ts'
-import { requiredChecks } from '../scripts/verification/required-checks.ts'
 
-// CI's scope job decides from these paths whether the tests run at all, so a misread here ships untested code.
+const temporaryFolders: string[] = []
+const CHILD_PROCESS_TIMEOUT_MS = 30_000
+
+afterEach(() => {
+  for (const folder of temporaryFolders.splice(0)) {
+    rmSync(
+      folder,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+  }
+})
+
+// Deslop ships JavaScript without declarations; resolve its installed module for runtime import.
+const require = createRequire(import.meta.url)
+const selectorPath = require.resolve('deslop/src/config.js')
+const selectorModule = pathToFileURL(selectorPath).href
+const {
+  select,
+  validateConfig,
+  instructionsFor,
+} = await import(selectorModule)
+const policyRoot = fileURLToPath(new URL(
+  '..',
+  import.meta.url,
+))
+const config = validateConfig({
+  root: policyRoot,
+  config: JSON.parse(readFileSync(
+    join(
+      policyRoot,
+      'deslop.config.json',
+    ),
+    'utf8',
+  )),
+})
+const codeCommands = [
+  'lint:fix',
+  'typecheck',
+  'css',
+  'build',
+]
+
 test(
-  'a change runs the tests its paths call for: none for docs, the changed files for tests, the skill readers for skills and everything for code',
+  'the shared verifier selects local commands and Pnyx review instructions',
   () => {
-    const scope = ({ paths }: { paths: string[] }) => requiredChecks({ paths }).tests
+    const cases = [
+      {
+        path: 'src/app/server.ts',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+        ],
+      },
+      {
+        path: 'docs/testing.md',
+        commands: [],
+        instructions: [
+          'kill-ai-slop',
+          'project',
+        ],
+      },
+      {
+        path: 'skills/pnyx-cli/SKILL.md',
+        commands: [],
+        instructions: [
+          'kill-ai-slop',
+          'project',
+        ],
+      },
+      {
+        path: 'tests/access.test.ts',
+        commands: codeCommands,
+        instructions: [
+          'audit-tests',
+          'project',
+          'follow-conventions',
+        ],
+      },
+      {
+        path: 'web/src/hydra/hydra-chat.tsx',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+          'write-front-end',
+        ],
+      },
+      {
+        path: 'src/example/fixtures/input.md',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+        ],
+      },
+      {
+        path: '.github/workflows/tests.yml',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+          'write-ci-workflow',
+        ],
+      },
+    ]
 
-    expect(scope({ paths: ['docs/testing.md'] })).toBe('none')
-    expect(scope({ paths: ['README.md'] })).toBe('none')
-    expect(scope({ paths: ['tests/access.test.ts'] })).toBe('changed')
-    expect(scope({ paths: ['skills/pnyx-cli/SKILL.md'] })).toBe('skills')
-    expect(scope({ paths: ['src/app/server.ts'] })).toBe('full')
-    expect(scope({ paths: ['web/src/hydra/hydra-chat.tsx'] })).toBe('full')
-    // Setup and fixtures are not tests themselves, but every test file runs on them.
-    expect(scope({ paths: ['tests/setup/pnyx.ts'] })).toBe('full')
-    expect(scope({ paths: ['tests/setup/fixtures/gh-axi.mjs'] })).toBe('full')
-    expect(scope({ paths: ['vitest.config.ts'] })).toBe('full')
-    expect(scope({ paths: ['.github/workflows/tests.yml'] })).toBe('full')
-    // Docs beside code never lower the scope, and no known paths means the full suite.
-    expect(scope({
+    for (const {
+      path,
+      commands,
+      instructions,
+    } of cases) {
+      const selected = select({
+        config,
+        paths: [path],
+      })
+      expect(
+        selected.commands,
+        path,
+      ).toEqual(commands)
+      expect(
+        selected.instructions,
+        path,
+      ).toEqual(expect.arrayContaining(instructions))
+      expect(
+        selected.instructions,
+        path,
+      ).toHaveLength(instructions.length)
+    }
+
+    const selected = select({
+      config,
       paths: [
         'docs/testing.md',
-        'src/app/server.ts',
-      ],
-    })).toBe('full')
-    expect(scope({ paths: [] })).toBe('full')
-    expect(requiredChecks({
-      paths: [
         'tests/access.test.ts',
-        'docs/testing.md',
+        'web/src/hydra/hydra-chat.tsx',
+        '.github/workflows/tests.yml',
       ],
-    })).toMatchObject({
-      tests: 'changed',
-      changedTests: ['tests/access.test.ts'],
     })
+    expect(selected.commands).toEqual(codeCommands)
+    expect(selected.checks).toEqual(expect.arrayContaining([
+      'Test scope',
+      'Lint, build and tests',
+    ]))
+    expect(selected.instructions).toEqual(expect.arrayContaining([
+      'project',
+      'follow-conventions',
+      'review-code',
+      'audit-tests',
+      'kill-ai-slop',
+      'write-front-end',
+      'write-ci-workflow',
+    ]))
+    // Review prompts must use Pnyx's overrides rather than deslop's shipped instructions.
+    const reviewText = instructionsFor({
+      root: policyRoot,
+      config,
+      selection: selected,
+    })
+
+    for (const file of [
+      'AGENTS.md',
+      '.agents/skills/follow-conventions/SKILL.md',
+      '.agents/skills/review-code/SKILL.md',
+      '.agents/skills/audit-tests/SKILL.md',
+      '.agents/skills/deslop/SKILL.md',
+      '.agents/skills/write-front-end/SKILL.md',
+      '.agents/skills/write-ci-workflow/SKILL.md',
+    ]) {
+      expect(reviewText).toContain(readFileSync(
+        join(
+          policyRoot,
+          file,
+        ),
+        'utf8',
+      ))
+    }
+  },
+)
+
+const workflow = parse(readFileSync(
+  new URL(
+    '../.github/workflows/tests.yml',
+    import.meta.url,
+  ),
+  'utf8',
+))
+const scopeStep = workflow.jobs.scope.steps.find((step: { id?: string }) => step.id === 'scope')
+const scopeScript = scopeStep.run
+
+test(
+  'every configured CI check names a workflow job',
+  () => {
+    const jobNames = Object.values(workflow.jobs).map(job => {
+      if (typeof job !== 'object' || job === null || !('name' in job)) {
+        throw new Error('Workflow job must have a name')
+      }
+
+      return job.name
+    })
+
+    for (const kind of config.kinds) {
+      for (const check of kind.checks) {
+        expect(jobNames).toContain(check)
+      }
+    }
+  },
+)
+
+test.each([
+  {
+    name: 'ordinary docs',
+    paths: [
+      'docs/testing.md',
+      '.github/workflows/README.md',
+    ],
+    output: 'tests=none\n',
+    status: 0,
+  },
+  {
+    name: 'docs with quoted or multiline filenames',
+    paths: [
+      'docs/naïve.md',
+      'docs/line\nbreak.md',
+      'docs/"quoted".md',
+    ],
+    output: 'tests=none\n',
+    status: 0,
+  },
+  {
+    name: 'source',
+    paths: ['src/new.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'test-only changes',
+    paths: ['tests/access.test.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'shared test setup',
+    paths: ['tests/setup/pnyx.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'test configuration',
+    paths: ['vitest.config.ts'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'hidden configuration',
+    paths: ['.coderabbit.yaml'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'source mixed with docs',
+    paths: [
+      'docs/testing.md',
+      'src/new.ts',
+    ],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'workflow',
+    paths: ['.github/workflows/example.yml'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'shipped skills',
+    paths: ['skills/pnyx-cli/SKILL.md'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'fixture Markdown',
+    paths: ['skills/pnyx-cli/fixtures/input.md'],
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'check requirement without local commands or ciRequired',
+    paths: ['docs/testing.md'],
+    checkOnly: true,
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'code renamed into docs',
+    paths: [],
+    rename: true,
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
+    name: 'empty diff',
+    paths: [],
+    output: '',
+    status: 1,
+  },
+  {
+    name: 'unavailable config',
+    paths: ['docs/testing.md'],
+    missingConfig: true,
+    output: '',
+    status: 1,
+  },
+  {
+    name: 'unavailable selector',
+    paths: ['docs/testing.md'],
+    missingSelector: true,
+    output: '',
+    status: 1,
+  },
+])(
+  'CI scope handles $name from the merge diff',
+  ({
+    paths,
+    rename = false,
+    missingConfig = false,
+    missingSelector = false,
+    checkOnly = false,
+    output,
+    status,
+  }) => {
+    const runnerTemp = mkdtempSync(join(
+      tmpdir(),
+      'ci-scope-',
+    ))
+    temporaryFolders.push(runnerTemp)
+    const root = join(
+      runnerTemp,
+      'repo',
+    )
+    mkdirSync(
+      join(
+        root,
+        'src',
+      ),
+      { recursive: true },
+    )
+    const configPath = join(
+      root,
+      'deslop.config.json',
+    )
+    const scopeConfig = JSON.parse(readFileSync(
+      join(
+        policyRoot,
+        'deslop.config.json',
+      ),
+      'utf8',
+    ))
+
+    if (checkOnly) {
+      scopeConfig.kinds = [
+        {
+          name: 'check only',
+          match: ['**'],
+          commands: [],
+          checks: ['Lint, build and tests'],
+          instructions: [],
+        },
+      ]
+    }
+
+    writeFileSync(
+      configPath,
+      JSON.stringify(scopeConfig),
+    )
+    writeFileSync(
+      join(
+        root,
+        'src/old.ts',
+      ),
+      'export {}\n',
+    )
+    git({
+      cwd: root,
+      args: [
+        'init',
+        '--initial-branch=main',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'add',
+        '.',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'commit',
+        '-m',
+        'base',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'switch',
+        '-c',
+        'change',
+      ],
+    })
+
+    for (const path of paths) {
+      mkdirSync(
+        dirname(join(
+          root,
+          path,
+        )),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          root,
+          path,
+        ),
+        'fixture\n',
+      )
+    }
+
+    if (rename) {
+      mkdirSync(join(
+        root,
+        'docs',
+      ))
+      git({
+        cwd: root,
+        args: [
+          'mv',
+          'src/old.ts',
+          'docs/renamed.md',
+        ],
+      })
+    }
+
+    if (missingConfig) {
+      rmSync(configPath)
+    }
+
+    git({
+      cwd: root,
+      args: [
+        'add',
+        '-A',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'change',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'switch',
+        'main',
+      ],
+    })
+    git({
+      cwd: root,
+      args: [
+        'merge',
+        '--no-ff',
+        'change',
+        '-m',
+        'merge',
+      ],
+    })
+    const modules = join(
+      runnerTemp,
+      'deslop-scope/node_modules',
+    )
+    mkdirSync(
+      modules,
+      { recursive: true },
+    )
+    symlinkSync(
+      fileURLToPath(new URL(
+        missingSelector ? '../missing-selector' : '../node_modules/deslop',
+        import.meta.url,
+      )),
+      join(
+        modules,
+        'deslop',
+      ),
+    )
+    const outputPath = join(
+      runnerTemp,
+      'output',
+    )
+    const result = spawnSync(
+      '/bin/bash',
+      [
+        '-e',
+        '-o',
+        'pipefail',
+        '-c',
+        scopeScript,
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: CHILD_PROCESS_TIMEOUT_MS,
+        env: {
+          ...process.env,
+          RUNNER_TEMP: runnerTemp,
+          GITHUB_OUTPUT: outputPath,
+        },
+      },
+    )
+    expect(
+      result.status,
+      result.stderr,
+    ).toBe(status)
+    expect(result.stdout).toBe(output)
+    expect(readFileSync(
+      outputPath,
+      'utf8',
+    )).toBe(output)
   },
 )
 
@@ -46,9 +565,10 @@ test(
   'a passing build replaces dist and leaves nothing beside it, and a failing build keeps the old dist',
   () => {
     const root = mkdtempSync(join(
-      process.env.TMPDIR!,
+      tmpdir(),
       'staged-',
     ))
+    temporaryFolders.push(root)
     const writeBuild = ({
       version,
       fail = false,

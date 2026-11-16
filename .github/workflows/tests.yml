@@ -13,7 +13,6 @@ concurrency:
 jobs:
   scope:
     name: Test scope
-    # Nothing runs while the repository is private.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -29,23 +28,29 @@ jobs:
         with:
           node-version: 24
 
-      # The same selection as pnpm verify: a docs-only change needs no tests.
+      - run: npm install --prefix "$RUNNER_TEMP/deslop-scope" --ignore-scripts --no-audit --no-fund --package-lock=false "$(jq -r .devDependencies.deslop package.json)"
+
       - id: scope
+        shell: bash
         run: |
-          git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/paths"
+          git diff --no-renames --name-only -z HEAD^1 HEAD > "$RUNNER_TEMP/paths"
           node --input-type=module -e "
             import { readFileSync } from 'node:fs'
-            import { requiredChecks } from './scripts/verification/required-checks.ts'
-            const paths = readFileSync(process.argv[1], 'utf8').split('\n').filter(Boolean)
-            console.log('tests=' + requiredChecks({ paths }).tests)
+            // The selector is installed in the runner's temporary directory, resolved at runtime.
+            const { select } = await import(process.env.RUNNER_TEMP + '/deslop-scope/node_modules/deslop/src/config.js')
+            const config = JSON.parse(readFileSync('deslop.config.json', 'utf8'))
+            const paths = readFileSync(process.argv[1], 'utf8').split('\0').filter(Boolean)
+            if (!paths.length) throw new Error('Empty change list')
+            const selected = select({ config, paths })
+            const tests = selected.checks.includes('Lint, build and tests') ? 'all' : 'none'
+            console.log('tests=' + tests)
           " "$RUNNER_TEMP/paths" >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
   test:
     name: Lint, build and tests
     needs: scope
-    # A skipped job reports success, so a docs-only change still passes this check; a failed
-    # scope job still runs the tests rather than passing without them.
+    # A failed scope runs tests; a docs-only skip still satisfies branch protection.
     if: ${{ !cancelled() && !github.event.repository.private && !(needs.scope.result == 'success' && needs.scope.outputs.tests == 'none') }}
     # Every run waits for the owner's approval in this environment.
     environment: ci
@@ -64,7 +69,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Lint runs beside the build, which takes about as long as the typecheck and ESLint together.
       - name: Lint and build
         run: |
           pnpm run typecheck & typecheck=$!

@@ -16,7 +16,7 @@ Apply this checklist to the changed text, whatever its format. Preserve facts, c
 - [ ] When code is in scope, remove dead branches, unused scaffolding and one-use wrappers that obscure the operation. Avoid introducing abstractions or dependencies just for cleanup. Keep useful collection methods, concurrent work and declarative rendering.
 - [ ] Preserve error visibility, ordering, cancellation, retries, cleanup and permissions. A wording pass must not quietly change behavior or hide a failure.
 - [ ] Check Pnyx vocabulary and update stale usage guidance in the root README. Use Hydra, Oracle and inscribe; keep other terms plain.
-- [ ] Read the final diff, including the PR description and proposed commit messages. Run `git diff --check`; for executable changes run focused checks and `pnpm verify` as allowed. A prose-only cleanup needs no new behavior tests.
+- [ ] Read the final diff, including the PR description and proposed commit messages. For standalone use, run `git diff --check`. A prose-only cleanup needs no new behavior tests.
 
 ## Code cleanups
 
@@ -30,8 +30,8 @@ A cleanup removes complexity the job didn't ask for without changing what the co
 - [ ] Review file splits using [follow-conventions](../follow-conventions/SKILL.md#files-and-concerns). Recommend changing a split that adds indirection without a clear job or scatters closely related code.
 - [ ] Keep every path's outcome. When a `.catch(() => fallback)` becomes `try`/`catch`, the fallback value and the errors that reach it stay the same. Serialized work stays serialized, independent work stays concurrent, and retries, cleanup in `finally` and the message the user sees stay as they were.
 - [ ] Keep the diff small and mechanical, one logical change per commit, so a reviewer can compare old and new arm by arm. Update or delete guidance the cleanup made stale in the same change.
-- [ ] Scan what you added for new shorthand: `git diff origin/main -U0 -- '*.ts' '*.tsx' | grep -E '^\+.*(\.then\(|\bvoid [a-zA-Z(]|\?\?=|\|\|=|&&=|\.\.\.\(|for \(;;\)|while \(true\))'`. Name any you keep on purpose in the PR, with its reason.
+- [ ] Scan added code in the supplied diff for new shorthand. In standalone use, read the diff against the PR's target branch, including uncommitted changes. Name any shorthand you keep on purpose in the PR, with its reason.
 
-Record meaningful fixes and any intentional exception. Once complete, tick **Ran `deslop`** in the PR and note what you changed (or say no findings).
+Record meaningful fixes and any intentional exception. Record what changed or that the review was clean. The final commit’s deslop note/status supplies proof.
 
 For an agent: edit the assigned text yourself, keep the author's meaning, and report any validation gap honestly. This checklist grants no extra authority to commit, publish or send text.
