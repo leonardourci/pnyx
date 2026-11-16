@@ -129,7 +129,7 @@ function projectOnTarget({
 }
 
 // Every reason a move would leave something broken, each with the command that clears it.
-function refusal({
+export function moveRefusal({
   hydraId,
   to,
   source,
@@ -323,7 +323,7 @@ function checkTarget({
 }
 
 // Ends the source's idle live session, so only the target resumes it. A server not running this Hydra holds none.
-async function releaseWorker({
+export async function releaseWorker({
   hydraId,
   card,
   actor,
@@ -461,6 +461,100 @@ function receipt({
   }
 }
 
+export function stageTaskMove({
+  hydraId,
+  source,
+  target,
+  cardId,
+  to,
+  move,
+  meta,
+}: {
+  hydraId: string
+  source: Writer
+  target: Writer
+  cardId: string
+  to: string
+  move: string
+  meta: Meta
+}): HydraMoveEvent & { type: 'task.moved-in' } {
+  // Carry transcript cursors only after both Hydras commit.
+  harvestTranscripts({
+    writer: source,
+    cardIds: [cardId],
+    at: meta.at,
+  })
+  // After the harvest's own cursors are saved, which happens once this write commits.
+  source.afterCommit({
+    run: () => carryCursors({
+      from: source.dir,
+      to: hydraDir({ hydraId: to }),
+      card: cardId,
+    }),
+  })
+  const current = source.state.cards[cardId]
+
+  if (!current) {
+    throw missing({
+      hydraId,
+      ref: cardId,
+    })
+  }
+
+  const late = moveRefusal({
+    hydraId,
+    to,
+    source: source.state,
+    target: target.state,
+    card: current,
+  })
+
+  if (late) {
+    throw late
+  }
+
+  const event = {
+    ...base({
+      state: target.state,
+      meta: {
+        ...meta,
+        id: move,
+      },
+      cardId: current.id,
+    }),
+    type: 'task.moved-in',
+    data: {
+      from: hydraId,
+      column: targetColumn({
+        source: source.state,
+        target: target.state,
+        card: current,
+      }),
+      card: structuredClone(current),
+      ...carried({
+        hydraId,
+        state: source.state,
+        card: current,
+      }),
+    },
+  } satisfies HydraMoveEvent
+  target.append({
+    event,
+    effects: false,
+  })
+
+  depart({
+    hydraId,
+    source,
+    card: current,
+    to,
+    move,
+    meta,
+  })
+
+  return event
+}
+
 // Both Hydra sequence claims, events and rows commit together; a refusal leaves the task on its source.
 export async function moveTask({
   hydraId,
@@ -519,7 +613,7 @@ export async function moveTask({
     })
   }
 
-  const early = refusal({
+  const early = moveRefusal({
     hydraId,
     to,
     source: state,
@@ -551,80 +645,16 @@ export async function moveTask({
       writers,
     }) => {
       const target = writers.get(to)!
-      // The source records the transcript's notes up to now, so the target reads on from
-      // the same place.
-      harvestTranscripts({
-        writer: source,
-        cardIds: [card.id],
-        at: meta.at,
-      })
-      // After the harvest's own cursors are saved, which happens once this write commits.
-      source.afterCommit({
-        run: () => carryCursors({
-          from: source.dir,
-          to: hydraDir({ hydraId: to }),
-          card: card.id,
-        }),
-      })
-      const current = source.state.cards[card.id]
-
-      if (!current) {
-        throw missing({
-          hydraId,
-          ref,
-        })
-      }
-
-      const late = refusal({
-        hydraId,
-        to,
-        source: source.state,
-        target: target.state,
-        card: current,
-      })
-
-      if (late) {
-        throw late
-      }
-
-      const event = {
-        ...base({
-          state: target.state,
-          meta: {
-            ...meta,
-            id: move,
-          },
-          cardId: current.id,
-        }),
-        type: 'task.moved-in',
-        data: {
-          from: hydraId,
-          column: targetColumn({
-            source: source.state,
-            target: target.state,
-            card: current,
-          }),
-          card: structuredClone(current),
-          ...carried({
-            hydraId,
-            state: source.state,
-            card: current,
-          }),
-        },
-      } satisfies HydraMoveEvent
-      target.append({
-        event,
-        effects: false,
-      })
-
-      depart({
+      const event = stageTaskMove({
         hydraId,
         source,
-        card: current,
+        target,
+        cardId: card.id,
         to,
         move,
         meta,
       })
+      const current = event.data.card
 
       return receipt({
         card: current,
