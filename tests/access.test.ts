@@ -642,6 +642,7 @@ test(
     expect(published.find(table => table.tablename === 'hydras')!.attnames!.sort()).toEqual([
       'config',
       'id',
+      'seq',
       'summary',
     ])
     // Only the values the page reads, none of the server's own.
