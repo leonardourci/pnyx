@@ -1,7 +1,6 @@
 import { HYDRA_MARK, pickName } from '#hydra/hydra-names.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { DEFAULT_OPEN_CARD_WIDTH } from '#preferences/workspace.ts'
 import { viewFor } from '#preferences/view.ts'
 import { pickView } from '#settings/settings.ts'
 import type { Card } from '#tasks/model.ts'
@@ -31,6 +30,7 @@ import { ProjectCounts } from '#web-tasks/project-counts.tsx'
 import { ProjectColumn } from '#web-tasks/project-column.tsx'
 import { WorkerChat } from '#web-tasks/worker-chat.tsx'
 import { TaskFamily, type FamilyCard } from '#web-tasks/task-family.tsx'
+import { expandedTaskWidth } from '#web-tasks/project-layout.ts'
 import { projectColumns, taskProjectColumn, statusPriority, IDEAS_COLUMN, type ProjectColumnData } from '#web-tasks/project-view.ts'
 import { Detail } from '#web-tasks/detail.tsx'
 import { argument } from '#web-tasks/optimistic.ts'
@@ -1083,8 +1083,10 @@ export function HydraView({
                                 }) === c.id
                               })
 
-                              const openedWidths = openIds.map(id =>
-                                (view.workspace.cardWidths[id] ?? DEFAULT_OPEN_CARD_WIDTH) + 20)
+                              const openedWidths = openIds.map(id => expandedTaskWidth({
+                                card: state.cards[id]!,
+                                widths: view.workspace.cardWidths,
+                              }))
                               const expandedWidth = Math.max(
                                 0,
                                 ...openedWidths,
@@ -1147,6 +1149,7 @@ export function HydraView({
                                       state={state}
                                       actions={actions}
                                       selected={expandedIds}
+                                      cardWidths={view.workspace.cardWidths}
                                       preview={preview}
                                       renderCard={({
                                         card,

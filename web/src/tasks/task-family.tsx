@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -6,6 +6,7 @@ import { movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
 import { rankOf } from '#tasks/select.ts'
 import { taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
+import { expandedTaskWidth, SUBTASK_INDENT } from './project-layout.ts'
 
 export interface FamilyCard {
   card: Card
@@ -21,6 +22,7 @@ export function TaskFamily({
   state,
   actions,
   selected,
+  cardWidths,
   preview,
   renderCard,
 }: {
@@ -28,6 +30,7 @@ export function TaskFamily({
   state: HydraState
   actions: Record<string, CurrentAction>
   selected: string[]
+  cardWidths: Record<string, number>
   preview: PhysicalMove | null
   renderCard({
     card,
@@ -74,9 +77,22 @@ export function TaskFamily({
   )
   const childSelected = children.some(child => selected.includes(child.id))
   const childrenOpen = expanded || childSelected
+  const opened = [
+    card,
+    ...children,
+  ].filter(item => selected.includes(item.id))
+  const width = opened.length ? Math.max(...opened.map(item => expandedTaskWidth({
+    card: item,
+    widths: cardWidths,
+  }))) : undefined
+  const style = {
+    width,
+    '--subtask-indent': `${SUBTASK_INDENT}px`,
+  } as CSSProperties
+  const className = `task-family ${width ? 'family-open' : ''}`
 
   return (
-    <div className={`task-family ${selected.includes(card.id) || childSelected ? 'family-open' : ''}`} data-family={card.id}>
+    <div className={className} style={style} data-family={card.id}>
       {renderCard({
         card,
         status,

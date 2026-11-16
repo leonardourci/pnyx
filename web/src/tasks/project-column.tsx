@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { PROJECT_MIN_WIDTH, DEFAULT_PROJECT_WIDTH } from '#preferences/workspace.ts'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
@@ -7,6 +7,8 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { ProjectCounts } from './project-counts.tsx'
 import type { ProjectColumnData } from './project-view.ts'
+import { CARD_GAP, CLOSED_CARD_MIN_WIDTH, PROJECT_CONTENT_INSET } from './project-layout.ts'
+import { useFlowMotion } from '#web-shared/ui/flow-motion.ts'
 
 export function ProjectColumn({
   column,
@@ -29,20 +31,34 @@ export function ProjectColumn({
   ] = useState<number | null>(null)
   const scroll = useRef<HTMLDivElement>(null)
   const grid = useRef<HTMLDivElement>(null)
+  useFlowMotion({ root: grid })
   useSmoothScroll({
     root: scroll,
     content: grid,
   })
   const folded = view.workspace.foldedProjects.includes(column.id)
   const saved = view.workspace.projectWidths[column.id] ?? (column.id === 'ideas' ? PROJECT_MIN_WIDTH : DEFAULT_PROJECT_WIDTH)
-  const savedWidth = Math.max(
-    saved,
-    expandedWidth || PROJECT_MIN_WIDTH,
-  )
+  const openedMinimum = expandedWidth ? expandedWidth + PROJECT_CONTENT_INSET : PROJECT_MIN_WIDTH
+  const requested = preview ?? saved
+  const alongside = expandedWidth > 0 && requested > openedMinimum
+  const minimum = alongside ? openedMinimum + CLOSED_CARD_MIN_WIDTH + CARD_GAP : openedMinimum
   const width = Math.max(
-    preview ?? saved,
-    expandedWidth || PROJECT_MIN_WIDTH,
+    requested,
+    minimum,
   )
+  const available = width - PROJECT_CONTENT_INSET - (expandedWidth ? expandedWidth + CARD_GAP : 0)
+  const beside = available >= CLOSED_CARD_MIN_WIDTH
+  const space = beside ? available : width - PROJECT_CONTENT_INSET
+  const count = Math.max(
+    1,
+    Math.floor((space + CARD_GAP) / (CLOSED_CARD_MIN_WIDTH + CARD_GAP)),
+  )
+  const reserved = beside ? expandedWidth + CARD_GAP : 0
+  const style = {
+    width: folded ? 48 : width,
+    '--closed-card-width': `max(min(${CLOSED_CARD_MIN_WIDTH}px, calc(100% - ${CARD_GAP}px)), calc((100% - ${reserved}px) / ${count} - ${CARD_GAP}px))`,
+    '--card-gap': `${CARD_GAP}px`,
+  } as CSSProperties
   const toggle = () => save({
     patch: {
       workspace: {
@@ -66,7 +82,7 @@ export function ProjectColumn({
       data-sort-scope="projects"
       data-sort-disabled={column.id === 'ideas'}
       aria-label={column.title}
-      style={{ width: folded ? 48 : width }}
+      style={style}
     >
       <header className="project-column-heading">
         <Button
@@ -84,8 +100,8 @@ export function ProjectColumn({
       {!folded && (
         <Resize
           label={`Resize ${column.title}`}
-          value={savedWidth}
-          min={PROJECT_MIN_WIDTH}
+          value={width}
+          min={minimum}
           onPreview={({ value }) => setPreview(value)}
           onCommit={({ value }) => save({
             patch: { workspace: { projectWidths: { [column.id]: value } } },
