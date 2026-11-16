@@ -101,6 +101,13 @@ test(
       'utf8',
     ))
     expect(selection({ paths: ['src/app/server.ts'] }).requiredChecks).toEqual(['Lint, build and tests'])
+    expect(selection({ paths: ['src/app/server.ts'] }).commands).toEqual([
+      'lint:fix',
+      'typecheck',
+      'eslint',
+      'css',
+      'build',
+    ])
     expect(selection({ paths: ['docs/testing.md'] }).requiredChecks).toEqual([])
 
     expect(selection({ paths: ['docs/testing.md'] })).toMatchObject({
@@ -117,20 +124,16 @@ test(
       checks: ['Lint, build and tests'],
     })
     expect(selection({ paths: ['skills/pnyx-cli/SKILL.md'] })).toMatchObject({
-      commands: [
-        'build',
-        'integration',
-      ],
+      commands: ['build'],
       checks: ['Lint, build and tests'],
       instructions: [
         'kill-ai-slop',
         'project',
       ],
     })
-    expect(selection({ paths: ['tests/access.test.ts'] }).commands).toContain('tests')
+    expect(selection({ paths: ['tests/access.test.ts'] }).requiredChecks).toContain('Lint, build and tests')
     expect(selection({ paths: ['web/src/hydra/hydra-chat.tsx'] }).instructions).toContain('write-front-end')
-    expect(selection({ paths: ['src/app/server.ts'] }).commands).toContain('tests')
-    expect(selection({ paths: ['tests/setup/pnyx.ts'] }).commands).toContain('tests')
+    expect(selection({ paths: ['tests/setup/pnyx.ts'] }).requiredChecks).toContain('Lint, build and tests')
     expect(selection({ paths: ['src/example/fixtures/input.md'] })).toMatchObject({
       commands: [
         'lint:fix',
@@ -138,7 +141,6 @@ test(
         'eslint',
         'css',
         'build',
-        'tests',
       ],
       checks: ['Lint, build and tests'],
       instructions: [
@@ -155,7 +157,6 @@ test(
         'eslint',
         'css',
         'build',
-        'tests',
       ],
       checks: ['Lint, build and tests'],
       instructions: [
@@ -165,15 +166,15 @@ test(
         'project',
       ],
     })
-    expect(selection({ paths: ['vitest.config.ts'] }).commands).toContain('tests')
-    expect(selection({ paths: ['.github/workflows/tests.yml'] }).commands).toContain('tests')
+    expect(selection({ paths: ['vitest.config.ts'] }).requiredChecks).toContain('Lint, build and tests')
+    expect(selection({ paths: ['.github/workflows/tests.yml'] }).requiredChecks).toContain('Lint, build and tests')
     expect(selection({ paths: ['.github/workflows/tests.yml'] }).instructions).toContain('write-ci-workflow')
     expect(selection({
       paths: [
         'docs/testing.md',
         'src/app/server.ts',
       ],
-    }).commands).toContain('tests')
+    }).requiredChecks).toContain('Lint, build and tests')
   },
 )
 

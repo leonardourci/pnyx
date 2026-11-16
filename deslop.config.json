@@ -4,9 +4,7 @@
     "typecheck": "pnpm typecheck",
     "eslint": "pnpm exec eslint .",
     "css": "pnpm lint:css",
-    "build": "pnpm build",
-    "tests": "pnpm exec vitest run",
-    "integration": "pnpm exec vitest run --project=integration"
+    "build": "pnpm build"
   },
   "kinds": [
     {
@@ -19,8 +17,7 @@
         "typecheck",
         "eslint",
         "css",
-        "build",
-        "tests"
+        "build"
       ],
       "checks": [
         "Lint, build and tests"
@@ -44,8 +41,7 @@
         "typecheck",
         "eslint",
         "css",
-        "build",
-        "tests"
+        "build"
       ],
       "checks": [
         "Lint, build and tests"
@@ -64,8 +60,7 @@
         "skills/**/*.md"
       ],
       "commands": [
-        "build",
-        "integration"
+        "build"
       ],
       "checks": [
         "Lint, build and tests"
@@ -101,8 +96,7 @@
         "typecheck",
         "eslint",
         "css",
-        "build",
-        "tests"
+        "build"
       ],
       "checks": [
         "Lint, build and tests"
@@ -123,8 +117,7 @@
         "typecheck",
         "eslint",
         "css",
-        "build",
-        "tests"
+        "build"
       ],
       "checks": [
         "Lint, build and tests"
@@ -148,8 +141,7 @@
         "typecheck",
         "eslint",
         "css",
-        "build",
-        "tests"
+        "build"
       ],
       "checks": [
         "Lint, build and tests"
