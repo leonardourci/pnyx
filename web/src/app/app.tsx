@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { usePhysicalDrag, movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
-import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
+import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
 import { projectColumns, taskProjectColumn } from '#web-tasks/project-view.ts'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
@@ -306,7 +306,7 @@ export function App() {
     ).pathname.split('/')[2]!
     const group = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(id)}"]`)
     group?.scrollIntoView({
-      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      behavior: scrollBehavior(),
       inline: 'start',
       block: 'nearest',
     })

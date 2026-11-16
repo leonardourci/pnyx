@@ -21,6 +21,7 @@ import { useProjectsResource } from '#web-projects/project-resource.ts'
 import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
+import { scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
@@ -563,7 +564,7 @@ export function HydraView({
     })
     requestAnimationFrame(() => layer?.querySelector<HTMLElement>(`[data-column="${CSS.escape(id)}"]`)
       ?.scrollIntoView({
-        behavior: 'smooth',
+        behavior: scrollBehavior(),
         inline: 'start',
         block: 'nearest',
       }))
@@ -755,7 +756,7 @@ export function HydraView({
     requestAnimationFrame(() => {
       const selector = `[data-column="${CSS.escape(id)}"]`
       layer?.querySelector<HTMLElement>(selector)?.scrollIntoView({
-        behavior: 'smooth',
+        behavior: scrollBehavior(),
         inline: 'start',
         block: 'nearest',
       })
@@ -766,6 +767,15 @@ export function HydraView({
     const allProjectIds = columns.map(column => column.id)
     const foldedProjects = view.workspace.foldedProjects.length ? [] : allProjectIds
     save({ patch: { workspace: { foldedProjects } } })
+  }
+
+  const toggleHydra = () => {
+    save({ patch: { workspace: { collapsed: !view.workspace.collapsed } } })
+    requestAnimationFrame(() => layer?.scrollIntoView({
+      inline: 'start',
+      block: 'nearest',
+      behavior: scrollBehavior(),
+    }))
   }
 
   const toggleChat = () => save({
@@ -976,9 +986,7 @@ export function HydraView({
             </Button>
             <Button
               aria-label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}
-              onClick={() => save({
-                patch: { workspace: { collapsed: !view.workspace.collapsed } },
-              })}
+              onClick={toggleHydra}
             ><Icon name="chevron_right" />
             </Button>
           </header>

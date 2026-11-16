@@ -4,6 +4,9 @@ import Snap from 'lenis/snap'
 
 const SCROLL_LERP = 0.12
 
+export const scrollBehavior = (): ScrollBehavior =>
+  matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
+
 export function useSmoothScroll({
   root,
   content,
