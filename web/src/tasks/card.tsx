@@ -387,6 +387,7 @@ export const HydraCard = memo(function HydraCard({
           now={now}
           labelColors={labelColors}
           tooltips
+          compact={!selected}
           progress={progress}
           showProject={showProject}
           legacyProject={legacyProject}

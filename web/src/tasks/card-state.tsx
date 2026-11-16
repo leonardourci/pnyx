@@ -8,6 +8,16 @@ import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { relativeTime } from './brief.ts'
 import type { ObservedStatus } from './observed-status.ts'
 
+const COMPACT_STATES: Record<string, string> = {
+  asks: 'needs you',
+  working: 'running',
+  waiting: 'waiting',
+  paused: 'paused',
+  'asks-hydra': 'waiting',
+  answering: 'sending',
+  unknown: 'unknown',
+}
+
 // The card and the Oracle's preview share it so their status never drifts apart.
 export function CardState({
   card,
@@ -18,6 +28,7 @@ export function CardState({
   now,
   labelColors,
   tooltips = false,
+  compact = false,
   children,
 }: {
   card: Card
@@ -29,25 +40,34 @@ export function CardState({
   labelColors?: SavedLabelColor[]
   // The card explains status and age in tooltips; a preview shows them plain, out of the Tab order.
   tooltips?: boolean
+  compact?: boolean
   children?: ReactNode
 }) {
-  const text = statusLabel({ status })
+  const label = compact ? COMPACT_STATES[status.kind] ?? status.text : status.text
+  const text = statusLabel({
+    status: {
+      ...status,
+      text: label,
+    },
+  })
   const at = status.at || card.updatedAt
   const created = card.createdAt || card.statusLog?.[0]?.at
   const createdText = created ? `Created ${new Date(created).toLocaleString()}` : 'Creation time not recorded'
+  const age = relativeTime({
+    at,
+    now,
+    compact,
+  })
   const pill = (
     <span className={`agent-activity activity-${status.kind}`} aria-label={text}>
       {status.kind === 'working' ? <WorkingDots /> : <i aria-hidden="true" />}
-      {text}
+      <span className="activity-text">{text}</span>
       {progress && <span className="task-progress">{progress}</span>}
     </span>
   )
   const since = (
     <time className="card-since" dateTime={at} tabIndex={tooltips ? 0 : undefined}>
-      {relativeTime({
-        at,
-        now,
-      })}
+      {age}
     </time>
   )
 

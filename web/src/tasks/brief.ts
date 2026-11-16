@@ -41,9 +41,11 @@ export function briefNotes({
 export function relativeTime({
   at,
   now,
+  compact = false,
 }: {
   at: string | undefined
   now: number
+  compact?: boolean
 }): string {
   const value = at ? Date.parse(at) : NaN
 
@@ -82,9 +84,11 @@ export function relativeTime({
       ],
     ] as const) {
     if (seconds >= size) {
-      return `${Math.floor(seconds / size)}${unit} ago`
+      const elapsed = `${Math.floor(seconds / size)}${unit}`
+
+      return compact ? elapsed : `${elapsed} ago`
     }
   }
 
-  return 'just now'
+  return compact ? 'now' : 'just now'
 }

@@ -32,15 +32,20 @@
 .subtasks { margin: 7px 0 0 17px; padding-left: 8px; border-left: 1px solid var(--color-line); display: flex; flex-direction: column; gap: 7px; }
 .project-cards .card { min-height: 0; min-width: 0; width: 100%; max-width: none; margin: 0; padding: 9px 11px 10px; border-radius: 10px; transition: border-color 150ms, box-shadow 150ms, height 240ms, width 240ms, min-height 240ms, min-width 240ms; }
 .project-cards .card.selected { min-width: 560px; min-height: 440px; max-height: none; }
-.project-cards .card:not(.selected) .card-content { gap: 6px; overflow: visible; }
+.project-cards .card:not(.selected) .card-content { gap: 6px; }
 .project-cards .card:not(.selected) .card-open { font-weight: 500; font-size: var(--text-ui); line-height: 1.45; display: block; white-space: normal; }
 .project-cards .card-title-row { align-items: flex-start; gap: 5px; }
 .subtask-toggle.button { flex: none; padding: 2px 0; min-width: 14px; }
 .subtask-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
-.project-cards .card-state { flex-wrap: nowrap; gap: 7px; min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
+.project-cards .card-state { flex-wrap: nowrap; gap: 4px; min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
+.project-cards .card-state .agent-activity { gap: 4px; padding-inline: 5px; }
+.project-cards .card-state > .tooltip-anchor:has(.agent-activity) { flex-shrink: 1; }
+.project-cards .card-state > .tooltip-anchor:has(.task-label) { flex-shrink: 0; max-width: 50%; overflow: visible; }
+.project-cards .card-state .task-label { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; padding-inline: 4px; }
+.project-cards .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .project-cards .card-agent { margin-left: auto; }
 .project-cards .card-state > .tooltip-anchor:last-child { margin-left: auto; }
-.task-progress { margin-left: 5px; padding-left: 5px; border-left: 1px solid currentcolor; font-variant-numeric: tabular-nums; }
+.task-progress { flex-shrink: 0; padding-left: 4px; border-left: 1px solid currentcolor; font-variant-numeric: tabular-nums; }
 .project-cards .card.selected .card-content { min-height: 0; }
 .hydra-workspace .settings-page { width: calc(100vw - 64px); min-height: 0; overflow: auto; }
 .oracle-palette { margin-top: 64px; height: min(660px, calc(100dvh - 86px)); }
