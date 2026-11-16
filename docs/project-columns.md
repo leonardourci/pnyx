@@ -22,12 +22,17 @@ Grouping A is settled. Labels do not define columns.
 - A closed card has two lines: state pill, age, repository tag when needed and
   provider icon (model and existing usage panel on hover); then chevron and title.
   Only parents have chevrons. A parent rolls up state and completed-part count.
+  Compact state and age labels leave room for repository names. Full state details
+  remain on hover; tags stay inside the card and wrap instead of losing text.
 - Order is needs you, running, waiting/paused/queued, done. Dragging reorders within
   a state group. Done tasks disappear after 24 hours, honoring task hide overrides.
 - Clicking opens a card in place. Clicking its title folds it. The open card has
   all existing details and worker chat side by side, minimum 560×440, no maximum.
   It initially opens at 660px. Switching cards in a column retains column width.
   Window mode is an explicit action and never changes the next click's behavior.
+  Neighboring cards flow beside an expanded family and below it. A wider project
+  keeps enough room for a closed card beside it; children include their indent in
+  the required width. Columns scroll vertically, with no horizontal scrollbar.
 - One level of sub-tasks, compact and indented beneath their parent. Cross-project
   children show their project. Each retains its own worker, PR and lifecycle.
 - During dragging, other cards make space immediately. Only dropping on the small
@@ -93,9 +98,16 @@ Existing duplicate attachments keep working after upgrade and no task moves auto
 
 Keeper selection is all or nothing. If any task cannot move (including live workers, PRs in flight, parent/dependency links, Firstmate mirrors and active sources), refuse with every blocking task and reason. Move nothing and defer nothing. The owner retries after settling the blockers (Hydra answer ask-203909).
 
-No alternative visual design is open. Any newly discovered product or architecture
-choice goes to Hydra before implementing dependent work. Historical events must
-remain replayable. Existing behavior continues until its replacement is tested.
+## Open card-layout choice
+
+The owner is comparing the fitted two-line card with a three-line card that puts
+the repository and other chips below the title. Capture the same cards side by
+side at minimum and typical widths in both themes. Keep two lines in the app
+until the owner picks. The three-line version is a browser-only comparison, with
+no product switch or hidden implementation.
+
+Any other newly discovered product or architecture choice goes to Hydra before
+dependent work. Historical events remain replayable.
 
 ## Running-app evidence
 
@@ -121,6 +133,22 @@ The behavior pass fixed a missing replicated sequence that left edits pending,
 a server-only planner imported by the browser, opening measured before size settled,
 horizontal snap coordinates, a resize preview that skipped its save, and scope
 isolation for keyboard, theme, drafts and open task streams.
+
+The owner trial uses its own portless address, data home, made-up repositories
+and fake agent providers. Its three Hydras contain 30 tasks, Ideas, grouped
+repositories, every requested state, one-level sub-tasks and a Done task older
+than 24 hours. Keep that instance running until Hydra says the owner is finished.
+
+The trial exposed crowded metadata, independently sticky project chips and empty
+space beside an open card. The toolbar now moves as one unit, chat headers reserve
+space for their controls, metadata fits narrow cards and native flow fills the
+space beside expanded cards. Position animations keep the reflow continuous.
+The browser checks cover both themes at 390, 760, 1440 and 1920px, and project
+widths of 280, 740 and 944px. They confirm control separation, readable repository
+tags, no horizontal column scroll and cards beside a 660×520 open card. Physical
+reorder and nesting still persist. A dropped socket and a restart through portless
+retain the open card and reconcile fresh Zero data even when the internal port
+changes. The comparison captures show 258px and 360px cards in both themes.
 
 ## Validation direction
 
