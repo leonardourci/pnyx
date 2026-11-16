@@ -1,3 +1,4 @@
+import { reorderTask } from '#tasks/reorder.ts'
 import { toolsCommand } from '#workers/tools-cli.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
@@ -980,6 +981,28 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           },
         })
       },
+    })
+  }
+
+  if (action === 'arrange') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'card.moved',
+        card: ref,
+      },
+      decide: ({ state }) => reorderTask({
+        state,
+        ref,
+        before: values.before as string | undefined,
+        meta: m,
+      }),
     })
   }
 

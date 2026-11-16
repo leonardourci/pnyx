@@ -1,3 +1,4 @@
+import { ownerGates } from './owner-gates.ts'
 import { openAsks } from './ask-state.ts'
 import { reportReviewGaps } from '#investigations/inventory.ts'
 import type { HydraState } from '#app/model.ts'
@@ -29,7 +30,25 @@ export function refreshDone({
   state: HydraState
   at: string
 }): void {
+  const children = new Map<string, Card[]>()
+
   for (const card of Object.values(state.cards)) {
+    if (!card.parentId) {
+      continue
+    }
+
+    const parts = children.get(card.parentId) ?? []
+    parts.push(card); children.set(
+      card.parentId,
+      parts,
+    )
+  }
+
+  for (const card of Object.values(state.cards)) {
+    if (children.has(card.id)) {
+      continue
+    }
+
     const done = state.config?.columns.find(c => c.id === card.column)?.role === 'done'
       || (!state.config && card.column === 'done')
 
@@ -42,6 +61,40 @@ export function refreshDone({
       if (card.expired) {
         delete card.hidden
         delete card.expired
+      }
+    }
+  }
+
+  for (const [
+    id,
+    parts,
+  ] of children) {
+    const parent = state.cards[id]
+
+    if (!parent || isManagedTask({ card: parent })) {
+      continue
+    }
+
+    const working = (parent.sessionActivity ?? parent.activity) === 'working'
+    const openPR = parent.links.some(link => link.kind === 'github_pr' && link.state === 'open')
+    const partsDone = parts.every(part => part.doneAt)
+    const ownerWaiting = ownerGates({ card: parent }).length > 0
+    const complete = partsDone && !working && !openPR && !ownerWaiting
+
+    if (complete) {
+      const completed = parts.flatMap(part => part.doneAt ? [part.doneAt] : [])
+
+      if (parent.status?.state === 'done') {
+        completed.push(parent.status.at)
+      }
+
+      parent.doneAt = completed.sort().at(-1)
+    } else {
+      delete parent.doneAt
+      delete parent.keepDone
+
+      if (parent.expired) {
+        delete parent.hidden; delete parent.expired
       }
     }
   }

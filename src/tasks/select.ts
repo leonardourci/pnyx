@@ -54,10 +54,16 @@ export function taskDone({
   state: HydraState
   card: Card
 }): boolean {
+  const hasChildren = Object.values(knownCards({ state })).some(child => child.parentId === card.id)
+
+  if (hasChildren) {
+    return card.doneAt !== undefined
+  }
+
   const doneColumns = hydraConfig({ state }).columns.filter(column => column.role === 'done')
     .map(column => column.id as string)
 
-  return card.status?.state === 'done' || doneColumns.includes(card.column)
+  return card.doneAt !== undefined || card.status?.state === 'done' || doneColumns.includes(card.column)
 }
 
 export function rankOf({ card }: { card: Card }): number {

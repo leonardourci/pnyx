@@ -43,6 +43,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
   hold: [],
   release: ['from-message'],
   parent: [],
+  arrange: ['before'],
   rename: [
     'title',
     'project',
@@ -140,7 +141,7 @@ export async function localTaskCommand({
   hydraId: string
   meta: Meta
 }): Promise<Output | undefined> {
-  if (!action || action === 'rename' || action === 'parent' || !Object.hasOwn(
+  if (!action || action === 'rename' || action === 'parent' || action === 'arrange' || !Object.hasOwn(
     ACTION_FLAGS,
     action,
   )) {
