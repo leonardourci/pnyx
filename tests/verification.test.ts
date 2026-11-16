@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { select, validateConfig } from 'deslop/src/config.js'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
 import { afterEach, expect, test } from 'vitest'
 import { git } from './setup/upgrade.ts'
@@ -24,6 +24,13 @@ afterEach(() => {
   }
 })
 
+// Deslop ships JavaScript without declarations; resolve its installed module for runtime import.
+const selectorModule = pathToFileURL(createRequire(import.meta.url).resolve('deslop/src/config.js')).href
+const {
+  select,
+  validateConfig,
+  instructionsFor,
+} = await import(selectorModule)
 const policyRoot = fileURLToPath(new URL(
   '..',
   import.meta.url,
@@ -168,6 +175,28 @@ test(
       'write-front-end',
       'write-ci-workflow',
     ]))
+    // Review prompts must use Pnyx's overrides rather than deslop's shipped instructions.
+    const reviewText = instructionsFor({
+      root: policyRoot,
+      config,
+      selection: selected,
+    })
+
+    for (const file of [
+      'AGENTS.md',
+      '.agents/skills/follow-conventions/SKILL.md',
+      '.agents/skills/review-code/SKILL.md',
+      '.agents/skills/audit-tests/SKILL.md',
+      '.agents/skills/deslop/SKILL.md',
+    ]) {
+      expect(reviewText).toContain(readFileSync(
+        join(
+          policyRoot,
+          file,
+        ),
+        'utf8',
+      ))
+    }
   },
 )
 
