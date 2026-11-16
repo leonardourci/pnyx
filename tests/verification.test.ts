@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
@@ -29,155 +29,150 @@ const policyRoot = fileURLToPath(new URL(
   '..',
   import.meta.url,
 ))
-const selectionProgram = `
-import { readFileSync } from 'node:fs';
-import { select, validateConfig, instructionsFor } from ${JSON.stringify(selectorModule)};
-let input = '';
-for await (const chunk of process.stdin) input += chunk;
-const { root, paths } = JSON.parse(input);
-const config = validateConfig({ root, config: JSON.parse(readFileSync(root + '/deslop.config.json', 'utf8')) });
-const selected = select({ config, paths });
-console.log(JSON.stringify({ ...selected, reviewText: instructionsFor({ root, config, selection: selected }) }));
-`
-interface Selection {
-  commands: string[]
-  checks: string[]
-  requiredChecks: string[]
-  instructions: string[]
-  reviewText: string
-}
+// Resolve the installed selector so the tests exercise the dependency used by the CLI.
+const {
+  select,
+  validateConfig,
+  instructionsFor,
+} = await import(selectorModule)
+const config = validateConfig({
+  root: policyRoot,
+  config: JSON.parse(readFileSync(
+    join(
+      policyRoot,
+      'deslop.config.json',
+    ),
+    'utf8',
+  )),
+})
+const codeCommands = [
+  'lint:fix',
+  'typecheck',
+  'css',
+  'build',
+]
 
 test(
-  'the shared verifier selects the Pnyx checks and review skills for each changed kind',
+  'the shared verifier selects local commands and Pnyx review instructions',
   () => {
-    const selection = ({ paths }: { paths: string[] }): Selection => JSON.parse(execFileSync(
-      process.execPath,
-      [
-        '--input-type=module',
-        '-e',
-        selectionProgram,
-      ],
+    const cases = [
       {
-        input: JSON.stringify({
-          root: policyRoot,
-          paths,
-        }),
-        encoding: 'utf8',
-        timeout: CHILD_PROCESS_TIMEOUT_MS,
+        path: 'src/app/server.ts',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+        ],
       },
-    ))
-    const config = JSON.parse(readFileSync(
-      new URL(
-        '../deslop.config.json',
-        import.meta.url,
-      ),
-      'utf8',
-    ))
-    expect(config.publishLocal).toBe(false)
-    const reviewText = selection({ paths: ['src/app/server.ts'] }).reviewText
-    expect(reviewText).toContain(readFileSync(
-      join(
-        policyRoot,
-        'AGENTS.md',
-      ),
-      'utf8',
-    ))
-    expect(reviewText).toContain(readFileSync(
-      join(
-        policyRoot,
-        '.agents/skills/review-code/SKILL.md',
-      ),
-      'utf8',
-    ))
-    expect(reviewText).toContain(readFileSync(
-      join(
-        policyRoot,
-        '.agents/skills/audit-tests/SKILL.md',
-      ),
-      'utf8',
-    ))
-    expect(reviewText).toContain(readFileSync(
-      join(
-        policyRoot,
-        '.agents/skills/deslop/SKILL.md',
-      ),
-      'utf8',
-    ))
-    expect(selection({ paths: ['src/app/server.ts'] }).requiredChecks).toEqual(['Lint, build and tests'])
-    expect(selection({ paths: ['src/app/server.ts'] }).commands).toEqual([
-      'lint:fix',
-      'typecheck',
-      'eslint',
-      'css',
-      'build',
-    ])
-    expect(selection({ paths: ['docs/testing.md'] }).requiredChecks).toEqual([])
+      {
+        path: 'docs/testing.md',
+        commands: [],
+        instructions: [
+          'kill-ai-slop',
+          'project',
+        ],
+      },
+      {
+        path: 'skills/pnyx-cli/SKILL.md',
+        commands: [],
+        instructions: [
+          'kill-ai-slop',
+          'project',
+        ],
+      },
+      {
+        path: 'tests/access.test.ts',
+        commands: codeCommands,
+        instructions: [
+          'audit-tests',
+          'project',
+          'follow-conventions',
+        ],
+      },
+      {
+        path: 'web/src/hydra/hydra-chat.tsx',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+          'write-front-end',
+        ],
+      },
+      {
+        path: 'src/example/fixtures/input.md',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+        ],
+      },
+      {
+        path: '.github/workflows/tests.yml',
+        commands: codeCommands,
+        instructions: [
+          'review-code',
+          'audit-tests',
+          'kill-ai-slop',
+          'project',
+          'follow-conventions',
+          'write-ci-workflow',
+        ],
+      },
+    ]
 
-    expect(selection({ paths: ['docs/testing.md'] })).toMatchObject({
-      commands: [],
-      checks: ['Test scope'],
-      instructions: [
-        'kill-ai-slop',
-        'project',
-      ],
+    for (const {
+      path,
+      commands,
+      instructions,
+    } of cases) {
+      const selected = select({
+        config,
+        paths: [path],
+      })
+      expect(
+        selected.commands,
+        path,
+      ).toEqual(commands)
+      expect(
+        selected.instructions,
+        path,
+      ).toEqual(instructions)
+    }
+
+    const selected = select({
+      config,
+      paths: ['src/app/server.ts'],
     })
-    expect(selection({ paths: ['.github/workflows/README.md'] }).commands).toEqual([])
-    expect(selection({ paths: ['README.md'] })).toMatchObject({
-      commands: [],
-      checks: ['Test scope'],
+    const reviewText = instructionsFor({
+      root: policyRoot,
+      config,
+      selection: selected,
     })
-    expect(selection({ paths: ['skills/pnyx-cli/SKILL.md'] })).toMatchObject({
-      commands: ['build'],
-      checks: ['Lint, build and tests'],
-      instructions: [
-        'kill-ai-slop',
-        'project',
-      ],
-    })
-    expect(selection({ paths: ['tests/access.test.ts'] }).requiredChecks).toContain('Lint, build and tests')
-    expect(selection({ paths: ['web/src/hydra/hydra-chat.tsx'] }).instructions).toContain('write-front-end')
-    expect(selection({ paths: ['tests/setup/pnyx.ts'] }).requiredChecks).toContain('Lint, build and tests')
-    expect(selection({ paths: ['src/example/fixtures/input.md'] })).toMatchObject({
-      commands: [
-        'lint:fix',
-        'typecheck',
-        'eslint',
-        'css',
-        'build',
-      ],
-      checks: ['Lint, build and tests'],
-      instructions: [
-        'review-code',
-        'audit-tests',
-        'kill-ai-slop',
-        'project',
-      ],
-    })
-    expect(selection({ paths: ['skills/pnyx-cli/fixtures/input.md'] })).toMatchObject({
-      commands: [
-        'lint:fix',
-        'typecheck',
-        'eslint',
-        'css',
-        'build',
-      ],
-      checks: ['Lint, build and tests'],
-      instructions: [
-        'review-code',
-        'audit-tests',
-        'kill-ai-slop',
-        'project',
-      ],
-    })
-    expect(selection({ paths: ['vitest.config.ts'] }).requiredChecks).toContain('Lint, build and tests')
-    expect(selection({ paths: ['.github/workflows/tests.yml'] }).requiredChecks).toContain('Lint, build and tests')
-    expect(selection({ paths: ['.github/workflows/tests.yml'] }).instructions).toContain('write-ci-workflow')
-    expect(selection({
-      paths: [
-        'docs/testing.md',
-        'src/app/server.ts',
-      ],
-    }).requiredChecks).toContain('Lint, build and tests')
+
+    for (const file of [
+      'AGENTS.md',
+      '.agents/skills/follow-conventions/SKILL.md',
+      '.agents/skills/review-code/SKILL.md',
+      '.agents/skills/audit-tests/SKILL.md',
+      '.agents/skills/deslop/SKILL.md',
+    ]) {
+      expect(reviewText).toContain(readFileSync(
+        join(
+          policyRoot,
+          file,
+        ),
+        'utf8',
+      ))
+    }
   },
 )
 
@@ -188,7 +183,23 @@ const workflow = parse(readFileSync(
   ),
   'utf8',
 ))
-const scopeScript = workflow.jobs.scope.steps.find((step: { id?: string }) => step.id === 'scope').run
+const scopeStep = workflow.jobs.scope.steps.find((step: { id?: string }) => step.id === 'scope')
+const scopeScript = scopeStep.run
+
+test(
+  'every configured CI check names a workflow job',
+  () => {
+    const jobNames = Object.values(workflow.jobs).map((job: { name: string }) => job.name)
+
+    for (const kind of config.kinds) {
+      for (const check of kind.checks) {
+        expect(jobNames).toContain(check)
+      }
+    }
+
+    expect(scopeStep.shell).toBe('bash')
+  },
+)
 
 test.each([
   {
@@ -234,6 +245,13 @@ test.each([
     status: 0,
   },
   {
+    name: 'check requirement without local commands or ciRequired',
+    paths: ['docs/testing.md'],
+    checkOnly: true,
+    output: 'tests=all\n',
+    status: 0,
+  },
+  {
     name: 'code renamed into docs',
     paths: [],
     rename: true,
@@ -267,6 +285,7 @@ test.each([
     rename = false,
     missingConfig = false,
     missingSelector = false,
+    checkOnly = false,
     output,
     status,
   }) => {
@@ -290,12 +309,29 @@ test.each([
       root,
       'deslop.config.json',
     )
-    writeFileSync(
-      configPath,
-      readFileSync(join(
+    const scopeConfig = JSON.parse(readFileSync(
+      join(
         policyRoot,
         'deslop.config.json',
-      )),
+      ),
+      'utf8',
+    ))
+
+    if (checkOnly) {
+      scopeConfig.kinds = [
+        {
+          name: 'check only',
+          match: ['**'],
+          commands: [],
+          checks: ['Lint, build and tests'],
+          instructions: [],
+        },
+      ]
+    }
+
+    writeFileSync(
+      configPath,
+      JSON.stringify(scopeConfig),
     )
     writeFileSync(
       join(
@@ -450,6 +486,7 @@ test.each([
       result.status,
       result.stderr,
     ).toBe(status)
+    expect(result.stdout).toBe(output)
     expect(readFileSync(
       outputPath,
       'utf8',

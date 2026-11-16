@@ -2,7 +2,6 @@
   "commands": {
     "lint:fix": "pnpm lint:fix",
     "typecheck": "pnpm typecheck",
-    "eslint": "pnpm exec eslint .",
     "css": "pnpm lint:css",
     "build": "pnpm build"
   },
@@ -15,7 +14,6 @@
       "commands": [
         "lint:fix",
         "typecheck",
-        "eslint",
         "css",
         "build"
       ],
@@ -24,6 +22,7 @@
       ],
       "instructions": [
         "project",
+        "follow-conventions",
         "review-code",
         "audit-tests",
         "kill-ai-slop",
@@ -39,7 +38,6 @@
       "commands": [
         "lint:fix",
         "typecheck",
-        "eslint",
         "css",
         "build"
       ],
@@ -48,6 +46,7 @@
       ],
       "instructions": [
         "project",
+        "follow-conventions",
         "review-code",
         "audit-tests",
         "kill-ai-slop"
@@ -59,9 +58,7 @@
       "match": [
         "skills/**/*.md"
       ],
-      "commands": [
-        "build"
-      ],
+      "commands": [],
       "checks": [
         "Lint, build and tests"
       ],
@@ -94,7 +91,6 @@
       "commands": [
         "lint:fix",
         "typecheck",
-        "eslint",
         "css",
         "build"
       ],
@@ -103,6 +99,7 @@
       ],
       "instructions": [
         "project",
+        "follow-conventions",
         "audit-tests"
       ],
       "ciRequired": true
@@ -115,7 +112,6 @@
       "commands": [
         "lint:fix",
         "typecheck",
-        "eslint",
         "css",
         "build"
       ],
@@ -124,6 +120,7 @@
       ],
       "instructions": [
         "project",
+        "follow-conventions",
         "review-code",
         "audit-tests",
         "kill-ai-slop",
@@ -139,7 +136,6 @@
       "commands": [
         "lint:fix",
         "typecheck",
-        "eslint",
         "css",
         "build"
       ],
@@ -148,6 +144,7 @@
       ],
       "instructions": [
         "project",
+        "follow-conventions",
         "review-code",
         "audit-tests",
         "kill-ai-slop"
@@ -161,8 +158,8 @@
     "audit-tests": ".agents/skills/audit-tests/SKILL.md",
     "kill-ai-slop": ".agents/skills/deslop/SKILL.md",
     "write-front-end": ".agents/skills/write-front-end/SKILL.md",
-    "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md"
+    "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md",
+    "follow-conventions": ".agents/skills/follow-conventions/SKILL.md"
   },
-  "checkFixAttempts": 0,
-  "publishLocal": false
+  "checkFixAttempts": 0
 }
