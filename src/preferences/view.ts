@@ -1,3 +1,4 @@
+import { DEFAULT_WORKSPACE, patchWorkspace } from './workspace.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
@@ -17,6 +18,7 @@ const LEGACY_DEFAULT_WIDTHS = {
 } as const
 
 export const DEFAULT_VIEW: ViewPreferences = {
+  workspace: DEFAULT_WORKSPACE,
   theme: 'system',
   focusMode: true,
   lastMessageOnCards: true,
@@ -389,6 +391,11 @@ export function patchView({
       [b],
     ) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
     switch (key) {
+      case 'workspace':
+        next.workspace = patchWorkspace({
+          current: next.workspace,
+          input: value,
+        }); break
       case 'keyboard': {
         const keyboard = record({ value })
 
