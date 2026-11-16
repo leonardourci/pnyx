@@ -380,15 +380,17 @@ test(
     })
     await hydra.owner({
       args: [
-        'task',
-        'create',
+        'push',
         '--key',
         'api',
-        '--title',
-        'API work',
-        '--project',
-        api,
+        '--file',
+        '-',
       ],
+      input: JSON.stringify({
+        title: 'API work',
+        project: api,
+        tags: ['Backend'],
+      }),
     })
     await hydra.owner({
       args: [
@@ -454,6 +456,40 @@ test(
         },
       )
         .waitFor()
+      expect(await suite.getByText(
+        'api',
+        { exact: true },
+      ).isVisible()).toBe(true)
+      expect(await suite.getByText(
+        'Backend',
+        { exact: true },
+      ).isVisible()).toBe(true)
+      expect(await workspace.getByText(
+        'Old notes',
+        { exact: true },
+      ).isVisible()).toBe(true)
+      await suite.getByRole(
+        'button',
+        {
+          name: 'API work',
+          exact: true,
+        },
+      ).click()
+      expect(await suite.getByText(
+        'Backend',
+        { exact: true },
+      ).isVisible()).toBe(true)
+      await suite.getByRole(
+        'button',
+        {
+          name: 'API work',
+          exact: true,
+        },
+      ).click()
+      expect(await suite.getByText(
+        'Backend',
+        { exact: true },
+      ).isVisible()).toBe(true)
       expect(await workspace.locator('.project-column').count()).toBe(2)
     } finally {
       await page.context().close()

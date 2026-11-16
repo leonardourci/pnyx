@@ -75,15 +75,33 @@ export function CardState({
     <div className="card-state">
       {tooltips ? <Tooltip content={status.details}>{pill}</Tooltip> : pill}
       {tooltips ? <Tooltip content={createdText}>{since}</Tooltip> : since}
-      {showProject && card.project && (
-        <Label
-          project={!legacyProject}
-          label={card.project}
-          text={projectTitle({ project: card.project })}
-          colors={legacyProject ? undefined : labelColors}
-        />
+      {showProject && (
+        <CardProjectLabel card={card} legacyProject={legacyProject} labelColors={labelColors} />
       )}
       {children}
     </div>
+  )
+}
+
+export function CardProjectLabel({
+  card,
+  legacyProject = false,
+  labelColors,
+}: {
+  card: Card
+  legacyProject?: boolean
+  labelColors?: SavedLabelColor[]
+}) {
+  if (!card.project) {
+    return null
+  }
+
+  return (
+    <Label
+      project={!legacyProject}
+      label={card.project}
+      text={projectTitle({ project: card.project })}
+      colors={legacyProject ? undefined : labelColors}
+    />
   )
 }

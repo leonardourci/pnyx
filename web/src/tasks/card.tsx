@@ -25,7 +25,7 @@ import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
-import { CardState } from './card-state.tsx'
+import { CardProjectLabel, CardState } from './card-state.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
 import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -315,8 +315,12 @@ export const HydraCard = memo(function HydraCard({
     && (card.sessionActivity ?? card.activity) === 'working'
 
   const tags = card.tags.filter(tag => tag !== card.project)
-  const labels = tags.length > 0 && (
+  const showClosedProject = !selected && !!card.project
+  const labels = (showClosedProject || tags.length > 0) && (
     <div className="card-labels">
+      {showClosedProject && (
+        <CardProjectLabel card={card} legacyProject={legacyProject} labelColors={labelColors} />
+      )}
       {tags.map(tag => (
         <Label key={tag} label={tag} colors={labelColors} />
       ))}
@@ -389,7 +393,7 @@ export const HydraCard = memo(function HydraCard({
           tooltips
           compact={!selected}
           progress={progress}
-          showProject={showProject}
+          showProject={selected && showProject}
           legacyProject={legacyProject}
         >
           {card.agent && (
@@ -556,6 +560,7 @@ export const HydraCard = memo(function HydraCard({
             </Tooltip>
           </HoverActions>
         </div>
+        {!selected && labels}
         {editing && (
           <TaskEditor
             key={editing.version}

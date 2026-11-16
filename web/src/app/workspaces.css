@@ -37,14 +37,13 @@
 .project-cards .card-title-row { align-items: flex-start; gap: 5px; }
 .subtask-toggle.button { flex: none; padding: 2px 0; min-width: 14px; }
 .subtask-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
-.project-cards .card-state { flex-wrap: nowrap; gap: 2px; min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
+.project-cards .card-state { flex-wrap: nowrap; gap: 6px; min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
 .project-cards .card-state .agent-activity { gap: 4px; padding-inline: 5px; }
 .project-cards .card-state > .tooltip-anchor:has(.agent-activity) { flex-shrink: 1; }
 .project-cards .card-state > .tooltip-anchor:has(.task-label) { flex-shrink: 0; max-width: 50%; overflow: visible; }
-.project-cards .card-state .task-label { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; padding-inline: 4px; }
+.project-cards :is(.card-state, .card-labels) .task-label { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; padding-inline: 4px; }
 .project-cards .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .project-cards .card-agent { margin-left: auto; }
-.project-cards .card-state > .tooltip-anchor:last-child { margin-left: auto; }
 .task-progress { flex-shrink: 0; padding-left: 4px; border-left: 1px solid currentcolor; font-variant-numeric: tabular-nums; }
 .project-cards .card.selected .card-content { min-height: 0; }
 .hydra-workspace .settings-page { width: calc(100vw - 64px); min-height: 0; overflow: auto; }
