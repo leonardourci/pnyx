@@ -344,7 +344,10 @@ export function HydraView({
         document.title = title
       }
     },
-    [title, active],
+    [
+      title,
+      active,
+    ],
   )
   const save = useSaveView({
     state,
