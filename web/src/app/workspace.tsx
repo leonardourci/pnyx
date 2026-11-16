@@ -415,7 +415,7 @@ export function HydraView({
       draft,
       ...(parent ? { parent } : {}),
     })
-    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-create [aria-label="Task title"]' })))
+    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] .task-create [aria-label="Task title"]` })))
   }
 
   const baseColumns = projectColumns({
@@ -550,7 +550,7 @@ export function HydraView({
 
   const openSettings = ({ query }: { query: string }) => {
     setAccountSetup(undefined); setSettingsQuery(query); setPage({ page: 'settings' })
-    requestAnimationFrame(() => focusElement({ selector: '.settings-page .search-bar-input' }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] .settings-page .search-bar-input` }))
   }
 
   const selectProject = ({ path }: { path: string }) => {

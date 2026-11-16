@@ -442,11 +442,10 @@ test(
           exact: true,
         },
       ).waitFor()
-      expect(await suite.locator('.card-open').allTextContents()).toEqual([
-        'API work',
-        'Web work',
-        'Docs work',
-      ])
+      await until({
+        what: 'all grouped repository tasks',
+        check: async () => (await suite.locator('.card-open').allTextContents()).join('|') === 'API work|Web work|Docs work',
+      })
       await workspace.locator('.project-column[aria-label="Ideas"]').getByRole(
         'button',
         {
@@ -532,7 +531,7 @@ test(
 )
 
 test(
-  'folding projects and Hydras preserves the open card and unsent worker draft',
+  'sub-tasks keep state order while folding preserves the open card and worker draft',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -567,6 +566,40 @@ test(
         },
       )
       await draft.fill('Keep my unsent reply')
+      const completed = await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Completed part',
+          '--parent',
+          'draft',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'status',
+          completed.card.id,
+          'done',
+          '--note',
+          'Part completed',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Waiting part',
+          '--parent',
+          'draft',
+        ],
+      })
+      await until({
+        what: 'unfinished sub-tasks before completed sub-tasks',
+        check: async () => (await workspace.locator('.subtasks .card-open').allTextContents()).join('|') === 'Waiting part|Completed part',
+      })
       const card = await workspace.locator('.card.selected').elementHandle()
       expect(card).not.toBeNull()
       await workspace.getByRole(
@@ -606,6 +639,8 @@ test(
       ).click()
       await draft.waitFor()
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      expect(await card?.evaluate(element => element.isConnected)).toBe(true)
     } finally {
       await page.context().close()
     }

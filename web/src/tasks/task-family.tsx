@@ -4,7 +4,7 @@ import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
 import { rankOf } from '#tasks/select.ts'
-import { taskRollup } from './project-view.ts'
+import { statusPriority, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { expandedTaskWidth, SUBTASK_INDENT } from './project-layout.ts'
 
@@ -57,7 +57,19 @@ export function TaskFamily({
   const sorted = children.toSorted((
     a,
     b,
-  ) => rankOf({ card: a }) - rankOf({ card: b }))
+  ) => statusPriority({
+    status: taskRollup({
+      state,
+      card: a,
+      actions,
+    }).status,
+  }) - statusPriority({
+    status: taskRollup({
+      state,
+      card: b,
+      actions,
+    }).status,
+  }) || rankOf({ card: a }) - rankOf({ card: b }))
   const shown = preview?.kind === 'task' && !preview.nest && preview.scope === preview.targetScope
     ? movedOrder({
       items: sorted,

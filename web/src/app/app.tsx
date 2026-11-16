@@ -282,10 +282,10 @@ export function App() {
     url: string
     replace?: boolean
   }) => {
-    const destination = new URL(
+    const destination = decodeURIComponent(new URL(
       url,
       location.href,
-    ).pathname.split('/')[2]!
+    ).pathname.split('/')[2]!)
     const opening = hydra.commandFor({ id: destination })({
       name: 'view',
       args: [
@@ -306,11 +306,7 @@ export function App() {
       url,
       replace,
     })
-    const id = new URL(
-      url,
-      location.href,
-    ).pathname.split('/')[2]!
-    const group = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(id)}"]`)
+    const group = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(destination)}"]`)
     group?.scrollIntoView({
       behavior: scrollBehavior(),
       inline: 'start',
