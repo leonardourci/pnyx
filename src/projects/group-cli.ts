@@ -109,6 +109,8 @@ export function attachProjectGroup({
           }
         })
 
+        const attempt = commandMeta.id ?? randomUUID()
+
         for (const [
           index,
           change,
@@ -121,7 +123,7 @@ export function attachProjectGroup({
             state: writer.state,
             meta: {
               ...commandMeta,
-              id: `${commandMeta.id ?? group.id}:${index}`,
+              id: `${attempt}:${index}`,
             },
             cardId: '$projects',
             change: {

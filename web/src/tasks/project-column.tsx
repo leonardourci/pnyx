@@ -96,7 +96,7 @@ export function ProjectColumn({
         </Button>
         {!folded && <Button aria-label={`New task in ${column.title}`} onClick={create}><Icon name="plus" /></Button>}
       </header>
-      {!folded && <div ref={scroll} className="column-cards project-cards"><div ref={grid} className="project-card-grid">{children}</div></div>}
+      <div ref={scroll} hidden={folded} className="column-cards project-cards"><div ref={grid} className="project-card-grid">{children}</div></div>
       {!folded && (
         <Resize
           label={`Resize ${column.title}`}

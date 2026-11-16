@@ -697,7 +697,6 @@ export function HydraView({
           location.href,
         ).href,
       })
-      requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
     } catch (error) {
       notify({ text: error instanceof Error ? error.message : String(error) })
     }

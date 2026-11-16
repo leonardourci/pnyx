@@ -381,7 +381,11 @@ test(
         { exact: true },
       ).waitFor()
       expect(interrupt).toBeTypeOf('function')
-      interrupt!()
+      if (!interrupt) {
+        throw new Error('The data connection did not open')
+      }
+
+      interrupt()
       await hydra.owner({
         args: [
           'task',
