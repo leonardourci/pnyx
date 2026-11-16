@@ -1,3 +1,4 @@
+import { taskRank } from '#tasks/order.ts'
 import { createBeforeRank } from '#tasks/create-placement.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card, TaskReminder } from '#tasks/model.ts'
@@ -219,6 +220,18 @@ export function optimisticState({
       const asks = card.asks?.map(ask => ask.id === question.id ? deferred : ask)
 
       return update({ patch: { asks } })
+    }
+
+    if (action === 'arrange') {
+      return update({
+        patch: {
+          rank: taskRank({
+            state,
+            card,
+            before: option({ flag: '--before' }),
+          }),
+        },
+      })
     }
 
     if (action === 'parent') {

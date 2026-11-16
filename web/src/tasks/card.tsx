@@ -1,6 +1,5 @@
 import { AgentDetails } from '#web-workers/agent-details.tsx'
-import { answerPrompt } from '#workers/answers.ts'
-import { memo, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { memo, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -10,17 +9,15 @@ import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { CardTitle } from './card-title.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
-import { useCardHeight, useTypingGrowth } from './card-height.ts'
+import { OPEN_CARD_MIN_HEIGHT, OPEN_CARD_MIN_WIDTH, DEFAULT_OPEN_CARD_WIDTH, DEFAULT_OPEN_CARD_HEIGHT, DEFAULT_WINDOW_WIDTH } from '#preferences/workspace.ts'
+import type { ObservedStatus } from './observed-status.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
-import { cardState, TASK_DRAG } from './view.ts'
+import { cardState } from './view.ts'
 import { currentState, waitingQuestions } from '#tasks/card-status.ts'
-import { ownerQuestions } from '#tasks/questions.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
 import { TaskQuestion } from './task-question.tsx'
-import { reviewRequests } from './review-requests.ts'
-import { ReviewSummary } from './review-readiness.tsx'
 import { harnessName } from '#web-workers/view.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
 
@@ -33,11 +30,6 @@ import { TaskReport } from '#web-investigations/task-report.tsx'
 import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
-import { draggableItem } from '#web-shared/ui/drag.ts'
-
-const OPEN_SHARE = 0.5
-// A closed card shows this many whole lines of its update beyond the one it always keeps.
-const CLOSED_EXTRA_LINES = 2
 
 const STATE_SOURCE = {
   note: "Worker's status note",
@@ -100,17 +92,17 @@ function ContextIndex({
   )
 }
 
-function LastMessage({ message }: { message: LatestMessage }) {
-  return (
-    <div className="last-message">
-      <strong>Current state</strong>
-      <CollapsibleText text={message.text} />
-    </div>
-  )
-}
-
 export const HydraCard = memo(function HydraCard({
   card,
+  statusOverride,
+  sortScope,
+  chat,
+  progress,
+  hasChildren,
+  childrenOpen,
+  toggleChildren,
+  showProject = false,
+  legacyProject,
   labelColors,
   latest,
   selected,
@@ -128,6 +120,15 @@ export const HydraCard = memo(function HydraCard({
   notify,
   action,
 }: {
+  statusOverride?: ObservedStatus
+  sortScope?: string
+  chat?: ReactNode
+  progress?: string
+  hasChildren?: boolean
+  childrenOpen?: boolean
+  toggleChildren?(): void
+  showProject?: boolean
+  legacyProject?: boolean
   card: CardData
   action?: CurrentAction
   labelColors?: SavedLabelColor[]
@@ -155,11 +156,6 @@ export const HydraCard = memo(function HydraCard({
   answer({ card }: { card: CardData }): void
 }) {
   const element = useRef<HTMLElement>(null)
-  const briefId = useId()
-  const [
-    briefOpen,
-    setBriefOpen,
-  ] = useState(false)
   const [
     editing,
     setEditing,
@@ -183,7 +179,7 @@ export const HydraCard = memo(function HydraCard({
   )
 
   const edit = ({ draft }: { draft?: TaskDraft } = {}) => {
-    onEdit(); setBriefOpen(true)
+    onEdit()
     setEditing({
       version: ++editVersion.current,
       draft,
@@ -214,6 +210,44 @@ export const HydraCard = memo(function HydraCard({
     preview,
     setPreview,
   ] = useState<number | null>(null)
+  const [
+    windowed,
+    setWindowed,
+  ] = useState(false)
+  useLayoutEffect(
+    () => {
+      const card = element.current
+
+      if (!card) {
+        return
+      }
+
+      if (windowed && selected) {
+        card.setAttribute(
+          'popover',
+          'manual',
+        ); card.showPopover()
+      } else {
+        if (card.matches(':popover-open')) {
+          card.hidePopover()
+        }
+
+        card.removeAttribute('popover')
+      }
+    },
+    [
+      windowed,
+      selected,
+    ],
+  )
+  useEffect(
+    () => {
+      if (!selected) {
+        setWindowed(false)
+      }
+    },
+    [selected],
+  )
   const tabsId = useId()
   const [
     tab,
@@ -227,21 +261,15 @@ export const HydraCard = memo(function HydraCard({
     },
     [selected],
   )
-  const bounds = useCardHeight({
-    element,
-    selected,
-  })
-  const typingGrowth = useTypingGrowth({ element })
-  const saved = selected ? view.cardHeights[card.id] : view.closedCardHeights[card.id]
-  const closedHeight = bounds.minimum + CLOSED_EXTRA_LINES * bounds.line
-  const defaultHeight = selected ? Math.round(bounds.available * OPEN_SHARE) : closedHeight
   const height = Math.max(
-    bounds.minimum,
-    Math.min(
-      bounds.maximum,
-      saved ?? defaultHeight,
-    ),
+    OPEN_CARD_MIN_HEIGHT,
+    view.cardHeights[card.id] ?? DEFAULT_OPEN_CARD_HEIGHT,
   )
+  const width = view.workspace.cardWidths[card.id] ?? DEFAULT_OPEN_CARD_WIDTH
+  const [
+    widthPreview,
+    setWidthPreview,
+  ] = useState<number | null>(null)
   const [
     reminding,
     setReminding,
@@ -265,7 +293,7 @@ export const HydraCard = memo(function HydraCard({
     },
     [],
   )
-  const status = cardState({
+  const status = statusOverride ?? cardState({
     card,
     hours: doneAfterHours,
     connected,
@@ -283,43 +311,8 @@ export const HydraCard = memo(function HydraCard({
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
   const waiting = waitingQuestions({ card })
-  // A question whose answer is still on its way shows only when nothing else waits.
-  const question = waiting[0] ?? ownerQuestions({ card })[0]
-  const request = question?.permission
-  const attention = question?.attention
-  const review = reviewRequests({ card })[0]
-  const reviewSummary = review && (!question || question.ask?.kind === 'merge')
-  const asked = question?.ask
   const canStop = connected && card.agent?.host === 'pnyx'
     && (card.sessionActivity ?? card.activity) === 'working'
-  const canAnswer = attention && answerPrompt({
-    card,
-    request: attention,
-  })
-  const delivery = question?.delivery
-  const answerSaved = delivery && delivery.state !== 'delivered'
-  let questionLabel = answerSaved ? 'Answer saved' : 'Question'
-  const deferred = !!asked?.deferredUntil
-
-  if (deferred) {
-    questionLabel = 'Later'
-  } else if (asked?.kind === 'merge') {
-    questionLabel = 'Review pending'
-  }
-
-  if (waiting.length > 1) {
-    questionLabel = `${waiting.length} questions`
-  }
-
-  let answerLabel = answerSaved ? 'Review answer' : 'Answer'
-
-  if (deferred) {
-    answerLabel = 'View question'
-  }
-
-  const deliveryText = delivery?.state === 'failed'
-    ? 'Delivery failed. Open the task to send the answer again.'
-    : 'Waiting to reach the worker.'
 
   const tags = card.tags.filter(tag => tag !== card.project)
   const labels = tags.length > 0 && (
@@ -345,46 +338,25 @@ export const HydraCard = memo(function HydraCard({
   })
   // Activity mounts only while it shows, so a hidden one reads no history or report; Context stays mounted to keep draft answers.
   const showsActivity = tab === 'activity'
-  // The title opens the brief, which exists only while Activity shows; before that it controls the Activity panel.
-  const briefControl = showsActivity ? briefId : panelId({
-    prefix: tabsId,
-    id: 'activity',
-  })
-
-  // The brief lives in Activity; the title still shows or hides it, opening the card first.
-  const toggleBrief = () => {
-    const show = tab !== 'activity' || !briefOpen
-    setTab('activity'); setBriefOpen(show)
-
-    if (!isSelected.current) {
-      void open({
-        id: card.id,
-        focusPanel: false,
-      })
-    }
-  }
 
   return (
     <article
       ref={element}
       className={`card ${selected ? 'selected' : ''}`}
       style={{
-        // Natural height avoids animating a newly mounted card from zero.
-        height: bounds.measured ? Math.max(
-          bounds.minimum,
-          Math.min(
-            bounds.maximum,
-            preview ?? Math.min(
-              Math.max(
-                bounds.available,
-                height,
-              ),
-              height + typingGrowth,
-            ),
-          ),
-        ) : undefined,
+        height: selected ? (preview ?? height) : undefined,
+        width: selected ? (widthPreview ?? (windowed ? Math.max(
+          width,
+          DEFAULT_WINDOW_WIDTH,
+        ) : width)) : undefined,
       }}
       data-task={card.id}
+      data-windowed={windowed}
+      onKeyDown={event => {
+        if (event.key === 'Escape' && windowed) {
+          event.preventDefault(); event.stopPropagation(); setWindowed(false)
+        }
+      }}
       data-tab={selected ? tab : undefined}
       data-label-color={tint?.color}
       onClick={e => {
@@ -399,13 +371,15 @@ export const HydraCard = memo(function HydraCard({
           })
         }
       }}
-      {...draggableItem({
-        type: TASK_DRAG,
-        id: card.id,
-        enabled: connected && !selected && !reminding && !editing,
-        skip: 'button, .resize, form',
-      })}
+      data-sort-id={card.id}
+      data-sort-kind="task"
+      data-sort-scope={sortScope}
+      data-sort-disabled={selected || !connected || !!reminding || !!editing}
+      data-parent={card.parentId}
+      data-has-children={hasChildren}
+
     >
+      {!card.parentId && <span className="subtask-drop" data-subtask-drop aria-hidden="true">Sub-task</span>}
       <div className="card-content">
         <CardState
           card={card}
@@ -413,28 +387,10 @@ export const HydraCard = memo(function HydraCard({
           now={now}
           labelColors={labelColors}
           tooltips
+          progress={progress}
+          showProject={showProject}
+          legacyProject={legacyProject}
         >
-          {canStop && (
-            <Button
-              aria-label="Stop worker"
-              title="Stop worker"
-              onClick={async () => {
-                try {
-                  await command({
-                    name: 'task',
-                    args: [
-                      'stop',
-                      card.id,
-                    ],
-                  })
-                } catch (error) {
-                  notify({ text: (error as Error).message })
-                }
-              }}
-            >
-              <Icon name="stop" size={12} />
-            </Button>
-          )}
           {card.agent && (
             <Tooltip
               content={<AgentDetails card={card} command={command} />}
@@ -448,19 +404,103 @@ export const HydraCard = memo(function HydraCard({
           )}
         </CardState>
         <div className="card-title-row">
+          {hasChildren && (
+            <Button
+              className="subtask-toggle"
+              aria-label={`Sub-tasks of ${card.title}`}
+              aria-expanded={childrenOpen}
+              onClick={event => {
+                event.stopPropagation(); toggleChildren?.()
+              }}
+            ><Icon name="chevron_right" size={14} />
+            </Button>
+          )}
           {!editing && (
             <CardTitle
               title={card.title}
-              briefOpen={selected && showsActivity && briefOpen}
-              toggleBrief={toggleBrief}
+              expanded={selected}
               open={() => void open({ id: card.id })}
-              aria-controls={selected ? briefControl : undefined}
+              aria-controls={selected ? panelId({
+                prefix: tabsId,
+                id: 'context',
+              }) : undefined}
               data-card={card.id}
               data-key-scope="hydra"
               tabIndex={tabIndex}
             />
           )}
           <HoverActions anchor={element}>
+            <Tooltip content={windowed ? 'Open in place' : 'Open as a window'}>
+              <Button
+                aria-label={windowed ? 'Open in place' : 'Open as a window'}
+                onClick={async () => {
+                  if (!selected && !await open({ id: card.id })) {
+                    return
+                  }
+
+                  setWindowed(value => !value)
+                }}
+              ><Icon name="open" size={15} />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Pause task">
+              <Button
+                aria-label="Pause task"
+                disabled={!connected}
+                onClick={() => command({
+                  name: 'task',
+                  args: [
+                    'hold',
+                    card.id,
+                    '--message',
+                    'Paused by owner',
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                }).catch((error: Error) => notify({ text: error.message }))}
+              ><Icon name="pause" size={15} />
+              </Button>
+            </Tooltip>
+            {canStop && (
+              <Button
+                aria-label="Stop worker"
+                title="Stop worker"
+                onClick={async () => {
+                  try {
+                    await command({
+                      name: 'task',
+                      args: [
+                        'stop',
+                        card.id,
+                      ],
+                    })
+                  } catch (error) {
+                    notify({ text: (error as Error).message })
+                  }
+                }}
+              >
+                <Icon name="stop" size={12} />
+              </Button>
+            )}
+            {card.parentId && (
+              <Tooltip content="Move out of its parent">
+                <Button
+                  aria-label="Move out of its parent"
+                  disabled={!connected}
+                  onClick={() => command({
+                    name: 'task',
+                    args: [
+                      'parent',
+                      card.id,
+                      'none',
+                      '--event-id',
+                      crypto.randomUUID(),
+                    ],
+                  }).catch((error: Error) => notify({ text: error.message }))}
+                ><Icon name="chevron_right" size={15} />
+                </Button>
+              </Tooltip>
+            )}
             <Tooltip content="Edit title and brief">
               <Button
                 aria-label="Edit title and brief"
@@ -537,190 +577,145 @@ export const HydraCard = memo(function HydraCard({
           />
         )}
         {selected && (
-          <>
-            <Tabs
-              prefix={tabsId}
-              label="Card sections"
-              selected={tab}
-              select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
-              tabs={[
-                {
-                  id: 'context',
-                  label: 'Context',
-                },
-                {
-                  id: 'activity',
-                  label: 'Activity',
-                },
-              ]}
-            />
-            <div {...panel({ id: 'context' })}>
-              {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
-              {waiting.length > 0 && (card.intent || factual) && (
-                <ContextIndex
-                  questions={waiting.length}
-                  intent={!!card.intent}
-                  state={!!factual}
-                />
-              )}
-              <TaskQuestion
-                card={card}
-                connected={connected}
-                command={command}
-                notify={notify}
-                answer={answer}
+          <div className="card-open-content">
+            <div className="card-details">
+              <Tabs
+                prefix={tabsId}
+                label="Card sections"
+                selected={tab}
+                select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
+                tabs={[
+                  {
+                    id: 'context',
+                    label: 'Context',
+                  },
+                  {
+                    id: 'activity',
+                    label: 'Activity',
+                  },
+                ]}
               />
-              {card.intent && (
-                <section className="card-section card-intent" aria-label="Intent">
-                  <h3 className="eyebrow">Intent</h3>
-                  <CollapsibleText text={card.intent} />
-                </section>
-              )}
-              {factual && (
-                <section className="card-section card-current-state" aria-label="Current state">
-                  <h3 className="eyebrow">Current state</h3>
-                  <CollapsibleText text={factual.text} />
-                  <p className="muted small">{stateSource}, {relativeTime({
-                    at: factual.at,
-                    now,
-                  })}
-                  </p>
-                </section>
-              )}
-              {labels}
-              <CardLinks links={card.links} expanded />
-              <ReminderLabel card={card} />
-            </div>
-            <div {...panel({ id: 'activity' })}>
-              {showsActivity && (
-                <>
-                  {!!card.ask?.length && (
-                    <section className="card-section" aria-label="Your words">
-                      <h3 className="eyebrow">Your words</h3>
-                      {card.ask.map(entry => (
-                        <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words">
-                          <CollapsibleText text={entry.text} />
-                          <p className="muted small">{relativeTime({
-                            at: entry.at,
-                            now,
-                          })}
-                          </p>
-                        </div>
-                      ))}
-                    </section>
-                  )}
-                  <section className="card-instructions" aria-label="Instructions">
-                    <Button
-                      className="quiet card-instructions-toggle"
-                      aria-expanded={briefOpen}
-                      aria-controls={briefId}
-                      onClick={() => setBriefOpen(value => !value)}
-                    ><Icon name="chevron_right" size={13} />Hydra's instructions to the worker
-                    </Button>
-                    <div id={briefId} className="card-brief" hidden={!briefOpen}>
-                      {card.brief?.trim()
-                        ? <CollapsibleText text={card.brief} />
-                        : <p className="muted">{card.automaticTask ? 'Automatic tasks have no brief.' : 'No brief yet. The pencil adds one.'}</p>}
-                    </div>
-                  </section>
-                  <TaskReport
-                    card={card}
-                    command={command}
-                    connected={connected}
+              <div {...panel({ id: 'context' })}>
+                {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
+                {waiting.length > 0 && (card.intent || factual) && (
+                  <ContextIndex
+                    questions={waiting.length}
+                    intent={!!card.intent}
+                    state={!!factual}
                   />
-                  {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
-                  {children}
-                </>
-              )}
+                )}
+                {card.brief?.trim() && <section className="card-section" aria-label="Instructions"><h3 className="eyebrow">Instructions</h3><CollapsibleText text={card.brief} /></section>}
+                <TaskQuestion
+                  card={card}
+                  connected={connected}
+                  command={command}
+                  notify={notify}
+                  answer={answer}
+                />
+                {card.intent && (
+                  <section className="card-section card-intent" aria-label="Intent">
+                    <h3 className="eyebrow">Intent</h3>
+                    <CollapsibleText text={card.intent} />
+                  </section>
+                )}
+                {factual && (
+                  <section className="card-section card-current-state" aria-label="Current state">
+                    <h3 className="eyebrow">Current state</h3>
+                    <CollapsibleText text={factual.text} />
+                    <p className="muted small">{stateSource}, {relativeTime({
+                      at: factual.at,
+                      now,
+                    })}
+                    </p>
+                  </section>
+                )}
+                {labels}
+                <CardLinks links={card.links} expanded />
+                <ReminderLabel card={card} />
+              </div>
+              <div {...panel({ id: 'activity' })}>
+                {showsActivity && (
+                  <>
+                    {!!card.ask?.length && (
+                      <section className="card-section" aria-label="Your words">
+                        <h3 className="eyebrow">Your words</h3>
+                        {card.ask.map(entry => (
+                          <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words">
+                            <CollapsibleText text={entry.text} />
+                            <p className="muted small">{relativeTime({
+                              at: entry.at,
+                              now,
+                            })}
+                            </p>
+                          </div>
+                        ))}
+                      </section>
+                    )}
+                    <TaskReport
+                      card={card}
+                      command={command}
+                      connected={connected}
+                    />
+                    {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
+                    {children}
+                  </>
+                )}
+              </div>
             </div>
-          </>
-        )}
-        {!selected && card.copy?.state === 'flagged' && (
-          <Tooltip content={card.copy.reason}><span className="copy-warning" tabIndex={0}>copy not cleaned</span></Tooltip>
-        )}
-        {!selected && question && !reviewSummary && (
-          <div className="card-question" aria-label="Task question">
-            <strong className="eyebrow">{questionLabel}</strong>
-            <CollapsibleText text={question.text} />
-            {answerSaved && <p className="muted small">{deliveryText}</p>}
-            <Button
-              variant="primary"
-              onClick={async () => {
-                if (request || canAnswer || asked) {
-                  if (await open({ id: card.id })) {
-                    element.current?.querySelector<HTMLElement>('.ask button, .ask textarea')?.focus()
-                  }
-
-                  return
-                }
-
-                answer({ card })
-              }}
-            >{answerLabel}
-            </Button>
+            {chat}
           </div>
         )}
-        {!selected && reviewSummary && (
-          <ReviewSummary
-            request={review}
-            open={() => {
-              open({ id: card.id })
+        {reminding && (
+          <ReminderEditor
+            card={card}
+            command={command}
+            connected={connected}
+            draft={reminding.draft}
+            close={() => setReminding(null)}
+            submitted={() => {
+              setReminding(null)
+
+              if (selected) {
+                setTab('context')
+              }
+            }}
+            recover={({ draft }) => {
+              if (reminderVersion.current === reminding.version) {
+                setReminding({
+                  ...reminding,
+                  draft,
+                })
+              }
+
+              notify({ text: draft.error })
             }}
           />
         )}
-        {(!selected || reminding) && (
-          <div className="card-rest">
-            {view.lastMessageOnCards && !selected && (
-              factual ? <LastMessage message={factual} /> : <p className="last-message">No current state yet.</p>
-            )}
-            {reminding && (
-              <ReminderEditor
-                card={card}
-                command={command}
-                connected={connected}
-                draft={reminding.draft}
-                close={() => setReminding(null)}
-                submitted={() => {
-                  setReminding(null)
-
-                  if (selected) {
-                    setTab('context')
-                  }
-                }}
-                recover={({ draft }) => {
-                  if (reminderVersion.current === reminding.version) {
-                    setReminding({
-                      ...reminding,
-                      draft,
-                    })
-                  }
-
-                  notify({ text: draft.error })
-                }}
-              />
-            )}
-          </div>
-        )}
-        {!selected && (
-          <>
-            {labels}
-            <CardLinks links={card.links} expanded={false} />
-            <ReminderLabel card={card} />
-          </>
-        )}
       </div>
-      <Resize
-        label="Resize card"
-        axis="y"
-        value={height}
-        min={bounds.minimum}
-        max={bounds.maximum}
-        tabIndex={selected ? 0 : tabIndex}
-        onPreview={({ value }) => setPreview(value)}
-        onCommit={({ value }) => save({
-          patch: { [selected ? 'cardHeights' : 'closedCardHeights']: { [card.id]: value } },
-        })}
-      />
+      {selected && (
+        <Resize
+          label="Resize card"
+          axis="y"
+          value={height}
+          min={OPEN_CARD_MIN_HEIGHT}
+          tabIndex={selected ? 0 : tabIndex}
+          onPreview={({ value }) => setPreview(value)}
+          onCommit={({ value }) => save({
+            patch: { cardHeights: { [card.id]: value } },
+          })}
+        />
+      )}
+      {selected && (
+        <Resize
+          label="Resize card width"
+          value={width}
+          min={OPEN_CARD_MIN_WIDTH}
+          onPreview={({ value }) => setWidthPreview(value)}
+          onCommit={({ value }) => save({
+            patch: { workspace: { cardWidths: { [card.id]: value } } },
+          })}
+        />
+      )}
     </article>
   )
 })

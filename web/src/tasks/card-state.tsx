@@ -11,6 +11,9 @@ import type { ObservedStatus } from './observed-status.ts'
 // The card and the Oracle's preview share it so their status never drifts apart.
 export function CardState({
   card,
+  progress,
+  showProject = true,
+  legacyProject = false,
   status,
   now,
   labelColors,
@@ -18,6 +21,9 @@ export function CardState({
   children,
 }: {
   card: Card
+  progress?: string
+  showProject?: boolean
+  legacyProject?: boolean
   status: ObservedStatus
   now: number
   labelColors?: SavedLabelColor[]
@@ -33,6 +39,7 @@ export function CardState({
     <span className={`agent-activity activity-${status.kind}`} aria-label={text}>
       {status.kind === 'working' ? <WorkingDots /> : <i aria-hidden="true" />}
       {text}
+      {progress && <span className="task-progress">{progress}</span>}
     </span>
   )
   const since = (
@@ -48,12 +55,12 @@ export function CardState({
     <div className="card-state">
       {tooltips ? <Tooltip content={status.details}>{pill}</Tooltip> : pill}
       {tooltips ? <Tooltip content={createdText}>{since}</Tooltip> : since}
-      {card.project && (
+      {showProject && card.project && (
         <Label
-          project
+          project={!legacyProject}
           label={card.project}
           text={projectTitle({ project: card.project })}
-          colors={labelColors}
+          colors={legacyProject ? undefined : labelColors}
         />
       )}
       {children}

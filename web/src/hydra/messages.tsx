@@ -60,6 +60,7 @@ let highlights = 0
 // A message the owner just sent shows at once, faded until the server records it.
 export type ChatEntry = ThreadEntry & {
   sending?: boolean
+  checking?: boolean
   // Why the owner's message was not sent; it stays with a retry.
   unsent?: string
   renderKey?: string
@@ -361,6 +362,7 @@ const MessageRow = memo(function MessageRow({
               Send again
             </InlineButton>
           )}
+          {entry.checking && <span className="muted" role="status">Checking…</span>}
           {entry.unsent !== undefined && (
             <span className="unsent" role="alert">
               <Icon name="error" size={14} />Not sent · {entry.unsent}
