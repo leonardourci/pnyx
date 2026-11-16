@@ -1,0 +1,165 @@
+{
+  "commands": {
+    "lint:fix": "pnpm lint:fix",
+    "typecheck": "pnpm typecheck",
+    "css": "pnpm lint:css",
+    "build": "pnpm build"
+  },
+  "kinds": [
+    {
+      "name": "workflow",
+      "match": [
+        ".github/workflows/*.{yml,yaml}"
+      ],
+      "commands": [
+        "lint:fix",
+        "typecheck",
+        "css",
+        "build"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
+        "project",
+        "follow-conventions",
+        "review-code",
+        "audit-tests",
+        "kill-ai-slop",
+        "write-ci-workflow"
+      ],
+      "ciRequired": true
+    },
+    {
+      "name": "fixture",
+      "match": [
+        "**/fixtures/**"
+      ],
+      "commands": [
+        "lint:fix",
+        "typecheck",
+        "css",
+        "build"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
+        "project",
+        "follow-conventions",
+        "review-code",
+        "audit-tests",
+        "kill-ai-slop"
+      ],
+      "ciRequired": true
+    },
+    {
+      "name": "skill text",
+      "match": [
+        "skills/**/*.md"
+      ],
+      "commands": [],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
+        "project",
+        "kill-ai-slop"
+      ],
+      "ciRequired": true
+    },
+    {
+      "name": "docs",
+      "match": [
+        "docs/**",
+        "**/*.md"
+      ],
+      "commands": [],
+      "checks": [
+        "Test scope"
+      ],
+      "instructions": [
+        "project",
+        "kill-ai-slop"
+      ]
+    },
+    {
+      "name": "tests",
+      "match": [
+        "**/*.test.ts"
+      ],
+      "commands": [
+        "lint:fix",
+        "typecheck",
+        "css",
+        "build"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
+        "project",
+        "follow-conventions",
+        "audit-tests"
+      ],
+      "ciRequired": true
+    },
+    {
+      "name": "UI",
+      "match": [
+        "web/**"
+      ],
+      "commands": [
+        "lint:fix",
+        "typecheck",
+        "css",
+        "build"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
+        "project",
+        "follow-conventions",
+        "review-code",
+        "audit-tests",
+        "kill-ai-slop",
+        "write-front-end"
+      ],
+      "ciRequired": true
+    },
+    {
+      "name": "back-end",
+      "match": [
+        "**"
+      ],
+      "commands": [
+        "lint:fix",
+        "typecheck",
+        "css",
+        "build"
+      ],
+      "checks": [
+        "Lint, build and tests"
+      ],
+      "instructions": [
+        "project",
+        "follow-conventions",
+        "review-code",
+        "audit-tests",
+        "kill-ai-slop"
+      ],
+      "ciRequired": true
+    }
+  ],
+  "instructions": {
+    "project": "AGENTS.md",
+    "review-code": ".agents/skills/review-code/SKILL.md",
+    "audit-tests": ".agents/skills/audit-tests/SKILL.md",
+    "kill-ai-slop": ".agents/skills/deslop/SKILL.md",
+    "write-front-end": ".agents/skills/write-front-end/SKILL.md",
+    "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md",
+    "follow-conventions": ".agents/skills/follow-conventions/SKILL.md"
+  },
+  "checkFixAttempts": 0
+}

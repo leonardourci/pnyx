@@ -1,4 +1,4 @@
-// pnpm refresh-agent-fixtures, by hand after upgrading the Agent SDK or Codex (never in verify): records one real
+// pnpm refresh-agent-fixtures, by hand after upgrading the Agent SDK or Codex (never in CI or deslop): records one real
 // turn of each into tests/setup/fixtures/agents/ with your logins, in a temporary folder and PNYX_HOME so no hook reaches your Pnyx.
 import { execFileSync, spawn } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'

@@ -16,8 +16,4 @@
 
 ## Review
 
-Complete [review-code](https://github.com/leonardourci/pnyx/blob/main/.agents/skills/review-code/SKILL.md), [audit-tests](https://github.com/leonardourci/pnyx/blob/main/.agents/skills/audit-tests/SKILL.md) and [deslop](https://github.com/leonardourci/pnyx/blob/main/.agents/skills/deslop/SKILL.md), then note fixes or no findings in the description. Keep each required checkbox on its own line in the exact form shown below, changing `[ ]` to `[x]` only after completing it. Put findings on separate lines; extra text on a checkbox line is not accepted.
-
-- [ ] Ran `review-code`
-- [ ] Ran `audit-tests`
-- [ ] Ran `deslop`
+<!-- Findings and fixes from the deslop review, and any pending checks. -->
