@@ -1,3 +1,5 @@
+import { ProfileSurface } from './profile-surface.tsx'
+import { timeUIFlow } from './ui-metrics.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { StatusNotice, StatusMessage, ErrorBanner } from '#web-shared/ui/status-message.tsx'
 import { projectTitle } from '#web-projects/view.ts'
@@ -132,9 +134,15 @@ export function HydraView({
       return
     }
 
+    const finish = timeUIFlow({
+      surface: 'workspace',
+      hydraId: navigation.hydraId,
+      action: page === 'settings' ? 'settings.open' : 'settings.close',
+    })
     const suffix = page === 'settings' ? 'settings/' : ''
     navigatePage({ url: `/hydra/${encodeURIComponent(navigation.hydraId)}/${suffix}` })
       .catch((error: Error) => notify({ text: error.message }))
+      .finally(finish)
   }
 
   const [
@@ -895,6 +903,7 @@ export function HydraView({
           layout
           ref={setLayer}
           className="app hydra-workspace group/workspace flex h-full w-max min-w-[calc(100vw-1.5rem)] flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-14.5 max-[760px]:min-w-[calc(100vw-0.75rem)] max-[760px]:p-1.5"
+          data-ui-surface="workspace"
           data-hydra-workspace={navigation.hydraId}
           data-active={active}
           data-page={page}
@@ -918,47 +927,49 @@ export function HydraView({
               setSettingsQuery(''); setPage({ page })
             }}
             oracle={(
-              <Oracle
-                state={state}
-                workspaces={oracleWorkspaces}
-                searchCommand={searchCommand}
-                cardActions={actions}
-                view={view}
-                command={command}
-                connected={connected}
-                hydra={oracleHydra}
-                projects={shownHydra?.projects ?? []}
-                layer={layer}
-                save={save}
-                notify={notify}
-                upgrade={upgrade}
-                startUpgrade={startUpgrade}
-                openTask={oracleTarget}
-                answerTask={({
-                  id,
-                  hydra,
-                }) => oracleTarget({
-                  id,
-                  hydra,
-                  answer: true,
-                })}
-                selectProject={oracleTarget}
-                openSettings={openSettings}
-                createTask={({ column: group }) => {
-                  const projectColumn = columns.find(column => column.id === group)
-                  const singleRepository = projectColumn?.repositories.length === 1
-                  createTask({
-                    column: queuedColumn,
-                    group,
-                    project: singleRepository ? projectColumn.repositories[0] : undefined,
-                  })
-                }}
-                createColumn={createColumn}
-                action={keyboard.onAction}
-                hydras={askTargets}
-                send={askHydra}
-                openChat={openChat}
-              />
+              <ProfileSurface name="oracle" hydraId={navigation.hydraId}>
+                <Oracle
+                  state={state}
+                  workspaces={oracleWorkspaces}
+                  searchCommand={searchCommand}
+                  cardActions={actions}
+                  view={view}
+                  command={command}
+                  connected={connected}
+                  hydra={oracleHydra}
+                  projects={shownHydra?.projects ?? []}
+                  layer={layer}
+                  save={save}
+                  notify={notify}
+                  upgrade={upgrade}
+                  startUpgrade={startUpgrade}
+                  openTask={oracleTarget}
+                  answerTask={({
+                    id,
+                    hydra,
+                  }) => oracleTarget({
+                    id,
+                    hydra,
+                    answer: true,
+                  })}
+                  selectProject={oracleTarget}
+                  openSettings={openSettings}
+                  createTask={({ column: group }) => {
+                    const projectColumn = columns.find(column => column.id === group)
+                    const singleRepository = projectColumn?.repositories.length === 1
+                    createTask({
+                      column: queuedColumn,
+                      group,
+                      project: singleRepository ? projectColumn.repositories[0] : undefined,
+                    })
+                  }}
+                  createColumn={createColumn}
+                  action={keyboard.onAction}
+                  hydras={askTargets}
+                  send={askHydra}
+                  openChat={openChat}
+                />
+              </ProfileSurface>
             )}
           >
             <HydraChips
@@ -1074,7 +1085,7 @@ export function HydraView({
               ]}
             />
             <div className="hydra-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
-              <motion.div layout className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
+              <motion.div layout data-ui-surface="chat" className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
                 <IconButton
                   className="chat-fold absolute top-3 right-1.75 z-4 p-1"
                   label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
@@ -1082,39 +1093,41 @@ export function HydraView({
                   icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                 />
                 <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-[760px]:[&>.hydra-chat]:w-[calc(100vw-2.375rem)]! max-[760px]:[&>.hydra-chat]:basis-[calc(100vw-2.375rem)]!">
-                  <HydraChat
-                    hydraId={navigation.hydraId}
-                    identity={shownHydra && {
-                      name: shownHydra.name,
-                      icon: shownHydra.icon,
-                      taken: edits.hydras.filter(h => h.id !== shownHydra.id).map(h => h.name),
-                    }}
-                    editHydra={({
-                      name,
-                      icon,
-                    }) => edits.edit({
-                      id: navigation.hydraId,
-                      name,
-                      icon,
-                    })}
-                    storageIdentity={hydra.storageHydra}
-                    addProject={createColumn}
-                    projectRequest={projectRequest}
-                    projectRequested={() => setProjectRequest(false)}
-                    state={state}
-                    liveThread={hydraThread}
-                    action={actions[HYDRA_CARD]}
-                    taskActions={actions}
-                    selectedTask={selectedRef}
-                    queue={hydraQueue}
-                    command={command}
-                    connected={connected}
-                    openTask={revealTask}
-                    notify={notify}
-                    view={view}
-                    save={save}
-                    drafts={chatDrafts}
-                  />
+                  <ProfileSurface name="chat" hydraId={navigation.hydraId}>
+                    <HydraChat
+                      hydraId={navigation.hydraId}
+                      identity={shownHydra && {
+                        name: shownHydra.name,
+                        icon: shownHydra.icon,
+                        taken: edits.hydras.filter(h => h.id !== shownHydra.id).map(h => h.name),
+                      }}
+                      editHydra={({
+                        name,
+                        icon,
+                      }) => edits.edit({
+                        id: navigation.hydraId,
+                        name,
+                        icon,
+                      })}
+                      storageIdentity={hydra.storageHydra}
+                      addProject={createColumn}
+                      projectRequest={projectRequest}
+                      projectRequested={() => setProjectRequest(false)}
+                      state={state}
+                      liveThread={hydraThread}
+                      action={actions[HYDRA_CARD]}
+                      taskActions={actions}
+                      selectedTask={selectedRef}
+                      queue={hydraQueue}
+                      command={command}
+                      connected={connected}
+                      openTask={revealTask}
+                      notify={notify}
+                      view={view}
+                      save={save}
+                      drafts={chatDrafts}
+                    />
+                  </ProfileSurface>
                 </FoldContent>
               </motion.div>
 
@@ -1233,6 +1246,7 @@ export function HydraView({
             {(settingsVisited || page === 'settings') && createPortal(
               <div
                 className="settings-route fixed inset-x-0 top-topbar-height bottom-0 z-65 flex bg-background [&[hidden]]:hidden [&>.settings-page]:w-full [&>.settings-page]:min-w-0"
+                data-ui-surface="settings"
                 data-settings-hydra={navigation.hydraId}
                 hidden={!active || page !== 'settings'}
                 style={{
@@ -1241,22 +1255,24 @@ export function HydraView({
                   '--text-code': `${view.codeFontSize}px`,
                 } as CSSProperties}
               >
-                <SettingsPage
-                  hydras={navigation.hydras}
-                  commandFor={hydra.commandFor}
-                  key={settingsQuery}
-                  initialQuery={settingsQuery}
-                  accountSetup={accountSetup}
-                  hidden={page !== 'settings'}
-                  state={state}
-                  connected={connected}
-                  view={view}
-                  save={save}
-                  command={command}
-                  notify={notify}
-                  upgrade={upgrade}
-                  startUpgrade={startUpgrade}
-                />
+                <ProfileSurface name="settings" hydraId={navigation.hydraId}>
+                  <SettingsPage
+                    hydras={navigation.hydras}
+                    commandFor={hydra.commandFor}
+                    key={settingsQuery}
+                    initialQuery={settingsQuery}
+                    accountSetup={accountSetup}
+                    hidden={page !== 'settings'}
+                    state={state}
+                    connected={connected}
+                    view={view}
+                    save={save}
+                    command={command}
+                    notify={notify}
+                    upgrade={upgrade}
+                    startUpgrade={startUpgrade}
+                  />
+                </ProfileSurface>
               </div>,
               document.body,
             )}

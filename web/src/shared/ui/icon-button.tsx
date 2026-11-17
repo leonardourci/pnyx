@@ -26,5 +26,13 @@ export function IconButton({
   size?: keyof typeof SIZES
   iconSize?: number
 }) {
-  return <Button {...props} aria-label={label} className={`${SIZES[size]} ${className}`}><Icon name={icon} size={iconSize} /></Button>
+  return (
+    <Button
+      data-ui-action={icon}
+      {...props}
+      aria-label={label}
+      className={`${SIZES[size]} ${className}`}
+    ><Icon name={icon} size={iconSize} />
+    </Button>
+  )
 }

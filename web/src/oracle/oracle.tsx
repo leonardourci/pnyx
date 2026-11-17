@@ -871,6 +871,7 @@ export function Oracle({
     <OverlaySurface
       ref={dialog}
       variant="oracle"
+      data-ui-surface="oracle"
       aria-label="Oracle"
       onClose={() => setOpen(false)}
       // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.

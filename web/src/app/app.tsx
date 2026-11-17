@@ -11,16 +11,11 @@ import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
 import { placements } from './hydra-order.ts'
-import { reportRender } from './render-log.ts'
+import { ProfileSurface } from './profile-surface.tsx'
 import { HydraView } from './workspace.tsx'
 
 export function App() {
   const duration = useMotionDuration()
-  const rendering = performance.now()
-  useLayoutEffect(() => reportRender({
-    name: 'hydra-workspaces',
-    ms: performance.now() - rendering,
-  }))
   const hydra = useHydra()
 
   const current = hydra.navigation.hydraId
@@ -329,45 +324,48 @@ export function App() {
         ease: MOTION_EASING,
       }}
     >
-      <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
-        <div
-          ref={axis}
-          className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
-          data-page={hydra.navigation.page}
-          aria-label="Hydras"
-        >
-          <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
-            {rootError && (
-              <StatusNotice role="alert">{rootError}<IconButton
-                label="Dismiss"
-                onClick={() => setRootError('')}
-                icon="close"
-              />
-              </StatusNotice>
-            )}
-            <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
-              {workspaces.map(workspace => (
-                <HydraView
-                  key={workspace.viewKey}
-                  active={workspace.navigation.hydraId === current}
-                  navigatePage={hydra.navigate}
-                  edits={{
-                    ...edits,
-                    hydras: orderedHydras,
-                  }}
-                  preview={preview}
-                  hydra={{
-                    ...hydra,
-                    ...workspace,
-                    navigate,
-                    command: hydra.commandFor({ id: workspace.navigation.hydraId }),
-                  }}
+      <ProfileSurface name="sortable">
+        <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
+          <div
+            ref={axis}
+            className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
+            data-page={hydra.navigation.page}
+            aria-label="Hydras"
+          >
+            <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
+              {rootError && (
+                <StatusNotice role="alert">{rootError}<IconButton
+                  label="Dismiss"
+                  onClick={() => setRootError('')}
+                  icon="close"
                 />
-              ))}
-            </SortGroup>
+                </StatusNotice>
+              )}
+              <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
+                {workspaces.map(workspace => (
+                  <ProfileSurface key={workspace.viewKey} name="workspace" hydraId={workspace.navigation.hydraId}>
+                    <HydraView
+                      active={workspace.navigation.hydraId === current}
+                      navigatePage={hydra.navigate}
+                      edits={{
+                        ...edits,
+                        hydras: orderedHydras,
+                      }}
+                      preview={preview}
+                      hydra={{
+                        ...hydra,
+                        ...workspace,
+                        navigate,
+                        command: hydra.commandFor({ id: workspace.navigation.hydraId }),
+                      }}
+                    />
+                  </ProfileSurface>
+                ))}
+              </SortGroup>
+            </div>
           </div>
-        </div>
-      </SortableWorkspace>
+        </SortableWorkspace>
+      </ProfileSurface>
     </MotionConfig>
   )
 }

@@ -1,3 +1,4 @@
+import { trackUIDrag } from '#web-app/ui-metrics.ts'
 import { CARD_SIZING, liftedCardSize } from '#web-shared/card-sizing.ts'
 import { motionDuration, MOTION_EASING, MOTION_CSS_EASING } from '#web-shared/motion.ts'
 import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler, type CSSProperties } from 'react'
@@ -494,6 +495,14 @@ export function SortableWorkspace({
     active,
     setActive,
   ] = useState<SortItem | null>(null)
+  useEffect(
+    () => active ? trackUIDrag({
+      action: active.kind,
+      hydraId: active.hydra,
+    }) : undefined,
+    [active],
+  )
+
   const [
     over,
     setOver,

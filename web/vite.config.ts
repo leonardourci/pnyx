@@ -78,6 +78,7 @@ export default defineConfig({
     devToken,
   ],
   resolve: {
+    alias: process.env.VITE_PNYX_PROFILE === '1' ? { 'react-dom/client': 'react-dom/profiling' } : {},
     conditions: [
       ...defaultClientConditions,
       'source',
