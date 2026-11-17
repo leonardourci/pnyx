@@ -80,7 +80,6 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   chevron_up: IconChevronUp,
   chevron_right: IconChevronRight,
   chevron_left: IconChevronLeft,
-  chevron_up: IconChevronUp,
   check: IconCheck,
   arrow_down: IconArrowDown,
   external: IconArrowUpRight,
