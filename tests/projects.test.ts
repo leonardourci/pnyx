@@ -1582,9 +1582,10 @@ test(
         ],
       })).revision),
       '--event-id',
-      'no-op-attachment',
+      '__proto__',
     ]
     await hydra.owner({ args: noOpArgs })
+    await pnyx.restart()
     const third = join(
       parent,
       'cedar',

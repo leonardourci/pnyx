@@ -248,7 +248,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
-  if (m.id && current.eventIds[m.id] !== undefined) {
+  if (m.id && Object.hasOwn(
+    current.eventIds,
+    m.id,
+  )) {
     return commit({
       hydraId,
       meta: m,
