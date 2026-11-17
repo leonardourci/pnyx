@@ -131,6 +131,11 @@ export function attachProjectGroup({
 
         const changes = after.filter(change =>
           JSON.stringify(change.before) !== JSON.stringify(change.after))
+
+        if (!changes.length && commandMeta.id && after[0]) {
+          changes.push(after[0])
+        }
+
         const attempt = commandMeta.id ?? randomUUID()
 
         for (const [

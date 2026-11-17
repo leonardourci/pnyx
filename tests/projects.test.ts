@@ -1569,6 +1569,22 @@ test(
         merge: 'hydra',
       }),
     ])
+    const noOpArgs = [
+      ...args.slice(
+        0,
+        -4,
+      ),
+      '--if-revision',
+      String((await hydra.owner({
+        args: [
+          'project',
+          'list',
+        ],
+      })).revision),
+      '--event-id',
+      'no-op-attachment',
+    ]
+    await hydra.owner({ args: noOpArgs })
     const third = join(
       parent,
       'cedar',
@@ -1580,6 +1596,7 @@ test(
       ),
       { recursive: true },
     )
+    await hydra.owner({ args: noOpArgs })
     await hydra.owner({ args })
     expect((await hydra.owner({
       args: [
