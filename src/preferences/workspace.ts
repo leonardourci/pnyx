@@ -17,7 +17,6 @@ export const DEFAULT_WORKSPACE: WorkspaceLayout = {
 }
 export const DEFAULT_PROJECT_WIDTH = 560
 export const DEFAULT_OPEN_CARD_HEIGHT = 520
-export const DEFAULT_WINDOW_WIDTH = 980
 export const PROJECT_MIN_WIDTH = 280
 export const OPEN_CARD_MIN_WIDTH = 560
 export const OPEN_CARD_MIN_HEIGHT = 440
