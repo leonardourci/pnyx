@@ -1,6 +1,6 @@
 import type { AgentUsage } from '#workers/provider.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { TooltipSection } from '#web-shared/ui/tooltip.tsx'
+import { UsageRow, UsageStack, UsageText, UsageSection, USAGE_TONE } from './usage-ui.tsx'
 
 const WARNING_PERCENT = 70
 const CRITICAL_PERCENT = 90
@@ -82,7 +82,7 @@ function UsageBar({
 
   return (
     <span
-      className="usage-bar"
+      className="usage-bar block h-1.25 overflow-hidden rounded bg-usage-line [&>i]:block [&>i]:h-full [&>i]:rounded [&>i]:bg-usage-fill"
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}
@@ -137,35 +137,35 @@ export function Usage({
   const showFooter = context !== undefined || cost !== undefined
 
   return (
-    <span className="shared-usage">
-      <TooltipSection className="shared-context">
-        <span className="shared-header">
-          <span className="usage-icon-line"><Icon name="context" size={13} /><strong>Context window</strong></span>
-          {percent !== undefined && <span className="shared-context-percent">{percent}% used</span>}
-        </span>
+    <span className="shared-usage flex flex-col w-full max-w-(--spacing-usage-content) p-3.25 gap-2.5">
+      <UsageSection className="shared-context">
+        <UsageRow variant="header" className="shared-header">
+          <UsageRow variant="icon" className="usage-icon-line"><Icon name="context" size={13} /><strong>Context window</strong></UsageRow>
+          {percent !== undefined && <span className="shared-context-percent text-usage-detail">{percent}% used</span>}
+        </UsageRow>
         {context ? (
-          <span className="usage-context-reading" data-tone={tone}>
-            <span className="context-amounts">
+          <UsageStack className={`usage-context-reading ${USAGE_TONE}`} data-tone={tone}>
+            <UsageRow variant="amounts" className="context-amounts">
               <span><b>{tokens({ count: context.used })} tokens</b> used</span>
               {context.left !== undefined && (
                 <span><b>{tokens({ count: context.left })}</b> left</span>
               )}
-            </span>
+            </UsageRow>
             {percent !== undefined && <UsageBar percent={percent} label="Context window use" />}
             {context.window !== undefined && (
-              <span className="context-capacity">{tokens({ count: context.window })} token capacity</span>
+              <UsageText className="context-capacity">{tokens({ count: context.window })} token capacity</UsageText>
             )}
-            <span className="shared-source"><Icon name={sourceIcon} size={13} />{source}</span>
-          </span>
-        ) : <span className="context-empty" title={usage?.unavailable}>Usage unavailable</span>}
-      </TooltipSection>
-      <TooltipSection className="shared-plan">
-        <span className="shared-header">
-          <span className="usage-icon-line"><Icon name="effort" size={13} /><strong>Plan limits</strong></span>
+            <UsageRow variant="source" className="shared-source"><Icon name={sourceIcon} size={13} />{source}</UsageRow>
+          </UsageStack>
+        ) : <span className="context-empty text-xs opacity-70 py-1" title={usage?.unavailable}>Usage unavailable</span>}
+      </UsageSection>
+      <UsageSection divided className="shared-plan">
+        <UsageRow variant="header" className="shared-header">
+          <UsageRow variant="icon" className="usage-icon-line"><Icon name="effort" size={13} /><strong>Plan limits</strong></UsageRow>
           {refresh && (
             <button
               type="button"
-              className="plan-refresh"
+              className="plan-refresh inline-flex items-center justify-center size-6.25 shrink-0 p-1 border-0 rounded-compact bg-transparent text-inherit opacity-76 cursor-pointer hover:opacity-100 hover:bg-usage-hover focus-visible:outline focus-visible:outline-current focus-visible:outline-offset-2 aria-disabled:cursor-wait aria-disabled:opacity-45"
               aria-label="Refresh plan limits"
               aria-disabled={refreshing}
               aria-busy={refreshing}
@@ -173,9 +173,9 @@ export function Usage({
             ><Icon name="reset" size={13} />
             </button>
           )}
-        </span>
-        <span className="plan-account"><Icon name={who?.icon ?? 'agent'} size={13} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge">{who.plan}</span>}</span>
-        {who?.model && <span className="shared-sub">{who.model}</span>}
+        </UsageRow>
+        <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={13} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge text-usage-detail border border-usage-badge px-1.75 py-px rounded-compact leading-[1.4] capitalize">{who.plan}</span>}</UsageRow>
+        {who?.model && <UsageText className="shared-sub">{who.model}</UsageText>}
         {windows.map(window => {
           const windowTone = usageTone({ percent: window.used })
           const resetsAt = window.resetsAt
@@ -198,39 +198,44 @@ export function Usage({
           } : undefined
 
           return (
-            <span className="shared-window" key={window.label} data-tone={windowTone}>
-              <span className="shared-window-label"><span>{window.label}</span><span>{window.used}% used</span></span>
+            <UsageStack
+              compact
+              className={`shared-window mt-2 ${USAGE_TONE}`}
+              key={window.label}
+              data-tone={windowTone}
+            >
+              <UsageRow variant="header" className="shared-window-label"><span>{window.label}</span><span>{window.used}% used</span></UsageRow>
               <UsageBar percent={window.used} label={`${window.label} plan use`} />
               {reset && (
-                <span className="shared-reset">
+                <UsageRow variant="reset" className="shared-reset">
                   <Icon name="reminder" size={11} />
                   <span>Resets in {reset.relative}</span>
                   <span>·</span>
                   <time dateTime={reset.at}>{reset.date}</time>
-                </span>
+                </UsageRow>
               )}
-            </span>
+            </UsageStack>
           )
         })}
-        {!windows.length && <span className="shared-sub">Plan limits unavailable</span>}
+        {!windows.length && <UsageText className="shared-sub">Plan limits unavailable</UsageText>}
         {error && <span role="status">{error}</span>}
-      </TooltipSection>
+      </UsageSection>
       {showFooter && (
-        <TooltipSection className="shared-footer">
-          <span className="usage-icon-line"><Icon name={footerIcon} size={13} /><span>{footerTitle}</span><b>{footerValue}</b></span>
-          <span className="shared-sub">{footerSource}</span>
-        </TooltipSection>
+        <UsageSection divided className="shared-footer">
+          <UsageRow variant="icon" className="usage-icon-line"><Icon name={footerIcon} size={13} /><span>{footerTitle}</span><b>{footerValue}</b></UsageRow>
+          <UsageText className="shared-sub">{footerSource}</UsageText>
+        </UsageSection>
       )}
       {recorded?.tokens !== undefined && (
-        <TooltipSection className="shared-footer recorded-usage">
+        <UsageSection divided className="shared-footer recorded-usage">
           <span>Recorded task tokens <b>{recorded.tokens.toLocaleString()}</b></span>
-          <span className="shared-sub">{(recorded.worker ?? 0).toLocaleString()} worker · {(recorded.hydra ?? 0).toLocaleString()} attributed Hydra</span>
-          <span className="shared-sub">Includes earlier workers. Unattributed Hydra turns excluded.</span>
-          {recorded.sharedHydra && <span className="shared-sub">Includes Hydra turns shared with other tasks.</span>}
-        </TooltipSection>
+          <UsageText className="shared-sub">{(recorded.worker ?? 0).toLocaleString()} worker · {(recorded.hydra ?? 0).toLocaleString()} attributed Hydra</UsageText>
+          <UsageText className="shared-sub">Includes earlier workers. Unattributed Hydra turns excluded.</UsageText>
+          {recorded.sharedHydra && <UsageText className="shared-sub">Includes Hydra turns shared with other tasks.</UsageText>}
+        </UsageSection>
       )}
       {usage?.helper && (
-        <TooltipSection className="shared-footer">
+        <UsageSection divided className="shared-footer">
           <strong>Routine helper · {usage.helper.batches} batches</strong>
           <span>{usage.helper.cost === undefined ? 'Cost unavailable' : `Cost $${usage.helper.cost.toFixed(2)}`}</span>
           {usage.helper.measuredBatches < usage.helper.batches && (
@@ -245,9 +250,9 @@ export function Usage({
           {usage.combinedCost !== undefined && (
             <span>Combined ${usage.combinedCost.toFixed(2)}</span>
           )}
-        </TooltipSection>
+        </UsageSection>
       )}
-      {!!recorded?.unavailable && <span className="shared-sub">{recorded.unavailable} transcript(s) unavailable.</span>}
+      {!!recorded?.unavailable && <UsageText className="shared-sub">{recorded.unavailable} transcript(s) unavailable.</UsageText>}
     </span>
   )
 }
