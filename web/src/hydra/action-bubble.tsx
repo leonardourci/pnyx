@@ -22,12 +22,13 @@ const shownKey = ({ value }: { value: Shown }) => {
 const ShownLabel = ({ value }: { value: Shown }) => (
   <>
     {value.icon && <Icon name={value.icon} size={13} />}
-    <span className="action-text">
+    <span className="action-text flex items-center gap-1 min-w-0 overflow-hidden">
       {value.sentence.map((
         part,
         index,
       ) => {
-        const className = typeof part === 'string' ? 'action-words' : 'action-reference'
+        const className = typeof part === 'string' ? 'action-words flex-[0_1_auto] min-w-0 truncate'
+          : 'action-reference flex-[1_1_38%] min-w-action-reference max-w-[55%] [&_.button.task-reference]:inline-flex [&_.button.task-reference]:items-center [&_.button.task-reference]:w-full [&_.button.task-reference]:min-w-0 [&_.task-reference_.reference]:inline-flex [&_.task-reference_.reference]:items-center [&_.task-reference_.reference]:min-w-0 [&_.task-reference_.reference]:max-w-full [&_.task-reference_.reference]:m-0 [&_.task-reference_.reference]:py-0 [&_.task-reference-space]:hidden [&_.chip-icon]:shrink-0 [&_.task-reference-title]:min-w-0 [&_.task-reference-title]:truncate'
 
         return <span key={index} className={className}><SentencePart part={part} /></span>
       })}
@@ -72,7 +73,10 @@ export function ActionBubble({
   } : label
 
   return (
-    <span className={look === 'inline' ? 'action-label' : 'action-bubble'}>
+    <span
+      className={look === 'inline' ? 'action-label inline-flex min-w-0'
+        : 'action-bubble inline-flex items-center flex-[0_1_auto] w-max min-w-0 max-w-action h-5.5 py-0 px-2 border border-line rounded-full bg-background text-ink font-medium empty:hidden [&_svg]:text-muted [&_img]:text-muted'}
+    >
       <LiveLabel<Shown>
         value={value}
         fallback={idleLabel({ idle })}

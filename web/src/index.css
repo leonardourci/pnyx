@@ -90,6 +90,13 @@
   --spacing-chat-gap: 24px;
   --spacing-chat-inset: max(calc(var(--chat-pad) + var(--chat-scrollbar, 0px)), calc((100% - var(--chat-max)) / 2));
   --spacing-jump: 34px;
+  --spacing-action-reference: min(4.5em, 100%);
+  --spacing-action: min(28ch, 100%);
+  --ease-live-label: cubic-bezier(.2, .8, .2, 1);
+  --animate-live-label: live-label-in 220ms cubic-bezier(.2, .8, .2, 1) 60ms backwards;
+  --animate-live-label-out: live-label-out 180ms ease-in forwards;
+  --animate-live-label-fade-out: live-label-fade-out 180ms ease-in forwards;
+  --animate-live-label-reduced: chat-fade-in 220ms cubic-bezier(.2, .8, .2, 1) 60ms backwards;
   --shadow-jump: 0 4px 12px var(--color-shadow);
   --animate-chat-fade: chat-fade-in 200ms ease-out;
   --animate-hydra-spin-reduced: hydra-spin 2s linear infinite;
@@ -231,46 +238,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 @keyframes reply-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
 @keyframes reply-dot-fade { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
 
-/* What the agent is running: a pill after the dots, the card-link look. */
-.action-bubble { display: inline-flex; align-items: center; flex: 0 1 auto; width: max-content; min-width: 0; max-width: min(28ch, 100%); height: 22px; padding: 0 8px; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-background); color: var(--color-ink); font-weight: 500; }
-
-.action-bubble:empty { display: none; }
-
-.action-bubble svg, .action-bubble img { color: var(--color-muted); }
-
-.action-label { display: inline-flex; min-width: 0; }
-
-.action-text { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
-
-.action-words { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.action-reference { flex: 1 1 38%; min-width: min(4.5em, 100%); max-width: 55%; }
-
-.action-reference .button.task-reference { display: inline-flex; align-items: center; width: 100%; min-width: 0; }
-
-.action-reference .task-reference .reference { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; margin: 0; padding-block: 0; }
-
-.action-reference .task-reference-space { display: none; }
-
-.action-reference .chip-icon { flex-shrink: 0; }
-
-.action-reference .task-reference-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.live-label { display: inline-grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-width: 0; max-width: 100%; overflow: hidden; transition: width 240ms cubic-bezier(.2, .8, .2, 1); }
-
-.live-label-item { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; white-space: nowrap; transition: opacity 320ms ease; animation: live-label-in 220ms cubic-bezier(.2, .8, .2, 1) 60ms backwards; }
-
-.live-label-item[data-leaving] { animation: live-label-out 180ms ease-in forwards; }
-
-.live-label[data-done] > .live-label-item:not([data-leaving]) { opacity: .5; }
-
 @keyframes live-label-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 @keyframes live-label-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px); } }
 
 @keyframes live-label-fade-out { to { opacity: 0; } }
-
-@media (prefers-reduced-motion: reduce) { .live-label { transition: none; } .live-label-item { animation-name: chat-fade-in; } .live-label-item[data-leaving] { animation-name: live-label-fade-out; } }
 
 @keyframes chat-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
