@@ -101,7 +101,7 @@ export const settings = guard({
     ]
     const memoryPatch = patch && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch)
 
-    if (memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
+    if (patch && typeof patch === 'object' && memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
       const state = loadHydra({ hydraId }).state
 
       if ('projectPoleis' in patch) {
