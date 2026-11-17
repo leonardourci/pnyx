@@ -78,12 +78,16 @@ test(
       hydra: hydra.id,
       hold: true,
       partial: 'Finishing the current change',
+      reply: 'The parser now rejects an empty input',
     })
     onTestFinished(() => held.release())
     await hydra.owner({
       args: [
-        'reply',
+        'task',
+        'send',
         'switch',
+        '--harness',
+        'claude',
         '--text',
         'Finish the current change',
       ],
@@ -128,6 +132,29 @@ test(
     const next = pnyx.codex.sessions.find(session => session.cwd === folder)!
     expect(next.received[0]).toContain(`task chat ${task.id} --session claude-code:${worker.id}`)
     expect(next.received[0]).toContain('Continue with the regression fix')
+    const currentThread = await hydra.owner({
+      args: [
+        'task',
+        'chat',
+        'switch',
+      ],
+    })
+    expect(currentThread.thread.entries).toContainEqual(expect.objectContaining({
+      text: 'The parser now rejects an empty input',
+    }))
+
+    const selected = await hydra.owner({
+      args: [
+        'task',
+        'chat',
+        'switch',
+        '--session',
+        `codex:${next.id}`,
+      ],
+    })
+    expect(selected.thread.entries).not.toContainEqual(expect.objectContaining({
+      text: 'The parser now rejects an empty input',
+    }))
     expect(next.cwd).toBe(folder)
     expect(worker.closed).toBe(true)
     expect(next.id).not.toBe(worker.id)

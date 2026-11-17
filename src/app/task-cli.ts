@@ -1,3 +1,4 @@
+import { taskSessions } from '#workers/session-history.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queueCardInput, validateCardInput } from '#workers/card-input.ts'
 import { knownHarness } from '#workers/providers.ts'
@@ -28,7 +29,7 @@ import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
-import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
+import { startOverride, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
@@ -907,6 +908,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         state,
         card,
         homes: [],
+        selectedSession: session !== undefined,
         before: values.before as string | undefined,
       }),
     }

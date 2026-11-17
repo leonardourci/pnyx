@@ -86,7 +86,7 @@ function replacingNote({
   card: Card
   replacing: string
 }): string {
-  const lines = [`This start replaces the lost session ${replacing}; your folder keeps its work, so continue from where it stopped instead of starting over.`]
+  const lines = [`This start continues from session ${replacing} in the existing folder; keep its work and pick up where it stopped.`]
 
   if (card.status) {
     const note = card.status.note ? `: ${card.status.note}` : ''
