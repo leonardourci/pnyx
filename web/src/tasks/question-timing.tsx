@@ -1,3 +1,4 @@
+import { QuestionActions } from '#web-shared/ui/question-panel.tsx'
 import { useId, useLayoutEffect, useRef, useState } from 'react'
 import type { Ask, Card } from '#tasks/model.ts'
 import { reminderTime } from '#tasks/time.ts'
@@ -136,7 +137,7 @@ export function QuestionTiming({
   }
 
   return (
-    <div className="pending-decision-actions">
+    <QuestionActions>
       {ask.deferredUntil && <span className="muted small">Later until {label}</span>}
       <Button
         ref={trigger}
@@ -156,6 +157,6 @@ export function QuestionTiming({
         >Answer now
         </Button>
       )}
-    </div>
+    </QuestionActions>
   )
 }

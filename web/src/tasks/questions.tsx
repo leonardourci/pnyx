@@ -1,3 +1,4 @@
+import { QuestionFields, QuestionOptions, QuestionHeading, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { useState } from 'react'
@@ -8,6 +9,8 @@ import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { markdownText } from '#web-hydra/markdown-text.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import type { Command } from '#web-app/connection.ts'
+
+const QUESTION_FIELD_CLASS = 'ask-question border-0 p-0 m-0 flex flex-col gap-1 min-w-0 [&_legend]:p-0 [&_legend]:mb-1 [&_legend]:font-chat [&_legend]:text-meta [&_legend]:leading-question [&_legend]:font-normal [&_legend]:not-italic [&_legend]:text-ink'
 
 type Send = ({
   request,
@@ -48,11 +51,11 @@ function QuestionField({
   })
 
   return (
-    <fieldset className="ask-question" disabled={locked}>
+    <fieldset className={QUESTION_FIELD_CLASS} disabled={locked}>
       <legend>Question {index + 1}{question.multiSelect && <span className="small muted"> · pick any</span>}</legend>
-      {question.header && <CollapsibleText className="ask-header" text={question.header} />}
+      {question.header && <CollapsibleText className="ask-header mr-1.75 py-px px-1.5 rounded-sm bg-subtle text-gold text-meta font-sans font-normal leading-[normal] uppercase tracking-question align-middle" text={question.header} />}
       <CollapsibleText text={question.question} />
-      <div className="ask-options">
+      <QuestionOptions>
         {question.options.map((
           option,
           i,
@@ -65,7 +68,7 @@ function QuestionField({
             choose={() => toggle({ n: i + 1 })}
           />
         ))}
-      </div>
+      </QuestionOptions>
       {!question.multiSelect && (
         <Input
           type={question.secret ? 'password' : undefined}
@@ -186,9 +189,9 @@ function FormInput({
 
   if (field.options) {
     return (
-      <div className="ask-question" role="group" aria-label={name}>
+      <div className={QUESTION_FIELD_CLASS} role="group" aria-label={name}>
         <CollapsibleText text={label} />
-        <div className="ask-options">
+        <QuestionOptions>
           {field.options.map(option => (
             <ChoiceOption
               key={option}
@@ -197,13 +200,13 @@ function FormInput({
               choose={() => change({ value: option })}
             />
           ))}
-        </div>
+        </QuestionOptions>
       </div>
     )
   }
 
   return (
-    <div className="ask-question">
+    <div className={QUESTION_FIELD_CLASS}>
       <CollapsibleText text={label} />
       <Input
         aria-label={name}
@@ -249,7 +252,7 @@ export function Form({
   const ready = fields.every(f => !f.required || filled[f.name] !== undefined)
 
   return (
-    <div className="ask-choices">
+    <QuestionFields>
       {fields.map(field => (
         <FormInput
           key={field.name}
@@ -288,7 +291,7 @@ export function Form({
           </Button>
         )}
       </div>
-    </div>
+    </QuestionFields>
   )
 }
 
@@ -312,7 +315,7 @@ function Choices({
   const typed = choices.find(c => c.text !== 'none')
 
   return (
-    <div className="ask-choices">
+    <QuestionFields>
       {typed && (
         <Input
           aria-label={typed.text === 'required' ? `${typed.label}: what to change` : `${typed.label}: what to do instead`}
@@ -339,7 +342,7 @@ function Choices({
           </Button>
         ))}
       </div>
-    </div>
+    </QuestionFields>
   )
 }
 
@@ -423,11 +426,11 @@ export function InlineQuestions({
         const pending = busy === requestId({ request })
 
         return (
-          <article key={requestId({ request })} className={`ask${request.answered ? ' answered' : ''}`} aria-label={TITLE[request.kind] ?? 'Agent request'}>
-            <strong className="ask-title">
+          <QuestionPanel key={requestId({ request })} answered={!!request.answered} aria-label={TITLE[request.kind] ?? 'Agent request'}>
+            <QuestionHeading>
               <Icon name="agent" size={14} />
               {TITLE[request.kind] ?? 'Agent request'}
-            </strong>
+            </QuestionHeading>
             {request.kind !== 'question' && <CollapsibleText text={request.text ?? ''} />}
             {request.answered
               ? <span className="receipt">Answered · waiting for the session to move on</span>
@@ -443,7 +446,7 @@ export function InlineQuestions({
                       send={send}
                     />
                   )}
-          </article>
+          </QuestionPanel>
         )
       })}
     </>

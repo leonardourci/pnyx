@@ -1,3 +1,4 @@
+import { QuestionHeading, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { useState } from 'react'
 import type { Card } from '#tasks/model.ts'
 import type { Attention, PermissionRequest } from '#workers/model.ts'
@@ -103,8 +104,8 @@ export function InlinePermissions({
         }
 
         return (
-          <article key={request.id} className={`ask${pending ? '' : ' answered'}`} aria-label={request.questions ? 'Agent question' : 'Tool permission'}>
-            <strong className="ask-title"><Icon name="agent" size={14} />{title({ request })}</strong>
+          <QuestionPanel key={request.id} answered={!pending} aria-label={request.questions ? 'Agent question' : 'Tool permission'}>
+            <QuestionHeading ><Icon name="agent" size={14} />{title({ request })}</QuestionHeading>
             {details.length > 0 && (
               <dl className="permission-details">
                 {details.map(row => (
@@ -195,7 +196,7 @@ export function InlinePermissions({
                       </Button>
                     </div>
                   )}
-          </article>
+          </QuestionPanel>
         )
       })}
     </>
