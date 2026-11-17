@@ -1,9 +1,11 @@
 import {
   IconCurrencyDollar, IconAlertCircle, IconArrowDown, IconArrowLeft, IconArrowFork, IconArrowRight,
-  IconArrowsMinimize, IconArrowsSplit2, IconArrowUpRight,
+  IconArrowsMinimize, IconArrowsMoveHorizontal,
+  IconArrowsSplit2, IconArrowUpRight,
   IconAt, IconGripVertical,
   IconBolt, IconBoltFilled, IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck,
-  IconChevronDown, IconChevronRight, IconCircleArrowUp, IconClipboardList, IconClock, IconCode,
+  IconChevronDown, IconChevronRight, IconChevronLeft, IconChevronUp,
+  IconCircleArrowUp, IconClipboardList, IconClock, IconCode,
   IconCopy, IconCpu, IconCube, IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye,
   IconEyeCheck, IconFileText, IconFold, IconFolder, IconGauge, IconGitFork, IconGitPullRequest,
   IconHammer,
@@ -23,6 +25,8 @@ import {
 export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   search: IconSearch,
   fold_columns: IconFold,
+  unfold_columns: IconArrowsMoveHorizontal,
+
   restart: IconRotateClockwise,
   upgrade: IconCircleArrowUp,
   fix: IconTool,
@@ -74,6 +78,8 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   more: IconDots,
   chevron_down: IconChevronDown,
   chevron_right: IconChevronRight,
+  chevron_left: IconChevronLeft,
+  chevron_up: IconChevronUp,
   check: IconCheck,
   arrow_down: IconArrowDown,
   external: IconArrowUpRight,
@@ -122,6 +128,8 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   dispatch: IconArrowsSplit2,
   inscribe: IconWriting,
   compact: IconArrowsMinimize,
+  IconArrowsMoveHorizontal,
+
   logs: IconFileAnalytics,
   'log-days': IconHistory,
   'log-size': IconDatabase,

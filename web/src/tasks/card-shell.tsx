@@ -58,7 +58,7 @@ export function CardHeading({
     <div className="card-title-row flex min-w-0 items-start gap-1.25 [&>.tooltip-anchor]:shrink-0">
       {hasChildren && (
         <IconButton
-          icon="chevron_right"
+          icon={childrenOpen ? 'chevron_up' : 'chevron_down'}
           iconSize={14}
           size="toggle"
           className="subtask-toggle"

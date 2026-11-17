@@ -574,6 +574,40 @@ test(
         clientWidth,
       }) => scrollWidth <= clientWidth)).toBe(true)
       expect(await workspace.locator('.project-column').count()).toBe(2)
+      const foldAll = workspace.getByRole(
+        'button',
+        {
+          name: 'Fold all projects',
+          exact: true,
+        },
+      )
+      const inward = await foldAll.locator('svg').innerHTML()
+      await suite.getByRole(
+        'button',
+        {
+          name: 'Fold Suite',
+          exact: true,
+        },
+      ).click()
+      await foldAll.click()
+      await until({
+        what: 'fold-all finishes a partially folded Hydra',
+        check: async () => await workspace.locator('.project-column.folded').count() === 2,
+      })
+      const unfoldAll = workspace.getByRole(
+        'button',
+        {
+          name: 'Unfold all projects',
+          exact: true,
+        },
+      )
+      expect(await unfoldAll.locator('svg').innerHTML()).not.toBe(inward)
+      await unfoldAll.click()
+      await until({
+        what: 'unfold-all opens every project',
+        check: async () => await workspace.locator('.project-column.folded').count() === 0,
+      })
+      expect(await foldAll.locator('svg').innerHTML()).toBe(inward)
     } finally {
       await page.context().close()
     }
@@ -1117,7 +1151,7 @@ test(
       await workspace.getByRole(
         'button',
         {
-          name: 'Fold all projects',
+          name: 'Unfold all projects',
           exact: true,
         },
       ).click()

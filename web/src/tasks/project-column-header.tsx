@@ -27,7 +27,7 @@ export function ProjectColumnHeader({
     <header className="project-column-heading relative flex min-h-10.75 items-center justify-between gap-2 border-b border-column-line px-2 py-1.25 group-[.folded]/project:h-full group-[.folded]/project:border-0 group-[.folded]/project:p-2">
       <div className={`contents ${hint ? 'invisible' : ''}`} aria-hidden={hint}>
         <Button
-          className="min-w-0 touch-none justify-start gap-2 [&>strong]:truncate [&>svg]:rotate-90 group-[.folded]/project:self-start group-[.folded]/project:[writing-mode:vertical-rl] group-[.folded]/project:[&>svg]:rotate-0"
+          className="min-w-0 touch-none justify-start gap-2 [&>strong]:truncate group-[.folded]/project:self-start group-[.folded]/project:[writing-mode:vertical-rl]"
           {...drag.attributes}
           {...drag.listeners}
           ref={drag.setActivatorNodeRef}
@@ -35,7 +35,7 @@ export function ProjectColumnHeader({
           data-key-scope="hydra"
           aria-label={`${folded ? 'Unfold' : 'Fold'} ${column.title}`}
           onClick={fold}
-        ><Icon name="chevron_right" size={15} /><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
+        ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={15} /><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
         </Button>
         {!folded && <IconButton icon="plus" label={`New task in ${column.title}`} onClick={create} />}
       </div>

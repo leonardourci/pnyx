@@ -771,9 +771,12 @@ export function HydraView({
       label: projectTitle({ project: project.path }),
     }))
 
+  const allProjectsFolded = columns.every(column =>
+    view.workspace.foldedProjects.includes(column.id))
+
   const toggleAllProjects = () => {
     const allProjectIds = columns.map(column => column.id)
-    const foldedProjects = view.workspace.foldedProjects.length ? [] : allProjectIds
+    const foldedProjects = allProjectsFolded ? [] : allProjectIds
     save({ patch: { workspace: { foldedProjects } } })
   }
 
@@ -1025,14 +1028,14 @@ export function HydraView({
               </SortGroup>
             </nav>
             <IconButton
-              label="Fold all projects"
+              label={allProjectsFolded ? 'Unfold all projects' : 'Fold all projects'}
               onClick={toggleAllProjects}
-              icon="fold_columns"
+              icon={allProjectsFolded ? 'unfold_columns' : 'fold_columns'}
             />
             <IconButton
               label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}
               onClick={toggleHydra}
-              icon="chevron_right"
+              icon={view.workspace.collapsed ? 'chevron_right' : 'chevron_left'}
             />
           </header>
           <main
@@ -1070,7 +1073,7 @@ export function HydraView({
                   className="chat-fold absolute top-3 right-1.75 z-4 p-1"
                   label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
                   onClick={toggleChat}
-                  icon="chevron_right"
+                  icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                 />
                 <div className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-[760px]:[&>.hydra-chat]:w-[calc(100vw-2.375rem)]! max-[760px]:[&>.hydra-chat]:basis-[calc(100vw-2.375rem)]!" hidden={view.workspace.chatCollapsed}>
                   <HydraChat

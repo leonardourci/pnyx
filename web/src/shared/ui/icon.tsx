@@ -123,7 +123,7 @@ export function Icon({
     name,
   ) && TABLER_ICONS[name]) || IconRobot
 
-  const className = name === 'fold_columns' ? 'icon-fold-columns' : undefined
+  const className = name === 'fold_columns' ? 'rotate-90' : undefined
 
   return (
     <Mark
