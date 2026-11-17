@@ -567,8 +567,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-family: var(--font-chat); font-size: var(--text-pane); font-weight: 700; line-height: 1.35; margin: 1.2em 0 .5em; }
 
-.markdown 
-.markdown 
+.markdown h1 { font-size: var(--text-pane); }
+
+.markdown h2 { font-size: var(--text-pane); }
+
 .markdown ul, .markdown ol { padding-left: 1.6em; margin: var(--block-gap) 0; }
 
 .markdown ul { list-style: disc; }
@@ -1089,7 +1091,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .account-model-option { gap: 0; }
 .account-model-option > .account-model-choose { flex: 1; min-width: 0; justify-content: flex-start; min-height: 36px; gap: 8px; padding: 7px; font-size: var(--text-ui); text-align: left; }
 .account-model-choose > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.account-model-choose > .account-model-pin { min-height: 28px; width: 28px; padding: 4px; color: var(--color-muted); }
+.account-model-choose > svg { flex-shrink: 0; }
+.account-model-pin { min-height: 28px; width: 28px; padding: 4px; color: var(--color-muted); }
 .account-model-pin[aria-pressed=true] { color: var(--color-gold); }
 .account-model-add { flex: 0 0 auto; border-top: 1px solid var(--color-line); padding-top: 8px; }
 .account-model-add > .button { width: 100%; font-size: var(--text-ui); }
