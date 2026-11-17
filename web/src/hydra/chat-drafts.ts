@@ -184,24 +184,39 @@ export function useDraftSnapshot({ drafts }: { drafts: ChatDrafts }) {
   return useStore(drafts.settled)
 }
 
+interface DraftPersistence {
+  commentsKey: string
+  saveText({ text }: { text: string }): void
+}
+
+// A project move remounts its card before a deferred storage write can preserve the draft.
+const cachedDrafts = new Map<string, {
+  drafts: ChatDrafts
+  persistence: { current: DraftPersistence }
+}>()
+
 export function useChatDrafts({
   text,
   commentsKey,
   saveText,
+  identity,
 }: {
   text: string
   commentsKey: string
   saveText({ text }: { text: string }): void
+  identity?: string
 }) {
   const persistence = useRef({
     commentsKey,
     saveText,
   })
-  persistence.current = {
-    commentsKey,
-    saveText,
-  }
-  const [drafts] = useState(() => {
+  const [entry] = useState(() => {
+    const existing = identity ? cachedDrafts.get(identity) : undefined
+
+    if (existing) {
+      return existing
+    }
+
     let comments: ChatComment[] = []
 
     try {
@@ -211,7 +226,7 @@ export function useChatDrafts({
       })
     } catch { /* Blocked storage starts with an empty draft. */ }
 
-    return createChatDrafts({
+    const drafts = createChatDrafts({
       text,
       comments,
       save: ({
@@ -238,7 +253,25 @@ export function useChatDrafts({
         }
       },
     })
+    const created = {
+      drafts,
+      persistence,
+    }
+
+    if (identity) {
+      cachedDrafts.set(
+        identity,
+        created,
+      )
+    }
+
+    return created
   })
+  entry.persistence.current = {
+    commentsKey,
+    saveText,
+  }
+  const { drafts } = entry
   useEffect(
     () => {
       const prefix = commentPrefix({

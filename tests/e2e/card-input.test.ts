@@ -39,9 +39,51 @@ test(
         repository,
       ],
     })
+    let releaseCreate: (() => void) | undefined
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
+      prepare: async ({ page }) => {
+        await page.addInitScript(() => {
+          const save = Storage.prototype.setItem
+
+          // eslint-disable-next-line pnyx/object-params -- Browser Storage owns write signatures.
+          Storage.prototype.setItem = function(
+            key,
+            value,
+          ) {
+            if (key.endsWith(':draft')) {
+              throw new DOMException(
+                'Storage full',
+                'QuotaExceededError',
+              )
+            }
+
+            save.call(
+              this,
+              key,
+              value,
+            )
+          }
+        })
+        await page.routeWebSocket(
+          /\/ws\?/,
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+          socket => {
+            const server = socket.connectToServer()
+            // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+            socket.onMessage(message => {
+              const frame = JSON.parse(String(message))
+
+              if (frame.name === 'task' && frame.args?.[0] === 'create' && (frame.args?.includes('An unassigned idea') || frame.args?.includes('A new quick task'))) {
+                releaseCreate = () => server.send(message)
+              } else {
+                server.send(message)
+              }
+            })
+          },
+        )
+      },
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
 
@@ -90,6 +132,19 @@ test(
       ).click()
       const card = workspace.locator('.card.selected')
       const chat = card.locator('.worker-chat')
+      await chat.waitFor()
+      const pendingCard = await card.elementHandle()
+      await page.evaluate(() => new Promise<void>(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      }))
+      expect(await card.count()).toBe(1)
+      releaseCreate!()
+      releaseCreate = undefined
+      await until({
+        what: 'creation confirms without replacing the selected card',
+        check: () => card.evaluate(({ dataset }) => dataset.task?.startsWith('task-')),
+      })
+      expect(await pendingCard!.evaluate(({ isConnected }) => isConnected)).toBe(true)
       await chat.getByRole(
         'textbox',
         {
@@ -126,8 +181,22 @@ test(
             name: 'Send to worker',
             exact: true,
           },
-        ).isEnabled(),
+        ).count() === 1
+          && await chat.getByRole(
+            'button',
+            {
+              name: 'Send to worker',
+              exact: true,
+            },
+          ).isEnabled(),
       })
+      expect(await chat.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      ).inputValue()).toBe('Start the existing idea')
       await chat.getByRole(
         'button',
         {
@@ -185,10 +254,26 @@ test(
         },
       ).click()
       await until({
+        what: 'the second creation is held',
+        check: () => releaseCreate,
+      })
+      const pendingProject = workspace.getByRole(
+        'button',
+        {
+          name: 'A new quick task',
+          exact: true,
+        },
+      )
+        .locator('xpath=ancestor::section[@data-column][1]')
+      expect(await pendingProject.getAttribute('data-column')).toBe(repository)
+      const pendingQuickTask = await pendingProject.locator('.card.selected').elementHandle()
+      releaseCreate!()
+      await until({
         what: 'the creation composer starts another worker',
         check: () => pnyx.claude.sessions.some(session => session.received.some(text => text.includes('Start from the creation composer'))),
       })
       const next = pnyx.claude.sessions.find(session => session.received.some(text => text.includes('Start from the creation composer')))!
+      expect(await pendingQuickTask!.evaluate(({ isConnected }) => isConnected)).toBe(true)
       expect(next.cwd).not.toBe(first.cwd)
       expect(next.cwd).not.toBe(repository)
       expect((await hydra.owner({
@@ -235,6 +320,7 @@ test(
           cwd: folder,
         },
         activity: 'ended',
+        terminal: { tty: '/dev/ttys009' },
       }),
     })
     await hydra.owner({

@@ -63,7 +63,9 @@ export function useTaskNavigation({
     selectedRef,
     revealing,
   ].filter((id): id is string => id !== null)
-  const interestIds = page === 'hydra' ? [...new Set(interestRefs)] : []
+  const confirmedRefs = interestRefs.map(ref => state.keys[ref] ?? ref)
+    .filter(id => state.cards[id]?.createdSeq !== 0)
+  const interestIds = page === 'hydra' ? [...new Set(confirmedRefs)] : []
   const interestKey = JSON.stringify(interestIds)
   const hadInterest = useRef(false)
   const [

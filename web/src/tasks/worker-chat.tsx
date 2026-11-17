@@ -163,6 +163,7 @@ export function WorkerChat({
     setError,
   ] = useState('')
   const drafts = useChatDrafts({
+    identity: `${location.origin}:${installation}:${hydraId}:${card.key}`,
     text: stored({
       key: `${key}:draft`,
       fallback: '',
@@ -187,7 +188,7 @@ export function WorkerChat({
   )
   useEffect(
     () => {
-      if (!connected) {
+      if (!connected || card.createdSeq === 0) {
         return
       }
 
@@ -212,6 +213,7 @@ export function WorkerChat({
     },
     [
       card.id,
+      card.createdSeq,
       command,
       connected,
     ],
@@ -385,7 +387,7 @@ export function WorkerChat({
         <RepositoryPicker
           value={chosenRepository}
           repositories={repositories}
-          disabled={!connected || assigning}
+          disabled={!connected || assigning || card.createdSeq === 0}
           change={async ({ value }) => {
             chooseRepository(value)
             setAssigning(true)
@@ -433,7 +435,7 @@ export function WorkerChat({
         fieldLabel="Message worker"
         placeholder="Message worker…"
         sendLabel="Send to worker"
-        unavailable={!connected || assigning || needsRepository}
+        unavailable={!connected || assigning || needsRepository || card.createdSeq === 0}
         loadComment={async () => {
           await command({
             name: 'thread',
