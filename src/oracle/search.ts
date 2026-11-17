@@ -229,8 +229,14 @@ export function search({
     text: redact({ text: document.text }),
   }))
   const hydraDocuments = includeMemory ? Object.entries(state.hydraMemory ?? {})
-    .filter(([key]) => !Object.hasOwn(OWNER_DOCUMENTS, key))
-    .map(([key, entry]) => ({
+    .filter(([key]) => !Object.hasOwn(
+      OWNER_DOCUMENTS,
+      key,
+    ))
+    .map(([
+      key,
+      entry,
+    ]) => ({
       card: '$board',
       kind: 'event' as const,
       at: entry.at,
