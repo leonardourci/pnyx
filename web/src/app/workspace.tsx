@@ -1,3 +1,4 @@
+import { projectTitle } from '#web-projects/view.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { createPortal } from 'react-dom'
 import { HYDRA_MARK, pickName } from '#hydra/hydra-names.ts'
@@ -763,6 +764,13 @@ export function HydraView({
     })
   }
 
+  const repositoryOptions = (state.projects ?? [])
+    .filter(project => !project.detached)
+    .map(project => ({
+      value: project.path,
+      label: projectTitle({ project: project.path }),
+    }))
+
   const toggleAllProjects = () => {
     const allProjectIds = columns.map(column => column.id)
     const foldedProjects = view.workspace.foldedProjects.length ? [] : allProjectIds
@@ -1143,12 +1151,14 @@ export function HydraView({
                               >
                                 {creatingTask?.group === c.id && (
                                   <TaskCreate
+                                    hydraId={navigation.hydraId}
+                                    storageIdentity={hydra.storageHydra}
                                     key={`${c.id}:${creatingTask.parent ?? ''}`}
                                     {...creatingTask}
-                                    repositories={c.repositories.map(path => ({
-                                      value: path,
-                                      label: path.split('/').at(-1) ?? path,
-                                    }))}
+                                    repositories={c.repositories.length
+                                      ? repositoryOptions.filter(option =>
+                                        c.repositories.includes(option.value))
+                                      : repositoryOptions}
                                     before={items.find(item => item.column === queuedColumn)?.id}
                                     command={command}
                                     connected={connected}

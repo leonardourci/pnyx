@@ -208,6 +208,7 @@ const MessageRow = memo(function MessageRow({
   const stopped = state === 'failed' && (entry.delivery?.agent?.detail ?? entry.waiting) === 'stopped'
   const canResend = canSendAgain && (stopped && !entry.sentAgain || entry.task && state === 'delivery_unknown')
   const deliverNow = canSendNow && state === 'queued'
+  const retryMessage = canRetry && (entry.unsent !== undefined || state === 'failed' && !!entry.targetAgent)
   const sentAt = sentTime({ entry })
 
   return entry.kind === 'divider' ? (
@@ -368,7 +369,7 @@ const MessageRow = memo(function MessageRow({
               <Icon name="error" size={14} />Not sent · {entry.unsent}
             </span>
           )}
-          {entry.unsent !== undefined && canRetry && (
+          {retryMessage && (
             <InlineButton onClick={() => actions.current.retry?.({ id: entry.id })}>
               Retry
             </InlineButton>

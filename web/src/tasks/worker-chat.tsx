@@ -1,3 +1,5 @@
+import type { AgentConfig } from '#workers/model.ts'
+import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -12,7 +14,10 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { CommandFailure, createPendingResource } from '#web-shared/pending-intents.ts'
 
-const replies = new Map<string, ReturnType<typeof createPendingResource<ChatEntry[], ChatEntry>>>()
+type WorkerMessage = ChatEntry & { targetAgent?: AgentConfig }
+
+type ReplyResource = ReturnType<typeof createPendingResource<WorkerMessage[], WorkerMessage>>
+const replies = new Map<string, ReplyResource>()
 
 export function WorkerChat({
   hydraId,
@@ -33,6 +38,33 @@ export function WorkerChat({
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
+  const {
+    agent,
+    settings,
+    outside,
+  } = useCardAgent({
+    card,
+    command,
+    connected,
+  })
+  const project = state.projects?.find(project => !project.detached
+    && (project.path === card.project || project.name === card.project))
+  const [
+    chosenRepository,
+    chooseRepository,
+  ] = useState('')
+  const [
+    assigning,
+    setAssigning,
+  ] = useState(false)
+  const showRepository = !outside && !project
+  const needsRepository = showRepository && !card.agent
+  const repositories = (state.projects ?? []).filter(project => !project.detached)
+    .map(project => ({
+      value: project.path,
+      label: project.name,
+    }))
+
   const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
   const key = `${location.origin}:${installation}:${hydraId}:${card.id}`
   const [resource] = useState(() => {
@@ -42,7 +74,7 @@ export function WorkerChat({
       return existing
     }
 
-    const created = createPendingResource<ChatEntry[], ChatEntry>({
+    const created = createPendingResource<WorkerMessage[], WorkerMessage>({
       scope: key,
       confirmed: [],
       adapter: {
@@ -63,6 +95,7 @@ export function WorkerChat({
     const pending = stored<{
       id: string
       text: string
+      targetAgent?: AgentConfig
       error?: string
     }[]>({
       key: `${key}:pending`,
@@ -80,6 +113,7 @@ export function WorkerChat({
           role: 'user',
           kind: 'message',
           text: message.text,
+          targetAgent: message.targetAgent,
           sending: true,
         },
       })
@@ -109,6 +143,7 @@ export function WorkerChat({
         .map(intent => ({
           id: intent.id,
           text: intent.patch.text,
+          targetAgent: intent.patch.targetAgent,
           error: intent.stage === 'refused' ? intent.error?.message : undefined,
         })),
     }))
@@ -197,6 +232,7 @@ export function WorkerChat({
 
       return {
         ...entry,
+        waiting: intent?.patch.targetAgent ? `Queued · ${intent.patch.targetAgent.harness}` : entry.waiting,
         checking: intent?.stage === 'unknown',
         sending: !!intent && intent.stage !== 'confirmed',
       }
@@ -210,9 +246,11 @@ export function WorkerChat({
   const send = async ({
     id,
     text,
+    targetAgent = agent,
   }: {
     id: string
     text: string
+    targetAgent?: AgentConfig
   }) => {
     const existing = resource.snapshot().intents.find(intent => intent.id === id)
 
@@ -229,6 +267,8 @@ export function WorkerChat({
           role: 'user',
           kind: 'message',
           text,
+          receipt: 'queued',
+          targetAgent,
           at: new Date().toISOString(),
           sending: true,
         },
@@ -238,12 +278,17 @@ export function WorkerChat({
     try {
       resource.sending({ id })
       await command({
-        name: 'reply',
-        args: [
+        name: outside ? 'reply' : 'task',
+        args: outside ? [
           card.id,
           text,
           id,
-        ],
+        ] : cardSendArgs({
+          card: card.id,
+          text,
+          id,
+          agent: targetAgent,
+        }),
         onChecking: () => resource.unknown({
           id,
           error: new CommandFailure({
@@ -286,6 +331,7 @@ export function WorkerChat({
           send({
             id: intent.id,
             text: intent.patch.text,
+            targetAgent: intent.patch.targetAgent,
           })
         }
       }
@@ -318,11 +364,53 @@ export function WorkerChat({
               send({
                 id,
                 text: intent.patch.text,
+                targetAgent: intent.patch.targetAgent,
               })
+            } else {
+              const entry = entries.find(entry => entry.id === id)
+              const reply = card.replies?.find(reply => reply.id === entry?.replyId)
+
+              if (reply?.worker && reply.text) {
+                send({
+                  id: reply.id,
+                  text: reply.text,
+                  targetAgent: reply.worker.agent,
+                })
+              }
             }
           }}
         />
       </div>
+      {showRepository && (
+        <RepositoryPicker
+          value={chosenRepository}
+          repositories={repositories}
+          disabled={!connected || assigning}
+          change={async ({ value }) => {
+            chooseRepository(value)
+            setAssigning(true)
+
+            try {
+              await command({
+                name: 'task',
+                args: [
+                  'project',
+                  card.id,
+                  '--project',
+                  value,
+                  '--event-id',
+                  crypto.randomUUID(),
+                ],
+              })
+            } catch (error) {
+              chooseRepository('')
+              notify({ text: error instanceof Error ? error.message : String(error) })
+            } finally {
+              setAssigning(false)
+            }
+          }}
+        />
+      )}
       <Composer
         hydraId={hydraId}
         storageIdentity={storageIdentity}
@@ -330,10 +418,22 @@ export function WorkerChat({
         title={card.title}
         drafts={drafts}
         thread={live ?? null}
+        settings={settings}
+        stop={card.agent?.host === 'pnyx' && (card.sessionActivity ?? card.activity) === 'working' ? async () => {
+          await command({
+            name: 'task',
+            args: [
+              'stop',
+              card.id,
+            ],
+          })
+        } : undefined}
+        stopLabel="Stop worker"
+        stopTitle="Stop worker’s turn"
         fieldLabel="Message worker"
         placeholder="Message worker…"
         sendLabel="Send to worker"
-        unavailable={!connected}
+        unavailable={!connected || assigning || needsRepository}
         loadComment={async () => {
           await command({
             name: 'thread',

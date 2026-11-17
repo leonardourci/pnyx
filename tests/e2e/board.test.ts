@@ -1651,9 +1651,10 @@ test(
             const sent = JSON.parse(String(message)) as {
               type?: string
               name?: string
+              args?: string[]
             }
 
-            if (sent.type === 'command' && sent.name === 'reply' && !lost) {
+            if (sent.type === 'command' && sent.name === 'task' && sent.args?.[0] === 'send' && !lost) {
               lost = true
               server.send(message)
               socket.close({
@@ -1684,6 +1685,21 @@ test(
           exact: true,
         },
       ).fill('Send this reply once')
+      expect(await workspace.locator('.worker-chat').getByRole(
+        'combobox',
+        {
+          name: 'Repository',
+          exact: true,
+        },
+      )
+        .isVisible()).toBe(true)
+      expect(await workspace.getByRole(
+        'button',
+        {
+          name: 'Send to worker',
+          exact: true,
+        },
+      ).isEnabled()).toBe(true)
       const workerComposer = workspace.locator('.worker-chat .composer')
       await workerComposer.getByLabel(
         'Insert files or images',

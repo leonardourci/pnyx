@@ -107,13 +107,18 @@ export function receiptLines({ entry }: { entry: ThreadEntry }): ReceiptLine[] {
     return []
   }
 
-  return [
-    line({
-      key: 'receipt',
-      state: entry.receipt,
-      received: entry.received,
-      sent,
-      why: entry.waiting,
-    }),
-  ]
+  const receipt = line({
+    key: 'receipt',
+    state: entry.receipt,
+    received: entry.received,
+    sent,
+    why: entry.waiting,
+  })
+
+  if (entry.receipt === 'queued' && entry.targetAgent) {
+    const agent = entry.targetAgent
+    receipt.text = `Queued · ${agent.harness}${agent.model ? ` / ${agent.model}` : ''}${agent.effort ? ` · ${agent.effort}` : ''}`
+  }
+
+  return [receipt]
 }
