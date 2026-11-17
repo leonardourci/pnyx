@@ -203,6 +203,7 @@ A memory save advances unused-save counts; --used "<exact lines, newline-separat
 Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
 Move a whole document to another readable space with owner memory move --key <key> --to <space> [--propose].
+Move proposals pin both source and destination with --if-revision and --if-destination-revision; a changed memory refuses confirmation.
 shared keeps $PNYX_HOME/owner/memory.jsonl; other spaces use owner/spaces/<space>/memory.jsonl. Every replacement and removal stays in the log.
 New and existing Hydras read/write shared by default. Manage readers with settings set --json and access with hydra set --memory-reads <comma-separated spaces> --memory-write <space>.
 Hydra may narrow access directly. Widening reads, readers or memory distribution needs the owner's Confirm, even in bypass modes. Repeat with --propose to save the question.
