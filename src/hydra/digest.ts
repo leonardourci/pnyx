@@ -432,7 +432,7 @@ export function hydraDigest({
   hydraId,
   state,
   owner,
-  ownerWrite = owner,
+  ownerWrite,
   projects = [],
   setup = [],
   previousDigest,
@@ -444,7 +444,7 @@ export function hydraDigest({
   hydraId: string
   state: HydraState
   owner: Memory
-  ownerWrite?: Memory
+  ownerWrite: Memory
   projects?: string[]
   setup?: string[]
   previousDigest?: string
