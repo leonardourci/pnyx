@@ -75,6 +75,13 @@
   --spacing-settings-content: 880px;
   --spacing-setting-label: 90px;
   --spacing-picker-label: 54px;
+  --spacing-dispatch-name: 8ch;
+  --spacing-dispatch-issue: 70px;
+  --shadow-invalid: inset 0 0 0 1px var(--color-red);
+  --shadow-dispatch: -14px 0 12px -2px var(--color-surface);
+  --duration-dispatch: 180ms;
+  --transition-dispatch-closed: clip-path var(--duration-dispatch) ease-out, visibility 0s var(--duration-dispatch);
+  --transition-dispatch-open: clip-path var(--duration-dispatch) ease-out;
   --spacing-settings-field: min(100%, 440px);
   --spacing-setting-icon: var(--control-h);
   --spacing-setting-preview: 280px;
@@ -587,85 +594,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .slider-track input::-moz-range-progress { @apply h-1 rounded-sm bg-gold-fill; }
 .slider-track input::-webkit-slider-thumb { @apply appearance-none size-4 -mt-1.5 border-2 border-gold rounded-full bg-surface shadow-range; }
 .slider-track input::-moz-range-thumb { @apply size-3 border-2 border-gold rounded-full bg-surface; }
-
-/* Heads dispatch in Settings. */
-.dispatch-settings { display: flex; flex-direction: column; gap: 16px; width: 100%; min-width: 0; font-size: var(--text-ui); }
-.dispatch-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-.dispatch-source { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); font-size: var(--text-meta); }
-.dispatch-desc { color: var(--color-muted); font-size: var(--text-meta); }
-.dispatch-error { color: var(--color-red); font-size: var(--text-meta); }
-.dispatch-settings h4 { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--text-ui); }
-.dispatch-settings h4 svg { color: var(--color-muted); }
-.dispatch-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); font-size: var(--text-meta); font-weight: 500; white-space: nowrap; }
-.dispatch-tag[data-level=error] { border-color: color-mix(in srgb, var(--color-red) 45%, transparent); color: var(--color-red); }
-.dispatch-tag[data-level=warning] { border-color: var(--color-gold-line); color: var(--color-gold); }
-.dispatch-add-rule { align-self: flex-start; }
-.dispatch-how { padding: 10px 12px; border: 1px solid var(--color-subtle); border-radius: 8px; background: var(--color-background); }
-.dispatch-how ol { margin: 8px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.dispatch-how li { padding-left: 8px; border-left: 2px solid var(--color-gold-line); color: var(--color-muted); font-size: var(--text-meta); }
-.dispatch-how li strong { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; color: var(--color-ink); font-size: var(--text-ui); }
-.dispatch-how > .dispatch-desc { margin: 8px 0 0; }
-.dispatch-rules, .dispatch-json { display: flex; flex-direction: column; gap: 8px; }
-/* One grid for every rule's candidates: account, effort, permissions and Fast evenly spaced, then the remove button. */
-.dispatch-table { --dispatch-space: minmax(calc(var(--settings-column-gap) / 2), 1fr); display: grid; grid-template-columns: repeat(4, max-content var(--dispatch-space)) max-content; padding: 0 20px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
-.dispatch-rule { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; padding-bottom: 6px; }
-.dispatch-rule + .dispatch-rule { border-top: 1px solid var(--color-line); }
-/* The rule's remove button ends its name line; the description and any problems take the full width below. */
-.dispatch-rule-head { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding-top: 12px; }
-.dispatch-rule-text { display: contents; }
-.dispatch-rule-text > :first-child { justify-self: start; }
-.dispatch-rule-text > :not(:first-child) { grid-column: 1 / -1; }
-.dispatch-rule-name { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-weight: 600; }
-/* Fixed names and descriptions start where the editable cells' text does. */
-.dispatch-rule-name, .dispatch-when-fixed { padding-inline: 6px; }
-.dispatch-rule-name svg { color: var(--color-muted); }
-.dispatch-when-fixed { color: var(--color-muted); font-size: var(--text-meta); }
-.dispatch-cell { width: 100%; padding: 2px 5px; border-color: transparent; background: transparent; }
-.dispatch-cell:hover { border-color: var(--color-line); }
-.dispatch-cell:focus { border-color: var(--color-gold-line); background: var(--color-surface); outline: none; }
-.dispatch-rule-input { width: auto; max-width: 100%; min-width: 8ch; field-sizing: content; font-family: var(--font-mono); font-weight: 600; }
-.dispatch-when { min-height: 0; resize: none; field-sizing: content; color: var(--color-muted); font-size: var(--text-meta); }
-.dispatch-candidate, .dispatch-add { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-subtle); }
-.dispatch-candidate > .hydra-agent-pickers { grid-column: 1 / span 7; display: grid; grid-template-columns: subgrid; column-gap: normal; }
-.dispatch-candidate > .hydra-agent-pickers > :nth-child(2 of .picker-field) { grid-column: 3; }
-.dispatch-candidate > .hydra-agent-pickers > :nth-child(3 of .picker-field) { grid-column: 5; }
-.dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { grid-column: 7; }
-.dispatch-candidate > .hydra-agent-pickers > [role=alert] { grid-column: 1 / -1; }
-.dispatch-candidate .select-menu { top: calc(100% + 4px); bottom: auto; }
-.dispatch-add { border-bottom: 0; }
-.dispatch-add > .account-model-picker { grid-column: 1 / -1; justify-self: start; }
-.dispatch-add > .account-model-picker > .button { min-height: 24px; gap: 4px; font-size: var(--text-meta); }
-.dispatch-remove { min-height: 24px; gap: 4px; color: var(--color-muted); font-size: var(--text-meta); }
-/* The question covers its remove button, growing leftwards over the row so nothing else moves. */
-.dispatch-remove-slot { position: relative; display: flex; justify-content: flex-end; }
-/* Closed, the question is clipped down to the x's own footprint; opening unclips it leftwards, so it grows out of the x. */
-.dispatch-confirm { position: absolute; top: 50%; right: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 10px; visibility: hidden; clip-path: inset(-4px 0 -4px calc(100% - var(--agent-control-h))); transform: translateY(-50%); transition: clip-path 180ms ease-out, visibility 0s 180ms; background: var(--color-surface); box-shadow: -14px 0 12px -2px var(--color-surface); font-size: var(--text-meta); white-space: nowrap; }
-.dispatch-confirm[data-open] { visibility: visible; clip-path: inset(-4px 0 -4px -24px); transition: clip-path 180ms ease-out; }
-/* The x hides at once when the question opens and comes back only once it has folded away. */
-.dispatch-remove { transition: opacity 0s 180ms; }
-.dispatch-remove-slot:has(> .dispatch-confirm[data-open]) > .dispatch-remove { opacity: 0; transition: none; }
-@media (prefers-reduced-motion: reduce) {
-  .dispatch-confirm, .dispatch-confirm[data-open], .dispatch-remove { transition: none; }
-}
-.dispatch-rule-head > .dispatch-remove-slot { grid-row: 1; grid-column: 2; }
-.dispatch-confirm .button { min-height: 26px; padding: 2px 10px; font-size: var(--text-meta); }
-.dispatch-candidate > .dispatch-remove-slot { grid-column: -2; justify-self: end; }
-/* Each cell starts at its column's left edge; Fast sits in the middle of its column. */
-.dispatch-candidate > .hydra-agent-pickers > * { justify-self: start; }
-.dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { justify-self: center; }
-.dispatch-problems { margin: 0; padding: 0; list-style: none; color: var(--color-red); font-size: var(--text-meta); line-height: 1.35; }
-.dispatch-problems li[data-level=warning], .dispatch-blocked { color: var(--color-gold); font-size: var(--text-meta); }
-.dispatch-table .dispatch-cell[data-changed], :where(.dispatch-table) .picker-field[data-changed] > :is(.select, .account-model-picker) > .button, .dispatch-table .fast-toggle[data-changed] { background: var(--color-gold-wash); }
-.dispatch-table [aria-invalid=true], .dispatch-table .picker-field[data-invalid] > :is(.select, .account-model-picker) > .button { box-shadow: inset 0 0 0 1px var(--color-red); }
-.dispatch-json > .textarea { min-height: 360px; font-family: var(--font-mono); font-size: var(--text-meta); white-space: pre; tab-size: 2; resize: vertical; }
-.dispatch-issues { margin: 0; padding: 0; list-style: none; font-size: var(--text-meta); }
-.dispatch-issues li { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: baseline; gap: 8px; padding: 3px 0; }
-@media (max-width: 760px) {
-  .dispatch-how ol, .dispatch-table { grid-template-columns: minmax(0, 1fr); }
-  .dispatch-rule { display: block; }
-  .dispatch-candidate, .dispatch-add { display: flex; flex-wrap: wrap; gap: var(--settings-column-gap); padding: var(--settings-column-gap) 0; }
-  .dispatch-candidate > .hydra-agent-pickers { display: flex; flex-basis: 100%; }
-}
 
 
 

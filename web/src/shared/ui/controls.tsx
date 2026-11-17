@@ -61,7 +61,7 @@ export function InlineButton({
 }
 
 export function Textarea({ ...props }: ComponentProps<'textarea'>) {
-  return <textarea {...props} className={`${INPUT_CLASSES} textarea bg-background w-full h-full min-h-12 max-h-textarea resize-y overflow-y-auto ${props.className ?? ''}`} />
+  return <textarea {...props} className={`${INPUT_CLASSES} textarea [:where(&)]:bg-background [:where(&)]:w-full [:where(&)]:h-full [:where(&)]:min-h-12 [:where(&)]:max-h-textarea [:where(&)]:resize-y [:where(&)]:overflow-y-auto ${props.className ?? ''}`} />
 }
 
 export function useBusy(): [boolean, ({ save }: { save: () => unknown }) => void] {
