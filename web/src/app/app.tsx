@@ -350,11 +350,11 @@ export function App() {
   return (
     <div
       ref={axis}
-      className="workspace-axis"
+      className="workspace-axis group/axis flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-15 pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-14.5 max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
       data-page={hydra.navigation.page}
       aria-label="Hydras"
     >
-      <div ref={track} className="workspace-track">
+      <div ref={track} className="workspace-track flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
         {rootError && <div className="notice" role="alert">{rootError}<Button aria-label="Dismiss" onClick={() => setRootError('')}><Icon name="close" /></Button></div>}
         {workspaces.map(workspace => (
           <HydraView

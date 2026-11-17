@@ -849,7 +849,7 @@ test(
 )
 
 test(
-  'later cards fill space before and beside an open card',
+  'an open card fills its project row and the surrounding rows have no gaps',
   async () => {
     const hydra = await pnyx.hydra()
     const add = ({
@@ -923,13 +923,115 @@ test(
         },
       )
       await until({
-        what: 'a later card fills the earlier space beside the open family',
+        what: 'the open row and partial rows before and after fill the project',
         check: async () => {
           const expanded = await open.boundingBox()
-          const filled = await filler.boundingBox()
+          const filled = await filler.locator('xpath=ancestor::article').boundingBox()
+          const preceding = await workspace.getByRole(
+            'button',
+            {
+              name: 'Fourth',
+              exact: true,
+            },
+          ).locator('xpath=ancestor::article')
+            .boundingBox()
+          const grid = await workspace.locator('.project-card-grid').boundingBox()
 
-          return !!expanded && !!filled && filled.y < expanded.y
+          return !!expanded && !!filled && !!preceding && !!grid
+            && Math.abs(expanded.width - grid.width) < 1
+            && Math.abs(preceding.width - grid.width) < 1
+            && Math.abs(filled.width - grid.width) < 1
+            && preceding.y < expanded.y && filled.y >= expanded.y + expanded.height
         },
+      })
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'project resizing starts only on the visible grip and persists a genuine drag',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      const column = workspace.locator('[data-column=ideas]')
+      const grip = workspace.getByRole(
+        'separator',
+        {
+          name: 'Resize Ideas',
+          exact: true,
+        },
+      )
+      await grip.waitFor()
+      await column.scrollIntoViewIfNeeded()
+      const bounds = await column.boundingBox()
+
+      if (!bounds) {
+        throw new Error('The project is not visible')
+      }
+
+      const original = Number(await grip.getAttribute('aria-valuenow'))
+      const edge = bounds.x + bounds.width - 2
+      const top = bounds.y + 90
+      await page.mouse.move(
+        edge,
+        top,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        edge + 80,
+        top,
+        { steps: 8 },
+      )
+      expect(Number(await grip.getAttribute('aria-valuenow'))).toBe(original)
+      await page.mouse.up()
+      expect(Number(await grip.getAttribute('aria-valuenow'))).toBe(original)
+      await grip.hover()
+      const handle = await grip.boundingBox()
+
+      if (!handle) {
+        throw new Error('The resize grip is not visible')
+      }
+
+      await page.mouse.move(
+        handle.x + handle.width / 2,
+        handle.y + handle.height / 2,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        handle.x + handle.width / 2 + 32,
+        handle.y + handle.height / 2,
+        { steps: 8 },
+      )
+      await until({
+        what: 'the grip previews the held resize',
+        check: async () => Number(await grip.getAttribute('aria-valuenow')) === original + 32,
+      })
+      await page.mouse.up()
+      await until({
+        what: 'the genuine resize is saved',
+        check: async () => {
+          const view = await hydra.owner({
+            args: [
+              'view',
+              'show',
+            ],
+          })
+
+          return view.view.workspace.projectWidths.ideas === original + 32
+        },
+      })
+      await page.reload()
+      await until({
+        what: 'the project keeps its resized width after reload',
+        check: async () => Number(await grip.getAttribute('aria-valuenow')) === original + 32,
       })
     } finally {
       await page.context().close()

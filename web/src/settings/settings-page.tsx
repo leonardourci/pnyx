@@ -699,8 +699,8 @@ export function SettingsPage({
 
   if (!connected) {
     return (
-      <section className="settings-page" aria-label="Settings" hidden={hidden}>
-        <header className="settings-head"><h1>Settings</h1></header>
+      <section className="settings-page min-h-0 flex-1 overflow-y-auto px-[max(20px,calc((100%-880px)/2))] pb-30 scroll-pt-[calc(var(--settings-search-height,120px)+8px)] [--settings-column-gap:14px] [--agent-control-h:calc(var(--control-h)+var(--text-meta))]" aria-label="Settings" hidden={hidden}>
+        <header className="settings-head pt-7 pb-1.5 text-center [&>h1]:m-0 [&>h1]:font-brand [&>h1]:text-pane [&>h1]:font-bold [&>p]:mt-0.5 [&>p]:text-ui [&>p]:text-muted"><h1>Settings</h1></header>
         <p role="status" className="muted">Waiting for connection…</p>
       </section>
     )
@@ -708,12 +708,12 @@ export function SettingsPage({
 
   return (
     <section
-      className="settings-page"
+      className="settings-page min-h-0 flex-1 overflow-y-auto px-[max(20px,calc((100%-880px)/2))] pb-30 scroll-pt-[calc(var(--settings-search-height,120px)+8px)] [--settings-column-gap:14px] [--agent-control-h:calc(var(--control-h)+var(--text-meta))]"
       aria-label="Settings"
       ref={surface}
       hidden={hidden}
     >
-      <header className="settings-head">
+      <header className="settings-head pt-7 pb-1.5 text-center [&>h1]:m-0 [&>h1]:font-brand [&>h1]:text-pane [&>h1]:font-bold [&>p]:mt-0.5 [&>p]:text-ui [&>p]:text-muted">
         <h1 data-settings-heading tabIndex={-1}>Settings</h1>
       </header>
       <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />

@@ -6,10 +6,10 @@ import type { ViewPreferences } from '#preferences/model.ts'
 import type { Card as CardData, SavedLabelColor } from '#tasks/model.ts'
 import { Label } from '#web-shared/ui/label.tsx'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
-import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
+import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { CardTitle } from './card-title.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
-import { OPEN_CARD_MIN_HEIGHT, OPEN_CARD_MIN_WIDTH, DEFAULT_OPEN_CARD_WIDTH, DEFAULT_OPEN_CARD_HEIGHT, DEFAULT_WINDOW_WIDTH } from '#preferences/workspace.ts'
+import { OPEN_CARD_MIN_HEIGHT, DEFAULT_OPEN_CARD_HEIGHT, DEFAULT_WINDOW_WIDTH } from '#preferences/workspace.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -66,7 +66,7 @@ function ContextIndex({
   }
 
   return (
-    <nav className="card-index" aria-label="On this card">
+    <nav className="card-index flex flex-wrap items-center gap-x-2 gap-y-0.5 text-meta text-muted [&_.button]:min-h-0 [&_.button]:px-1 [&_.button]:py-0 [&_.button]:text-meta" aria-label="On this card">
       <span>{questions === 1 ? '1 question' : `${questions} questions`}</span>
       {intent && (
         <Button
@@ -265,11 +265,6 @@ export const HydraCard = memo(function HydraCard({
     OPEN_CARD_MIN_HEIGHT,
     view.cardHeights[card.id] ?? DEFAULT_OPEN_CARD_HEIGHT,
   )
-  const width = view.workspace.cardWidths[card.id] ?? DEFAULT_OPEN_CARD_WIDTH
-  const [
-    widthPreview,
-    setWidthPreview,
-  ] = useState<number | null>(null)
   const [
     reminding,
     setReminding,
@@ -317,7 +312,7 @@ export const HydraCard = memo(function HydraCard({
   const tags = card.tags.filter(tag => tag !== card.project)
   const showClosedProject = !selected && !!card.project
   const labels = (showClosedProject || tags.length > 0) && (
-    <div className="card-labels">
+    <div className="card-labels flex shrink-0 flex-wrap gap-1 [&_.task-label]:whitespace-normal [&_.task-label]:wrap-anywhere [&_.task-label]:text-clip [&_.task-label]:px-1">
       {showClosedProject && (
         <CardProjectLabel card={card} legacyProject={legacyProject} labelColors={labelColors} />
       )}
@@ -338,7 +333,7 @@ export const HydraCard = memo(function HydraCard({
     }),
     hidden: tab !== id,
     tabIndex: 0,
-    className: 'card-panel',
+    className: 'card-panel flex min-h-0 min-w-0 flex-1 flex-col gap-2.25 overflow-auto hidden:hidden [&>.detail]:flex-none [&>.detail]:overflow-visible',
   })
   // Activity mounts only while it shows, so a hidden one reads no history or report; Context stays mounted to keep draft answers.
   const showsActivity = tab === 'activity'
@@ -346,13 +341,10 @@ export const HydraCard = memo(function HydraCard({
   return (
     <article
       ref={element}
-      className={`card ${selected ? 'selected' : ''}`}
+      className={`card group/card relative m-0 flex min-h-0 min-w-0 w-full shrink-0 cursor-pointer flex-col gap-1.75 overflow-visible rounded-[10px] border bg-card-fill px-2.75 pt-2.25 pb-2.5 transition-[height,border-color,background-color] duration-240 motion-reduce:transition-none has-[.resize:active]:transition-colors backdrop:bg-shadow ${selected ? 'selected border-gold-line' : 'border-line select-none hover:border-control has-[.card-open:focus-visible]:border-gold'} data-[windowed=true]:fixed data-[windowed=true]:top-[8dvh] data-[windowed=true]:left-1/2 data-[windowed=true]:right-auto data-[windowed=true]:bottom-auto data-[windowed=true]:-translate-x-1/2 data-[windowed=true]:bg-surface data-[windowed=true]:text-ink data-[windowed=true]:shadow-window`}
       style={{
         height: selected ? (preview ?? height) : undefined,
-        width: selected ? (widthPreview ?? (windowed ? Math.max(
-          width,
-          DEFAULT_WINDOW_WIDTH,
-        ) : width)) : undefined,
+        width: selected && windowed ? DEFAULT_WINDOW_WIDTH : undefined,
       }}
       data-task={card.id}
       data-windowed={windowed}
@@ -383,8 +375,8 @@ export const HydraCard = memo(function HydraCard({
       data-has-children={hasChildren}
 
     >
-      {!card.parentId && <span className="subtask-drop" data-subtask-drop aria-hidden="true">Sub-task</span>}
-      <div className="card-content">
+      {!card.parentId && <span className="subtask-drop absolute top-1/2 left-1/2 z-8 hidden -translate-1/2 rounded-full border border-gold-line bg-surface px-2.25 py-0.75 text-meta text-gold hover:bg-gold-fill hover:text-gold-ink" data-subtask-drop aria-hidden="true">Sub-task</span>}
+      <div className="card-content flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden [&>*]:shrink-0 [&>.card-open-content]:shrink">
         <CardState
           card={card}
           status={status}
@@ -402,16 +394,16 @@ export const HydraCard = memo(function HydraCard({
               interactive
               label="Agent details"
             >
-              <span className="card-agent" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
+              <span className="card-agent ml-auto inline-flex text-muted" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
                 <Icon name={card.agent.provider} />
               </span>
             </Tooltip>
           )}
         </CardState>
-        <div className="card-title-row">
+        <div className="card-title-row flex min-w-0 items-start gap-1.25 [&>.tooltip-anchor]:shrink-0">
           {hasChildren && (
             <Button
-              className="subtask-toggle"
+              className="subtask-toggle min-w-3.5 flex-none px-0 py-0.5 aria-expanded:[&_svg]:rotate-90"
               aria-label={`Sub-tasks of ${card.title}`}
               aria-expanded={childrenOpen}
               onClick={event => {
@@ -583,8 +575,8 @@ export const HydraCard = memo(function HydraCard({
           />
         )}
         {selected && (
-          <div className="card-open-content">
-            <div className="card-details">
+          <div className="card-open-content grid min-h-0 flex-1 grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)] gap-3.5 pt-1.5">
+            <div className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">
               <Tabs
                 prefix={tabsId}
                 label="Card sections"
@@ -602,7 +594,7 @@ export const HydraCard = memo(function HydraCard({
                 ]}
               />
               <div {...panel({ id: 'context' })}>
-                {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
+                {card.copy?.state === 'flagged' && <div className="copy-warning"><RichText text={card.copy.reason ?? ''} /></div>}
                 {waiting.length > 0 && (card.intent || factual) && (
                   <ContextIndex
                     questions={waiting.length}
@@ -610,7 +602,7 @@ export const HydraCard = memo(function HydraCard({
                     state={!!factual}
                   />
                 )}
-                {card.brief?.trim() && <section className="card-section" aria-label="Instructions"><h3 className="eyebrow">Instructions</h3><CollapsibleText text={card.brief} /></section>}
+                {card.brief?.trim() && <section className="card-section flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Instructions"><h3 className="eyebrow">Instructions</h3><RichText text={card.brief} /></section>}
                 <TaskQuestion
                   card={card}
                   connected={connected}
@@ -619,15 +611,15 @@ export const HydraCard = memo(function HydraCard({
                   answer={answer}
                 />
                 {card.intent && (
-                  <section className="card-section card-intent" aria-label="Intent">
+                  <section className="card-section card-intent flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Intent">
                     <h3 className="eyebrow">Intent</h3>
-                    <CollapsibleText text={card.intent} />
+                    <RichText text={card.intent} />
                   </section>
                 )}
                 {factual && (
-                  <section className="card-section card-current-state" aria-label="Current state">
+                  <section className="card-section card-current-state flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Current state">
                     <h3 className="eyebrow">Current state</h3>
-                    <CollapsibleText text={factual.text} />
+                    <RichText text={factual.text} />
                     <p className="muted small">{stateSource}, {relativeTime({
                       at: factual.at,
                       now,
@@ -643,11 +635,11 @@ export const HydraCard = memo(function HydraCard({
                 {showsActivity && (
                   <>
                     {!!card.ask?.length && (
-                      <section className="card-section" aria-label="Your words">
+                      <section className="card-section flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Your words">
                         <h3 className="eyebrow">Your words</h3>
                         {card.ask.map(entry => (
-                          <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words">
-                            <CollapsibleText text={entry.text} />
+                          <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words [&+&]:mt-1.5">
+                            <RichText text={entry.text} />
                             <p className="muted small">{relativeTime({
                               at: entry.at,
                               now,
@@ -662,7 +654,7 @@ export const HydraCard = memo(function HydraCard({
                       command={command}
                       connected={connected}
                     />
-                    {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
+                    {card.launch?.dispatch && <div className="muted small"><RichText text={card.launch.dispatch} /></div>}
                     {children}
                   </>
                 )}
@@ -700,6 +692,7 @@ export const HydraCard = memo(function HydraCard({
       </div>
       {selected && (
         <Resize
+          className="bottom-0! right-auto! left-[calc(50%-3rem)]! h-6! w-24 after:top-4.25! after:bg-muted hover:after:bg-gold focus:after:bg-gold"
           label="Resize card"
           axis="y"
           value={height}
@@ -713,23 +706,6 @@ export const HydraCard = memo(function HydraCard({
               })
             } finally {
               setPreview(null)
-            }
-          }}
-        />
-      )}
-      {selected && (
-        <Resize
-          label="Resize card width"
-          value={width}
-          min={OPEN_CARD_MIN_WIDTH}
-          onPreview={({ value }) => setWidthPreview(value)}
-          onCommit={async ({ value }) => {
-            try {
-              return await save({
-                patch: { workspace: { cardWidths: { [card.id]: value } } },
-              })
-            } finally {
-              setWidthPreview(null)
             }
           }}
         />

@@ -58,21 +58,31 @@ export function CardState({
     now,
     compact,
   })
+  const colors: Record<string, string> = {
+    asks: 'text-gold',
+    'asks-hydra': 'text-slate',
+    working: 'text-green',
+    done: 'text-green',
+    stopped: 'text-red',
+    blocked: 'text-red',
+    waiting: 'text-slate',
+  }
+  const color = colors[status.kind] ?? 'text-muted'
   const pill = (
-    <span className={`agent-activity activity-${status.kind}`} aria-label={text}>
-      {status.kind === 'working' ? <WorkingDots /> : <i aria-hidden="true" />}
-      <span className="activity-text">{text}</span>
-      {progress && <span className="task-progress">{progress}</span>}
+    <span className={`agent-activity activity-${status.kind} flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden rounded-full bg-activity-fill px-1.75 py-0.5 text-meta font-semibold whitespace-nowrap ${color} ${compact ? 'gap-1 px-1.25' : ''}`} aria-label={text}>
+      {status.kind === 'working' ? <WorkingDots /> : <i className="size-1.75 shrink-0 rounded-full border border-current" aria-hidden="true" />}
+      <span className="activity-text min-w-0 truncate">{text}</span>
+      {progress && <span className="task-progress shrink-0 border-l border-current pl-1 tabular-nums">{progress}</span>}
     </span>
   )
   const since = (
-    <time className="card-since" dateTime={at} tabIndex={tooltips ? 0 : undefined}>
+    <time className="card-since text-meta whitespace-nowrap text-muted" dateTime={at} tabIndex={tooltips ? 0 : undefined}>
       {age}
     </time>
   )
 
   return (
-    <div className="card-state">
+    <div className={`card-state flex min-h-5 min-w-0 items-center gap-x-2 gap-y-1 text-meta [&>*]:shrink-0 [&>.tooltip-anchor:has(.agent-activity)]:shrink [&>.tooltip-anchor:has(.card-agent)]:ml-auto [&>.tooltip-anchor:has(.project-label)]:min-w-0 [&>.tooltip-anchor:has(.project-label)]:max-w-full [&>.tooltip-anchor:has(.project-label)]:shrink [&>.tooltip-anchor:has(.project-label)]:overflow-hidden ${compact ? 'flex-nowrap gap-x-1.5 whitespace-nowrap' : 'flex-wrap'}`}>
       {tooltips ? <Tooltip content={status.details}>{pill}</Tooltip> : pill}
       {tooltips ? <Tooltip content={createdText}>{since}</Tooltip> : since}
       {showProject && (

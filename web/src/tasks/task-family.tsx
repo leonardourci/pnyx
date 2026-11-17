@@ -6,7 +6,7 @@ import { movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
 import { rankOf } from '#tasks/select.ts'
 import { statusPriority, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
-import { expandedTaskWidth, SUBTASK_INDENT } from './project-layout.ts'
+import { CLOSED_CARD_MIN_WIDTH, SUBTASK_INDENT } from './project-layout.ts'
 
 export interface FamilyCard {
   card: Card
@@ -22,7 +22,6 @@ export function TaskFamily({
   state,
   actions,
   selected,
-  cardWidths,
   preview,
   renderCard,
 }: {
@@ -30,7 +29,6 @@ export function TaskFamily({
   state: HydraState
   actions: Record<string, CurrentAction>
   selected: string[]
-  cardWidths: Record<string, number>
   preview: PhysicalMove | null
   renderCard({
     card,
@@ -93,15 +91,11 @@ export function TaskFamily({
     card,
     ...children,
   ].filter(item => selected.includes(item.id))
-  const width = opened.length ? Math.max(...opened.map(item => expandedTaskWidth({
-    card: item,
-    widths: cardWidths,
-  }))) : undefined
   const style = {
-    width,
+    '--closed-card-min': `${CLOSED_CARD_MIN_WIDTH}px`,
     '--subtask-indent': `${SUBTASK_INDENT}px`,
   } as CSSProperties
-  const className = `task-family ${width ? 'family-open' : ''}`
+  const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length ? 'family-open basis-full' : ''}`
 
   return (
     <div className={className} style={style} data-family={card.id}>
@@ -114,7 +108,7 @@ export function TaskFamily({
         toggleChildren: () => setExpanded(value => !value),
       })}
       {children.length > 0 && childrenOpen && (
-        <div className="subtasks">
+        <div className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]">
           {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
             <div key={child.key} data-child={child.id}>
               {renderCard({

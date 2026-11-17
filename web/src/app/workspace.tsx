@@ -880,7 +880,7 @@ export function HydraView({
       >
         <div
           ref={setLayer}
-          className="app hydra-workspace"
+          className="app hydra-workspace group/workspace flex h-full w-max min-w-[calc(100vw-1.5rem)] flex-none flex-col overflow-clip rounded-[14px] border border-line p-2 text-ui leading-normal snap-start data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-14.5 max-[760px]:min-w-[calc(100vw-0.75rem)] max-[760px]:p-1.5"
           data-hydra-workspace={navigation.hydraId}
           data-active={active}
           data-page={page}
@@ -956,12 +956,12 @@ export function HydraView({
               }))}
             />
           </Panel>
-          <header className="hydra-workspace-bar">
+          <header className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-[calc(100vw-3.5rem)] flex-none items-center gap-2.5 bg-background px-0.5 pb-2 [&>.button]:flex-none group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col">
             <div
               data-sort-id={navigation.hydraId}
               data-sort-kind="hydra"
               data-sort-scope="hydras"
-              className="hydra-drag-name"
+              className="hydra-drag-name flex min-w-0 max-w-[calc(100vw-10rem)] flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-[21px] font-bold [&_.hydra-label]:max-w-[18ch] [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]"
             >
               {view.workspace.collapsed && (
                 <ProjectCounts
@@ -983,7 +983,7 @@ export function HydraView({
               )}
               <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={20} />
             </div>
-            <nav className="project-chips" aria-label="Projects">
+            <nav className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden [&>.button]:flex-none [&>.button]:touch-none [&>.button]:rounded-full [&>.button]:border-column-line [&>.button]:px-2.25 [&>.button]:py-0.75 [&>.button]:text-meta group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-y-auto group-data-[collapsed=true]/workspace:[&>.button]:[writing-mode:vertical-rl]" aria-label="Projects">
               {columns.map(column => (
                 <Button
                   key={column.id}
@@ -1007,7 +1007,7 @@ export function HydraView({
           </header>
           <main
             hidden={view.workspace.collapsed}
-            className="shell"
+            className="shell flex min-h-0 w-max flex-1 flex-col gap-2 overflow-visible p-0 [&[hidden]]:hidden"
             aria-busy={!!loading || !loaded}
             data-hydra={navigation.hydraId}
             data-provisional={hydra.creating || undefined}
@@ -1034,15 +1034,15 @@ export function HydraView({
                 ...projectPending,
               ]}
             />
-            <div className="hydra-page">
-              <div className={`workspace-chat ${view.workspace.chatCollapsed ? 'collapsed' : ''}`}>
+            <div className="hydra-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
+              <div className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-[10px] border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
                 <Button
-                  className="chat-fold"
+                  className="chat-fold absolute top-3 right-1.75 z-4 p-1"
                   aria-label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
                   onClick={toggleChat}
                 ><Icon name="chevron_right" />
                 </Button>
-                <div className="chat-content" hidden={view.workspace.chatCollapsed}>
+                <div className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-[760px]:[&>.hydra-chat]:w-[calc(100vw-2.375rem)]! max-[760px]:[&>.hydra-chat]:basis-[calc(100vw-2.375rem)]!" hidden={view.workspace.chatCollapsed}>
                   <HydraChat
                     hydraId={navigation.hydraId}
                     identity={shownHydra && {
@@ -1079,10 +1079,10 @@ export function HydraView({
               </div>
 
               <TaskReferencesProvider references={references} openTask={revealTask}>
-                <div className="hydra-main">
-                  <div className="work-area inline">
-                    <div className="hydra-space">
-                      <div className="kanban" aria-label="Work columns">
+                <div className="hydra-main flex min-h-0 w-max flex-none flex-col">
+                  <div className="work-area inline relative flex h-full min-h-0 min-w-0 flex-1 overflow-visible">
+                    <div className="hydra-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
+                      <div className="kanban flex h-full min-h-0 flex-1 gap-2.5 overflow-visible p-0" aria-label="Work columns">
                         {columns.map(c => {
                           const items = c.cards
                           const openIds = expandedIds.filter(id => {
@@ -1096,7 +1096,6 @@ export function HydraView({
 
                           const openedWidths = openIds.map(id => expandedTaskWidth({
                             card: state.cards[id]!,
-                            widths: view.workspace.cardWidths,
                           }))
                           const expandedWidth = Math.max(
                             0,
@@ -1160,7 +1159,6 @@ export function HydraView({
                                   state={state}
                                   actions={actions}
                                   selected={expandedIds}
-                                  cardWidths={view.workspace.cardWidths}
                                   preview={preview}
                                   renderCard={({
                                     card,
@@ -1175,7 +1173,7 @@ export function HydraView({
                             </ProjectColumn>
                           )
                         })}
-                        <div className="add-column">
+                        <div className="add-column w-57.5 flex-none p-2 [&>form]:flex [&>form]:flex-col [&>form]:gap-2.5 [&>form]:rounded-lg [&>form]:border [&>form]:border-line [&>form]:bg-surface [&>form]:p-3">
                           <Button disabled={!connected} onClick={createColumn}><Icon name="plus" />Project</Button>
                         </div>
                       </div>
@@ -1186,7 +1184,7 @@ export function HydraView({
             </div>
             {(settingsVisited || page === 'settings') && createPortal(
               <div
-                className="settings-route"
+                className="settings-route fixed inset-x-0 top-12.5 bottom-0 z-65 flex bg-background [&[hidden]]:hidden [&>.settings-page]:w-full [&>.settings-page]:min-w-0"
                 data-settings-hydra={navigation.hydraId}
                 hidden={!active || page !== 'settings'}
                 style={{

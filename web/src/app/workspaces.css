@@ -1,82 +1,4 @@
-.workspace-axis { display: flex; align-items: stretch; gap: 12px; height: 100dvh; overflow: auto hidden; padding: 60px 12px 12px; scroll-snap-type: x proximity; scroll-padding-inline: 12px; overscroll-behavior-x: contain; scroll-behavior: smooth; }
-.hydra-workspace.app { flex: 0 0 auto; flex-direction: column; width: max-content; min-width: calc(100vw - 24px); height: 100%; scroll-snap-align: start; border: 1px solid var(--color-line); border-radius: 14px; padding: 8px; }
-.topbar { position: fixed; inset: 0 0 auto; z-index: 70; display: flex; align-items: center; height: 50px; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--color-line); background: var(--color-background); }
-.topbar[hidden] { display: none; }
-.topbar .brand { display: flex; align-items: center; gap: 8px; color: var(--color-gold); flex-shrink: 0; }
-.topbar > nav:last-child { display: flex; align-items: center; gap: 6px; flex: none; margin-left: auto; }
-.topbar > nav:last-child > .button > :is(span, kbd) { display: none; }
-.topbar .oracle-trigger { flex: 0 0 auto; margin-left: 0; width: 32px; padding: 6px; }
-.topbar .oracle-trigger > :is(span, kbd) { display: none; }
-.hydra-chips { display: flex; align-items: center; gap: 6px; overflow: auto hidden; min-width: 0; }
-.hydra-chip.button { border: 1px solid var(--color-line); border-radius: 999px; padding: 4px 10px; gap: 7px; white-space: nowrap; flex: none; }
-.hydra-chip[aria-current=page] { border-color: var(--color-gold-line); background: var(--color-gold-wash); }
-.waiting-count { display: inline-grid; place-items: center; min-width: 19px; height: 19px; border-radius: 999px; padding-inline: 4px; background: var(--color-gold-fill); color: var(--color-gold-ink); font-size: 11px; }
-.hydra-workspace > .shell { padding: 0; width: max-content; overflow: visible; min-height: 0; gap: 8px; flex: 1; }
-.hydra-workspace .hydra-page { flex-direction: row; width: max-content; height: 100%; min-height: 0; gap: 10px; overflow: visible; }
-.hydra-workspace .hydra-main { flex: none; width: max-content; min-height: 0; }
-.hydra-workspace :is(.work-area, .hydra-space) { height: 100%; min-height: 0; overflow: visible; }
-.hydra-workspace .kanban { overflow: visible; padding: 0; gap: 10px; height: 100%; }
-.hydra-workspace .hydra-chat { min-width: 300px; max-height: none; flex-shrink: 0; border: 1px solid var(--color-line); border-radius: 12px; }
-.project-column.column { flex: 0 0 auto; min-width: 280px; max-width: none; height: 100%; border: 1px solid var(--color-column-line); border-radius: 12px; background: var(--color-column-background); padding: 0; overflow: visible; }
-.project-column-heading { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-column-line); min-height: 43px; padding: 5px 8px; gap: 8px; }
-.project-column-heading > .button:first-child { min-width: 0; justify-content: flex-start; gap: 8px; }
-.project-column-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-column-heading > .button:first-child > svg { transform: rotate(90deg); }
-.project-column.folded { min-width: 48px; }
-.project-column.folded .project-column-heading { height: 100%; border: 0; padding: 8px; }
-.project-column.folded .project-column-heading > .button { align-self: flex-start; writing-mode: vertical-rl; flex-direction: row; }
-.project-column.folded .project-column-heading > .button:first-child > svg { transform: none; }
-.project-cards.column-cards { display: block; padding: 8px; overflow: hidden auto; min-height: 0; flex: 1; }
-.project-cards.column-cards[hidden] { display: none; }
-.task-family { min-width: 0; width: var(--closed-card-width); }
-.subtasks { margin: 7px 0 0; padding-left: calc(var(--subtask-indent) - 1px); border-left: 1px solid var(--color-line); display: flex; flex-direction: column; gap: 7px; }
-.project-cards .card { min-height: 0; min-width: 0; width: 100%; max-width: none; margin: 0; padding: 9px 11px 10px; border-radius: 10px; transition: border-color 150ms, box-shadow 150ms, height 240ms, width 240ms, min-height 240ms, min-width 240ms; }
-.project-cards .card.selected { min-width: 560px; min-height: 440px; max-height: none; }
-.project-cards .card:not(.selected) .card-content { gap: 6px; }
-.project-cards .card:not(.selected) .card-open { font-weight: 500; font-size: var(--text-ui); line-height: 1.45; display: block; white-space: normal; }
-.project-cards .card-title-row { align-items: flex-start; gap: 5px; }
-.subtask-toggle.button { flex: none; padding: 2px 0; min-width: 14px; }
-.subtask-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
-.project-cards .card-state { flex-wrap: nowrap; gap: 6px; min-width: 0; white-space: nowrap; font-size: var(--text-meta); }
-.project-cards .card-state .agent-activity { gap: 4px; padding-inline: 5px; }
-.project-cards .card-state > .tooltip-anchor:has(.agent-activity) { flex-shrink: 1; }
-.project-cards .card-state > .tooltip-anchor:has(.task-label) { flex-shrink: 0; max-width: 50%; overflow: visible; }
-.project-cards :is(.card-state, .card-labels) .task-label { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; padding-inline: 4px; }
-.project-cards .activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.project-cards .card-agent { margin-left: auto; }
-.task-progress { flex-shrink: 0; padding-left: 4px; border-left: 1px solid currentcolor; font-variant-numeric: tabular-nums; }
-.project-cards .card.selected .card-content { min-height: 0; }
-.workspace-axis[data-page=settings] { overflow: hidden; }
-.workspace-axis[data-page=settings] .workspace-track { visibility: hidden; }
-.workspace-axis[data-page=settings] :is(.topbar:not([hidden]), .oracle-palette) { visibility: visible; }
-.settings-route { position: fixed; inset: 50px 0 0; z-index: 65; display: flex; background: var(--color-background); }
-.settings-route[hidden] { display: none; }
-.settings-route > .settings-page { width: 100%; min-width: 0; }
 .oracle-palette { margin-top: 64px; height: min(660px, calc(100dvh - 86px)); }
-@media (max-width: 760px) {
-  .workspace-axis { gap: 8px; padding: 58px 6px 6px; scroll-padding-inline: 6px; }
-  .hydra-workspace.app { padding: 6px; min-width: calc(100vw - 12px); }
-  .hydra-workspace .hydra-chat { width: calc(100vw - 38px) !important; flex-basis: calc(100vw - 38px) !important; min-width: 300px; }
-  .topbar { gap: 6px; padding-inline: 8px; }
-  .topbar .brand > span { display: none; }
-  .hydra-chip.button { padding: 4px 8px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .workspace-axis, .project-cards.column-cards { scroll-behavior: auto; }
-  .project-cards .card { transition: none; }
-}
-.card-open-content { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr); flex: 1; min-height: 0; gap: 14px; padding-top: 6px; }
-.card-details { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
-.card-details > .card-panel { overflow: auto; }
-.worker-chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--color-line); padding-left: 12px; }
-.worker-messages { flex: 1; min-height: 0; overflow: auto; font-size: var(--text-chat); }
-.worker-composer { display: flex; align-items: end; gap: 6px; margin-top: 8px; padding: 7px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-composer); }
-.worker-composer .composer-field { flex: 1; min-width: 0; }
-.worker-composer textarea { min-height: 44px; }
-.workspace-track { display: flex; align-items: stretch; gap: 12px; height: 100%; width: max-content; }
-.workspace-axis.lenis { scroll-snap-type: none; scroll-behavior: auto; }
-.project-card-grid { position: relative; min-height: 100%; margin-right: calc(-1 * var(--card-gap)); }
-.project-column.column { transition: width 240ms cubic-bezier(.2,.8,.2,1); }
 .physical-ghost { position: fixed !important; z-index: 1000; margin: 0 !important; pointer-events: none !important; box-shadow: 0 16px 36px var(--color-shadow); border-color: var(--color-gold-line) !important; opacity: .96; overflow: hidden; will-change: transform; }
 [data-drag-slot] { outline: 1px dashed var(--color-gold-line); outline-offset: -1px; border-radius: 10px; background: var(--color-gold-wash); pointer-events: none; }
 [data-drag-slot] > * { visibility: hidden; }
@@ -85,61 +7,12 @@
 .physical-ghost [data-drag-slot] { border: 0; }
 [data-drag-excluded] { opacity: .55; }
 .card[data-drag-hover] { opacity: 1; }
-.card[data-nest-armed] { border-color: var(--color-gold-line); }
 [data-sort-id] { touch-action: pan-y; }
-.card-open, .project-column-heading, .hydra-chip { touch-action: none; }
-.subtask-drop { display: none; position: absolute; z-index: 8; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 3px 9px; border-radius: 999px; border: 1px solid var(--color-gold-line); background: var(--color-surface); color: var(--color-gold); font-size: var(--text-meta); pointer-events: auto; }
 [data-dragging=task] .card[data-drag-hover] > .subtask-drop { display: block; }
 .subtask-drop:hover { background: var(--color-gold-fill); color: var(--color-gold-ink); }
-.card { interpolate-size: allow-keywords; }
-@media (prefers-reduced-motion: reduce) { .project-column.column { transition: none; } }
-.hydra-workspace-bar { position: sticky; left: 16px; z-index: 5; display: flex; align-items: center; flex: none; width: max-content; max-width: calc(100vw - 56px); gap: 10px; min-height: 38px; padding: 0 2px 8px; background: var(--color-background); }
-.hydra-workspace-bar > .button { flex: none; }
-.hydra-drag-name { display: flex; align-items: center; flex: none; gap: 6px; min-width: 0; max-width: calc(100vw - 160px); font: 700 21px var(--font-brand); cursor: grab; touch-action: none; }
-.hydra-drag-name .hydra-label { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-chips { display: flex; gap: 5px; min-width: 0; overflow: auto hidden; }
-.project-chips .button { flex: none; border: 1px solid var(--color-column-line); border-radius: 999px; padding: 3px 9px; font-size: var(--text-meta); touch-action: none; }
-.hydra-workspace[data-collapsed=true].app { width: 58px; min-width: 58px; }
-.hydra-workspace[data-collapsed=true] .hydra-workspace-bar { position: relative; left: auto; flex-direction: column; width: 100%; max-width: none; height: 100%; align-items: center; }
-.hydra-workspace[data-collapsed=true] .hydra-drag-name { writing-mode: vertical-rl; }
-.hydra-workspace[data-collapsed=true] .project-chips { flex-direction: column; position: static; overflow-y: auto; min-height: 0; }
-.hydra-workspace[data-collapsed=true] .project-chips .button { writing-mode: vertical-rl; }
-.hydra-workspace > .shell[hidden] { display: none; }
-.workspace-chat { position: relative; height: 100%; flex: none; }
-.chat-content { height: 100%; }
-.chat-content > .hydra-chat { height: 100%; }
-.workspace-chat .hydra-head { padding-right: 48px; }
-.workspace-chat .hydra-title .hydra-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-fold.button { position: absolute; right: 7px; top: 12px; z-index: 4; padding: 4px; }
-.workspace-chat.collapsed { width: 40px; border: 1px solid var(--color-line); border-radius: 10px; }
-.workspace-chat.collapsed .chat-fold { left: 5px; right: 5px; }
-.chat-content[hidden] { display: none; }
-.card[data-windowed=true]:popover-open { position: fixed; left: 50%; top: 8dvh; right: auto; bottom: auto; transform: translateX(-50%); margin: 0; background: var(--color-surface); color: var(--color-ink); border: 1px solid var(--color-gold-line); box-shadow: 0 18px 70px var(--color-shadow); }
-.card[data-windowed=true]::backdrop { background: var(--color-shadow); }
 .ownership-settings { padding: 16px; border: 1px solid var(--color-gold-line); border-radius: 12px; margin-block: 12px; }
 .ownership-repository { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .ownership-repository code { font-size: var(--text-meta); color: var(--color-muted); }
 .ownership-repository .row > div { display: flex; align-items: center; gap: 8px; }
-.project-cards .card:not(.selected) .card-open { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 [data-drag-parent] .subtask-drop { display: none !important; }
-
-
-.project-counts, .running-count { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-meta); }
-.running-count { color: var(--color-gold); }
-
-@media (pointer: coarse) { .workspace-axis.lenis { scroll-snap-type: x proximity; } }
-
-
-.project-column.column[data-resizing=true] { transition: none; }
-
-.hydra-workspace.app, .workspace-chat { interpolate-size: allow-keywords; transition: width 240ms, min-width 240ms; }
-@media (prefers-reduced-motion: reduce) { .hydra-workspace.app, .workspace-chat { transition: none; } }
-
-.hydra-workspace.app { overflow: clip; }
-
-.project-card-grid > * { position: absolute; }
-.project-card-grid > :not(.task-family) { width: calc(100% - var(--card-gap)); }
-
 [data-dragging], [data-dragging] * { cursor: grabbing !important; user-select: none !important; }
-.project-cards .card:not(.selected), .physical-ghost { user-select: none; }

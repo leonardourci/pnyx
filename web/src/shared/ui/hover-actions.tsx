@@ -189,5 +189,5 @@ export function HoverActions({
     ],
   )
 
-  return <div ref={panel} popover="manual" className="card-menu">{children}</div>
+  return <div ref={panel} popover="manual" className="card-menu fixed inset-auto m-0 hidden w-max max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 shadow-actions opacity-0 pointer-events-none transition-opacity duration-110 transition-discrete open:flex open:opacity-100 open:pointer-events-auto starting:open:opacity-0 motion-reduce:transition-none [&_.tooltip-anchor]:inline-flex [&_.button]:rounded-full [&_.button]:px-1.5 [&_.button]:py-0.5 [&_.button]:text-meta [&>.tooltip-anchor>.button]:p-1.25 [&>.tooltip-anchor>.button]:min-w-6.5 [&>.tooltip-anchor>.button]:min-h-6.5">{children}</div>
 }
