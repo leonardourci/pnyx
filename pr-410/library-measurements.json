@@ -1,0 +1,210 @@
+{
+  "bundles": {
+    "existing": {
+      "snapshot": "existing",
+      "entry": {
+        "name": "index-7XPwCUSk.js",
+        "bytes": 1358007,
+        "gzip": 433154
+      },
+      "js": {
+        "bytes": 1368148,
+        "gzip": 436975
+      },
+      "css": {
+        "bytes": 150454,
+        "gzip": 28379
+      },
+      "files": [
+        {
+          "name": "index-7XPwCUSk.js",
+          "bytes": 1358007,
+          "gzip": 433154
+        },
+        {
+          "name": "index-DjyUDVMj.css",
+          "bytes": 150454,
+          "gzip": 28379
+        },
+        {
+          "name": "lazy-inspector-Dbk1_ZcK.js",
+          "bytes": 10141,
+          "gzip": 3821
+        }
+      ]
+    },
+    "before-libraries": {
+      "snapshot": "before-libraries",
+      "entry": {
+        "name": "index-C8qXRgR0.js",
+        "bytes": 1367506,
+        "gzip": 436200
+      },
+      "js": {
+        "bytes": 1377647,
+        "gzip": 440022
+      },
+      "css": {
+        "bytes": 153809,
+        "gzip": 28851
+      },
+      "files": [
+        {
+          "name": "index-C8qXRgR0.js",
+          "bytes": 1367506,
+          "gzip": 436200
+        },
+        {
+          "name": "index-D-v4q1XZ.css",
+          "bytes": 153809,
+          "gzip": 28851
+        },
+        {
+          "name": "lazy-inspector-B1jo5eiB.js",
+          "bytes": 10141,
+          "gzip": 3822
+        }
+      ]
+    },
+    "complete": {
+      "snapshot": "complete",
+      "entry": {
+        "name": "index-COvneht8.js",
+        "bytes": 1560032,
+        "gzip": 498738
+      },
+      "js": {
+        "bytes": 1570173,
+        "gzip": 502557
+      },
+      "css": {
+        "bytes": 154482,
+        "gzip": 28946
+      },
+      "files": [
+        {
+          "name": "index-COvneht8.js",
+          "bytes": 1560032,
+          "gzip": 498738
+        },
+        {
+          "name": "index-DMYGzHuL.css",
+          "bytes": 154482,
+          "gzip": 28946
+        },
+        {
+          "name": "lazy-inspector-DHgDnJaM.js",
+          "bytes": 10141,
+          "gzip": 3819
+        }
+      ]
+    }
+  },
+  "frames": {
+    "native": {
+      "metadata": {
+        "snapshot": "native-complete",
+        "chrome": "157.0.8103.79",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "cards": 24,
+        "columnWidth": 944,
+        "build": {
+          "entry": "/assets/index-C8qXRgR0.js",
+          "sha256": "7016575e08d4b3874a409c39a0a26309450ffafb95b48dd81b191fe36b150221"
+        },
+        "cpus": 15,
+        "loadAverage": [
+          3.3671875,
+          3.263671875,
+          3.41552734375
+        ]
+      },
+      "spans": {
+        "idle": {
+          "intervals": 38,
+          "medianMs": 33.838,
+          "p95Ms": 75.499,
+          "maxMs": 79.491,
+          "over25Ms": 28
+        },
+        "drag": {
+          "intervals": 304,
+          "medianMs": 36.552,
+          "p95Ms": 78.503,
+          "maxMs": 85.309,
+          "over25Ms": 211
+        },
+        "open": {
+          "intervals": 45,
+          "medianMs": 31.447,
+          "p95Ms": 75.292,
+          "maxMs": 84.037,
+          "over25Ms": 31
+        },
+        "close": {
+          "intervals": 39,
+          "medianMs": 39.087,
+          "p95Ms": 76.433,
+          "maxMs": 85.51,
+          "over25Ms": 26
+        }
+      }
+    },
+    "libraries": {
+      "metadata": {
+        "snapshot": "libraries-complete",
+        "chrome": "157.0.8103.79",
+        "viewport": {
+          "width": 1440,
+          "height": 960
+        },
+        "cards": 24,
+        "columnWidth": 944,
+        "build": {
+          "entry": "/assets/index-COvneht8.js",
+          "sha256": "2392a1f4de553ce34f3c9c2f659b6ed33cab5c11f12a713a44b5cbd9bade58ce"
+        },
+        "cpus": 15,
+        "loadAverage": [
+          3.56787109375,
+          3.34619140625,
+          3.4423828125
+        ]
+      },
+      "spans": {
+        "idle": {
+          "intervals": 29,
+          "medianMs": 41.728,
+          "p95Ms": 79.278,
+          "maxMs": 84.548,
+          "over25Ms": 22
+        },
+        "drag": {
+          "intervals": 308,
+          "medianMs": 39.101,
+          "p95Ms": 82.114,
+          "maxMs": 86.64,
+          "over25Ms": 223
+        },
+        "open": {
+          "intervals": 41,
+          "medianMs": 35.339,
+          "p95Ms": 76.294,
+          "maxMs": 78.646,
+          "over25Ms": 32
+        },
+        "close": {
+          "intervals": 36,
+          "medianMs": 36.14,
+          "p95Ms": 80.842,
+          "maxMs": 81.016,
+          "over25Ms": 22
+        }
+      }
+    }
+  },
+  "method": "Sequential isolated Chrome traces; 1440x960, 24 cards, 944px project, three held drags and open/close cycles. Frame intervals are requestAnimationFrame markers from the trace, not presented FPS. Shared-machine idle is included."
+}
