@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
@@ -1576,6 +1576,103 @@ test(
       expect(delivered).toHaveLength(1)
       expect(delivered[0]).toContain('File: reply-context.txt')
       expect(delivered[0]).toContain('Synthetic worker attachment')
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+test(
+  'legacy grandchildren stay openable in their top-level family without rewriting parentage',
+  async () => {
+    const id = 'legacy-deep-family'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const events = [
+      {
+        seq: 1,
+        id: 'legacy-root',
+        cardId: 'root',
+        data: {
+          key: 'root',
+          title: 'Legacy family',
+        },
+      },
+      {
+        seq: 2,
+        id: 'legacy-child',
+        cardId: 'child',
+        data: {
+          key: 'child',
+          title: 'Legacy child',
+          parentId: 'root',
+        },
+      },
+      {
+        seq: 3,
+        id: 'legacy-leaf',
+        cardId: 'leaf',
+        data: {
+          key: 'leaf',
+          title: 'Legacy grandchild',
+          parentId: 'child',
+        },
+      },
+    ].map(event => JSON.stringify({
+      v: 1,
+      type: 'card.pushed',
+      at: '2026-11-17T00:00:00Z',
+      actor: 'cli',
+      ...event,
+    })).join('\n')
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${events}\n`,
+    )
+    const hydra = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: id,
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${id}"]`)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of Legacy family',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Legacy grandchild',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Legacy grandchild',
+          exact: true,
+        },
+      ).locator('xpath=ancestor::article')
+        .locator('.worker-chat')
+        .waitFor()
+      expect((await hydra.task({ key: 'leaf' })).parent).toBe('child')
     } finally {
       await page.context().close()
     }
