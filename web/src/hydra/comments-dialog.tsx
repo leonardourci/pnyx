@@ -22,7 +22,7 @@ export function CommentsPill({
   ] = useState(false)
 
   return (
-    <div className="composer-comments" data-armed={armed || undefined}>
+    <div className="composer-comments group/comments inline-flex self-start text-chat data-armed:[&_.card-x]:w-auto data-armed:[&_.card-x]:px-1.75 data-armed:[&_.card-x]:text-red" data-armed={armed || undefined}>
       <AttachmentCard
         tone="comments"
         slot={<Icon name="comments" size={13} />}

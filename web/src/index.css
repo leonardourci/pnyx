@@ -56,6 +56,18 @@
   --shadow-actions: 0 3px 10px var(--color-shadow);
   --control-h: 30px;
   --composer-control-h: 30px;
+  --spacing-composer-control: max(30px, calc(var(--text-ui) * 2));
+  --spacing-composer-line: calc(var(--text-chat) * var(--chat-line) + 8px);
+  --spacing-composer-max: 480px;
+  --transition-duration-composer: 120ms;
+  --spacing-attachment-gap: .375em;
+  --spacing-attachment-inset: .1875em;
+  --spacing-attachment-end: .4375em;
+  --spacing-attachment-icon: 1em;
+  --spacing-attachment-slot: 1.625em;
+  --spacing-attachment-top: .0625em;
+  --text-attachment: .75em;
+  --text-composer-account: calc(var(--text-meta) * 5 / 6);
   --composer-icon-size: 18px;
   --composer-control-gap: 6px;
   /* The theme tiles show both palettes whichever one is active. */
@@ -64,6 +76,7 @@
 }
 
 @theme inline {
+  --color-attachment-comments: color-mix(in srgb, var(--color-gold) 8%, transparent);
   --color-activity-fill: color-mix(in srgb, currentColor 10%, transparent);
   --color-card-fill: color-mix(in srgb, var(--label-color, var(--color-card-label-base)) 5%, color-mix(in srgb, var(--color-surface) var(--card-surface-opacity), transparent));
   --color-label-ink: var(--label-color, var(--color-muted));
@@ -352,45 +365,26 @@ h3 { font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) { .jump, .chat-fade { animation: none; } }
 
-.composer { position: relative; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; max-height: min(50%, 480px); padding: 10px 10px 6px 12px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-composer); transition: border-color .12s, box-shadow .12s; }
 
-.composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
-.composer > .composer-field { display: contents; }
 
-.composer-compact { position: relative; min-width: 0; border: 1px solid var(--color-control); border-radius: 6px; background: var(--color-surface); }
 
-.composer-compact:focus-within { border-color: var(--color-gold-line); }
 
-.composer-compact > .composer-input { min-height: 0; }
 
 /* The textarea and its chip mirror share every metric, so chips sit exactly over the text they stand for. */
-.composer-compact :is(.textarea, .draft-mirror) { margin: 0; padding: 5px 8px; border: 0; font: inherit; font-size: var(--text-chat); line-height: var(--chat-line); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
 /* A compact field grows with its text up to its limit, then scrolls. */
-.composer-compact .textarea { height: auto; min-height: 0; max-height: min(40vh, 12lh); resize: none; overflow-y: auto; background: transparent; outline: none; }
 
-.ask .composer-compact .textarea { min-height: calc(2lh + 10px); }
 
-.task-create .composer-compact .textarea { min-height: calc(3lh + 10px); }
 
-.task-editor .composer-compact .textarea { min-height: calc(5lh + 10px); max-height: min(50vh, 24lh); }
 
-.composer-field.comment-note { flex: 1; }
 
-.composer-field.comment-note .textarea { user-select: text; }
 
-.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); position: relative; display: flex; flex-direction: column; overflow: hidden; }
 
-.composer .textarea, .composer .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
-.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
 
-.composer-input[data-chips] .textarea { color: transparent; caret-color: var(--color-ink); }
 
-.draft-mirror { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: var(--color-ink); }
 
-.draft-mirror :is(.card-x, .skill-remove) { pointer-events: auto; }
 
 .draft-chip { cursor: pointer; margin: 0 -.25em; padding: var(--chip-pad) .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
 
@@ -410,15 +404,10 @@ h3 { font-weight: 600; }
 
 .chip-icon > svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 
-.draft-chip.draft-card { position: relative; cursor: default; margin: 0; padding: 0; color: transparent; background: none; box-shadow: none; }
 
-.draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--chip-h) / 2); }
 
-.draft-card[data-loading] .card-label { color: var(--color-muted); }
 
-.upload-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-line); }
 
-.upload-bar-done { display: block; height: 100%; background: var(--color-blue); transition: width .2s; }
 
 .chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
 
@@ -448,25 +437,16 @@ h3 { font-weight: 600; }
 
 .usage-account { opacity: .75; }
 
-.composer-stop { width: var(--composer-control-h); height: var(--composer-control-h); padding: 0; justify-content: center; border: 1px solid var(--color-line); border-radius: 50%; color: var(--color-ink); }
 
-.composer-stop + .composer-send { margin-left: 0; }
 
 .textarea { width: 100%; height: 100%; min-height: 48px; max-height: min(50vh, 480px); resize: vertical; overflow-y: auto; background: var(--color-background); }
 
-.composer > p { font-size: var(--text-meta); }
 
-.composer-bar { display: flex; flex-shrink: 0; align-items: center; gap: var(--composer-control-gap); flex-wrap: wrap; }
 
-.composer-send { margin-left: auto; width: var(--composer-control-h); height: var(--composer-control-h); padding: 0; justify-content: center; border-radius: 50%; }
 
-.composer-settings { display: flex; flex-wrap: wrap; gap: 2px; }
 
-.composer-settings .select { min-width: 0; }
 
-.composer-settings .select > .button { min-height: 26px; padding: 2px 8px; gap: 6px; border-color: transparent; border-radius: 13px; background: transparent; color: var(--color-muted); font-size: var(--text-meta); }
 
-.composer-settings .select-menu { top: auto; bottom: calc(100% + 5px); }
 
 .picker-group { display: block; padding: 8px 10px 4px; color: var(--color-muted); font-size: var(--text-meta); }
 
@@ -664,9 +644,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; flex: none; color: var(--color-muted); }
 
-.composer-comments { align-self: flex-start; display: inline-flex; font-size: var(--text-chat); }
 
-.composer-comments[data-armed] .card-x { width: auto; padding: 0 7px; color: var(--color-red); }
 
 .dialog { margin: auto; width: min(600px, calc(100vw - 32px)); max-height: min(78vh, 760px); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 18px 50px var(--color-shadow); }
 
@@ -695,7 +673,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .thread > .composer { margin: 0; padding: 4px 10px; border: 0; border-radius: 0; }
 
 
-.thread > .composer .textarea { border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
 
 
 .ask { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 8px; font-size: var(--text-ui); border: 1px solid var(--color-line); border-left: 3px solid var(--color-gold); border-radius: 12px; background: var(--color-surface); }
@@ -786,7 +763,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .tooltip .answer-choices > li { border-color: currentColor; color: inherit; opacity: .8; }
 .tooltip .answer-choices > li[aria-current] { opacity: 1; background: transparent; color: inherit; }
 
-.task-create { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
 
 .message.mine { font-family: var(--font-sans); }
 
@@ -796,7 +772,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .trace summary > svg, .trace-summary > svg { background: var(--color-raised); border-radius: 50%; width: 20px; height: 20px; padding: 3px; }
 
-.composer-settings .select > .button { padding: 3px 5px; }
 
 /* --chat-inset adds the stream's measured scrollbar gutter, so the composer and running line share the column's edges. */
 .hydra-chat { --chat-max: 960px; --chat-pad: 24px; --chat-gap: 24px; --chat-inset: max(calc(var(--chat-pad) + var(--chat-scrollbar, 0px)), calc((100% - var(--chat-max)) / 2)); position: relative; border-radius: 12px; overflow: visible; flex-shrink: 0; }
@@ -1009,20 +984,15 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .menu-items[popover] { position: fixed; inset: auto; margin: 0; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; color: var(--color-ink); }
 
 
-.composer-bar { --composer-control-h: max(30px, calc(var(--text-ui) * 2)); min-height: var(--composer-control-h); height: var(--composer-control-h); flex-wrap: nowrap; }
 
-.composer-add > .button { width: var(--composer-control-h); height: var(--composer-control-h); padding: 0; justify-content: center; }
 
-.composer-add .popover-panel { width: max-content; padding: 5px; }
 
-.composer-add .popover-panel > .button { display: flex; width: 100%; justify-content: flex-start; gap: 8px; white-space: nowrap; }
 
 .popover { position: relative; min-width: 0; }
 
 .popover-panel { position: fixed; inset: auto; margin: 0; padding: 14px; width: min(320px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; color: var(--color-ink); border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-raised); box-shadow: 0 8px 24px var(--color-shadow); }
 
 
-.composer-settings { min-width: 0; flex: 1; display: block; }
 
 
 .picker-field small { color: var(--color-muted); font-size: var(--text-meta); line-height: 1.4; }
@@ -1057,32 +1027,19 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
-.attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--chip-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
 
-.attachment-card > .button { min-height: 0; padding: 0; border: 0; border-radius: 0; color: inherit; font: inherit; }
 
-.attachment-card > .card-main { display: inline-flex; flex: 1; align-items: center; justify-content: flex-start; gap: .375em; min-width: 0; padding: 0 .4375em 0 .1875em; }
 
-.attachment-card > .button:hover:not(:disabled) { background: var(--color-raised); }
 
-.card-slot { position: relative; display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
 
 /* Absolute, so the slot sets the size whatever the image's shape; contain shows it whole. */
-.card-slot > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 
-.card-slot > img[data-loading] { display: none; }
 
-.card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .75em; }
 
-.attachment-card > .card-x { width: 1.375em; flex-shrink: 0; border-left: 1px solid var(--color-line); color: var(--color-muted); }
 
-.attachment-card.comments { border-color: var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); }
 
-.attachment-card.comments .card-slot, .attachment-card.comments > .button:hover:not(:disabled) { background: color-mix(in srgb, var(--color-gold) 8%, transparent); }
 
-.attachment-card.comments > .card-x { border-color: var(--color-gold-line); color: var(--color-gold); }
 
-.attachment-card.reference { border-style: dashed; background: transparent; }
 
 /* A card in a message selects with the text around it, like the other chips. */
 .message .attachment-card:not(.composer-field *) { margin: 0 1px; user-select: auto; }
@@ -1108,7 +1065,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .notice { position: fixed; bottom: 16px; right: 16px; z-index: 80; display: flex; align-items: center; gap: 12px; max-width: min(480px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 2px 12px var(--color-shadow); }
 
-.hydra-chat .composer-bar { height: auto; }
 .hydra-agent-pickers { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; }
 .hydra-agent-pickers .picker-field { display: block; min-width: 0; font-size: var(--text-meta); }
 .hydra-agent-pickers .picker-field > span { display: none; }
@@ -1128,21 +1084,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .account-model-label { display: flex; flex-direction: column; min-width: 0; max-width: 180px; line-height: 1.35; }
 .account-model-label > span { font-size: var(--text-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-model-label > small { color: var(--color-muted); font-size: var(--text-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-bar .hydra-agent-pickers { gap: var(--composer-control-gap); }
-.composer-bar :is(.composer-add > .button, .composer-send, .composer-stop, .hydra-agent-pickers .select > .button, .account-model-picker > .button, .fast-toggle) { min-height: var(--composer-control-h); height: var(--composer-control-h); }
-.composer-bar :is(.hydra-agent-pickers .select > .button, .account-model-picker > .button) { padding: 0 5px; gap: var(--composer-control-gap); }
-.composer-bar .fast-toggle { width: var(--composer-control-h); padding: 0; }
-.composer-bar :is(.hydra-agent-pickers .select > .button, .account-model-picker > .button) > svg { width: var(--composer-icon-size); height: var(--composer-icon-size); }
-.composer-bar .account-model-picker > .button > svg:first-child { color: var(--color-muted); }
-.composer-bar .account-model-label { line-height: 1.1; }
-.composer-bar .account-model-label > span { font-size: var(--text-meta); }
-.composer-bar .account-model-label > small { font-size: calc(var(--text-meta) * 5 / 6); }
 
 .hydra-agent-pickers[data-folded] { position: relative; }
 .agent-pickers-row { display: flex; flex: none; width: max-content; align-items: center; gap: inherit; }
 .hydra-agent-pickers[data-folded] > .agent-pickers-row { position: absolute; visibility: hidden; pointer-events: none; }
 .agent-settings-menu { min-width: 0; }
-.composer-bar .agent-settings-menu > .button { max-width: 100%; color: var(--color-ink); font-size: var(--text-meta); white-space: nowrap; }
 .agent-settings-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .agent-settings-effort { color: var(--color-muted); }
 .agent-setting-text { display: flex; align-items: baseline; gap: 6px; }
@@ -1234,8 +1180,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .text-preview { max-height: 3lh; font-size: var(--text-chat); line-height: var(--chat-line); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .button.show-more { justify-self: start; min-height: 0; padding: 0; color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
 
-.composer .select-menu { max-height: none; overflow: visible; scrollbar-width: none; }
-.composer .select-menu::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 
 .tooltip-anchor { display: inline-flex; min-width: 0; max-width: 100%; }
@@ -1713,3 +1657,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .ask .markdown :is(th, td) { padding: 3px 5px; }
 .ask .markdown-table { margin-block: 4px; }
 .ask .markdown code { font-size: .95em; }
+
+/* The overlay and editable text need identical metrics to keep chips on their text. */
+.composer-text {
+  @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];
+}

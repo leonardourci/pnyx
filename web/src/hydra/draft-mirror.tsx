@@ -76,8 +76,8 @@ export function writeDraftMirror({
 
 function UploadBar({ fraction }: { fraction: number }) {
   return (
-    <span className="upload-bar">
-      <span className="upload-bar-done" style={{ width: `${fraction * 100}%` }} />
+    <span className="upload-bar absolute inset-x-0 bottom-0 h-0.5 bg-line">
+      <span className="upload-bar-done block h-full bg-blue transition-[width] duration-200" style={{ width: `${fraction * 100}%` }} />
     </span>
   )
 }
@@ -100,7 +100,7 @@ function DraftCard({
   const label = loading ? <>{chip.name}<UploadBar fraction={progress} /></> : chip.name
 
   return (
-    <span className="draft-chip draft-card" data-kind={chip.kind} data-loading={loading || undefined}>
+    <span className="draft-chip draft-card relative m-0! cursor-default bg-none! p-0! text-transparent shadow-none! [&>.attachment-card]:absolute [&>.attachment-card]:inset-x-0 [&>.attachment-card]:top-[calc(50%-var(--chip-h)/2)] data-loading:[&_.card-label]:text-muted" data-kind={chip.kind} data-loading={loading || undefined}>
       {chip.label}
       <AttachmentCard
         keepsInputFocus
@@ -153,7 +153,7 @@ export function DraftMirror({
   const chipOccurrences = new Map<string, number>()
 
   return (
-    <div className="draft-mirror" ref={mirror} aria-hidden="true">
+    <div className="draft-mirror composer-text pointer-events-none absolute inset-0 overflow-hidden text-ink [&_:is(.card-x,.skill-remove)]:pointer-events-auto" ref={mirror} aria-hidden="true">
       {view.chips.map((
         chip,
         index,

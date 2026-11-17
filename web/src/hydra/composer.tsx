@@ -1,3 +1,4 @@
+import { ComposerAction, ComposerBar, ComposerFrame } from './composer-ui.tsx'
 import type { ChatDrafts } from './chat-drafts.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
@@ -34,6 +35,8 @@ export function Composer({
   settings,
   meter,
   stop,
+  stopLabel = 'Stop Hydra',
+  stopTitle = 'Stop Hydra’s turn; workers keep going',
   compacting = false,
   focusAbove,
   projectRequest = false,
@@ -61,6 +64,8 @@ export function Composer({
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   compacting?: boolean
   stop?(): Promise<void>
+  stopLabel?: string
+  stopTitle?: string
   focusAbove?(): boolean
   // An Add project request to write into the draft; projectRequested clears it once written.
   projectRequest?: boolean
@@ -323,18 +328,20 @@ export function Composer({
   return (
     <>
       {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
-      <form
+      <ComposerFrame
         ref={form}
         aria-busy={sending}
-        className="composer"
+        // eslint-disable-next-line pnyx/object-params -- React owns form event handlers.
         onSubmit={e => {
           e.preventDefault(); void send()
         }}
+        // eslint-disable-next-line pnyx/object-params -- React owns form event handlers.
         onDragOver={event => {
           if (event.dataTransfer.types.includes('Files')) {
             event.preventDefault()
           }
         }}
+        // eslint-disable-next-line pnyx/object-params -- React owns form event handlers.
         onDrop={event => {
           if (event.dataTransfer.files.length) {
             event.preventDefault(); field.current?.attach({ files: [...event.dataTransfer.files] })
@@ -371,8 +378,8 @@ export function Composer({
           projectRequest={projectRequest}
           projectRequested={projectRequested}
         />
-        <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="paperclip" size={COMPOSER_ICON} />}>
+        <ComposerBar>
+          <Popover label="Add to message" className="composer-add [&>.button]:size-(--spacing-composer-control) [&>.button]:min-h-(--spacing-composer-control) [&>.button]:justify-center [&>.button]:p-0 [&>.popover-panel]:w-max! [&>.popover-panel]:p-1.25! [&>.popover-panel>.button]:flex [&>.popover-panel>.button]:w-full [&>.popover-panel>.button]:justify-start [&>.popover-panel>.button]:gap-2 [&>.popover-panel>.button]:whitespace-nowrap" trigger={<Icon name="paperclip" size={COMPOSER_ICON} />}>
             {({ close }) => (
               <>
                 <Button
@@ -469,27 +476,27 @@ export function Composer({
           {settings}
           {meter}
           {stop && (
-            <Button
-              className="composer-stop"
-              aria-label={compacting ? 'Cancel compaction' : 'Stop Hydra'}
-              title={compacting ? 'Cancel compaction' : 'Stop Hydra’s turn; workers keep going'}
+            <ComposerAction
+              kind="stop"
+              aria-label={compacting ? 'Cancel compaction' : stopLabel}
+              title={compacting ? 'Cancel compaction' : stopTitle}
               onClick={() => void stop()}
             >
               <Icon name="stop" size={12} />
-            </Button>
+            </ComposerAction>
           )}
-          <Button
+          <ComposerAction
+            kind="send"
             type="submit"
             variant="primary"
-            className="composer-send"
             aria-label={sendLabel}
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={unavailable || sending || disabled}
           >
             <Icon name="send" size={COMPOSER_ICON} />
-          </Button>
-        </div>
-      </form>
+          </ComposerAction>
+        </ComposerBar>
+      </ComposerFrame>
     </>
   )
 }
