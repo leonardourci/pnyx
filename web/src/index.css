@@ -43,6 +43,14 @@
   --text-ui: 14px;
   --text-chat: 16px;
   --text-code: 13px;
+  --radius-card: 10px;
+  --radius-workspace: 14px;
+  --text-workspace: 21px;
+  --text-count: 11px;
+  --spacing-card-details: 220px;
+  --spacing-card-chat: 260px;
+  --spacing-settings-content: 880px;
+  --spacing-card-window-top: 8dvh;
   --shadow-window: 0 18px 70px var(--color-shadow);
   --shadow-actions: 0 3px 10px var(--color-shadow);
   --control-h: 30px;
@@ -176,11 +184,8 @@ h3 { font-weight: 600; }
 
 .empty { margin: 5px 0; padding: 20px 10px; text-align: center; border: 1px dashed var(--color-line); border-radius: 7px; color: var(--color-muted); font-size: var(--text-ui); }
 
-.detail { position: relative; flex-shrink: 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--color-gold-line); border-radius: 9px; background: var(--color-surface); overflow: hidden; }
 
-.detail-header { padding: 12px 15px; max-height: 27%; overflow: auto; flex-shrink: 0; border-bottom: 1px solid var(--color-line); }
 
-.detail-header h2 { font-size: var(--text-pane); line-height: 1.35; margin: 7px 0; letter-spacing: normal; }
 
 .switch-label { justify-content: flex-start; color: var(--color-muted); padding: 5px 0; font-size: var(--text-meta); }
 
@@ -465,9 +470,7 @@ h3 { font-weight: 600; }
 .picker-group { display: block; padding: 8px 10px 4px; color: var(--color-muted); font-size: var(--text-meta); }
 
 
-.detail-content { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
 
-.detail-content p { font-size: var(--text-ui); }
 
 
 .settings-box { padding: 20px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); min-width: 0; }
@@ -499,9 +502,7 @@ h3 { font-weight: 600; }
 
 h1 { font-size: var(--text-pane); }
 
-.detail-header { padding: 9px 12px; max-height: 25%; }
 
-.detail-header h2 { font-size: var(--text-pane); }
 
 
 .settings-box { padding: 15px; }
@@ -745,17 +746,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .empty { border: 0; padding: 16px 8px; font-size: var(--text-ui); }
 
-.detail { border: 0; border-radius: 0; padding-top: 8px; margin-top: 3px; border-top: 1px solid var(--color-line); background: transparent; overflow: hidden; flex: 1; min-height: 0; }
 
-.detail-header { display: flex; align-items: center; justify-content: space-between; padding: 0 0 4px; max-height: none; border: 0; overflow: visible; gap: 6px; }
 
-.detail-header > .row { margin-left: auto; }
 
 .agent-chip { font-size: var(--text-meta); border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); padding: 1px 8px; }
 
 .thread { padding: 0; min-height: 0; flex: none; overflow: visible; }
 
-.detail-header { flex-shrink: 0; }
 
 
 /* Floated beside the text, which comments quote, and layered over its positioned blocks so it keeps its clicks. */
@@ -890,7 +887,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .fast-toggle { font-size: var(--text-meta); color: var(--color-muted); padding: 3px 6px; min-height: 26px; }
 
 .fast-toggle[aria-checked=true] { color: var(--color-gold); background: var(--color-gold-wash); }
-.detail > .jump { position: sticky; bottom: 12px; }
 
 .oracle-palette { margin: 9vh auto auto; width: min(980px, calc(100vw - 32px)); height: min(660px, 82dvh); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 24px 64px var(--color-shadow); overflow: hidden; }
 .oracle-palette[open] { display: flex; flex-direction: column; }
@@ -1213,8 +1209,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .account-model-add > .button { width: 100%; font-size: var(--text-ui); }
 .account-model-add > p { margin: 5px 0 0; text-align: center; font-size: var(--text-meta); color: var(--color-muted); }
 
-.task-updates { flex: 1; min-height: 0; overflow: auto; overflow-wrap: anywhere; padding: 8px 0; }
-.detail.inline .task-updates { overflow: visible; }
 .task-updates-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-inline: 4px; }
 .updates-order { font-size: var(--text-meta); color: var(--color-muted); padding: 2px 6px; }
 .task-updates > div[role=list] { list-style: none; margin: 0; padding: 0; }

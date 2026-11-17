@@ -92,7 +92,7 @@ export function TaskUpdates({
 
   return (
     <div
-      className="task-updates"
+      className="task-updates min-h-0 flex-1 overflow-visible wrap-anywhere py-2"
       role="region"
       aria-label="Task updates"
       aria-busy={loading}

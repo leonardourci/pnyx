@@ -1,6 +1,8 @@
 import { useId, useEffect, useRef, type ReactNode, type RefObject } from 'react'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
+export const CARD_LAYOUT_COMPLETE = 'pnyx-card-layout-complete'
+
 export function HoverActions({
   anchor,
   children,
@@ -43,7 +45,36 @@ export function HoverActions({
         })
       }
 
+      const nativeAnchor = CSS.supports(
+        'position-anchor',
+        '--pnyx-hover',
+      )
+        && CSS.supports(
+          'left',
+          'anchor(right)',
+        )
+      const previousAnchor = card.style.anchorName
+
+      if (nativeAnchor) {
+        const name = `--pnyx-hover-${CSS.escape(id)}`
+        card.style.anchorName = name
+        element.style.positionAnchor = name
+      }
+
       const position = () => {
+        if (nativeAnchor) {
+          element.style.setProperty(
+            '--hover-width',
+            `${element.offsetWidth}px`,
+          )
+          element.style.setProperty(
+            '--hover-height',
+            `${element.offsetHeight}px`,
+          )
+
+          return
+        }
+
         const rect = card.getBoundingClientRect()
         element.style.left = `${Math.max(
           8,
@@ -134,17 +165,25 @@ export function HoverActions({
         HOVER_CLAIM,
         claimed,
       )
-      document.addEventListener(
-        'scroll',
-        position,
-        true,
-      )
-      window.addEventListener(
-        'resize',
-        position,
-      )
+
+      if (!nativeAnchor) {
+        document.addEventListener(
+          'scroll',
+          position,
+          true,
+        )
+        window.addEventListener(
+          'resize',
+          position,
+        )
+        card.addEventListener(
+          CARD_LAYOUT_COMPLETE,
+          position,
+        )
+      }
+
       const observer = new ResizeObserver(position)
-      observer.observe(card)
+      observer.observe(nativeAnchor ? element : card)
 
       return () => {
         observer.disconnect()
@@ -172,15 +211,24 @@ export function HoverActions({
           HOVER_CLAIM,
           claimed,
         )
-        document.removeEventListener(
-          'scroll',
-          position,
-          true,
-        )
-        window.removeEventListener(
-          'resize',
-          position,
-        )
+
+        if (nativeAnchor) {
+          card.style.anchorName = previousAnchor
+        } else {
+          document.removeEventListener(
+            'scroll',
+            position,
+            true,
+          )
+          window.removeEventListener(
+            'resize',
+            position,
+          )
+          card.removeEventListener(
+            CARD_LAYOUT_COMPLETE,
+            position,
+          )
+        }
       }
     },
     [
@@ -189,5 +237,5 @@ export function HoverActions({
     ],
   )
 
-  return <div ref={panel} popover="manual" className="card-menu fixed inset-auto m-0 hidden w-max max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 shadow-actions opacity-0 pointer-events-none transition-opacity duration-110 transition-discrete open:flex open:opacity-100 open:pointer-events-auto starting:open:opacity-0 motion-reduce:transition-none [&_.tooltip-anchor]:inline-flex [&_.button]:rounded-full [&_.button]:px-1.5 [&_.button]:py-0.5 [&_.button]:text-meta [&>.tooltip-anchor>.button]:p-1.25 [&>.tooltip-anchor>.button]:min-w-6.5 [&>.tooltip-anchor>.button]:min-h-6.5">{children}</div>
+  return <div ref={panel} popover="manual" className="card-menu fixed inset-auto [left:clamp(calc(var(--spacing)*2),calc(anchor(right)-var(--hover-width)-var(--spacing)*2.5),calc(100vw-var(--hover-width)-var(--spacing)*2))] [top:max(calc(var(--spacing)*2),calc(anchor(top)-var(--hover-height)/2))] m-0 hidden w-max max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 shadow-actions opacity-0 pointer-events-none transition-opacity duration-110 transition-discrete open:flex open:opacity-100 open:pointer-events-auto starting:open:opacity-0 motion-reduce:transition-none [&_.tooltip-anchor]:inline-flex [&_.button]:rounded-full [&_.button]:px-1.5 [&_.button]:py-0.5 [&_.button]:text-meta [&>.tooltip-anchor>.button]:p-1.25 [&>.tooltip-anchor>.button]:min-w-6.5 [&>.tooltip-anchor>.button]:min-h-6.5">{children}</div>
 }

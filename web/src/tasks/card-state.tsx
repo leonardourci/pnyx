@@ -69,7 +69,7 @@ export function CardState({
   }
   const color = colors[status.kind] ?? 'text-muted'
   const pill = (
-    <span className={`agent-activity activity-${status.kind} flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden rounded-full bg-activity-fill px-1.75 py-0.5 text-meta font-semibold whitespace-nowrap ${color} ${compact ? 'gap-1 px-1.25' : ''}`} aria-label={text}>
+    <span className={`agent-activity activity-${status.kind} flex min-w-0 max-w-full items-center overflow-hidden rounded-full bg-activity-fill py-0.5 text-meta font-semibold whitespace-nowrap ${color} ${compact ? 'gap-1 px-1.25' : 'gap-1.5 px-1.75'}`} aria-label={text}>
       {status.kind === 'working' ? <WorkingDots /> : <i className="size-1.75 shrink-0 rounded-full border border-current" aria-hidden="true" />}
       <span className="activity-text min-w-0 truncate">{text}</span>
       {progress && <span className="task-progress shrink-0 border-l border-current pl-1 tabular-nums">{progress}</span>}
@@ -82,7 +82,7 @@ export function CardState({
   )
 
   return (
-    <div className={`card-state flex min-h-5 min-w-0 items-center gap-x-2 gap-y-1 text-meta [&>*]:shrink-0 [&>.tooltip-anchor:has(.agent-activity)]:shrink [&>.tooltip-anchor:has(.card-agent)]:ml-auto [&>.tooltip-anchor:has(.project-label)]:min-w-0 [&>.tooltip-anchor:has(.project-label)]:max-w-full [&>.tooltip-anchor:has(.project-label)]:shrink [&>.tooltip-anchor:has(.project-label)]:overflow-hidden ${compact ? 'flex-nowrap gap-x-1.5 whitespace-nowrap' : 'flex-wrap'}`}>
+    <div className={`card-state flex min-h-5 min-w-0 items-center gap-y-1 text-meta [&>*]:shrink-0 [&>.tooltip-anchor:has(.agent-activity)]:shrink [&>.tooltip-anchor:has(.card-agent)]:ml-auto [&>.tooltip-anchor:has(.project-label)]:min-w-0 [&>.tooltip-anchor:has(.project-label)]:max-w-full [&>.tooltip-anchor:has(.project-label)]:shrink [&>.tooltip-anchor:has(.project-label)]:overflow-hidden ${compact ? 'flex-nowrap gap-x-1.5 whitespace-nowrap' : 'flex-wrap gap-x-2'}`}>
       {tooltips ? <Tooltip content={status.details}>{pill}</Tooltip> : pill}
       {tooltips ? <Tooltip content={createdText}>{since}</Tooltip> : since}
       {showProject && (

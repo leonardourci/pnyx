@@ -84,6 +84,10 @@ export function KeyboardProvider({
       let progress = emptyProgress()
 
       const keydown = (event: KeyboardEvent) => {
+        if (document.querySelector('.workspace-axis[data-dragging]')) {
+          return
+        }
+
         const {
           prefs,
           onAction,

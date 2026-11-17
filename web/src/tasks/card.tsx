@@ -1,15 +1,17 @@
+import { motion } from 'motion/react'
+import { DragNestHint, useSortItem, useSortState, useDropZone } from '#web-shared/ui/sortable.tsx'
+import { CardSummary, TaskLabels, CARD_SURFACE, CARD_CONTENT } from './card-summary.tsx'
 import { AgentDetails } from '#web-workers/agent-details.tsx'
-import { memo, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { Card as CardData, SavedLabelColor } from '#tasks/model.ts'
-import { Label } from '#web-shared/ui/label.tsx'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { CardTitle } from './card-title.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
-import { OPEN_CARD_MIN_HEIGHT, DEFAULT_OPEN_CARD_HEIGHT, DEFAULT_WINDOW_WIDTH } from '#preferences/workspace.ts'
+import { OPEN_CARD_MIN_HEIGHT, DEFAULT_OPEN_CARD_HEIGHT } from '#preferences/workspace.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -25,9 +27,9 @@ import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
-import { CardProjectLabel, CardState } from './card-state.tsx'
+import { CardState } from './card-state.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
-import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
+import { HoverActions, CARD_LAYOUT_COMPLETE } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 
@@ -96,6 +98,8 @@ export const HydraCard = memo(function HydraCard({
   card,
   statusOverride,
   sortScope,
+  hydraId,
+  dragChildren,
   chat,
   progress,
   hasChildren,
@@ -122,6 +126,8 @@ export const HydraCard = memo(function HydraCard({
 }: {
   statusOverride?: ObservedStatus
   sortScope?: string
+  hydraId: string
+  dragChildren?: ReactNode
   chat?: ReactNode
   progress?: string
   hasChildren?: boolean
@@ -309,18 +315,68 @@ export const HydraCard = memo(function HydraCard({
   const canStop = connected && card.agent?.host === 'pnyx'
     && (card.sessionActivity ?? card.activity) === 'working'
 
-  const tags = card.tags.filter(tag => tag !== card.project)
-  const showClosedProject = !selected && !!card.project
-  const labels = (showClosedProject || tags.length > 0) && (
-    <div className="card-labels flex shrink-0 flex-wrap gap-1 [&_.task-label]:whitespace-normal [&_.task-label]:wrap-anywhere [&_.task-label]:text-clip [&_.task-label]:px-1">
-      {showClosedProject && (
-        <CardProjectLabel card={card} legacyProject={legacyProject} labelColors={labelColors} />
-      )}
-      {tags.map(tag => (
-        <Label key={tag} label={tag} colors={labelColors} />
-      ))}
-    </div>
+  const labels = (
+    <TaskLabels
+      card={card}
+      showProject={false}
+      legacyProject={legacyProject}
+      colors={labelColors}
+    />
   )
+  const summary = (
+    <CardSummary
+      card={card}
+      status={status}
+      now={now}
+      colors={labelColors}
+      legacyProject={legacyProject}
+      progress={progress}
+      hasChildren={hasChildren}
+      childrenOpen={childrenOpen}
+      trailingLabel={!hasChildren && <DragNestHint />}
+    />
+  )
+  const sort = useSortItem({
+    item: {
+      id: card.id,
+      kind: 'task',
+      scope: sortScope ?? '',
+      hydra: hydraId,
+      parent: card.parentId,
+      hasChildren,
+      overlay: <div><div className={`${CARD_SURFACE} border-gold-line`} data-label-color={tint?.color}><div className={CARD_CONTENT}>{summary}</div></div>{dragChildren}</div>,
+    },
+    disabled: {
+      draggable: selected || !connected || !!reminding || !!editing,
+      droppable: !connected,
+    },
+  })
+  const hoverZone = useDropZone({
+    item: {
+      id: card.id,
+      kind: 'task',
+      scope: sortScope ?? '',
+      hydra: hydraId,
+      zone: 'nest',
+    },
+    disabled: !!card.parentId || !connected,
+  })
+  const sortableNode = sort.setNodeRef
+  const attach = useCallback(
+    // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
+    (node: HTMLElement | null) => {
+      element.current = node
+      hoverZone.setNodeRef(node)
+      const wrapper = card.parentId ? '[data-child]' : '[data-family]'
+      sortableNode(node?.closest<HTMLElement>(wrapper) ?? node)
+    },
+    [
+      sortableNode,
+      hoverZone.setNodeRef,
+      card.parentId,
+    ],
+  )
+  const drag = useSortState()
   const panel = ({ id }: { id: 'context' | 'activity' }) => ({
     role: 'tabpanel',
     id: panelId({
@@ -333,40 +389,57 @@ export const HydraCard = memo(function HydraCard({
     }),
     hidden: tab !== id,
     tabIndex: 0,
-    className: 'card-panel flex min-h-0 min-w-0 flex-1 flex-col gap-2.25 overflow-auto hidden:hidden [&>.detail]:flex-none [&>.detail]:overflow-visible',
+    className: 'card-panel flex min-h-0 min-w-0 flex-1 flex-col gap-2.25 overflow-auto [&[hidden]]:hidden [&>.detail]:flex-none [&>.detail]:overflow-visible',
   })
   // Activity mounts only while it shows, so a hidden one reads no history or report; Context stays mounted to keep draft answers.
   const showsActivity = tab === 'activity'
 
+  // eslint-disable-next-line pnyx/object-params -- Motion supplies the React keyboard event.
+  const keyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape' && windowed && !event.defaultPrevented) {
+      event.preventDefault(); event.stopPropagation(); setWindowed(false)
+    }
+  }
+
+  const click = ({
+    currentTarget,
+    target,
+  }: MouseEvent<HTMLElement>) => {
+    if (clickTogglesCard({
+      card: currentTarget,
+      target: target instanceof Element ? target : null,
+      selecting: !!window.getSelection()?.toString(),
+    })) {
+      open({
+        id: card.id,
+        pointer: true,
+      })
+    }
+  }
+
+  const layoutComplete = () => {
+    element.current?.dispatchEvent(new Event(CARD_LAYOUT_COMPLETE))
+  }
+
   return (
-    <article
-      ref={element}
-      className={`card group/card relative m-0 flex min-h-0 min-w-0 w-full shrink-0 cursor-pointer flex-col gap-1.75 overflow-visible rounded-[10px] border bg-card-fill px-2.75 pt-2.25 pb-2.5 transition-[height,border-color,background-color] duration-240 motion-reduce:transition-none has-[.resize:active]:transition-colors backdrop:bg-shadow ${selected ? 'selected border-gold-line' : 'border-line select-none hover:border-control has-[.card-open:focus-visible]:border-gold'} data-[windowed=true]:fixed data-[windowed=true]:top-[8dvh] data-[windowed=true]:left-1/2 data-[windowed=true]:right-auto data-[windowed=true]:bottom-auto data-[windowed=true]:-translate-x-1/2 data-[windowed=true]:bg-surface data-[windowed=true]:text-ink data-[windowed=true]:shadow-window`}
+    <motion.article
+      layout={preview === null}
+      onLayoutAnimationComplete={layoutComplete}
+      ref={attach}
+      onPointerDown={sort.pointerDown}
+      data-sort-key={sort.key}
+      data-nest-armed={drag.shift && drag.over?.zone === 'nest' && drag.over.id === card.id}
+      className={`${CARD_SURFACE} touch-pan-y data-[nest-armed=true]:border-gold-line data-[nest-armed=true]:ring-2 data-[nest-armed=true]:ring-inset data-[nest-armed=true]:ring-gold transition-colors duration-150 motion-reduce:transition-none has-[.resize:active]:transition-colors backdrop:bg-shadow ${selected ? 'selected border-gold-line' : 'border-line select-none hover:border-control has-[.card-open:focus-visible]:border-gold'} data-[windowed=true]:fixed data-[windowed=true]:top-card-window-top data-[windowed=true]:left-1/2 data-[windowed=true]:right-auto data-[windowed=true]:bottom-auto data-[windowed=true]:-translate-x-1/2 data-[windowed=true]:bg-surface data-[windowed=true]:text-ink data-[windowed=true]:shadow-window`}
       style={{
         height: selected ? (preview ?? height) : undefined,
-        width: selected && windowed ? DEFAULT_WINDOW_WIDTH : undefined,
+        width: selected && windowed ? 'var(--project-card-width)' : undefined,
       }}
       data-task={card.id}
       data-windowed={windowed}
-      onKeyDown={event => {
-        if (event.key === 'Escape' && windowed) {
-          event.preventDefault(); event.stopPropagation(); setWindowed(false)
-        }
-      }}
+      onKeyDown={keyDown}
       data-tab={selected ? tab : undefined}
       data-label-color={tint?.color}
-      onClick={e => {
-        if (clickTogglesCard({
-          card: e.currentTarget,
-          target: e.target instanceof Element ? e.target : null,
-          selecting: !!window.getSelection()?.toString(),
-        })) {
-          open({
-            id: card.id,
-            pointer: true,
-          })
-        }
-      }}
+      onClick={click}
       data-sort-id={card.id}
       data-sort-kind="task"
       data-sort-scope={sortScope}
@@ -375,184 +448,79 @@ export const HydraCard = memo(function HydraCard({
       data-has-children={hasChildren}
 
     >
-      {!card.parentId && <span className="subtask-drop absolute top-1/2 left-1/2 z-8 hidden -translate-1/2 rounded-full border border-gold-line bg-surface px-2.25 py-0.75 text-meta text-gold hover:bg-gold-fill hover:text-gold-ink" data-subtask-drop aria-hidden="true">Sub-task</span>}
-      <div className="card-content flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden [&>*]:shrink-0 [&>.card-open-content]:shrink">
-        <CardState
-          card={card}
-          status={status}
-          now={now}
-          labelColors={labelColors}
-          tooltips
-          compact={!selected}
-          progress={progress}
-          showProject={selected && showProject}
-          legacyProject={legacyProject}
-        >
-          {card.agent && (
-            <Tooltip
-              content={<AgentDetails card={card} command={command} />}
-              interactive
-              label="Agent details"
+      <motion.div layout="position" className={CARD_CONTENT}>
+        {!selected && (
+          <CardSummary
+            card={card}
+            status={status}
+            now={now}
+            colors={labelColors}
+            legacyProject={legacyProject}
+            progress={progress}
+            hasChildren={hasChildren}
+            childrenOpen={childrenOpen}
+            toggleChildren={toggleChildren}
+            open={() => void open({ id: card.id })}
+            agentDetails={card.agent ? <AgentDetails card={card} command={command} /> : undefined}
+            editing={!!editing}
+            tabIndex={tabIndex}
+          />
+        )}
+        {selected && (
+          <>
+            <CardState
+              card={card}
+              status={status}
+              now={now}
+              labelColors={labelColors}
+              tooltips
+              compact={!selected}
+              progress={progress}
+              showProject={selected && showProject}
+              legacyProject={legacyProject}
             >
-              <span className="card-agent ml-auto inline-flex text-muted" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
-                <Icon name={card.agent.provider} />
-              </span>
-            </Tooltip>
-          )}
-        </CardState>
-        <div className="card-title-row flex min-w-0 items-start gap-1.25 [&>.tooltip-anchor]:shrink-0">
-          {hasChildren && (
-            <Button
-              className="subtask-toggle min-w-3.5 flex-none px-0 py-0.5 aria-expanded:[&_svg]:rotate-90"
-              aria-label={`Sub-tasks of ${card.title}`}
-              aria-expanded={childrenOpen}
-              onClick={event => {
-                event.stopPropagation(); toggleChildren?.()
-              }}
-            ><Icon name="chevron_right" size={14} />
-            </Button>
-          )}
-          {!editing && (
-            <CardTitle
-              title={card.title}
-              expanded={selected}
-              open={() => void open({ id: card.id })}
-              aria-controls={selected ? panelId({
-                prefix: tabsId,
-                id: 'context',
-              }) : undefined}
-              data-card={card.id}
-              data-key-scope="hydra"
-              tabIndex={tabIndex}
-            />
-          )}
-          <HoverActions anchor={element}>
-            <Tooltip content={windowed ? 'Open in place' : 'Open as a window'}>
-              <Button
-                aria-label={windowed ? 'Open in place' : 'Open as a window'}
-                onClick={async () => {
-                  if (!selected && !await open({ id: card.id })) {
-                    return
-                  }
-
-                  setWindowed(value => !value)
-                }}
-              ><Icon name="open" size={15} />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Pause task">
-              <Button
-                aria-label="Pause task"
-                disabled={!connected}
-                onClick={() => command({
-                  name: 'task',
-                  args: [
-                    'hold',
-                    card.id,
-                    '--reason',
-                    'Paused by owner',
-                    '--event-id',
-                    crypto.randomUUID(),
-                  ],
-                }).catch((error: Error) => notify({ text: error.message }))}
-              ><Icon name="pause" size={15} />
-              </Button>
-            </Tooltip>
-            {canStop && (
-              <Button
-                aria-label="Stop worker"
-                title="Stop worker"
-                onClick={async () => {
-                  try {
-                    await command({
-                      name: 'task',
-                      args: [
-                        'stop',
-                        card.id,
-                      ],
-                    })
-                  } catch (error) {
-                    notify({ text: (error as Error).message })
-                  }
-                }}
-              >
-                <Icon name="stop" size={12} />
-              </Button>
-            )}
-            {card.parentId && (
-              <Tooltip content="Move out of its parent">
+              {card.agent && (
+                <Tooltip
+                  content={<AgentDetails card={card} command={command} />}
+                  interactive
+                  label="Agent details"
+                >
+                  <span className="card-agent ml-auto inline-flex text-muted" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
+                    <Icon name={card.agent.provider} />
+                  </span>
+                </Tooltip>
+              )}
+            </CardState>
+            <div className="card-title-row flex min-w-0 items-start gap-1.25 [&>.tooltip-anchor]:shrink-0">
+              {hasChildren && (
                 <Button
-                  aria-label="Move out of its parent"
-                  disabled={!connected}
-                  onClick={() => command({
-                    name: 'task',
-                    args: [
-                      'parent',
-                      card.id,
-                      'none',
-                      '--event-id',
-                      crypto.randomUUID(),
-                    ],
-                  }).catch((error: Error) => notify({ text: error.message }))}
-                ><Icon name="chevron_right" size={15} />
+                  className="subtask-toggle min-w-3.5 flex-none px-0 py-0.5 aria-expanded:[&_svg]:rotate-90"
+                  aria-label={`Sub-tasks of ${card.title}`}
+                  aria-expanded={childrenOpen}
+                  onClick={event => {
+                    event.stopPropagation(); toggleChildren?.()
+                  }}
+                ><Icon name="chevron_right" size={14} />
                 </Button>
-              </Tooltip>
-            )}
-            <Tooltip content="Edit title and brief">
-              <Button
-                aria-label="Edit title and brief"
-                disabled={!connected || !!editing}
-                onClick={event => {
-                  event.stopPropagation(); edit()
-                }}
-              ><Icon name="renamed" size={15} />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Remind">
-              <Button
-                aria-label="Remind"
-                disabled={!connected}
-                onClick={() => setReminding({ version: ++reminderVersion.current })}
-              ><Icon name="reminder" size={15} />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Hide">
-              <Button
-                aria-label="Hide"
-                disabled={!connected}
-                onClick={async () => {
-                  const wasSelected = selected
+              )}
+              {!editing && (
+                <CardTitle
+                  title={card.title}
+                  expanded={selected}
+                  open={() => void open({ id: card.id })}
+                  aria-controls={selected ? panelId({
+                    prefix: tabsId,
+                    id: 'context',
+                  }) : undefined}
+                  data-card={card.id}
+                  data-key-scope="hydra"
+                  tabIndex={tabIndex}
+                />
+              )}
 
-                  try {
-                    const saving = command({
-                      name: 'task',
-                      args: [
-                        'hide',
-                        card.id,
-                        '--event-id',
-                        crypto.randomUUID(),
-                      ],
-                    })
-
-                    if (wasSelected) {
-                      await open({ id: card.id })
-                    }
-
-                    await saving
-                  } catch (error) {
-                    if (wasSelected) {
-                      recoverSelection({ id: card.id })
-                    }
-
-                    notify({ text: (error as Error).message })
-                  }
-                }}
-              ><Icon name="review" size={15} />
-              </Button>
-            </Tooltip>
-          </HoverActions>
-        </div>
-        {!selected && labels}
+            </div>
+          </>
+        )}
         {editing && (
           <TaskEditor
             key={editing.version}
@@ -575,7 +543,7 @@ export const HydraCard = memo(function HydraCard({
           />
         )}
         {selected && (
-          <div className="card-open-content grid min-h-0 flex-1 grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)] gap-3.5 pt-1.5">
+          <div className="card-open-content grid min-h-0 flex-1 grid-cols-[minmax(var(--spacing-card-details),1fr)_minmax(var(--spacing-card-chat),1fr)] gap-3.5 pt-1.5">
             <div className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">
               <Tabs
                 prefix={tabsId}
@@ -602,7 +570,7 @@ export const HydraCard = memo(function HydraCard({
                     state={!!factual}
                   />
                 )}
-                {card.brief?.trim() && <section className="card-section flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Instructions"><h3 className="eyebrow">Instructions</h3><RichText text={card.brief} /></section>}
+                {card.brief?.trim() && <section className="card-section flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold!" aria-label="Instructions"><h3 className="eyebrow">Instructions</h3><RichText text={card.brief} /></section>}
                 <TaskQuestion
                   card={card}
                   connected={connected}
@@ -611,13 +579,13 @@ export const HydraCard = memo(function HydraCard({
                   answer={answer}
                 />
                 {card.intent && (
-                  <section className="card-section card-intent flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Intent">
+                  <section className="card-section card-intent flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold!" aria-label="Intent">
                     <h3 className="eyebrow">Intent</h3>
                     <RichText text={card.intent} />
                   </section>
                 )}
                 {factual && (
-                  <section className="card-section card-current-state flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Current state">
+                  <section className="card-section card-current-state flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold!" aria-label="Current state">
                     <h3 className="eyebrow">Current state</h3>
                     <RichText text={factual.text} />
                     <p className="muted small">{stateSource}, {relativeTime({
@@ -635,7 +603,7 @@ export const HydraCard = memo(function HydraCard({
                 {showsActivity && (
                   <>
                     {!!card.ask?.length && (
-                      <section className="card-section flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold" aria-label="Your words">
+                      <section className="card-section flex flex-col gap-0.75 [&>.eyebrow]:m-0 [&>.eyebrow]:text-gold!" aria-label="Your words">
                         <h3 className="eyebrow">Your words</h3>
                         {card.ask.map(entry => (
                           <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words [&+&]:mt-1.5">
@@ -689,7 +657,141 @@ export const HydraCard = memo(function HydraCard({
             }}
           />
         )}
-      </div>
+      </motion.div>
+      <HoverActions anchor={element}>
+        <Button
+          {...sort.attributes}
+          {...sort.listeners}
+          ref={sort.setActivatorNodeRef}
+          data-drag-handle
+          aria-label={`Move ${card.title}`}
+          disabled={selected || !connected}
+        ><Icon name="grip" size={15} />
+        </Button>
+        <Tooltip content={windowed ? 'Open in place' : 'Open as a window'}>
+          <Button
+            aria-label={windowed ? 'Open in place' : 'Open as a window'}
+            onClick={async () => {
+              if (!selected && !await open({ id: card.id })) {
+                return
+              }
+
+              setWindowed(value => !value)
+            }}
+          ><Icon name="open" size={15} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Pause task">
+          <Button
+            aria-label="Pause task"
+            disabled={!connected}
+            onClick={() => command({
+              name: 'task',
+              args: [
+                'hold',
+                card.id,
+                '--reason',
+                'Paused by owner',
+                '--event-id',
+                crypto.randomUUID(),
+              ],
+            }).catch((error: Error) => notify({ text: error.message }))}
+          ><Icon name="pause" size={15} />
+          </Button>
+        </Tooltip>
+        {canStop && (
+          <Button
+            aria-label="Stop worker"
+            title="Stop worker"
+            onClick={async () => {
+              try {
+                await command({
+                  name: 'task',
+                  args: [
+                    'stop',
+                    card.id,
+                  ],
+                })
+              } catch (error) {
+                notify({ text: (error as Error).message })
+              }
+            }}
+          >
+            <Icon name="stop" size={12} />
+          </Button>
+        )}
+        {card.parentId && (
+          <Tooltip content="Move out of its parent">
+            <Button
+              aria-label="Move out of its parent"
+              disabled={!connected}
+              onClick={() => command({
+                name: 'task',
+                args: [
+                  'parent',
+                  card.id,
+                  'none',
+                  '--event-id',
+                  crypto.randomUUID(),
+                ],
+              }).catch((error: Error) => notify({ text: error.message }))}
+            ><Icon name="chevron_right" size={15} />
+            </Button>
+          </Tooltip>
+        )}
+        <Tooltip content="Edit title and brief">
+          <Button
+            aria-label="Edit title and brief"
+            disabled={!connected || !!editing}
+            onClick={event => {
+              event.stopPropagation(); edit()
+            }}
+          ><Icon name="renamed" size={15} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Remind">
+          <Button
+            aria-label="Remind"
+            disabled={!connected}
+            onClick={() => setReminding({ version: ++reminderVersion.current })}
+          ><Icon name="reminder" size={15} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Hide">
+          <Button
+            aria-label="Hide"
+            disabled={!connected}
+            onClick={async () => {
+              const wasSelected = selected
+
+              try {
+                const saving = command({
+                  name: 'task',
+                  args: [
+                    'hide',
+                    card.id,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                })
+
+                if (wasSelected) {
+                  await open({ id: card.id })
+                }
+
+                await saving
+              } catch (error) {
+                if (wasSelected) {
+                  recoverSelection({ id: card.id })
+                }
+
+                notify({ text: (error as Error).message })
+              }
+            }}
+          ><Icon name="review" size={15} />
+          </Button>
+        </Tooltip>
+      </HoverActions>
       {selected && (
         <Resize
           className="bottom-0! right-auto! left-[calc(50%-3rem)]! h-6! w-24 after:top-4.25! after:bg-muted hover:after:bg-gold focus:after:bg-gold"
@@ -710,6 +812,6 @@ export const HydraCard = memo(function HydraCard({
           }}
         />
       )}
-    </article>
+    </motion.article>
   )
 })

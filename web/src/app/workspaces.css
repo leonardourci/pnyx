@@ -1,18 +1,5 @@
 .oracle-palette { margin-top: 64px; height: min(660px, calc(100dvh - 86px)); }
-.physical-ghost { position: fixed !important; z-index: 1000; margin: 0 !important; pointer-events: none !important; box-shadow: 0 16px 36px var(--color-shadow); border-color: var(--color-gold-line) !important; opacity: .96; overflow: hidden; will-change: transform; }
-[data-drag-slot] { outline: 1px dashed var(--color-gold-line); outline-offset: -1px; border-radius: 10px; background: var(--color-gold-wash); pointer-events: none; }
-[data-drag-slot] > * { visibility: hidden; }
-[data-drag-slot].card { visibility: hidden; }
-.physical-ghost.project-cards { padding: 0; border: 0; overflow: visible; }
-.physical-ghost [data-drag-slot] { border: 0; }
-[data-drag-excluded] { opacity: .55; }
-.card[data-drag-hover] { opacity: 1; }
-[data-sort-id] { touch-action: pan-y; }
-[data-dragging=task] .card[data-drag-hover] > .subtask-drop { display: block; }
-.subtask-drop:hover { background: var(--color-gold-fill); color: var(--color-gold-ink); }
 .ownership-settings { padding: 16px; border: 1px solid var(--color-gold-line); border-radius: 12px; margin-block: 12px; }
 .ownership-repository { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .ownership-repository code { font-size: var(--text-meta); color: var(--color-muted); }
 .ownership-repository .row > div { display: flex; align-items: center; gap: 8px; }
-[data-drag-parent] .subtask-drop { display: none !important; }
-[data-dragging], [data-dragging] * { cursor: grabbing !important; user-select: none !important; }

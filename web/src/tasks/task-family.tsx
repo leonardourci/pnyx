@@ -1,8 +1,12 @@
+import { motion } from 'motion/react'
+import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
+import { CardSummary, CARD_SURFACE, CARD_CONTENT } from './card-summary.tsx'
+import { taskProjectColumn } from './project-view.ts'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import { movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
+import { movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { rankOf } from '#tasks/select.ts'
 import { statusPriority, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
@@ -12,6 +16,7 @@ export interface FamilyCard {
   card: Card
   status: ObservedStatus
   progress?: string
+  dragChildren?: ReactNode
   childrenOpen?: boolean
   hasChildren?: boolean
   toggleChildren?(): void
@@ -19,6 +24,7 @@ export interface FamilyCard {
 
 export function TaskFamily({
   card,
+  hydraId,
   state,
   actions,
   selected,
@@ -26,10 +32,11 @@ export function TaskFamily({
   renderCard,
 }: {
   card: Card
+  hydraId: string
   state: HydraState
   actions: Record<string, CurrentAction>
   selected: string[]
-  preview: PhysicalMove | null
+  preview: SortMove | null
   renderCard({
     card,
     status,
@@ -95,34 +102,74 @@ export function TaskFamily({
     '--closed-card-min': `${CLOSED_CARD_MIN_WIDTH}px`,
     '--subtask-indent': `${SUBTASK_INDENT}px`,
   } as CSSProperties
+  const drag = useSortState()
+  const dragged = drag.active?.kind === 'task' && drag.active.id === card.id
   const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length ? 'family-open basis-full' : ''}`
 
   return (
-    <div className={className} style={style} data-family={card.id}>
+    <motion.div
+      layout="position"
+      className={`${className} data-[drag-slot=true]:rounded-card data-[drag-slot=true]:bg-gold-wash data-[drag-slot=true]:outline data-[drag-slot=true]:outline-dashed data-[drag-slot=true]:outline-gold-line [&[data-drag-slot=true]>*]:invisible`}
+      style={style}
+      data-family={card.id}
+      data-drag-slot={dragged}
+    >
       {renderCard({
         card,
         status,
         progress: children.length ? `${done}/${children.length}` : undefined,
         hasChildren: children.length > 0,
+        dragChildren: childrenOpen && (
+          <div className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]" style={style}>
+            {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
+              <div key={child.key} className={`${CARD_SURFACE} border-line`}>
+                <div className={CARD_CONTENT}>
+                  <CardSummary
+                    card={child}
+                    status={taskRollup({
+                      state,
+                      card: child,
+                      actions,
+                    }).status}
+                    now={Date.now()}
+                    colors={state.labelColors}
+                    legacyProject={taskProjectColumn({
+                      state,
+                      card: child,
+                    }) === 'ideas'}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ),
         childrenOpen,
         toggleChildren: () => setExpanded(value => !value),
       })}
       {children.length > 0 && childrenOpen && (
-        <div className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]">
-          {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
-            <div key={child.key} data-child={child.id}>
-              {renderCard({
-                card: child,
-                status: taskRollup({
-                  state,
+        <div data-sort-surface={`children:${card.id}`} className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]">
+          <SortGroup namespace={`tasks:${hydraId}`} id={`children:${card.id}`} items={shown.map(child => child.id)}>
+            {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
+              <motion.div
+                layout="position"
+                key={child.key}
+                data-child={child.id}
+                className="data-[drag-slot=true]:rounded-card data-[drag-slot=true]:bg-gold-wash data-[drag-slot=true]:outline data-[drag-slot=true]:outline-dashed data-[drag-slot=true]:outline-gold-line [&[data-drag-slot=true]>*]:invisible"
+                data-drag-slot={drag.active?.kind === 'task' && drag.active.id === child.id}
+              >
+                {renderCard({
                   card: child,
-                  actions,
-                }).status,
-              })}
-            </div>
-          ))}
+                  status: taskRollup({
+                    state,
+                    card: child,
+                    actions,
+                  }).status,
+                })}
+              </motion.div>
+            ))}
+          </SortGroup>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

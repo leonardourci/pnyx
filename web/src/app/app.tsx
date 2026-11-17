@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { usePhysicalDrag, movedOrder, type PhysicalMove } from '#web-shared/ui/physical-drag.ts'
+import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
+import { MotionConfig } from 'motion/react'
 import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
 import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
 import { projectColumns, taskProjectColumn, statusPriority, taskRollup } from '#web-tasks/project-view.ts'
@@ -38,7 +39,7 @@ export function App() {
   const [
     preview,
     setPreview,
-  ] = useState<PhysicalMove | null>(null)
+  ] = useState<SortMove | null>(null)
   const [
     rootError,
     setRootError,
@@ -63,173 +64,144 @@ export function App() {
   ) =>
     orderedHydras.findIndex(item => item.id === a.navigation.hydraId)
     - orderedHydras.findIndex(item => item.id === b.navigation.hydraId))
-  usePhysicalDrag({
-    root: axis,
-    move: ({ preview }) => setPreview(preview),
-    drop: ({ preview }) => {
-      const commit = async () => {
-        if (preview.kind === 'hydra') {
-          const index = orderedHydras.findIndex(item => item.id === preview.id)
 
-          for (const placement of placements({
-            hydras: edits.hydras,
-            id: preview.id,
-            index,
-          })) {
-            await edits.move(placement)
-          }
+  const drop = ({ preview }: { preview: SortMove }) => {
+    const commit = async () => {
+      if (preview.kind === 'hydra') {
+        const index = movedOrder({
+          items: edits.hydras,
+          ...preview,
+          key: ({ item }) => item.id,
+        }).findIndex(item => item.id === preview.id)
 
-          return
+        for (const placement of placements({
+          hydras: edits.hydras,
+          id: preview.id,
+          index,
+        })) {
+          await edits.move(placement)
         }
 
-        const workspace = hydra.workspaces.find(item => item.navigation.hydraId === preview.hydra)
+        return
+      }
 
-        if (!workspace) {
-          return
-        }
+      const workspace = hydra.workspaces.find(item => item.navigation.hydraId === preview.hydra)
 
-        const command = hydra.commandFor({ id: preview.hydra })
-        const event = crypto.randomUUID()
+      if (!workspace) {
+        return
+      }
 
-        if (preview.kind === 'project') {
-          const columns = projectColumns({
-            state: workspace.state,
-            cards: Object.values(workspace.state.cards),
-            actions: workspace.actions,
-            order: workspace.state.view?.workspace?.projectOrder ?? [],
-          })
-          const ordered = movedOrder({
-            items: columns,
-            ...preview,
-            key: ({ item }) => item.id,
-          })
-          await command({
-            name: 'view',
-            args: [
-              'set',
-              '--json',
-              JSON.stringify({ workspace: { projectOrder: ordered.map(item => item.id) } }),
-              '--event-id',
-              event,
-            ],
-          })
+      const command = hydra.commandFor({ id: preview.hydra })
+      const event = crypto.randomUUID()
 
-          return
-        }
-
-        const card = workspace.state.cards[preview.id], target = workspace.state.cards[preview.over]
-
-        if (card?.parentId && preview.detach) {
-          await command({
-            name: 'task',
-            args: [
-              'parent',
-              card.id,
-              'none',
-              '--event-id',
-              event,
-            ],
-          })
-
-          return
-        }
-
-        if (!card || !target) {
-          return
-        }
-
-        if (preview.nest) {
-          await command({
-            name: 'task',
-            args: [
-              'parent',
-              card.id,
-              target.id,
-              '--event-id',
-              event,
-            ],
-          })
-
-          return
-        }
-
-        if (card.parentId && !target.parentId) {
-          await command({
-            name: 'task',
-            args: [
-              'parent',
-              card.id,
-              'none',
-              '--event-id',
-              event,
-            ],
-          })
-
-          return
-        }
-
-        if (preview.scope !== preview.targetScope) {
-          return
-        }
-
+      if (preview.kind === 'project') {
         const columns = projectColumns({
           state: workspace.state,
           cards: Object.values(workspace.state.cards),
           actions: workspace.actions,
-          order: [],
+          order: workspace.state.view?.workspace?.projectOrder ?? [],
         })
-        const childCards = Object.values(workspace.state.cards).filter(item =>
-          item.parentId === card.parentId)
-          .sort((
-            a,
-            b,
-          ) => statusPriority({
-            status: taskRollup({
-              state: workspace.state,
-              card: a,
-              actions: workspace.actions,
-            }).status,
-          }) - statusPriority({
-            status: taskRollup({
-              state: workspace.state,
-              card: b,
-              actions: workspace.actions,
-            }).status,
-          }) || rankOf({ card: a }) - rankOf({ card: b }))
-        const siblings = card.parentId ? childCards
-          : columns.find(column => column.id === taskProjectColumn({
-            state: workspace.state,
-            card,
-          }))?.cards ?? []
         const ordered = movedOrder({
-          items: siblings,
+          items: columns,
           ...preview,
           key: ({ item }) => item.id,
         })
-        const next = ordered[ordered.findIndex(item => item.id === card.id) + 1]
-        const args = [
-          'arrange',
-          card.id,
-          '--event-id',
-          event,
-        ]
-
-        if (next) {
-          args.push(
-            '--before',
-            next.id,
-          )
-        }
-
         await command({
-          name: 'task',
-          args,
+          name: 'view',
+          args: [
+            'set',
+            '--json',
+            JSON.stringify({ workspace: { projectOrder: ordered.map(item => item.id) } }),
+            '--event-id',
+            event,
+          ],
         })
+
+        return
       }
 
-      commit().catch((error: Error) => setRootError(error.message))
-    },
-  })
+      const card = workspace.state.cards[preview.id], target = workspace.state.cards[preview.over]
+
+      if (!card || !target) {
+        return
+      }
+
+      if (preview.nest) {
+        await command({
+          name: 'task',
+          args: [
+            'parent',
+            card.id,
+            target.id,
+            '--event-id',
+            event,
+          ],
+        })
+
+        return
+      }
+
+      if (preview.scope !== preview.targetScope) {
+        return
+      }
+
+      const columns = projectColumns({
+        state: workspace.state,
+        cards: Object.values(workspace.state.cards),
+        actions: workspace.actions,
+        order: [],
+      })
+      const childCards = Object.values(workspace.state.cards).filter(item =>
+        item.parentId === card.parentId)
+        .sort((
+          a,
+          b,
+        ) => statusPriority({
+          status: taskRollup({
+            state: workspace.state,
+            card: a,
+            actions: workspace.actions,
+          }).status,
+        }) - statusPriority({
+          status: taskRollup({
+            state: workspace.state,
+            card: b,
+            actions: workspace.actions,
+          }).status,
+        }) || rankOf({ card: a }) - rankOf({ card: b }))
+      const siblings = card.parentId ? childCards
+        : columns.find(column => column.id === taskProjectColumn({
+          state: workspace.state,
+          card,
+        }))?.cards ?? []
+      const ordered = movedOrder({
+        items: siblings,
+        ...preview,
+        key: ({ item }) => item.id,
+      })
+      const next = ordered[ordered.findIndex(item => item.id === card.id) + 1]
+      const args = [
+        'arrange',
+        card.id,
+        '--event-id',
+        event,
+      ]
+
+      if (next) {
+        args.push(
+          '--before',
+          next.id,
+        )
+      }
+
+      await command({
+        name: 'task',
+        args,
+      })
+    }
+
+    commit().catch((error: Error) => setRootError(error.message))
+  }
 
   useEffect(
     () => {
@@ -348,33 +320,46 @@ export function App() {
   }
 
   return (
-    <div
-      ref={axis}
-      className="workspace-axis group/axis flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-15 pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-14.5 max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
-      data-page={hydra.navigation.page}
-      aria-label="Hydras"
+    <MotionConfig
+      reducedMotion="user"
+      transition={{
+        type: 'spring',
+        stiffness: 480,
+        damping: 42,
+      }}
     >
-      <div ref={track} className="workspace-track flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
-        {rootError && <div className="notice" role="alert">{rootError}<Button aria-label="Dismiss" onClick={() => setRootError('')}><Icon name="close" /></Button></div>}
-        {workspaces.map(workspace => (
-          <HydraView
-            key={workspace.viewKey}
-            active={workspace.navigation.hydraId === current}
-            navigatePage={hydra.navigate}
-            edits={{
-              ...edits,
-              hydras: orderedHydras,
-            }}
-            preview={preview}
-            hydra={{
-              ...hydra,
-              ...workspace,
-              navigate,
-              command: hydra.commandFor({ id: workspace.navigation.hydraId }),
-            }}
-          />
-        ))}
-      </div>
-    </div>
+      <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
+        <div
+          ref={axis}
+          className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-15 pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-14.5 max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
+          data-page={hydra.navigation.page}
+          aria-label="Hydras"
+        >
+          <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
+            {rootError && <div className="notice" role="alert">{rootError}<Button aria-label="Dismiss" onClick={() => setRootError('')}><Icon name="close" /></Button></div>}
+            <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
+              {workspaces.map(workspace => (
+                <HydraView
+                  key={workspace.viewKey}
+                  active={workspace.navigation.hydraId === current}
+                  navigatePage={hydra.navigate}
+                  edits={{
+                    ...edits,
+                    hydras: orderedHydras,
+                  }}
+                  preview={preview}
+                  hydra={{
+                    ...hydra,
+                    ...workspace,
+                    navigate,
+                    command: hydra.commandFor({ id: workspace.navigation.hydraId }),
+                  }}
+                />
+              ))}
+            </SortGroup>
+          </div>
+        </div>
+      </SortableWorkspace>
+    </MotionConfig>
   )
 }

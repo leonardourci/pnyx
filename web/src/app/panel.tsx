@@ -1,6 +1,7 @@
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { UpgradeHint } from '#web-upgrade/upgrade-hint.tsx'
 import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
@@ -30,7 +31,7 @@ export function Panel({
   const { label: keys } = useKeyboard()
   const settingsKey = keys({ id: 'settings' })
 
-  return (
+  return createPortal(
     <header className="topbar fixed inset-x-0 top-0 z-70 flex h-12.5 items-center gap-3 border-b border-line bg-background px-3.5 [&[hidden]]:hidden visible max-[760px]:gap-1.5 max-[760px]:px-2" aria-label="Pnyx navigation" hidden={!shown}>
       <div className="brand flex shrink-0 items-center gap-2 text-pane font-bold text-gold max-[760px]:[&>span]:hidden"><Icon name="pnyx" size={24} /><span>pnyx</span>{offline && <span className="offline" role="status">offline</span>}{connected && <UpgradeHint status={upgrade} upgrade={startUpgrade} />}</div>
       {children}
@@ -38,6 +39,7 @@ export function Panel({
         {oracle}
         <Button aria-label={settings ? 'Close Settings' : 'Settings'} aria-pressed={settings} onClick={() => navigate({ page: settings ? 'hydra' : 'settings' })}><Icon name={settings ? 'close' : 'settings'} /><span>Settings</span>{settingsKey && <kbd>{settingsKey}</kbd>}</Button>
       </nav>
-    </header>
+    </header>,
+    document.body,
   )
 }

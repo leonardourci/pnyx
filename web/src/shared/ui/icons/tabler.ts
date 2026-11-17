@@ -1,7 +1,7 @@
 import {
   IconCurrencyDollar, IconAlertCircle, IconArrowDown, IconArrowLeft, IconArrowFork, IconArrowRight,
   IconArrowsMinimize, IconArrowsSplit2, IconArrowUpRight,
-  IconAt,
+  IconAt, IconGripVertical,
   IconBolt, IconBoltFilled, IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck,
   IconChevronDown, IconChevronRight, IconCircleArrowUp, IconClipboardList, IconClock, IconCode,
   IconCopy, IconCpu, IconCube, IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye,
@@ -36,6 +36,7 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   'task-card': IconCalendar,
   link: IconLink,
   paperclip: IconPaperclip,
+  grip: IconGripVertical,
   mention: IconAt,
   github: IconBrandGithub,
   github_pr: IconGitPullRequest,

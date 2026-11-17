@@ -51,12 +51,11 @@ export function useSmoothScroll({
         lenis.resize()
         removeSnaps.forEach(remove => remove())
         const padding = parseFloat(getComputedStyle(wrapper).scrollPaddingLeft) || 0
-        const left = wrapper.getBoundingClientRect().left
         removeSnaps = [...wrapper.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
           .flatMap(element => snap ? [
             snap.add(Math.max(
               0,
-              element.getBoundingClientRect().left - left + wrapper.scrollLeft - padding,
+              element.offsetLeft + inner.offsetLeft - wrapper.offsetLeft - padding,
             )),
           ] : [])
       }
@@ -64,15 +63,16 @@ export function useSmoothScroll({
       resize()
       const sizes = new ResizeObserver(resize)
       sizes.observe(inner)
+      const surface = wrapper.closest<HTMLElement>('.workspace-axis') ?? wrapper
       const observer = new MutationObserver(() => {
-        if (wrapper.dataset.dragging || wrapper.dataset.page === 'settings') {
+        if (surface.dataset.dragging || surface.dataset.page === 'settings') {
           lenis.stop()
         } else {
           lenis.start()
         }
       })
       observer.observe(
-        wrapper,
+        surface,
         {
           attributes: true,
           attributeFilter: [

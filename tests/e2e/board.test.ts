@@ -498,7 +498,7 @@ test(
 )
 
 test(
-  'visual arrangement changes card order and survives reload',
+  'dragging reorders calmly and only Shift nests a task',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -560,6 +560,17 @@ test(
       )
       await page.mouse.down()
       await page.mouse.move(
+        from.x + 32,
+        from.y + 13,
+        { steps: 5 },
+      )
+      const ghost = page.locator('.physical-ghost')
+      await ghost.waitFor()
+      await page.evaluate(() => new Promise<void>(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      }))
+      expect((await cards.allTextContents()).join('|')).toBe('First task|Second task|Third task')
+      await page.mouse.move(
         to.x + 8,
         to.y + 3,
         { steps: 15 },
@@ -573,7 +584,6 @@ test(
             && (await cards.allTextContents()).join('|') === 'Third task|First task|Second task'
         },
       })
-      const ghost = page.locator('.physical-ghost')
       const lifted = await ghost.boundingBox()
 
       if (!lifted) {
@@ -591,6 +601,7 @@ test(
       })
       await page.mouse.up()
       await ghost.waitFor({ state: 'detached' })
+      expect((await hydra.task({ key: 'c' })).parent).toBe('none')
       await page.reload()
       await until({
         what: 'saved card order',
@@ -631,6 +642,130 @@ test(
         what: 'dropping outside the workspace preserves saved order',
         check: async () => (await cards.allTextContents()).join('|') === 'Third task|First task|Second task',
       })
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      const coordinator = await hydra.chat({ text: 'Coordinate the release tasks' })
+      await hydra.as({ session: coordinator }).run({
+        args: [
+          'task',
+          'ask',
+          'a',
+          '--to',
+          'owner',
+          '--question',
+          'Choose a release direction?',
+          '--reason',
+          'The owner chooses the release direction',
+        ],
+      })
+      const parent = first.locator('xpath=ancestor::article')
+      await parent.locator('.agent-activity').filter({ hasText: /needs you/i })
+        .waitFor()
+      await first.click()
+      await parent.locator('.worker-chat').waitFor()
+      await connected.waitFor()
+
+      const dragOverParent = async ({
+        releaseShift,
+        cancel = false,
+      }: {
+        releaseShift: boolean
+        cancel?: boolean
+      }) => {
+        await third.hover({
+          position: {
+            x: 12,
+            y: 8,
+          },
+        })
+        const source = await third.boundingBox(), target = await parent.boundingBox()
+
+        if (!source || !target) {
+          throw new Error('The nesting cards are not visible')
+        }
+
+        await page.mouse.down()
+        await page.mouse.move(
+          source.x + 32,
+          source.y + 8,
+          { steps: 5 },
+        )
+        await ghost.waitFor()
+        await page.keyboard.down('Shift')
+        await page.mouse.move(
+          target.x + target.width / 2,
+          target.y + 60,
+          { steps: 16 },
+        )
+        await until({
+          what: 'Shift arms the open parent as a nesting target',
+          check: async () => await parent.getAttribute('data-nest-armed') === 'true',
+        })
+
+        if (releaseShift) {
+          await page.keyboard.up('Shift')
+        }
+
+        if (cancel) {
+          await page.keyboard.press('Escape')
+        }
+
+        await page.mouse.up()
+        await page.keyboard.up('Shift')
+        await ghost.waitFor({ state: 'detached' })
+      }
+
+      await dragOverParent({ releaseShift: true })
+      expect((await hydra.task({ key: 'c' })).parent).toBe('none')
+      await connected.waitFor()
+      await dragOverParent({
+        releaseShift: false,
+        cancel: true,
+      })
+      expect((await hydra.task({ key: 'c' })).parent).toBe('none')
+      expect(await parent.locator('.worker-chat').isVisible()).toBe(true)
+      await dragOverParent({ releaseShift: false })
+      const parentId = (await hydra.task({ key: 'a' })).id
+      await until({
+        what: 'Shift-drop nests under the open parent in another state group',
+        check: async () => (await hydra.task({ key: 'c' })).parent === parentId,
+      })
+      const nested = workspace.getByRole(
+        'button',
+        {
+          name: 'Third task',
+          exact: true,
+        },
+      )
+      await nested.waitFor()
+      await connected.waitFor()
+      await nested.hover({
+        position: {
+          x: 12,
+          y: 8,
+        },
+      })
+      const source = await nested.boundingBox(), project = await workspace.locator('[data-column=ideas]').boundingBox()
+
+      if (!source || !project) {
+        throw new Error('The nested task is not visible')
+      }
+
+      await page.mouse.down()
+      await page.mouse.move(
+        source.x + 32,
+        source.y + 8,
+        { steps: 5 },
+      )
+      await ghost.waitFor()
+      await page.mouse.move(
+        project.x + project.width - 20,
+        project.y + project.height - 20,
+        { steps: 16 },
+      )
+      await page.mouse.up()
+      await ghost.waitFor({ state: 'detached' })
+      expect((await hydra.task({ key: 'c' })).parent).toBe(parentId)
+      expect(await parent.locator('.worker-chat').isVisible()).toBe(true)
     } finally {
       await page.context().close()
     }
@@ -737,7 +872,7 @@ test(
         },
       ).click()
       await workspace.locator('.workspace-chat.collapsed').waitFor()
-      await workspace.getByRole(
+      await page.getByRole(
         'button',
         {
           name: 'Settings',
@@ -752,7 +887,7 @@ test(
           exact: true,
         },
       ).waitFor()
-      await workspace.getByRole(
+      await page.getByRole(
         'button',
         {
           name: 'Close Settings',
@@ -793,7 +928,7 @@ test(
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
       expect(await card?.evaluate(element => element.isConnected)).toBe(true)
-      await workspace.getByRole(
+      await page.getByRole(
         'button',
         {
           name: 'Settings',
@@ -816,7 +951,7 @@ test(
         ],
       })
       const name = identity.hydra.name
-      await workspace.getByRole(
+      await page.getByRole(
         'button',
         {
           name: 'Oracle',
@@ -1110,6 +1245,19 @@ test(
           exact: true,
         },
       ).fill('Send this reply once')
+      const workerComposer = workspace.locator('.worker-chat .composer')
+      await workerComposer.getByLabel(
+        'Insert files or images',
+        { exact: true },
+      ).setInputFiles({
+        name: 'reply-context.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('Synthetic worker attachment'),
+      })
+      await workerComposer.getByText(
+        'reply-context.txt',
+        { exact: true },
+      ).waitFor()
       await workspace.getByRole(
         'button',
         {
@@ -1136,7 +1284,10 @@ test(
         check: async () => await workspace.locator('.worker-messages .message[data-sending=true]').count() === 0,
       })
       expect(lost).toBe(true)
-      expect(worker.received.filter(text => text.includes('Send this reply once'))).toHaveLength(1)
+      const delivered = worker.received.filter(text => text.includes('Send this reply once'))
+      expect(delivered).toHaveLength(1)
+      expect(delivered[0]).toContain('File: reply-context.txt')
+      expect(delivered[0]).toContain('Synthetic worker attachment')
     } finally {
       await page.context().close()
     }
