@@ -65,6 +65,11 @@
   --spacing-select: min(320px, 85vw);
   --shadow-segment: inset 0 -2px 0 var(--color-gold);
   --shadow-menu: 0 8px 24px var(--color-shadow);
+  --spacing-floating-panel: min(320px, calc(100vw - 16px));
+  --spacing-popover-height: calc(100dvh - 16px);
+  --spacing-menu: 180px;
+  --spacing-menu-viewport: calc(100vw - 16px);
+  --spacing-menu-height: calc(100vh - 16px);
   --spacing-dialog: min(600px, calc(100vw - 32px));
   --spacing-oracle: min(980px, calc(100vw - 32px));
   --spacing-oracle-top: 9vh;
@@ -431,9 +436,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .usage-ring .usage-fill { stroke: var(--color-gold); stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; }
 
-.tooltip .tooltip-panel { display: flex; flex-direction: column; gap: 10px; min-width: 240px; padding: 4px 2px; }
 
-.tooltip .tooltip-section, .tooltip .usage-window { display: flex; flex-direction: column; gap: 4px; }
+.tooltip .usage-window { display: flex; flex-direction: column; gap: 4px; }
 
 .tooltip .usage-bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--color-surface) 25%, transparent); overflow: hidden; }
 
@@ -623,7 +627,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .comment-heading > .tooltip-anchor { display: flex; flex: 1; min-width: 0; }
 
-.tooltip mark { padding: 0 1px; border-radius: 2px; background: color-mix(in srgb, var(--color-gold) 45%, transparent); color: inherit; }
 .comment-number { display: inline-flex; flex: none; align-items: center; justify-content: center; padding: 0 4px; border: 1px solid var(--color-gold-line); border-radius: 999px; background: var(--color-gold-fill); color: var(--color-gold-ink); font-size: var(--text-meta); line-height: 1; font-variant-numeric: tabular-nums; }
 .comment-annotations { position: absolute; inset: 0; pointer-events: none; user-select: none; }
 .comment-pile { position: absolute; z-index: 2; pointer-events: auto; }
@@ -641,19 +644,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.dialog { margin: auto; width: min(600px, calc(100vw - 32px)); max-height: min(78vh, 760px); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 18px 50px var(--color-shadow); }
 
-.dialog[open] { display: flex; flex-direction: column; }
 
-.dialog::backdrop { background: var(--color-shadow); }
 
-.dialog-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--color-line); }
 
-.dialog-head h2 { flex: 1; font-family: var(--font-brand); }
 
-.dialog-body { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow: auto; padding: 8px 16px 14px; }
 
-.dialog-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--color-line); }
 
 .comment-group { display: flex; flex-direction: column; margin-top: 8px; }
 
@@ -814,17 +810,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .settings-box p { margin-bottom: 12px; }
 
 
-.menu-items { position: absolute; top: calc(100% + 5px); min-width: 180px; padding: 4px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-raised); box-shadow: 0 8px 24px var(--color-shadow); z-index: 30; }
 
 
-.menu { position: relative; }
-
-.menu-items { right: 0; }
-
-.menu-items > .button, .delete-confirm .button { display: flex; width: 100%; min-height: 34px; padding: 7px 10px; font-size: var(--text-ui); justify-content: flex-start; text-align: left; border: 0; border-radius: 4px; color: var(--color-ink); text-transform: none; }
 
 
-.delete-confirm { display: flex; } .delete-refused { margin: 0; padding: 7px 10px; max-width: 260px; font-size: var(--text-ui); color: var(--color-muted); }
+
+
 
 .task-brief { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
 
@@ -942,16 +933,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .reminder-editor [role=alert] { color: var(--color-red); }
 .copy-warning { color: var(--color-gold); font-size: var(--text-meta); }
 
-.menu-items[popover] { position: fixed; inset: auto; margin: 0; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; color: var(--color-ink); }
 
 
 
 
 
 
-.popover { position: relative; min-width: 0; }
 
-.popover-panel { position: fixed; inset: auto; margin: 0; padding: 14px; width: min(320px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; color: var(--color-ink); border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-raised); box-shadow: 0 8px 24px var(--color-shadow); }
 
 
 
@@ -1143,9 +1131,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.tooltip-anchor { display: inline-flex; min-width: 0; max-width: 100%; }
-.tooltip { position: fixed; inset: auto; margin: 0; max-width: min(320px, calc(100vw - 16px)); padding: 5px 8px; border: 0; border-radius: 6px; background: var(--color-ink); color: var(--color-surface); font-size: var(--text-meta); line-height: 1.4; overflow-wrap: anywhere; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; opacity: 1; transition: opacity .18s ease; }
-.tooltip strong, .tooltip span { display: block; }
 @starting-style { .tooltip:popover-open { opacity: 0; } }
 .card-question { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 8px 10px; background: var(--color-surface); border: 1px solid var(--color-line); border-left: 3px solid var(--color-gold); border-radius: 9px; font-size: var(--text-meta); }
 .card-question > strong { color: var(--color-gold); }
@@ -1165,7 +1150,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .link-closed { background: var(--color-red); }
 .card-links > .button { font-size: var(--text-meta); padding: 2px 5px; }
 
-@media (prefers-reduced-motion: reduce) { .tooltip { transition: none; } }
 
 .task-requests { flex-shrink: 0; } .task-requests:empty { display: none; }
 

@@ -86,7 +86,7 @@ export const CommentsDialog = memo(function CommentsDialog({
 
   return (
     <Dialog title={`Comments · ${listed.length}`} className="comments-dialog" close={finish}>
-      <div className="dialog-body">
+      <div className="dialog-body flex flex-col gap-1 min-h-0 overflow-auto px-4 pt-2 pb-3.5">
         {[...replies.values()].map(items => (
           <section key={items[0]!.id} className="comment-group">
             <span className="eyebrow">{replyLabel(items[0]!)}</span>
@@ -110,7 +110,7 @@ export const CommentsDialog = memo(function CommentsDialog({
           </section>
         ))}
       </div>
-      <footer className="dialog-foot">
+      <footer className="dialog-foot flex items-center justify-between gap-1.5 px-4 py-2.5 border-t border-line">
         <span className="small muted">Numbered in reading order through the replies.</span>
         <Button variant="primary" onClick={finish}>Done</Button>
       </footer>

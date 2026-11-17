@@ -1,3 +1,4 @@
+import { FloatingPanel } from './floating-panel.tsx'
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button } from './controls.tsx'
 
@@ -120,7 +121,7 @@ export function Popover({
 
   return (
     <div
-      className={`popover ${className}`}
+      className={`popover relative min-w-0 ${className}`}
       data-key-scope={open ? 'overlay' : undefined}
       ref={root}
       onBlur={event => {
@@ -155,15 +156,15 @@ export function Popover({
       >{trigger}
       </Button>
       {open && (
-        <div
+        <FloatingPanel
           ref={panel}
           id={id}
-          className="popover-panel"
+          className="popover-panel p-3.5 w-floating-panel max-h-popover-height rounded-card"
           popover="manual"
           role="dialog"
           aria-label={label}
         >{children({ close })}
-        </div>
+        </FloatingPanel>
       )}
     </div>
   )

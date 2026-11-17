@@ -1,3 +1,4 @@
+import { OverlaySurface } from './overlay-surface.tsx'
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { IconButton } from './icon-button.tsx'
 
@@ -30,34 +31,44 @@ export function Dialog({
   )
 
   return (
-    <dialog
+    <OverlaySurface
       ref={dialog}
       aria-labelledby={heading}
-      className={`dialog ${className}`}
+      className={className}
       data-key-scope="overlay"
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onKeyDown={e => {
         if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
           e.preventDefault(); e.stopPropagation(); close()
         }
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onCancel={e => {
         e.preventDefault(); close()
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onMouseDown={e => {
         pressed.current = e.target
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onClick={e => {
         if (e.target === e.currentTarget && pressed.current === e.currentTarget) {
           close()
         }
       }}
     >
-      <header className="dialog-head">
+      <header className="dialog-head flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-line [&>h2]:flex-1 [&>h2]:font-brand">
         <h2 id={heading}>{title}</h2>
         {actions}
-        <IconButton size="small" icon="close" iconSize={14} label="Close" onClick={close} />
+        <IconButton
+          size="small"
+          icon="close"
+          iconSize={14}
+          label="Close"
+          onClick={close}
+        />
       </header>
       {children}
-    </dialog>
+    </OverlaySurface>
   )
 }

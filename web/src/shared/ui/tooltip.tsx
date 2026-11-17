@@ -6,7 +6,7 @@ const GAP = 8
 const CLOSE_DELAY_MS = 180
 
 export function TooltipPanel({ children }: { children: ReactNode }) {
-  return <span className="tooltip-panel">{children}</span>
+  return <span className="tooltip-panel flex flex-col gap-2.5 min-w-60 py-1 px-0.5">{children}</span>
 }
 
 export function TooltipSection({
@@ -16,7 +16,7 @@ export function TooltipSection({
   children: ReactNode
   className?: string
 }) {
-  return <span className={`tooltip-section ${className}`}>{children}</span>
+  return <span className={`tooltip-section flex flex-col gap-1 ${className}`}>{children}</span>
 }
 
 export function Tooltip({
@@ -206,7 +206,7 @@ export function Tooltip({
   return (
     <span
       ref={anchor}
-      className="tooltip-anchor"
+      className="tooltip-anchor inline-flex min-w-0 max-w-full"
       data-tooltip-active={visible || undefined}
       aria-describedby={visible ? id : undefined}
       onPointerEnter={show}
@@ -238,7 +238,7 @@ export function Tooltip({
           role={interactive ? 'dialog' : 'tooltip'}
           aria-label={label}
           popover="manual"
-          className="tooltip"
+          className="tooltip fixed inset-auto m-0 max-w-floating-panel py-1.25 px-2 border-0 rounded-md bg-ink text-surface text-meta leading-[1.4] wrap-anywhere overflow-y-auto overscroll-contain pointer-events-auto opacity-100 transition-opacity duration-180 ease-[ease] motion-reduce:transition-none [&_:where(strong,span)]:block [&_mark]:px-px [&_mark]:py-0 [&_mark]:rounded-xs [&_mark]:bg-gold/45 [&_mark]:text-inherit"
           onPointerEnter={() => clearTimeout(closeTimer.current)}
           onPointerLeave={leave}
         >{content}
