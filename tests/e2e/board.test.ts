@@ -1332,6 +1332,7 @@ test(
 
             if (sent.type === 'command' && sent.name === 'reply' && !lost) {
               lost = true
+              server.send(message)
               socket.close({
                 code: 1001,
                 reason: 'Lost reply receipt',
