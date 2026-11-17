@@ -3334,7 +3334,7 @@ test(
         check: async () => Math.abs((await preview.boundingBox())!.width - 303.333) < 1,
       })
       await anchored(point)
-      const landing = page.evaluate(async () => {
+      const landingFrames = () => page.evaluate(async () => {
         const samples: {
           width: number
           title: number
@@ -3356,6 +3356,7 @@ test(
 
         return samples
       })
+      const landing = landingFrames()
       await page.mouse.move(
         box!.x + box!.width * 0.82 + 20,
         box!.y + box!.height * 0.65,
@@ -3507,7 +3508,16 @@ test(
           return titles.join('|') === 'A reorder neighbor|A wide closed card'
         },
       })
+      await until({
+        what: 'the open task compacts after entering its next slot',
+        check: async () => Math.abs((await ghost.boundingBox())!.width - 303.333) < 1,
+      })
+      const dropping = landingFrames()
       await page.mouse.up()
+      const dropFrames = await dropping
+      expect(dropFrames.some(sample => sample.width > 350 && sample.width < 850)).toBe(true)
+      const dropTitleWidths = dropFrames.map(sample => sample.title)
+      expect(Math.max(...dropTitleWidths) - Math.min(...dropTitleWidths)).toBeLessThan(1)
       await ghost.waitFor({ state: 'detached' })
       await until({
         what: 'the opened task reorders without losing its conversation',
