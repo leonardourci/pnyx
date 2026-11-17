@@ -741,8 +741,38 @@ test(
           await page.keyboard.press('Escape')
         }
 
-        await page.mouse.up()
-        await page.keyboard.up('Shift')
+        const nests = !releaseShift && !cancel
+        const original = nests ? await ghost.boundingBox() : null
+        const shrinking = nests ? page.evaluate(async () => {
+          const widths: number[] = []
+
+          for (let frame = 0; frame < 20; frame++) {
+            await new Promise(requestAnimationFrame)
+            const node = document.querySelector('.physical-ghost')
+            const width = node?.getBoundingClientRect().width
+
+            if (width) {
+              widths.push(width)
+            }
+          }
+
+          return widths
+        }) : null
+
+        const release = async () => {
+          await page.mouse.up()
+          await page.keyboard.up('Shift')
+        }
+
+        const [widths] = await Promise.all([
+          shrinking,
+          release(),
+        ])
+
+        if (widths && original) {
+          expect(Math.min(...widths)).toBeLessThan(original.width * 0.75)
+        }
+
         await ghost.waitFor({ state: 'detached' })
       }
 
@@ -769,6 +799,14 @@ test(
         },
       )
       await nested.waitFor()
+      await until({
+        what: 'the nested card appears after the shrink',
+        check: () => nested.evaluate(({ parentElement }) => {
+          const row = parentElement?.closest('[data-child]')
+
+          return !!row && Number(getComputedStyle(row).opacity) === 1
+        }),
+      })
       await connected.waitFor()
       await nested.hover({
         position: {

@@ -7,6 +7,7 @@ import {
   PointerSensor,
   closestCenter,
   pointerWithin,
+  defaultDropAnimationSideEffects,
   useDroppable,
   useSensor,
   useSensors,
@@ -15,9 +16,11 @@ import {
   type DragOverEvent,
   type DragStartEvent,
   type Active,
+  type DropAnimationFunction,
+  type DropAnimation,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
-import { useReducedMotion } from 'motion/react'
+import { animate, useReducedMotion } from 'motion/react'
 import { DragPreview, dragSnapshot } from './drag-preview.tsx'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
@@ -26,6 +29,8 @@ const DRAG_EDGE_THRESHOLD = {
   x: 0.02,
   y: 0.08,
 }
+const NEST_DROP_SECONDS = 0.26
+const NEST_DROP_SCALE = 0.12
 const DROP_DURATION = 220
 const DROP_EASING = 'cubic-bezier(.22,1,.36,1)'
 
@@ -325,6 +330,10 @@ export function SortableWorkspace({
     nesting: boolean
     hits: ReturnType<CollisionDetection>
   } | null>(null)
+  const nestingDrop = useRef<{
+    parent: string
+    hydra: string
+  } | null>(null)
   const reducedMotion = useReducedMotion()
   const sensors = useSensors(
     useSensor(
@@ -477,6 +486,7 @@ export function SortableWorkspace({
     const shifted = 'shiftKey' in activatorEvent && activatorEvent.shiftKey === true
     setModifier({ pressed: item.kind === 'task' && shifted })
     plain.current = null
+    nestingDrop.current = null
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,
       {
@@ -583,10 +593,83 @@ export function SortableWorkspace({
     }
 
     if (next) {
+      if (next.nest && !reducedMotion) {
+        nestingDrop.current = {
+          parent: next.over,
+          hydra: next.hydra,
+        }
+      }
+
       drop({ preview: next })
     }
 
     clear()
+  }
+
+  const nestDrop: DropAnimationFunction = async ({
+    active,
+    dragOverlay,
+    ...rest
+  }) => {
+    const destination = nestingDrop.current
+
+    if (!destination) {
+      return
+    }
+
+    const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(destination.hydra)}"]`)
+    const parent = scope?.querySelector<HTMLElement>(`[data-task="${CSS.escape(destination.parent)}"]`)
+    const ghost = dragOverlay.node.querySelector<HTMLElement>('.physical-ghost')
+
+    if (!parent || !ghost) {
+      return
+    }
+
+    const from = ghost.getBoundingClientRect(), to = parent.getBoundingClientRect()
+    const restore = defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } })({
+      active,
+      dragOverlay,
+      ...rest,
+    })
+
+    try {
+      await animate(
+        ghost,
+        {
+          x: to.left + to.width / 2 - from.left - from.width / 2,
+          y: to.top + to.height / 2 - from.top - from.height / 2,
+          scale: [
+            1,
+            NEST_DROP_SCALE,
+          ],
+          opacity: [
+            1,
+            0,
+          ],
+        },
+        {
+          duration: NEST_DROP_SECONDS,
+          ease: 'easeOut',
+        },
+      ).finished
+    } finally {
+      restore?.()
+
+      if (nestingDrop.current === destination) {
+        nestingDrop.current = null
+      }
+    }
+  }
+
+  let dropAnimation: DropAnimation | null = {
+    duration: DROP_DURATION,
+    easing: DROP_EASING,
+  }
+
+  if (reducedMotion) {
+    dropAnimation = null
+  } else if (nestingDrop.current) {
+    dropAnimation = nestDrop
   }
 
   return (
@@ -612,10 +695,7 @@ export function SortableWorkspace({
             adjustScale={false}
             style={{ pointerEvents: 'none' }}
             zIndex={1000}
-            dropAnimation={reducedMotion ? null : {
-              duration: DROP_DURATION,
-              easing: DROP_EASING,
-            }}
+            dropAnimation={dropAnimation}
           >
             {active && (
               <div className={`physical-ghost w-full pointer-events-none select-none rounded-card shadow-window opacity-95 ${active.kind === 'task' ? 'overflow-visible' : 'h-full overflow-hidden'}`} inert>
