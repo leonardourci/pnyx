@@ -316,13 +316,16 @@ test.each([
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
     const beforeVertical = await conversation.evaluate(element => {
       const axis = document.querySelector<HTMLElement>('.workspace-axis')!
-      axis.scrollLeft += 100
+      axis.scrollLeft -= 40
 
       return {
         x: axis.scrollLeft,
         y: element.scrollTop,
       }
     })
+    await page.evaluate(() => new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
     await page.mouse.wheel(
       0,
       -160,

@@ -741,32 +741,53 @@ test(
 test(
   'untracked and hook pushes refuse grandchildren before persisting them',
   async () => {
+    const id = 'unconfigured-depth'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const events = [
+      {
+        seq: 1,
+        id: 'root-push',
+        cardId: 'untracked-root',
+        data: {
+          key: 'untracked-root',
+          title: 'Root',
+        },
+      },
+      {
+        seq: 2,
+        id: 'child-push',
+        cardId: 'untracked-child',
+        data: {
+          key: 'untracked-child',
+          title: 'Child',
+          parentId: 'untracked-root',
+        },
+      },
+    ].map(event => JSON.stringify({
+      v: 1,
+      type: 'card.pushed',
+      at: '2026-11-17T00:00:00Z',
+      actor: 'cli',
+      ...event,
+    })).join('\n')
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${events}\n`,
+    )
     const hydra = await pnyx.hydra({
-      id: 'default',
+      id,
       create: false,
-    })
-    await hydra.owner({
-      args: [
-        'push',
-        '--key',
-        'untracked-root',
-        '--file',
-        '-',
-      ],
-      input: JSON.stringify({ title: 'Root' }),
-    })
-    await hydra.owner({
-      args: [
-        'push',
-        '--key',
-        'untracked-child',
-        '--file',
-        '-',
-      ],
-      input: JSON.stringify({
-        title: 'Child',
-        parent: 'untracked-root',
-      }),
     })
     expect((await hydra.ownerRefused({
       args: [

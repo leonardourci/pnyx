@@ -1440,7 +1440,13 @@ test(
       ],
     })
     const extra = legacy.folder({ name: 'legacy-extra' })
-    await legacy.owner({ args: ['project', 'add', extra] })
+    await legacy.owner({
+      args: [
+        'project',
+        'add',
+        extra,
+      ],
+    })
     expect((await owner.ownerRefused({
       args: [
         'project',
@@ -1486,7 +1492,10 @@ test(
         'list',
       ],
     })).projects).toEqual([
-      expect.objectContaining({ path: extra, state: 'attached' }),
+      expect.objectContaining({
+        path: extra,
+        state: 'attached',
+      }),
       expect.objectContaining({
         path,
         state: 'detached',

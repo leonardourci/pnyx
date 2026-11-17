@@ -2125,36 +2125,32 @@ test(
       ],
     })
     let release: (() => void) | undefined
-    let heldId: string | undefined
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
       prepare: ({ page }) => page.routeWebSocket(
-        /\/ws\?/,
+        /\/zero\//,
         // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
         socket => {
           const server = socket.connectToServer()
           // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
           socket.onMessage(message => {
-            const frame = JSON.parse(String(message))
+            if (typeof message === 'string') {
+              const frame = JSON.parse(message)
+              const details = frame[1]?.desiredQueriesPatch?.some((query: {
+                name?: string
+                args?: unknown[]
+              }) =>
+                query.name === 'card.detail' && JSON.stringify(query.args).includes(task.card.id))
 
-            if (frame.type === 'command' && frame.name === 'page' && frame.args?.includes(task.card.id)) {
-              heldId = frame.id
+              if (details) {
+                release = () => server.send(message)
+
+                return
+              }
             }
 
             server.send(message)
-          })
-          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
-          server.onMessage(message => {
-            const frame = JSON.parse(String(message))
-
-            if (heldId && frame.id === heldId) {
-              release = () => socket.send(message)
-
-              return
-            }
-
-            socket.send(message)
           })
         },
       ),
@@ -2170,6 +2166,13 @@ test(
         what: 'task mention waits for its missing card',
         check: () => !!release,
       })
+      await page.getByRole(
+        'button',
+        {
+          name: 'Unfold loading-atlas',
+          exact: true,
+        },
+      ).waitFor()
       await page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column-heading="${boreal}"]`).click()
       await page.getByRole(
         'button',
@@ -2179,6 +2182,8 @@ test(
         },
       ).waitFor()
       release!()
+      await page.locator(`.card[data-task="${task.card.id}"].selected .worker-chat`).waitFor()
+
       await until({
         what: 'opening Atlas keeps Boreal folded',
         check: async () => {
