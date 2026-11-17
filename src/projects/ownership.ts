@@ -98,8 +98,22 @@ export async function keepProject({
     })
   }
 
+  const keeper = loadHydra({ hydraId }).state
+  const revision = keeper.projectsRevision ?? 0
+
+  if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
+    throw new HydraError({
+      message: `revision ${revision}, not ${meta.ifRevision}`,
+      code: 'REVISION_CONFLICT',
+    })
+  }
+
+  const sourceMeta = {
+    ...meta,
+    ifRevision: undefined,
+  }
   const project = findProject({
-    state: loadHydra({ hydraId }).state,
+    state: keeper,
     ref,
     attached: true,
   })
@@ -135,6 +149,21 @@ export async function keepProject({
       writer: target,
       writers,
     }) => {
+      const kept = findProject({
+        state: target.state,
+        ref: project.path,
+        attached: true,
+      })
+
+      const currentRevision = target.state.projectsRevision ?? 0
+
+      if (meta.ifRevision !== undefined && meta.ifRevision !== currentRevision) {
+        throw new HydraError({
+          message: 'Keeper projects changed; retry the keeper choice',
+          code: 'REVISION_CONFLICT',
+        })
+      }
+
       const current = migrationPlan({
         to: hydraId,
         project,
@@ -159,14 +188,14 @@ export async function keepProject({
             cardId: card.id,
             to: hydraId,
             move: `${attempt}:${id}:${card.id}`,
-            meta,
+            meta: sourceMeta,
           })
           moved.push(card.id)
         }
 
         const detached = hydraEvent({
           state: source.state,
-          meta,
+          meta: sourceMeta,
           cardId: '$projects',
           change: {
             type: 'hydra.project',
@@ -183,6 +212,26 @@ export async function keepProject({
 
         if ('event' in detached) {
           source.append({ event: detached.event })
+        }
+      }
+
+      if (current.length) {
+        const affirmed = hydraEvent({
+          state: target.state,
+          meta: sourceMeta,
+          cardId: '$projects',
+          change: {
+            type: 'hydra.project',
+            data: {
+              before: kept,
+              after: kept,
+              sharedWith: [],
+            },
+          },
+        })
+
+        if ('event' in affirmed) {
+          target.append({ event: affirmed.event })
         }
       }
 
