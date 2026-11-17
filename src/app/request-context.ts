@@ -37,6 +37,7 @@ export const requestExitCode = () => current.getStore()?.exitCode
 // The variables a client sends with each command: who it is, and the terminal or task it runs in.
 export const IDENTITY = [
   'PNYX_ACTOR',
+  'PNYX_MEMORY_ACCESS',
   'PNYX_TASK',
   'PNYX_HYDRA',
   'PNYX_STEERING_WORKER',

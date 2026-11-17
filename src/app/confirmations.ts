@@ -1,5 +1,3 @@
-import { readSettings } from '#settings/store.ts'
-import type { Settings } from '#settings/model.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { parseArgs, promisify } from 'node:util'
@@ -15,7 +13,7 @@ import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
 import { requestCwd, IDENTITY } from '#app/request-context.ts'
-import { memoryAgent } from '#memory/poleis.ts'
+import { memoryAgent, memoryAccessRevision } from '#memory/poleis.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -36,12 +34,12 @@ const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' |
   ? effectiveDispatch()
   : undefined
 
-function memoryRulesFor({ target }: { target: Target }): Settings | undefined {
+function memoryRulesFor({ target }: { target: Target }): string | undefined {
   const memoryCommand = target.name === 'settings' || target.name === 'owner'
     || (target.name === 'project' && target.args[0] === 'move')
     || (target.name === 'hydra' && target.args.some(arg => /^--(?:polis|read-poleis)(?:=|$)/.test(arg)))
 
-  return memoryCommand ? readSettings().settings : undefined
+  return memoryCommand ? memoryAccessRevision() : undefined
 }
 
 function context({
@@ -53,7 +51,7 @@ function context({
   state: HydraState
   target: Target
   dispatch?: EffectiveDispatch
-  memory?: Settings
+  memory?: string
 }): string {
   const {
     name,
@@ -310,6 +308,10 @@ export const approval = guard({
     ownerEnv.PNYX_HOME = pnyxHome()
     ownerEnv.PNYX_ACTOR = 'web'
 
+    if (memory) {
+      ownerEnv.PNYX_MEMORY_ACCESS = memory
+    }
+
     try {
       const { stdout } = await exec(
         process.execPath,
@@ -373,10 +375,12 @@ export const approval = guard({
         },
       })
 
-      if (/^code: REVISION_CONFLICT$/m.test(stdout)) {
+      const conflict = /^code: (REVISION_CONFLICT|CONFLICT)$/m.exec(stdout)
+
+      if (conflict && (memory || conflict[1] === 'REVISION_CONFLICT')) {
         throw new HydraError({
           message: 'Memory changed; propose the action again',
-          code: 'REVISION_CONFLICT',
+          code: conflict[1]!,
         })
       }
 
