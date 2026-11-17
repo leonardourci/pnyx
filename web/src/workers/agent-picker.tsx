@@ -28,7 +28,7 @@ export function PickerField({
   onChange({ value }: { value: string }): void
 } & Look) {
   return (
-    <div className="picker-field" data-changed={mark?.changed || undefined} data-invalid={mark?.invalid || undefined}>
+    <PickerShell data-changed={mark?.changed || undefined} data-invalid={mark?.invalid || undefined}>
       <span>{label}</span>
       <Select
         label={label}
@@ -44,7 +44,7 @@ export function PickerField({
         ].filter(Boolean).join(': ')}
       />
       {reason && <small>{reason}</small>}
-    </div>
+    </PickerShell>
   )
 }
 
@@ -138,4 +138,8 @@ export function useModels({
     error: error?.key === key ? error.text : '',
     retry: () => setRetry(value => value + 1),
   }
+}
+
+export function PickerShell({ ...props }: ComponentProps<'div'>) {
+  return <div {...props} className="picker-field grid grid-cols-[var(--spacing-picker-label)_minmax(0,1fr)] items-center gap-1.5 [&_small]:text-muted [&_small]:text-meta [&_small]:leading-question [&_small]:col-span-full [:where(&)_.select>.button]:w-full [:where(&)_.select>.button]:justify-between [:where(&)_.select>.button]:border [:where(&)_.select>.button]:border-line [:where(&)_.select>.button]:rounded-md [:where(&)_.select>.button]:text-ui [:where(&)_.select-menu]:relative [:where(&)_.select-menu]:inset-auto [:where(&)_.select-menu]:max-h-40 [:where(&)_.select-menu]:mt-1" />
 }

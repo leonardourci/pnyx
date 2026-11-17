@@ -74,6 +74,7 @@
   --spacing-card-chat: 260px;
   --spacing-settings-content: 880px;
   --spacing-setting-label: 90px;
+  --spacing-picker-label: 54px;
   --spacing-settings-field: min(100%, 440px);
   --spacing-setting-icon: var(--control-h);
   --spacing-setting-preview: 280px;
@@ -427,10 +428,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 :hover::-webkit-scrollbar-thumb, .scrolling::-webkit-scrollbar-thumb { background: var(--color-control); }
 
-.fast-toggle { font-size: var(--text-meta); color: var(--color-muted); padding: 3px 6px; min-height: 26px; }
-
-.fast-toggle[aria-checked=true] { color: var(--color-gold); background: var(--color-gold-wash); }
-
 .permission-input { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
 .permission-details { display: grid; gap: 4px; margin: 0; font-size: var(--text-ui); }
 .permission-details > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 8px; }
@@ -476,25 +473,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-
-
-
-
-
-
-
-
-.picker-field small { color: var(--color-muted); font-size: var(--text-meta); line-height: 1.4; }
-
-.picker-field { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 6px; }
-
-.picker-field small { grid-column: 1 / -1; }
-
-.picker-field .select > .button { width: 100%; justify-content: space-between; border: 1px solid var(--color-line); border-radius: 6px; font-size: var(--text-ui); }
-
-.picker-field .select-menu { position: relative; inset: auto; max-height: 160px; margin-top: 4px; }
-
-
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
 
@@ -526,24 +504,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .pending-status { position: fixed; right: 16px; bottom: 16px; z-index: 70; max-width: min(480px, calc(100vw - 32px)); padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); pointer-events: none; }
 
 .notice { position: fixed; bottom: 16px; right: 16px; z-index: 80; display: flex; align-items: center; gap: 12px; max-width: min(480px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 2px 12px var(--color-shadow); }
-.hydra-agent-pickers { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; }
-.hydra-agent-pickers .picker-field { display: block; min-width: 0; font-size: var(--text-meta); }
-.hydra-agent-pickers .picker-field > span { display: none; }
-.hydra-agent-pickers .select > .button { min-height: 26px; gap: 3px; border: 0; padding: 2px 5px; background: transparent; color: var(--color-muted); font-size: var(--text-meta); }
-.hydra-agent-pickers .select-menu { position: absolute; top: auto; bottom: calc(100% + 5px); }
-
-.hydra-agent-pickers .select { min-width: 0; }
-
-.hydra-agent-pickers .select > .button > svg:not(:last-child) { color: var(--color-ink); }
-
-.hydra-agent-pickers .fast-toggle { min-height: 26px; padding: 2px 6px; color: var(--color-muted); }
-
-.hydra-agent-pickers .fast-toggle[aria-pressed=true] { color: var(--color-gold); }
-.hydra-agent-pickers :is(.select > .button, .account-model-picker > .button, .fast-toggle):is(:hover, :focus-visible):not(:disabled) { background: var(--color-hover); }
-
-.hydra-agent-pickers[data-folded] { position: relative; }
-.agent-pickers-row { display: flex; flex: none; width: max-content; align-items: center; gap: inherit; }
-.hydra-agent-pickers[data-folded] > .agent-pickers-row { position: absolute; visibility: hidden; pointer-events: none; }
 /* Lines are the shown text's own, so the clamp cuts between lines, never through one. */
 .text-preview { max-height: 3lh; font-size: var(--text-chat); line-height: var(--chat-line); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .button.show-more { justify-self: start; min-height: 0; padding: 0; color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
@@ -622,10 +582,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .upgrade-popover strong { font-weight: 600; }
 .upgrade-popover p { margin: 0; color: var(--color-muted); }
 .upgrade-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.settings-page .hydra-agent-pickers { gap: var(--settings-column-gap); }
-.settings-page .hydra-agent-pickers :is(.select > .button, .account-model-picker > .button, .fast-toggle) { min-height: var(--agent-control-h); font-size: var(--text-ui); }
-.settings-page .account-model-picker > .button { max-width: 100%; }
-.settings-page .hydra-agent-pickers .fast-toggle { width: var(--agent-control-h); }
 /* Range tracks and thumbs require browser-specific pseudo-elements. */
 .slider-track input::-webkit-slider-runnable-track { @apply h-1 rounded-sm; background: linear-gradient(var(--color-gold-fill), var(--color-gold-fill)) 0 / var(--fill, 50%) 100% no-repeat, var(--color-line); }
 .slider-track input::-moz-range-track { @apply h-1 rounded-sm bg-line; }
@@ -698,7 +654,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* Each cell starts at its column's left edge; Fast sits in the middle of its column. */
 .dispatch-candidate > .hydra-agent-pickers > * { justify-self: start; }
 .dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { justify-self: center; }
-.fast-unavailable { display: inline-flex; align-items: center; justify-content: center; width: var(--agent-control-h); min-height: var(--agent-control-h); color: var(--color-muted); opacity: .6; cursor: default; }
 .dispatch-problems { margin: 0; padding: 0; list-style: none; color: var(--color-red); font-size: var(--text-meta); line-height: 1.35; }
 .dispatch-problems li[data-level=warning], .dispatch-blocked { color: var(--color-gold); font-size: var(--text-meta); }
 .dispatch-table .dispatch-cell[data-changed], :where(.dispatch-table) .picker-field[data-changed] > :is(.select, .account-model-picker) > .button, .dispatch-table .fast-toggle[data-changed] { background: var(--color-gold-wash); }
@@ -712,8 +667,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
   .dispatch-candidate, .dispatch-add { display: flex; flex-wrap: wrap; gap: var(--settings-column-gap); padding: var(--settings-column-gap) 0; }
   .dispatch-candidate > .hydra-agent-pickers { display: flex; flex-basis: 100%; }
 }
-.model-picker { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
-.picker-retry.button { min-height: 24px; padding: 0 4px; color: var(--color-gold); }
 
 
 
