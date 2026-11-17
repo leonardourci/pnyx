@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -815,5 +817,114 @@ test(
         'hook-leaf',
       ],
     })).code).toBe('NOT_FOUND')
+  },
+)
+
+test(
+  'a reminder-only task contributes to both project and Hydra waiting counts',
+  async () => {
+    const id = 'reminder-summary'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const path = join(
+      folder,
+      'repository',
+    )
+    mkdirSync(path)
+    const events = [
+      {
+        seq: 1,
+        id: 'project',
+        cardId: '$projects',
+        type: 'hydra.project',
+        data: {
+          before: null,
+          after: {
+            path,
+            name: 'reminder-repository',
+            detached: false,
+          },
+          sharedWith: [],
+        },
+      },
+      {
+        seq: 2,
+        id: 'task',
+        cardId: 'reminded-task',
+        type: 'card.pushed',
+        data: {
+          key: 'reminded',
+          title: 'Check the reminder',
+          project: path,
+        },
+      },
+      {
+        seq: 3,
+        id: 'reminder',
+        cardId: 'reminded-task',
+        type: 'task.reminder',
+        data: {
+          before: null,
+          after: '2026-11-16T00:00:00Z',
+        },
+      },
+      {
+        seq: 4,
+        id: 'due',
+        cardId: 'reminded-task',
+        type: 'task.reminder-due',
+        data: {
+          reminder: 'reminder',
+          column: 'needs_you',
+          grouped: true,
+          message: {
+            action: 'send',
+            text: 'Reminder due',
+          },
+        },
+      },
+    ].map(event => JSON.stringify({
+      v: 1,
+      at: '2026-11-16T00:00:00Z',
+      actor: 'cli',
+      ...event,
+    })).join('\n')
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${events}\n`,
+    )
+    const hydra = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'reminded',
+      ],
+    })
+    expect(rows<{
+      summary: {
+        asks: number
+        projects: { asks: number }[]
+      }
+    }>({
+      text: 'select summary from hydras where id = $1',
+      values: [id],
+    })[0]?.summary).toMatchObject({
+      asks: 1,
+      projects: [expect.objectContaining({ asks: 1 })],
+    })
   },
 )

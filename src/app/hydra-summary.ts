@@ -115,7 +115,13 @@ export function summarize({
     return {
       home,
       summary: {
-        asks: new Set(openDecisions({ state }).map(decision => decision.card.id)).size,
+        asks: new Set([
+          ...cards.filter(card => cardStatus({
+            card,
+            cards: state.cards,
+          }).kind === 'asks').map(card => card.id),
+          ...openDecisions({ state }).map(decision => decision.card.id),
+        ]).size,
         id,
         identity: hydraIdentity({ hydraId: id }),
         creationAttempt: creationAttempt({ event: initial }),
