@@ -131,6 +131,39 @@
           "gzip": 3820
         }
       ]
+    },
+    "gate": {
+      "snapshot": "gate",
+      "entry": {
+        "name": "index-CM1pZIes.js",
+        "bytes": 1579274,
+        "gzip": 506157
+      },
+      "js": {
+        "bytes": 1589415,
+        "gzip": 509975
+      },
+      "css": {
+        "bytes": 149788,
+        "gzip": 28123
+      },
+      "files": [
+        {
+          "name": "index-B4yhi3t1.css",
+          "bytes": 149788,
+          "gzip": 28123
+        },
+        {
+          "name": "index-CM1pZIes.js",
+          "bytes": 1579274,
+          "gzip": 506157
+        },
+        {
+          "name": "lazy-inspector-YyNEgEui.js",
+          "bytes": 10141,
+          "gzip": 3818
+        }
+      ]
     }
   },
   "frames": {
@@ -252,5 +285,6 @@
     "removed": 355,
     "method": "Qualified CSS rules, including nested media/supports rules, excluding keyframe steps; theme declarations are not counted as rules."
   },
-  "method": "Sequential isolated Chrome traces; 1440x960, 24 cards, 944px project, three held drags and open/close cycles. Frame intervals are requestAnimationFrame markers from the trace, not presented FPS. Shared-machine idle is included. complete is the original measured library candidate; latest includes the subsequent components, nesting and keyboard refinements."
+  "method": "Sequential isolated Chrome traces; 1440x960, 24 cards, 944px project, three held drags and open/close cycles. Frame intervals are requestAnimationFrame markers from the trace, not presented FPS. Shared-machine idle is included. complete is the original measured library candidate; latest includes the subsequent components, nesting and keyboard refinements. The readiness review adds Hydra-creation error feedback: gate is +7 gzip JS bytes from latest; layout/CSS are unchanged.",
+  "gateHead": "17751b1c36be458b57f07dd15cac75b329b04f29"
 }
