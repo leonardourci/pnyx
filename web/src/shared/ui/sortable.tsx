@@ -1,4 +1,6 @@
-import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler } from 'react'
+import { CARD_SIZING, liftedCardSize } from '#web-shared/card-sizing.ts'
+import { motionDuration, MOTION_EASING, MOTION_CSS_EASING } from '#web-shared/motion.ts'
+import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import {
   DndContext,
@@ -14,13 +16,15 @@ import {
   type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
+  type DragMoveEvent,
   type DragStartEvent,
   type Active,
   type DropAnimationFunction,
   type KeyboardCoordinateGetter,
+  type Modifier,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
-import { animate, motion, useReducedMotion } from 'motion/react'
+import { animate, motion, useAnimationControls, useReducedMotion } from 'motion/react'
 import { DragPreview, dragSnapshot } from './drag-preview.tsx'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
@@ -29,17 +33,10 @@ const DRAG_EDGE_THRESHOLD = {
   x: 0.02,
   y: 0.08,
 }
-const NEST_DROP_SECONDS = 0.26
-const NEST_DROP_SCALE = 0.12
-const DROP_SECONDS = 0.22
-const NEST_HOVER_SCALE = 0.84
-const NEST_HOVER_SECONDS = 0.16
-const DROP_EASING = [
-  0.22,
-  1,
-  0.36,
-  1,
-] as const
+
+// eslint-disable-next-line pnyx/object-params -- dnd-kit supplies the activator event.
+const dragTransition = (event: Event | null) => event instanceof KeyboardEvent
+  ? `transform ${motionDuration()}ms ${MOTION_CSS_EASING}` : undefined
 
 export interface SortMove {
   id: string
@@ -62,6 +59,22 @@ export interface SortItem {
   column?: string
   zone?: 'nest'
   overlay?: ReactNode
+  open?: boolean
+  overlayStyle?: CSSProperties
+  size?: {
+    width: number
+    height: number
+  }
+  compactSize?: {
+    width: number
+    height: number
+  }
+  grab?: {
+    x: number
+    y: number
+    offsetX: number
+    offsetY: number
+  }
 }
 
 const DragState = createContext<{
@@ -225,7 +238,7 @@ function dropTargets({
     }
 
     if (nesting) {
-      return target.zone === 'nest' && !source.hasChildren && source.id !== target.id
+      return target.zone === 'nest' && source.id !== target.id
     }
 
     const group = active.data.current?.sortable?.containerId
@@ -343,8 +356,42 @@ class WorkspacePointerSensor extends PointerSensor {
   ]
 }
 
+export function nestingRefusal({
+  source,
+  target,
+}: {
+  source: SortItem
+  target: SortItem
+}) {
+  if (source.parent === target.id) {
+    return null
+  }
+
+  if (source.hasChildren) {
+    return "Can't nest: this task has its own sub-tasks"
+  }
+
+  if (target.parent) {
+    return "Can't nest here: this task is already a sub-task"
+  }
+
+  return null
+}
+
 export function DragNestHint() {
-  const { shift } = useSortState()
+  const {
+    active,
+    over,
+    shift,
+  } = useSortState()
+  const refusal = shift && active && over?.zone === 'nest' ? nestingRefusal({
+    source: active,
+    target: over,
+  }) : null
+
+  if (refusal) {
+    return <span data-drag-nest-refusal className="inline-flex max-w-full rounded border border-line bg-surface px-1.5 py-0.5 text-meta font-medium text-muted">{refusal}</span>
+  }
 
   return <span data-drag-nest-hint data-shift={shift} className="inline-flex max-w-full items-center whitespace-nowrap rounded border border-line bg-surface px-1.5 py-0.5 text-meta font-medium text-muted transition-colors data-[shift=true]:border-gold-line data-[shift=true]:bg-gold-wash data-[shift=true]:text-gold">⇧ Sub-task</span>
 }
@@ -352,31 +399,83 @@ export function DragNestHint() {
 function DragGhost({
   item,
   snapshot,
+  compact,
 }: {
   item: SortItem
   snapshot: HTMLElement | null
+  compact: boolean
 }) {
   const {
+    active,
     over,
     shift,
   } = useSortState()
   const reducedMotion = useReducedMotion()
-  const canNest = item.kind === 'task' && !item.hasChildren
+  const canNest = item.kind === 'task'
   const inside = canNest && shift && over?.zone === 'nest' && over.id !== item.parent
+    && !nestingRefusal({
+      source: item,
+      target: over,
+    })
+
+  const size = compact || inside ? item.compactSize : item.size
+  const initialSize = useRef(item.size).current
+  const sizing = useAnimationControls()
+  const duration = motionDuration({ reducedMotion: !!reducedMotion }) / 1000
+  useLayoutEffect(
+    () => {
+      if (active && item.kind === 'task' && size) {
+        void sizing.start(
+          size,
+          {
+            duration,
+            ease: MOTION_EASING,
+          },
+        )
+      }
+    },
+    [
+      active,
+      item.kind,
+      size,
+      sizing,
+      duration,
+    ],
+  )
+  const anchor = item.kind === 'task' && item.grab ? `${-item.grab.x * 100}% ${-item.grab.y * 100}%` : undefined
 
   return (
-    <div className={`physical-ghost pointer-events-none relative w-full select-none opacity-95 ${item.kind === 'task' ? 'overflow-visible' : 'h-full overflow-hidden'}`} inert>
+    <motion.div
+      initial={false}
+      animate={sizing}
+      data-grab-x={item.grab?.x ?? 0}
+      data-grab-y={item.grab?.y ?? 0}
+      style={{
+        width: item.kind === 'task' ? initialSize?.width : undefined,
+        height: item.kind === 'task' ? initialSize?.height : undefined,
+        ...item.overlayStyle,
+        translate: anchor,
+      }}
+      className={`physical-ghost pointer-events-none relative w-full select-none opacity-95 ${item.kind === 'task' ? 'overflow-visible' : 'h-full overflow-hidden'}`}
+      inert
+    >
       <motion.div
         data-drag-preview
+        style={{ transformOrigin: item.grab ? `${item.grab.x * 100}% ${item.grab.y * 100}%` : undefined }}
         initial={false}
-        animate={{ scale: inside ? NEST_HOVER_SCALE : 1 }}
-        transition={{ duration: reducedMotion ? 0 : NEST_HOVER_SECONDS }}
-        className="rounded-card shadow-window"
+        animate={{ scale: inside ? CARD_SIZING.nest.hoverScale : 1 }}
+        transition={{
+          duration: motionDuration({
+            speed: 'fast',
+            reducedMotion: !!reducedMotion,
+          }) / 1000,
+        }}
+        className="h-full rounded-card shadow-window"
       >
-        {snapshot ? <DragPreview snapshot={snapshot} /> : item.overlay}
+        {snapshot && (!compact || item.kind !== 'task') ? <DragPreview snapshot={snapshot} /> : item.overlay}
       </motion.div>
       {canNest && <div className="absolute -top-3 right-2"><DragNestHint /></div>}
-    </div>
+    </motion.div>
   )
 }
 
@@ -406,6 +505,10 @@ export function SortableWorkspace({
   const [
     shift,
     setShift,
+  ] = useState(false)
+  const [
+    compact,
+    setCompact,
   ] = useState(false)
   const modifier = useRef(false)
   const plain = useRef<SortMove | null>(null)
@@ -469,6 +572,16 @@ export function SortableWorkspace({
     ({ pressed }: { pressed: boolean }) => {
       modifier.current = pressed
       setShift(pressed)
+      const args = latestDetection.current
+
+      if (args) {
+        const hits = collisions({
+          args,
+          nesting: pressed && itemOf({ data: args.active.data })?.kind === 'task',
+        })
+        const target = args.droppableContainers.find(container => container.id === hits[0]?.id)
+        setOver(itemOf({ data: target?.data }) ?? null)
+      }
     },
     [],
   )
@@ -568,6 +681,7 @@ export function SortableWorkspace({
     setActive(null)
     setOver(null)
     setSnapshot(null)
+    setCompact(false)
     setModifier({ pressed: false })
 
     if (root.current) {
@@ -587,7 +701,7 @@ export function SortableWorkspace({
 
     const node = document.querySelector<HTMLElement>(`[data-sort-key="${CSS.escape(String(active.id))}"]`)
 
-    if (node && item.kind !== 'task') {
+    if (node && (item.kind !== 'task' || item.open)) {
       setSnapshot(dragSnapshot({ element: node }))
     }
 
@@ -608,8 +722,51 @@ export function SortableWorkspace({
         },
       },
     ))
+    const box = node?.getBoundingClientRect()
+    const styles = node ? getComputedStyle(node) : null
+    const grid = node?.closest<HTMLElement>('.project-card-grid')
+    const gap = grid ? parseFloat(getComputedStyle(grid).columnGap) : 0
+    const family = node?.closest<HTMLElement>('[data-family]')
+    const indent = item.parent && family ? parseFloat(getComputedStyle(family).getPropertyValue('--subtask-indent')) : 0
+    const size = box ? {
+      width: box.width,
+      height: box.height,
+    } : undefined
+    const compactSize = size && item.kind === 'task' ? liftedCardSize({
+      size,
+      columnWidth: grid?.getBoundingClientRect().width ?? size.width,
+      gap,
+      indent,
+      open: item.open,
+    }) : size
+    const grab = box && activatorEvent instanceof PointerEvent ? {
+      x: Math.max(
+        0,
+        Math.min(
+          1,
+          (activatorEvent.clientX - box.left) / box.width,
+        ),
+      ),
+      y: Math.max(
+        0,
+        Math.min(
+          1,
+          (activatorEvent.clientY - box.top) / box.height,
+        ),
+      ),
+      offsetX: activatorEvent.clientX - box.left,
+      offsetY: activatorEvent.clientY - box.top,
+    } : undefined
     setActive({
       ...item,
+      grab,
+      overlayStyle: {
+        '--text-ui': styles?.getPropertyValue('--text-ui'),
+        '--text-chat': styles?.getPropertyValue('--text-chat'),
+        '--text-code': styles?.getPropertyValue('--text-code'),
+      } as CSSProperties,
+      size,
+      compactSize,
       column: node?.closest<HTMLElement>('.project-column')?.dataset.column,
     })
   }
@@ -633,7 +790,10 @@ export function SortableWorkspace({
 
     const nesting = source.kind === 'task' && modifier.current
 
-    if (nesting && (target.zone !== 'nest' || source.hasChildren || source.parent === target.id)) {
+    if (nesting && (target.zone !== 'nest' || nestingRefusal({
+      source,
+      target,
+    }) || source.parent === target.id)) {
       return null
     }
 
@@ -718,6 +878,46 @@ export function SortableWorkspace({
     clear()
   }
 
+  const resizeLift = ({
+    over,
+    active: source,
+  }: DragMoveEvent) => {
+    if (active?.kind !== 'task') {
+      return
+    }
+
+    const point = latestDetection.current?.pointerCoordinates
+    const pointedColumn = point ? document.elementFromPoint(
+      point.x,
+      point.y,
+    )?.closest<HTMLElement>('[data-column]') : null
+    const anotherColumn = !!pointedColumn && pointedColumn.dataset.column !== active.column
+    const target = over ? itemOf({ data: over.data }) : undefined
+    const anotherSlot = !!target && target.id !== active.id
+    const validNest = target?.zone === 'nest' && !nestingRefusal({
+      source: active,
+      target,
+    }) && active.parent !== target.id
+
+    if (anotherColumn || anotherSlot && (!modifier.current || validNest)) {
+      setCompact(true)
+    } else if (over?.id === source.id) {
+      setCompact(false)
+    }
+  }
+
+  const liftedPosition: Modifier = ({ transform }) => {
+    if (active?.kind !== 'task' || !active.grab) {
+      return transform
+    }
+
+    return {
+      ...transform,
+      x: transform.x + active.grab.offsetX,
+      y: transform.y + active.grab.offsetY,
+    }
+  }
+
   const animateDrop: DropAnimationFunction = async ({
     active,
     dragOverlay,
@@ -731,7 +931,12 @@ export function SortableWorkspace({
       return
     }
 
-    let to = active.rect
+    const landingCard = active.node.matches('.card') ? active.node : active.node.querySelector<HTMLElement>('.card[data-task]')
+    let to = {
+      ...active.rect,
+      width: landingCard?.offsetWidth ?? active.rect.width,
+      height: landingCard?.offsetHeight ?? active.rect.height,
+    }
 
     if (destination) {
       const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(destination.hydra)}"]`)
@@ -745,10 +950,14 @@ export function SortableWorkspace({
     }
 
     const from = ghost.getBoundingClientRect()
-    const x = to.left - from.left
-    const y = to.top - from.top
-    const centerX = x + (to.width - from.width) / 2
-    const centerY = y + (to.height - from.height) / 2
+    const grab = {
+      x: Number(ghost.dataset.grabX),
+      y: Number(ghost.dataset.grabY),
+    }
+    const x = to.left - from.left + (destination ? 0 : (to.width - from.width) * grab.x)
+    const y = to.top - from.top + (destination ? 0 : (to.height - from.height) * grab.y)
+    const centerX = x + (to.width - from.width * CARD_SIZING.nest.dropScale) / 2
+    const centerY = y + (to.height - from.height * CARD_SIZING.nest.dropScale) / 2
     const restore = defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } })({
       active,
       dragOverlay,
@@ -759,11 +968,20 @@ export function SortableWorkspace({
       await animate(
         ghost,
         {
+          transformOrigin: 'top left',
           x: destination ? centerX : x,
           y: destination ? centerY : y,
+          width: [
+            from.width,
+            destination ? from.width : to.width,
+          ],
+          height: [
+            from.height,
+            destination ? from.height : to.height,
+          ],
           scale: [
             1,
-            destination ? NEST_DROP_SCALE : 1,
+            destination ? CARD_SIZING.nest.dropScale : 1,
           ],
           opacity: [
             1,
@@ -771,8 +989,8 @@ export function SortableWorkspace({
           ],
         },
         {
-          duration: destination ? NEST_DROP_SECONDS : DROP_SECONDS,
-          ease: DROP_EASING,
+          duration: motionDuration({ speed: destination ? 'slow' : 'base' }) / 1000,
+          ease: MOTION_EASING,
         },
       ).finished
     } finally {
@@ -791,6 +1009,7 @@ export function SortableWorkspace({
       collisionDetection={detect}
       onDragStart={start}
       onDragOver={hover}
+      onDragMove={resizeLift}
       onDragEnd={finish}
       onDragCancel={clear}
     >
@@ -805,12 +1024,18 @@ export function SortableWorkspace({
         {createPortal(
           <DragOverlay
             adjustScale={false}
-            style={{ pointerEvents: 'none' }}
+            transition={dragTransition}
+            modifiers={[liftedPosition]}
+            style={{
+              pointerEvents: 'none',
+              width: active?.kind === 'task' ? active.size?.width : undefined,
+              height: active?.kind === 'task' ? active.size?.height : undefined,
+            }}
             zIndex={1000}
             dropAnimation={reducedMotion ? null : animateDrop}
           >
             {active && (
-              <DragGhost item={active} snapshot={snapshot} />
+              <DragGhost item={active} snapshot={snapshot} compact={compact} />
             )}
           </DragOverlay>,
           document.body,
