@@ -1,3 +1,4 @@
+import { ProjectForm, ProjectList } from './folder-ui.tsx'
 import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useEffect, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
@@ -47,10 +48,9 @@ function ProjectCommand({
   ] = useState(false)
 
   return (
-    <form
-      className="project-form"
+    <ProjectForm
       aria-label={`Start settings for ${project.name}`}
-      onSubmit={async e => {
+      submit={async ({ event: e }) => {
         e.preventDefault(); setBusy(true)
         const submitted = draft
 
@@ -100,7 +100,7 @@ function ProjectCommand({
         <p className="small muted">The command creates the worker’s folder when checked. Hydra can choose this command by name.</p>
         <Button type="submit" variant="surface">{busy ? 'Saving…' : 'Save start command'}</Button>
       </fieldset>
-    </form>
+    </ProjectForm>
   )
 }
 
@@ -215,9 +215,9 @@ export function Projects({
   }
 
   const row = ({ project: p }: { project: ProjectRow }) => (
-    <li key={p.path} className={`project-row ${p.state === 'detached' ? 'detached' : ''}`}>
-      <div className="project-details">
-        <strong>{p.name}</strong><span className="project-path">{p.path}</span>
+    <li key={p.path} className={`project-row flex items-center justify-between gap-3 py-2 px-0 [&>div]:min-w-0 [&.detached_strong]:text-muted ${p.state === 'detached' ? 'detached' : ''}`}>
+      <div className="project-details flex-1">
+        <strong>{p.name}</strong><span className="project-path block text-muted text-ui wrap-anywhere">{p.path}</span>
         {p.pending && <span role="status">{p.pending}</span>}
         {!readonly && p.state === 'attached' && (
           <ProjectLanding
@@ -271,13 +271,13 @@ export function Projects({
             </>
           )}
           {!projects.some(p => p.state === 'attached') && <p className="muted">No projects attached.</p>}
-          <ul className="project-list">{projects.filter(p => p.state === 'attached').map(p => row({ project: p }))}</ul>
+          <ProjectList>{projects.filter(p => p.state === 'attached').map(p => row({ project: p }))}</ProjectList>
           {projects.some(p => p.state === 'detached') && (
             <>
               <h3>Detached</h3>
-              <ul className="project-list">
+              <ProjectList>
                 {projects.filter(p => p.state === 'detached').map(p => row({ project: p }))}
-              </ul>
+              </ProjectList>
             </>
           )}
           {!readonly && (

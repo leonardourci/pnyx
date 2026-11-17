@@ -1,3 +1,4 @@
+import { ProjectForm, ProjectList, ProjectActions, FolderChoice, FolderDescription } from './folder-ui.tsx'
 import { useProjectsResource } from './project-resource.ts'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -145,10 +146,10 @@ export function AddProject({
   }
 
   return (
-    <section className="add-project-box" aria-label="Add a project">
+    <section className="add-project-box min-w-0 [&_h2]:text-chat [&_h2]:mt-0 [&_h2]:mx-0 [&_h2]:mb-2 [&>p]:leading-normal" aria-label="Add a project">
       <h2 ref={heading} tabIndex={-1}>Give Hydra a project</h2>
       <p className="small muted">Attach a folder on this laptop, or clone a repository here.</p>
-      <div className="project-actions">
+      <ProjectActions>
         <Button
           variant={mode === 'folder' ? 'surface' : 'quiet'}
           disabled={disabled}
@@ -168,18 +169,17 @@ export function AddProject({
         ><Icon name="clone" />Clone a repo
         </Button>
         {cancel && <Button disabled={busy} onClick={cancel} aria-label="Close add project"><Icon name="close" /></Button>}
-      </div>
+      </ProjectActions>
       {projects.some(project => project.pending) && (
-        <ul className="project-list">{projects.filter(project => project.pending).map(project => (
+        <ProjectList>{projects.filter(project => project.pending).map(project => (
           <li key={project.path}><strong>{project.name}</strong> <span>{project.path}</span> <span role="status">{project.pending}</span></li>
         ))}
-        </ul>
+        </ProjectList>
       )}
       <PendingStatus intents={intents} />
       {mode && !confirmation && (
-        <form
-          className="project-form"
-          onSubmit={e => {
+        <ProjectForm
+          submit={({ event: e }) => {
             e.preventDefault()
 
             if (mode === 'clone' && listing?.cloneInto) {
@@ -221,12 +221,13 @@ export function AddProject({
             onChange={({ path }) => setPath(path)}
           />
           {listing?.selected && path.trim() && (
-            <div className="picked-folder">
-              <strong>{listing.selected.name}</strong><small>{listing.selected.path}</small>
+            <div className="picked-folder p-2 border border-line rounded-md">
+              <strong>{listing.selected.name}</strong>
+              <FolderDescription>{listing.selected.path}</FolderDescription>
             </div>
           )}
           {result?.error && <p className="small" role="status">{result.error}</p>}
-          {mode === 'clone' && listing?.cloneInto && <p className="clone-preview">Code will land in <strong>{listing.cloneInto}</strong></p>}
+          {mode === 'clone' && listing?.cloneInto && <p className="clone-preview text-meta wrap-anywhere leading-normal">Code will land in <strong>{listing.cloneInto}</strong></p>}
           <LandingFields
             name="this project"
             choice={landing}
@@ -237,8 +238,8 @@ export function AddProject({
             {mode === 'clone' ? 'Clone and attach' : 'Add project'}
           </Button>
           {mode === 'folder' && !!listing?.recent.length && (
-            <div className="recent-folders"><span className="small muted">Folders your agents worked in</span>{listing.recent.map(folder => (
-              <Button
+            <div className="recent-folders grid gap-1 pt-2.5"><span className="small muted">Folders your agents worked in</span>{listing.recent.map(folder => (
+              <FolderChoice
                 key={folder.path}
                 disabled={disabled}
                 title={folder.path}
@@ -248,12 +249,12 @@ export function AddProject({
                     folder.path,
                   ],
                 })}
-              ><strong>{folder.name}</strong><small>{folder.path}</small>
-              </Button>
+              ><strong>{folder.name}</strong><FolderDescription>{folder.path}</FolderDescription>
+              </FolderChoice>
             ))}
             </div>
           )}
-        </form>
+        </ProjectForm>
       )}
       {confirmation && (
         <ProjectSharing
@@ -271,7 +272,7 @@ export function AddProject({
         />
       )}
       {!confirmation && (
-        <p className="small muted project-sharing-note">
+        <p className="small muted project-sharing-note mt-4">
           Each worker normally gets its own copy. Only one Hydra at a time may have a worker
           editing the folder itself.
         </p>
@@ -292,17 +293,17 @@ export function ProjectSharing({
   confirm(): void
 }) {
   return (
-    <div className="project-sharing" role="status">
+    <div className="project-sharing mt-4 p-3 border border-dashed border-line rounded-lg text-meta wrap-anywhere [&_a]:text-blue" role="status">
       <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((
         hydra,
         n,
       ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydraTitle(hydra)} <Icon name="external" size={12} /></a></span>)}
       </span>
       <p className="small muted">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>
-      <div className="project-actions">
+      <ProjectActions>
         <Button disabled={disabled} variant="surface" onClick={confirm}>Add anyway</Button>
         <Button disabled={disabled} onClick={cancel}>Cancel</Button>
-      </div>
+      </ProjectActions>
     </div>
   )
 }
