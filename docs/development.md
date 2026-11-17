@@ -128,4 +128,37 @@ Motion timing lives in `web/src/shared/motion.ts` and the matching `@theme` toke
 
 Interface icons share `web/src/shared/icons.tsx`: `Icon`, `hasIcon`, `ICON_SIZE` and `ICON_STROKE`. Use the size roles (`badge`, `inline`, `control`, `toolbar`, `heading`, `brand`) instead of pixel literals. Line glyphs use Tabler at a constant 1.5 screen-pixel stroke; identity and provider marks retain their licensed filled artwork. The registry and identity assets live in `web/src/shared/ui/icons/`. All marks resist flex shrinking so adjacent text cannot change their size.
 
-Card geometry lives in `src/preferences/workspace.ts`; shared controls live in `web/src/shared/ui/` (`IconButton`, `DisclosureChevron`, `Resize`, `HoverActions`, `Dialog`). Change those primitives for repeated patterns instead of styling a second version inside a feature.
+Card geometry lives in `web/src/shared/card-sizing.ts`, with persisted view limits in `src/preferences/workspace.ts`; shared controls live in `web/src/shared/ui/` (`IconButton`, `DisclosureChevron`, `Resize`, `HoverActions`, `Dialog`). Change those primitives for repeated patterns instead of styling a second version inside a feature.
+
+### UI performance measurements
+
+The page's metrics use the existing fire-and-forget log path: `web/src/app/ui-metrics.ts` aggregates measurements, `web/src/app/log.ts` batches them over the existing socket, and the server appends `source: "web"` JSONL lines to `$PNYX_HOME/logs/YYYY-MM-DD.jsonl`. Metrics never enter Hydra events, Zero rows or a server-side metrics cache. `pnyx-axi logs` shows the folder; `pnyx-axi debug performance` groups logged durations by the metric’s static surface/action name; its percentiles describe window maxima, not raw interactions. Filter by `operation`, `surface`, `action`, `hydraId` and `tab` when reading individual lines.
+
+The single runtime switch is the existing Logs setting. `pnyx-axi settings set --json '{"logs":"off"}'` disconnects the performance observers, input capture listeners and metrics timer, cancels drag sampling, and drops pending metric aggregates. Ordinary warning/error logging keeps its existing behavior. Logs On resumes collection. No owner text, field values, task titles, DOM paths or keystrokes enter these metrics; action names are static tokens.
+
+The normal build uses the ordinary React renderer. For React measurements, run `VITE_PNYX_PROFILE=1 pnpm run build` (or the same flag with `pnpm run web:dev`). That one build flag aliases `react-dom/client` to `react-dom/profiling` and enables `ProfileSurface` in `web/src/app/profile-surface.tsx`. Rebuild without the flag after diagnosis. Normal builds bypass the profiler boundaries and collect only browser measurements.
+
+Components and flows use the same API:
+
+```tsx
+<ProfileSurface name="chat" hydraId={hydraId}>
+  <Chat />
+</ProfileSurface>
+```
+
+`ProfileSurface` reports React's `actualDuration` through `recordUIRender({ surface, hydraId, ms })`. This is render work associated with a commit, not the duration of DOM mutations. `page.react-commit` counts every observed commit, samples the first and every tenth duration per aggregate, and reports `samples`, `totalMs` and worst `ms`. Nested surfaces overlap; do not sum their render durations. The named boundaries cover workspace, chat, Settings, Oracle and sortable rendering.
+
+```ts
+const finish = timeUIFlow({ surface: 'workspace', action: 'settings.open' })
+try {
+  await operation()
+} finally {
+  finish()
+}
+```
+
+`timeUIFlow` records `page.flow` once when `finish()` runs; work spanning Logs Off is discarded. Settings navigation uses it. `trackUIDrag({ action: 'task' })` returns the same kind of cleanup function and is connected to the existing sortable lifetime. Its `page.drag-frames` line reports `frameCount` observed intervals, `frames` estimated missed intervals and `worstFrameMs`. The estimate starts with a 60 Hz budget and learns the shortest observed interval down to 240 Hz. Hidden-tab gaps are excluded. These are requestAnimationFrame estimates; use Chrome traces to inspect actual rendering and presentation.
+
+`page.long-task` summarizes supported Long Tasks entries; existing Long Animation Frame diagnostics remain as bounded `page.slow-frame` summaries. `page.slow-interaction` keeps the worst Event Timing entry per interaction ID above 104 ms, with `inputDelayMs`, `processingMs` and `presentationMs`. It is an INP-style diagnostic sample, not a page-level INP score. Static `data-ui-surface` and `data-ui-action` attributes name controls; otherwise the collector uses known patterns or the control's role/tag. Input capture retains those names before React changes the target. Browser support is feature-detected; unsupported APIs produce no samples. Existing idle `page.memory` samples include `heapUsed` where the browser exposes it, plus retained chat and DOM sizes.
+
+Aggregates flush every ten seconds and on page hide, with at most 32 groups, 128 entries per observer callback and 128 retained interaction IDs/input contexts. The existing logger caps disconnected queues at 1,000 lines and batches socket payloads within the wire limit. `count` is the number of aggregated observations, `samples` the measured subset, `ms` the worst sampled duration and `totalMs` the sampled total. `page.metrics-overhead` instead records measured collector/heap-sampling/serialization work in `ms`, elapsed sampling-window time in `totalMs`, callback count and discarded entries in `samples`. It excludes the browser's internal observer/profiler cost; compare normal/profiling and Logs On/Off Chrome traces for that overhead.
