@@ -112,6 +112,8 @@ test(
     )
       .locator('summary')
       .filter({ hasText: 'License notices' })
+    await summary.waitFor()
+    await summary.scrollIntoViewIfNeeded()
     await expect.poll(() => chevronDirection({ control: summary })).toBe('down')
     await summary.click()
     await expect.poll(() => chevronDirection({ control: summary })).toBe('up')

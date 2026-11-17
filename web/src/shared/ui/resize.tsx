@@ -77,7 +77,7 @@ export function Resize({
       aria-valuemax={max ?? Number.MAX_SAFE_INTEGER}
       aria-valuetext={max === undefined ? `${preview ?? value} pixels` : undefined}
       aria-valuenow={preview ?? value}
-      className={`resize resize-${axis} absolute z-6 touch-none outline-none after:absolute after:block after:rounded-sm after:bg-gold after:opacity-70 after:transition-opacity after:duration-120 hover:after:opacity-100 focus:after:opacity-100 ${axis === 'x' ? 'top-[calc(50%-2rem)] -right-1.25 h-16 w-2.25 cursor-col-resize after:top-[calc(50%-1.375rem)] after:left-0.75 after:h-11 after:w-0.5' : 'inset-x-0 -bottom-0.75 h-2.25 cursor-row-resize after:top-0.5 after:left-[calc(50%-1.375rem)] after:h-0.75 after:w-11'} ${className}`}
+      className={`resize resize-${axis} absolute z-6 touch-none outline-none after:absolute after:block after:rounded-sm after:bg-gold after:opacity-70 after:transition-opacity after:duration-fast hover:after:opacity-100 focus:after:opacity-100 ${axis === 'x' ? 'top-[calc(50%-2rem)] -right-1.25 h-16 w-2.25 cursor-col-resize after:top-[calc(50%-1.375rem)] after:left-0.75 after:h-11 after:w-0.5' : 'inset-x-0 -bottom-0.75 h-2.25 cursor-row-resize after:top-0.5 after:left-[calc(50%-1.375rem)] after:h-0.75 after:w-11'} ${className}`}
       onPointerDown={e => {
         if (e.button !== 0 || !e.isPrimary) {
           return

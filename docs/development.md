@@ -123,3 +123,5 @@ Hosted agent processes lead their own process groups. Completing or archiving a 
 Copy settlement holds the task lease until its folder decision is saved. A server start drops settlement leases a stopped server left behind, since only the server settles copies. Ordinary replies stay in the existing inbox until then; new starts and native controls can be retried after cleanup. A released pool slot cannot resume the old session, including an older session recorded through a folder alias. New hosted starts record canonical folders. Copy removal also refuses while a launch or notification is pending; notification ownership lasts through its saved receipt and preserves delivery while the routine helper holds a task.
 
 Older child records without the background-preservation marker retain the earlier startup group cleanup behavior. New records preserve background tools across restart.
+
+Motion timing lives in `web/src/shared/motion.ts` and the matching `@theme` tokens in `web/src/index.css`; change `MOTION_MODE` to `off` for instant motion, and keep token values together when changing the timings.

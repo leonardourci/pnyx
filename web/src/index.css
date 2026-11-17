@@ -43,7 +43,16 @@
   --text-ui: 14px;
   --text-chat: 16px;
   --text-code: 13px;
-  --ease-ui: ease;
+  --transition-duration-instant: 0ms;
+  --transition-duration-fast: 120ms;
+  --transition-duration-base: 180ms;
+  --transition-duration-slow: 320ms;
+  --transition-duration-ambient: 1600ms;
+  --default-transition-duration: var(--transition-duration-base);
+  --default-transition-timing-function: var(--ease-ui);
+  --ease-linear: linear;
+  --animate-spin: spin var(--transition-duration-ambient) var(--ease-linear) infinite;
+  --ease-ui: cubic-bezier(0.2, 0.8, 0.2, 1);
   --tracking-keymap: .04em;
   --tracking-eyebrow: .13em;
   --radius-compact: 5px;
@@ -88,7 +97,7 @@
   --spacing-permission-label: 88px;
   --spacing-upgrade-error: calc(10lh + 14px);
   --spacing-upgrade-menu: min(260px, calc(100vw - 16px));
-  --transition-comment-card: background-color var(--comment-fade-duration) ease-out, border-color var(--comment-fade-duration) ease-out, box-shadow var(--comment-fade-duration) ease-out;
+  --transition-comment-card: background-color var(--comment-fade-duration) var(--ease-ui), border-color var(--comment-fade-duration) var(--ease-ui), box-shadow var(--comment-fade-duration) var(--ease-ui);
   --shadow-comment-emphasis: 0 0 0 1px var(--color-gold-line);
   --shadow-comment-jump: 0 0 0 1px var(--color-gold);
   --shadow-comment-marker: 0 0 0 1px var(--color-surface);
@@ -100,9 +109,9 @@
   --spacing-dispatch-issue: 70px;
   --shadow-invalid: inset 0 0 0 1px var(--color-red);
   --shadow-dispatch: -14px 0 12px -2px var(--color-surface);
-  --duration-dispatch: 180ms;
-  --transition-dispatch-closed: clip-path var(--duration-dispatch) ease-out, visibility 0s var(--duration-dispatch);
-  --transition-dispatch-open: clip-path var(--duration-dispatch) ease-out;
+  --duration-dispatch: var(--transition-duration-base);
+  --transition-dispatch-closed: clip-path var(--duration-dispatch) var(--ease-ui), visibility var(--transition-duration-instant) var(--duration-dispatch);
+  --transition-dispatch-open: clip-path var(--duration-dispatch) var(--ease-ui);
   --spacing-settings-field: min(100%, 440px);
   --spacing-setting-icon: var(--control-h);
   --spacing-setting-preview: 280px;
@@ -121,18 +130,18 @@
   --spacing-jump: 34px;
   --spacing-action-reference: min(4.5em, 100%);
   --spacing-action: min(28ch, 100%);
-  --ease-live-label: cubic-bezier(.2, .8, .2, 1);
-  --animate-live-label: live-label-in 220ms cubic-bezier(.2, .8, .2, 1) 60ms backwards;
-  --animate-live-label-out: live-label-out 180ms ease-in forwards;
-  --animate-live-label-fade-out: live-label-fade-out 180ms ease-in forwards;
-  --animate-live-label-reduced: chat-fade-in 220ms cubic-bezier(.2, .8, .2, 1) 60ms backwards;
+  --ease-live-label: var(--ease-ui);
+  --animate-live-label: live-label-in var(--transition-duration-base) var(--ease-ui) var(--transition-duration-fast) backwards;
+  --animate-live-label-out: live-label-out var(--transition-duration-base) var(--ease-ui) forwards;
+  --animate-live-label-fade-out: live-label-fade-out var(--transition-duration-base) var(--ease-ui) forwards;
+  --animate-live-label-reduced: chat-fade-in var(--transition-duration-base) var(--ease-ui) var(--transition-duration-fast) backwards;
   --shadow-jump: 0 4px 12px var(--color-shadow);
-  --animate-chat-fade: chat-fade-in 200ms ease-out;
-  --animate-hydra-spin-reduced: hydra-spin 2s linear infinite;
-  --animate-hydra-spin: hydra-spin 700ms linear infinite;
-  --animate-reply-dot: reply-dot 1.1s ease-in-out infinite;
-  --animate-reply-dot-fade: reply-dot-fade 1.6s ease-in-out infinite;
-  --animate-reply-appear: reply-appear 140ms ease-out;
+  --animate-chat-fade: chat-fade-in var(--transition-duration-base) var(--ease-ui);
+  --animate-hydra-spin-reduced: hydra-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
+  --animate-hydra-spin: hydra-spin var(--transition-duration-ambient) var(--ease-linear) infinite;
+  --animate-reply-dot: reply-dot var(--transition-duration-ambient) var(--ease-ui) infinite;
+  --animate-reply-dot-fade: reply-dot-fade var(--transition-duration-ambient) var(--ease-ui) infinite;
+  --animate-reply-appear: reply-appear var(--transition-duration-fast) var(--ease-ui);
   --spacing-dialog: min(600px, calc(100vw - 32px));
   --spacing-oracle: min(980px, calc(100vw - 32px));
   --spacing-oracle-top: 9vh;
@@ -175,7 +184,7 @@
   --shadow-suggestions: 0 8px 20px var(--color-shadow);
   --radius-panel: 7px;
   --spacing-composer-max: 480px;
-  --transition-duration-composer: 120ms;
+  --transition-duration-composer: var(--transition-duration-fast);
   --spacing-attachment-gap: .375em;
   --spacing-attachment-inset: .1875em;
   --spacing-attachment-end: .4375em;
@@ -234,8 +243,8 @@
 @theme static {
   --comment-highlight-strength: 24%;
   --comment-emphasis-strength: 45%;
-  --comment-fade-duration: 160ms;
-  --comment-marker-duration: 140ms;
+  --comment-fade-duration: var(--transition-duration-base);
+  --comment-marker-duration: var(--transition-duration-fast);
   --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent);
   --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent);
   --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent);
@@ -245,6 +254,14 @@
   --chip-text: 1.125em;
   --chip-pad: calc((var(--chip-h) - var(--chip-text)) / 2);
   --block-gap: .75em;
+}
+
+/* The global switch and OS preference also cover third-party and inline animations. */
+:root[data-motion="off"] { --transition-duration-fast: 0ms; --transition-duration-base: 0ms; --transition-duration-slow: 0ms; --transition-duration-ambient: 0ms; }
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation-duration: 0s!important; animation-delay: 0s!important; animation-iteration-count: 1!important; transition-duration: 0s!important; transition-delay: 0s!important; scroll-behavior: auto!important; }
+@media (prefers-reduced-motion: reduce) {
+  :root { --transition-duration-fast: 0ms; --transition-duration-base: 0ms; --transition-duration-slow: 0ms; --transition-duration-ambient: 0ms; }
+  *, *::before, *::after { animation-duration: 0s!important; animation-delay: 0s!important; animation-iteration-count: 1!important; transition-duration: 0s!important; transition-delay: 0s!important; scroll-behavior: auto!important; }
 }
 
 @layer base {
@@ -271,7 +288,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 @theme inline {
   --color-usage-fill: color-mix(in srgb, var(--usage-tone, var(--color-surface)) 72%, var(--color-surface));
-  --animate-comment-jump: comment-jump var(--comment-jump-duration) ease-out both;
+  --animate-comment-jump: comment-jump var(--comment-jump-duration) var(--ease-ui) both;
   --color-attachment-comments: color-mix(in srgb, var(--color-gold) 8%, transparent);
   --color-update-hydra: color-mix(in srgb, var(--color-teal) 12%, var(--color-surface));
   --color-update-told: color-mix(in srgb, var(--color-blue) 12%, var(--color-surface));

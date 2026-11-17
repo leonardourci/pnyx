@@ -118,7 +118,7 @@ export function Switch({
       onClick={() => run({ save: () => onChange({ value: !checked }) })}
     >
       <span className="switch-track w-7 h-4 p-0.5 border border-control rounded-card bg-hover shrink-0 in-[.settings-page]:bg-raised group-aria-checked/switch:bg-gold-fill group-aria-checked/switch:border-gold-line">
-        <span className="block size-2.5 rounded-full bg-muted transition-transform ease-ui duration-100 in-[.settings-page]:bg-control in-[.settings-page]:duration-150 group-aria-checked/switch:translate-x-2.75 group-aria-checked/switch:bg-gold-ink in-[.settings-page]:group-aria-checked/switch:translate-x-3" />
+        <span className="block size-2.5 rounded-full bg-muted transition-transform ease-ui duration-fast in-[.settings-page]:bg-control in-[.settings-page]:duration-base group-aria-checked/switch:translate-x-2.75 group-aria-checked/switch:bg-gold-ink in-[.settings-page]:group-aria-checked/switch:translate-x-3" />
       </span>
       {caption ?? (!quiet && label)}
     </Button>
