@@ -176,7 +176,7 @@ const inline = ({
         if (pointer) {
           return (
             <Sourced key={i} markdown={token.raw}>
-              <span className="chip reference-chip" contentEditable={false}>{children}</span>
+              <span className="chip reference-chip inline-flex py-px px-1.5 border border-gold-line rounded-md text-gold" contentEditable={false}>{children}</span>
             </Sourced>
           )
         }

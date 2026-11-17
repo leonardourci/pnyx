@@ -96,7 +96,7 @@ export function InlineTitle({
     </form>
   ) : (
     <Button
-      className="inline-title"
+      className="inline-title p-0 text-left justify-start text-[length:inherit] font-semibold"
       aria-label={label}
       onClick={doubleClick ? undefined : () => setEditing(true)}
       onDoubleClick={() => setEditing(true)}
