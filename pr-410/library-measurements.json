@@ -69,33 +69,66 @@
     "complete": {
       "snapshot": "complete",
       "entry": {
-        "name": "index-COvneht8.js",
-        "bytes": 1560032,
-        "gzip": 498738
+        "name": "index-DzRTXhWP.js",
+        "bytes": 1559916,
+        "gzip": 498719
       },
       "js": {
-        "bytes": 1570173,
-        "gzip": 502557
+        "bytes": 1570057,
+        "gzip": 502540
       },
       "css": {
-        "bytes": 154482,
-        "gzip": 28946
+        "bytes": 154137,
+        "gzip": 28857
       },
       "files": [
         {
-          "name": "index-COvneht8.js",
-          "bytes": 1560032,
-          "gzip": 498738
+          "name": "index-DKhxErS4.css",
+          "bytes": 154137,
+          "gzip": 28857
         },
         {
-          "name": "index-DMYGzHuL.css",
-          "bytes": 154482,
-          "gzip": 28946
+          "name": "index-DzRTXhWP.js",
+          "bytes": 1559916,
+          "gzip": 498719
         },
         {
-          "name": "lazy-inspector-DHgDnJaM.js",
+          "name": "lazy-inspector-CA_L5FYi.js",
           "bytes": 10141,
-          "gzip": 3819
+          "gzip": 3821
+        }
+      ]
+    },
+    "latest": {
+      "snapshot": "latest",
+      "entry": {
+        "name": "index-DcCsH28u.js",
+        "bytes": 1579198,
+        "gzip": 506148
+      },
+      "js": {
+        "bytes": 1589339,
+        "gzip": 509968
+      },
+      "css": {
+        "bytes": 149788,
+        "gzip": 28123
+      },
+      "files": [
+        {
+          "name": "index-B4yhi3t1.css",
+          "bytes": 149788,
+          "gzip": 28123
+        },
+        {
+          "name": "index-DcCsH28u.js",
+          "bytes": 1579198,
+          "gzip": 506148
+        },
+        {
+          "name": "lazy-inspector-kQY4vsek.js",
+          "bytes": 10141,
+          "gzip": 3820
         }
       ]
     }
@@ -103,7 +136,7 @@
   "frames": {
     "native": {
       "metadata": {
-        "snapshot": "native-complete",
+        "snapshot": "native-current",
         "chrome": "157.0.8103.79",
         "viewport": {
           "width": 1440,
@@ -117,45 +150,45 @@
         },
         "cpus": 15,
         "loadAverage": [
-          3.3671875,
-          3.263671875,
-          3.41552734375
+          2.94091796875,
+          3.0283203125,
+          2.7431640625
         ]
       },
       "spans": {
         "idle": {
-          "intervals": 38,
-          "medianMs": 33.838,
-          "p95Ms": 75.499,
-          "maxMs": 79.491,
-          "over25Ms": 28
+          "intervals": 29,
+          "medianMs": 51.193,
+          "p95Ms": 70.149,
+          "maxMs": 70.366,
+          "over25Ms": 22
         },
         "drag": {
-          "intervals": 304,
-          "medianMs": 36.552,
-          "p95Ms": 78.503,
-          "maxMs": 85.309,
-          "over25Ms": 211
+          "intervals": 314,
+          "medianMs": 50.66,
+          "p95Ms": 79.421,
+          "maxMs": 88.231,
+          "over25Ms": 227
         },
         "open": {
-          "intervals": 45,
-          "medianMs": 31.447,
-          "p95Ms": 75.292,
-          "maxMs": 84.037,
-          "over25Ms": 31
+          "intervals": 40,
+          "medianMs": 46.721,
+          "p95Ms": 76.588,
+          "maxMs": 78.222,
+          "over25Ms": 21
         },
         "close": {
-          "intervals": 39,
-          "medianMs": 39.087,
-          "p95Ms": 76.433,
-          "maxMs": 85.51,
-          "over25Ms": 26
+          "intervals": 34,
+          "medianMs": 56.745,
+          "p95Ms": 78.185,
+          "maxMs": 78.347,
+          "over25Ms": 28
         }
       }
     },
     "libraries": {
       "metadata": {
-        "snapshot": "libraries-complete",
+        "snapshot": "libraries-current",
         "chrome": "157.0.8103.79",
         "viewport": {
           "width": 1440,
@@ -164,47 +197,60 @@
         "cards": 24,
         "columnWidth": 944,
         "build": {
-          "entry": "/assets/index-COvneht8.js",
-          "sha256": "2392a1f4de553ce34f3c9c2f659b6ed33cab5c11f12a713a44b5cbd9bade58ce"
+          "entry": "/assets/index-DcCsH28u.js",
+          "sha256": "914aebca2e74ae3707dbdc70eb427076b1abc7fdd42b4f525b79f0a1fe8c9377"
         },
         "cpus": 15,
         "loadAverage": [
-          3.56787109375,
-          3.34619140625,
-          3.4423828125
+          2.380859375,
+          2.89501953125,
+          2.703125
         ]
       },
       "spans": {
         "idle": {
           "intervals": 29,
-          "medianMs": 41.728,
-          "p95Ms": 79.278,
-          "maxMs": 84.548,
-          "over25Ms": 22
+          "medianMs": 55.607,
+          "p95Ms": 76.016,
+          "maxMs": 79.112,
+          "over25Ms": 19
         },
         "drag": {
-          "intervals": 308,
-          "medianMs": 39.101,
-          "p95Ms": 82.114,
-          "maxMs": 86.64,
-          "over25Ms": 223
+          "intervals": 293,
+          "medianMs": 45.5,
+          "p95Ms": 75.775,
+          "maxMs": 78.556,
+          "over25Ms": 227
         },
         "open": {
-          "intervals": 41,
-          "medianMs": 35.339,
-          "p95Ms": 76.294,
-          "maxMs": 78.646,
-          "over25Ms": 32
+          "intervals": 38,
+          "medianMs": 52.561,
+          "p95Ms": 75.5,
+          "maxMs": 97.053,
+          "over25Ms": 30
         },
         "close": {
-          "intervals": 36,
-          "medianMs": 36.14,
-          "p95Ms": 80.842,
-          "maxMs": 81.016,
-          "over25Ms": 22
+          "intervals": 42,
+          "medianMs": 33.299,
+          "p95Ms": 79.247,
+          "maxMs": 81.029,
+          "over25Ms": 24
         }
       }
     }
   },
-  "method": "Sequential isolated Chrome traces; 1440x960, 24 cards, 944px project, three held drags and open/close cycles. Frame intervals are requestAnimationFrame markers from the trace, not presented FPS. Shared-machine idle is included."
+  "cssRules": {
+    "beforeRevision": "c73d7d3a^",
+    "before": {
+      "web/src/index.css": 1332,
+      "web/src/app/workspaces.css": 131
+    },
+    "after": {
+      "web/src/index.css": 1107,
+      "web/src/app/workspaces.css": 1
+    },
+    "removed": 355,
+    "method": "Qualified CSS rules, including nested media/supports rules, excluding keyframe steps; theme declarations are not counted as rules."
+  },
+  "method": "Sequential isolated Chrome traces; 1440x960, 24 cards, 944px project, three held drags and open/close cycles. Frame intervals are requestAnimationFrame markers from the trace, not presented FPS. Shared-machine idle is included. complete is the original measured library candidate; latest includes the subsequent components, nesting and keyboard refinements."
 }
