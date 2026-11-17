@@ -30,15 +30,22 @@ export interface OwnerEntry {
   }
 }
 
-export const ownerMemoryLogPath = ({ space = 'shared' }: { space?: string } = {}) => join(
-  pnyxHome(),
-  'owner',
-  ...(space === 'shared' ? [] : [
+export function ownerMemoryLogPath({ space = 'shared' }: { space?: string } = {}) {
+  const owner = join(
+    pnyxHome(),
+    'owner',
+  )
+  const folder = space === 'shared' ? owner : join(
+    owner,
     'spaces',
     space,
-  ]),
-  'memory.jsonl',
-)
+  )
+
+  return join(
+    folder,
+    'memory.jsonl',
+  )
+}
 
 function readLogEntries({ space = 'shared' }: { space?: string } = {}): {
   entries: OwnerEntry[]
@@ -119,7 +126,7 @@ function ownerLogSpaces(): string[] {
 
   return [
     'shared',
-    ...names,
+    ...names.filter(name => name !== 'shared' && SPACE_NAME.test(name)),
   ]
 }
 

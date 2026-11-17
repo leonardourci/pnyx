@@ -3,7 +3,7 @@ import { required, guard, parse, COMMON, WRITE, meta, commit, explained, type Ou
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
-import { ownerMemory, ownerRevision, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerSpace } from './owner-memory.ts'
+import { ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerSpace } from './owner-memory.ts'
 import { findProject } from '#projects/read.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -127,6 +127,7 @@ export const owner = guard({
         text: { type: 'string' },
         project: { type: 'string' },
         to: { type: 'string' },
+        propose: { type: 'boolean' },
         kind: { type: 'string' },
         until: { type: 'string' },
         used: { type: 'string' },
@@ -151,13 +152,18 @@ export const owner = guard({
     })
 
     if (action === 'list') {
+      const memory = ownerMemory({ hydraId })
+      const writable = writableOwnerMemory({ hydraId })
+
       return {
         ...memoryList({
-          memory: ownerMemory({ hydraId }),
+          memory,
           budget: OWNER_MEMORY_BUDGET,
           empty: 'none: no owner memory yet',
         }),
-        revision: ownerRevision({ hydraId }),
+        used: `${memorySize({ memory: writable?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
+        revision: writable?.revision ?? 0,
+        writable: writable?.memory,
         archived: ownerArchive({ hydraId }),
       }
     }
@@ -181,6 +187,8 @@ export const owner = guard({
     if (action === 'move' && values.to !== undefined) {
       return moveOwnerSpace({
         hydraId,
+        args,
+        propose: Boolean(values.propose),
         destination: String(values.to),
         key: required({
           value: values.key as string | undefined,
@@ -201,6 +209,8 @@ export const owner = guard({
       })
 
       return moveOwnerLearning({
+        args,
+        propose: Boolean(values.propose),
         path: project.path,
         hydraId,
         text: required({
@@ -212,7 +222,6 @@ export const owner = guard({
     }
 
     if (action === 'confirm') {
-      const memory = ownerMemory({ hydraId })
       const line = required({
         value: values.text as string | undefined,
         what: '--text <existing learning line>',
@@ -220,7 +229,7 @@ export const owner = guard({
       const entry = saveOwnerMemory({
         hydraId,
         key: 'learnings',
-        after: memory.learnings?.text ?? null,
+        after: null,
         confirmed: line,
         meta: meta({ values }),
       })
@@ -261,7 +270,7 @@ export const owner = guard({
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
       revision: entry.seq,
-      used: `${memorySize({ memory: ownerMemory({ hydraId }) })} of ${OWNER_MEMORY_BUDGET} characters`,
+      used: `${memorySize({ memory: writableOwnerMemory({ hydraId })?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,
       skipped: 'unchanged',

@@ -1,6 +1,6 @@
 import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
-import { canRead, memoryAccess } from './spaces.ts'
+import { canRead, memoryAccess, memoryMovePermission } from './spaces.ts'
 import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
@@ -45,7 +45,7 @@ function readLog({ space = 'shared' }: { space?: string } = {}): OwnerLog {
   for (const entry of entries) {
     revision = entry.seq
 
-    // A line moved to a project lives on there.
+    // Moved lines remain in destination memory.
     if (!entry.projectMove && !entry.spaceMove) {
       archived = archiveRemoved({
         archived,
@@ -357,8 +357,17 @@ function tryMigrate(): void {
 }
 
 // Reading first moves any owner documents still held by a Hydra, so read a Hydra's state after this.
-export function ownerMemory({ hydraId }: { hydraId: string }): Memory {
-  tryMigrate()
+export function ownerMemory({
+  hydraId,
+  migrate = true,
+}: {
+  hydraId: string
+  migrate?: boolean
+}): Memory {
+  if (migrate) {
+    tryMigrate()
+  }
+
   const memory: Memory = Object.create(null) as Memory
 
   for (const space of memoryAccess({ hydraId }).reads) {
@@ -390,11 +399,10 @@ export function ownerArchive({ hydraId }: { hydraId: string }): ArchivedLine[] {
   return memoryAccess({ hydraId }).reads.flatMap(space => readLog({ space }).archived)
 }
 
-export function ownerRevision({ hydraId }: { hydraId: string }): number {
-  const access = memoryAccess({ hydraId })
+export function writableOwnerMemory({ hydraId }: { hydraId: string }) {
+  const { writableSpace } = memoryAccess({ hydraId })
 
-  return access.reads.includes(loadHydra({ hydraId }).state.config?.memory?.write ?? 'shared')
-    ? readLog({ space: access.write() }).revision : 0
+  return writableSpace === undefined ? undefined : readLog({ space: writableSpace })
 }
 
 export function saveOwnerMemory({
@@ -428,11 +436,15 @@ export function saveOwnerMemory({
 }
 
 export async function moveOwnerLearning({
+  args,
+  propose = false,
   path,
   hydraId,
   text,
   meta,
 }: {
+  args: string[]
+  propose?: boolean
   path: string
   hydraId: string
   text: string
@@ -475,9 +487,22 @@ export async function moveOwnerLearning({
         key: 'learnings',
         after: projectAfter,
       })
+      const proposal = memoryMovePermission({
+        hydraId,
+        args,
+        propose,
+        actor: meta.actor,
+        revision: owner.revision,
+        destination: readSettings().settings.projectSpaces[facts.identity.id] ?? 'shared',
+      })
+
+      if (proposal) {
+        return proposal
+      }
+
       const projectEvent: ProjectMemoryEvent = {
         v: 1,
-        id: `owner-move:${owner.revision + 1}`,
+        id: space === 'shared' ? `owner-move:${owner.revision + 1}` : `owner-move:${space}:${owner.revision + 1}`,
         seq: project.revision + 1,
         at: meta.at,
         actor: meta.actor,
@@ -513,11 +538,15 @@ export async function moveOwnerLearning({
 }
 
 export function moveOwnerSpace({
+  args,
+  propose = false,
   hydraId,
   destination,
   key,
   meta,
 }: {
+  args: string[]
+  propose?: boolean
   hydraId: string
   destination: string
   key: string
@@ -586,6 +615,19 @@ export function moveOwnerSpace({
         budget: OWNER_MEMORY_BUDGET,
         layer: 'Owner',
       })
+      const proposal = memoryMovePermission({
+        hydraId,
+        destination,
+        args,
+        propose,
+        actor: meta.actor,
+        revision: source.revision,
+      })
+
+      if (proposal) {
+        return proposal
+      }
+
       const entry = append({
         space,
         key,
