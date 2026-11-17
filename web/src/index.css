@@ -256,11 +256,11 @@
 }
 
 /* The global switch and OS preference also cover third-party and inline animations. */
-:root[data-motion="off"] { --transition-duration-fast: 0ms; --transition-duration-base: 0ms; --transition-duration-slow: 0ms; --transition-duration-ambient: 0ms; }
-:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation-duration: 0s!important; animation-delay: 0s!important; animation-iteration-count: 1!important; transition-duration: 0s!important; transition-delay: 0s!important; scroll-behavior: auto!important; }
+:root[data-motion="off"] { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); }
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation-duration: var(--transition-duration-instant)!important; animation-delay: var(--transition-duration-instant)!important; animation-iteration-count: 1!important; transition-duration: var(--transition-duration-instant)!important; transition-delay: var(--transition-duration-instant)!important; scroll-behavior: auto!important; }
 @media (prefers-reduced-motion: reduce) {
-  :root { --transition-duration-fast: 0ms; --transition-duration-base: 0ms; --transition-duration-slow: 0ms; --transition-duration-ambient: 0ms; }
-  *, *::before, *::after { animation-duration: 0s!important; animation-delay: 0s!important; animation-iteration-count: 1!important; transition-duration: 0s!important; transition-delay: 0s!important; scroll-behavior: auto!important; }
+  :root { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); }
+  *, *::before, *::after { animation-duration: var(--transition-duration-instant)!important; animation-delay: var(--transition-duration-instant)!important; animation-iteration-count: 1!important; transition-duration: var(--transition-duration-instant)!important; transition-delay: var(--transition-duration-instant)!important; scroll-behavior: auto!important; }
 }
 
 @layer base {
