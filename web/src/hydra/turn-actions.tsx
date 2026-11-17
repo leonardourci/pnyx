@@ -1,3 +1,4 @@
+import { MessageFooter } from './message-surface.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { clock,copiedText,duration } from './chat.ts'
@@ -121,7 +122,7 @@ export function TurnFooter({
   })
 
   return (
-    <div className="turn-foot" contentEditable={false}>
+    <MessageFooter variant="agent" contentEditable={false}>
       {turn.reply && (
         <CopyButton
           label="Copy reply"
@@ -143,6 +144,6 @@ export function TurnFooter({
           >Worked for {took}
           </span>
         )}
-    </div>
+    </MessageFooter>
   )
 }

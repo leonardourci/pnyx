@@ -622,5 +622,13 @@ function StreamedText({
 }
 
 export function WorkingDots() {
-  return <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
+  return (
+    <span className="working-dots inline-flex gap-0.75" aria-hidden="true">
+      {[
+        0,
+        1,
+        2,
+      ].map(index => <i key={index} className="size-1 rounded-full bg-current animate-reply-dot motion-reduce:animate-reply-dot-fade [&:nth-child(2)]:[animation-delay:120ms] [&:nth-child(3)]:[animation-delay:240ms]" />)}
+    </span>
+  )
 }

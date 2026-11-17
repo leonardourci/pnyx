@@ -1,3 +1,4 @@
+import { MessageBubble, MessageFooter } from './message-surface.tsx'
 import { MeasuredList } from '#web-shared/ui/measured-list.tsx'
 import type { ChatDrafts } from './chat-drafts.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
@@ -233,9 +234,10 @@ const MessageRow = memo(function MessageRow({
           thinkingDetails={thinkingDetails}
         />
       ) : null}
-      <article
+      <MessageBubble
         data-entry-id={entry.id}
-        className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
+        kind={entry.kind}
+        mine={ownMessage({ entry })}
         aria-label={roleLabel({
           role: entry.role,
           assistantLabel,
@@ -338,9 +340,9 @@ const MessageRow = memo(function MessageRow({
             }}
           />
         )}
-      </article>
+      </MessageBubble>
       {ownMessage({ entry }) && !entry.continued && (
-        <div className="message-meta" contentEditable={false}>
+        <MessageFooter variant="owner" contentEditable={false}>
           <MessageReceipt entry={entry} />
           {deliverNow && (
             <InlineButton
@@ -365,7 +367,7 @@ const MessageRow = memo(function MessageRow({
           )}
           {entry.checking && <span className="muted" role="status">Checking…</span>}
           {entry.unsent !== undefined && (
-            <span className="unsent" role="alert">
+            <span className="unsent inline-flex items-center gap-1 px-1 py-0 text-red" role="alert">
               <Icon name="error" size={14} />Not sent · {entry.unsent}
             </span>
           )}
@@ -392,7 +394,7 @@ const MessageRow = memo(function MessageRow({
               title: leadingTitle,
             })}
           />
-        </div>
+        </MessageFooter>
       )}
       {trailing?.length ? (
         <TurnActionsFold
@@ -1053,7 +1055,7 @@ export function Messages({
         }))}) { background-color: var(--comment-highlight); }`).join('')}
       </style>
       <div
-        className="messages"
+        className="messages relative flex flex-col gap-message-gap pt-2 in-[.hydra-chat]:gap-(--chat-gap) data-caret-host:outline-none data-caret-host:caret-gold [--message-gap:var(--chat-gap,var(--spacing-message-gap))] [&_.measured-row]:flex [&_.measured-row]:flex-col [&_.measured-row]:gap-(--message-gap) [&_.measured-row]:pb-(--message-gap)"
         data-highlight={highlight}
         ref={root}
         contentEditable={CARET_SUPPORTED}
