@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { ownerRevision } from './owner-memory-log.ts'
 import { sharesWithMore } from './access-changes.ts'
 import { hydraIds } from '#app/home-migration.ts'
@@ -138,6 +139,42 @@ export function memoryHydras() {
   }))
 }
 
+export function memoryAccessRevision(): string {
+  const settings = readSettings().settings
+  const hydras = memoryHydras()
+  const readers = Object.keys(settings.poleis).sort()
+    .map(polis => ({
+      polis,
+      hydras: hydras.filter(({
+        id,
+        state,
+      }) => canRead({
+        hydraId: id,
+        state,
+        poleis: settings.poleis,
+        polis,
+      })).map(hydra => hydra.id)
+        .sort(),
+    }))
+
+  return createHash('sha256').update(JSON.stringify({
+    settings,
+    readers,
+  }))
+    .digest('hex')
+}
+
+export function checkMemoryApproval(): void {
+  const expected = requestEnv().PNYX_MEMORY_ACCESS
+
+  if (expected && expected !== memoryAccessRevision()) {
+    throw new HydraError({
+      message: 'Memory access changed; propose the action again',
+      code: 'CONFLICT',
+    })
+  }
+}
+
 export function memoryPermission({
   hydraId,
   name,
@@ -159,6 +196,8 @@ export function memoryPermission({
       code: 'NOT_FOUND',
     })
   }
+
+  checkMemoryApproval()
 
   if (propose) {
     return proposeOwnerCommand({
