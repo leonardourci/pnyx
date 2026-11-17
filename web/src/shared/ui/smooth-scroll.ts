@@ -66,11 +66,8 @@ export function useSmoothScroll({
 
       resize()
       const sizes = new ResizeObserver(resize)
+      // Lenis measures wrapper resizes; this observer refreshes snap coordinates when content changes.
       sizes.observe(inner)
-
-      if (inner !== wrapper) {
-        sizes.observe(wrapper)
-      }
 
       const surface = wrapper.closest<HTMLElement>('.workspace-axis') ?? wrapper
 
