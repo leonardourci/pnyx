@@ -99,6 +99,7 @@ export function TaskFamily({
   } as CSSProperties
   const drag = useSortState()
   const dragged = drag.active?.kind === 'task' && drag.active.id === card.id
+    && drag.active.hydra === hydraId
   const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length ? 'family-open basis-full' : ''}`
 
   return (
@@ -155,7 +156,8 @@ export function TaskFamily({
                 layout="position"
                 key={child.key}
                 data-child={child.id}
-                lifted={drag.active?.kind === 'task' && drag.active.id === child.id}
+                lifted={drag.active?.kind === 'task' && drag.active.id === child.id
+                  && drag.active.hydra === hydraId}
               >
                 {renderCard({
                   card: child,

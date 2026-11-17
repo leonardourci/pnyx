@@ -53,15 +53,11 @@ export function recordEventId({
   id: string
   seq: number
 }) {
-  // A computed field keeps __proto__ as data instead of invoking Object's legacy setter.
-  if (id === '__proto__') {
-    state.eventIds = {
-      ...state.eventIds,
-      [id]: seq,
-    }
-
-    return
-  }
-
-  state.eventIds[id] = seq
+  // Define an own property so __proto__ never invokes Object's legacy setter.
+  Object.defineProperty(state.eventIds, id, {
+    value: seq,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  })
 }

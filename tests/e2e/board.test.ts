@@ -2031,6 +2031,27 @@ test(
     })
     expect(digest.status).toBe(0)
     expect(digest.stdout).toContain(`${project} · root-project · 0 / 0 / 3 / 0`)
+    const otherId = 'legacy-deep-family-other'
+    const otherFolder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      otherId,
+    )
+    mkdirSync(
+      otherFolder,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        otherFolder,
+        'events.jsonl',
+      ),
+      `${events}\n`,
+    )
+    await pnyx.hydra({
+      id: otherId,
+      create: false,
+    })
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: id,
@@ -2038,6 +2059,38 @@ test(
 
     try {
       const workspace = page.locator(`[data-hydra-workspace="${id}"]`)
+      const otherWorkspace = page.locator(`[data-hydra-workspace="${otherId}"]`)
+      await otherWorkspace.locator('[data-family="root"]').waitFor({ state: 'attached' })
+      await page.locator(`[data-hydra-workspace="${id}"][data-connected="true"]`).waitFor()
+      const root = workspace.getByRole(
+        'button',
+        {
+          name: 'Legacy family',
+          exact: true,
+        },
+      )
+      await root.scrollIntoViewIfNeeded()
+      const bounds = await root.boundingBox()
+
+      if (!bounds) {
+        throw new Error('The legacy family is not visible')
+      }
+
+      await page.mouse.move(
+        bounds.x + 12,
+        bounds.y + 8,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        bounds.x + 32,
+        bounds.y + 8,
+      )
+      await page.locator('.physical-ghost').waitFor()
+      expect(await workspace.locator('[data-family="root"]').getAttribute('data-drag-slot')).toBe('true')
+      expect(await otherWorkspace.locator('[data-family="root"]').getAttribute('data-drag-slot')).toBe('false')
+      await page.keyboard.press('Escape')
+      await page.mouse.up()
+      await page.locator('.physical-ghost').waitFor({ state: 'detached' })
       await workspace.getByRole(
         'button',
         {

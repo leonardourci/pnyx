@@ -18,6 +18,7 @@ export function SortableChip({
     item,
     disabled: disabledSort,
   })
+  const attributes = disabledSort ? {} : sort.attributes
 
   return (
     <AnimatedChip
@@ -25,7 +26,7 @@ export function SortableChip({
       {...props}
       className={`${className} ${sort.isDragging ? 'opacity-0' : ''}`}
       ref={sort.setNodeRef}
-      {...(disabledSort ? {} : sort.attributes)}
+      {...attributes}
       {...sort.listeners}
       data-sort-key={sort.key}
       data-sort-id={item.id}

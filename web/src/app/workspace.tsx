@@ -442,7 +442,7 @@ export function HydraView({
       group,
       version: taskFormVersion.current,
       draft,
-      ...(parent ? { parent } : {}),
+      parent,
     })
     requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] .task-create [aria-label="Task title"]` })))
   }
