@@ -108,6 +108,17 @@ export function validateLocalTaskFlags({
     ...WRITE_FLAGS,
     ...ACTION_FLAGS[action]!,
   ]
+
+  if (action === 'create' && values.start) {
+    allowed.push(
+      'start',
+      'harness',
+      'account',
+      'model',
+      'effort',
+    )
+  }
+
   const extra = Object.keys(values).find(name => !allowed.includes(name))
 
   if (extra) {

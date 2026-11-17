@@ -45,6 +45,7 @@ export interface AgentSession {
   answered: number
   closed: boolean
   model?: string
+  effort?: string
   // Codex: the config Pnyx opened the thread with.
   config?: Record<string, unknown>
   // Claude: the agent calls a tool that needs permission mid-turn and gets Pnyx's decision.
@@ -445,9 +446,15 @@ export function fakeClaude() {
             still_queued: queued,
           }
         },
-        setModel: async () => {},
+        // eslint-disable-next-line pnyx/object-params -- Claude SDK owns setting signatures.
+        setModel: async (model: string) => {
+          session.model = model
+        },
         setPermissionMode: async () => {},
-        applyFlagSettings: async () => {},
+        // eslint-disable-next-line pnyx/object-params -- Claude SDK owns setting signatures.
+        applyFlagSettings: async (settings: { effortLevel?: string }) => {
+          session.effort = settings.effortLevel
+        },
       },
     )
   }) as unknown as QueryFn

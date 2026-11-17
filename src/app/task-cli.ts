@@ -1,3 +1,6 @@
+import type { AgentConfig } from '#workers/model.ts'
+import { queueCardInput, validateCardInput } from '#workers/card-input.ts'
+import { knownHarness } from '#workers/providers.ts'
 import { reorderTask } from '#tasks/reorder.ts'
 import { toolsCommand } from '#workers/tools-cli.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
@@ -62,6 +65,7 @@ export const TASK_OPTIONS: Options = {
     type: 'string',
     multiple: true,
   },
+  start: { type: 'boolean' },
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
@@ -160,6 +164,30 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   })
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+  let creatingWorker: AgentConfig | undefined
+  const createText = String(values.ask ?? values.brief ?? values.title ?? '')
+
+  if (action === 'create' && values.start) {
+    const createHarness = knownHarness({ name: values.harness })
+
+    if (!createHarness) {
+      throw new HydraError({
+        message: 'Choose --harness claude|codex',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    creatingWorker = {
+      harness: createHarness,
+      ...startOverride({ values }),
+    }
+    validateCardInput({
+      text: createText,
+      agent: creatingWorker,
+      actor: m.actor,
+    })
+  }
+
   const local = await localTaskCommand({
     action,
     values,
@@ -169,6 +197,25 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   })
 
   if (local) {
+    if (creatingWorker) {
+      const card = local.card as { id: string }
+      const input = queueCardInput({
+        hydraId,
+        task: card.id,
+        text: createText,
+        agent: creatingWorker,
+        meta: {
+          ...m,
+          id: `${m.id ?? card.id}:worker`,
+        },
+      })
+
+      return {
+        ...local,
+        input,
+      }
+    }
+
     return local
   }
 
@@ -387,6 +434,41 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         }),
         actor: m.actor,
       },
+    })
+  }
+
+  if (action === 'send') {
+    if (values.mode !== undefined || values.fast !== undefined) {
+      throw new HydraError({
+        message: 'task send takes harness, account, model and effort',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    const harness = knownHarness({ name: values.harness })
+
+    if (!harness) {
+      throw new HydraError({
+        message: 'Choose --harness claude|codex',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    return queueCardInput({
+      hydraId,
+      task: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+      text: required({
+        value: values.text as string | undefined,
+        what: '--text',
+      }),
+      agent: {
+        harness,
+        ...startOverride({ values }),
+      },
+      meta: m,
     })
   }
 
@@ -1104,7 +1186,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, parent, arrange, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }

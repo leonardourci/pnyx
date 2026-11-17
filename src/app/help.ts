@@ -21,6 +21,7 @@ commands:
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|parent|arrange|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
+  task send <task> --text <text> --harness claude|codex Start or message a worker directly
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   rule; account list|set|remove              Heads dispatch rules and worker login folders
@@ -223,6 +224,13 @@ Use --if-revision for the Hydra revision (the view revision for resize).
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
 pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--before <task>] [--parent <task>] [--reason <text>] [--details <text>]
 --project names a project attached to the Hydra (see project list).
+Add --start --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] to create and send directly to its worker.
+pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] [--event-id <id>]
+Only the owner sends directly. The same event ID never launches or delivers twice. With no worker,
+Send starts one in its usual repository copy. Model/effort changes wait for the next turn; changing
+harness or account starts a fresh session with the prior conversation available through task chat.
+A busy worker finishes its turn before an agent change. Stop first for an immediate change.
+Outside sessions keep their reply route and require Continue in Pnyx before an agent change.
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
