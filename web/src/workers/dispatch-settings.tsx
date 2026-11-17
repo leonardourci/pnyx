@@ -434,7 +434,7 @@ function ConfirmRemove({
     >
       <Button
         ref={trigger}
-        className="dispatch-remove min-h-6 gap-1 text-muted text-meta transition-opacity duration-0 delay-(--duration-dispatch) motion-reduce:transition-none"
+        className="dispatch-remove min-h-6 gap-1 text-muted text-meta transition-opacity duration-instant delay-(--duration-dispatch) motion-reduce:transition-none"
         aria-label={label}
         title={label}
         aria-expanded={open}
