@@ -20,17 +20,6 @@ export interface Host {
   hydraId: string
   // The reopen failure, when the grant could not reach its agent now.
   toolsChanged({ task }: { task: string }): Error | undefined
-  toolCatalog({
-    task,
-    harness,
-    account,
-    folder,
-  }: {
-    task: string
-    harness?: string
-    account?: string
-    folder?: string
-  }): Promise<string[]>
   catalogCommands({
     card,
     provider,

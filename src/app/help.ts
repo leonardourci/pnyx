@@ -234,9 +234,9 @@ pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [-
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
-pnyx-axi task tools <task> [--available] [--harness claude|codex] [--account <name>]
-pnyx-axi task tools <task> [--grant <capability>]... [--revoke <capability>]... [--harness claude|codex] [--account <name>]
-Capabilities: browser, mcp:<configured-name>, plugin:<installed-id>. Hydra grants tools itself; workers ask with task ask. Pnyx resumes the same conversation when native work settles. Grants survive restart. Hosted sessions start with no external MCP/plugins; browser selects one isolated headless chrome-devtools-axi session.
+pnyx-axi task tools <task> [--available]
+pnyx-axi task tools <task> [--grant browser] [--revoke browser]
+Capability: browser selects one isolated headless chrome-devtools-axi session. Hydra grants it; workers ask with task ask. Pnyx resumes the same conversation when native work settles. Grants survive restart. Hosted sessions keep their native tools, MCP servers, plugins and apps.
 pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task refresh-links <id>

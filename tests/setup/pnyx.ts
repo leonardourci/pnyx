@@ -219,6 +219,7 @@ else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fres
 }
 
 export interface PnyxOptions {
+  codexConfig?: Record<string, unknown>
   zeroCache?: boolean
   upgradeRoot?: string
   restart?(): void | Promise<void>
@@ -229,6 +230,7 @@ export type Pnyx = Awaited<ReturnType<typeof startPnyx>>
 // Starts the server once for a test file; it stops when the file ends.
 export async function startPnyx({
   zeroCache = false,
+  codexConfig,
   upgradeRoot,
   restart,
 }: PnyxOptions = {}) {
@@ -242,7 +244,7 @@ export async function startPnyx({
   )
   fakeLogins({ root })
   const claude = fakeClaude()
-  const codex = fakeCodex()
+  const codex = fakeCodex({ config: codexConfig })
   let server: RunningServer | undefined
   let hydras = 0
   // Kept across stops, so an open page reconnects to the server that replaces this one.

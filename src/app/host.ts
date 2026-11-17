@@ -5,14 +5,13 @@ import { compactCommand } from '#workers/compact-command.ts'
 import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 import { canonical } from '#store/paths.ts'
 import { background } from './background.ts'
-import { hydraDir } from './home-migration.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { toolInstructions, toolEnvironment } from '#workers/tools.ts'
 import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
-import { PROVIDERS, harnessOf, knownProvider, providerIdOf, knownHarness } from '#workers/providers.ts'
+import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
@@ -20,7 +19,7 @@ import { trackChildren } from '#workers/children.ts'
 import { watchAgent } from '#workers/agent-memory.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 import { createHostedHelper } from '#routine-helper/hosted-helper.ts'
-import { agentExhausted, accountEnv } from '#workers/dispatch.ts'
+import { agentExhausted } from '#workers/dispatch.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
@@ -1249,52 +1248,6 @@ export function createHost({
       })),
     }),
     catalogCommands: catalogs.commands,
-    toolCatalog: async ({
-      task,
-      harness,
-      account: selectedAccount,
-      folder,
-    }) => {
-      const state = loadHydra({ hydraId }).state
-      const card = state.cards[task]
-      const savedHarness = card?.agent ? harnessOf({ provider: card.agent.provider }) : undefined
-      const selected = knownHarness({ name: harness ?? savedHarness })
-
-      if (!card || !selected) {
-        throw new HydraError({
-          message: 'Name a task and --harness claude|codex to list its configured tools',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      const sameHarness = !harness || harness === savedHarness
-      const { account } = accountFor({
-        effective: effectiveDispatch(),
-        harness: selected,
-        prefer: selectedAccount ?? (sameHarness ? card.agent?.account : undefined),
-      })
-      const sameAccount = !selectedAccount || selectedAccount === card.agent?.account
-      const sameLogin = sameHarness && sameAccount
-      const login = sameLogin && card.agent?.loginFolder
-        ? {
-          provider: selected,
-          folder: card.agent.loginFolder,
-        } : account
-      const env = accountEnv({
-        account: login,
-        env: environment({ task }),
-      })
-
-      return providers[providerIdOf({ harness: selected })].toolCatalog({
-        // An earlier agent's folder may be a removed copy, whose project scopes are gone.
-        cwd: folder ?? [
-          card.agent?.cwd,
-          card.folder,
-          card.project,
-        ].find(path => path !== undefined && isFolder({ path })) ?? hydraDir({ hydraId }),
-        env,
-      })
-    },
     toolsChanged: ({ task }) => {
       if (!fenced()) {
         return
