@@ -8,9 +8,7 @@ metadata:
 
 # Arrange work
 
-The page groups tasks by project. Ideas is first and contains tasks with no project.
-Labels do not create project columns. A project may group several repositories;
-each repository retains its own copies, start command, landing rules and memory.
+The page groups tasks by project. Ideas is first and contains tasks without an attached repository, including tasks with legacy free-text project tags. Labels do not create project columns. A project may group several repositories; each repository retains its own copies, start command, landing rules and memory.
 
 - Read `project list --hydra <hydra>` before choosing a repository. Use
   `project add <path>` for a repository, or for a folder with repositories directly
@@ -28,24 +26,12 @@ each repository retains its own copies, start command, landing rules and memory.
   Widths have a 280px minimum and no maximum. `collapsed` and `chatCollapsed`
   fold the Hydra and its chat. Pass `--hydra <hydra>` on every command.
 
-A repository can have only one Hydra. New duplicate attachments are refused.
-Existing duplicates remain usable and Setup and Settings ask the owner for a keeper.
-Only the owner runs `project keep <repo-path> --hydra <keeper>`. It moves every task
-and records each move, or lists all blockers and moves nothing. Never choose for him.
+A repository can have only one Hydra. New duplicate attachments are refused. Existing duplicates remain usable and Setup and Settings ask the owner for a keeper. Only the owner runs `project keep <repo-path> --hydra <keeper>`. It moves every task and records each move, or lists all blockers and moves nothing. Never choose for him.
 
 ## Lifecycle compatibility
 
-Lifecycle columns remain internal compatibility state. Their rules still drive
-completion, queues, manual overrides and Firstmate mirrors. They do not create
-visible project columns. Ordinary activity and declarations update state automatically;
-do not create or move lifecycle columns to organize the page.
+Lifecycle columns remain internal compatibility state. Their rules still drive completion, queues, manual overrides and Firstmate mirrors. They do not create visible project columns. Ordinary activity and declarations update state automatically; do not create or move lifecycle columns to organize the page.
 
-Use the legacy `column list`, `column rule`, `column create|rename|describe|reorder|delete`
-and `move` commands only for an explicit lifecycle-rule request or a correction.
-Read their help and inspect the confirmation before repeating with its token.
-Firstmate still owns its mirrored lifecycle placement. Existing `column resize`
-and `layout` values remain available for old clients; use `view set` for project widths.
+Use the legacy `column list`, `column rule`, `column create|rename|describe|reorder|delete` and `move` commands only for an explicit lifecycle-rule request or a correction. Read their help and inspect the confirmation before repeating with its token. Firstmate still owns its mirrored lifecycle placement. Existing `column resize` and `layout` values remain available for old clients; use `view set` for project widths.
 
-Rely on checked completion and recorded PR merges. A finished turn or passing local
-checks does not declare completion. Done retention keeps its existing task overrides
-and shared default of 24 hours. Parents stay open while any child is unfinished.
+Rely on checked completion and recorded PR merges. A finished turn or passing local checks does not declare completion. Done retention keeps its existing task overrides and shared default of 24 hours. Parents stay open while any child is unfinished.
