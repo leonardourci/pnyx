@@ -153,7 +153,6 @@ function ownerDigest({
       ]) => `- ${key}: ${entry.text}`),
       '',
     ] : []),
-
   ].join('\n')
 
   if (countTokens({ text }) <= OWNER_CONTEXT_TOKENS) {

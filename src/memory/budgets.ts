@@ -2,7 +2,6 @@ import type { Learning } from './learnings.ts'
 import { HydraError } from '#store/errors.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 
-// Each owner-polis has its own budget.
 export const OWNER_MEMORY_BUDGET = 24000
 
 // Hydra memory holds only what this Hydra needs: its scope, where it left off, its check cursor.

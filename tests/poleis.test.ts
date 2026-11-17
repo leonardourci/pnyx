@@ -722,6 +722,7 @@ test(
   async () => {
     const allowed = await pnyx.hydra()
     const hidden = await pnyx.hydra()
+    const unattached = await pnyx.hydra()
     const path = allowed.folder({ name: 'polis-project' })
 
     await allowed.owner({
@@ -790,6 +791,13 @@ test(
         path,
       ],
     }))).toContain('Project pulsar learning')
+    expect((await unattached.ownerRefused({
+      args: [
+        'project',
+        'show',
+        path,
+      ],
+    })).code).toBe('NOT_FOUND')
     const searchableBeforeMove = await hidden.owner({
       args: [
         'oracle',
@@ -1624,6 +1632,26 @@ test(
               after: 'Invalid imported sequence',
             },
           },
+        }) + '\n' + JSON.stringify({
+          v: 1,
+          seq: 3,
+          at: '2026-01-01T00:00:00Z',
+          actor: 'web',
+          key: 'preferences',
+          before: 'fresh replacement',
+          after: 'Invalid source rewrite',
+          polisMove: {
+            polis: 'revision-first',
+            entry: {
+              v: 1,
+              seq: 2,
+              at: '2026-01-01T00:00:00Z',
+              actor: 'web',
+              key: 'preferences',
+              before: 'revision-first',
+              after: 'Invalid destination rewrite',
+            },
+          },
         }) + '\n',
       )
       expect((await hydra.owner({
@@ -1633,6 +1661,14 @@ test(
           'list',
         ],
       })).writable.preferences.text).toBe('fresh replacement')
+      const combined = await hydra.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })
+      expect(combined.memory.preferences.text).not.toContain('Invalid destination rewrite')
       expect((await hydra.ownerRefused({
         args: [
           'owner',

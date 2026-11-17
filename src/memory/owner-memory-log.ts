@@ -104,10 +104,11 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
       continue
     }
 
-    if (entry.polisMove && (!POLIS_NAME.test(entry.polisMove.polis)
+    if (entry.polisMove && (typeof entry.polisMove.polis !== 'string' || !POLIS_NAME.test(entry.polisMove.polis)
+      || entry.polisMove.polis === polis || entry.after !== null || entry.projectMove
       || entry.polisMove.entry?.key !== entry.key || typeof entry.polisMove.entry.after !== 'string'
       || !Number.isSafeInteger(entry.polisMove.entry.seq) || entry.polisMove.entry.seq < 1
-      || entry.polisMove.entry.polisMove)) {
+      || entry.polisMove.entry.polisMove || entry.polisMove.entry.projectMove)) {
       corrupt = true
       continue
     }

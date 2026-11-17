@@ -205,11 +205,10 @@ export const approval = guard({
     }
 
     const asked = loadHydra({ hydraId }).state.dispatchProposals?.find(p => p.token === token)
-    const dispatch = action === 'confirm' && asked?.kind === 'command'
-      ? dispatchFor({ target: JSON.parse(asked.value) as Target })
-      : undefined
-    const memory = action === 'confirm' && asked?.kind === 'command'
-      ? memoryRulesFor({ target: JSON.parse(asked.value) as Target }) : undefined
+    const confirming = action === 'confirm' && asked?.kind === 'command'
+      ? JSON.parse(asked.value) as Target : undefined
+    const dispatch = confirming ? dispatchFor({ target: confirming }) : undefined
+    const memory = confirming ? memoryRulesFor({ target: confirming }) : undefined
     const selected = withWriter({
       hydraId,
       fn: ({ writer }) => {
