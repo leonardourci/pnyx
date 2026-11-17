@@ -1,3 +1,4 @@
+import { memoryCaller } from '#memory/spaces.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
@@ -420,4 +421,3 @@ export const workerCommands = {
     handler: ({ args }) => (args[0] === 'check' ? hydraCheckHandler(args) : args[0] === 'digest' ? hydraDigestHandler(args) : commands.hydra(args)),
   }),
 }
-import { memoryCaller } from '#memory/spaces.ts'

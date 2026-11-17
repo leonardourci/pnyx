@@ -1,6 +1,6 @@
 import { HydraError } from '#store/errors.ts'
 import { widensSpaceReaders } from '#memory/access-changes.ts'
-import { memoryHydras, memoryPermission, memoryCaller } from '#memory/spaces.ts'
+import { memoryHydras, memoryPermission, memoryCaller, memoryAgent } from '#memory/spaces.ts'
 import { patchSettings } from './settings.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { canRead } from '#memory/space-policy.ts'
@@ -101,7 +101,8 @@ export const settings = guard({
     ]
     const memoryPatch = patch && typeof patch === 'object' && ('memorySpaces' in patch || 'projectSpaces' in patch)
 
-    if (memoryPatch && hydraActor({ actor: change.actor })) {
+    if (memoryPatch && typeof patch === 'object' && patch !== null
+      && hydraActor({ actor: change.actor })) {
       const state = loadHydra({ hydraId }).state
       const spaces = read.settings.memorySpaces
 
@@ -114,7 +115,12 @@ export const settings = guard({
 
       if ('memorySpaces' in patch && patch.memorySpaces && typeof patch.memorySpaces === 'object') {
         for (const space of Object.keys(patch.memorySpaces)) {
-          if (Object.hasOwn(spaces, space) && !canRead({ hydraId, state, spaces, space })) {
+          if (!values.propose && !canRead({
+            hydraId,
+            state,
+            spaces,
+            space,
+          })) {
             throw new HydraError({
               message: 'Memory is unavailable',
               code: 'NOT_FOUND',
@@ -151,7 +157,7 @@ export const settings = guard({
       }),
     })
 
-    if (hydraActor({})) {
+    if (memoryAgent()) {
       receipt.settings = visibleSettings({
         settings: shownSettings({ settings: readSettings().settings }),
         hydraId,
@@ -278,7 +284,7 @@ function visibleSettings({
   settings: Settings
   hydraId: string
 }): Settings {
-  if (!hydraActor({})) {
+  if (!memoryAgent()) {
     return settings
   }
 

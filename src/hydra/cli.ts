@@ -1,6 +1,6 @@
 import { requestedMemoryAccess, widensHydraReads } from '#memory/access-changes.ts'
 import { projectRows } from '#projects/read.ts'
-import { readableProjects, memoryAccess, memoryPermission } from '#memory/spaces.ts'
+import { readableProjects, memoryAccess, memoryPermission, memoryAgent } from '#memory/spaces.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -44,7 +44,7 @@ function visibleHydraConfig({
 }): Output {
   const shown: Output = { ...config }
 
-  if (hydraActor({})) {
+  if (memoryAgent()) {
     const access = memoryAccess({ hydraId })
     const memory: Output = { reads: access.reads }
 
@@ -395,7 +395,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     },
   })
 
-  if (committed && hydraActor({}) && 'hydra' in committed) {
+  if (committed && memoryAgent() && 'hydra' in committed) {
     committed.hydra = visibleHydraConfig({
       config: hydraConfig({
         state: loadHydra({ hydraId: id }).state,
