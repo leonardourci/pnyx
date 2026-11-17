@@ -726,8 +726,34 @@ test(
           what: 'keyboard movement changes the rendered order',
           check: async () => (await cards.allTextContents()).join('|') === expected,
         })
+        await until({
+          what: 'the keyboard preview finishes moving',
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+          check: () => cards.evaluateAll(async elements => {
+            const before = elements.map(element => element.getBoundingClientRect())
+            await new Promise(requestAnimationFrame)
+            await new Promise(requestAnimationFrame)
+
+            return elements.every((
+              element,
+              index,
+            ) => {
+              const after = element.getBoundingClientRect()
+
+              return before[index]?.x === after.x && before[index]?.y === after.y
+            })
+          }),
+        })
         await page.keyboard.press('Enter')
         await ghost.waitFor({ state: 'detached' })
+        await until({
+          what: 'the keyboard arrangement reaches stored order',
+          check: () => rows<{ title: string }>({
+            text: "select title from cards where hydra_id = $1 and key in ('a', 'b', 'c') order by coalesce(rank, created_seq)",
+            values: [hydra.id],
+          }).map(card => card.title)
+            .join('|') === expected,
+        })
         await page.reload()
         await until({
           what: 'keyboard order persists after reload',
@@ -2165,18 +2191,9 @@ test(
         'leaf',
         'peer',
       ])
-      const parentBounds = await root.boundingBox()
-
-      if (!parentBounds) {
-        throw new Error('Missing legacy parent')
-      }
-
       await page.keyboard.down('Shift')
-      await page.mouse.move(
-        parentBounds.x + parentBounds.width / 2,
-        parentBounds.y + parentBounds.height / 2,
-        { steps: 12 },
-      )
+      await page.locator('.physical-ghost [data-drag-nest-hint][data-shift=true]').waitFor()
+      await root.hover()
       await until({
         what: 'the source Hydra alone shows the nesting outline',
         check: async () => await workspace.locator('.card[data-task="root"]').getAttribute('data-nest-armed') === 'true',
