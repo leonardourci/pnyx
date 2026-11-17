@@ -1,7 +1,8 @@
 import { beforeAll, expect, test } from 'vitest'
 import type { Locator } from 'playwright-core'
 import { openHydra } from '../setup/browser.ts'
-import { startPnyx, type Pnyx } from '../setup/pnyx.ts'
+import { appendToolCalls } from '../setup/transcripts.ts'
+import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -151,5 +152,48 @@ test(
     expect(await chevronDirection({ control: trigger })).toBe('up')
     await trigger.press('Escape')
     expect(await chevronDirection({ control: trigger })).toBe('down')
+  },
+)
+
+test(
+  'a remembered chat progress fold follows its native open state',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ focusMode: false }),
+      ],
+    })
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Inspect the release',
+      partial: 'Checking',
+      reply: 'Checks complete.',
+      hold: true,
+    })
+    const session = await hydra.chat({ text: 'Inspect the release' })
+    await appendToolCalls({
+      session,
+      tools: 1,
+    })
+    turn.release()
+    await until({
+      what: 'the completed check',
+      check: () => session.answered === 1,
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const summary = page.locator('[data-active=true] .turn-actions > details > summary').first()
+    await summary.waitFor()
+    expect(await chevronDirection({ control: summary })).toBe('down')
+    await summary.click()
+    await expect.poll(() => chevronDirection({ control: summary })).toBe('up')
+    await summary.click()
+    await expect.poll(() => chevronDirection({ control: summary })).toBe('down')
   },
 )

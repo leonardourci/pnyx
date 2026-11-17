@@ -22,7 +22,7 @@ export function Disclosure({
     nativeOpen,
     setNativeOpen,
   ] = useState(open ?? false)
-  const expanded = open ?? nativeOpen
+  const expanded = nativeOpen
   const summaryPadding = leading ? 'pl-3.5' : 'pr-5'
   const position = leading ? 'left-0 text-inherit' : 'right-0.5 text-muted'
 
