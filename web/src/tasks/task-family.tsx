@@ -70,7 +70,8 @@ export function TaskFamily({
     state,
     actions,
   }))
-  const shown = preview?.kind === 'task' && !preview.nest && preview.scope === preview.targetScope
+  const shown = preview?.kind === 'task' && preview.hydra === hydraId
+    && !preview.nest && preview.scope === preview.targetScope
     ? movedOrder({
       items: sorted,
       ...preview,

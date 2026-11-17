@@ -430,7 +430,8 @@ export const HydraCard = memo(function HydraCard({
       ref={attach}
       onPointerDown={sort.pointerDown}
       data-sort-key={sort.key}
-      nesting={drag.shift && drag.over?.zone === 'nest' && drag.over.id === card.id}
+      nesting={drag.shift && drag.over?.zone === 'nest' && drag.over.id === card.id
+        && drag.over.hydra === hydraId}
       selected={selected}
       style={{
         height: selected ? (preview ?? height) : undefined,

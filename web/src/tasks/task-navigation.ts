@@ -497,7 +497,7 @@ export function useTaskNavigation({
         return false
       }
 
-      const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"]`)
+      const element = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .card[data-task="${CSS.escape(id)}"]`)
 
       if (!element || !await afterSteadyLayout({
         element,

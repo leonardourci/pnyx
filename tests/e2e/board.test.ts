@@ -2115,6 +2115,29 @@ test(
         .locator('.worker-chat')
         .waitFor()
       expect((await hydra.task({ key: 'leaf' })).parent).toBe('child')
+      await otherWorkspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of Legacy family',
+          exact: true,
+        },
+      ).click()
+      await otherWorkspace.getByRole(
+        'button',
+        {
+          name: 'Legacy grandchild',
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'the opened duplicate task stays visible in its own Hydra',
+        check: () => otherWorkspace.locator('.card.selected[data-task="leaf"]').evaluate(element => {
+          const bounds = element.getBoundingClientRect()
+
+          return bounds.right > 0 && bounds.left < innerWidth
+            && element.contains(document.activeElement)
+        }),
+      })
     } finally {
       await page.context().close()
     }
