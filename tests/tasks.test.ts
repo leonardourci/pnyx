@@ -735,3 +735,85 @@ test(
     expect((await hydra.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
   },
 )
+
+test(
+  'untracked and hook pushes refuse grandchildren before persisting them',
+  async () => {
+    const hydra = await pnyx.hydra({
+      id: 'default',
+      create: false,
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'untracked-root',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ title: 'Root' }),
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'untracked-child',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Child',
+        parent: 'untracked-root',
+      }),
+    })
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'untracked-leaf',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Leaf',
+        parent: 'untracked-child',
+      }),
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'hook-leaf',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Hook leaf',
+        parent: 'untracked-child',
+        agent: {
+          provider: 'claude',
+          sessionId: 'hook-leaf',
+        },
+        source: {
+          adapter: 'hooks',
+          objectId: 'hook-leaf',
+          observedAt: '2026-11-17T00:00:00Z',
+        },
+      }),
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'show',
+        'untracked-leaf',
+      ],
+    })).code).toBe('NOT_FOUND')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'show',
+        'hook-leaf',
+      ],
+    })).code).toBe('NOT_FOUND')
+  },
+)

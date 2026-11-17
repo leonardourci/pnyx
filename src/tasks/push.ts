@@ -159,10 +159,7 @@ export function decidePush({
 
     const hasChildren = Object.values(state.cards).some(c => c.parentId === cardId)
 
-    const declared = state.configured || state.cards[cardId]?.tracking || parent.tracking
-    const hookSession = asRecord({ value: input.source })?.adapter === 'hooks' && input.agent
-
-    if (declared && !hookSession && (parent.parentId || hasChildren)) {
+    if (parent.parentId || hasChildren) {
       throw invalid({ message: 'subtasks have one level; a subtask cannot have children' })
     }
 
