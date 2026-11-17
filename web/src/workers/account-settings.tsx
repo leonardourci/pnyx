@@ -5,7 +5,7 @@ import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { Button, Input, Select } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { SettingRow } from '#web-shared/ui/setting-row.tsx'
+import { SettingRow, SettingsRows, SETTING_STACK } from '#web-shared/ui/setting-row.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { PROVIDERS } from './account-model-picker.tsx'
 import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
@@ -191,13 +191,13 @@ export function AccountSettings({
     <form
       ref={form}
       id={`${errorId}-form`}
-      className="setting-stack account-form"
+      className={`${SETTING_STACK} account-form`}
       onSubmit={event => {
         event.preventDefault(); commit({ left: false })
       }}
     >
       <div className="account-form-field">
-        <span className="setting-name">Provider</span>
+        <span className="setting-name text-ui font-semibold">Provider</span>
         <Select
           label="Account provider"
           value={draft.provider}
@@ -214,7 +214,7 @@ export function AccountSettings({
         />
       </div>
       <div className="account-form-field">
-        <label className="setting-name" htmlFor={`${errorId}-name`}>Display name</label>
+        <label className="setting-name text-ui font-semibold" htmlFor={`${errorId}-name`}>Display name</label>
         <Input
           id={`${errorId}-name`}
           autoFocus
@@ -232,8 +232,8 @@ export function AccountSettings({
         />
       </div>
       <div className="account-form-field">
-        <label className="setting-name" htmlFor={`${errorId}-home`}>Existing home folder</label>
-        <p className="setting-description">Use a home folder you have already configured for this provider.</p>
+        <label className="setting-name text-ui font-semibold" htmlFor={`${errorId}-home`}>Existing home folder</label>
+        <p className="setting-description mt-0.75 mb-2.5 mx-0 text-muted text-ui">Use a home folder you have already configured for this provider.</p>
         <Input
           id={`${errorId}-home`}
           aria-label="Existing home folder"
@@ -275,7 +275,7 @@ export function AccountSettings({
 
   return (
     <div className="account-settings">
-      <div className="settings-rows">
+      <SettingsRows>
         {Object.entries(accounts).map(([
           key,
           account,
@@ -340,7 +340,7 @@ export function AccountSettings({
             </Button>
           </div>
         )}
-      </div>
+      </SettingsRows>
       {!draft && snapshot.error && <p role="alert">{snapshot.error}</p>}
       <PendingStatus intents={snapshot.intents} />
     </div>

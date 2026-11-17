@@ -25,8 +25,8 @@ function Preview({
 }) {
   return (
     <>
-      <div className="setting-preview-box">{children}</div>
-      {caption && <p className="setting-preview-caption">{caption}</p>}
+      <div className="setting-preview-box relative min-h-22.5 p-2.5 overflow-hidden border border-subtle rounded-lg bg-background">{children}</div>
+      {caption && <p className="setting-preview-caption mt-1.5 mx-0 mb-0 text-muted text-meta">{caption}</p>}
     </>
   )
 }

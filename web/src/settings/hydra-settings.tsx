@@ -1,3 +1,4 @@
+import { SettingStack } from '#web-shared/ui/setting-row.tsx'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
 import { useEffect, useRef } from 'react'
 import { DEFAULT_REVIEW_MINUTES, MAX_REVIEW_MINUTES } from '#settings/settings.ts'
@@ -19,12 +20,12 @@ type Slide = ({ value }: { value?: number }) => void
 
 export function DispatchStatus({ error }: { error?: string }) {
   return (
-    <div className="setting-stack" role="status">
+    <SettingStack  role="status">
       <p>{error ? `Could not load agent settings: ${error}` : 'Loading agent settings…'}</p>
       {error && (
         <Button onClick={() => window.dispatchEvent(new Event(DISPATCH_CHANGED))}>Retry</Button>
       )}
-    </div>
+    </SettingStack>
   )
 }
 
@@ -52,7 +53,7 @@ export function HideDone({
   slide: Slide
 }) {
   return (
-    <div className="setting-stack">
+    <SettingStack >
       <Switch
         label="Hide Done cards"
         caption="Hide them"
@@ -76,7 +77,7 @@ export function HideDone({
         />
       )}
       <Help text={doneHelp({ hours })} />
-    </div>
+    </SettingStack>
   )
 }
 
@@ -90,7 +91,7 @@ export function ReviewCadence({
   slide: Slide
 }) {
   return (
-    <div className="setting-stack">
+    <SettingStack >
       <NumberField
         label="Review cadence"
         value={minutes}
@@ -106,7 +107,7 @@ export function ReviewCadence({
         onSlide={slide}
       />
       <Help text="0 turns timed reviews off." />
-    </div>
+    </SettingStack>
   )
 }
 
@@ -142,7 +143,7 @@ export function RoutineHelper({
   }
 
   return (
-    <div className="setting-stack">
+    <SettingStack >
       <Switch
         label="Routine helper"
         caption={helper === 'off' ? 'Off' : 'On'}
@@ -176,7 +177,7 @@ export function RoutineHelper({
         })}
       />
       <Help text="Off sends every wake to the main Hydra. Pnyx suggests a lighter model; choose any provider, account and model. Fast stays off unless you turn it on here or in a Hydra’s composer, which also puts that Hydra’s helper on Fast where its model has it." />
-    </div>
+    </SettingStack>
   )
 }
 
@@ -192,7 +193,7 @@ export function DefaultAgent({
   saveHydra({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
 }) {
   return (
-    <div className="setting-stack">
+    <SettingStack >
       <AgentPickers
         label="Hydra’s default agent"
         defaultAction="edit"
@@ -210,6 +211,6 @@ export function DefaultAgent({
           },
         })}
       />
-    </div>
+    </SettingStack>
   )
 }

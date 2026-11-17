@@ -1,3 +1,4 @@
+import { Chip } from '#web-shared/ui/chip.tsx'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -18,7 +19,7 @@ import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { SettingRow } from '#web-shared/ui/setting-row.tsx'
+import { SettingRow, SettingStack, SettingsRows } from '#web-shared/ui/setting-row.tsx'
 import { useSharedSettings } from './shared-settings.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
@@ -245,7 +246,7 @@ function ColumnWidths({
   }
 
   return (
-    <div className="setting-stack">
+    <SettingStack >
       <NumberField
         label="Column width"
         value={view.defaultColumnWidth}
@@ -284,7 +285,7 @@ function ColumnWidths({
           ))}
         </div>
       </details>
-    </div>
+    </SettingStack>
   )
 }
 
@@ -361,7 +362,7 @@ export function SettingControl({
   // Focus mode hides tool calls and thinking, so their own switches wait for it to turn off.
   const hidden = view.focusMode && (entry.id === 'toolDetails' || entry.id === 'thinkingDetails')
   const toggle = ({ key }: { key: Toggle }) => (
-    <div className="setting-stack">
+    <SettingStack >
       <Switch
         label={entry.label}
         caption={CAPTIONS[key]}
@@ -370,7 +371,7 @@ export function SettingControl({
         onChange={({ value }) => save({ patch: { [key]: value } })}
       />
       {hidden && <Help text="Focus mode is on, so these stay hidden; turn it off to use this." />}
-    </div>
+    </SettingStack>
   )
   const slideTo = ({ key }: { key: string }) => ({ value }: { value?: number }) => slide({
     key,
@@ -535,12 +536,12 @@ function Empty({
   clear(): void
 }) {
   return (
-    <div className="settings-empty" role="status">
+    <div className="settings-empty py-10 px-2.5 text-muted text-center text-ui [&>h3]:mt-0 [&>h3]:mx-0 [&>h3]:mb-1.5 [&>h3]:text-ink [&>h3]:text-pane [&_.settings-chips]:my-2.5 [&_.settings-chips]:mx-0" role="status">
       <h3>No setting matches “{query || 'Changed'}”</h3>
       <p>Search looks at names, descriptions, values and related words.</p>
-      <div className="settings-chips">
+      <div className="settings-chips flex flex-wrap justify-center gap-1.5 mt-2.5">
         {SUGGESTIONS.map(word => (
-          <Button key={word} className="settings-chip" onClick={() => search({ query: word })}>{word}</Button>
+          <Chip key={word} variant="settings" onClick={() => search({ query: word })}>{word}</Chip>
         ))}
       </div>
       <Button variant="surface" onClick={clear}>Clear search</Button>
@@ -709,7 +710,7 @@ export function SettingsPage({
   return (
     <SettingsFrame ref={surface} hidden={hidden}>
       <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />
-      <div className="settings-search" ref={sticky}>
+      <div className="settings-search sticky top-0 z-20 pt-3.5 pb-2.5 bg-[linear-gradient(var(--color-background)_82%,transparent)] [&_.search-bar]:max-w-settings-search [&_.search-bar]:mx-auto [&_.search-bar]:my-0 [&_.search-bar]:px-3 [&_.search-bar]:py-2 [&_.search-bar]:shadow-settings-search [&_.search-bar:focus-within]:shadow-settings-focus [&_.search-bar-eye]:text-muted" ref={sticky}>
         <SearchBar
           label="Search settings"
           query={query}
@@ -725,25 +726,25 @@ export function SettingsPage({
             }
           }}
         />
-        <nav className="settings-chips" aria-label="Settings sections">
-          <Button
-            className="settings-chip"
+        <nav className="settings-chips flex flex-wrap justify-center gap-1.5 mt-2.5" aria-label="Settings sections">
+          <Chip
+            variant="settings"
             data-filter
             aria-pressed={onlyChanged}
             onClick={() => setOnlyChanged(current => !current)}
           >
-            <Icon name="edit" size={14} />Changed{changed.size > 0 && <span className="settings-chip-count">{changed.size}</span>}
-          </Button>
+            <Icon name="edit" size={14} />Changed{changed.size > 0 && <span className="settings-chip-count text-gold font-semibold">{changed.size}</span>}
+          </Chip>
           {SETTINGS_SECTIONS.map(item => (
-            <Button
+            <Chip
               key={item.id}
-              className="settings-chip"
+              variant="settings"
               data-zero={(filtering && !counts[item.id]) || undefined}
               onClick={() => goTo({ id: item.id })}
             >
               <Icon name={item.icon} size={14} />{item.label}
-              {filtering && counts[item.id] ? <span className="settings-chip-count">{counts[item.id]}</span> : null}
-            </Button>
+              {filtering && counts[item.id] ? <span className="settings-chip-count text-gold font-semibold">{counts[item.id]}</span> : null}
+            </Chip>
           ))}
         </nav>
       </div>
@@ -751,14 +752,14 @@ export function SettingsPage({
         <section
           key={item.id}
           id={`settings-${item.id}`}
-          className="settings-section"
+          className="settings-section mt-7 scroll-mt-2 [&>h2]:flex [&>h2]:items-center [&>h2]:gap-2.25 [&>h2]:mt-0 [&>h2]:mx-0 [&>h2]:mb-0.5 [&>h2]:font-brand [&>h2]:text-settings-section [&>h2]:font-bold [&>h2+.settings-rows]:mt-2.5"
           aria-labelledby={`settings-${item.id}-title`}
         >
           <h2 id={`settings-${item.id}-title`}>
-            <span className="settings-section-icon"><Icon name={item.icon} size={16} /></span>{item.label}
+            <span className="settings-section-icon grid place-items-center size-7 border border-gold-line rounded-[7px] bg-gold-wash text-gold"><Icon name={item.icon} size={16} /></span>{item.label}
           </h2>
-          {'note' in item && <p className="settings-section-note">{item.note}</p>}
-          <div className="settings-rows">
+          {'note' in item && <p className="settings-section-note mt-0.5 mx-0 mb-2.5 text-muted text-ui">{item.note}</p>}
+          <SettingsRows>
             {shown.filter(match => match.entry.section === item.id).map(match => {
               const control = (
                 <SettingControl
@@ -782,7 +783,7 @@ export function SettingsPage({
 
               // Heads dispatch and Accounts are whole editors, so they fill the box instead of sitting in a row.
               if (match.entry.id === 'headsDispatch' || match.entry.id === 'accounts') {
-                return <div key={match.entry.id} className="settings-wide">{control}</div>
+                return <div key={match.entry.id} className="settings-wide min-w-0 px-5 py-4">{control}</div>
               }
 
               return (
@@ -819,7 +820,7 @@ export function SettingsPage({
             {item.id === 'keyboard' && (
               <KeyRows prefs={view.keyboard} save={save} query={keyboardFound ? '' : query} />
             )}
-          </div>
+          </SettingsRows>
         </section>
       ))}
       {!sections.length && (
