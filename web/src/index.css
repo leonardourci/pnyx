@@ -144,10 +144,11 @@
   --animate-reply-appear: reply-appear var(--transition-duration-fast) var(--ease-ui);
   --spacing-dialog: min(600px, calc(100vw - 32px));
   --spacing-oracle: min(980px, calc(100vw - 32px));
-  --spacing-oracle-top: 9vh;
-  --spacing-oracle-mobile: calc(100dvh - 24px);
+  --spacing-topbar-height: calc(var(--spacing) * 12.5);
+  --spacing-oracle-top: calc(var(--spacing-topbar-height) + var(--spacing) * 3.5);
+  --spacing-oracle-bottom: calc(var(--spacing) * 5.5);
   --spacing-dialog-height: min(78vh, 760px);
-  --spacing-oracle-height: min(660px, 82dvh);
+  --spacing-oracle-height: min(660px, calc(100dvh - var(--spacing-oracle-top) - var(--spacing-oracle-bottom)));
   --spacing-menu: 180px;
   --spacing-model-menu: min(330px, calc(100vw - 64px));
   --spacing-model-menu-height: min(380px, calc(100dvh - 120px));
