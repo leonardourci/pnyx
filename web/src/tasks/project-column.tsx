@@ -2,12 +2,11 @@ import { useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { PROJECT_MIN_WIDTH, DEFAULT_PROJECT_WIDTH } from '#preferences/workspace.ts'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
-import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
-import { motion, useReducedMotion } from 'motion/react'
+import { useReducedMotion } from 'motion/react'
 import { useSortItem, useSortState } from '#web-shared/ui/sortable.tsx'
-import { ProjectCounts } from './project-counts.tsx'
+import { ProjectColumnHeader } from './project-column-header.tsx'
+import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
 import type { ProjectColumnData } from './project-view.ts'
 import { PROJECT_CONTENT_INSET } from './project-layout.ts'
 
@@ -72,15 +71,20 @@ export function ProjectColumn({
   const lifted = dragging.active?.kind === 'project' && dragging.active.id === column.id
     && dragging.active.hydra === hydraId
 
+  const showHint = dragging.active?.kind === 'task' && !dragging.active.hasChildren
+    && dragging.active.hydra === hydraId && dragging.active.column === column.id
+
   return (
-    <motion.section
+    <SortablePanel
+      as="section"
+      surface="column"
       layout="position"
       initial={false}
       ref={sort.setNodeRef}
       data-sort-key={sort.key}
-      data-drag-slot={lifted}
+      lifted={lifted}
       onPointerDown={sort.pointerDown}
-      className={`project-column column group/project [&[data-drag-slot=true]>*]:invisible data-[drag-slot=true]:outline data-[drag-slot=true]:outline-dashed data-[drag-slot=true]:outline-gold-line relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere  ${folded ? 'folded min-w-12' : ''}`}
+      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere  ${folded ? 'folded min-w-12' : ''}`}
       data-column={column.id}
       data-resizing={preview !== null}
       data-sort-id={column.id}
@@ -92,22 +96,14 @@ export function ProjectColumn({
       animate={{ width: folded ? 48 : width }}
       transition={preview !== null || reduced ? { duration: 0 } : undefined}
     >
-      <header className="project-column-heading flex min-h-10.75 items-center justify-between gap-2 border-b border-column-line px-2 py-1.25 group-[.folded]/project:h-full group-[.folded]/project:border-0 group-[.folded]/project:p-2">
-        <Button
-          className="min-w-0 touch-none justify-start gap-2 [&>strong]:truncate [&>svg]:rotate-90 group-[.folded]/project:self-start group-[.folded]/project:[writing-mode:vertical-rl] group-[.folded]/project:[&>svg]:rotate-0"
-          {...sort.attributes}
-          {...sort.listeners}
-          ref={sort.setActivatorNodeRef}
-          data-column-heading={column.id}
-          aria-label={`${folded ? 'Unfold' : 'Fold'} ${column.title}`}
-          onClick={toggle}
-        >
-          <Icon name="chevron_right" size={15} />
-          <strong>{column.title}</strong>
-          <ProjectCounts asks={column.asks} running={column.running} />
-        </Button>
-        {!folded && <Button aria-label={`New task in ${column.title}`} onClick={create}><Icon name="plus" /></Button>}
-      </header>
+      <ProjectColumnHeader
+        column={column}
+        folded={folded}
+        hint={showHint}
+        drag={sort}
+        fold={toggle}
+        create={create}
+      />
       <div
         ref={scroll}
         data-sort-surface={`tasks:${hydraId}:${column.id}`}
@@ -132,6 +128,6 @@ export function ProjectColumn({
           }}
         />
       )}
-    </motion.section>
+    </SortablePanel>
   )
 }

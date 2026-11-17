@@ -45,18 +45,18 @@ export function RepositoryOwnership({
   }
 
   return (
-    <section className="ownership-settings" aria-label="Repository ownership">
+    <section className="ownership-settings my-3 rounded-xl border border-gold-line p-4" aria-label="Repository ownership">
       <h2>Repository ownership</h2>
       {error && <p role="alert">{error}</p>}
       {duplicates.map(([
         path,
         repository,
       ]) => (
-        <div key={path} className="ownership-repository">
-          <strong>{repository.name}</strong><code>{path}</code>
+        <div key={path} className="ownership-repository mt-3 flex flex-col gap-2">
+          <strong>{repository.name}</strong><code className="text-meta! text-muted">{path}</code>
           <div className="row">
             {repository.hydras.map(hydra => (
-              <div key={hydra.id}>
+              <div key={hydra.id} className="flex items-center gap-2">
                 <HydraLabel name={hydra.name} icon={hydra.icon} size={15} />
                 <InlineConfirm
                   label={`Keep ${repository.name} in ${hydra.name || hydra.id}`}

@@ -426,7 +426,7 @@ test(
       ],
       input: JSON.stringify({
         title: 'Unassigned work',
-        project: 'Old notes',
+        project: 'Old launch documentation and research notes',
       }),
     })
     const page = await openHydra({
@@ -465,7 +465,7 @@ test(
         { exact: true },
       ).isVisible()).toBe(true)
       expect(await workspace.getByText(
-        'Old notes',
+        'Old launch documentation and research notes',
         { exact: true },
       ).isVisible()).toBe(true)
       await suite.getByRole(
@@ -490,6 +490,11 @@ test(
         'Backend',
         { exact: true },
       ).isVisible()).toBe(true)
+      const legacy = workspace.locator('.project-column[aria-label="Ideas"] .task-label')
+      expect(await legacy.evaluate(({
+        scrollWidth,
+        clientWidth,
+      }) => scrollWidth <= clientWidth)).toBe(true)
       expect(await workspace.locator('.project-column').count()).toBe(2)
     } finally {
       await page.context().close()
@@ -544,6 +549,11 @@ test(
       })
       const connected = page.locator(`[data-hydra-workspace="${hydra.id}"][data-connected=true]`)
       await connected.waitFor()
+      const instruction = page.getByText(
+        'Hold Shift and drop on a task to make it a sub-task',
+        { exact: true },
+      )
+      expect(await instruction.count()).toBe(0)
       const first = cards.filter({ hasText: 'First task' })
       const third = cards.filter({ hasText: 'Third task' })
       await third.scrollIntoViewIfNeeded()
@@ -570,6 +580,8 @@ test(
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       }))
       expect((await cards.allTextContents()).join('|')).toBe('First task|Second task|Third task')
+      expect(await instruction.count()).toBe(1)
+      expect(await instruction.isVisible()).toBe(true)
       await page.mouse.move(
         to.x + 8,
         to.y + 3,
@@ -601,6 +613,7 @@ test(
       })
       await page.mouse.up()
       await ghost.waitFor({ state: 'detached' })
+      expect(await instruction.count()).toBe(0)
       expect((await hydra.task({ key: 'c' })).parent).toBe('none')
       await page.reload()
       await until({
@@ -677,9 +690,9 @@ test(
             y: 8,
           },
         })
-        const source = await third.boundingBox(), target = await parent.boundingBox()
+        const source = await third.boundingBox()
 
-        if (!source || !target) {
+        if (!source) {
           throw new Error('The nesting cards are not visible')
         }
 
@@ -691,9 +704,28 @@ test(
         )
         await ghost.waitFor()
         await page.keyboard.down('Shift')
+        const target = await parent.boundingBox()
+        const visible = await parent.locator('xpath=ancestor::*[contains(@class, "project-cards")]').boundingBox()
+
+        if (!target || !visible) {
+          throw new Error('The open parent is not visible')
+        }
+
         await page.mouse.move(
-          target.x + target.width / 2,
-          target.y + 60,
+          Math.max(
+            visible.x,
+            target.x,
+          ) + Math.min(
+            visible.width,
+            target.width,
+          ) / 2,
+          (Math.max(
+            target.y,
+            visible.y,
+          ) + Math.min(
+            target.y + target.height,
+            visible.y + visible.height,
+          )) / 2,
           { steps: 16 },
         )
         await until({

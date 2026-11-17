@@ -1,6 +1,5 @@
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
 import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { MotionConfig } from 'motion/react'
 import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
@@ -336,7 +335,14 @@ export function App() {
           aria-label="Hydras"
         >
           <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
-            {rootError && <div className="notice" role="alert">{rootError}<Button aria-label="Dismiss" onClick={() => setRootError('')}><Icon name="close" /></Button></div>}
+            {rootError && (
+              <div className="notice" role="alert">{rootError}<IconButton
+                label="Dismiss"
+                onClick={() => setRootError('')}
+                icon="close"
+              />
+              </div>
+            )}
             <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
               {workspaces.map(workspace => (
                 <HydraView

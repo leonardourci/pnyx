@@ -28,7 +28,7 @@ export function HydraLabel({
   return (
     <>
       <Icon name={icon ?? HYDRA_MARK} size={size} />
-      <span className={name ? 'hydra-label' : 'hydra-label muted'}>{hydraTitle({ name })}</span>
+      <span className={`hydra-label min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-label ${name ? '' : 'text-muted'}`}>{hydraTitle({ name })}</span>
     </>
   )
 }

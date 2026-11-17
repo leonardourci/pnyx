@@ -1,16 +1,16 @@
 import { motion } from 'motion/react'
 import type { ComponentProps } from 'react'
-import { Button } from './controls.tsx'
+import { Chip } from './chip.tsx'
 import { useSortItem, type SortItem } from './sortable.tsx'
 
-const AnimatedButton = motion.create(Button)
+const AnimatedChip = motion.create(Chip)
 
-export function SortableButton({
+export function SortableChip({
   item,
   disabledSort = false,
   className = '',
   ...props
-}: ComponentProps<typeof AnimatedButton> & {
+}: ComponentProps<typeof AnimatedChip> & {
   item: SortItem
   disabledSort?: boolean
 }) {
@@ -20,7 +20,7 @@ export function SortableButton({
   })
 
   return (
-    <AnimatedButton
+    <AnimatedChip
       layout="position"
       {...props}
       className={`${className} ${sort.isDragging ? 'opacity-0' : ''}`}

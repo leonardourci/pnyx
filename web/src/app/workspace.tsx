@@ -1,3 +1,4 @@
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { createPortal } from 'react-dom'
 import { HYDRA_MARK, pickName } from '#hydra/hydra-names.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -32,7 +33,7 @@ import { ProjectColumn } from '#web-tasks/project-column.tsx'
 import { WorkerChat } from '#web-tasks/worker-chat.tsx'
 import { TaskFamily, type FamilyCard } from '#web-tasks/task-family.tsx'
 import { motion } from 'motion/react'
-import { SortableButton } from '#web-shared/ui/sortable-button.tsx'
+import { SortableChip } from '#web-shared/ui/sortable-chip.tsx'
 import { expandedTaskWidth } from '#web-tasks/project-layout.ts'
 import { projectColumns, taskProjectColumn, statusPriority, IDEAS_COLUMN, type ProjectColumnData } from '#web-tasks/project-view.ts'
 import { Detail } from '#web-tasks/detail.tsx'
@@ -1000,10 +1001,10 @@ export function HydraView({
               )}
               <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={20} />
             </div>
-            <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden [&>.button]:flex-none [&>.button]:touch-none [&>.button]:rounded-full [&>.button]:border-column-line [&>.button]:px-2.25 [&>.button]:py-0.75 [&>.button]:text-meta group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-y-auto group-data-[collapsed=true]/workspace:[&>.button]:[writing-mode:vertical-rl]" aria-label="Projects">
+            <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
               <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>
                 {columns.map(column => (
-                  <SortableButton
+                  <SortableChip
                     item={{
                       id: column.id,
                       kind: 'project',
@@ -1011,6 +1012,7 @@ export function HydraView({
                       hydra: navigation.hydraId,
                     }}
                     disabledSort={column.id === IDEAS_COLUMN || !connected}
+                    vertical={view.workspace.collapsed}
                     key={column.id}
                     data-sort-id={column.id}
                     data-sort-kind="project"
@@ -1018,18 +1020,20 @@ export function HydraView({
                     data-sort-disabled={column.id === IDEAS_COLUMN}
                     onClick={() => revealProject({ id: column.id })}
                   >{column.title}<ProjectCounts asks={column.asks} running={column.running} />
-                  </SortableButton>
+                  </SortableChip>
                 ))}
               </SortGroup>
             </nav>
-            <Button aria-label="Fold all projects" onClick={toggleAllProjects}>
-              <Icon name="fold_columns" />
-            </Button>
-            <Button
-              aria-label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}
+            <IconButton
+              label="Fold all projects"
+              onClick={toggleAllProjects}
+              icon="fold_columns"
+            />
+            <IconButton
+              label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}
               onClick={toggleHydra}
-            ><Icon name="chevron_right" />
-            </Button>
+              icon="chevron_right"
+            />
           </header>
           <main
             hidden={view.workspace.collapsed}
@@ -1062,12 +1066,12 @@ export function HydraView({
             />
             <div className="hydra-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
               <div className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
-                <Button
+                <IconButton
                   className="chat-fold absolute top-3 right-1.75 z-4 p-1"
-                  aria-label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
+                  label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
                   onClick={toggleChat}
-                ><Icon name="chevron_right" />
-                </Button>
+                  icon="chevron_right"
+                />
                 <div className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-[760px]:[&>.hydra-chat]:w-[calc(100vw-2.375rem)]! max-[760px]:[&>.hydra-chat]:basis-[calc(100vw-2.375rem)]!" hidden={view.workspace.chatCollapsed}>
                   <HydraChat
                     hydraId={navigation.hydraId}
@@ -1248,9 +1252,11 @@ export function HydraView({
           {notice && createPortal(
             <div className="notice" role="status">
               <span>{notice.text}</span>
-              <Button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
-                <Icon name="close" />
-              </Button>
+              <IconButton
+                label="Dismiss notification"
+                onClick={() => setNotice(null)}
+                icon="close"
+              />
             </div>,
             document.body,
           )}

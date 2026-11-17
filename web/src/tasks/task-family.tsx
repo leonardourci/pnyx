@@ -1,8 +1,9 @@
-import { motion } from 'motion/react'
+import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
+import { CardShell, CardContent } from './card-shell.tsx'
 import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
-import { CardSummary, CARD_SURFACE, CARD_CONTENT, cardTint } from './card-summary.tsx'
+import { CardSummary, cardTint } from './card-summary.tsx'
 import { taskProjectColumn } from './project-view.ts'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type ComponentProps } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -11,6 +12,13 @@ import { rankOf } from '#tasks/select.ts'
 import { statusPriority, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { CLOSED_CARD_MIN_WIDTH, SUBTASK_INDENT } from './project-layout.ts'
+
+function Subtasks({
+  children,
+  ...props
+}: ComponentProps<'div'>) {
+  return <div {...props} className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]">{children}</div>
+}
 
 export interface FamilyCard {
   card: Card
@@ -107,12 +115,12 @@ export function TaskFamily({
   const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length ? 'family-open basis-full' : ''}`
 
   return (
-    <motion.div
+    <SortablePanel
       layout="position"
-      className={`${className} data-[drag-slot=true]:rounded-card data-[drag-slot=true]:bg-gold-wash data-[drag-slot=true]:outline data-[drag-slot=true]:outline-dashed data-[drag-slot=true]:outline-gold-line [&[data-drag-slot=true]>*]:invisible`}
+      className={className}
       style={style}
       data-family={card.id}
-      data-drag-slot={dragged}
+      lifted={dragged}
     >
       {renderCard({
         card,
@@ -120,17 +128,16 @@ export function TaskFamily({
         progress: children.length ? `${done}/${children.length}` : undefined,
         hasChildren: children.length > 0,
         dragChildren: childrenOpen && (
-          <div className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]" style={style}>
+          <Subtasks style={style}>
             {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
-              <div
+              <CardShell
                 key={child.key}
-                className={`${CARD_SURFACE} border-line`}
-                data-label-color={cardTint({
+                tint={cardTint({
                   card: child,
                   colors: state.labelColors,
                 })}
               >
-                <div className={CARD_CONTENT}>
+                <CardContent>
                   <CardSummary
                     card={child}
                     status={taskRollup({
@@ -145,24 +152,23 @@ export function TaskFamily({
                       card: child,
                     }) === 'ideas'}
                   />
-                </div>
-              </div>
+                </CardContent>
+              </CardShell>
             ))}
-          </div>
+          </Subtasks>
         ),
         childrenOpen,
         toggleChildren: () => setExpanded(value => !value),
       })}
       {children.length > 0 && childrenOpen && (
-        <div data-sort-surface={`children:${card.id}`} className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]">
+        <Subtasks data-sort-surface={`children:${card.id}`}>
           <SortGroup namespace={`tasks:${hydraId}`} id={`children:${card.id}`} items={shown.map(child => child.id)}>
             {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
-              <motion.div
+              <SortablePanel
                 layout="position"
                 key={child.key}
                 data-child={child.id}
-                className="data-[drag-slot=true]:rounded-card data-[drag-slot=true]:bg-gold-wash data-[drag-slot=true]:outline data-[drag-slot=true]:outline-dashed data-[drag-slot=true]:outline-gold-line [&[data-drag-slot=true]>*]:invisible"
-                data-drag-slot={drag.active?.kind === 'task' && drag.active.id === child.id}
+                lifted={drag.active?.kind === 'task' && drag.active.id === child.id}
               >
                 {renderCard({
                   card: child,
@@ -172,11 +178,11 @@ export function TaskFamily({
                     actions,
                   }).status,
                 })}
-              </motion.div>
+              </SortablePanel>
             ))}
           </SortGroup>
-        </div>
+        </Subtasks>
       )}
-    </motion.div>
+    </SortablePanel>
   )
 }

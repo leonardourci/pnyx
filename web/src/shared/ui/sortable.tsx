@@ -1,9 +1,20 @@
-import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler } from 'react'
+import { createContext, useContext, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter,
-  useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent,
-  type DragOverEvent, type DragStartEvent, type Active,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+  type Active,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { useReducedMotion } from 'motion/react'
@@ -36,6 +47,7 @@ export interface SortItem {
   hydra: string
   parent?: string
   hasChildren?: boolean
+  column?: string
   zone?: 'nest'
   overlay?: ReactNode
 }
@@ -232,9 +244,12 @@ function collisions({
       return []
     }
 
-    const target = containers.find(container => container.node.current?.contains(pointed))
+    const targets = pointerWithin({
+      ...args,
+      droppableContainers: containers,
+    })
 
-    return [{ id: target?.id ?? args.active.id }]
+    return targets.length ? targets : [{ id: args.active.id }]
   }
 
   return closestCenter({
@@ -339,7 +354,7 @@ export function SortableWorkspace({
     [],
   )
 
-  useEffect(
+  useLayoutEffect(
     () => {
       if (!active) {
         return
@@ -471,7 +486,10 @@ export function SortableWorkspace({
         },
       },
     ))
-    setActive(item)
+    setActive({
+      ...item,
+      column: node?.closest<HTMLElement>('.project-column')?.dataset.column,
+    })
   }
 
   const placement = ({

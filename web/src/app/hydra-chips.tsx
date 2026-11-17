@@ -1,8 +1,8 @@
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import { SortGroup } from '#web-shared/ui/sortable.tsx'
-import { SortableButton } from '#web-shared/ui/sortable-button.tsx'
-import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { SortableChip } from '#web-shared/ui/sortable-chip.tsx'
+import { WaitingCount } from '#web-shared/ui/waiting-count.tsx'
 import { HydraLabel } from '#web-hydra/hydra-title.tsx'
 
 export function HydraChips({
@@ -29,7 +29,7 @@ export function HydraChips({
           )
 
           return (
-            <SortableButton
+            <SortableChip
               item={{
                 id: hydra.id,
                 kind: 'hydra',
@@ -37,7 +37,7 @@ export function HydraChips({
                 hydra: hydra.id,
               }}
               key={hydra.id}
-              className="hydra-chip flex-none touch-none gap-1.75 whitespace-nowrap rounded-full border-line px-2.5 py-1 aria-[current=page]:border-gold-line aria-[current=page]:bg-gold-wash max-[760px]:px-2"
+              variant="hydra"
               data-sort-id={hydra.id}
               data-sort-kind="hydra"
               data-sort-scope="hydras"
@@ -45,12 +45,16 @@ export function HydraChips({
               onClick={() => navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })}
             >
               <HydraLabel name={hydra.name} icon={hydra.icon} size={16} />
-              {waiting > 0 && <span className="waiting-count inline-grid h-4.75 min-w-4.75 place-items-center rounded-full bg-gold-fill px-1 text-count text-gold-ink">{waiting}</span>}
-            </SortableButton>
+              <WaitingCount count={waiting} />
+            </SortableChip>
           )
         })}
       </SortGroup>
-      <Button aria-label="New Hydra" onClick={createHydra}><Icon name="plus" /></Button>
+      <IconButton
+        label="New Hydra"
+        onClick={createHydra}
+        icon="plus"
+      />
     </nav>
   )
 }

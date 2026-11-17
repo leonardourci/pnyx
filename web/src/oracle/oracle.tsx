@@ -12,8 +12,7 @@ import type { Command,Receipt } from '#web-app/connection.ts'
 import { focusElement,keyScopeOf,useKeyAction,useKeyboard,type ActionContext } from '#web-preferences/keyboard-registry.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { composing } from '#web-shared/ime.ts'
-import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { SearchBar,type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { projectColumns } from '#web-tasks/project-view.ts'
 import { columnsFor } from '#web-tasks/view.ts'
@@ -976,17 +975,15 @@ export function Oracle({
 
   return (
     <>
-      <Button
+      <IconButton
         className="oracle-trigger"
-        aria-label="Oracle"
+        icon="oracle"
+        iconSize={15}
+        label="Oracle"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={event => show({ context: contextOf({ target: event.currentTarget }) })}
-      >
-        <Icon name="oracle" size={15} />
-        <span>Oracle…</span>
-        <kbd>{keys({ id: 'palette' })}</kbd>
-      </Button>
+        onClick={({ currentTarget }) => show({ context: contextOf({ target: currentTarget }) })}
+      />
       {layer && createPortal(
         palette,
         layer,

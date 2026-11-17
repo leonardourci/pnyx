@@ -18,7 +18,39 @@ const COMPACT_STATES: Record<string, string> = {
   unknown: 'unknown',
 }
 
+const STATE_COLORS: Record<string, string> = {
+  asks: 'text-gold',
+  'asks-hydra': 'text-slate',
+  working: 'text-green',
+  done: 'text-green',
+  stopped: 'text-red',
+  blocked: 'text-red',
+  waiting: 'text-slate',
+}
+
 // The card and the Oracle's preview share it so their status never drifts apart.
+function StatePill({
+  status,
+  text,
+  compact,
+  progress,
+}: {
+  status: ObservedStatus
+  text: string
+  compact: boolean
+  progress?: string
+}) {
+  const color = STATE_COLORS[status.kind] ?? 'text-muted'
+
+  return (
+    <span className={`agent-activity activity-${status.kind} flex min-w-0 max-w-full items-center overflow-hidden rounded-full bg-activity-fill py-0.5 text-meta font-semibold whitespace-nowrap ${color} ${compact ? 'gap-1 px-1.25' : 'gap-1.5 px-1.75'}`} aria-label={text}>
+      {status.kind === 'working' ? <WorkingDots /> : <i className="size-1.75 shrink-0 rounded-full border border-current" aria-hidden="true" />}
+      <span className="activity-text min-w-0 truncate">{text}</span>
+      {progress && <span className="task-progress shrink-0 border-l border-current pl-1 tabular-nums">{progress}</span>}
+    </span>
+  )
+}
+
 export function CardState({
   card,
   progress,
@@ -58,22 +90,13 @@ export function CardState({
     now,
     compact,
   })
-  const colors: Record<string, string> = {
-    asks: 'text-gold',
-    'asks-hydra': 'text-slate',
-    working: 'text-green',
-    done: 'text-green',
-    stopped: 'text-red',
-    blocked: 'text-red',
-    waiting: 'text-slate',
-  }
-  const color = colors[status.kind] ?? 'text-muted'
   const pill = (
-    <span className={`agent-activity activity-${status.kind} flex min-w-0 max-w-full items-center overflow-hidden rounded-full bg-activity-fill py-0.5 text-meta font-semibold whitespace-nowrap ${color} ${compact ? 'gap-1 px-1.25' : 'gap-1.5 px-1.75'}`} aria-label={text}>
-      {status.kind === 'working' ? <WorkingDots /> : <i className="size-1.75 shrink-0 rounded-full border border-current" aria-hidden="true" />}
-      <span className="activity-text min-w-0 truncate">{text}</span>
-      {progress && <span className="task-progress shrink-0 border-l border-current pl-1 tabular-nums">{progress}</span>}
-    </span>
+    <StatePill
+      status={status}
+      text={text}
+      compact={compact}
+      progress={progress}
+    />
   )
   const since = (
     <time className="card-since text-meta whitespace-nowrap text-muted" dateTime={at} tabIndex={tooltips ? 0 : undefined}>
@@ -97,10 +120,12 @@ export function CardProjectLabel({
   card,
   legacyProject = false,
   labelColors,
+  compact = false,
 }: {
   card: Card
   legacyProject?: boolean
   labelColors?: SavedLabelColor[]
+  compact?: boolean
 }) {
   if (!card.project) {
     return null
@@ -108,6 +133,8 @@ export function CardProjectLabel({
 
   return (
     <Label
+      wrap
+      compact={compact}
       project={!legacyProject}
       label={card.project}
       text={projectTitle({ project: card.project })}
