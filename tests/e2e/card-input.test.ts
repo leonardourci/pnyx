@@ -369,3 +369,142 @@ test(
     }
   },
 )
+
+test(
+  'task modal keeps its address, traps and returns focus, and remembers chat-only across reload',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'modal',
+        '--title',
+        'Modal conversation',
+        '--brief',
+        'Keep these instructions visible',
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const title = page.getByRole(
+        'button',
+        {
+          name: 'Modal conversation',
+          exact: true,
+        },
+      )
+      await title.click()
+      const card = page.locator('.card.selected')
+      await card.hover()
+      await page.getByRole(
+        'button',
+        {
+          name: 'Open as a modal',
+          exact: true,
+        },
+      ).click()
+      const modal = page.getByRole(
+        'dialog',
+        {
+          name: 'Modal conversation',
+          exact: true,
+        },
+      )
+      await modal.waitFor()
+      expect(new URL(page.url()).searchParams.get('task')).toBe((await hydra.task({ key: 'modal' })).id)
+      await modal.getByRole(
+        'button',
+        {
+          name: 'Focus on chat',
+          exact: true,
+        },
+      ).click()
+      expect(await modal.locator('.card-details').isVisible()).toBe(false)
+      await modal.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      ).fill('Keep my unsent message')
+      await page.keyboard.press('End')
+      await modal.getByRole(
+        'button',
+        {
+          name: 'Close',
+          exact: true,
+        },
+      ).focus()
+      await page.keyboard.press('Shift+Tab')
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+      expect(await modal.evaluate(element => element.contains(document.activeElement))).toBe(true)
+      await page.keyboard.press('Escape')
+      await modal.waitFor({ state: 'detached' })
+      await until({
+        what: 'focus returns to the inline task title',
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        check: () => title.evaluate(element => element === document.activeElement),
+      })
+      expect(new URL(page.url()).searchParams.has('task')).toBe(false)
+      await page.goForward()
+      await modal.waitFor()
+      const direct = await page.context().newPage()
+      await direct.goto(page.url())
+      await direct.getByRole(
+        'dialog',
+        {
+          name: 'Modal conversation',
+          exact: true,
+        },
+      ).waitFor()
+      await direct.close()
+      await page.reload()
+      await modal.waitFor()
+      expect(await modal.locator('.card-details').isVisible()).toBe(false)
+      expect(await modal.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      ).inputValue()).toBe('Keep my unsent message')
+      await modal.getByRole(
+        'button',
+        {
+          name: 'Show task summary',
+          exact: true,
+        },
+      ).click()
+      expect(await modal.locator('.card-details').isVisible()).toBe(true)
+      await page.mouse.click(
+        2,
+        2,
+      )
+      await modal.waitFor({ state: 'detached' })
+      await until({
+        what: 'outside close restores card focus',
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        check: () => title.evaluate(element => element === document.activeElement),
+      })
+      await card.getByRole(
+        'button',
+        {
+          name: 'Focus on chat',
+          exact: true,
+        },
+      ).click()
+      expect(await card.locator('.card-details').isVisible()).toBe(false)
+      await page.reload()
+      await card.waitFor()
+      expect(await card.locator('.card-details').isVisible()).toBe(false)
+    } finally {
+      await page.context().close()
+    }
+  },
+)

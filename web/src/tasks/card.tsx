@@ -1,3 +1,5 @@
+import { Dialog } from '#web-shared/ui/dialog.tsx'
+import { useTaskChatOnly, useTaskModal } from './presentation.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useSortItem, useSortState, useDropZone } from '#web-shared/ui/sortable.tsx'
 import { CardSummary, TaskLabels, cardTint } from './card-summary.tsx'
@@ -217,43 +219,28 @@ export const HydraCard = memo(function HydraCard({
     preview,
     setPreview,
   ] = useState<number | null>(null)
-  const [
-    windowed,
-    setWindowed,
-  ] = useState(false)
+  const {
+    modal,
+    showModal,
+    closeModal,
+  } = useTaskModal({
+    id: card.id,
+    hydraId,
+  })
+  const {
+    chatOnly,
+    toggleChatOnly,
+  } = useTaskChatOnly()
+  const wasModal = useRef(modal)
   useLayoutEffect(
     () => {
-      const card = element.current
-
-      if (!card) {
-        return
+      if (wasModal.current && !modal) {
+        element.current?.querySelector<HTMLElement>('.card-open')?.focus({ preventScroll: true })
       }
 
-      if (windowed && selected) {
-        card.setAttribute(
-          'popover',
-          'manual',
-        ); card.showPopover()
-      } else {
-        if (card.matches(':popover-open')) {
-          card.hidePopover()
-        }
-
-        card.removeAttribute('popover')
-      }
+      wasModal.current = modal
     },
-    [
-      windowed,
-      selected,
-    ],
-  )
-  useEffect(
-    () => {
-      if (!selected) {
-        setWindowed(false)
-      }
-    },
-    [selected],
+    [modal],
   )
   const tabsId = useId()
   const [
@@ -400,13 +387,6 @@ export const HydraCard = memo(function HydraCard({
   // Activity mounts only while it shows, so a hidden one reads no history or report; Context stays mounted to keep draft answers.
   const showsActivity = tab === 'activity'
 
-  // eslint-disable-next-line pnyx/object-params -- Motion supplies the React keyboard event.
-  const keyDown = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape' && windowed && !event.defaultPrevented) {
-      event.preventDefault(); event.stopPropagation(); setWindowed(false)
-    }
-  }
-
   const click = ({
     currentTarget,
     target,
@@ -423,9 +403,10 @@ export const HydraCard = memo(function HydraCard({
     }
   }
 
-  return (
+  const shell = (
     <AnimatedCardShell
-      layout={preview === null}
+      layout={preview === null && !modal}
+      className={`@container/task ${modal ? 'max-h-(--spacing-task-modal-body)' : ''}`}
       ref={attach}
       onPointerDown={sort.pointerDown}
       data-sort-key={sort.key}
@@ -434,14 +415,11 @@ export const HydraCard = memo(function HydraCard({
       selected={selected}
       style={{
         height: selected ? (preview ?? height) : undefined,
-        width: selected && windowed ? 'var(--project-card-width)' : undefined,
       }}
       data-task={card.id}
-      windowed={windowed}
-      onKeyDown={keyDown}
       data-tab={selected ? tab : undefined}
       tint={tint}
-      onClick={click}
+      onClick={modal ? undefined : click}
       data-sort-id={card.id}
       data-sort-kind="task"
       data-sort-scope={sortScope}
@@ -462,7 +440,7 @@ export const HydraCard = memo(function HydraCard({
             hasChildren={hasChildren}
             childrenOpen={childrenOpen}
             toggleChildren={toggleChildren}
-            open={() => void open({ id: card.id })}
+            open={() => modal ? closeModal() : void open({ id: card.id })}
             agentDetails={card.agent ? <AgentDetails card={card} command={command} /> : undefined}
             editing={!!editing}
             tabIndex={tabIndex}
@@ -499,11 +477,17 @@ export const HydraCard = memo(function HydraCard({
               childrenOpen={childrenOpen}
               toggleChildren={toggleChildren}
             >
+              <IconButton
+                icon={chatOnly ? 'chevron_right' : 'chevron_left'}
+                label={chatOnly ? 'Show task summary' : 'Focus on chat'}
+                aria-pressed={chatOnly}
+                onClick={toggleChatOnly}
+              />
               {!editing && (
                 <CardTitle
                   title={card.title}
                   expanded={selected}
-                  open={() => void open({ id: card.id })}
+                  open={() => modal ? closeModal() : void open({ id: card.id })}
                   aria-controls={selected ? panelId({
                     prefix: tabsId,
                     id: 'context',
@@ -539,8 +523,8 @@ export const HydraCard = memo(function HydraCard({
           />
         )}
         {selected && (
-          <div className="card-open-content grid min-h-0 flex-1 grid-cols-[minmax(var(--spacing-card-details),1fr)_minmax(var(--spacing-card-chat),1fr)] gap-3.5 pt-1.5">
-            <div className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">
+          <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.worker-chat]:border-l-0 [&>.worker-chat]:pl-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @task-details/task:grid-rows-1'}`}>
+            <div hidden={chatOnly} className="card-details [&[hidden]]:hidden flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">
               <Tabs
                 prefix={tabsId}
                 label="Card sections"
@@ -663,15 +647,19 @@ export const HydraCard = memo(function HydraCard({
           iconSize={15}
           size="compact"
         />
-        <Tooltip content={windowed ? 'Open in place' : 'Open as a window'}>
+        <Tooltip content={modal ? 'Close task modal' : 'Open as a modal'}>
           <IconButton
-            label={windowed ? 'Open in place' : 'Open as a window'}
+            label={modal ? 'Close task modal' : 'Open as a modal'}
             onClick={async () => {
               if (!selected && !await open({ id: card.id })) {
                 return
               }
 
-              setWindowed(value => !value)
+              if (modal) {
+                closeModal()
+              } else {
+                showModal()
+              }
             }}
             icon="open"
             iconSize={15}
@@ -820,4 +808,10 @@ export const HydraCard = memo(function HydraCard({
       )}
     </AnimatedCardShell>
   )
+
+  return modal && selected ? (
+    <Dialog title={card.title} className="task-modal w-(--spacing-task-modal)! max-h-(--spacing-task-modal-height)! max-w-none!" close={closeModal}>
+      {shell}
+    </Dialog>
+  ) : shell
 })

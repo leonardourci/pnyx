@@ -73,7 +73,6 @@
   --spacing-card-details: 220px;
   --spacing-card-chat: 260px;
   --spacing-settings-content: 880px;
-  --spacing-card-window-top: 8dvh;
   --spacing-setting-icon: var(--control-h);
   --spacing-setting-preview: 280px;
   --spacing-settings-search: 560px;
@@ -117,6 +116,10 @@
   --shadow-menu: 0 8px 24px var(--color-shadow);
   --shadow-dialog: 0 18px 50px var(--color-shadow);
   --shadow-oracle: 0 24px 64px var(--color-shadow);
+  --spacing-task-modal: calc(100vw - 2rem);
+  --spacing-task-modal-height: 90dvh;
+  --spacing-task-modal-body: calc(var(--spacing-task-modal-height) - 4rem);
+  --container-task-details: 35rem;
   --shadow-window: 0 18px 70px var(--color-shadow);
   --shadow-actions: 0 3px 10px var(--color-shadow);
   --control-h: 30px;

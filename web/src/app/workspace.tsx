@@ -114,7 +114,10 @@ export function HydraView({
   const [
     pageView,
     setPageView,
-  ] = useState(() => openingView({ restored }))
+  ] = useState(() => openingView({
+    restored,
+    hydraId: navigation.hydraId,
+  }))
   const {
     selected: selectedRef,
     expanded,

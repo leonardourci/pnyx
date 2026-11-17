@@ -22,16 +22,28 @@ export type PageView = {
 }
 
 // The view a Hydra opens with: the one it saved, unless its link opens a project or settings.
-export function openingView({ restored }: { restored: Restore }): PageView {
+export function openingView({
+  restored,
+  hydraId,
+}: {
+  restored: Restore
+  hydraId: string
+}): PageView {
   const search = new URLSearchParams(location.search)
+  const task = location.pathname === `/hydra/${encodeURIComponent(hydraId)}/` ? search.get('task') : null
   const openProject = search.has('open-project')
   const opened = restored.expanded ?? (restored.selected ? [restored.selected] : [])
   const lastOpened = restored.expanded?.at(-1) ?? null
 
   return {
     page: 'hydra',
-    selected: openProject ? null : restored.selected ?? lastOpened,
-    expanded: openProject ? [] : opened,
+    selected: task ?? (openProject ? null : restored.selected ?? lastOpened),
+    expanded: task ? [
+      ...new Set([
+        ...opened,
+        task,
+      ]),
+    ] : openProject ? [] : opened,
     revealed: restored.revealed ?? {
       scope: '',
       ids: [],

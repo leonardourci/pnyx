@@ -6,7 +6,6 @@ export function CardShell({
   selected = false,
   lifted = false,
   nesting = false,
-  windowed = false,
   tint,
   className = '',
   ...props
@@ -14,7 +13,6 @@ export function CardShell({
   selected?: boolean
   lifted?: boolean
   nesting?: boolean
-  windowed?: boolean
   tint?: string
 }) {
   const border = selected || lifted ? 'border-gold-line' : 'border-line select-none hover:border-control has-[.card-open:focus-visible]:border-gold'
@@ -24,9 +22,8 @@ export function CardShell({
     <article
       {...props}
       data-nest-armed={nesting}
-      data-windowed={windowed}
       data-label-color={tint}
-      className={`card group/card relative m-0 flex min-h-0 min-w-0 w-full shrink-0 cursor-pointer flex-col gap-1.75 overflow-visible rounded-card border bg-card-fill px-2.75 pt-2.25 pb-2.5 touch-pan-y transition-colors duration-150 motion-reduce:transition-none has-[.resize:active]:transition-colors backdrop:bg-shadow data-[nest-armed=true]:border-gold-line data-[nest-armed=true]:ring-2 data-[nest-armed=true]:ring-inset data-[nest-armed=true]:ring-gold data-[windowed=true]:fixed data-[windowed=true]:top-card-window-top data-[windowed=true]:left-1/2 data-[windowed=true]:right-auto data-[windowed=true]:bottom-auto data-[windowed=true]:-translate-x-1/2 data-[windowed=true]:bg-surface data-[windowed=true]:text-ink data-[windowed=true]:shadow-window ${border} ${selection} ${className}`}
+      className={`card group/card relative m-0 flex min-h-0 min-w-0 w-full shrink-0 cursor-pointer flex-col gap-1.75 overflow-visible rounded-card border bg-card-fill px-2.75 pt-2.25 pb-2.5 touch-pan-y transition-colors duration-150 motion-reduce:transition-none has-[.resize:active]:transition-colors backdrop:bg-shadow data-[nest-armed=true]:border-gold-line data-[nest-armed=true]:ring-2 data-[nest-armed=true]:ring-inset data-[nest-armed=true]:ring-gold ${border} ${selection} ${className}`}
     />
   )
 }
