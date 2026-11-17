@@ -1,7 +1,8 @@
-import { Dialog } from '#web-shared/ui/dialog.tsx'
+import { AnimatePresence } from 'motion/react'
+import { TaskCardModal } from './task-modal.tsx'
 import { useTaskChatOnly, useTaskModal } from './presentation.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
-import { useSortItem, useSortState, useDropZone } from '#web-shared/ui/sortable.tsx'
+import { useSortItem, useSortState, useDropZone, nestingRefusal } from '#web-shared/ui/sortable.tsx'
 import { CardSummary, TaskLabels, cardTint } from './card-summary.tsx'
 import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { memo, useCallback, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
@@ -14,7 +15,7 @@ import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { CardTitle } from './card-title.tsx'
 import { CardShell, CardContent, AnimatedCardShell, AnimatedCardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
-import { OPEN_CARD_MIN_HEIGHT, DEFAULT_OPEN_CARD_HEIGHT } from '#preferences/workspace.ts'
+import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -27,7 +28,7 @@ import { harnessName } from '#web-workers/view.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
 
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
-import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
+import { Icon } from '#web-shared/icons.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { CardState } from './card-state.tsx'
@@ -102,7 +103,6 @@ export const HydraCard = memo(function HydraCard({
   statusOverride,
   sortScope,
   hydraId,
-  dragChildren,
   chat,
   progress,
   hasChildren,
@@ -130,7 +130,6 @@ export const HydraCard = memo(function HydraCard({
   statusOverride?: ObservedStatus
   sortScope?: string
   hydraId: string
-  dragChildren?: ReactNode
   chat?: ReactNode
   progress?: string
   hasChildren?: boolean
@@ -164,7 +163,8 @@ export const HydraCard = memo(function HydraCard({
   children?: ReactNode
   answer({ card }: { card: CardData }): void
 }) {
-  const element = useRef<HTMLElement>(null)
+  const inlineElement = useRef<HTMLElement>(null)
+  const modalElement = useRef<HTMLElement>(null)
   const [
     editing,
     setEditing,
@@ -227,6 +227,7 @@ export const HydraCard = memo(function HydraCard({
     id: card.id,
     hydraId,
   })
+  const element = modal ? modalElement : inlineElement
   const {
     chatOnly,
     toggleChatOnly,
@@ -256,8 +257,8 @@ export const HydraCard = memo(function HydraCard({
     [selected],
   )
   const height = Math.max(
-    OPEN_CARD_MIN_HEIGHT,
-    view.cardHeights[card.id] ?? DEFAULT_OPEN_CARD_HEIGHT,
+    CARD_SIZING.open.minHeight,
+    view.cardHeights[card.id] ?? CARD_SIZING.open.height,
   )
   const [
     reminding,
@@ -333,15 +334,15 @@ export const HydraCard = memo(function HydraCard({
       hydra: hydraId,
       parent: card.parentId,
       hasChildren,
+      open: selected,
       overlay: (
         <div>
           <CardShell lifted tint={tint}><CardContent>{summary}</CardContent></CardShell>
-          {dragChildren}
         </div>
       ),
     },
     disabled: {
-      draggable: selected || !connected || !!reminding || !!editing,
+      draggable: modal || !connected || !!reminding || !!editing,
       droppable: !connected,
     },
   })
@@ -352,14 +353,16 @@ export const HydraCard = memo(function HydraCard({
       scope: sortScope ?? '',
       hydra: hydraId,
       zone: 'nest',
+      parent: card.parentId,
+      hasChildren,
     },
-    disabled: !!card.parentId || !connected,
+    disabled: !connected,
   })
   const sortableNode = sort.setNodeRef
-  const attach = useCallback(
+  const attachInline = useCallback(
     // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
     (node: HTMLElement | null) => {
-      element.current = node
+      inlineElement.current = node
       hoverZone.setNodeRef(node)
       const wrapper = card.parentId ? '[data-child]' : '[data-family]'
       sortableNode(node?.closest<HTMLElement>(wrapper) ?? node)
@@ -369,6 +372,13 @@ export const HydraCard = memo(function HydraCard({
       hoverZone.setNodeRef,
       card.parentId,
     ],
+  )
+  const attachModal = useCallback(
+    // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
+    (node: HTMLElement | null) => {
+      modalElement.current = node
+    },
+    [],
   )
   const drag = useSortState()
   const panel = ({ id }: { id: 'context' | 'activity' }) => ({
@@ -406,15 +416,21 @@ export const HydraCard = memo(function HydraCard({
   const shell = (
     <AnimatedCardShell
       layout={preview === null && !modal}
-      className={`@container/task ${modal ? 'max-h-(--spacing-task-modal-body)' : ''}`}
-      ref={attach}
-      onPointerDown={sort.pointerDown}
+      layoutId={modal ? undefined : `task:${hydraId}:${card.id}`}
+      className={`@container/task ${modal ? 'min-h-0! flex-1! rounded-none! border-0! bg-transparent!' : ''}`}
+      ref={modal ? attachModal : attachInline}
+      onPointerDown={selected ? undefined : sort.pointerDown}
       data-sort-key={sort.key}
       nesting={drag.shift && drag.over?.zone === 'nest' && drag.over.id === card.id
-        && drag.over.hydra === hydraId}
+        && drag.over.hydra === hydraId && !!drag.active
+        && !nestingRefusal({
+          source: drag.active,
+          target: drag.over,
+        })
+        && drag.active.parent !== card.id}
       selected={selected}
       style={{
-        height: selected ? (preview ?? height) : undefined,
+        height: selected && !modal ? (preview ?? height) : undefined,
       }}
       data-task={card.id}
       data-tab={selected ? tab : undefined}
@@ -423,7 +439,7 @@ export const HydraCard = memo(function HydraCard({
       data-sort-id={card.id}
       data-sort-kind="task"
       data-sort-scope={sortScope}
-      data-sort-disabled={selected || !connected || !!reminding || !!editing}
+      data-sort-disabled={modal || !connected || !!reminding || !!editing}
       data-parent={card.parentId}
       data-has-children={hasChildren}
 
@@ -471,34 +487,28 @@ export const HydraCard = memo(function HydraCard({
                 </Tooltip>
               )}
             </CardState>
-            <CardHeading
-              title={card.title}
-              hasChildren={hasChildren}
-              childrenOpen={childrenOpen}
-              toggleChildren={toggleChildren}
-            >
-              <IconButton
-                icon={chatOnly ? 'chevron_right' : 'chevron_left'}
-                label={chatOnly ? 'Show task summary' : 'Focus on chat'}
-                aria-pressed={chatOnly}
-                onClick={toggleChatOnly}
-              />
-              {!editing && (
-                <CardTitle
-                  title={card.title}
-                  expanded={selected}
-                  open={() => modal ? closeModal() : void open({ id: card.id })}
-                  aria-controls={selected ? panelId({
-                    prefix: tabsId,
-                    id: 'context',
-                  }) : undefined}
-                  data-card={card.id}
-                  data-key-scope="hydra"
-                  tabIndex={tabIndex}
-                />
-              )}
+            {!modal && (
+              <CardHeading
+                title={card.title}
+              >
+                {!editing && (
+                  <CardTitle
+                    title={card.title}
+                    onPointerDown={modal ? undefined : sort.pointerDown}
+                    expanded={selected}
+                    open={() => modal ? closeModal() : void open({ id: card.id })}
+                    aria-controls={selected ? panelId({
+                      prefix: tabsId,
+                      id: 'context',
+                    }) : undefined}
+                    data-card={card.id}
+                    data-key-scope="hydra"
+                    tabIndex={tabIndex}
+                  />
+                )}
 
-            </CardHeading>
+              </CardHeading>
+            )}
           </>
         )}
         {editing && (
@@ -523,24 +533,46 @@ export const HydraCard = memo(function HydraCard({
           />
         )}
         {selected && (
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <Tabs
+              divider={false}
+              prefix={tabsId}
+              label="Card sections"
+              selected={tab}
+              select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
+              tabs={[
+                {
+                  id: 'context',
+                  label: 'Context',
+                },
+                {
+                  id: 'activity',
+                  label: 'Activity',
+                },
+              ]}
+            />
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              {hasChildren && toggleChildren && (
+                <IconButton
+                  icon={childrenOpen ? 'fold_tasks' : 'unfold_tasks'}
+                  label={`Sub-tasks of ${card.title}`}
+                  title={childrenOpen ? 'Fold sub-tasks' : 'Unfold sub-tasks'}
+                  aria-expanded={childrenOpen}
+                  onClick={toggleChildren}
+                />
+              )}
+              <IconButton
+                icon={chatOnly ? 'summary_show' : 'summary_hide'}
+                label={chatOnly ? 'Show task summary' : 'Focus on chat'}
+                aria-pressed={chatOnly}
+                onClick={toggleChatOnly}
+              />
+            </div>
+          </div>
+        )}
+        {selected && (
           <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.worker-chat]:border-l-0 [&>.worker-chat]:pl-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @task-details/task:grid-rows-1'}`}>
             <div hidden={chatOnly} className="card-details [&[hidden]]:hidden flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">
-              <Tabs
-                prefix={tabsId}
-                label="Card sections"
-                selected={tab}
-                select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
-                tabs={[
-                  {
-                    id: 'context',
-                    label: 'Context',
-                  },
-                  {
-                    id: 'activity',
-                    label: 'Activity',
-                  },
-                ]}
-              />
               <CardPanel {...panel({ id: 'context' })}>
                 {card.copy?.state === 'flagged' && <div className="copy-warning"><RichText text={card.copy.reason ?? ''} /></div>}
                 {waiting.length > 0 && (card.intent || factual) && (
@@ -642,14 +674,13 @@ export const HydraCard = memo(function HydraCard({
           ref={sort.setActivatorNodeRef}
           data-drag-handle
           label={`Move ${card.title}`}
-          disabled={selected || !connected}
+          disabled={modal || !connected}
           icon="grip"
-          iconSize={ICON_SIZE.control}
           size="compact"
         />
-        <Tooltip content={modal ? 'Close task modal' : 'Open as a modal'}>
+        <Tooltip content={modal ? 'Close modal' : 'Open modal'}>
           <IconButton
-            label={modal ? 'Close task modal' : 'Open as a modal'}
+            label={modal ? 'Close modal' : 'Open modal'}
             onClick={async () => {
               if (!selected && !await open({ id: card.id })) {
                 return
@@ -661,8 +692,7 @@ export const HydraCard = memo(function HydraCard({
                 showModal()
               }
             }}
-            icon="open"
-            iconSize={ICON_SIZE.control}
+            icon={modal ? 'close' : 'open'}
             size="compact"
           />
         </Tooltip>
@@ -682,7 +712,6 @@ export const HydraCard = memo(function HydraCard({
               ],
             }).catch((error: Error) => notify({ text: error.message }))}
             icon="pause"
-            iconSize={ICON_SIZE.control}
             size="compact"
           />
         </Tooltip>
@@ -703,15 +732,14 @@ export const HydraCard = memo(function HydraCard({
                 notify({ text: (error as Error).message })
               }
             }}
-            icon="stop"
-            iconSize={ICON_SIZE.badge}
+            icon="stop_outline"
             size="compact"
           />
         )}
         {card.parentId && (
-          <Tooltip content="Move out of its parent">
+          <Tooltip content="Remove from parent">
             <IconButton
-              label="Move out of its parent"
+              label="Remove from parent"
               disabled={!connected}
               onClick={() => command({
                 name: 'task',
@@ -723,19 +751,17 @@ export const HydraCard = memo(function HydraCard({
                   crypto.randomUUID(),
                 ],
               }).catch((error: Error) => notify({ text: error.message }))}
-              icon="chevron_right"
-              iconSize={ICON_SIZE.control}
+              icon="outdent"
               size="compact"
             />
           </Tooltip>
         )}
-        <Tooltip content="Edit title and brief">
+        <Tooltip content="Edit task">
           <IconButton
-            label="Edit title and brief"
+            label="Edit task"
             disabled={!connected || !!editing}
             onClick={() => edit()}
-            icon="renamed"
-            iconSize={ICON_SIZE.control}
+            icon="edit"
             size="compact"
           />
         </Tooltip>
@@ -744,8 +770,7 @@ export const HydraCard = memo(function HydraCard({
             label="Remind"
             disabled={!connected}
             onClick={() => setReminding({ version: ++reminderVersion.current })}
-            icon="reminder"
-            iconSize={ICON_SIZE.control}
+            icon="remind"
             size="compact"
           />
         </Tooltip>
@@ -780,19 +805,18 @@ export const HydraCard = memo(function HydraCard({
                 notify({ text: (error as Error).message })
               }
             }}
-            icon="review"
-            iconSize={ICON_SIZE.control}
+            icon="hide"
             size="compact"
           />
         </Tooltip>
       </HoverActions>
-      {selected && (
+      {selected && !modal && (
         <Resize
-          className="bottom-0! right-auto! left-[calc(50%-3rem)]! h-6! w-24 after:top-4.25! after:bg-muted hover:after:bg-gold focus:after:bg-gold"
+          className="bottom-0! right-auto! left-[calc(50%-3rem)]! h-6! w-24 after:top-4.25!"
           label="Resize card"
           axis="y"
           value={height}
-          min={OPEN_CARD_MIN_HEIGHT}
+          min={CARD_SIZING.open.minHeight}
           tabIndex={selected ? 0 : tabIndex}
           onPreview={({ value }) => setPreview(value)}
           onCommit={async ({ value }) => {
@@ -809,9 +833,29 @@ export const HydraCard = memo(function HydraCard({
     </AnimatedCardShell>
   )
 
-  return modal && selected ? (
-    <Dialog title={card.title} className="task-modal w-(--spacing-task-modal)! max-h-(--spacing-task-modal-height)! max-w-none!" close={closeModal}>
-      {shell}
-    </Dialog>
-  ) : shell
+  return (
+    <>
+      {modal && selected && (
+        <CardShell
+          aria-hidden
+          inert
+          className="invisible"
+          style={{ height }}
+        >{summary}
+        </CardShell>
+      )}
+      <AnimatePresence initial={false} onExitComplete={() => element.current?.querySelector<HTMLElement>('.card-open')?.focus({ preventScroll: true })}>
+        {modal && selected ? (
+          <TaskCardModal
+            key="modal"
+            layoutId={`task:${hydraId}:${card.id}`}
+            title={card.title}
+            close={closeModal}
+          >
+            {shell}
+          </TaskCardModal>
+        ) : shell}
+      </AnimatePresence>
+    </>
+  )
 })
