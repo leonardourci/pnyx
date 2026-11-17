@@ -21,7 +21,7 @@ const DROP_EASING = 'cubic-bezier(.22,1,.36,1)'
 export interface SortMove {
   id: string
   over: string
-  kind: string
+  kind: SortItem['kind']
   scope: string
   targetScope: string
   hydra: string
@@ -174,8 +174,8 @@ export function useDropZone({
 }
 
 const itemOf = ({ data }: {
-  data: { current?: Record<string, unknown> } | undefined
-}): SortItem | undefined => data?.current?.item as SortItem | undefined
+  data: { current?: { item?: SortItem } } | undefined
+}): SortItem | undefined => data?.current?.item
 
 function collisions({
   args,
@@ -501,10 +501,16 @@ export function SortableWorkspace({
       return plain.current
     }
 
-    const sourceIndex = active.data.current?.sortable?.index
+    let before = false
 
-    if (!nesting && (typeof sourceIndex !== 'number' || targetIndex === undefined)) {
-      return null
+    if (!nesting) {
+      const sourceIndex = active.data.current?.sortable?.index
+
+      if (typeof sourceIndex !== 'number' || targetIndex === undefined) {
+        return null
+      }
+
+      before = sourceIndex > targetIndex
     }
 
     return {
@@ -514,7 +520,7 @@ export function SortableWorkspace({
       scope: source.scope,
       targetScope: target.scope,
       hydra: source.hydra,
-      before: !nesting && sourceIndex > targetIndex!,
+      before,
       nest: nesting,
     }
   }
@@ -541,12 +547,12 @@ export function SortableWorkspace({
   const finish = ({ active }: DragEndEvent) => {
     const args = latestDetection.current
     const source = itemOf({ data: active.data })
+    const nesting = source?.kind === 'task' && modifier.current
     const hits = args ? collisions({
       args,
-      nesting: source?.kind === 'task' && modifier.current,
+      nesting,
     }) : []
     const target = args?.droppableContainers.find(container => container.id === hits[0]?.id)
-    const nesting = source?.kind === 'task' && modifier.current
     let next = hits.length ? plain.current : null
 
     if (nesting) {

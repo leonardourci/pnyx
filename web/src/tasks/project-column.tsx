@@ -40,8 +40,7 @@ export function ProjectColumn({
   })
   const folded = view.workspace.foldedProjects.includes(column.id)
   const saved = view.workspace.projectWidths[column.id] ?? (column.id === 'ideas' ? PROJECT_MIN_WIDTH : DEFAULT_PROJECT_WIDTH)
-  const openedMinimum = expandedWidth ? expandedWidth + PROJECT_CONTENT_INSET : PROJECT_MIN_WIDTH
-  const minimum = openedMinimum
+  const minimum = expandedWidth ? expandedWidth + PROJECT_CONTENT_INSET : PROJECT_MIN_WIDTH
   const width = Math.max(
     preview ?? saved,
     minimum,

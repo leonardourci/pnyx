@@ -184,7 +184,6 @@ export function HydraView({
     projectRequest,
     setProjectRequest,
   ] = useState(active && new URLSearchParams(location.search).has('add-project'))
-  // The search Settings opens with when the Oracle sends a setting there; it also remounts the page for it.
   const [
     settingsQuery,
     setSettingsQuery,
@@ -231,7 +230,6 @@ export function HydraView({
     },
     [page],
   )
-  // The Oracle's palette draws inside the page, so it takes the page's text sizes.
   const [
     layer,
     setLayer,
@@ -512,7 +510,7 @@ export function HydraView({
     requestAnimationFrame(() => layer?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
 
-  // Board cards redraw only for their own changes, so what they call keeps its identity.
+  // Stable callbacks let unchanged cards retain their memoized render.
   const cardActions = useStableActions({
     actions: {
       notify,
@@ -718,7 +716,6 @@ export function HydraView({
     }
   }
 
-  // The Oracle names the Hydra as its list does, never by its id.
   const oracleHydra = {
     id: navigation.hydraId,
     name: shownHydra ? hydraTitle(shownHydra) : 'Hydra',
