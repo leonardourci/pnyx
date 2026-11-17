@@ -151,7 +151,7 @@ export function toolInstructions({
   return [
     'Use the harness’s native tools, MCP servers, plugins and apps as configured by the owner.',
     tools.includes(BROWSER_TOOL) ? 'Use chrome-devtools-axi with your own isolated headless browser. Run chrome-devtools-axi stop when finished. Do not control the owner’s browser.' : undefined,
-    worker ? 'For an isolated browser, ask Hydra with pnyx-axi task ask; Hydra grants browser with task tools --grant browser.' : undefined,
+    worker && !tools.includes(BROWSER_TOOL) ? 'For an isolated browser, ask Hydra with pnyx-axi task ask; Hydra grants browser with task tools --grant browser.' : undefined,
   ].filter(Boolean).join(' ')
 }
 

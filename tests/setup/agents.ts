@@ -47,6 +47,7 @@ export interface AgentSession {
   model?: string
   // Provider options Pnyx supplied when opening the session.
   config?: Record<string, unknown>
+  instructions?: string
   // Claude: the agent calls a tool that needs permission mid-turn and gets Pnyx's decision.
   useTool?({
     tool,
@@ -589,6 +590,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         if (message.method === 'thread/start' || message.method === 'thread/resume') {
           session.resumed = message.method === 'thread/resume'
           session.config = params.config as Record<string, unknown> | undefined
+          session.instructions = params.developerInstructions as string | undefined
           session.id = session.resumed ? String(params.threadId) : randomUUID()
           sessions.push(session)
         }
