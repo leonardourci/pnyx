@@ -43,33 +43,59 @@ export function useHydraEdits({
     setOrders,
   ] = useState<Record<string, number>>({})
   useEffect(
-    () => setOrders(current => {
-      const pending = Object.entries(current).filter(([
-        id,
-        order,
-      ]) => hydras.find(h => h.id === id)?.order !== order)
+    () => {
+      if (!Object.keys(orders).length) {
+        return
+      }
 
-      return pending.length === Object.keys(current).length ? current : Object.fromEntries(pending)
-    }),
-    [hydras],
+      setOrders(current => {
+        const pending = Object.entries(current).filter(([
+          id,
+          order,
+        ]) => hydras.find(h => h.id === id)?.order !== order)
+
+        if (pending.length === Object.keys(current).length) {
+          return current
+        }
+
+        return Object.fromEntries(pending)
+      })
+    },
+    [
+      hydras,
+      orders,
+    ],
   )
   useEffect(
-    () => setEdits(current => {
-      const pending = Object.entries(current).filter(([
-        id,
-        edit,
-      ]) => {
-        const hydra = hydras.find(h => h.id === id)
+    () => {
+      if (!Object.keys(edits).length) {
+        return
+      }
 
-        return hydra && !applied({
-          hydra,
+      setEdits(current => {
+        const pending = Object.entries(current).filter(([
+          id,
           edit,
-        })
-      })
+        ]) => {
+          const hydra = hydras.find(h => h.id === id)
 
-      return pending.length === Object.keys(current).length ? current : Object.fromEntries(pending)
-    }),
-    [hydras],
+          return hydra && !applied({
+            hydra,
+            edit,
+          })
+        })
+
+        if (pending.length === Object.keys(current).length) {
+          return current
+        }
+
+        return Object.fromEntries(pending)
+      })
+    },
+    [
+      hydras,
+      edits,
+    ],
   )
 
   // Only this edit goes back, never a newer one made since.

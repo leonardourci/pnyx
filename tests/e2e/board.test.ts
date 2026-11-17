@@ -2549,6 +2549,15 @@ test(
   'reopening stopped Zero clears the previous installation query failure',
   async () => {
     const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Recovered installation task',
+      ],
+    })
+    const pageErrors: string[] = []
     let installationHash = ''
     let failInstallation: (() => void) | undefined
     let stopZero: (() => void) | undefined
@@ -2558,6 +2567,10 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
       prepare: async ({ page }) => {
+        page.on(
+          'pageerror',
+          error => pageErrors.push(error.message),
+        )
         await page.addInitScript(() => {
           globalThis.WebSocket = new Proxy(
             WebSocket,
@@ -2673,6 +2686,14 @@ test(
         'Could not read the Hydra list or shared settings',
         { exact: false },
       ).count()).toBe(0)
+      await page.getByRole(
+        'button',
+        {
+          name: 'Recovered installation task',
+          exact: true,
+        },
+      ).waitFor()
+      expect(pageErrors).toEqual([])
     } finally {
       await page.context().close()
     }
