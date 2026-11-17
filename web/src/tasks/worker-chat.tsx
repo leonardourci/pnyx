@@ -5,10 +5,9 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { stored, save as saveLocal } from '#web-app/connection-storage.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Messages, type ChatEntry } from '#web-hydra/messages.tsx'
-import { ComposerField } from '#web-hydra/composer-field.tsx'
+import { Composer } from '#web-hydra/composer.tsx'
 import { useChatDrafts, useDraftSnapshot } from '#web-hydra/chat-drafts.ts'
 import { pnyxLookup } from '#web-hydra/pnyx-action.ts'
-import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { CommandFailure, createPendingResource } from '#web-shared/pending-intents.ts'
@@ -138,10 +137,6 @@ export function WorkerChat({
     }),
   })
   const draft = useDraftSnapshot({ drafts })
-  const liveDraft = useSyncExternalStore(
-    drafts.subscribe,
-    drafts.read,
-  )
   useEffect(
     () => {
       if (live) {
@@ -300,8 +295,8 @@ export function WorkerChat({
   )
 
   return (
-    <section className="worker-chat" aria-label={`Worker chat for ${card.title}`} data-key-scope="thread">
-      <div className="worker-messages">
+    <section className="worker-chat flex min-h-0 min-w-0 flex-col border-l border-line pl-3 [&>.composer]:mt-2 [&>.composer]:shrink-0" aria-label={`Worker chat for ${card.title}`} data-key-scope="thread">
+      <div className="worker-messages min-h-0 flex-1 overflow-auto text-chat">
         {error && <p role="alert">{error}</p>}
         {live?.unavailable && card.agent && <Tooltip content={live.unavailable}><span aria-label="Conversation unavailable"><Icon name="warning" /></span></Tooltip>}
         <Messages
@@ -326,28 +321,44 @@ export function WorkerChat({
           }}
         />
       </div>
-      <form
-        className="worker-composer"
-        onSubmit={event => {
-          event.preventDefault(); const text = drafts.read().text.trim()
-
-          if (text) {
-            drafts.setDraft({ text: '' })
-            send({
-              id: crypto.randomUUID(),
-              text,
+      <Composer
+        hydraId={hydraId}
+        card={card.id}
+        title={card.title}
+        drafts={drafts}
+        thread={live ?? null}
+        fieldLabel="Message worker"
+        placeholder="Message worker…"
+        sendLabel="Send to worker"
+        unavailable={!connected}
+        loadComment={async () => {
+          await command({
+            name: 'thread',
+            args: [card.id],
+          })
+        }}
+        command={async ({
+          name,
+          args,
+          onChecking,
+        }) => {
+          if (name !== 'reply') {
+            return command({
+              name,
+              args,
+              onChecking,
             })
           }
+
+          await send({
+            id: args[2]!,
+            text: args[1]!,
+          })
+
+          return {}
         }}
-      >
-        <ComposerField
-          label="Message worker"
-          placeholder="Message worker…"
-          value={liveDraft.text}
-          change={drafts.setDraft}
-        />
-        <Button type="submit" aria-label="Send to worker" disabled={!connected || !liveDraft.text.trim()}><Icon name="send" /></Button>
-      </form>
+        notify={notify}
+      />
     </section>
   )
 }

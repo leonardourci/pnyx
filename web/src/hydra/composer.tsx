@@ -37,7 +37,15 @@ export function Composer({
   focusAbove,
   projectRequest = false,
   projectRequested,
+  fieldLabel,
+  placeholder,
+  sendLabel = 'Send reply',
+  unavailable = false,
 }: {
+  fieldLabel?: string
+  placeholder?: string
+  sendLabel?: string
+  unavailable?: boolean
   hydraId: string
   card: string
   title: string
@@ -187,7 +195,7 @@ export function Composer({
     })
     const text = request.text
 
-    if (sending || !text.trim()) {
+    if (unavailable || sending || !text.trim()) {
       return
     }
 
@@ -354,8 +362,8 @@ export function Composer({
           keyScope="composer"
           value={drafts.read().text}
           change={setDraft}
-          label={`Reply to ${title}`}
-          placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
+          label={fieldLabel ?? `Reply to ${title}`}
+          placeholder={placeholder ?? (title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…')}
           onKeyDown={leaveUp}
           projectRequests
           projectRequest={projectRequest}
@@ -473,9 +481,9 @@ export function Composer({
             type="submit"
             variant="primary"
             className="composer-send"
-            aria-label="Send reply"
+            aria-label={sendLabel}
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
-            disabled={sending || disabled}
+            disabled={unavailable || sending || disabled}
           >
             <Icon name="send" size={COMPOSER_ICON} />
           </Button>
