@@ -243,6 +243,15 @@ export function useTaskNavigation({
       page,
     ],
   )
+  const cardElement = ({
+    id,
+    selected = false,
+  }: {
+    id: string
+    selected?: boolean
+  }) =>
+    document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .card[data-task="${CSS.escape(id)}"]${selected ? '.selected' : ''}`)
+
   useLayoutEffect(() => {
     const pendingId = pendingFocus.current
     const id = pendingId ? state.keys[pendingId] ?? pendingId : null
@@ -251,7 +260,10 @@ export function useTaskNavigation({
       return
     }
 
-    const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
+    const element = cardElement({
+      id,
+      selected: true,
+    })
     const panel = element?.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)
 
     if (panel) {
@@ -380,7 +392,7 @@ export function useTaskNavigation({
     signal: AbortSignal
   }) => openTaskCard({
     find: () => (currentCards.current[id]
-      ? document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"]`) : null),
+      ? cardElement({ id }) : null),
     expand: () => expand({
       id,
       focus: false,
@@ -497,7 +509,7 @@ export function useTaskNavigation({
         return false
       }
 
-      const element = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .card[data-task="${CSS.escape(id)}"]`)
+      const element = cardElement({ id })
 
       if (!element || !await afterSteadyLayout({
         element,
@@ -547,7 +559,10 @@ export function useTaskNavigation({
       return
     }
 
-    const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
+    const element = cardElement({
+      id,
+      selected: true,
+    })
 
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && element) {
       highlight.current = element.animate(

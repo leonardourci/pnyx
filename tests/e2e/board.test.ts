@@ -1994,6 +1994,16 @@ test(
           parentId: 'child',
         },
       },
+      {
+        seq: 4,
+        id: 'legacy-peer',
+        cardId: 'peer',
+        data: {
+          key: 'peer',
+          title: 'Legacy sibling',
+          parentId: 'child',
+        },
+      },
     ].map(event => JSON.stringify({
       v: 1,
       type: 'card.pushed',
@@ -2030,7 +2040,7 @@ test(
       env: process.env,
     })
     expect(digest.status).toBe(0)
-    expect(digest.stdout).toContain(`${project} · root-project · 0 / 0 / 3 / 0`)
+    expect(digest.stdout).toContain(`${project} · root-project · 0 / 0 / 4 / 0`)
     const otherId = 'legacy-deep-family-other'
     const otherFolder = join(
       process.env.PNYX_HOME!,
@@ -2098,6 +2108,84 @@ test(
           exact: true,
         },
       ).click()
+      await otherWorkspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of Legacy family',
+          exact: true,
+        },
+      ).click()
+      const children = workspace.locator('[data-family="root"] [data-child]')
+      const otherChildren = otherWorkspace.locator('[data-family="root"] [data-child]')
+      const childIds = async () => Promise.all((await children.all()).map(child => child.getAttribute('data-child')))
+      const otherIds = async () => Promise.all((await otherChildren.all()).map(child => child.getAttribute('data-child')))
+      expect(await otherIds()).toEqual([
+        'child',
+        'leaf',
+        'peer',
+      ])
+      const leaf = workspace.getByRole(
+        'button',
+        {
+          name: 'Legacy grandchild',
+          exact: true,
+        },
+      )
+      const peer = workspace.getByRole(
+        'button',
+        {
+          name: 'Legacy sibling',
+          exact: true,
+        },
+      )
+      await leaf.scrollIntoViewIfNeeded()
+      const leafBounds = await leaf.boundingBox()
+      const peerBounds = await peer.boundingBox()
+
+      if (!leafBounds || !peerBounds) {
+        throw new Error('Missing legacy children')
+      }
+
+      await page.mouse.move(
+        leafBounds.x + 12,
+        leafBounds.y + 8,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        peerBounds.x + 12,
+        peerBounds.y + peerBounds.height - 2,
+        { steps: 12 },
+      )
+      await until({
+        what: 'the dragged legacy child previews after its sibling',
+        check: async () => (await childIds()).join(',') === 'child,peer,leaf',
+      })
+      expect(await otherIds()).toEqual([
+        'child',
+        'leaf',
+        'peer',
+      ])
+      const parentBounds = await root.boundingBox()
+
+      if (!parentBounds) {
+        throw new Error('Missing legacy parent')
+      }
+
+      await page.keyboard.down('Shift')
+      await page.mouse.move(
+        parentBounds.x + parentBounds.width / 2,
+        parentBounds.y + parentBounds.height / 2,
+        { steps: 12 },
+      )
+      await until({
+        what: 'the source Hydra alone shows the nesting outline',
+        check: async () => await workspace.locator('.card[data-task="root"]').getAttribute('data-nest-armed') === 'true',
+      })
+      expect(await otherWorkspace.locator('.card[data-task="root"]').getAttribute('data-nest-armed')).toBe('false')
+      await page.keyboard.press('Escape')
+      await page.keyboard.up('Shift')
+      await page.mouse.up()
+      await page.locator('.physical-ghost').waitFor({ state: 'detached' })
       await workspace.getByRole(
         'button',
         {
@@ -2118,25 +2206,21 @@ test(
       await otherWorkspace.getByRole(
         'button',
         {
-          name: 'Sub-tasks of Legacy family',
-          exact: true,
-        },
-      ).click()
-      await otherWorkspace.getByRole(
-        'button',
-        {
           name: 'Legacy grandchild',
           exact: true,
         },
       ).click()
       await until({
         what: 'the opened duplicate task stays visible in its own Hydra',
-        check: () => otherWorkspace.locator('.card.selected[data-task="leaf"]').evaluate(element => {
-          const bounds = element.getBoundingClientRect()
+        check: () => otherWorkspace.locator('.card.selected[data-task="leaf"]').evaluate(
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+          element => {
+            const bounds = element.getBoundingClientRect()
 
-          return bounds.right > 0 && bounds.left < innerWidth
+            return bounds.right > 0 && bounds.left < innerWidth
             && element.contains(document.activeElement)
-        }),
+          },
+        ),
       })
     } finally {
       await page.context().close()
