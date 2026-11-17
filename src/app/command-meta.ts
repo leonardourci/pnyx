@@ -53,15 +53,15 @@ export function recordEventId({
   id: string
   seq: number
 }) {
-  // Define an own property so __proto__ never invokes Object's legacy setter.
-  Object.defineProperty(
-    state.eventIds,
-    id,
-    {
-      value: seq,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    },
-  )
+  // Reducer proxies track assignments; defineProperty would mutate the previous event-ID map.
+  if (id === '__proto__') {
+    state.eventIds = {
+      ...state.eventIds,
+      [id]: seq,
+    }
+
+    return
+  }
+
+  state.eventIds[id] = seq
 }

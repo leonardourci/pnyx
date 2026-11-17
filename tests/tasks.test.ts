@@ -1,3 +1,4 @@
+import { emptyHydra, reduce } from '#app/reducer.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
@@ -947,5 +948,43 @@ test(
       asks: 1,
       projects: [expect.objectContaining({ asks: 1 })],
     })
+  },
+)
+
+test(
+  'predicting prototype-named events leaves the previous Hydra untouched',
+  () => {
+    for (const id of [
+      'constructor',
+      '__proto__',
+    ]) {
+      const before = emptyHydra()
+      const event = {
+        v: 1 as const,
+        seq: 1,
+        id,
+        at: '2026-11-17T00:00:00Z',
+        actor: 'cli',
+        cardId: 'predicted-task',
+        type: 'card.pushed' as const,
+        data: {
+          key: 'predicted-task',
+          title: 'Prediction',
+        },
+      }
+      const after = reduce({
+        state: before,
+        event,
+      })
+      expect(before.eventIds).toEqual({})
+      expect(before.cards).toEqual({})
+      expect(before.seq).toBe(0)
+      expect(after.eventIds[id]).toBe(1)
+      expect(after.cards['predicted-task']?.title).toBe('Prediction')
+      expect(reduce({
+        state: before,
+        event,
+      })).toEqual(after)
+    }
   },
 )
