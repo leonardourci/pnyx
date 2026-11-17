@@ -1551,6 +1551,16 @@ test(
       '--event-id',
       'constructor',
     ]
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { chatCollapsed: true } }),
+        '--event-id',
+        'constructor:0',
+      ],
+    })
     await hydra.owner({ args })
     expect((await hydra.owner({
       args: [

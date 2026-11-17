@@ -150,7 +150,7 @@ export function attachProjectGroup({
             meta: {
               ...commandMeta,
               ifRevision: undefined,
-              id: index === changes.length - 1 ? attempt : `${attempt}:${index}`,
+              id: index === changes.length - 1 ? attempt : randomUUID(),
             },
             cardId: '$projects',
             change: {
