@@ -1,3 +1,4 @@
+import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useHeadsDispatch } from './heads-dispatch.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -13,7 +14,7 @@ export function AgentKinds({ command }: {
   } = useHeadsDispatch({ command })
 
   return (
-    <section className="settings-box" aria-label="Agents">
+    <SettingsBox aria-label="Agents">
       <h2>Agents</h2>
       <p className="muted">Your explicit agent choice wins. Otherwise Hydra picks a rule and quota ranks its Claude and Codex candidates. Ask Hydra to change rules or accounts. Each change is recorded in chat.</p>
       {error && <p role="alert">{error}</p>}
@@ -68,6 +69,6 @@ export function AgentKinds({ command }: {
           ))}
         </>
       )}
-    </section>
+    </SettingsBox>
   )
 }

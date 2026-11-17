@@ -175,7 +175,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.settings-box > h2, .keyboard-settings h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
+.keyboard-settings h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
 
 .hydra-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 
@@ -459,11 +459,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.settings-box { padding: 20px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); min-width: 0; }
-
-.settings-box p { font-size: var(--text-ui); margin: 5px 0 18px; }
-
-.settings-box > .switch-label { display: flex; margin-top: 12px; }
 
 
 
@@ -471,22 +466,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.settings-box dl { font-size: var(--text-ui); color: var(--color-muted); }
 
-.settings-box dt { margin-top: 12px; }
-
-.settings-box dd { margin: 4px 0; color: var(--color-ink); }
-
-
-.error-banner { padding: 9px 12px; color: var(--color-red); border: 1px solid var(--color-line); border-radius: 6px; font-size: var(--text-ui); }
-@media (max-width: 760px) {
 
 
 
 
 
-.settings-box { padding: 15px; }
-}
+.error-banner { padding: 9px 12px; color: var(--color-red); border: 1px solid var(--color-line); border-radius: 6px; font-size: var(--text-ui); }
 @media (prefers-reduced-motion: reduce) {
 * { transition: none!important; } }
 
@@ -786,13 +772,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-chat > .composer { margin-bottom: 12px; }
 
 
-.settings-box, .keyboard-settings { flex-shrink: 0; }
+.keyboard-settings { flex-shrink: 0; }
 
-.settings-box .switch-label { font-size: var(--text-ui); }
 
-.settings-box > .button.surface { margin-top: 18px; }
 
-.settings-box p { margin-bottom: 12px; }
 
 
 

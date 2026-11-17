@@ -1,3 +1,4 @@
+import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useEffect, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import { AddProject, ProjectSharing } from './add-project.tsx'
@@ -253,7 +254,7 @@ export function Projects({
   )
 
   return (
-    <section className="settings-box" aria-label="Projects">
+    <SettingsBox aria-label="Projects">
       <h2>Projects</h2>
       {!loaded && !projects.length ? <p className="muted">Loading projects…</p> : (
         <>
@@ -304,6 +305,6 @@ export function Projects({
           })}
         />
       )}
-    </section>
+    </SettingsBox>
   )
 }
