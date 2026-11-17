@@ -1,5 +1,5 @@
 import { sharesWithMore } from '#memory/access-changes.ts'
-import { canRead, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
+import { checkMemoryApproval, canRead, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
@@ -142,6 +142,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
 
     const saved = saveSettings({
+      beforeSave: checkMemoryApproval,
       hydraId,
       patch: {
         projectPoleis: {
