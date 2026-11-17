@@ -912,7 +912,7 @@ export function Oracle({
           <div
             ref={list}
             id={listId}
-            className="oracle-list overflow-auto pt-1 px-1.5 pb-2 border-r border-subtle transition-opacity ease-ui duration-120 data-pending:opacity-55 max-[760px]:border-r-0 max-[760px]:border-b"
+            className="oracle-list overflow-auto pt-1 px-1.5 pb-2 border-r border-subtle transition-opacity ease-ui duration-fast data-pending:opacity-55 max-[760px]:border-r-0 max-[760px]:border-b"
             role="listbox"
             aria-label={ask ? 'Ask' : listLabel}
             data-pending={dimmed || undefined}
