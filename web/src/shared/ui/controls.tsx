@@ -14,7 +14,7 @@ export function Button({
     primary: 'bg-gold-fill text-gold-ink border-gold-fill enabled:hover:bg-hover enabled:hover:brightness-108',
   }[variant]
 
-  return <button type="button" className={`button ${variant} inline-flex items-center justify-center [:where(&)]:gap-1.5 [:where(&)]:rounded-md border [:where(&)]:px-2.25 [:where(&)]:py-1.5 [:where(&)]:min-h-7.5 [:where(&)]:text-ui leading-[1.4] ${appearance} ${className}`} {...props} />
+  return <button type="button" className={`button ${variant} inline-flex items-center justify-center [:where(&)]:gap-1.5 [:where(&)]:rounded-md border [:where(&)]:px-2.25 [:where(&)]:py-1.5 [:where(&)]:min-h-7.5 [:where(&)]:text-[length:inherit] leading-[inherit] ${appearance} ${className}`} {...props} />
 }
 
 export function Input({ ...props }: ComponentProps<'input'>) {

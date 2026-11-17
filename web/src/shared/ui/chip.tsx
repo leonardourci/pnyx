@@ -2,8 +2,8 @@ import type { ComponentProps } from 'react'
 import { Button } from './controls.tsx'
 
 const VARIANTS = {
-  hydra: 'hydra-chip gap-1.75 border-line px-2.5 py-1 aria-[current=page]:border-gold-line aria-[current=page]:bg-gold-wash max-[760px]:px-2',
-  project: 'border-column-line px-2.25 py-0.75 text-meta',
+  hydra: 'text-[length:inherit] hydra-chip gap-1.75 border-line px-2.5 py-1 aria-[current=page]:border-gold-line aria-[current=page]:bg-gold-wash max-[760px]:px-2',
+  project: 'border-column-line px-2.25 py-0.75 text-[length:inherit]',
 }
 
 export function Chip({
