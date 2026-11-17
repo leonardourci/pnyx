@@ -5,6 +5,7 @@ import type { Kind } from './model.ts'
 import { chunk, eventText, redact } from './text.ts'
 
 export interface Document {
+  memory?: number
   project?: string
   card: string
   kind: Kind
@@ -17,9 +18,11 @@ function* documentChunks({
   kind,
   at,
   text,
+  memory = 0,
 }: Document): Generator<Document> {
   for (const body of chunk({ text: redact({ text }) })) {
     yield {
+      memory,
       card: card === HYDRA_CARD ? '$board' : card,
       kind,
       at,
@@ -55,6 +58,7 @@ export function* eventDocuments({ event }: { event: HydraEvent }): Generator<Doc
   yield* documentChunks({
     card: event.cardId,
     kind: event.type === 'card.noted' ? 'note' : 'event',
+    memory: event.type === 'hydra.memory' ? 1 : 0,
     at: event.type === 'card.noted' ? event.data.at ?? event.at : event.at,
     text: eventText({ event }),
   })

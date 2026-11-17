@@ -236,14 +236,20 @@ export function search({
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
 
-    for (const document of [
+    const documents: Document[] = [
       ...index.documents({
         terms,
         fuzzy,
       }),
       ...ownerDocuments,
       ...projectDocuments,
-    ]) {
+    ]
+
+    for (const document of documents) {
+      if (!includeMemory && document.memory) {
+        continue
+      }
+
       if (!terms.some(term => wordMatches({
         text: document.text,
         term,
@@ -308,13 +314,22 @@ export function search({
 
       if (card.id === '$board' && query.projects?.length) {
         const projects = new Set(query.projects)
-        entries = entries.filter(entry => entry.project !== undefined && projects.has(entry.project))
+        entries = entries.filter(entry => {
+          if (entry.project === undefined) {
+            return false
+          }
+
+          return projects.has(entry.project)
+        })
       }
 
       if (query.since) {
         const cutoff = Date.parse(query.since)
         const recentCard = Date.parse(card.updatedAt) >= cutoff
-        const recent = recentCard || index.newestAt({ card: card.id }) >= cutoff
+        const recent = recentCard || index.newestAt({
+          card: card.id,
+          includeMemory,
+        }) >= cutoff
           || entries.some(entry => Date.parse(entry.at) >= cutoff)
 
         if (!recent) {
@@ -343,7 +358,8 @@ export function search({
           fuzzy,
         })),
       }))
-      const scoped = Boolean(query.kind || query.card)
+      const projectMemory = card.id === '$board' && Boolean(query.projects?.length)
+      const scoped = Boolean(query.kind || query.card || projectMemory)
       const everyTermFound = terms.every((
         _,
         index,
