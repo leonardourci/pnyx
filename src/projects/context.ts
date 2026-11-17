@@ -1,15 +1,24 @@
+import { readableProjects } from '#memory/spaces.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '#memory/learnings.ts'
 import type { HydraState } from '#app/model.ts'
-import { projectsFor } from './read.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView } from '#memory/project-memory.ts'
 
 const WORKER_DOCUMENT_LIMIT = 400
 
-export async function projectDigest({ state }: { state: HydraState }): Promise<string[]> {
-  const projects = projectsFor({ state }).filter(project => !project.detached)
+export async function projectDigest({
+  state,
+  hydraId,
+}: {
+  state: HydraState
+  hydraId: string
+}): Promise<string[]> {
+  const projects = (await readableProjects({
+    state,
+    hydraId,
+  })).filter(project => !project.detached)
 
   if (!projects.length) {
     return []
@@ -17,7 +26,10 @@ export async function projectDigest({ state }: { state: HydraState }): Promise<s
 
   const conditions = memoryConditions()
   const lines = await Promise.all(projects.map(async project => {
-    const view = await projectMemoryView(project)
+    const view = await projectMemoryView({
+      ...project,
+      hydraId,
+    })
     const stale = staleLearnings({
       lines: view.learnings ?? [],
       conditions,
@@ -43,7 +55,10 @@ export async function projectWorkerContext({
   state: HydraState
   project?: string
 }): Promise<string> {
-  const project = projectsFor({ state }).filter(project => !project.detached)
+  const project = (await readableProjects({
+    state,
+    hydraId,
+  })).filter(project => !project.detached)
     .find(project => matchesProject({
       project,
       ref,
@@ -53,7 +68,10 @@ export async function projectWorkerContext({
     return ''
   }
 
-  const view = await projectMemoryView(project)
+  const view = await projectMemoryView({
+    ...project,
+    hydraId,
+  })
 
   return [
     `Project ${project.name}: shared memory (${view.status}).`,

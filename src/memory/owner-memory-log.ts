@@ -1,6 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { HydraError } from '#store/errors.ts'
+import { SPACE_NAME } from './space-policy.ts'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import type { LearningChange } from './learnings.ts'
+import type { Learning, LearningChange } from './learnings.ts'
 import type { ProjectMemoryEvent } from './project-memory.ts'
 import { pnyxHome } from '#store/paths.ts'
 
@@ -13,23 +15,32 @@ export interface OwnerEntry {
   reason?: string
   confirmed?: string
   learning?: LearningChange
+  importedLearnings?: Learning[]
   key: string
   before: string | null
   after: string | null
-  // Both changes commit here; project replay includes this event in its sequence.
+  // One source entry commits both sides; destination replay imports its entry.
+  spaceMove?: {
+    space: string
+    entry: OwnerEntry
+  }
   projectMove?: {
     project: string
     event: ProjectMemoryEvent
   }
 }
 
-export const ownerMemoryLogPath = () => join(
+export const ownerMemoryLogPath = ({ space = 'shared' }: { space?: string } = {}) => join(
   pnyxHome(),
   'owner',
+  ...(space === 'shared' ? [] : [
+    'spaces',
+    space,
+  ]),
   'memory.jsonl',
 )
 
-export function readOwnerEntries(): {
+function readLogEntries({ space = 'shared' }: { space?: string } = {}): {
   entries: OwnerEntry[]
   corrupt: boolean
 } {
@@ -37,7 +48,7 @@ export function readOwnerEntries(): {
 
   try {
     text = readFileSync(
-      ownerMemoryLogPath(),
+      ownerMemoryLogPath({ space }),
       'utf8',
     )
   } catch (error) {
@@ -75,6 +86,13 @@ export function readOwnerEntries(): {
       continue
     }
 
+    if (entry.spaceMove && (!SPACE_NAME.test(entry.spaceMove.space)
+      || entry.spaceMove.entry?.key !== entry.key || typeof entry.spaceMove.entry.after !== 'string'
+      || !Number.isInteger(entry.spaceMove.entry.seq) || entry.spaceMove.entry.spaceMove)) {
+      corrupt = true
+      continue
+    }
+
     entries.push(entry)
   }
 
@@ -82,4 +100,71 @@ export function readOwnerEntries(): {
     entries,
     corrupt,
   }
+}
+
+function ownerLogSpaces(): string[] {
+  let names: string[] = []
+
+  try {
+    names = readdirSync(join(
+      pnyxHome(),
+      'owner',
+      'spaces',
+    ))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
+  }
+
+  return [
+    'shared',
+    ...names,
+  ]
+}
+
+export function ownerProjectMoves({ id }: { id: string }) {
+  return ownerLogSpaces().flatMap(space => {
+    const log = readLogEntries({ space })
+
+    if (log.corrupt) {
+      throw new HydraError({
+        message: 'Owner memory has an unreadable line; inspect its log before reading project moves',
+        code: 'LOG_CORRUPT',
+      })
+    }
+
+    return log.entries.flatMap(entry => {
+      if (entry.projectMove?.project === id) {
+        return [entry.projectMove.event]
+      }
+
+      return []
+    })
+  })
+}
+
+export function readOwnerEntries({ space = 'shared' }: { space?: string } = {}) {
+  const result = readLogEntries({ space })
+
+  for (const source of ownerLogSpaces()) {
+    if (source === space) {
+      continue
+    }
+
+    const log = readLogEntries({ space: source })
+
+    for (const entry of log.entries) {
+      if (entry.spaceMove?.space === space) {
+        result.entries.push(entry.spaceMove.entry)
+      }
+    }
+  }
+
+  result.entries.sort((
+    left,
+    right,
+  ) => left.seq - right.seq)
+
+  return result
 }

@@ -184,7 +184,7 @@ export function createHydraTurns({
     checkpointed?: boolean
     onlyTasks?: string[]
   } = {}) => {
-    const owner = ownerMemory()
+    const owner = ownerMemory({ hydraId })
     const state = loadHydra({ hydraId }).state
 
     if (onlyTasks) {
@@ -203,7 +203,10 @@ export function createHydraTurns({
       projects,
       items,
     ] = await Promise.all([
-      projectDigest({ state }),
+      projectDigest({
+        state,
+        hydraId,
+      }),
       setupCheck({
         hydraId,
         state,
@@ -231,12 +234,15 @@ export function createHydraTurns({
   }
 
   const memoryChangeNote = async () => {
-    const owner = ownerMemory()
+    const owner = ownerMemory({ hydraId })
     const state = loadHydra({ hydraId }).state
     const stamp = JSON.stringify({
       owner,
       hydra: state.hydraMemory,
-      projects: await projectDigest({ state }),
+      projects: await projectDigest({
+        state,
+        hydraId,
+      }),
     })
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp

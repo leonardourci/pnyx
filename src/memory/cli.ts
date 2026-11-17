@@ -3,7 +3,7 @@ import { required, guard, parse, COMMON, WRITE, meta, commit, explained, type Ou
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
-import { ownerMemory, ownerRevision, ownerArchive, saveOwnerMemory, moveOwnerLearning } from './owner-memory.ts'
+import { ownerMemory, ownerRevision, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerSpace } from './owner-memory.ts'
 import { findProject } from '#projects/read.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -126,6 +126,7 @@ export const owner = guard({
         key: { type: 'string' },
         text: { type: 'string' },
         project: { type: 'string' },
+        to: { type: 'string' },
         kind: { type: 'string' },
         until: { type: 'string' },
         used: { type: 'string' },
@@ -152,17 +153,18 @@ export const owner = guard({
     if (action === 'list') {
       return {
         ...memoryList({
-          memory: ownerMemory(),
+          memory: ownerMemory({ hydraId }),
           budget: OWNER_MEMORY_BUDGET,
           empty: 'none: no owner memory yet',
         }),
-        revision: ownerRevision(),
-        archived: ownerArchive(),
+        revision: ownerRevision({ hydraId }),
+        archived: ownerArchive({ hydraId }),
       }
     }
 
     if (action === 'save' || action === 'archive') {
       const entry = saveOwnerMemory({
+        hydraId,
         key: 'learnings',
         after: null,
         learning,
@@ -174,6 +176,18 @@ export const owner = guard({
         state: action === 'save' ? 'saved' : 'archived',
         revision: entry?.seq,
       }
+    }
+
+    if (action === 'move' && values.to !== undefined) {
+      return moveOwnerSpace({
+        hydraId,
+        destination: String(values.to),
+        key: required({
+          value: values.key as string | undefined,
+          what: '--key',
+        }),
+        meta: meta({ values }),
+      })
     }
 
     if (action === 'move') {
@@ -198,12 +212,13 @@ export const owner = guard({
     }
 
     if (action === 'confirm') {
-      const memory = ownerMemory()
+      const memory = ownerMemory({ hydraId })
       const line = required({
         value: values.text as string | undefined,
         what: '--text <existing learning line>',
       })
       const entry = saveOwnerMemory({
+        hydraId,
         key: 'learnings',
         after: memory.learnings?.text ?? null,
         confirmed: line,
@@ -235,6 +250,7 @@ export const owner = guard({
     }
 
     const entry = saveOwnerMemory({
+      hydraId,
       key,
       after,
       learning,
@@ -245,7 +261,7 @@ export const owner = guard({
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
       revision: entry.seq,
-      used: `${memorySize({ memory: ownerMemory() })} of ${OWNER_MEMORY_BUDGET} characters`,
+      used: `${memorySize({ memory: ownerMemory({ hydraId }) })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,
       skipped: 'unchanged',

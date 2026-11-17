@@ -44,7 +44,10 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   })
 
   if (action === 'list') {
-    const view = await projectMemoryView(project)
+    const view = await projectMemoryView({
+      ...project,
+      hydraId,
+    })
 
     return {
       project: project.name,
@@ -90,7 +93,10 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   }
 
   if (action === 'confirm') {
-    const view = await projectMemoryView(project)
+    const view = await projectMemoryView({
+      ...project,
+      hydraId,
+    })
 
     return writeProjectMemory({
       path: project.path,

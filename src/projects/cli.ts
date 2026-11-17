@@ -1,3 +1,6 @@
+import { canRead, readableProjects, requireProjectMemory } from '#memory/spaces.ts'
+import { readSettings, saveSettings } from '#settings/store.ts'
+import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
 import { sameProjectPath } from './identity.ts'
 import { PROJECT_MEMORY_BUDGET } from '#memory/project-memory.ts'
@@ -45,6 +48,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       copy: { type: 'string' },
       landing: { type: 'string' },
       merge: { type: 'string' },
+      space: { type: 'string' },
     },
     positionals: 2,
   })
@@ -79,6 +83,56 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
+  if (action === 'move') {
+    const project = findProject({
+      state: current,
+      ref: required({
+        value: ref,
+        what: 'project',
+      }),
+      attached: true,
+    })
+    const identity = await projectIdentity(project)
+    const settings = readSettings().settings
+    const source = settings.projectSpaces[identity.id] ?? 'shared'
+    const space = required({
+      value: values.space as string | undefined,
+      what: '--space',
+    })
+
+    if (![
+      source,
+      space,
+    ].every(space => canRead({
+      hydraId,
+      state: current,
+      spaces: settings.memorySpaces,
+      space,
+    }))) {
+      throw new HydraError({
+        message: 'project not found',
+        code: 'NOT_FOUND',
+      })
+    }
+
+    const saved = saveSettings({
+      hydraId,
+      patch: {
+        projectSpaces: {
+          ...settings.projectSpaces,
+          [identity.id]: space,
+        },
+      },
+      meta: m,
+    })
+
+    return {
+      project: project.name,
+      state: 'moved',
+      revision: saved.revision,
+    }
+  }
+
   if (action === 'show') {
     return projectMemoryCommand({
       args: [
@@ -95,7 +149,13 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
-    const projects = projectRows({ state: current })
+    const projects = projectRows({
+      state: current,
+      projects: await readableProjects({
+        state: current,
+        hydraId,
+      }),
+    })
 
     const listed: Output = {
       hydraId,
@@ -129,6 +189,20 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     throw new HydraError({
       message: 'Use project add --clone <url> --into <folder>; the destination is required',
       code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (action === 'set' || action === 'remove') {
+    const project = findProject({
+      state: current,
+      ref: required({
+        value: ref,
+        what: 'project',
+      }),
+    })
+    requireProjectMemory({
+      hydraId,
+      ...(await projectIdentity(project)),
     })
   }
 
@@ -303,6 +377,11 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       }).path
   }
 
+  requireProjectMemory({
+    hydraId,
+    ...(await projectIdentity({ path })),
+  })
+
   const result = withRegistryLock({
     fn: () => commit({
       hydraId,
@@ -380,6 +459,7 @@ export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project 
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. For every project and Hydra, use owner worker-notes.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
+Each project belongs to one memory space (shared by default); only attached Hydras that may read that space see its memory. Move changes its assigned space explicitly.
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
@@ -391,6 +471,7 @@ pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra
 pnyx-axi project add --clone <url> --into <folder> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
 pnyx-axi project list [--hydra <id>]
 pnyx-axi project show <name|path> [--hydra <id>]
+pnyx-axi project move <name|path> --space <space> [--hydra <id>]
 pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
 pnyx-axi project remove <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]

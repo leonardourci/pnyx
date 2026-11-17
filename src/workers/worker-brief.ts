@@ -1,3 +1,4 @@
+import { readableProjects } from '#memory/spaces.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
 import { projectIdentity } from '#projects/sources.ts'
@@ -6,7 +7,6 @@ import { readProjectMemory } from '#memory/project-memory.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
 import { projectWorkerContext } from '#projects/context.ts'
 import { READINESS_INSTRUCTIONS, taskStops } from '#tasks/delivery/rule.ts'
-import { projectsFor } from '#projects/read.ts'
 import { dirname, join } from 'node:path'
 import { declaredState } from '#tasks/declarations.ts'
 import type { Card } from '#tasks/model.ts'
@@ -112,9 +112,12 @@ export async function taskPrompt({
     id: card.id,
     title: card.title,
   })
-  const ownerNotes = ownerMemory().workers?.text
+  const ownerNotes = ownerMemory({ hydraId }).workers?.text
   const state = loadHydra({ hydraId }).state
-  const attachedProject = projectsFor({ state }).find(project => !project.detached
+  const attachedProject = (await readableProjects({
+    state,
+    hydraId,
+  })).find(project => !project.detached
     && matchesProject({
       project,
       ref: card.project,
@@ -130,7 +133,10 @@ export async function taskPrompt({
       project: card.project,
     }),
   ])
-  const projectNotes = identity ? readProjectMemory(identity).documents.workers ?? '' : ''
+  const projectNotes = identity ? readProjectMemory({
+    ...identity,
+    hydraId,
+  }).documents.workers ?? '' : ''
 
   const header = workerHeader({
     hydraId,

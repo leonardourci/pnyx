@@ -384,13 +384,16 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
-    const owner = ownerMemory()
+    const owner = ownerMemory({ hydraId })
     const state = loadHydra({ hydraId }).state
     const [
       projects,
       items,
     ] = await Promise.all([
-      projectDigest({ state }),
+      projectDigest({
+        state,
+        hydraId,
+      }),
       setupCheck({
         hydraId,
         state,

@@ -1,5 +1,6 @@
+import { requireProjectMemory } from './spaces.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
-import { readOwnerEntries } from './owner-memory-log.ts'
+import { ownerProjectMoves } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange, type Learning } from './learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
@@ -66,7 +67,18 @@ function memoryPath({ id }: { id: string }) {
   )
 }
 
-export function readProjectMemory({ id }: { id: string }): ProjectMemory {
+export function readProjectMemory({
+  id,
+  hydraId,
+}: {
+  id: string
+  hydraId: string
+}): ProjectMemory {
+  requireProjectMemory({
+    hydraId,
+    id,
+  })
+
   return withRegistryLock({ fn: () => readProjectMemoryLog({ id }) })
 }
 
@@ -80,22 +92,7 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
     events: [],
   }
 
-  const owner = readOwnerEntries()
-
-  if (owner.corrupt) {
-    throw new HydraError({
-      message: 'Owner memory has an unreadable line; inspect its log before reading project moves',
-      code: 'LOG_CORRUPT',
-    })
-  }
-
-  const events = owner.entries.flatMap(entry => {
-    if (entry.projectMove?.project === id) {
-      return [entry.projectMove.event]
-    }
-
-    return []
-  })
+  const events = ownerProjectMoves({ id })
   const text = existsSync(file) ? readFileSync(
     file,
     'utf8',
@@ -219,17 +216,38 @@ export async function projectFacts({ path }: { path: string }): Promise<ProjectF
   }
 }
 
-export async function projectMemoryView({ path }: { path: string }) {
+export async function projectMemoryView({
+  path,
+  hydraId,
+}: {
+  path: string
+  hydraId: string
+}) {
   const facts = await projectFacts({ path })
 
-  return withRegistryLock({ fn: () => projectMemoryViewUnderLock({ facts }) })
+  return withRegistryLock({
+    fn: () => projectMemoryViewUnderLock({
+      facts,
+      hydraId,
+    }),
+  })
 }
 
-export function projectMemoryViewUnderLock({ facts }: { facts: ProjectFacts }) {
+export function projectMemoryViewUnderLock({
+  facts,
+  hydraId,
+}: {
+  facts: ProjectFacts
+  hydraId: string
+}) {
   const {
     identity,
     sources,
   } = facts
+  requireProjectMemory({
+    hydraId,
+    id: identity.id,
+  })
   const memory = readProjectMemoryLog(identity)
   const changed = [
     ...new Set([
@@ -284,7 +302,10 @@ export async function writeProjectMemory({
 
   return withRegistryLock({
     fn: () => {
-      const view = projectMemoryViewUnderLock({ facts })
+      const view = projectMemoryViewUnderLock({
+        facts,
+        hydraId,
+      })
 
       const previous = view.events.find(event => event.id === meta.id)
 

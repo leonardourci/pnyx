@@ -144,6 +144,7 @@ export function startReviewTimer({
       }
 
       const memory = await memoryReview({
+        hydraId,
         state,
         now: new Date(time).toISOString(),
       })
