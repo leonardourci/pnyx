@@ -229,9 +229,9 @@ function Code({
   const lang = language?.split(/\s/)[0]?.toLowerCase() ?? ''
 
   return (
-    <div className="code-block bg-background border border-line rounded-md my-(--block-gap) mx-0 min-w-0 in-[.ask]:my-1">
+    <div className="code-block bg-background border border-line rounded-md my-(--block-gap) mx-0 min-w-0 in-[:is(.card,.ask)]:my-1">
       {lang && <span className="code-language block pt-1.5 px-2.5 pb-0 text-meta leading-[normal] font-mono font-normal not-italic text-muted">{lang}</span>}
-      <pre className="m-0 overflow-auto max-w-full p-2.5 text-code leading-(--chat-line) font-mono font-normal not-italic whitespace-pre in-[.ask]:p-1.5 in-[.ask]:text-[length:inherit] in-[.ask]:leading-question">
+      <pre className="m-0 overflow-auto max-w-full p-2.5 text-code leading-(--chat-line) font-mono font-normal not-italic whitespace-pre in-[:is(.card,.ask)]:p-1.5 in-[:is(.card,.ask)]:text-[length:inherit] in-[:is(.card,.ask)]:leading-question">
         <ProseCode block><ChatTokenText text={text} code /></ProseCode>
       </pre>
     </div>
@@ -255,7 +255,7 @@ function Table({
     cell,
     n,
   ) => (
-    <Cell key={n} style={align[n]} className="border border-line py-1.25 px-2.25 max-w-90 text-left [&:is(th)]:bg-raised [&:is(th)]:font-semibold in-[.ask]:py-0.75 in-[.ask]:px-1.25">{inline({
+    <Cell key={n} style={align[n]} className="border border-line py-1.25 px-2.25 max-w-90 text-left [&:is(th)]:bg-raised [&:is(th)]:font-semibold in-[:is(.card,.ask)]:py-0.75 in-[:is(.card,.ask)]:px-1.25">{inline({
       tokens: cell.tokens,
       openTask,
       columnLook,
@@ -265,7 +265,7 @@ function Table({
   ))
 
   return (
-    <div className="markdown-table overflow-auto max-w-full my-(--block-gap) mx-0 in-[.ask]:my-1">
+    <div className="markdown-table overflow-auto max-w-full my-(--block-gap) mx-0 in-[:is(.card,.ask)]:my-1">
       <table className="border-collapse w-max min-w-full">
         <thead>
           <tr>
