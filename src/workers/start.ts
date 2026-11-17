@@ -149,6 +149,7 @@ export async function startTask({
   folder: given,
   inPlace,
   replacement,
+  inputId,
   commandName,
   url,
   meta,
@@ -157,6 +158,7 @@ export async function startTask({
   hydraId: string
   task: string
   replacement?: string
+  inputId?: string
   commandName?: string
   via?: string
   rule?: string
@@ -410,6 +412,7 @@ export async function startTask({
         hydraId,
         body: {
           action: 'start',
+          inputId,
           dispatch,
           tools,
           task: card.id,

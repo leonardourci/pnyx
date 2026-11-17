@@ -165,7 +165,7 @@ export function recoveryCandidates({
       reason = 'a request is waiting for an answer'
     } else if (!original?.data.text || original.data.route !== 'pnyx'
         || original.data.state !== 'queued'
-        || original.data.control || original.data.taskMessage
+        || original.data.worker || original.data.control || original.data.taskMessage
         || original.data.answers || original.data.accepted
         || reply.answers || reply.accepted || /^\s*\//.test(original.data.text)) {
       reason = 'the original plain message is not proven safe to resend'

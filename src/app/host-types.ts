@@ -127,6 +127,7 @@ export interface Host {
     actor,
     reason,
     replacement,
+    inputId,
     dispatch,
     tools,
   }: {
@@ -136,6 +137,7 @@ export interface Host {
     dispatch?: DispatchChoice
     tools?: string[]
     replacement?: string
+    inputId?: string
     settings: AgentSettings
     id: string
     actor: string

@@ -55,6 +55,7 @@ import { createStallChecks } from '#hydra/stalls.ts'
 import { createWakeQueue } from '#hydra/wake-queue.ts'
 import { createHostRecovery } from './host-recovery.ts'
 import { createLiveSessions } from '#workers/live-sessions.ts'
+import { createCardInputs } from '#workers/card-input.ts'
 import { createLiveSettings } from '#workers/live-settings.ts'
 import { createHydraTurns } from '#hydra/turns.ts'
 import { createWorkerStarts } from '#workers/hosted-start.ts'
@@ -948,6 +949,7 @@ export function createHost({
     starting,
   } = createWorkerStarts({
     hydraId,
+    live,
     closing: () => closing,
     at,
     write,
@@ -1150,8 +1152,21 @@ export function createHost({
       .filter(id => !handed.has(id))
     const running = turnRunning({ entry })
 
-    if (!running && !unread.length && !entry?.input.pending()) {
+    const queuedInputs = card.replies?.some(reply => reply.worker && !reply.worker.session && reply.state === 'queued')
+
+    if (!running && !unread.length && !entry?.input.pending() && !queuedInputs) {
       return { stopped: 'none: this task’s agent is not working on a turn' }
+    }
+
+    const queued = card.replies?.filter(reply => reply.worker && !reply.worker.session && reply.state === 'queued') ?? []
+
+    for (const reply of queued) {
+      directReply({
+        card: card.id,
+        inputId: reply.id,
+        state: 'failed',
+        detail: 'stopped',
+      })
     }
 
     const cleared = entry?.input.clear() ?? []
@@ -1217,6 +1232,12 @@ export function createHost({
 
     return { stopped: card.id }
   }
+
+  const cardInputs = createCardInputs({
+    hydraId,
+    live,
+    host: () => host,
+  })
 
   const host: Host = {
     diagnostics: () => ({
@@ -1606,6 +1627,10 @@ export function createHost({
     },
 
     reconcile: ({ state }) => {
+      if (!closing && fenced()) {
+        cardInputs.reconcile({ state })
+      }
+
       syncCompactions({ state })
 
       reconcilePermissions({ state })

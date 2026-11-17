@@ -1,3 +1,5 @@
+import { nativeIdle } from './native-session.ts'
+import { decideReply } from './reply-rules.ts'
 import { realpathSync } from 'node:fs'
 import { requireToolAuthority, toolNames, writeTools } from './tools.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
@@ -32,6 +34,7 @@ import { base } from '#app/command-meta.ts'
 // Starting a worker in Pnyx, and continuing an outside Claude Code or Codex session in Pnyx.
 export function createWorkerStarts({
   hydraId,
+  live,
   closing,
   at,
   write,
@@ -46,6 +49,7 @@ export function createWorkerStarts({
   sessionKey,
 }: {
   hydraId: string
+  live: Map<string, Live>
   closing(): boolean
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
@@ -122,10 +126,12 @@ export function createWorkerStarts({
     writer,
     ref,
     replacement,
+    inputId,
   }: {
     writer: Writer
     ref: string
     replacement?: string
+    inputId?: string
   }): Card => {
     const target = findCard({
       state: writer.state,
@@ -153,6 +159,23 @@ export function createWorkerStarts({
       card,
     })
 
+    if (inputId && card.agent?.host === 'pnyx') {
+      const queued = card.replies?.find(reply => reply.id === inputId && reply.state === 'queued' && reply.worker)
+      const current = sessionId({ agent: card.agent })
+      const running = live.get(current)
+      const busy = running && (running.activity === 'working' || !running.session
+        || !nativeIdle({ work: running.session.snapshot().work }))
+
+      if (!queued || current !== replacement || busy) {
+        throw new HydraError({
+          message: 'The worker changed or is still working',
+          code: 'SESSION_CONFLICT',
+        })
+      }
+
+      return card
+    }
+
     const previous = outsideSession({
       writer,
       card,
@@ -179,6 +202,7 @@ export function createWorkerStarts({
     actor,
     reason,
     replacement,
+    inputId,
     dispatch,
     tools,
   }) => {
@@ -198,6 +222,7 @@ export function createWorkerStarts({
             writer,
             ref: task,
             replacement,
+            inputId,
           })
         }
 
@@ -323,6 +348,7 @@ export function createWorkerStarts({
           writer,
           ref: task,
           replacement,
+          inputId,
         })
 
         if ((folder ?? card.folder) !== requestedFolder) {
@@ -486,6 +512,35 @@ export function createWorkerStarts({
           })
         }
 
+        if (inputId) {
+          const queued = card.replies?.find(reply => reply.id === inputId && reply.worker)
+
+          if (!queued?.worker) {
+            throw new HydraError({
+              message: 'The starting message is missing',
+              code: 'CONFLICT',
+            })
+          }
+
+          applyDecision({
+            writer,
+            decision: decideReply({
+              state: writer.state,
+              ref: card.id,
+              data: {
+                reply: inputId,
+                state: 'queued',
+                route: 'pnyx',
+                worker: {
+                  agent: queued.worker.agent,
+                  session: sessionId({ agent }),
+                },
+              },
+              meta,
+            }),
+          })
+        }
+
         // The receipt is saved in the log, so it names the card rather than copying it.
         return {
           task: card.id,
@@ -520,8 +575,19 @@ export function createWorkerStarts({
       })
       entry.activity = 'working'
       entry.sentAt = Date.now()
+
+      if (inputId) {
+        entry.pendingDirect.set(
+          inputId,
+          {
+            card: started.id,
+            taken: false,
+          },
+        )
+      }
+
       entry.input.push({
-        id: `${id}:launch-input`,
+        id: inputId ?? `${id}:launch-input`,
         text: prompt,
       })
 
