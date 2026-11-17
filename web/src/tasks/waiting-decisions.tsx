@@ -68,8 +68,8 @@ export function WaitingDecisions({
         triggerRef={triggerRef}
         trigger={(
           <>
-            <span>Waiting on you · {decisions.length}</span>
-            <span className="waiting-decision-summary truncate max-w-[58%] text-muted">{decisions[0].text}</span>
+            <span className="shrink-0 whitespace-nowrap">Waiting on you · {decisions.length}</span>
+            <span className="waiting-decision-summary min-w-0 flex-1 truncate max-w-[58%] text-muted">{decisions[0].text}</span>
           </>
         )}
       >
