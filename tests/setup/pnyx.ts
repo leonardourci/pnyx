@@ -56,6 +56,7 @@ export async function until<T>({
 
 export interface Run {
   status: number | null
+  signal: NodeJS.Signals | null
   stdout: string
   stderr: string
 }
@@ -102,8 +103,12 @@ export function pnyxAxi({
     )
     child.once(
       'close',
-      status => resolve({
+      (
         status,
+        signal,
+      ) => resolve({
+        status,
+        signal,
         stdout,
         stderr,
       }),
@@ -373,7 +378,9 @@ function hydraClient({
     })
 
     if (run.status !== 0) {
-      throw new Error(`pnyx-axi ${args.join(' ')} exited ${run.status}:\n${run.stdout}${run.stderr}`)
+      const outcome = run.status === null ? `signal ${run.signal}` : `status ${run.status}`
+
+      throw new Error(`pnyx-axi ${args.join(' ')} exited with ${outcome}:\n${run.stdout}${run.stderr}`)
     }
 
     return parsed(run)
