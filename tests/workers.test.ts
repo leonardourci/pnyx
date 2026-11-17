@@ -15,7 +15,23 @@ import { startPnyx, until, type AgentSession, type Pnyx } from './setup/pnyx.ts'
 let pnyx: Pnyx
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  pnyx = await startPnyx({
+    codexConfig: {
+      features: {
+        apps: true,
+        plugins: true,
+        image_generation: true,
+      },
+      web_search: 'live',
+      mcp_servers: { example: { command: 'example' } },
+      plugins: {
+        example: {
+          enabled: true,
+          mcp_servers: { bundled: {} },
+        },
+      },
+    },
+  })
 })
 
 test(
@@ -40,6 +56,7 @@ test(
     expect(codex.config).not.toHaveProperty('plugins')
     expect(codex.config).not.toHaveProperty('skills.config')
     expect(codex.env.CHROME_DEVTOOLS_AXI_SESSION).toBeUndefined()
+    expect(codex.instructions).toContain('ask Hydra with pnyx-axi task ask')
 
     const { worker: claude } = await hydra.startTask({ key: 'native-claude' })
     expect(claude.config).toMatchObject({
@@ -108,6 +125,8 @@ test(
         session.resumed && session.cwd === codex.cwd && session.env.CHROME_DEVTOOLS_AXI_SESSION),
     })
     expect(browser.env.CHROME_DEVTOOLS_AXI_HEADED).toBe('0')
+    expect(browser.instructions).toContain('Use chrome-devtools-axi')
+    expect(browser.instructions).not.toContain('ask Hydra with pnyx-axi task ask')
     expect(browser.config).not.toHaveProperty('mcp_servers')
     expect(browser.config).not.toHaveProperty('plugins')
   },
@@ -115,44 +134,30 @@ test(
 
 test(
   'Codex routine helpers still disable configured services, skills and web search',
-  async ({ onTestFinished }) => {
-    const codex = fakeCodex({
-      config: {
-        features: {
-          apps: true,
-          plugins: true,
-          image_generation: true,
-        },
-        web_search: 'live',
-        mcp_servers: { example: { command: 'example' } },
-        plugins: {
-          example: {
-            enabled: true,
-            mcp_servers: { bundled: {} },
-          },
-        },
-      },
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'codex',
+        '--helper-model',
+        'gpt-6-luna',
+      ],
     })
-    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
-      cwd: process.env.TMPDIR!,
-      settings: {},
-      env: {},
-      signal: new AbortController().signal,
-      toolScope: 'routine',
-    })
-    const { input } = await driven({
-      session,
-      onEnd: ({ end }) => onTestFinished(end),
-    })
-    input.push({
-      id: 'routine',
-      text: 'routine turn',
-    })
+    const main = await hydra.chat({ text: 'Watch native helper scope' })
     await until({
-      what: 'routine helper turn',
-      check: () => codex.sessions[0]?.answered === 1,
+      what: 'Hydra first turn',
+      check: () => main.answered === 1,
     })
-    expect(codex.sessions[0]?.config).toMatchObject({
+    await hydra.startTask({ key: 'routine-scope' })
+    const helper = await until({
+      what: 'server-started Codex routine helper',
+      check: () => pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === hydra.id
+        && session.env.PNYX_ACTOR?.startsWith('helper:') && session.answered > 0),
+    })
+    expect(helper.config).toMatchObject({
       'features.apps': false,
       'features.plugins': false,
       'skills.config': [],
