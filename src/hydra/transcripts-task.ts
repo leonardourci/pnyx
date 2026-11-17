@@ -85,7 +85,7 @@ export function taskReceipt({
   reply: string
   // When Hydra took the copy of a task message sent to it.
   hydraReceived?: string
-}): Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery'> | undefined {
+}): Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery' | 'targetAgent'> | undefined {
   const receipt = card.replies?.find(r => r.id === reply)
 
   if (!receipt) {
@@ -103,9 +103,18 @@ export function taskReceipt({
     state = 'queued'
   }
 
-  const waiting = state === 'queued' ? waitingReason({ card }) : receipt.detail
+  let waiting = state === 'queued' ? waitingReason({ card }) : receipt.detail
 
-  const entry: Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery'> = { receipt: state }
+  if (state === 'queued' && receipt.worker) {
+    const { agent } = receipt.worker
+    waiting = `Queued · ${agent.harness}${agent.model ? ` / ${agent.model}` : ''}${agent.effort ? ` · ${agent.effort}` : ''}`
+  }
+
+  const entry: Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery' | 'targetAgent'> = { receipt: state }
+
+  if (receipt.worker) {
+    entry.targetAgent = receipt.worker.agent
+  }
 
   if (received) {
     entry.received = received
@@ -115,7 +124,7 @@ export function taskReceipt({
     entry.waiting = waiting
   }
 
-  if (receipt.route) {
+  if (receipt.route && !receipt.worker) {
     entry.delivery = {
       hydra: hydraPart({
         card,

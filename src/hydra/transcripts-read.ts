@@ -7,7 +7,7 @@ import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { AgentRef, ReplyState } from '#workers/model.ts'
+import type { AgentConfig, AgentRef, ReplyState } from '#workers/model.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
@@ -30,6 +30,7 @@ import type { HydraMessage } from './model.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
+  targetAgent?: AgentConfig
   final?: boolean
   block?: number
   reference?: string

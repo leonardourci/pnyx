@@ -92,8 +92,15 @@ export interface Attention {
   answered?: string
 }
 
-// A reply's latest receipt. The text stays in the log, on its queued event.
+export interface CardWorkerInput {
+  agent: AgentConfig
+  // Set atomically when the message is handed to this session.
+  session?: string
+}
+
+// Receipts retain the text needed to retry owner sends.
 export interface Reply {
+  worker?: CardWorkerInput
   accepted?: boolean
   text?: string
   context?: string
