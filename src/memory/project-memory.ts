@@ -74,12 +74,16 @@ export function readProjectMemory({
   id: string
   hydraId: string
 }): ProjectMemory {
-  requireProjectMemory({
-    hydraId,
-    id,
-  })
+  return withRegistryLock({
+    fn: () => {
+      requireProjectMemory({
+        hydraId,
+        id,
+      })
 
-  return withRegistryLock({ fn: () => readProjectMemoryLog({ id }) })
+      return readProjectMemoryLog({ id })
+    },
+  })
 }
 
 function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {

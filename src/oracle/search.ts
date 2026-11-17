@@ -214,11 +214,6 @@ export function search({
     })
   }
 
-  const index = openIndex({
-    hydraId,
-    state,
-  })
-
   const ownerDocuments = includeMemory ? Object.values(ownerMemory({
     hydraId,
     migrate: false,
@@ -232,6 +227,10 @@ export function search({
     ...document,
     text: redact({ text: document.text }),
   }))
+  const index = openIndex({
+    hydraId,
+    state,
+  })
 
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()

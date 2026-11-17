@@ -101,10 +101,8 @@ export const settings = guard({
     ]
     const memoryPatch = patch && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch)
 
-    if (memoryPatch && typeof patch === 'object' && patch !== null
-      && (memoryAgent() || hydraActor({ actor: change.actor }))) {
+    if (memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
       const state = loadHydra({ hydraId }).state
-      const poleis = read.settings.poleis
 
       if ('projectPoleis' in patch) {
         throw new HydraError({
@@ -118,7 +116,7 @@ export const settings = guard({
           if (!canRead({
             hydraId,
             state,
-            poleis,
+            poleis: read.settings.poleis,
             polis,
           })) {
             throw new HydraError({
@@ -161,21 +159,19 @@ export const settings = guard({
     })
 
     if (memoryAgent()) {
-      receipt.settings = visibleSettings({
+      const visible = visibleSettings({
         settings: shownSettings({ settings: readSettings().settings }),
         hydraId,
       })
+      receipt.settings = visible
 
       if (receipt.changed && typeof receipt.changed === 'object') {
-        const changed = receipt.changed as Record<string, unknown>
-        const visible = receipt.settings as Settings
-
-        if ('poleis' in changed) {
-          changed.poleis = visible.poleis
+        if ('poleis' in receipt.changed) {
+          receipt.changed.poleis = visible.poleis
         }
 
-        if ('projectPoleis' in changed) {
-          changed.projectPoleis = visible.projectPoleis
+        if ('projectPoleis' in receipt.changed) {
+          receipt.changed.projectPoleis = visible.projectPoleis
         }
       }
     }
@@ -292,11 +288,11 @@ function visibleSettings({
   }
 
   const state = loadHydra({ hydraId }).state
-  const poleis = readSettings().settings.poleis
+  const configuredPoleis = readSettings().settings.poleis
   const readable = ({ polis }: { polis: string }) => memoryCaller({ hydraId }) && canRead({
     hydraId,
     state,
-    poleis,
+    poleis: configuredPoleis,
     polis,
   })
 

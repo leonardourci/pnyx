@@ -717,6 +717,13 @@ test(
         path,
       ],
     }))).toContain('Project pulsar learning')
+    const searchableBeforeMove = await hidden.owner({
+      args: [
+        'oracle',
+        'pulsar',
+      ],
+    })
+    expect(JSON.stringify(searchableBeforeMove)).toContain('Project [pulsar]')
     await hidden.owner({
       args: [
         'hydra',

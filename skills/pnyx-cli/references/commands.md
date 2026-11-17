@@ -43,9 +43,10 @@ Stop a hosted worker with `task stop <task>` or Hydra with `hydra stop`; a worke
 Hide Hydras from the page list and switcher with `settings set --json '{"hiddenHydras":["hydra-2"]}'`. Restore all with `settings set --json '{"hiddenHydras":[]}'`. This shared view setting leaves pages, projects and workers running.
 
 `task merge <task>` checks the task’s merge rule, owner approval, classic protection and reported checks, and binds the request to the verified head. A 403/404 from the branch-rules endpoint means no readable rules there; other evidence failures still refuse the merge.
+
 ### Poleis
 
-Hydra config uses `polis` for its home and `readPoleis` for the full read list. Both default to `shared`; changing the home does not implicitly change reads.
+Hydra config uses `polis` for its home and `readPoleis` for its read list. The defaults are `shared` and `["shared"]`. Change the read list separately with `--read-poleis`.
 
 `shared` holds existing owner memory without rewriting its log. New and existing Hydras read and write `shared` by default. `work` and `personal` start empty with no readers. Owner-memory reads merge only poleis allowed by both the Hydra reads list and the polis readers list. Writes resolve the Hydra's one write polis on the server; ordinary memory commands accept no polis argument. The 24000-character budget applies to each polis.
 
