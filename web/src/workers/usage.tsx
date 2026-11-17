@@ -1,3 +1,4 @@
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import type { AgentUsage } from '#workers/provider.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { UsageRow, UsageStack, UsageText, UsageSection, USAGE_TONE } from './usage-ui.tsx'
@@ -163,15 +164,16 @@ export function Usage({
         <UsageRow variant="header" className="shared-header">
           <UsageRow variant="icon" className="usage-icon-line"><Icon name="effort" size={13} /><strong>Plan limits</strong></UsageRow>
           {refresh && (
-            <button
-              type="button"
-              className="plan-refresh inline-flex items-center justify-center size-6.25 shrink-0 p-1 border-0 rounded-compact bg-transparent text-inherit opacity-76 cursor-pointer hover:opacity-100 hover:bg-usage-hover focus-visible:outline focus-visible:outline-current focus-visible:outline-offset-2 aria-disabled:cursor-wait aria-disabled:opacity-45"
-              aria-label="Refresh plan limits"
+            <IconButton
+              icon="reset"
+              size="usage"
+              iconSize={13}
+              className="plan-refresh"
+              label="Refresh plan limits"
               aria-disabled={refreshing}
               aria-busy={refreshing}
               onClick={refreshing ? undefined : refresh}
-            ><Icon name="reset" size={13} />
-            </button>
+            />
           )}
         </UsageRow>
         <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={13} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge text-usage-detail border border-usage-badge px-1.75 py-px rounded-compact leading-[1.4] capitalize">{who.plan}</span>}</UsageRow>
