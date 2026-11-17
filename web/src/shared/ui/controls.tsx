@@ -12,7 +12,7 @@ export function Button({
   const appearance = {
     'menu-choice': 'bg-transparent border-transparent flex-1 min-w-0 justify-start min-h-9 gap-2 p-1.75 text-ui text-left [&>span]:flex-1 [&>span]:min-w-0 [&>span]:wrap-anywhere [&>svg]:shrink-0',
     quiet: '[:where(&)]:bg-transparent [:where(&)]:border-transparent enabled:hover:bg-hover',
-    surface: 'bg-raised border-line enabled:hover:bg-hover',
+    surface: 'bg-raised border-control enabled:hover:bg-hover',
     primary: 'bg-gold-fill text-gold-ink border-gold-fill enabled:hover:bg-hover enabled:hover:brightness-108',
   }[variant]
 

@@ -45,6 +45,7 @@
   --text-code: 13px;
   --ease-ui: ease;
   --tracking-keymap: .04em;
+  --tracking-eyebrow: .13em;
   --radius-compact: 5px;
   --shadow-range: 0 1px 3px var(--color-shadow);
   --radius-hairline: 1px;
@@ -276,29 +277,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 :root:not([data-theme="light"]) { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #f4c95d; --color-gold-line: #f4c95d; --color-gold-wash: #2b2518; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; --color-column-background: #0e0f11; --color-column-line: #303136; --color-column-needs-you: #d5b678; --color-card-label-base: transparent; --card-surface-opacity: 75%; } }
 
-.eyebrow { display: block; text-transform: uppercase; letter-spacing: .13em; font-size: var(--text-meta); color: var(--color-muted); }
-
-.row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-
-.between { justify-content: space-between; }
-
-.wrap { flex-wrap: wrap; }
-
-@layer utilities{
- .small{
-  @apply text-meta; } }
-
-.muted { color: var(--color-muted); }
-
-.gold { color: var(--color-gold); }
-
 .column-queued { --column-color: var(--color-slate); }
 .column-in_progress, .column-workers_on_it { --column-color: var(--color-blue); }
 .column-needs_you { --column-color: var(--color-column-needs-you); }
 .column-parked, .column-review { --column-color: var(--color-purple); }
 .column-done { --column-color: var(--color-green); }
-
-.count { font: var(--text-meta) var(--font-sans); color: var(--color-muted); }
 
 .request { margin-top: 8px; padding: 5px 7px; border-left: 2px solid var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); }
 
@@ -309,8 +292,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .tone-2 { color: var(--color-purple); }
 
 .tone-3 { color: var(--color-green); }
-
-.empty { margin: 5px 0; padding: 20px 10px; text-align: center; border: 1px dashed var(--color-line); border-radius: 7px; color: var(--color-muted); font-size: var(--text-ui); }
 
 .thread:not(.hydra-messages) { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; scrollbar-gutter: stable; padding: 4px 16px 12px; }
 
@@ -333,25 +314,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 @keyframes chat-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-
-
-
-
-
-
 /* The textarea and its chip mirror share every metric, so chips sit exactly over the text they stand for. */
 
 /* A compact field grows with its text up to its limit, then scrolls. */
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -370,8 +335,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .last-message strong { color: var(--color-ink); font-weight: 600; }
 
-.button.surface { border-color: var(--color-control); }
-
 .activity-stopped > i { border-radius: 1px; background: currentColor; }
 @keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
 
@@ -381,24 +344,15 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .running i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
 
-
-
-.count { font-size: var(--text-meta); }
-
 .last-message { margin: 0; padding: 0; border: 0; background: transparent; color: var(--color-muted); font-size: var(--text-ui); }
 
 .last-message > strong { display: none; }
 
 .last-message .markdown > :first-child { margin-top: 0; }
 
-.empty { border: 0; padding: 16px 8px; font-size: var(--text-ui); }
-
 .agent-chip { font-size: var(--text-meta); border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); padding: 1px 8px; }
 
 .thread:not(.hydra-messages) { padding: 0; min-height: 0; flex: none; overflow: visible; }
-
-/* Floated beside the text, which comments quote, and layered over its positioned blocks so it keeps its clicks. */
-
 
 .task-brief { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
 
@@ -440,26 +394,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
-
-
-
-
-
-/* Absolute, so the slot sets the size whatever the image's shape; contain shows it whole. */
-
-
-
-
-
-
-
-
 /* A card in a message selects with the text around it, like the other chips. */
 .message .attachment-card:not(.composer-field *) { margin: 0 1px; user-select: auto; }
 
-/* A chip is one --chip-h box around the text's own line box (--chip-text in the chat font), so it fits inside the line. */
-
-/* A chip moves to the next line whole instead of breaking, and only a chip longer than a line wraps, inside its own box. */
 
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
@@ -469,7 +406,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .pending-status { position: fixed; right: 16px; bottom: 16px; z-index: 70; max-width: min(480px, calc(100vw - 32px)); padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); pointer-events: none; }
 
 .notice { position: fixed; bottom: 16px; right: 16px; z-index: 80; display: flex; align-items: center; gap: 12px; max-width: min(480px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 2px 12px var(--color-shadow); }
-
 
 @starting-style { .tooltip:popover-open { opacity: 0; } }
 .task-report { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 8px 10px; background: var(--color-raised); border: 1px solid var(--color-line); border-radius: 9px; font-size: var(--text-meta); }
@@ -512,3 +448,23 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .composer-text {
   @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];
 }
+/* Utility aliases keep shared layout on semantic elements owned by their callers. */
+@layer utilities{
+ .eyebrow{
+  @apply block uppercase tracking-eyebrow text-meta text-muted; }
+ .row{
+  @apply flex items-center gap-2 min-w-0; }
+ .between{
+  @apply justify-between; }
+ .wrap{
+  @apply flex-wrap; }
+ .small{
+  @apply text-meta; }
+ .muted{
+  @apply text-muted; }
+ .gold{
+  @apply text-gold; }
+ .count{
+  @apply font-sans text-meta leading-[normal] font-normal text-muted; }
+ .empty{
+  @apply my-1.25 mx-0 py-4 px-2 text-center border-0 rounded-control text-muted text-ui; } }
