@@ -16,6 +16,7 @@ const replies = new Map<string, ReturnType<typeof createPendingResource<ChatEntr
 
 export function WorkerChat({
   hydraId,
+  storageIdentity,
   card,
   state,
   live,
@@ -24,6 +25,7 @@ export function WorkerChat({
   notify,
 }: {
   hydraId: string
+  storageIdentity: string
   card: Card
   state: HydraState
   live: ThreadPage | null | undefined
@@ -323,6 +325,7 @@ export function WorkerChat({
       </div>
       <Composer
         hydraId={hydraId}
+        storageIdentity={storageIdentity}
         card={card.id}
         title={card.title}
         drafts={drafts}

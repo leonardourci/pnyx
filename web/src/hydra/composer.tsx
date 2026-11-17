@@ -23,6 +23,7 @@ const MENU_ICON = 16
 
 export function Composer({
   hydraId,
+  storageIdentity,
   card,
   title,
   drafts,
@@ -47,6 +48,7 @@ export function Composer({
   sendLabel?: string
   unavailable?: boolean
   hydraId: string
+  storageIdentity: string
   card: string
   title: string
   drafts: ChatDrafts
@@ -108,7 +110,7 @@ export function Composer({
     [drafts],
   )
 
-  const cacheIdentity = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
+  const cacheIdentity = storageIdentity
   const attempt = useRef(readAttempt({
     key: card,
     hydraId: cacheIdentity,

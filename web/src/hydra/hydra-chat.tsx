@@ -102,6 +102,7 @@ const withFailure = ({
 
 export function HydraChat({
   hydraId,
+  storageIdentity,
   state,
   command,
   connected,
@@ -122,6 +123,7 @@ export function HydraChat({
   selectedTask,
 }: {
   hydraId: string
+  storageIdentity: string
   // The Hydra's name and icon for the header, and the names of the owner's other Hydras.
   identity?: {
     name: string
@@ -1362,6 +1364,7 @@ export function HydraChat({
       />
       <Composer
         hydraId={hydraId}
+        storageIdentity={storageIdentity}
         loadComment={loadComment}
         compacting={compactionRunning}
         focusAbove={() => {

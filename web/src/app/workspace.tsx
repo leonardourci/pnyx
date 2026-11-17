@@ -853,6 +853,7 @@ export function HydraView({
         tabIndex={0}
         chat={opened && (
           <WorkerChat
+            storageIdentity={hydra.storageHydra}
             hydraId={navigation.hydraId}
             card={item}
             state={state}
@@ -1107,6 +1108,7 @@ export function HydraView({
                       name,
                       icon,
                     })}
+                    storageIdentity={hydra.storageHydra}
                     addProject={() => addProject({ id: navigation.hydraId })}
                     projectRequest={projectRequest}
                     projectRequested={() => setProjectRequest(false)}

@@ -1021,3 +1021,95 @@ test(
     await conversation.getByText('Not delivered').waitFor()
   },
 )
+
+test(
+  'a pending send belongs to its composer Hydra through reload',
+  async () => {
+    const first = await pnyx.hydra()
+    const second = await pnyx.hydra()
+    const sent: {
+      scope?: string
+      id?: string
+    }[] = []
+    let holding = true
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: first.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.type === 'command' && frame.name === 'hydra' && frame.args?.[0] === 'send') {
+              sent.push({
+                scope: frame.scope,
+                id: frame.args?.at(-1),
+              })
+
+              if (holding) {
+                return
+              }
+            }
+
+            server.send(message)
+          })
+        },
+      ),
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${second.id}"]`)
+
+    try {
+      const composer = workspace.getByRole(
+        'textbox',
+        {
+          name: 'Reply to Hydra',
+          exact: true,
+        },
+      )
+      await composer.fill('Only the second Hydra receives this')
+      await page.evaluate(() => {
+        const meta = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')!
+        meta.content = 'unrelated-selected-Hydra'
+      })
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Send reply',
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'second Hydra send is withheld',
+        check: () => sent.length === 1,
+      })
+      expect(sent[0]?.scope).toBe(second.id)
+      holding = false
+      await page.reload()
+      await until({
+        what: 'pending send resumes in its owning Hydra',
+        check: () => sent.length === 2,
+      })
+      expect(sent[1]?.scope).toBe(second.id)
+      expect(sent[1]?.id).toBe(sent[0]?.id)
+      await workspace.getByRole(
+        'region',
+        { name: 'Hydra conversation' },
+      ).getByText(
+        'Only the second Hydra receives this',
+        { exact: true },
+      )
+        .waitFor()
+      expect(await page.locator(`[data-hydra-workspace="${first.id}"]`).getByText(
+        'Only the second Hydra receives this',
+        { exact: true },
+      )
+        .count()).toBe(0)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
