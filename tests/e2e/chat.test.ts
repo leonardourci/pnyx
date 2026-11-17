@@ -812,20 +812,29 @@ const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>>
     await page.keyboard.press('PageUp')
   },
   touch: async ({ page }) => {
+    const session = await page.context().newCDPSession(page)
+    await session.send(
+      'Emulation.setTouchEmulationEnabled',
+      { enabled: true },
+    )
+    await page.locator(CONVERSATION).scrollIntoViewIfNeeded()
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+    await page.evaluate(() => new Promise(requestAnimationFrame))
     const bounds = await page.locator(CONVERSATION).boundingBox()
 
     if (!bounds) {
       throw new Error('Conversation is not visible')
     }
 
-    const x = bounds.x + bounds.width / 2
-    const session = await page.context().newCDPSession(page)
-    await session.send(
-      'Emulation.setTouchEmulationEnabled',
-      { enabled: true },
+    const width = await page.evaluate(() => innerWidth)
+    const right = Math.min(
+      bounds.x + bounds.width,
+      width,
     )
-    await page.evaluate(() => new Promise(requestAnimationFrame))
-    await page.evaluate(() => new Promise(requestAnimationFrame))
+    const x = (Math.max(
+      0,
+      bounds.x,
+    ) + right) / 2
     const move = ({
       type,
       y,

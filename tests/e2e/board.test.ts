@@ -735,6 +735,37 @@ test(
             y: 8,
           },
         })
+        await until({
+          what: 'the source and open parent to finish moving',
+          check: async () => {
+            const before = await Promise.all([
+              parent.boundingBox(),
+              third.boundingBox(),
+            ])
+            await page.evaluate(() => new Promise<void>(resolve => {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+            }))
+            const after = await Promise.all([
+              parent.boundingBox(),
+              third.boundingBox(),
+            ])
+
+            return before.every((
+              rect,
+              index,
+            ) => {
+              const next = after[index]
+
+              return rect && next && ([
+                'x',
+                'y',
+                'width',
+                'height',
+              ] as const)
+                .every(key => Math.abs(rect[key] - next[key]) < 0.5)
+            })
+          },
+        })
         const source = await third.boundingBox()
 
         if (!source) {
@@ -756,21 +787,33 @@ test(
           throw new Error('The open parent is not visible')
         }
 
-        await page.mouse.move(
-          Math.max(
+        const viewport = await page.evaluate(() => ({
+          width: innerWidth,
+          height: innerHeight,
+        }))
+        const point = {
+          x: (Math.max(
+            0,
             visible.x,
             target.x,
           ) + Math.min(
-            visible.width,
-            target.width,
-          ) / 2,
-          (Math.max(
+            viewport.width,
+            visible.x + visible.width,
+            target.x + target.width,
+          )) / 2,
+          y: (Math.max(
+            0,
             target.y,
             visible.y,
           ) + Math.min(
+            viewport.height,
             target.y + target.height,
             visible.y + visible.height,
           )) / 2,
+        }
+        await page.mouse.move(
+          point.x,
+          point.y,
           { steps: 16 },
         )
         await until({
