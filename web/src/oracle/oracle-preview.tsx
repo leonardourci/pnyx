@@ -1,3 +1,4 @@
+import { SearchBadgeLabel } from '#web-shared/ui/search-bar.tsx'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import type { HydraState } from '#app/model.ts'
@@ -216,7 +217,12 @@ export function FilterPreview({
 
   return (
     <>
-      <PreviewTitle>{TYPE_LABELS[filter.type]}: <span className="search-badge" data-kind={filter.type}><Icon name={filter.icon} size={14} />{filter.label}</span></PreviewTitle>
+      <PreviewTitle>
+        {TYPE_LABELS[filter.type]}:
+        <SearchBadgeLabel kind={filter.type}>
+          <Icon name={filter.icon} size={14} />{filter.label}
+        </SearchBadgeLabel>
+      </PreviewTitle>
       <p className="muted"><kbd>Space</kbd>, <kbd>Tab</kbd> or <kbd>Enter</kbd> makes it a badge.</p>
       <p className="muted">{filterReach({ filter })}{either}</p>
     </>
