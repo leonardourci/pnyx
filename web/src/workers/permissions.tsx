@@ -1,3 +1,4 @@
+import { ReceiptStatus } from '#web-shared/ui/receipt-status.tsx'
 import { QuestionHeading, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { useState } from 'react'
 import type { Card } from '#tasks/model.ts'
@@ -20,7 +21,7 @@ function Receipt({ request }: { request: PermissionRequest }) {
       : delivery === 'submitted' ? 'Answer submitted to the agent' : undefined
 
   if (message) {
-    return <span className="receipt" role="status">{message}</span>
+    return <ReceiptStatus role="status">{message}</ReceiptStatus>
   }
 
   const answered = request.answers
@@ -32,11 +33,11 @@ function Receipt({ request }: { request: PermissionRequest }) {
       .join(' · ')
 
   return (
-    <span className="receipt">
+    <ReceiptStatus>
       {request.status === 'expired'
         ? 'Expired · agent no longer waiting'
         : request.status === 'allow' ? (answered ? `Answered · ${answered}` : 'Allowed') : request.questions || request.form ? 'Skipped' : 'Denied'}
-    </span>
+    </ReceiptStatus>
   )
 }
 

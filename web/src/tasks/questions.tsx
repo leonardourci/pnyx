@@ -1,3 +1,4 @@
+import { ReceiptStatus } from '#web-shared/ui/receipt-status.tsx'
 import { QuestionFields, QuestionOptions, QuestionHeading, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
@@ -433,7 +434,7 @@ export function InlineQuestions({
             </QuestionHeading>
             {request.kind !== 'question' && <CollapsibleText text={request.text ?? ''} />}
             {request.answered
-              ? <span className="receipt">Answered · waiting for the session to move on</span>
+              ? <ReceiptStatus>Answered · waiting for the session to move on</ReceiptStatus>
               : prompt?.kind === 'questions'
                 ? <Questions request={request} busy={pending} send={send} />
                 : prompt?.kind === 'form'

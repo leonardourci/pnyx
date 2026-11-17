@@ -1110,7 +1110,7 @@ export function HydraChat({
 
   return (
     <aside
-      className="hydra-chat"
+      className="hydra-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-[760px]:w-70 max-[760px]:basis-70 [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:var(--spacing-chat-inset)] [&>:is(.composer,.agent-change-choice,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto"
       aria-label="Hydra’s chat"
       style={{
         width: width ?? view.hydraWidth,
@@ -1125,11 +1125,11 @@ export function HydraChat({
         addProject={addProject}
         connected={connected}
       >
-        {down && <span className="hydra-status" role="status">{down}</span>}
+        {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans tracking-normal" role="status">{down}</span>}
       </HydraHead>
-      <div className="hydra-body">
+      <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
         <div
-          className="hydra-messages thread"
+          className="hydra-messages flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:outline-offset-[-3px]"
           ref={stream}
           data-key-scope="thread"
           role="region"
@@ -1187,11 +1187,11 @@ export function HydraChat({
             })
           }}
         >
-          <div className="hydra-stream" ref={content}>
-            <div ref={olderMarker} className="hydra-older">
+          <div className="hydra-stream max-w-(--chat-max) mx-auto" ref={content}>
+            <div ref={olderMarker} className="hydra-older h-7">
               {loadingEarlier && (
-                <div className="hydra-loading" role="status" aria-label="Loading earlier messages">
-                  <span className="hydra-spinner" aria-hidden="true" />
+                <div className="hydra-loading h-full flex items-center justify-center pointer-events-none" role="status" aria-label="Loading earlier messages">
+                  <span className="hydra-spinner size-4 border-2 border-line border-t-muted rounded-full animate-hydra-spin motion-reduce:animate-hydra-spin-reduced" aria-hidden="true" />
                 </div>
               )}
             </div>
@@ -1259,12 +1259,12 @@ export function HydraChat({
               notify={notify}
             />
             {!entries.length && (
-              <p className="hydra-empty">
+              <p className="hydra-empty mt-3 text-muted text-ui">
                 What are we working on?
-                {offerProject && <> <InlineButton className="hydra-empty-action" onClick={addProject}>Add a project</InlineButton></>}
+                {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
               </p>
             )}
-            {errors.map(a => <p key={a.key} className="chat-error" role="alert"><Icon name="error" size={16} />{a.text}</p>)}
+            {errors.map(a => <p key={a.key} className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert"><Icon name="error" size={16} />{a.text}</p>)}
             {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
             {card && (
               <InlinePermissions
@@ -1301,9 +1301,9 @@ export function HydraChat({
         )}
         {away && (
           <>
-            <div className="chat-fade" aria-hidden="true" />
+            <div className="chat-fade absolute inset-x-0 bottom-0 z-2 h-(--chat-end) pointer-events-none bg-linear-to-b/srgb from-transparent to-surface animate-chat-fade motion-reduce:animate-none" aria-hidden="true" />
             <Button
-              className="jump"
+              className="jump absolute bottom-2.5 left-[calc(50%-var(--spacing-jump)/2)] z-3 size-jump p-0 justify-center border border-line rounded-full bg-surface text-ink shadow-jump animate-chat-fade enabled:hover:bg-raised motion-reduce:animate-none"
               aria-label="Jump to latest"
               title="Jump to latest"
               onClick={() => {

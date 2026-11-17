@@ -50,7 +50,7 @@ export function HydraHead({
 
   return (
     <header
-      className="hydra-head"
+      className="hydra-head font-brand font-bold flex items-center justify-start gap-2 py-2.5 px-3.5 border-b border-line shrink-0 text-pane [&_strong]:min-w-0 [&_strong]:truncate [&_strong]:font-[inherit] [&_.hydra-name-editor]:flex-1 [&_.hydra-name-editor]:max-w-90 [&_.hydra-name-field_.input]:text-ui"
       onContextMenu={event => canEdit && openMenu({ event })}
       onKeyDown={event => canEdit && opensMenu({ event }) && openMenu({
         event: {
@@ -93,7 +93,7 @@ export function HydraHead({
             />
           ) : <Icon name={icon} size={24} />}
           <Button
-            className="hydra-title"
+            className="hydra-title min-w-0 min-h-0 py-0.5 px-1.5 -ml-1.5 justify-start text-[length:inherit]"
             disabled={!canEdit}
             title="Click to edit"
             aria-label={`Edit ${hydraTitle({ name })}`}

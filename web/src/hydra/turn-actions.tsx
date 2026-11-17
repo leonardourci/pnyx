@@ -67,7 +67,7 @@ export function TurnActionsFold({
   }
 
   return (
-    <div contentEditable={false} className="turn-actions">
+    <div contentEditable={false} className="turn-actions mt-0.5 mx-0 mb-3 text-muted text-meta [&>.disclosure>summary]:text-[length:inherit] [&>.disclosure>summary]:justify-start [&>.disclosure>summary]:gap-1.25 [&>.disclosure>summary]:p-0 [&>.disclosure>summary>.disclosure-chevron]:ml-0 [&>.disclosure>summary>.disclosure-chevron]:opacity-0 [&>.disclosure>summary>.disclosure-chevron]:transition-opacity [&>.disclosure>summary>.disclosure-chevron]:duration-110 [&>.disclosure>summary>.disclosure-chevron]:ease-ui [&>.disclosure:is([open],:hover,:focus-within)>summary>.disclosure-chevron]:opacity-100 [&>.disclosure>.disclosure-body]:pt-2.5 [&>.disclosure>.disclosure-body]:px-0 [&>.disclosure>.disclosure-body]:pb-0">
       <Disclosure
         title={label}
         open={opened !== undefined && OPENED_PROGRESS.has(opened)}
@@ -77,7 +77,7 @@ export function TurnActionsFold({
         })}
       >
         {rows.length > 0 && (
-          <section className="turn-progress">
+          <section className="turn-progress mb-3 [&_.collapsible-text]:mt-1.5">
             <span className="eyebrow">Progress</span>
             {rows.map(row => (
               <div key={row.entry.id} data-progress-id={row.entry.reference ?? row.entry.id}>
@@ -95,9 +95,9 @@ export function TurnActionsFold({
           </section>
         )}
         {fold.tasks.map(task => (
-          <section key={task.task} className="turn-task">
+          <section key={task.task} className="turn-task [&+.turn-task]:border-t [&+.turn-task]:border-line [&+.turn-task]:mt-3 [&+.turn-task]:pt-3">
             <TaskReference id={task.task} />
-            <div className="turn-task-updates">
+            <div className="turn-task-updates mt-2 [&_.update-title]:font-normal [&_.update-main]:text-ink">
               {task.updates.map(update => <UpdateEntry key={update.id} update={update} />)}
             </div>
           </section>

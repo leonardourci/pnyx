@@ -50,14 +50,14 @@ export function Running({
 
   return (
     <div
-      className="chat-running"
+      className="chat-running absolute left-4 bottom-1.5 z-3 flex flex-wrap items-center gap-y-1 gap-x-2 py-0.5 pr-2 pl-0 rounded-card bg-surface text-muted text-meta tabular-nums max-w-[calc(100%-2rem)] [&_.working-dots_i]:size-1.25 in-[.hydra-chat]:static in-[.hydra-chat]:mx-(--chat-inset) in-[.hydra-chat]:max-w-[calc(100%-2*var(--chat-inset))] in-[.hydra-chat]:py-1 in-[.hydra-chat]:px-0 in-[.hydra-chat]:flex-none"
       title={since ? `Started ${clock({
         at: since,
         seconds: true,
       })}` : undefined}
     >
       <span
-        className="chat-running-status"
+        className="chat-running-status inline-flex items-center gap-2 min-w-0 max-w-full [&>:not(.action-bubble)]:shrink-0 [&>:not(.action-bubble)]:whitespace-nowrap"
         role="status"
         aria-label={statusName({
           running,
