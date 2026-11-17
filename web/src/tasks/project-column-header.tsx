@@ -30,6 +30,7 @@ export function ProjectColumnHeader({
           className="min-w-0 touch-none justify-start gap-2 [&>strong]:truncate group-[.folded]/project:self-start group-[.folded]/project:[writing-mode:vertical-rl]"
           {...drag.attributes}
           {...drag.listeners}
+          aria-disabled={undefined}
           ref={drag.setActivatorNodeRef}
           data-column-heading={column.id}
           data-key-scope="hydra"

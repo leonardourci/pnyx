@@ -1,3 +1,5 @@
+import { FoldContent } from '#web-shared/ui/fold-content.tsx'
+import { motionDuration } from '#web-shared/motion.ts'
 import { useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { PROJECT_MIN_WIDTH, DEFAULT_PROJECT_WIDTH } from '#preferences/workspace.ts'
@@ -71,7 +73,7 @@ export function ProjectColumn({
   const lifted = dragging.active?.kind === 'project' && dragging.active.id === column.id
     && dragging.active.hydra === hydraId
 
-  const showHint = dragging.active?.kind === 'task' && !dragging.active.hasChildren
+  const showHint = dragging.active?.kind === 'task'
     && dragging.active.hydra === hydraId && dragging.active.column === column.id
 
   return (
@@ -94,7 +96,7 @@ export function ProjectColumn({
       aria-label={column.title}
       style={{ '--project-card-width': `${width - PROJECT_CONTENT_INSET}px` } as CSSProperties}
       animate={{ width: folded ? 48 : width }}
-      transition={preview !== null || reduced ? { duration: 0 } : undefined}
+      transition={preview !== null || reduced ? { duration: motionDuration({ speed: 'instant' }) / 1000 } : undefined}
     >
       <ProjectColumnHeader
         column={column}
@@ -104,13 +106,14 @@ export function ProjectColumn({
         fold={toggle}
         create={create}
       />
-      <div
+      <FoldContent
+        open={!folded}
+        axis="none"
         ref={scroll}
         data-sort-surface={`tasks:${hydraId}:${column.id}`}
-        hidden={folded}
         className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2 [&[hidden]]:hidden"
       ><div ref={grid} className="project-card-grid relative flex flex-wrap items-start gap-2 [&>:not(.task-family)]:w-full">{children}</div>
-      </div>
+      </FoldContent>
       {!folded && (
         <Resize
           label={`Resize ${column.title}`}

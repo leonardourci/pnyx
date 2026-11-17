@@ -1,3 +1,4 @@
+import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { StatusNotice, StatusMessage, ErrorBanner } from '#web-shared/ui/status-message.tsx'
 import { projectTitle } from '#web-projects/view.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
@@ -814,7 +815,6 @@ export function HydraView({
         key={item.key}
         card={item}
         hydraId={navigation.hydraId}
-        dragChildren={family.dragChildren}
         sortScope={`${navigation.hydraId}:${column.id}:${statusPriority({ status: family.status })}:${item.parentId ?? 'root'}`}
         statusOverride={family.status}
         progress={family.progress}
@@ -892,7 +892,7 @@ export function HydraView({
         otherProjects={otherProjects}
       >
         <motion.div
-          layout="position"
+          layout
           ref={setLayer}
           className="app hydra-workspace group/workspace flex h-full w-max min-w-[calc(100vw-1.5rem)] flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-14.5 max-[760px]:min-w-[calc(100vw-0.75rem)] max-[760px]:p-1.5"
           data-hydra-workspace={navigation.hydraId}
@@ -976,7 +976,7 @@ export function HydraView({
               }}
             />
           </Panel>
-          <header className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-[calc(100vw-3.5rem)] flex-none items-center gap-2.5 bg-background px-0.5 pb-2 [&>.button]:flex-none group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col">
+          <motion.header layout="position" className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-[calc(100vw-3.5rem)] flex-none items-center gap-2.5 bg-background px-0.5 pb-2 [&>.button]:flex-none group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col">
             <div
               ref={hydraSort.setNodeRef}
               {...hydraSort.attributes}
@@ -1041,9 +1041,11 @@ export function HydraView({
               onClick={toggleHydra}
               icon={view.workspace.collapsed ? 'chevron_right' : 'chevron_left'}
             />
-          </header>
-          <main
-            hidden={view.workspace.collapsed}
+          </motion.header>
+          <FoldContent
+            as="main"
+            axis="none"
+            open={!view.workspace.collapsed}
             className="shell flex min-h-0 w-max flex-1 flex-col gap-2 overflow-visible p-0 [&[hidden]]:hidden"
             aria-busy={!!loading || !loaded}
             data-hydra={navigation.hydraId}
@@ -1072,14 +1074,14 @@ export function HydraView({
               ]}
             />
             <div className="hydra-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
-              <div className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
+              <motion.div layout className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
                 <IconButton
                   className="chat-fold absolute top-3 right-1.75 z-4 p-1"
                   label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}
                   onClick={toggleChat}
                   icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                 />
-                <div className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-[760px]:[&>.hydra-chat]:w-[calc(100vw-2.375rem)]! max-[760px]:[&>.hydra-chat]:basis-[calc(100vw-2.375rem)]!" hidden={view.workspace.chatCollapsed}>
+                <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-[760px]:[&>.hydra-chat]:w-[calc(100vw-2.375rem)]! max-[760px]:[&>.hydra-chat]:basis-[calc(100vw-2.375rem)]!">
                   <HydraChat
                     hydraId={navigation.hydraId}
                     identity={shownHydra && {
@@ -1113,8 +1115,8 @@ export function HydraView({
                     save={save}
                     drafts={chatDrafts}
                   />
-                </div>
-              </div>
+                </FoldContent>
+              </motion.div>
 
               <TaskReferencesProvider references={references} openTask={revealTask}>
                 <div className="hydra-main flex min-h-0 w-max flex-none flex-col">
@@ -1258,7 +1260,7 @@ export function HydraView({
               </div>,
               document.body,
             )}
-          </main>
+          </FoldContent>
           {notice && createPortal(
             <StatusNotice role="status">
               <span>{notice.text}</span>

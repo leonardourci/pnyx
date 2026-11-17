@@ -1,8 +1,6 @@
+import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
-import { CardShell, CardContent } from './card-shell.tsx'
 import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
-import { CardSummary, cardTint } from './card-summary.tsx'
-import { taskProjectColumn } from './project-view.ts'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type ComponentProps } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -10,7 +8,8 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { compareTasks, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
-import { CLOSED_CARD_MIN_WIDTH, SUBTASK_INDENT } from './project-layout.ts'
+import { SUBTASK_INDENT } from './project-layout.ts'
+import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 
 function Subtasks({
   children,
@@ -23,7 +22,6 @@ export interface FamilyCard {
   card: Card
   status: ObservedStatus
   progress?: string
-  dragChildren?: ReactNode
   childrenOpen?: boolean
   hasChildren?: boolean
   toggleChildren?(): void
@@ -89,13 +87,13 @@ export function TaskFamily({
     [children.length],
   )
   const childSelected = children.some(child => selected.includes(child.id))
-  const childrenOpen = expanded || childSelected
+  const childrenOpen = expanded || childSelected || children.length > previousCount.current
   const opened = [
     card,
     ...children,
   ].filter(item => selected.includes(item.id))
   const style = {
-    '--closed-card-min': `${CLOSED_CARD_MIN_WIDTH}px`,
+    '--closed-card-min': `${CARD_SIZING.closed.minWidth}px`,
     '--subtask-indent': `${SUBTASK_INDENT}px`,
   } as CSSProperties
   const drag = useSortState()
@@ -116,62 +114,35 @@ export function TaskFamily({
         status,
         progress: children.length ? `${done}/${children.length}` : undefined,
         hasChildren: children.length > 0,
-        dragChildren: childrenOpen && (
-          <Subtasks style={style}>
-            {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
-              <CardShell
-                key={child.key}
-                tint={cardTint({
-                  card: child,
-                  colors: state.labelColors,
-                })}
-              >
-                <CardContent>
-                  <CardSummary
-                    card={child}
-                    status={taskRollup({
-                      state,
-                      card: child,
-                      actions,
-                    }).status}
-                    now={Date.now()}
-                    colors={state.labelColors}
-                    legacyProject={taskProjectColumn({
-                      state,
-                      card: child,
-                    }) === 'ideas'}
-                  />
-                </CardContent>
-              </CardShell>
-            ))}
-          </Subtasks>
-        ),
         childrenOpen,
         toggleChildren: () => setExpanded(value => !value),
       })}
-      {children.length > 0 && childrenOpen && (
-        <Subtasks data-sort-surface={`children:${card.id}`}>
-          <SortGroup namespace={`tasks:${hydraId}`} id={`children:${card.id}`} items={shown.map(child => child.id)}>
-            {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
-              <SortablePanel
-                layout="position"
-                key={child.key}
-                data-child={child.id}
-                lifted={drag.active?.kind === 'task' && drag.active.id === child.id
+      {children.length > 0 && (
+        <FoldContent open={childrenOpen}>
+          <Subtasks data-sort-surface={`children:${card.id}`}>
+            <SortGroup namespace={`tasks:${hydraId}`} id={`children:${card.id}`} items={shown.map(child => child.id)}>
+              {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
+                <SortablePanel
+                  layout="position"
+                  key={child.key}
+                  data-child={child.id}
+                  lifted={drag.active?.kind === 'task' && drag.active.id === child.id
                   && drag.active.hydra === hydraId}
-              >
-                {renderCard({
-                  card: child,
-                  status: taskRollup({
-                    state,
+                >
+                  {renderCard({
                     card: child,
-                    actions,
-                  }).status,
-                })}
-              </SortablePanel>
-            ))}
-          </SortGroup>
-        </Subtasks>
+                    hasChildren: children.some(part => part.parentId === child.id),
+                    status: taskRollup({
+                      state,
+                      card: child,
+                      actions,
+                    }).status,
+                  })}
+                </SortablePanel>
+              ))}
+            </SortGroup>
+          </Subtasks>
+        </FoldContent>
       )}
     </SortablePanel>
   )
