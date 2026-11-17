@@ -110,22 +110,57 @@ test(
       PNYX_TASK: undefined,
     }
     await personal.owner({
-      args: ['hydra', 'memory', 'set', '--key', 'scope', '--text', 'Private Hydra scope'],
+      args: [
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'scope',
+        '--text',
+        'Private Hydra scope',
+      ],
     })
     const crossHydraRead = await pnyxAxi({
-      args: ['hydra', 'memory', 'list', '--hydra', personal.id],
+      args: [
+        'hydra',
+        'memory',
+        'list',
+        '--hydra',
+        personal.id,
+      ],
       env: crossEnv,
     })
     expect(crossHydraRead.status).toBe(0)
     expect(crossHydraRead.stdout).not.toContain('Private Hydra scope')
+    expect((await pnyxAxi({
+      args: [
+        'oracle',
+        'scope',
+        '--hydra',
+        personal.id,
+      ],
+      env: crossEnv,
+    })).stdout).not.toContain('Private')
     const crossHydraWrite = await pnyxAxi({
-      args: ['hydra', 'memory', 'forget', '--key', 'scope', '--hydra', personal.id],
+      args: [
+        'hydra',
+        'memory',
+        'forget',
+        '--key',
+        'scope',
+        '--hydra',
+        personal.id,
+      ],
       env: crossEnv,
     })
     expect(crossHydraWrite.status).not.toBe(0)
     expect(crossHydraWrite.stdout).toContain('NOT_FOUND')
     expect(JSON.stringify(await personal.owner({
-      args: ['hydra', 'memory', 'list'],
+      args: [
+        'hydra',
+        'memory',
+        'list',
+      ],
     }))).toContain('Private Hydra scope')
     const crossRead = await pnyxAxi({
       args: [
@@ -304,8 +339,24 @@ test(
     })
     expect(hiddenSpaceEdit.status).not.toBe(0)
     expect(hiddenSpaceEdit.stdout).toContain('NOT_FOUND')
+    const missingSpaceEdit = await pnyxAxi({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"memorySpaces":{"missing":null}}',
+        '--hydra',
+        work.id,
+      ],
+      env: crossEnv,
+    })
+    expect(missingSpaceEdit.stdout).toBe(hiddenSpaceEdit.stdout)
     expect(JSON.stringify(await personal.owner({
-      args: ['owner', 'memory', 'list'],
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
     }))).toContain('Secret nebula preference')
     const selfGrant = await pnyxAxi({
       args: [
@@ -375,6 +426,28 @@ test(
     const { worker } = await work.startTask({ key: 'space-header' })
     expect(worker.received.join('\n')).toContain('Work header quasar')
     expect(worker.received.join('\n')).not.toContain('Secret header nebula')
+    const workerSettings = await pnyxAxi({
+      args: [
+        'settings',
+        'show',
+        '--hydra',
+        work.id,
+      ],
+      env: worker.env,
+    })
+    expect(workerSettings.status).toBe(0)
+    expect(workerSettings.stdout).not.toContain('personal')
+    const workerConfig = await pnyxAxi({
+      args: [
+        'hydra',
+        'show',
+        '--hydra',
+        personal.id,
+      ],
+      env: worker.env,
+    })
+    expect(workerConfig.status).toBe(0)
+    expect(workerConfig.stdout).not.toContain('personal')
     const digest = (await pnyxAxi({
       args: [
         'hydra',
@@ -624,6 +697,15 @@ test(
         'pulsar',
       ],
     }))).not.toContain('Project [pulsar]')
+    const noProjectHit = await allowed.owner({
+      args: [
+        'oracle',
+        'Hydra',
+        '--project',
+        path,
+      ],
+    })
+    expect(Array.isArray(noProjectHit.results)).toBe(false)
     expect(JSON.stringify(await allowed.owner({
       args: [
         'oracle',
@@ -982,7 +1064,7 @@ test(
       args: move,
       env,
     })).stdout).toContain('OWNER_ONLY')
-    const moveProposal = parsed(await pnyxAxi({
+    let moveProposal = parsed(await pnyxAxi({
       args: [
         ...move,
         '--propose',
@@ -996,6 +1078,47 @@ test(
         'list',
       ],
     }))).not.toContain('Controlled magnetar note')
+    await other.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Latest destination preference',
+      ],
+    })
+    expect((await hydra.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        moveProposal.token,
+        '--confirm',
+        moveProposal.token,
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    expect(JSON.stringify(await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    }))).toContain('Controlled magnetar note')
+    await hydra.owner({
+      args: [
+        'approval',
+        'dismiss',
+        moveProposal.token,
+      ],
+    })
+    moveProposal = parsed(await pnyxAxi({
+      args: [
+        ...move,
+        '--propose',
+      ],
+      env,
+    }))
     await hydra.owner({
       args: [
         'approval',
@@ -1040,7 +1163,7 @@ test(
       args: learningMove,
       env,
     })).stdout).toContain('OWNER_ONLY')
-    const learningProposal = parsed(await pnyxAxi({
+    let learningProposal = parsed(await pnyxAxi({
       args: [
         ...learningMove,
         '--propose',
@@ -1054,6 +1177,44 @@ test(
         project,
       ],
     }))).not.toContain('Controlled axion line')
+    await other.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        project,
+        '--key',
+        'preferences',
+        '--text',
+        'Latest project preference',
+        '--reason',
+        'test changed destination',
+      ],
+    })
+    expect((await hydra.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        learningProposal.token,
+        '--confirm',
+        learningProposal.token,
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    await hydra.owner({
+      args: [
+        'approval',
+        'dismiss',
+        learningProposal.token,
+      ],
+    })
+    learningProposal = parsed(await pnyxAxi({
+      args: [
+        ...learningMove,
+        '--propose',
+      ],
+      env,
+    }))
     await hydra.owner({
       args: [
         'approval',
