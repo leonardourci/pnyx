@@ -66,7 +66,10 @@ export function attachProjectGroup({
           })
         }
 
-        if (commandMeta.id && Object.hasOwn(state.eventIds, commandMeta.id)) {
+        if (commandMeta.id && Object.hasOwn(
+          state.eventIds,
+          commandMeta.id,
+        )) {
           return { skipped: 'duplicate' }
         }
 
