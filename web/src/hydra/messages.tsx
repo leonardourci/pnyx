@@ -285,7 +285,7 @@ const MessageRow = memo(function MessageRow({
 
               return (
                 <div
-                  className="message-block"
+                  className="message-block relative min-w-0 rounded-preview"
                   data-message-block={key}
                   data-message-id={messageId}
                   data-message-at={entry.at}
@@ -1170,7 +1170,7 @@ export function Messages({
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div
-            className="comment-pill"
+            className="comment-pill absolute z-5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1"
             ref={pill}
             contentEditable={false}
             onMouseDown={e => e.preventDefault()}
@@ -1184,7 +1184,7 @@ export function Messages({
               Comment
               <kbd>↵</kbd>
             </Button>
-            <span className="comment-pill-divider" />
+            <span className="comment-pill-divider w-px self-stretch my-1 mx-px bg-line" />
             <Button
               aria-label="Quote selection"
               title="Shift+Enter"

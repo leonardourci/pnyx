@@ -88,7 +88,7 @@ export const CommentsDialog = memo(function CommentsDialog({
     <Dialog title={`Comments · ${listed.length}`} className="comments-dialog [&_.comment-card]:my-1 [&_.comment-card]:mx-0 [&_.comment-quote]:line-clamp-4 [&_.comment-quote]:whitespace-normal" close={finish}>
       <div className="dialog-body flex flex-col gap-1 min-h-0 overflow-auto px-4 pt-2 pb-3.5">
         {[...replies.values()].map(items => (
-          <section key={items[0]!.id} className="comment-group">
+          <section key={items[0]!.id} className="comment-group flex flex-col mt-2">
             <span className="eyebrow">{replyLabel(items[0]!)}</span>
             {items.map(comment => (
               <MessageComment

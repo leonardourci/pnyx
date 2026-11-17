@@ -1129,7 +1129,7 @@ export function HydraChat({
       </HydraHead>
       <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
         <div
-          className="hydra-messages flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:outline-offset-[-3px]"
+          className="hydra-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:outline-offset-[-3px]"
           ref={stream}
           data-key-scope="thread"
           role="region"

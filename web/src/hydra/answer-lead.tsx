@@ -74,7 +74,7 @@ export function AnswerLeadHead({ lead }: { lead: AnswerLead }) {
   )
 
   const question = (
-    <div className="answer-lead-question grid gap-1 text-muted [&_.text-preview]:max-h-[2lh] [&_.text-preview]:line-clamp-2 [&_:is(.text-preview,.collapsible-text>div,.markdown)]:text-ui [&_:is(.text-preview,.collapsible-text>div,.markdown)]:leading-answer-question">
+    <div className="answer-lead-question grid gap-1 text-muted [&_.text-preview]:max-h-[2lh] [&_.text-preview]:line-clamp-2 [&_:is(.text-preview,.collapsible-text>div,.markdown)]:text-ui [&_:is(.text-preview,.collapsible-text>div,.markdown)]:leading-detail">
       <CollapsibleText
         text={lead.question}
         preview={preview}

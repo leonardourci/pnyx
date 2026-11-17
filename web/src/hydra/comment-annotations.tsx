@@ -41,7 +41,7 @@ function CommentPile({
 
   return (
     <div
-      className="comment-pile"
+      className="comment-pile absolute z-2 pointer-events-auto data-spread:z-4"
       data-spread={spread || undefined}
       aria-label={`${pile.badges.length} comment markers`}
       style={{
@@ -75,7 +75,7 @@ function CommentPile({
       ) => (
         <Button
           key={badge.key}
-          className="comment-marker"
+          className="comment-marker absolute top-0 block p-0 border-0 rounded-full bg-transparent transition-[left] duration-(--comment-marker-duration) ease-ui [&_.comment-number]:transition-transform [&_.comment-number]:duration-(--comment-marker-duration) [&_.comment-number]:ease-ui [&:is(:hover,:focus-visible,[data-active])_.comment-number]:-translate-y-0.5 [&:is(:hover,:focus-visible,[data-active])_.comment-number]:border-ink [&:is(:hover,:focus-visible,[data-active])_.comment-number]:shadow-comment-marker motion-reduce:transition-none motion-reduce:[&_.comment-number]:transition-none"
           data-comment-marker={badge.key}
           data-active={active === badge.key || undefined}
           aria-label={`Go to comment ${badge.number}`}
@@ -426,7 +426,7 @@ export function CommentAnnotations({
   )
 
   return (
-    <div className="comment-annotations" ref={layer} contentEditable={false}>
+    <div className="comment-annotations absolute inset-0 pointer-events-none select-none" ref={layer} contentEditable={false}>
       <style>{`::highlight(${emphasis}) { background-color: var(--comment-emphasis); text-decoration: underline; text-decoration-color: var(--color-gold); }`}</style>
       {jump && layout.rects.map((
         rect,
@@ -434,7 +434,7 @@ export function CommentAnnotations({
       ) => (
         <span
           key={`${jump.key}-${index}`}
-          className="comment-jump"
+          className="comment-jump absolute z-1 rounded-preview bg-(--comment-jump-highlight) [animation-name:comment-jump] [animation-timing-function:ease-out] [animation-fill-mode:both] motion-reduce:animate-none motion-reduce:opacity-50"
           style={{
             ...rect,
             animationDuration: `${JUMP_DURATION}ms`,

@@ -76,6 +76,13 @@
   --spacing-setting-label: 90px;
   --spacing-picker-label: 54px;
   --spacing-dispatch-name: 8ch;
+  --spacing-permission-label: 88px;
+  --transition-comment-card: background-color var(--comment-fade-duration) ease-out, border-color var(--comment-fade-duration) ease-out, box-shadow var(--comment-fade-duration) ease-out;
+  --shadow-comment-emphasis: 0 0 0 1px var(--color-gold-line);
+  --shadow-comment-jump: 0 0 0 1px var(--color-gold);
+  --shadow-comment-marker: 0 0 0 1px var(--color-surface);
+  --shadow-comment-pill: 0 4px 14px var(--color-shadow);
+  --color-comment-emphasis: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised));
   --spacing-dispatch-issue: 70px;
   --shadow-invalid: inset 0 0 0 1px var(--color-red);
   --shadow-dispatch: -14px 0 12px -2px var(--color-surface);
@@ -183,12 +190,22 @@
   --spacing-prose-question-list: 1.4em;
   --text-prose-question-code: .95em;
   --leading-answer: 1.6;
-  --leading-answer-question: 1.45;
+  --leading-detail: 1.45;
   --spacing-message-reference: .5em;
   --color-answer-lead: color-mix(in srgb, var(--color-surface) 55%, transparent);
   --leading-question: 1.4;
   --tracking-question: .06em;
   --text-recommended: .85em;
+}
+
+@theme static {
+  --comment-highlight-strength: 24%;
+  --comment-emphasis-strength: 45%;
+  --comment-fade-duration: 160ms;
+  --comment-marker-duration: 140ms;
+  --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent);
+  --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent);
+  --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent);
 }
 
 @layer base {
@@ -214,6 +231,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 }
 
 @theme inline {
+  --animate-comment-jump: comment-jump var(--comment-jump-duration) ease-out both;
   --color-attachment-comments: color-mix(in srgb, var(--color-gold) 8%, transparent);
   --color-update-hydra: color-mix(in srgb, var(--color-teal) 12%, var(--color-surface));
   --color-update-told: color-mix(in srgb, var(--color-blue) 12%, var(--color-surface));
@@ -236,7 +254,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
   --shadow-skill-label: inset 0 0 0 1px color-mix(in srgb, var(--label-color, var(--color-muted)) 55%, transparent);
 }
 
-:root { --chat-end: 64px; --chat-line: 1.65; --chip-h: 1.375em; --chip-text: 1.125em; --chip-pad: calc((var(--chip-h) - var(--chip-text)) / 2); --block-gap: .75em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --chat-line: 1.65; --chip-h: 1.375em; --chip-text: 1.125em; --chip-pad: calc((var(--chip-h) - var(--chip-text)) / 2); --block-gap: .75em;        color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #f4c95d; --color-gold-line: #f4c95d; --color-gold-wash: #2b2518; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; --color-column-background: #0e0f11; --color-column-line: #303136; --color-column-needs-you: #d5b678; --color-card-label-base: transparent; --card-surface-opacity: 75%; }
 @media (prefers-color-scheme: dark) {
@@ -279,7 +298,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .empty { margin: 5px 0; padding: 20px 10px; text-align: center; border: 1px dashed var(--color-line); border-radius: 7px; color: var(--color-muted); font-size: var(--text-ui); }
 
-.thread { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; scrollbar-gutter: stable; padding: 4px 16px 12px; }
+.thread:not(.hydra-messages) { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; scrollbar-gutter: stable; padding: 4px 16px 12px; }
 
 /* A streamed reply types in: untyped letters are laid out but transparent, the last few typed ramp up. */
 ::highlight(reveal-0) { color: color-mix(in srgb, var(--color-ink) 25%, transparent); }
@@ -339,52 +358,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .button.surface { border-color: var(--color-control); }
 
 .activity-stopped > i { border-radius: 1px; background: currentColor; }
-
-.message-block { position: relative; min-width: 0; border-radius: 3px; }
-
-.comment-pill { position: absolute; z-index: 5; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--color-gold-line); border-radius: 8px; background: var(--color-surface); box-shadow: 0 4px 14px var(--color-shadow); white-space: nowrap; }
-
-.comment-pill .button { min-height: 26px; padding: 2px 8px; gap: 5px; font-size: var(--text-meta); }
-
-.comment-pill .button:first-child { color: var(--color-gold); }
-
-.comment-pill kbd { padding: 0 4px; }
-
-.comment-pill-divider { width: 1px; align-self: stretch; margin: 4px 1px; background: var(--color-line); }
-
-.comment-card { transition: background-color var(--comment-fade-duration) ease-out, border-color var(--comment-fade-duration) ease-out, box-shadow var(--comment-fade-duration) ease-out; position: relative; display: flex; flex-direction: column; gap: 3px; margin: 6px 0 10px; padding: 6px 6px 6px 10px; border: 1px solid var(--color-line); border-left: 2px solid var(--color-gold); border-radius: 8px; background: var(--color-raised); font-size: var(--text-ui); user-select: none; }
-
-.comment-card[data-emphasis] { background: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised)); border-color: var(--color-gold); box-shadow: 0 0 0 1px var(--color-gold-line); }
-.comment-card:focus-within { border-color: var(--color-gold-line); border-left-color: var(--color-gold); }
-
-.comment-quote { overflow: hidden; color: var(--color-muted); font-size: var(--text-meta); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
-
-.comment-quote mark { padding: 0 1px; border-radius: 2px; background: var(--comment-highlight); color: var(--color-ink); }
-
-.comment-heading { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
-.comment-heading .comment-quote { flex: 1; min-width: 0; }
-
-.comment-heading > .tooltip-anchor { display: flex; flex: 1; min-width: 0; }
-
-.comment-number { display: inline-flex; flex: none; align-items: center; justify-content: center; padding: 0 4px; border: 1px solid var(--color-gold-line); border-radius: 999px; background: var(--color-gold-fill); color: var(--color-gold-ink); font-size: var(--text-meta); line-height: 1; font-variant-numeric: tabular-nums; }
-.comment-annotations { position: absolute; inset: 0; pointer-events: none; user-select: none; }
-.comment-pile { position: absolute; z-index: 2; pointer-events: auto; }
-.comment-pile[data-spread] { z-index: 4; }
-.comment-marker.button { position: absolute; top: 0; display: block; padding: 0; border: 0; border-radius: 999px; background: transparent; transition: left var(--comment-marker-duration) ease; }
-.comment-marker .comment-number { transition: transform var(--comment-marker-duration) ease; }
-.comment-marker:hover .comment-number, .comment-marker:focus-visible .comment-number, .comment-marker[data-active] .comment-number { transform: translateY(-2px); border-color: var(--color-ink); box-shadow: 0 0 0 1px var(--color-surface); }
-.comment-card[data-jump]::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--comment-jump-highlight); box-shadow: 0 0 0 1px var(--color-gold); animation: comment-jump var(--comment-jump-duration) ease-out both; }
-.comment-jump { position: absolute; z-index: 1; border-radius: 3px; background: var(--comment-jump-highlight); animation-name: comment-jump; animation-timing-function: ease-out; animation-fill-mode: both; }
 @keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .comment-jump, .comment-card[data-jump]::after { animation: none; opacity: .5; } .comment-card, .comment-marker.button, .comment-marker .comment-number { transition: none; } }
-
-.comment-row { display: flex; align-items: flex-start; gap: 6px; }
-
-
-
-
-.comment-group { display: flex; flex-direction: column; margin-top: 8px; }
-
 
 
 .running { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; font-size: var(--text-meta); color: var(--color-blue); }
@@ -406,7 +380,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .agent-chip { font-size: var(--text-meta); border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); padding: 1px 8px; }
 
-.thread { padding: 0; min-height: 0; flex: none; overflow: visible; }
+.thread:not(.hydra-messages) { padding: 0; min-height: 0; flex: none; overflow: visible; }
 
 /* Floated beside the text, which comments quote, and layered over its positioned blocks so it keeps its clicks. */
 
@@ -433,13 +407,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 ::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
 
 :hover::-webkit-scrollbar-thumb, .scrolling::-webkit-scrollbar-thumb { background: var(--color-control); }
-
-.permission-input { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
-.permission-details { display: grid; gap: 4px; margin: 0; font-size: var(--text-ui); }
-.permission-details > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 8px; }
-.permission-details dt { color: var(--color-muted); }
-.permission-details dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-.permission-details code { font-family: var(--font-mono); }
 .hydra-project-setup { padding: 8px 0 16px; }
 .confirmation-dialog { background: var(--color-surface); color: var(--color-ink); border: 1px solid var(--color-line); border-radius: 12px; padding: 24px; max-width: 440px; }
 .confirmation-dialog::backdrop { background: var(--color-shadow); }
@@ -510,9 +477,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .pending-status { position: fixed; right: 16px; bottom: 16px; z-index: 70; max-width: min(480px, calc(100vw - 32px)); padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); pointer-events: none; }
 
 .notice { position: fixed; bottom: 16px; right: 16px; z-index: 80; display: flex; align-items: center; gap: 12px; max-width: min(480px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 2px 12px var(--color-shadow); }
-/* Lines are the shown text's own, so the clamp cuts between lines, never through one. */
-.text-preview { max-height: 3lh; font-size: var(--text-chat); line-height: var(--chat-line); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
-.button.show-more { justify-self: start; min-height: 0; padding: 0; color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
 
 
 @starting-style { .tooltip:popover-open { opacity: 0; } }
@@ -549,7 +513,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .waiting-decisions li .button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: 0; padding: 7px; text-align: left; white-space: normal; overflow-wrap: anywhere; font-size: inherit; line-height: 1.5; }
 .waiting-decision-task { color: var(--color-muted); }
 .waiting-decision-question { color: var(--color-gold); }
-.ask .disclosure > summary { padding-block: 3px; }
 
 
 

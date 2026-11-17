@@ -108,7 +108,7 @@ export function InlinePermissions({
           <QuestionPanel key={request.id} answered={!pending} aria-label={request.questions ? 'Agent question' : 'Tool permission'}>
             <QuestionHeading ><Icon name="agent" size={14} />{title({ request })}</QuestionHeading>
             {details.length > 0 && (
-              <dl className="permission-details">
+              <dl className="permission-details grid gap-1 m-0 text-ui [&>div]:grid [&>div]:grid-cols-[var(--spacing-permission-label)_minmax(0,1fr)] [&>div]:gap-2 [&_dt]:text-muted [&_dd]:m-0 [&_dd]:wrap-anywhere [&_dd]:whitespace-pre-wrap [&_code]:font-mono">
                 {details.map(row => (
                   <div key={row.label}>
                     <dt>{row.label}</dt>
@@ -119,7 +119,7 @@ export function InlinePermissions({
             )}
             {!request.questions && !request.form && (
               <Disclosure title={<span className="small muted">Full request</span>}>
-                <pre className="permission-input">{JSON.stringify(
+                <pre className="permission-input whitespace-pre-wrap wrap-anywhere max-h-64 overflow-auto">{JSON.stringify(
                   request.input,
                   null,
                   2,
