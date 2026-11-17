@@ -1,3 +1,4 @@
+import { DisclosureChevron } from './disclosure-chevron.tsx'
 import { Icon } from './icon.tsx'
 import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react'
 import { sliderValue } from './slider-value.ts'
@@ -274,7 +275,7 @@ export function Select({
       >
         {chosen?.icon && <Icon name={chosen.icon} size={iconSize} />}
         {display ?? chosen?.label ?? label}
-        <Icon name="chevron_down" size={14} />
+        <DisclosureChevron expanded={open} />
       </Button>
       {open && (
         <div

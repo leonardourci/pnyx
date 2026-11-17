@@ -1,3 +1,4 @@
+import { DisclosureChevron } from './disclosure-chevron.tsx'
 import { FloatingPanel } from './floating-panel.tsx'
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button } from './controls.tsx'
@@ -5,6 +6,7 @@ import { Button } from './controls.tsx'
 export function Popover({
   label,
   trigger,
+  chevronSize,
   children,
   className = '',
   triggerRef,
@@ -15,6 +17,7 @@ export function Popover({
 }: {
   label: string
   trigger: ReactNode
+  chevronSize?: number
   children({ close }: { close(): void }): ReactNode
   className?: string
   triggerRef?: RefObject<HTMLButtonElement | null>
@@ -153,7 +156,9 @@ export function Popover({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => setOpen(value => !value)}
-      >{trigger}
+      >
+        {trigger}
+        {chevronSize !== undefined && <DisclosureChevron expanded={open} size={chevronSize} />}
       </Button>
       {open && (
         <FloatingPanel

@@ -392,6 +392,7 @@ export function AgentSettingsMenu({
     <Popover
       label={`${label}: ${summary}`}
       className="account-model-picker agent-settings-menu"
+      chevronSize={TRIGGER_CHEVRON}
       disabled={disabled}
       trigger={(
         <>
@@ -404,7 +405,6 @@ export function AgentSettingsMenu({
             />
           )}
           {effort && <span className="agent-settings-effort">{valueLabel({ choice: effort })}</span>}
-          <Icon name="chevron_down" size={TRIGGER_CHEVRON} />
         </>
       )}
     >

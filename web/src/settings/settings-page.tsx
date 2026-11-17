@@ -1,3 +1,4 @@
+import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
@@ -260,8 +261,7 @@ function ColumnWidths({
           value,
         })}
       />
-      <details className="setting-more">
-        <summary>Per column</summary>
+      <Disclosure className="setting-more" title="Per column" leading>
         <div className="setting-per-column">
           {columns.map(column => (
             <div className="setting-labeled" key={column.id}>
@@ -284,7 +284,7 @@ function ColumnWidths({
             </div>
           ))}
         </div>
-      </details>
+      </Disclosure>
     </SettingStack>
   )
 }

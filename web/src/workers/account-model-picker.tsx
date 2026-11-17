@@ -477,12 +477,14 @@ export function AccountModelPicker({
     account: selection.account,
     effective: selection.effective,
   })
+  const defaultTrigger = trigger === undefined || trigger === null
   const accessible = trigger ? label : `${label}: ${provider.label} · ${name} · ${modelLabel}`
 
   return (
     <Popover
       label={accessible}
       className="account-model-picker"
+      chevronSize={defaultTrigger ? TRIGGER_CHEVRON : undefined}
       disabled={disabled}
       invalid={invalid}
       describedBy={describedBy}
@@ -493,7 +495,6 @@ export function AccountModelPicker({
             <span>{modelLabel}</span>
             <small>{name}</small>
           </span>
-          <Icon name="chevron_down" size={TRIGGER_CHEVRON} />
         </>
       )}
     >

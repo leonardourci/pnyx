@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { RichText } from './rich-text.tsx'
-import { Icon } from './icon.tsx'
+import { DisclosureChevron } from './disclosure-chevron.tsx'
 import { Button } from './controls.tsx'
 
 export function Disclosure({
@@ -9,22 +9,36 @@ export function Disclosure({
   className = '',
   open,
   onToggle,
+  leading = false,
 }: {
   title: ReactNode
   children: ReactNode
   className?: string
   open?: boolean
+  leading?: boolean
   onToggle?({ open }: { open: boolean }): void
 }) {
+  const [
+    nativeOpen,
+    setNativeOpen,
+  ] = useState(open ?? false)
+  const expanded = open ?? nativeOpen
+  const summaryPadding = leading ? 'pl-3.5' : 'pr-5'
+  const position = leading ? 'left-0' : 'right-0.5'
+
   return (
     <details
       className={`disclosure ${className}`}
       open={open}
-      onToggle={event => onToggle?.({ open: event.currentTarget.open })}
+      onToggle={event => {
+        const opened = event.currentTarget.open
+        setNativeOpen(opened)
+        onToggle?.({ open: opened })
+      }}
     >
-      <summary contentEditable={false}>
+      <summary className={`list-none cursor-pointer relative text-ui [&::-webkit-details-marker]:hidden ${summaryPadding}`} contentEditable={false}>
         {title}
-        <span className="disclosure-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>
+        <span className={`disclosure-chevron absolute top-0 text-muted ${position}`} aria-hidden="true"><DisclosureChevron expanded={expanded} /></span>
       </summary>
       <div className="disclosure-body">{children}</div>
     </details>
