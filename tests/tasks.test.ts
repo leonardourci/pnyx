@@ -672,3 +672,66 @@ test(
     ])
   },
 )
+
+test(
+  'arrange retries remain duplicates after their peer changes family',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'a',
+        '--title',
+        'Atlas',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'b',
+        '--title',
+        'Boreal',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'p',
+        '--title',
+        'Parent',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'arrange',
+        'a',
+      ],
+    })
+    const args = [
+      'task',
+      'arrange',
+      'a',
+      '--before',
+      'b',
+      '--event-id',
+      'arrange-atlas',
+    ]
+    await hydra.owner({ args })
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        'b',
+        'p',
+      ],
+    })
+    expect((await hydra.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
+  },
+)

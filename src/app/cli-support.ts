@@ -432,7 +432,7 @@ function originalReceipt(
 ): Output {
   const events = readEvents({
     hydraId,
-    ids: [id],
+    before: seq + 1,
   })
   const index = events.findIndex(e => e.id === id && e.seq === seq)
   const original = events[index]!
