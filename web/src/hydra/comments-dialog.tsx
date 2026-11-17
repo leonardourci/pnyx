@@ -85,7 +85,7 @@ export const CommentsDialog = memo(function CommentsDialog({
   }
 
   return (
-    <Dialog title={`Comments · ${listed.length}`} className="comments-dialog" close={finish}>
+    <Dialog title={`Comments · ${listed.length}`} className="comments-dialog [&_.comment-card]:my-1 [&_.comment-card]:mx-0 [&_.comment-quote]:line-clamp-4 [&_.comment-quote]:whitespace-normal" close={finish}>
       <div className="dialog-body flex flex-col gap-1 min-h-0 overflow-auto px-4 pt-2 pb-3.5">
         {[...replies.values()].map(items => (
           <section key={items[0]!.id} className="comment-group">
