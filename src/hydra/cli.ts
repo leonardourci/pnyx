@@ -26,8 +26,8 @@ import { hydraResize } from '#preferences/cli.ts'
 import { hydraMemory } from '#memory/cli.ts'
 import { startHydra } from './start.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
-import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
+import { checkSettings, readSettings, saveSettings, settingsReceipt, shownSettings } from '#settings/store.ts'
+import { SETTING_FLAGS, sharedSettingFlags, visibleSettings } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { requireStopAuthority } from '#app/stop-authority.ts'
@@ -413,17 +413,23 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     return committed!
   }
 
-  const settings = settingsReceipt({
-    saved: saveSettings({
-      // A combined edit gets one chat notice from its Hydra receipt.
-      hydraId: onlySettings ? id : undefined,
-      patch: shared,
-      meta: {
-        ...m,
-        ifRevision: undefined,
-      },
-    }),
+  const saved = saveSettings({
+    // A combined edit gets one chat notice from its Hydra receipt.
+    hydraId: onlySettings ? id : undefined,
+    patch: shared,
+    meta: {
+      ...m,
+      ifRevision: undefined,
+    },
   })
+  const settings = settingsReceipt({ saved })
+
+  if (memoryAgent()) {
+    settings.settings = visibleSettings({
+      settings: shownSettings({ settings: readSettings().settings }),
+      hydraId: id,
+    })
+  }
 
   if (committed) {
     return {

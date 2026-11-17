@@ -276,7 +276,7 @@ export function sharedSettingFlags({
   return Object.keys(patch).length ? patch : undefined
 }
 
-function visibleSettings({
+export function visibleSettings({
   settings,
   hydraId,
 }: {

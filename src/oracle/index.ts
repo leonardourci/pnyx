@@ -26,7 +26,7 @@ function sqlite(): typeof import('node:sqlite') {
 }
 
 // Bump when the schema, stored text, visibility or tokenization changes.
-const INDEX_VERSION = 7
+const INDEX_VERSION = 8
 const CATCH_UP_BATCH_EVENTS = 500
 const EVENTS = 'events'
 // The full-text index an earlier version kept beside each Hydra.
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS cursors (
 );
 CREATE TABLE IF NOT EXISTS docs (
   id INTEGER PRIMARY KEY, card TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL,
-  text TEXT NOT NULL, memory INTEGER NOT NULL, pos INTEGER NOT NULL, part INTEGER NOT NULL, UNIQUE(pos, part)
+  text TEXT NOT NULL, pos INTEGER NOT NULL, part INTEGER NOT NULL, UNIQUE(pos, part)
 );
 CREATE INDEX IF NOT EXISTS docs_card_at ON docs(card, at);
 CREATE VIRTUAL TABLE IF NOT EXISTS words USING fts5(terms, stems, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');
@@ -120,20 +120,11 @@ export function openIndex({
     throw error
   }
 
-  const latest = db.prepare('SELECT max((julianday(at) - 2440587.5) * 86400000) AS at FROM docs WHERE card=? AND (? OR memory=0)')
+  const latest = db.prepare('SELECT max((julianday(at) - 2440587.5) * 86400000) AS at FROM docs WHERE card=?')
 
   return {
-    newestAt({
-      card,
-      includeMemory = true,
-    }: {
-      card: string
-      includeMemory?: boolean
-    }) {
-      const row = latest.get(
-        card,
-        includeMemory ? 1 : 0,
-      ) as { at: number | null }
+    newestAt({ card }: { card: string }) {
+      const row = latest.get(card) as { at: number | null }
 
       return Math.round(row.at ?? 0)
     },
@@ -186,7 +177,7 @@ export function openIndex({
         return []
       }
 
-      return db.prepare('SELECT d.card, d.kind, d.at, d.text, d.memory FROM words JOIN docs d ON d.id=words.rowid WHERE words MATCH ? ORDER BY d.id')
+      return db.prepare('SELECT d.card, d.kind, d.at, d.text FROM words JOIN docs d ON d.id=words.rowid WHERE words MATCH ? ORDER BY d.id')
         .all(expressions.join(' OR ')) as unknown as Document[]
     },
     close: () => db.close(),
@@ -206,8 +197,8 @@ function catchUp({
   const putCursor = db.prepare(`INSERT INTO cursors(source, pos, seq, event)
     VALUES(:source, :pos, :seq, :event)
     ON CONFLICT(source) DO UPDATE SET pos=:pos, seq=:seq, event=:event`)
-  const insert = db.prepare(`INSERT INTO docs(card, kind, at, text, memory, pos, part)
-    VALUES(?, ?, ?, ?, ?, ?, ?)`)
+  const insert = db.prepare(`INSERT INTO docs(card, kind, at, text, pos, part)
+    VALUES(?, ?, ?, ?, ?, ?)`)
   const putWords = db.prepare('INSERT INTO words(rowid, terms, stems) VALUES(?, ?, ?)')
 
   const add = ({
@@ -225,7 +216,6 @@ function catchUp({
       entry.kind,
       entry.at,
       entry.text,
-      entry.memory ?? 0,
       pos,
       part,
     )

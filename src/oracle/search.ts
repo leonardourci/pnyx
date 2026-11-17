@@ -1,4 +1,5 @@
 import { ownerMemory } from '#memory/owner-memory.ts'
+import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -227,6 +228,14 @@ export function search({
     ...document,
     text: redact({ text: document.text }),
   }))
+  const hydraDocuments = includeMemory ? Object.entries(state.hydraMemory ?? {})
+    .filter(([key]) => !Object.hasOwn(OWNER_DOCUMENTS, key))
+    .map(([key, entry]) => ({
+      card: '$board',
+      kind: 'event' as const,
+      at: entry.at,
+      text: redact({ text: `${key}: ${entry.text}` }),
+    })) : []
   const index = openIndex({
     hydraId,
     state,
@@ -242,13 +251,10 @@ export function search({
       }),
       ...ownerDocuments,
       ...projectDocuments,
+      ...hydraDocuments,
     ]
 
     for (const document of documents) {
-      if (!includeMemory && document.memory) {
-        continue
-      }
-
       if (!terms.some(term => wordMatches({
         text: document.text,
         term,
@@ -327,7 +333,6 @@ export function search({
         const recentCard = Date.parse(card.updatedAt) >= cutoff
         const recent = recentCard || index.newestAt({
           card: card.id,
-          includeMemory,
         }) >= cutoff
           || entries.some(entry => Date.parse(entry.at) >= cutoff)
 

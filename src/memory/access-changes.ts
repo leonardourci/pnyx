@@ -81,10 +81,12 @@ export function sharesWithMore({
     state: HydraState
   }[]
 }): boolean {
+  const existingHydras = new Set(hydras.map(hydra => hydra.id))
+  const sharedReaders = after.poleis.shared?.readers ?? []
   const futureSharedReader = destination === 'shared' && source !== 'shared'
-    && after.poleis.shared?.readers.includes('*')
+    && sharedReaders.some(reader => reader === '*' || !existingHydras.has(reader))
 
-  return Boolean(futureSharedReader) || hydras.some(({
+  return futureSharedReader || hydras.some(({
     id,
     state,
   }) =>

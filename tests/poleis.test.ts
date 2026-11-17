@@ -140,6 +140,7 @@ test(
     })
     expect(crossHydraRead.status).toBe(0)
     expect(crossHydraRead.stdout).not.toContain('Private Hydra scope')
+    expect(JSON.stringify(await personal.owner({ args: ['oracle', 'private'] }))).toContain('[Private] Hydra scope')
     expect((await pnyxAxi({
       args: [
         'oracle',
@@ -170,6 +171,8 @@ test(
         'list',
       ],
     }))).toContain('Private Hydra scope')
+    await personal.owner({ args: ['hydra', 'memory', 'forget', '--key', 'scope'] })
+    expect(JSON.stringify(await personal.owner({ args: ['oracle', 'private'] }))).not.toContain('[Private] Hydra scope')
     const crossRead = await pnyxAxi({
       args: [
         'owner',
@@ -334,6 +337,12 @@ test(
     })
     expect(shown.status).toBe(0)
     expect(shown.stdout).not.toContain('personal')
+    const sharedSettingsEdit = await pnyxAxi({
+      args: ['hydra', 'set', '--review-minutes', '0', '--hydra', work.id],
+      env: crossEnv,
+    })
+    expect(sharedSettingsEdit.status).toBe(0)
+    expect(sharedSettingsEdit.stdout).not.toContain('personal')
     const hiddenSpaceEdit = await pnyxAxi({
       args: [
         'settings',
@@ -1167,6 +1176,15 @@ test(
       '--hydra',
       hydra.id,
     ]
+    await hydra.owner({
+      args: ['settings', 'set', '--json', JSON.stringify({
+        poleis: { shared: { readers: [hydra.id, 'future-polis-reader'] } },
+      })],
+    })
+    expect((await pnyxAxi({ args: move, env })).stdout).toContain('OWNER_ONLY')
+    await hydra.owner({
+      args: ['settings', 'set', '--json', '{"poleis":{"shared":{"readers":["*"]}}}'],
+    })
     const sourceMemory = await hydra.owner({
       args: [
         'owner',
