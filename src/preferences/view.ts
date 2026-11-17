@@ -1,4 +1,4 @@
-import { DEFAULT_WORKSPACE, patchWorkspace } from './workspace.ts'
+import { DEFAULT_WORKSPACE, patchWorkspace, workspaceLayout } from './workspace.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
@@ -61,7 +61,6 @@ export const VIEW_SIZE_LIMITS = {
   },
   cardHeight: { min: 120 },
   columnWidth: { min: 240 },
-  cardWidth: { min: 200 },
   columnHeight: { min: 200 },
 } as const
 
@@ -183,6 +182,7 @@ export const viewFor = ({
 
   return {
     ...view,
+    workspace: workspaceLayout({ input: view.workspace }),
     defaultColumnWidth,
     keyboard: {
       ...view.keyboard,

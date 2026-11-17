@@ -295,3 +295,82 @@ test(
   },
   180_000,
 )
+
+test(
+  'upgrading removes per-card widths while preserving project widths, heights and history',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const task = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Keep my size',
+      ],
+    })
+    const layout = {
+      workspace: {
+        projectWidths: { ideas: 944 },
+        chatCollapsed: true,
+      },
+      cardHeights: { [task.card.id]: 640 },
+    }
+    const changed = await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify(layout),
+      ],
+    })
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        await sql({
+          database: homeDatabase(),
+          text: `update hydra_values set value = jsonb_set(value::jsonb, '{workspace,cardWidths}', $2::jsonb)::json
+          where hydra_id = $1 and key = 'view';`,
+          values: [
+            hydra.id,
+            JSON.stringify({ [task.card.id]: 880 }),
+          ],
+        })
+        await sql({
+          database: homeDatabase(),
+          text: 'update schema_version set version = 6 where version > 6',
+        })
+      },
+    })
+    const view = (await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })).view
+    expect(view.workspace).not.toHaveProperty('cardWidths')
+    expect(view.workspace.projectWidths.ideas).toBe(944)
+    expect(view.workspace.chatCollapsed).toBe(true)
+    expect(view.cardHeights[task.card.id]).toBe(640)
+    expect(rows<{ value: { workspace: object } }>({
+      text: "select value from hydra_values where hydra_id = $1 and key = 'view'",
+      values: [hydra.id],
+    })[0]!.value.workspace).not.toHaveProperty('cardWidths')
+    const historical = rows<{ data: { data: { after: object } } }>({
+      text: 'select data from events where hydra_id = $1 and id = $2',
+      values: [
+        hydra.id,
+        changed.event.id,
+      ],
+    })[0]!
+    expect(historical.data.data.after).toMatchObject(layout)
+    const refused = await hydra.ownerRefused({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { cardWidths: { [task.card.id]: 880 } } }),
+      ],
+    })
+    expect(refused.code).toBe('VALIDATION_ERROR')
+  },
+)

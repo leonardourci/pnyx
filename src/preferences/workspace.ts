@@ -6,7 +6,6 @@ export interface WorkspaceLayout {
   foldedProjects: string[]
   projectOrder: string[]
   projectWidths: Record<string, number>
-  cardWidths: Record<string, number>
 }
 
 export const DEFAULT_WORKSPACE: WorkspaceLayout = {
@@ -15,15 +14,23 @@ export const DEFAULT_WORKSPACE: WorkspaceLayout = {
   foldedProjects: [],
   projectOrder: [],
   projectWidths: {},
-  cardWidths: {},
 }
 export const DEFAULT_PROJECT_WIDTH = 560
-export const DEFAULT_OPEN_CARD_WIDTH = 660
 export const DEFAULT_OPEN_CARD_HEIGHT = 520
 export const DEFAULT_WINDOW_WIDTH = 980
 export const PROJECT_MIN_WIDTH = 280
 export const OPEN_CARD_MIN_WIDTH = 560
 export const OPEN_CARD_MIN_HEIGHT = 440
+
+export function workspaceLayout({ input }: { input?: Partial<WorkspaceLayout> }): WorkspaceLayout {
+  return {
+    collapsed: input?.collapsed ?? false,
+    chatCollapsed: input?.chatCollapsed ?? false,
+    foldedProjects: [...(input?.foldedProjects ?? [])],
+    projectOrder: [...(input?.projectOrder ?? [])],
+    projectWidths: { ...input?.projectWidths },
+  }
+}
 
 export function patchWorkspace({
   current,
@@ -39,7 +46,7 @@ export function patchWorkspace({
     })
   }
 
-  const next = structuredClone(current)
+  const next = workspaceLayout({ input: current })
 
   for (const [
     key,
@@ -63,7 +70,7 @@ export function patchWorkspace({
       }
 
       next[key] = [...new Set(value as string[])]
-    } else if (key === 'projectWidths' || key === 'cardWidths') {
+    } else if (key === 'projectWidths') {
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
         throw new HydraError({
           message: `${key} must be widths by id`,
@@ -86,7 +93,7 @@ export function patchWorkspace({
           })
         }
 
-        const minimum = key === 'projectWidths' ? PROJECT_MIN_WIDTH : OPEN_CARD_MIN_WIDTH
+        const minimum = PROJECT_MIN_WIDTH
 
         if (typeof width !== 'number' || !Number.isSafeInteger(width) || width < minimum) {
           throw new HydraError({
