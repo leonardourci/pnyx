@@ -5,7 +5,7 @@ import { projectDigest } from '#projects/context.ts'
 import { queuePosition } from './queue.ts'
 import { projectRows } from '#projects/read.ts'
 import { hydraDigest } from '#hydra/digest.ts'
-import { ownerMemory } from '#memory/owner-memory.ts'
+import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { checkAttachments } from './presence.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -409,6 +409,7 @@ const hydraDigestHandler = guard({
       conditions: memoryConditions(),
       hydraId,
       owner,
+      ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
       state,
       projects,
       setup: setupDigest({ items }),

@@ -555,6 +555,84 @@ test(
         'list',
       ],
     }))).not.toContain('Secret nebula')
+    await work.owner({
+      args: [
+        'hydra',
+        'set',
+        '--memory-reads',
+        'shared,work',
+        '--memory-write',
+        'shared',
+      ],
+    })
+    await work.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'x'.repeat(20_000),
+      ],
+    })
+    await work.owner({
+      args: [
+        'hydra',
+        'set',
+        '--memory-write',
+        'work',
+      ],
+    })
+    await work.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'forget',
+        '--reason',
+        'test write-space usage',
+      ],
+    })
+    await work.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'small',
+      ],
+    })
+    const roomyDigest = await pnyxAxi({
+      args: [
+        'hydra',
+        'digest',
+        '--hydra',
+        work.id,
+      ],
+      env: crossEnv,
+    })
+    expect(roomyDigest.stdout).toContain('Owner memory uses 5 of 24000 characters.')
+    expect(roomyDigest.stdout).not.toContain('curate it before it fills')
+    await work.owner({
+      args: [
+        'hydra',
+        'set',
+        '--memory-write',
+        'shared',
+      ],
+    })
+    const nearlyFullDigest = await pnyxAxi({
+      args: [
+        'hydra',
+        'digest',
+        '--hydra',
+        work.id,
+      ],
+      env: crossEnv,
+    })
+    expect(nearlyFullDigest.stdout).toContain('curate it before it fills')
   },
 )
 

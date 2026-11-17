@@ -23,7 +23,7 @@ import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { memoryConditions } from '#memory/conditions.ts'
-import { ownerMemory } from '#memory/owner-memory.ts'
+import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { projectDigest } from '#projects/context.ts'
 import { activeHelperBatches, failedBatches, helperLeases, outcomeLines, ownerOutcomes } from '#routine-helper/state.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
@@ -185,6 +185,7 @@ export function createHydraTurns({
     onlyTasks?: string[]
   } = {}) => {
     const owner = ownerMemory({ hydraId })
+    const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
     const state = loadHydra({ hydraId }).state
 
     if (onlyTasks) {
@@ -192,6 +193,7 @@ export function createHydraTurns({
         hydraId,
         state,
         owner,
+        ownerWrite,
         onlyTasks,
         previousDigest,
         checkpointed,
@@ -216,6 +218,7 @@ export function createHydraTurns({
     if (remember) {
       memoryStamp = JSON.stringify({
         owner,
+        ownerWrite,
         hydra: state.hydraMemory,
         projects,
       })
@@ -228,6 +231,7 @@ export function createHydraTurns({
       hydraId,
       state,
       owner,
+      ownerWrite,
       projects,
       setup: setupDigest({ items }),
     })
@@ -235,9 +239,11 @@ export function createHydraTurns({
 
   const memoryChangeNote = async () => {
     const owner = ownerMemory({ hydraId })
+    const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
     const state = loadHydra({ hydraId }).state
     const stamp = JSON.stringify({
       owner,
+      ownerWrite,
       hydra: state.hydraMemory,
       projects: await projectDigest({
         state,

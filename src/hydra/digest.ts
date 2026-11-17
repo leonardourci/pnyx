@@ -108,10 +108,12 @@ function taskLine({
 
 function ownerDigest({
   owner,
+  ownerWrite,
   conditions,
   now,
 }: {
   owner: Memory
+  ownerWrite: Memory
   conditions: LearningConditions
   now: string
 }): string {
@@ -120,6 +122,12 @@ function ownerDigest({
     key,
   ))
   const text = [
+    usage({
+      layer: 'Owner',
+      memory: ownerWrite,
+      budget: OWNER_MEMORY_BUDGET,
+    }),
+    '',
     ...Object.entries(OWNER_DOCUMENTS).flatMap(([
       key,
       title,
@@ -145,11 +153,6 @@ function ownerDigest({
       ]) => `- ${key}: ${entry.text}`),
       '',
     ] : []),
-    usage({
-      layer: 'Owner',
-      memory: owner,
-      budget: OWNER_MEMORY_BUDGET,
-    }),
 
   ].join('\n')
 
@@ -429,6 +432,7 @@ export function hydraDigest({
   hydraId,
   state,
   owner,
+  ownerWrite,
   projects = [],
   setup = [],
   previousDigest,
@@ -440,6 +444,7 @@ export function hydraDigest({
   hydraId: string
   state: HydraState
   owner: Memory
+  ownerWrite: Memory
   projects?: string[]
   setup?: string[]
   previousDigest?: string
@@ -454,6 +459,7 @@ export function hydraDigest({
     state,
     owner: ownerDigest({
       owner,
+      ownerWrite,
       conditions,
       now,
     }),
