@@ -550,7 +550,7 @@ When the routine helper is available, safe failed-message recovery uses these sa
 
 ### Hosted tools
 
-Use `pnyx-axi task tools <task> --available --harness claude|codex [--account <name>] --hydra <id>` to list configured capability names, or omit `--available` to read task grants. Hydra selects additions at dispatch with repeated `task start --tool browser|mcp:<name>|plugin:<id>` flags. The `browser` capability selects one task-owned headless `chrome-devtools-axi` session.
+Hosted workers keep their selected account’s native harness setup, including image generation, web search, skills, MCP servers, plugins and apps. Routine helpers keep their lean settings. Use `pnyx-axi task tools <task> --available --hydra <id>` to list `browser`, or omit `--available` to read the selection. Hydra adds one task-owned headless `chrome-devtools-axi` session with `task start --tool browser` or `task tools <task> --grant browser`.
 
 Workers request additions through `task ask`. Hydra runs `task tools <task> --grant <capability>` or `--revoke <capability>` itself; repeat either flag for several names. Pnyx records the selection and resumes the same conversation at a safe native turn boundary. It recovers unapplied changes after restart. No owner confirmation is added to this flow. Tool actions retain their existing write permissions. See [Task tool grants](provider-sessions.md#task-tool-grants) for provider and launch-route behavior.
 
