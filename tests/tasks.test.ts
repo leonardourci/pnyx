@@ -565,6 +565,18 @@ test(
     await hydra.owner({
       args: [
         'task',
+        'create',
+        '--key',
+        'second-part',
+        '--title',
+        'Validate',
+        '--parent',
+        'family',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
         'status',
         'family',
         'done',
@@ -592,6 +604,28 @@ test(
         'done',
         '--note',
         'Child completed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'second-part',
+        'done',
+        '--note',
+        'Validation completed',
       ],
     })
     expect(rows({
