@@ -277,4 +277,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (6);
+insert into schema_version (version) values (7);
