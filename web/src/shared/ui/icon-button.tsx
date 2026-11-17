@@ -3,6 +3,7 @@ import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
 
 const SIZES = {
+  menu: 'size-7 min-h-7 p-1',
   key: 'min-h-0 flex-none px-0.5 py-0 border-0 rounded-none bg-transparent text-muted enabled:hover:text-red enabled:hover:bg-transparent disabled:opacity-30 disabled:cursor-default',
   small: 'size-6 min-h-6 p-0 flex-none text-muted',
   copy: 'size-6.5 min-h-6.5 p-0 flex-none text-muted',

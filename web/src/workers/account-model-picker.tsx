@@ -1,3 +1,5 @@
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
+import { ModelPicker, ModelMenu, ModelResults } from './model-menu.tsx'
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
 import type { EffectiveDispatch, Harness } from '#workers/dispatch-config.ts'
@@ -5,7 +7,6 @@ import { accountLabel } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { Popover } from '#web-shared/ui/popover.tsx'
 import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { MenuOption } from '#web-shared/ui/menu-option.tsx'
@@ -58,11 +59,15 @@ export function MenuHead({
   back?(): void
 }) {
   return (
-    <div className="account-model-head">
+    <div className="account-model-head min-h-7 flex items-center gap-1.5 [&>strong]:text-ui ">
       {back && (
-        <Button aria-label="Back" onClick={back}>
-          <Icon name="arrow_left" size={MENU_MARK_ICON} />
-        </Button>
+        <IconButton
+          icon="arrow_left"
+          label="Back"
+          size="menu"
+          iconSize={MENU_MARK_ICON}
+          onClick={back}
+        />
       )}
       <strong>{title}</strong>
     </div>
@@ -332,7 +337,7 @@ export function SelectionMenu({
   }
 
   return (
-    <div className="account-model-menu" onKeyDown={event => keyboard({ event })}>
+    <ModelMenu keyboard={keyboard}>
       <MenuHead title={title} back={leave} />
       <SearchBar
         label={`Search ${stepName}`}
@@ -348,8 +353,8 @@ export function SelectionMenu({
           activeDescendant: filtered[active] ? `${id}-${active}` : undefined,
         }}
       />
-      <div
-        className="account-model-results"
+      <ModelResults
+
         role="listbox"
         id={id}
         aria-label={title}
@@ -382,6 +387,7 @@ export function SelectionMenu({
           return (
             <MenuOption
               className="account-model-option"
+              compact
               aria-label={choice.label}
               selected={current}
               active={active === index}
@@ -393,6 +399,7 @@ export function SelectionMenu({
             >
               <Button
                 className="account-model-choose"
+                variant="menu-choice"
                 disabled={!connected}
                 onPointerDown={event => {
                   hold.current.done = false
@@ -429,30 +436,31 @@ export function SelectionMenu({
               </Button>
               {step === 'model' && saveDefault && (
                 <Tooltip content={defaultText}>
-                  <Button
-                    className="account-model-pin"
+                  <IconButton
+                    className="account-model-pin text-muted aria-pressed:text-gold"
+                    size="menu"
+                    icon={pinned ? 'pinned' : 'pin'}
                     disabled={!connected}
-                    aria-label={`${defaultText}: ${choice.label}`}
+                    label={`${defaultText}: ${choice.label}`}
                     aria-pressed={pinned}
                     onClick={() => choose({
                       choice,
                       pin: true,
                     })}
-                  ><Icon name={pinned ? 'pinned' : 'pin'} size={16} />
-                  </Button>
+                  />
                 </Tooltip>
               )}
             </MenuOption>
           )
         })}
-      </div>
+      </ModelResults>
       {step !== 'model' && (
-        <div className="account-model-add">
+        <div className="account-model-add flex-none border-t border-line pt-2 [&>.button]:w-full [&>.button]:text-ui [&>p]:mt-1.25 [&>p]:mx-0 [&>p]:mb-0 [&>p]:text-center [&>p]:text-meta [&>p]:text-muted">
           <Button variant="surface" onClick={add}><Icon name="plus" size={16} />{addLabel}</Button>
           <p>Or ask Hydra to add it for you.</p>
         </div>
       )}
-    </div>
+    </ModelMenu>
   )
 }
 
@@ -481,9 +489,9 @@ export function AccountModelPicker({
   const accessible = trigger ? label : `${label}: ${provider.label} · ${name} · ${modelLabel}`
 
   return (
-    <Popover
+    <ModelPicker
       label={accessible}
-      className="account-model-picker"
+
       chevronSize={defaultTrigger ? TRIGGER_CHEVRON : undefined}
       disabled={disabled}
       invalid={invalid}
@@ -491,7 +499,7 @@ export function AccountModelPicker({
       trigger={trigger ?? (
         <>
           <Icon name={provider.icon} size={20} />
-          <span className="account-model-label">
+          <span className="account-model-label flex flex-col min-w-0 max-w-45 leading-prose-heading [&>span]:text-ui [&>span]:truncate [&>small]:text-muted [&>small]:text-meta [&>small]:truncate">
             <span>{modelLabel}</span>
             <small>{name}</small>
           </span>
@@ -499,6 +507,6 @@ export function AccountModelPicker({
       )}
     >
       {({ close }) => <SelectionMenu {...selection} close={close} />}
-    </Popover>
+    </ModelPicker>
   )
 }

@@ -112,6 +112,8 @@
   --spacing-dialog-height: min(78vh, 760px);
   --spacing-oracle-height: min(660px, 82dvh);
   --spacing-menu: 180px;
+  --spacing-model-menu: min(330px, calc(100vw - 64px));
+  --spacing-model-menu-height: min(380px, calc(100dvh - 120px));
   --spacing-folder-options: max(100%, 340px);
   --spacing-folder-viewport: calc(100vw - 40px);
   --spacing-menu-viewport: calc(100vw - 16px);
@@ -539,39 +541,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-agent-pickers .fast-toggle[aria-pressed=true] { color: var(--color-gold); }
 .hydra-agent-pickers :is(.select > .button, .account-model-picker > .button, .fast-toggle):is(:hover, :focus-visible):not(:disabled) { background: var(--color-hover); }
 
-.account-model-picker > .button { min-height: 36px; padding: 2px 5px; gap: 7px; text-align: left; }
-.account-model-label { display: flex; flex-direction: column; min-width: 0; max-width: 180px; line-height: 1.35; }
-.account-model-label > span { font-size: var(--text-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.account-model-label > small { color: var(--color-muted); font-size: var(--text-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 .hydra-agent-pickers[data-folded] { position: relative; }
 .agent-pickers-row { display: flex; flex: none; width: max-content; align-items: center; gap: inherit; }
 .hydra-agent-pickers[data-folded] > .agent-pickers-row { position: absolute; visibility: hidden; pointer-events: none; }
-.agent-settings-menu { min-width: 0; }
-.agent-settings-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.agent-settings-effort { color: var(--color-muted); }
-.agent-setting-text { display: flex; align-items: baseline; gap: 6px; }
-.agent-setting-text > small { color: var(--color-muted); font-size: var(--text-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-setting-row[aria-pressed=true] > svg:first-child { color: var(--color-gold); }
-
-.account-model-picker .popover-panel { width: min(330px, calc(100vw - 64px)); height: min(380px, calc(100dvh - 120px)); padding: 0; overflow: hidden; }
-.account-model-menu { height: 100%; display: flex; flex-direction: column; min-height: 0; padding: 8px; gap: 8px; }
-.account-model-head { min-height: 28px; display: flex; align-items: center; gap: 6px; }
-.account-model-head > strong { font-size: var(--text-ui); }
-.account-model-head > .button { min-height: 28px; width: 28px; padding: 4px; }
-.account-model-menu .search-bar { flex: 0 0 auto; }
-.account-model-results { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: none; }
-.account-model-results::-webkit-scrollbar { display: none; }
-.account-model-results > p, .account-model-results > [role=alert] { padding: 8px; font-size: var(--text-meta); color: var(--color-muted); }
-.account-model-option { gap: 0; }
-.account-model-option > .account-model-choose { flex: 1; min-width: 0; justify-content: flex-start; min-height: 36px; gap: 8px; padding: 7px; font-size: var(--text-ui); text-align: left; }
-.account-model-choose > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.account-model-choose > svg { flex-shrink: 0; }
-.account-model-pin { min-height: 28px; width: 28px; padding: 4px; color: var(--color-muted); }
-.account-model-pin[aria-pressed=true] { color: var(--color-gold); }
-.account-model-add { flex: 0 0 auto; border-top: 1px solid var(--color-line); padding-top: 8px; }
-.account-model-add > .button { width: 100%; font-size: var(--text-ui); }
-.account-model-add > p { margin: 5px 0 0; text-align: center; font-size: var(--text-meta); color: var(--color-muted); }
 /* Lines are the shown text's own, so the clamp cuts between lines, never through one. */
 .text-preview { max-height: 3lh; font-size: var(--text-chat); line-height: var(--chat-line); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .button.show-more { justify-self: start; min-height: 0; padding: 0; color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
