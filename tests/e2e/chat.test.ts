@@ -317,13 +317,33 @@ test.each([
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
     const beforeVertical = await conversation.evaluate(element => {
       const axis = document.querySelector<HTMLElement>('.workspace-axis')!
-      axis.scrollLeft -= 40
+      const track = axis.querySelector<HTMLElement>('.workspace-track')!
+      const group = element.closest<HTMLElement>('[data-hydra-workspace]')!
+      const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
+      const snap = group.offsetLeft + track.offsetLeft - axis.offsetLeft - padding
+      const target = snap > 40 ? snap - 40 : snap + 40
+      axis.scrollTo({
+        left: target,
+        behavior: 'instant',
+      })
+      const groups = [...track.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
+      const distance = Math.min(...groups.map(workspace => {
+        const position = workspace.offsetLeft + track.offsetLeft - axis.offsetLeft - padding
+
+        return Math.abs(axis.scrollLeft - position)
+      }))
 
       return {
         x: axis.scrollLeft,
         y: element.scrollTop,
+        distance,
+        range: axis.scrollWidth - axis.clientWidth,
+        threshold: axis.clientWidth * 0.2,
       }
     })
+    expect(beforeVertical.range).toBeGreaterThan(80)
+    expect(beforeVertical.distance).toBe(40)
+    expect(beforeVertical.distance).toBeLessThan(beforeVertical.threshold)
     await page.evaluate(() => new Promise<void>(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     }))

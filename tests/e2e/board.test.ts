@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
-import { pnyxAxi, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -151,6 +151,25 @@ test(
       what: 'pause persists after confirmation',
       check: async () => !!(await hydra.task({ key: 'pause-preview' })).hold,
     })
+    const confirmedSeq = rows<{ seq: number }>({
+      text: 'select seq from hydras where id = $1',
+      values: [hydra.id],
+    })[0]!.seq
+    await until({
+      what: 'the client reads the confirmed hold',
+      check: async () => Number(await page.locator(`[data-hydra-workspace="${hydra.id}"]`).getAttribute('data-seq')) >= confirmedSeq,
+    })
+    await shown({ title: 'Pause preview' }).locator(
+      '.agent-activity',
+      { hasText: 'hold' },
+    )
+      .waitFor()
+    await page.reload()
+    await shown({ title: 'Pause preview' }).locator(
+      '.agent-activity',
+      { hasText: 'hold' },
+    )
+      .waitFor()
   },
 )
 
@@ -1435,9 +1454,32 @@ test(
   'project resizing starts only on the visible grip and persists a genuine drag',
   async () => {
     const hydra = await pnyx.hydra()
+    const widthWrites: unknown[] = []
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.type === 'command' && frame.name === 'view' && frame.args[0] === 'set') {
+              const json = frame.args.indexOf('--json')
+              const widths = json >= 0 && JSON.parse(frame.args[json + 1]).workspace?.projectWidths
+
+              if (widths) {
+                widthWrites.push(widths)
+              }
+            }
+
+            server.send(message)
+          })
+        },
+      ),
     })
 
     try {
@@ -1532,6 +1574,7 @@ test(
           return view.view.workspace.projectWidths.ideas === original + 32
         },
       })
+      expect(widthWrites).toEqual([{ ideas: original + 32 }])
       await page.reload()
       await until({
         what: 'the project keeps its resized width after reload',
@@ -1763,9 +1806,24 @@ test(
           return cards[0]?.includes('Shortcut Boreal') === true && cards[1]?.includes('Shortcut Atlas') === true
         },
       })
+      await until({
+        what: 'task shortcut reaches stored sibling order',
+        check: () => rows<{ key: string }>({
+          text: "select key from cards where hydra_id = $1 and key in ('a', 'b') order by coalesce(rank, created_seq)",
+          values: [second.id],
+        }).map(card => card.key)
+          .join(',') === 'b,a',
+      })
       await page.reload()
       await page.locator(`[data-hydra-workspace="${second.id}"][data-connected="true"]`).waitFor()
       await title.waitFor()
+      expect((await workspace.locator(`[data-column="${atlas}"] .project-card-grid [data-card]`).allTextContents()).slice(
+        0,
+        2,
+      ).map(text => text.includes('Shortcut Boreal') ? 'b' : 'a')).toEqual([
+        'b',
+        'a',
+      ])
       await page.getByRole(
         'button',
         {
@@ -1916,6 +1974,7 @@ test(
         data: {
           key: 'root',
           title: 'Legacy family',
+          project: 'root-project',
         },
       },
       {
@@ -1925,6 +1984,7 @@ test(
         data: {
           key: 'child',
           title: 'Legacy child',
+          project: 'child-project',
           parentId: 'root',
         },
       },
@@ -1956,6 +2016,25 @@ test(
       id,
       create: false,
     })
+    const project = hydra.folder({ name: 'root-project' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    const digest = await pnyxAxi({
+      args: [
+        'hydra',
+        'digest',
+        '--hydra',
+        id,
+      ],
+      env: process.env,
+    })
+    expect(digest.status).toBe(0)
+    expect(digest.stdout).toContain(`${project} · root-project · 0 / 0 / 3 / 0`)
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: id,
@@ -2002,6 +2081,8 @@ test(
         'task',
         'create',
         '--title',
+        'Searchable archive task',
+        '--brief',
         'Resilient indexed needle',
       ],
     })
@@ -2053,7 +2134,7 @@ test(
         },
       )
       await search.fill('Resilient indexed needle')
-      await page.getByRole('option').filter({ hasText: 'Resilient indexed needle' })
+      await page.getByRole('option').filter({ hasText: 'Searchable archive task' })
         .waitFor()
       await page.getByText(
         `${second.id}: Search disconnected`,
@@ -2271,7 +2352,21 @@ test(
         what: 'scrolling advances the stationary-pointer landing slot',
         check: async () => (await cards.allTextContents()).indexOf('Scroll task 1') > before,
       })
+      const expected = (await cards.allTextContents()).map(title => title.trim())
       await page.mouse.up()
+      await until({
+        what: 'the scrolled drop reaches stored order',
+        check: () => rows<{ title: string }>({
+          text: "select title from cards where hydra_id = $1 and key like 'scroll-%' order by coalesce(rank, created_seq)",
+          values: [hydra.id],
+        }).map(card => card.title)
+          .join('|') === expected.join('|'),
+      })
+      await page.reload()
+      await until({
+        what: 'the scrolled drop survives reload',
+        check: async () => (await cards.allTextContents()).map(title => title.trim()).join('|') === expected.join('|'),
+      })
     } finally {
       await page.context().close()
     }
