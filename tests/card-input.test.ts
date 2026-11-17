@@ -178,8 +178,11 @@ test(
     onTestFinished(() => held.release())
     await hydra.owner({
       args: [
-        'reply',
+        'task',
+        'send',
         'model',
+        '--harness',
+        'claude',
         '--text',
         'Finish the current change',
       ],
@@ -307,8 +310,11 @@ test(
     onTestFinished(() => held.release())
     await hydra.owner({
       args: [
-        'reply',
+        'task',
+        'send',
         'stop-switch',
+        '--harness',
+        'claude',
         '--text',
         'Keep working until stopped',
       ],
@@ -434,5 +440,56 @@ test(
     expect(worker.received[0]).toContain('Start when this login is configured')
     expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
+  },
+)
+
+test(
+  'a queued harness switch survives a Pnyx restart without a second launch',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const {
+      folder,
+      worker,
+    } = await hydra.startTask({ key: 'restart-switch' })
+    const held = pnyx.claude.plan({
+      hydra: hydra.id,
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    await hydra.owner({
+      args: [
+        'task',
+        'send',
+        'restart-switch',
+        '--harness',
+        'claude',
+        '--text',
+        'Finish this turn before switching',
+      ],
+    })
+    await until({
+      what: 'a live turn before restart',
+      check: () => worker.received.length === 2,
+    })
+    const args = [
+      'task',
+      'send',
+      'restart-switch',
+      '--text',
+      'Continue on Codex after restart',
+      '--harness',
+      'codex',
+      '--event-id',
+      'restart-switch',
+    ]
+    await hydra.owner({ args })
+    await pnyx.restart({ whileStopped: () => held.release() })
+    await until({
+      what: 'the saved switch reaches the new harness',
+      check: () => pnyx.codex.sessions.some(session =>
+        session.cwd === folder && session.answered === 1),
+    })
+    expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
+    expect(pnyx.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
   },
 )

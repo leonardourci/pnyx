@@ -326,7 +326,9 @@ export function createHostRecovery({
 
           for (const reply of card.replies ?? []) {
             // The card's agent is Pnyx-hosted, so a reply still queued for it went the Pnyx route.
-            if (reply.state !== 'queued' || held.has(reply.id)) {
+            const scheduled = reply.worker && !reply.worker.session
+
+            if (reply.state !== 'queued' || held.has(reply.id) || scheduled) {
               continue
             }
 
