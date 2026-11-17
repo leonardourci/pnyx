@@ -90,7 +90,6 @@
   --spacing-chat-max: 960px;
   --spacing-chat-pad: 24px;
   --spacing-chat-gap: 24px;
-  --spacing-chat-inset: max(calc(var(--chat-pad) + var(--chat-scrollbar, 0px)), calc((100% - var(--chat-max)) / 2));
   --spacing-jump: 34px;
   --spacing-action-reference: min(4.5em, 100%);
   --spacing-action: min(28ch, 100%);
