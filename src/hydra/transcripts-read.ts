@@ -576,9 +576,7 @@ type Candidate = {
   message?: string
 }
 
-// A transcript a thread pages through, newest first. index names an earlier Hydra session in
-// the cursor. Hydra's current session pages back through the earlier ones; a task, or another
-// session the reader chose has one source without an index. Task threads retain their earlier sessions too.
+// Earlier sessions use stable cursor indexes so a harness switch preserves pagination.
 type ThreadSource = {
   session?: string
   path?: string

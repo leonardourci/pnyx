@@ -46,6 +46,20 @@ test(
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
     expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(worker.received).toHaveLength(1)
+    const page = await hydra.page()
+
+    try {
+      expect(await page.send({
+        name: 'thread',
+        args: ['quick'],
+      })).toMatchObject({
+        type: 'receipt',
+        thread: { card: (await hydra.task({ key: 'quick' })).id },
+      })
+    } finally {
+      page.close()
+    }
+
     const { thread } = await hydra.owner({
       args: [
         'task',

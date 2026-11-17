@@ -57,7 +57,11 @@ export function threadCommand({
   bindThread: ThreadSubscriptions['bindThread']
   threadPage: ThreadSubscriptions['threadPage']
 }) {
-  const map = subscriptionMap({ card: args[0] ?? '' })
+  const card = args[0] ? findCard({
+    state: state(),
+    ref: args[0],
+  }) : undefined
+  const map = subscriptionMap({ card: card?.id ?? '' })
   const old = map.get(ws)
 
   const unbind = () => {
@@ -65,7 +69,7 @@ export function threadCommand({
     map.delete(ws)
   }
 
-  if (!args[0]) {
+  if (!card) {
     unbind()
     send({
       ws,
@@ -77,11 +81,6 @@ export function threadCommand({
 
     return
   }
-
-  const card = findCard({
-    state: state(),
-    ref: args[0],
-  })
 
   const recent = args[1] === '--recent'
   const restoring = args[1] === '--retain'
