@@ -230,8 +230,8 @@ function Code({
 
   return (
     <div className="code-block bg-background border border-line rounded-md my-(--block-gap) mx-0 min-w-0 in-[.ask]:my-1">
-      {lang && <span className="code-language block pt-1.5 px-2.5 pb-0 text-meta leading-[normal] font-mono text-muted">{lang}</span>}
-      <pre className="m-0 overflow-auto max-w-full p-2.5 text-code leading-(--chat-line) font-mono whitespace-pre in-[.ask]:p-1.5 in-[.ask]:text-[length:inherit] in-[.ask]:leading-question">
+      {lang && <span className="code-language block pt-1.5 px-2.5 pb-0 text-meta leading-[normal] font-mono font-normal not-italic text-muted">{lang}</span>}
+      <pre className="m-0 overflow-auto max-w-full p-2.5 text-code leading-(--chat-line) font-mono font-normal not-italic whitespace-pre in-[.ask]:p-1.5 in-[.ask]:text-[length:inherit] in-[.ask]:leading-question">
         <ProseCode block><ChatTokenText text={text} code /></ProseCode>
       </pre>
     </div>

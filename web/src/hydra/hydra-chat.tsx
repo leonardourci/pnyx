@@ -1125,7 +1125,7 @@ export function HydraChat({
         addProject={addProject}
         connected={connected}
       >
-        {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans tracking-normal" role="status">{down}</span>}
+        {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans leading-[normal] not-italic tracking-normal" role="status">{down}</span>}
       </HydraHead>
       <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
         <div
