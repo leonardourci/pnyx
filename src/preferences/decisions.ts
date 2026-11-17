@@ -14,7 +14,10 @@ export function decideView({
   patch: unknown
   meta: Meta
 }): Decision {
-  if (meta.id && meta.id in state.eventIds) {
+  if (meta.id && Object.hasOwn(
+    state.eventIds,
+    meta.id,
+  )) {
     return { skipped: 'duplicate' }
   }
 
