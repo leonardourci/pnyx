@@ -402,10 +402,24 @@ test(
       await title.click()
       const card = page.locator('.card.selected')
       await card.hover()
+      const opening = page.evaluate(async () => {
+        const widths: number[] = []
+
+        for (let frame = 0; frame < 40; frame++) {
+          await new Promise(requestAnimationFrame)
+          const modal = document.querySelector('dialog.task-modal')
+
+          if (modal) {
+            widths.push(modal.getBoundingClientRect().width)
+          }
+        }
+
+        return widths
+      })
       await page.getByRole(
         'button',
         {
-          name: 'Open as a modal',
+          name: 'Open modal',
           exact: true,
         },
       ).click()
@@ -417,6 +431,62 @@ test(
         },
       )
       await modal.waitFor()
+      expect(await modal.getByRole(
+        'separator',
+        {
+          name: 'Resize card',
+          exact: true,
+        },
+      ).count()).toBe(0)
+      expect(await modal.getByRole(
+        'button',
+        {
+          name: 'Modal conversation',
+          exact: true,
+        },
+      ).count()).toBe(0)
+      expect(await modal.getByRole(
+        'heading',
+        {
+          name: 'Modal conversation',
+          exact: true,
+        },
+      ).count()).toBe(1)
+      const widths = await opening
+      await until({
+        what: 'modal opens at the standard share of the viewport',
+        check: async () => {
+          const box = await modal.boundingBox()
+
+          return !!box && Math.abs(box.width - 936) < 1 && Math.abs(box.height - 868) < 1
+        },
+      })
+      expect(widths.some(width => width > 600 && width < 900)).toBe(true)
+      const modalWidth = modal.getByRole(
+        'separator',
+        {
+          name: 'Resize task modal width',
+          exact: true,
+        },
+      )
+      await modalWidth.focus()
+      await page.keyboard.press('Home')
+      await modal.getByRole(
+        'separator',
+        {
+          name: 'Resize task modal height',
+          exact: true,
+        },
+      ).focus()
+      await page.keyboard.press('Home')
+      await until({
+        what: 'modal uses the chosen size',
+        check: async () => {
+          const box = await modal.boundingBox()
+
+          return !!box && Math.abs(box.width - 560) < 1 && Math.abs(box.height - 440) < 1
+        },
+      })
       expect(new URL(page.url()).searchParams.get('task')).toBe((await hydra.task({ key: 'modal' })).id)
       await modal.getByRole(
         'button',
@@ -444,14 +514,48 @@ test(
       await page.keyboard.press('Shift+Tab')
       // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
       expect(await modal.evaluate(element => element.contains(document.activeElement))).toBe(true)
+      const closing = page.evaluate(async () => {
+        const heights: number[] = []
+
+        for (let frame = 0; frame < 30; frame++) {
+          await new Promise(requestAnimationFrame)
+          const inline = document.querySelector('.hydra-workspace .card.selected:not(dialog *)')
+
+          if (inline) {
+            heights.push(inline.getBoundingClientRect().height)
+          }
+        }
+
+        return heights
+      })
       await page.keyboard.press('Escape')
       await modal.waitFor({ state: 'detached' })
+      expect((await closing).some(height => height > 450 && height < 510)).toBe(true)
       await until({
         what: 'focus returns to the inline task title',
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         check: () => title.evaluate(element => element === document.activeElement),
       })
       expect(new URL(page.url()).searchParams.has('task')).toBe(false)
+      await card.hover()
+      const hoverBar = page.getByRole(
+        'button',
+        {
+          name: 'Open modal',
+          exact: true,
+        },
+      ).locator('xpath=ancestor::*[@popover][1]')
+      await until({
+        what: 'closing the modal restores the hover bar to its inline card',
+        check: async () => {
+          const bar = await hoverBar.boundingBox(), box = await card.boundingBox()
+
+          return !!bar && !!box && bar.x >= box.x
+            && bar.x + bar.width <= box.x + box.width + 1
+            && Math.abs(bar.y + bar.height - box.y) < 30
+        },
+      })
+
       await page.goForward()
       await modal.waitFor()
       const direct = await page.context().newPage()
@@ -463,6 +567,23 @@ test(
           exact: true,
         },
       ).waitFor()
+      expect(await direct.getByRole(
+        'dialog',
+        {
+          name: 'Modal conversation',
+          exact: true,
+        },
+      ).locator('.card-details')
+        .isVisible()).toBe(false)
+      const remembered = await direct.getByRole(
+        'dialog',
+        {
+          name: 'Modal conversation',
+          exact: true,
+        },
+      ).boundingBox()
+      expect(remembered!.width).toBe(560)
+      expect(remembered!.height).toBe(440)
       await direct.close()
       await page.reload()
       await modal.waitFor()

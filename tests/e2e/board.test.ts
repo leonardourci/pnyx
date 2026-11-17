@@ -761,7 +761,18 @@ test(
       ))
       const distance = distances[0]!
       expect(distance).toBeGreaterThan(20)
-      expect(distances.some(value => value > 2 && value < distance * 0.8)).toBe(true)
+      const motionSettings = await page.evaluate(() => ({
+        mode: document.documentElement.dataset.motion,
+        duration: getComputedStyle(document.documentElement).getPropertyValue('--transition-duration-base'),
+        reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+      }))
+      expect(
+        distances.some(value => value > 2 && value < distance * 0.8),
+        JSON.stringify({
+          distances,
+          motionSettings,
+        }),
+      ).toBe(true)
       expect(Math.max(...distances)).toBeLessThan(distance + 3)
       expect(distances.at(-1)).toBeLessThan(3)
       expect(await instruction.count()).toBe(0)
@@ -2378,11 +2389,31 @@ test(
       args: [
         'task',
         'create',
+        '--key',
+        'oracle-aged',
         '--title',
         'Searchable archive task',
         '--brief',
         'Resilient indexed needle',
       ],
+    })
+    await first.owner({
+      args: [
+        'push',
+        '--key',
+        'oracle-aged',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Searchable archive task',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'oracle-aged-session',
+          cwd: first.folder({ name: 'oracle-aged' }),
+        },
+        activity: 'ended',
+      }),
     })
     let failAll = false
     const page = await openHydra({
@@ -2438,6 +2469,34 @@ test(
         `${second.id}: Search disconnected`,
         { exact: false },
       ).waitFor()
+      const preview = page.locator('.oracle-card')
+      await until({
+        what: 'the stopped Oracle heading has one age',
+        check: async () => (await preview.locator('.agent-activity').innerText()) === 'Stopped',
+      })
+      expect(await preview.locator('time').count()).toBe(1)
+      expect(await preview.getByRole(
+        'heading',
+        {
+          name: 'Searchable archive task',
+          exact: true,
+        },
+      ).count()).toBe(1)
+      await first.owner({
+        args: [
+          'task',
+          'status',
+          'oracle-aged',
+          'done',
+          '--note',
+          'Archive complete',
+        ],
+      })
+      await until({
+        what: 'the completed Oracle heading has one age',
+        check: async () => (await preview.locator('.agent-activity').innerText()) === 'Done',
+      })
+      expect(await preview.locator('time').count()).toBe(1)
       failAll = true
       await search.fill('Entirely unavailable search')
       await page.getByText(
@@ -2819,6 +2878,860 @@ test(
         },
       ).waitFor()
       expect(pageErrors).toEqual([])
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'the child hover action removes its parent and returns it to its own project',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'child-project' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    const parent = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'family',
+        '--title',
+        'Review the release',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'part',
+        '--title',
+        'Check the package',
+        '--parent',
+        'family',
+        '--project',
+        project,
+      ],
+    })
+    let release: (() => void) | undefined
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.name === 'task' && frame.args?.[0] === 'parent' && frame.args?.[2] === 'none') {
+              release = () => server.send(message)
+            } else {
+              server.send(message)
+            }
+          })
+        },
+      ),
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      const child = workspace.getByRole(
+        'button',
+        {
+          name: 'Check the package',
+          exact: true,
+        },
+      )
+      const toggle = workspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of Review the release',
+          exact: true,
+        },
+      )
+
+      if (await toggle.getAttribute('aria-expanded') === 'false') {
+        await toggle.click()
+      }
+
+      await child.hover()
+      const row = child.locator('xpath=ancestor::article[1]')
+      await row.getByRole(
+        'button',
+        {
+          name: 'Remove from parent',
+          exact: true,
+        },
+      ).click()
+      const ownProject = workspace.getByRole(
+        'button',
+        {
+          name: 'Fold child-project',
+          exact: true,
+        },
+      ).locator('xpath=ancestor::section[@data-column][1]')
+      const returned = ownProject.getByRole(
+        'button',
+        {
+          name: 'Check the package',
+          exact: true,
+        },
+      )
+      await returned.waitFor()
+      expect(await returned.locator('xpath=ancestor::*[@data-child]').count()).toBe(0)
+      expect((await hydra.task({ key: 'part' })).parent).toBe(parent.card.id)
+      await until({
+        what: 'the un-nest request is held',
+        check: () => !!release,
+      })
+      release!()
+      await until({
+        what: 'the un-nest action saves the task as a root',
+        check: async () => (await hydra.task({ key: 'part' })).parent === 'none',
+      })
+      await page.reload()
+      await returned.waitFor()
+      expect((await hydra.task({ key: 'part' })).project).toBe('child-project')
+      expect((await hydra.task({ key: 'part' })).title).toBe('Check the package')
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'Shift nesting reparents a child but refuses deeper families without changing them',
+  async () => {
+    const hydra = await pnyx.hydra()
+
+    for (const [
+      key,
+      parent,
+    ] of [
+        [
+          'First root',
+          undefined,
+        ],
+        [
+          'Second root',
+          undefined,
+        ],
+        [
+          'Existing child',
+          'First root',
+        ],
+        [
+          'Other child',
+          'Second root',
+        ],
+        [
+          'Loose task',
+          undefined,
+        ],
+      ]) {
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key!,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          title: key,
+          parent,
+        }),
+      })
+    }
+
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of First root',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of Second root',
+          exact: true,
+        },
+      ).click()
+      const card = ({ title }: { title: string }) => workspace.getByRole(
+        'button',
+        {
+          name: title,
+          exact: true,
+        },
+      ).locator('xpath=ancestor::article[1]')
+
+      const drag = async ({
+        source,
+        target,
+        reason,
+      }: {
+        source: string
+        target: string
+        reason?: string
+      }) => {
+        const from = card({ title: source }), to = card({ title: target })
+        await from.hover()
+        const handle = page.getByRole(
+          'button',
+          {
+            name: `Move ${source}`,
+            exact: true,
+          },
+        )
+        const start = await handle.boundingBox()
+        const end = await to.boundingBox()
+        expect(start).not.toBeNull()
+        expect(end).not.toBeNull()
+        await page.mouse.move(
+          start!.x + start!.width / 2,
+          start!.y + start!.height / 2,
+        )
+        await page.mouse.down()
+        await page.mouse.move(
+          start!.x + start!.width / 2 + 12,
+          start!.y + start!.height / 2,
+          { steps: 3 },
+        )
+        await page.locator('.physical-ghost').waitFor()
+        await page.keyboard.down('Shift')
+        await page.mouse.move(
+          end!.x + end!.width / 2,
+          end!.y + end!.height / 2,
+          { steps: 12 },
+        )
+        const ghost = page.locator('.physical-ghost')
+        await ghost.waitFor()
+
+        if (reason) {
+          await ghost.getByText(
+            reason,
+            { exact: true },
+          ).waitFor()
+          expect(await ghost.locator('[data-drag-nest-hint]').count()).toBe(0)
+          expect(await to.getAttribute('data-nest-armed')).toBe('false')
+          await page.keyboard.up('Shift')
+          expect(await ghost.locator('[data-drag-nest-refusal]').count()).toBe(0)
+          await page.keyboard.down('Shift')
+          await to.hover()
+          await ghost.getByText(
+            reason,
+            { exact: true },
+          ).waitFor()
+        } else {
+          await until({
+            what: 'the root is armed',
+            check: async () => await to.getAttribute('data-nest-armed') === 'true',
+          })
+        }
+
+        await page.mouse.up()
+        await page.keyboard.up('Shift')
+        await ghost.waitFor({ state: 'detached' })
+      }
+
+      const first = (await hydra.task({ key: 'First root' })).id
+      const second = (await hydra.task({ key: 'Second root' })).id
+      await drag({
+        source: 'Loose task',
+        target: 'Existing child',
+        reason: "Can't nest here: this task is already a sub-task",
+      })
+      expect((await hydra.task({ key: 'Loose task' })).parent).toBe('none')
+      await drag({
+        source: 'First root',
+        target: 'Second root',
+        reason: "Can't nest: this task has its own sub-tasks",
+      })
+      expect((await hydra.task({ key: 'First root' })).parent).toBe('none')
+      expect((await hydra.task({ key: 'Existing child' })).parent).toBe(first)
+      await drag({
+        source: 'Existing child',
+        target: 'Second root',
+      })
+      await until({
+        what: 'Shift reparents within one level',
+        check: async () => (await hydra.task({ key: 'Existing child' })).parent === second,
+      })
+      expect((await hydra.task({ key: 'Other child' })).parent).toBe(second)
+      await page.reload()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of Second root',
+          exact: true,
+        },
+      ).click()
+      await card({ title: 'Existing child' }).waitFor()
+      expect((await hydra.task({ key: 'Existing child' })).parent).toBe(second)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'a wide closed task lifts at standard card size and grows back into its row',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'wide',
+        '--title',
+        'A wide closed card',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectWidths: { ideas: 944 } } }),
+      ],
+    })
+    const repository = hydra.folder({ name: 'grab-target' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        repository,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'parent',
+        '--title',
+        'A nesting target',
+        '--project',
+        repository,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { chatCollapsed: true } }),
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const card = page.getByRole(
+        'button',
+        {
+          name: 'A wide closed card',
+          exact: true,
+        },
+      ).locator('xpath=ancestor::article[1]')
+      await card.hover()
+      const box = await card.boundingBox()
+      expect(box!.width).toBeGreaterThan(900)
+      await page.mouse.move(
+        box!.x + box!.width * 0.82,
+        box!.y + box!.height * 0.65,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        box!.x + box!.width * 0.82 + 20,
+        box!.y + box!.height * 0.65,
+        { steps: 4 },
+      )
+      const ghost = page.locator('.physical-ghost')
+      await ghost.waitFor()
+      const lifted = await ghost.boundingBox()
+      expect(lifted!.width).toBeCloseTo(
+        box!.width,
+        2,
+      )
+      expect(lifted!.height).toBe(96)
+      const preview = ghost.locator('[data-drag-preview]')
+
+      const anchored = async ({
+        x,
+        y,
+      }: {
+        x: number
+        y: number
+      }) => {
+        const box = await preview.boundingBox()
+        expect((x - box!.x) / box!.width).toBeCloseTo(
+          0.82,
+          2,
+        )
+        expect((y - box!.y) / box!.height).toBeCloseTo(
+          0.65,
+          2,
+        )
+      }
+
+      await anchored({
+        x: box!.x + box!.width * 0.82 + 20,
+        y: box!.y + box!.height * 0.65,
+      })
+      const target = await page.getByRole(
+        'button',
+        {
+          name: 'A nesting target',
+          exact: true,
+        },
+      ).locator('xpath=ancestor::article[1]')
+        .boundingBox()
+      const point = {
+        x: target!.x + target!.width / 2,
+        y: target!.y + target!.height / 2,
+      }
+      await page.mouse.move(
+        point.x,
+        point.y,
+        { steps: 12 },
+      )
+      await until({
+        what: 'crossing another column compacts the wide lift',
+        check: async () => Math.abs((await preview.boundingBox())!.width - 303.333) < 1,
+      })
+      await anchored(point)
+      await page.keyboard.down('Shift')
+      await until({
+        what: 'the lifted preview shrinks at its grab point',
+        check: async () => (await preview.boundingBox())!.width < 260,
+      })
+      await anchored(point)
+      await page.keyboard.up('Shift')
+      await until({
+        what: 'the preview grows back around its grab point',
+        check: async () => Math.abs((await preview.boundingBox())!.width - 303.333) < 1,
+      })
+      await anchored(point)
+      const landing = page.evaluate(async () => {
+        const samples: {
+          width: number
+          title: number
+        }[] = []
+
+        for (let frame = 0; frame < 30; frame++) {
+          await new Promise(requestAnimationFrame)
+          const ghost = document.querySelector('.physical-ghost')
+
+          if (ghost) {
+            const range = document.createRange()
+            range.selectNodeContents(ghost.querySelector('.card-open')!)
+            samples.push({
+              width: ghost.getBoundingClientRect().width,
+              title: range.getBoundingClientRect().width,
+            })
+          }
+        }
+
+        return samples
+      })
+      await page.mouse.move(
+        box!.x + box!.width * 0.82 + 20,
+        box!.y + box!.height * 0.65,
+        { steps: 12 },
+      )
+      await anchored({
+        x: box!.x + box!.width * 0.82 + 20,
+        y: box!.y + box!.height * 0.65,
+      })
+      await page.mouse.up()
+      const samples = await landing
+      expect(samples.some(sample => sample.width > 300 && sample.width < 850)).toBe(true)
+      const titleWidths = samples.map(sample => sample.title)
+      expect(Math.max(...titleWidths) - Math.min(...titleWidths)).toBeLessThan(1)
+      await ghost.waitFor({ state: 'detached' })
+      expect((await card.boundingBox())!.width).toBe(box!.width)
+      expect((await hydra.task({ key: 'wide' })).parent).toBe('none')
+
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'neighbor',
+          '--title',
+          'A reorder neighbor',
+        ],
+      })
+
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'standard',
+          '--title',
+          'A standard peer',
+        ],
+      })
+      await card.hover()
+      await until({
+        what: 'three closed cards settle into standard cells',
+        check: async () => Math.abs((await card.boundingBox())!.width - 303.333) < 0.05,
+      })
+      const standard = await card.boundingBox()
+      expect(standard!.width).toBeCloseTo(
+        303.333,
+        1,
+      )
+      await page.mouse.move(
+        standard!.x + standard!.width * 0.7,
+        standard!.y + standard!.height * 0.6,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        standard!.x + standard!.width * 0.7 + 12,
+        standard!.y + standard!.height * 0.6,
+        { steps: 4 },
+      )
+      await ghost.waitFor()
+      await page.mouse.move(
+        point.x,
+        point.y,
+        { steps: 12 },
+      )
+      expect((await ghost.boundingBox())!.width).toBeCloseTo(
+        standard!.width,
+        1,
+      )
+      expect((await ghost.boundingBox())!.height).toBeCloseTo(
+        standard!.height,
+        1,
+      )
+      await page.keyboard.press('Escape')
+      await page.mouse.up()
+      await ghost.waitFor({ state: 'detached' })
+      await hydra.owner({
+        args: [
+          'task',
+          'hide',
+          'standard',
+        ],
+      })
+      await card.getByRole(
+        'button',
+        {
+          name: 'A wide closed card',
+          exact: true,
+        },
+      ).click()
+      const draft = card.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      )
+      await draft.fill('Keep the open conversation while moving')
+      const liveDraft = await draft.elementHandle()
+      await card.hover()
+      const handle = page.getByRole(
+        'button',
+        {
+          name: 'Move A wide closed card',
+          exact: true,
+        },
+      )
+      expect(await handle.isEnabled()).toBe(true)
+      const grip = await handle.boundingBox()
+      const opened = await card.boundingBox()
+      await page.mouse.move(
+        grip!.x + grip!.width / 2,
+        grip!.y + grip!.height / 2,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        grip!.x + grip!.width / 2 + 12,
+        grip!.y + grip!.height / 2,
+        { steps: 4 },
+      )
+      await ghost.waitFor()
+      expect((await ghost.boundingBox())!.width).toBeCloseTo(
+        opened!.width,
+        0,
+      )
+      expect((await ghost.boundingBox())!.height).toBeCloseTo(
+        opened!.height,
+        0,
+      )
+      expect(await ghost.locator('.worker-chat').count()).toBe(1)
+      const neighbor = page.getByRole(
+        'button',
+        {
+          name: 'A reorder neighbor',
+          exact: true,
+        },
+      ).locator('xpath=ancestor::article[1]')
+      const next = await neighbor.boundingBox()
+      await page.mouse.move(
+        next!.x + next!.width / 2,
+        next!.y + next!.height - 4,
+        { steps: 12 },
+      )
+      await until({
+        what: 'the open task previews its new position',
+        check: async () => {
+          const titles = await page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column="ideas"] .card-open`).allTextContents()
+
+          return titles.join('|') === 'A reorder neighbor|A wide closed card'
+        },
+      })
+      await page.mouse.up()
+      await ghost.waitFor({ state: 'detached' })
+      await until({
+        what: 'the opened task reorders without losing its conversation',
+        check: async () => {
+          const titles = await page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column="ideas"] .card-open`).allTextContents()
+
+          return titles.join('|') === 'A reorder neighbor|A wide closed card'
+        },
+      })
+      await until({
+        what: 'the opened task order is saved',
+        check: () => rows<{ key: string }>({
+          text: "select key from cards where hydra_id = $1 and key in ('wide', 'neighbor') order by coalesce(rank, created_seq)",
+          values: [hydra.id],
+        }).map(card => card.key)
+          .join('|') === 'neighbor|wide',
+      })
+      expect(await liveDraft!.evaluate(({ isConnected }) => isConnected)).toBe(true)
+      expect(await draft.inputValue()).toBe('Keep the open conversation while moving')
+
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'part',
+          '--title',
+          'A retained part',
+          '--parent',
+          'wide',
+        ],
+      })
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      const family = workspace.locator(`[data-family="${(await hydra.task({ key: 'wide' })).id}"]`)
+      await family.getByRole(
+        'button',
+        {
+          name: 'A retained part',
+          exact: true,
+        },
+      ).waitFor()
+      const child = await family.getByRole(
+        'button',
+        {
+          name: 'A retained part',
+          exact: true,
+        },
+      ).elementHandle()
+
+      const expand = async ({
+        close,
+        open,
+        body,
+        surface,
+        axis,
+        instant = false,
+      }: {
+        close: string
+        open: string
+        body: string
+        surface: string
+        axis: 'width' | 'height'
+        instant?: boolean
+      }) => {
+        await workspace.getByRole(
+          'button',
+          {
+            name: close,
+            exact: true,
+          },
+        ).click()
+        const content = workspace.locator(body)
+        await until({
+          what: `${close} finishes`,
+          check: async () => await content.getAttribute('hidden') !== null,
+        })
+        const frames = page.evaluate(
+          async ({
+            body,
+            surface,
+            hydra,
+            axis,
+          }) => {
+            const workspace = document.querySelector(`[data-hydra-workspace="${hydra}"]`)!
+            const content = workspace.querySelector<HTMLElement>(body)!
+            const target = surface === ':scope' ? workspace : workspace.querySelector<HTMLElement>(surface)!
+            await new Promise<void>((
+              resolve,
+              reject,
+            ) => {
+              const timeout = setTimeout(
+                () => {
+                  observer.disconnect(); reject(new Error('The fold never opened'))
+                },
+                10000,
+              )
+              const observer = new MutationObserver(() => {
+                if (content.dataset.foldOpen === 'true') {
+                  clearTimeout(timeout); observer.disconnect(); resolve()
+                }
+              })
+              observer.observe(
+                content,
+                {
+                  attributes: true,
+                  attributeFilter: ['data-fold-open'],
+                },
+              )
+            })
+            const samples: {
+              dimension: number
+              opacity: number
+            }[] = []
+
+            for (let frame = 0; frame < 24; frame++) {
+              await new Promise(requestAnimationFrame)
+              samples.push({
+                dimension: target.getBoundingClientRect()[axis],
+                opacity: Number(getComputedStyle(content).opacity),
+              })
+            }
+
+            return samples
+          },
+          {
+            body,
+            surface,
+            hydra: hydra.id,
+            axis,
+          },
+        )
+        const [samples] = await Promise.all([
+          frames,
+          workspace.getByRole(
+            'button',
+            {
+              name: open,
+              exact: true,
+            },
+          ).click(),
+        ])
+
+        const dimensions = samples.map(sample => sample.dimension)
+        const change = Math.max(...dimensions) - Math.min(...dimensions)
+
+        if (instant) {
+          expect(samples.every(sample => sample.opacity === 1)).toBe(true)
+          expect(change).toBeLessThan(1)
+        } else {
+          expect(samples.some(sample => sample.opacity > 0 && sample.opacity < 1)).toBe(true)
+          expect(change).toBeGreaterThan(4)
+        }
+      }
+
+      const familyId = (await hydra.task({ key: 'wide' })).id
+      const group = `[data-family="${familyId}"] > [data-fold-open]`
+      await expand({
+        close: 'Sub-tasks of A wide closed card',
+        open: 'Sub-tasks of A wide closed card',
+        body: group,
+        surface: group,
+        axis: 'height',
+      })
+      expect(await child!.evaluate(({ isConnected }) => isConnected)).toBe(true)
+      await expand({
+        close: 'Fold Ideas',
+        open: 'Unfold Ideas',
+        body: '[data-column="ideas"] .column-cards',
+        surface: '[data-column="ideas"]',
+        axis: 'width',
+      })
+      await expand({
+        close: 'Fold all projects',
+        open: 'Unfold all projects',
+        body: '[data-column="ideas"] .column-cards',
+        surface: '[data-column="ideas"]',
+        axis: 'width',
+      })
+      await expand({
+        close: 'Fold Hydra',
+        open: 'Unfold Hydra',
+        body: '.shell',
+        surface: ':scope',
+        axis: 'width',
+      })
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Unfold chat',
+          exact: true,
+        },
+      ).click()
+      await expand({
+        close: 'Fold chat',
+        open: 'Unfold chat',
+        body: '.chat-content',
+        surface: '.workspace-chat',
+        axis: 'width',
+      })
+      await page.evaluate(() => {
+        document.documentElement.dataset.motion = 'off'
+      })
+      await expand({
+        close: 'Fold all projects',
+        open: 'Unfold all projects',
+        body: '[data-column="ideas"] .column-cards',
+        surface: '[data-column="ideas"]',
+        axis: 'width',
+        instant: true,
+      })
+      await page.evaluate(() => {
+        document.documentElement.dataset.motion = 'normal'
+      })
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      await expand({
+        close: 'Sub-tasks of A wide closed card',
+        open: 'Sub-tasks of A wide closed card',
+        body: group,
+        surface: group,
+        axis: 'height',
+        instant: true,
+      })
+      expect(await liveDraft!.evaluate(({ isConnected }) => isConnected)).toBe(true)
+      expect(await draft.inputValue()).toBe('Keep the open conversation while moving')
     } finally {
       await page.context().close()
     }

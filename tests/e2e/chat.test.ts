@@ -463,6 +463,32 @@ test.each([
     })
     expect(olderReads.size).toBe(reads)
     expect(await loader.count()).toBe(0)
+
+    const input = page.locator(COMPOSER)
+    const composer = page.locator(`${ACTIVE_WORKSPACE} .hydra-chat .composer`)
+    const note = conversation.getByRole(
+      'textbox',
+      {
+        name: 'Your answer',
+        exact: true,
+      },
+    )
+    await note.waitFor()
+
+    for (const theme of [
+      'light',
+      'dark',
+    ]) {
+      await page.evaluate(
+        ({ theme }) => {
+          document.documentElement.dataset.theme = theme
+        },
+        { theme },
+      )
+      expect((await composer.boundingBox())!.height).toBe(106)
+      expect((await input.boundingBox())!.height).toBe(48)
+      expect((await note.boundingBox())!.height).toBe(48)
+    }
   },
 )
 
