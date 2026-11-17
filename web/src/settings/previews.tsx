@@ -22,7 +22,7 @@ function PreviewCard({
   ...props
 }: ComponentProps<'div'> & { variant?: 'card' | 'done' }) {
   const appearance = variant === 'done'
-    ? 'flex-row justify-between py-1.5 text-meta transition-opacity ease-ui duration-150 data-hidden:opacity-35 data-hidden:border-dashed'
+    ? 'flex-row justify-between py-1.5 text-meta transition-opacity ease-ui duration-base data-hidden:opacity-35 data-hidden:border-dashed'
     : 'flex-col py-2 border-t-3 border-t-blue text-ui'
 
   return <div {...props} className={`preview-card flex gap-1.25 max-w-80 px-2.25 border border-line rounded-md bg-surface ${appearance} ${className}`} />
@@ -76,7 +76,7 @@ function MiniPanel({
     ? 'preview-board-column flex flex-col gap-0.75 p-0.75 border-subtle bg-background data-dragged:border-dashed data-dragged:border-muted [&>i]:block [&>i]:h-3.5 [&>i]:border [&>i]:border-line [&>i]:border-t-2 [&>i]:border-t-blue [&>i]:rounded-xs [&>i]:bg-surface'
     : 'preview-board-chat border-line bg-surface'
 
-  return <div {...props} className={`relative shrink-0 rounded-preview transition-[width] ease-ui duration-150 border ${appearance}`} />
+  return <div {...props} className={`relative shrink-0 rounded-preview transition-[width] ease-ui duration-base border ${appearance}`} />
 }
 
 function TimelineLabel({ ...props }: ComponentProps<'span'>) {
@@ -470,7 +470,7 @@ const LOG_CAPTIONS: Record<LogMode, string> = {
 export function LogLinesPreview({ mode }: { mode: LogMode }) {
   return (
     <Preview caption={LOG_CAPTIONS[mode]}>
-      <div className="preview-log flex flex-col gap-0.75 max-w-90 [&>code]:py-0.75 [&>code]:px-2 [&>code]:border [&>code]:border-line [&>code]:rounded-md [&>code]:bg-surface [&>code]:text-meta [&>code]:wrap-anywhere [&>code]:transition-opacity [&>code]:ease-ui [&>code]:duration-150 [&>code[data-detailed]]:border-gold/50 [&>code[data-hidden]]:opacity-35 [&>code[data-hidden]]:border-dashed">
+      <div className="preview-log flex flex-col gap-0.75 max-w-90 [&>code]:py-0.75 [&>code]:px-2 [&>code]:border [&>code]:border-line [&>code]:rounded-md [&>code]:bg-surface [&>code]:text-meta [&>code]:wrap-anywhere [&>code]:transition-opacity [&>code]:ease-ui [&>code]:duration-base [&>code[data-detailed]]:border-gold/50 [&>code[data-hidden]]:opacity-35 [&>code[data-hidden]]:border-dashed">
         {LOG_LINES.map(({
           text,
           line,
@@ -562,7 +562,7 @@ export function LogDaysPreview({
     <Preview caption={caption}>
       <div className="preview-days grid grid-cols-5 gap-1 max-w-90">
         {files.map(file => (
-          <div key={file.name} className="preview-day flex flex-col gap-0.5 py-1 px-1.25 border border-line rounded-md bg-surface text-meta whitespace-nowrap transition-opacity ease-ui duration-150 data-hidden:opacity-35 data-hidden:border-dashed" data-hidden={!file.kept || undefined}>
+          <div key={file.name} className="preview-day flex flex-col gap-0.5 py-1 px-1.25 border border-line rounded-md bg-surface text-meta whitespace-nowrap transition-opacity ease-ui duration-base data-hidden:opacity-35 data-hidden:border-dashed" data-hidden={!file.kept || undefined}>
             <span>{file.name}</span>
             <PreviewMeta >{file.size} MB</PreviewMeta>
           </div>
@@ -600,7 +600,7 @@ export function LogSizePreview({
 
   return (
     <Preview caption={caption}>
-      <div className="preview-meter flex gap-0.25 h-3 mt-1.5 mx-0 mb-1 rounded-md bg-line overflow-hidden [&>span]:shrink-0 [&>span]:h-full [&>span]:bg-gold [&>span]:transition-[width] [&>span]:ease-ui [&>span]:duration-150" role="presentation">
+      <div className="preview-meter flex gap-0.25 h-3 mt-1.5 mx-0 mb-1 rounded-md bg-line overflow-hidden [&>span]:shrink-0 [&>span]:h-full [&>span]:bg-gold [&>span]:transition-[width] [&>span]:ease-ui [&>span]:duration-base" role="presentation">
         {kept.map(file => (
           <span
             key={file.name}
