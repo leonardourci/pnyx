@@ -158,7 +158,7 @@ export function Usage({
             )}
             <UsageRow variant="source" className="shared-source"><Icon name={sourceIcon} size={ICON_SIZE.inline} />{source}</UsageRow>
           </UsageStack>
-        ) : <span className="context-empty text-xs opacity-70 py-1" title={usage?.unavailable}>Usage unavailable</span>}
+        ) : <span className="context-empty text-xs leading-question opacity-70 py-1" title={usage?.unavailable}>Usage unavailable</span>}
       </UsageSection>
       <UsageSection divided className="shared-plan">
         <UsageRow variant="header" className="shared-header">
@@ -176,7 +176,7 @@ export function Usage({
             />
           )}
         </UsageRow>
-        <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={ICON_SIZE.inline} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge text-usage-detail border border-usage-badge px-1.75 py-px rounded-compact leading-[1.4] capitalize">{who.plan}</span>}</UsageRow>
+        <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={ICON_SIZE.inline} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge text-usage-detail border border-usage-badge px-1.75 py-px rounded-compact leading-question capitalize">{who.plan}</span>}</UsageRow>
         {who?.model && <UsageText className="shared-sub">{who.model}</UsageText>}
         {windows.map(window => {
           const windowTone = usageTone({ percent: window.used })
