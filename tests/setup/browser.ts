@@ -49,7 +49,7 @@ export async function openHydra({
       width: 1440,
       height: 900,
     },
-    ...reducedMotion ? { reducedMotion: 'reduce' as const } : {},
+    reducedMotion: reducedMotion ? 'reduce' : 'no-preference',
   })).newPage()
   await prepare?.({ page })
   await page.goto(`http://127.0.0.1:${port}/hydra/${hydraId}/`)
