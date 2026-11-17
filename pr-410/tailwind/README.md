@@ -2,7 +2,7 @@
 
 These 152 before/after pairs cover 38 surfaces at 1440×900 and 390×844, in both themes, using an isolated synthetic Hydra.
 
-Before: main at `605f8dd0`. After: the Tailwind worker at `b325008a`, including the shared icon tokens. The shared workspace, navigation, task layout and composer work is maintained by the other worker in the same PR. Main's Button ink and 1.4 line height are retained. Relative timestamps differ between captures.
+Before: main at `605f8dd0`. After: the Tailwind worker at `b325008a`, including the shared icon tokens. The shared workspace, navigation, task layout and composer work is maintained by the other worker in the same PR. Main's Button ink and 1.4 line height are retained. Oracle keeps the approved placement below the new top bar, derived from its shared height token. Relative timestamps differ between captures.
 
 The Select points down while closed and up while open. The browser journeys also check mouse, keyboard and Escape behavior, native Settings/chat disclosures, and the agent popover. Motion timing has a shared off-mode check, including the OS reduced-motion preference.
 
@@ -995,4 +995,3 @@ The Select points down while closed and up while open. The browser journeys also
 | Before | After |
 | --- | --- |
 | <img src="dialog-phone-dark-before.png" width="360" alt="dialog, phone, dark, before"> | <img src="dialog-phone-dark-after.png" width="360" alt="dialog, phone, dark, after"> |
-
