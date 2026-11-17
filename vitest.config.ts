@@ -12,6 +12,7 @@ export default defineConfig({
     },
   },
   test: {
+    provide: { uiProfile: process.env.VITE_PNYX_PROFILE === '1' },
     pool: 'forks',
     execArgv: [
       '--conditions=source',

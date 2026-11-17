@@ -1,10 +1,16 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from 'vitest'
+import { expect, inject, test } from 'vitest'
 import { flushLogs } from '#app/diagnostics.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { logFiles } from '#diagnostics/log-files.ts'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until } from '../setup/pnyx.ts'
+
+declare module 'vitest' {
+  export interface ProvidedContext {
+    uiProfile: boolean
+  }
+}
 
 function metrics() {
   return logFiles().flatMap(file => readFileSync(
@@ -47,8 +53,10 @@ test(
         'click',
         () => {
           const started = performance.now()
-          // Exercise the browser observers with real main-thread work.
-          while (performance.now() - started < 150) { /* busy */ }
+
+          while (performance.now() - started < 150) {
+            // Browser observers require real main-thread work.
+          }
         },
         { once: true },
       )
@@ -70,6 +78,7 @@ test(
       },
     })
     const recorded = metrics()
+    expect(recorded.some(line => line.operation === 'page.react-commit')).toBe(inject('uiProfile'))
     expect(recorded).toEqual(expect.arrayContaining([
       expect.objectContaining({
         operation: 'page.slow-interaction',
@@ -100,13 +109,18 @@ test(
     await until({
       what: 'Logs Off reaches the page',
       check: () => page.getByRole(
-        'button',
-        {
-          name: 'Off',
-          exact: true,
-        },
-      ).count()
-        .then(count => count > 0),
+        'radiogroup',
+        { name: 'Logging' },
+      )
+        .getByRole(
+          'radio',
+          {
+            name: 'Off',
+            exact: true,
+          },
+        )
+        .getAttribute('aria-checked')
+        .then(value => value === 'true'),
     })
     const onBatch = recorded.find(line => line.operation === 'page.metrics-overhead')
     expect(onBatch.totalMs).toBeGreaterThan(onBatch.ms)
