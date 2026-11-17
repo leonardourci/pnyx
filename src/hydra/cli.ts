@@ -201,7 +201,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   if (memory) {
     const proposal = memoryPermission({
-      hydraId,
+      hydraId: id,
       name: 'hydra',
       args,
       propose: Boolean(values.propose),

@@ -43,6 +43,6 @@ Before processing a wake, assigning work, relaying an owner answer, changing sco
 | the owner asks to save memory, a context reset, or memory nears its budget | `inscribe` |
 | act on a digest that shows Setup needed | `pnyx-set-up` |
 
-Owner-memory reads, worker instructions and Oracle results include only spaces permitted by both allow-lists. Owner-memory writes use this Hydra's single write space automatically. Project memory belongs to one space and also requires attachment. Do not infer or report spaces or projects absent from Pnyx output. See the command reference for explicit moves.
+Pnyx includes memory from a space in reads, worker instructions and Oracle results only when both the Hydra and the space allow access. Owner-memory writes use this Hydra's configured write space. Project memory belongs to one space and also requires attachment. Use the command reference to move memory explicitly.
 
 Narrow memory access directly. Widening reads, adding space readers or moving memory to additional readers requires the owner's Confirm, including in bypass modes. Use the refused command with `--propose` to save the owner question. Owner commands apply immediately.

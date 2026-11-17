@@ -560,8 +560,7 @@ Workers request additions through `task ask`. Hydra runs `task tools <task> --gr
 
 Messages to a busy agent normally join at its next step. **Send now**, `pnyx-axi hydra send-now <message-id>` or `pnyx-axi task send-now <task> <message-id>`, interrupts its current step to take a queued message, and is offered only while a Pnyx-run agent works a turn. Claude uses its public interrupt API. Codex Stop signals only verified foreground command processes that started during that turn, matched by their command text, and keeps commands already put in the background. Cleanup is best effort: a failure to read or signal processes is logged and never prevents Stop. A message Codex already accepted into a stopped turn stays in its thread and keeps its **Received** receipt. An owner message denies the recipient's pending permission prompt, then delivers the message.
 
-
-### Memory spaces
+## Memory spaces
 
 `shared` holds existing owner memory without rewriting its log. New and existing Hydras read and write `shared` by default. `work` and `personal` start empty with no readers. Owner-memory reads merge only spaces allowed by both the Hydra reads list and the space readers list. Writes resolve the Hydra's one write space on the server; ordinary memory commands accept no space argument. The 24000-character budget applies to each space.
 
@@ -571,8 +570,7 @@ Manage space names and readers with `settings set --json '{"memorySpaces":{"shar
 
 Each project's memory has one assigned space; existing projects default to `shared`. `project move <name|path> --space <space> --hydra <hydra>` changes that assignment without partitioning its memory. Both source and destination must be readable. An attached Hydra with access to the project's space may read and write that project's memory regardless of its owner-memory write space.
 
-Unreadable spaces and project memory are absent from lists, digests, worker prompts and Oracle results, just like missing data. Rules protect Pnyx output; a local shell with raw disk access can still read the logs.
-
+Unreadable spaces and project memory are absent from lists, digests, worker prompts and Oracle results. A local shell with raw disk access can still read the logs.
 
 The owner applies access edits immediately. Hydra may narrow access directly. Widening a Hydra reads list, adding space readers, or moving a project, document or learning to additional readers requires the owner's Confirm, even in bypass modes. Repeat the refused command with `--propose` to save a question in Hydra's chat; the change waits until the owner confirms. Changes to the target or its access rules invalidate a pending proposal. Note moves also pin the source and destination revisions (`--if-revision` and `--if-destination-revision`), checked under the move lock. `owner memory list` separates the combined readable `memory` from the current write-space documents under `writable`; edit the latter when inscribing.
 

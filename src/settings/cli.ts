@@ -102,7 +102,7 @@ export const settings = guard({
     const memoryPatch = patch && typeof patch === 'object' && ('memorySpaces' in patch || 'projectSpaces' in patch)
 
     if (memoryPatch && typeof patch === 'object' && patch !== null
-      && hydraActor({ actor: change.actor })) {
+      && (memoryAgent() || hydraActor({ actor: change.actor }))) {
       const state = loadHydra({ hydraId }).state
       const spaces = read.settings.memorySpaces
 
@@ -115,7 +115,7 @@ export const settings = guard({
 
       if ('memorySpaces' in patch && patch.memorySpaces && typeof patch.memorySpaces === 'object') {
         for (const space of Object.keys(patch.memorySpaces)) {
-          if (!values.propose && !canRead({
+          if (!canRead({
             hydraId,
             state,
             spaces,
@@ -153,7 +153,10 @@ export const settings = guard({
       saved: saveSettings({
         hydraId,
         patch,
-        meta: change,
+        meta: memoryPatch ? {
+          ...change,
+          ifRevision: change.ifRevision ?? read.revision,
+        } : change,
       }),
     })
 

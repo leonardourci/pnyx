@@ -167,7 +167,7 @@ export function memoryPermission({
     })
   }
 
-  if (widening && hydraActor({ actor })) {
+  if (widening && (memoryAgent() || hydraActor({ actor }))) {
     throw new HydraError({
       message: 'Widening memory access needs the owner’s Confirm',
       code: 'OWNER_ONLY',

@@ -15,6 +15,7 @@ import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
 import { requestCwd, requestEnv, IDENTITY } from '#app/request-context.ts'
+import { memoryAgent } from '#memory/spaces.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -71,7 +72,7 @@ function context({
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
 
   return createHash('sha256').update(JSON.stringify({
-    config: name === 'hydra' || name === 'setup' || name === 'owner' ? state.config : undefined,
+    config: name === 'hydra' || name === 'setup' || memory ? state.config : undefined,
     projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
     memory,
@@ -185,7 +186,7 @@ export const approval = guard({
     })
     const actor = meta({ values })
 
-    if (actor.actor === 'hydra' || requestEnv().PNYX_ACTOR === 'hydra') {
+    if (actor.actor === 'hydra' || memoryAgent()) {
       throw new HydraError({
         message: 'Only the owner can answer an approval question',
         code: 'OWNER_ONLY',

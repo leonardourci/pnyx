@@ -351,6 +351,20 @@ test(
       env: crossEnv,
     })
     expect(missingSpaceEdit.stdout).toBe(hiddenSpaceEdit.stdout)
+    const hiddenSpaceProposal = await pnyxAxi({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"memorySpaces":{"personal":null}}',
+        '--propose',
+        '--hydra',
+        work.id,
+      ],
+      env: crossEnv,
+    })
+    expect(hiddenSpaceProposal.status).not.toBe(0)
+    expect(hiddenSpaceProposal.stdout).toBe(hiddenSpaceEdit.stdout)
     expect(JSON.stringify(await personal.owner({
       args: [
         'owner',
@@ -1060,6 +1074,40 @@ test(
       '--hydra',
       hydra.id,
     ]
+    const sourceMemory = await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'forget',
+        '--key',
+        'preferences',
+      ],
+    })
+    expect((await hydra.ownerRefused({
+      args: [
+        ...move,
+        '--if-revision',
+        String(sourceMemory.revision),
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Controlled magnetar note',
+      ],
+    })
     expect((await pnyxAxi({
       args: move,
       env,

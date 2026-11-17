@@ -8,7 +8,7 @@ metadata:
 
 # inscribe
 
-Owner-memory writes always use this Hydra's configured write space; reads include only spaces allowed by both the Hydra reads list and each space readers list. New and existing Hydras default to `shared`. Never copy a note across spaces implicitly: use `owner memory move --key <key> --to <space> --hydra <hydra>` for an explicit document move. Project memory has one assigned space; `project move <project> --space <space>` moves its assignment. Moves to additional readers require the owner's Confirm, even in bypass modes; repeat with `--propose` to save the owner question. Moves within the same readership apply directly. Raw local shell access is outside these output checks.
+Owner-memory writes use this Hydra's configured write space. Reads require both the Hydra and the space to allow access. New and existing Hydras default to `shared`. To move a document explicitly, use `owner memory move --key <key> --to <space> --hydra <hydra>`. Use `project move <project> --space <space>` to change a project's assigned space. Moves to additional readers require the owner's Confirm, even in bypass modes. Repeat the command with `--propose` to save the question. Moves within the same readership apply directly. A local shell with raw disk access can still read the logs.
 
 Keep saved context brief and up to date, and edit or remove entries when things change. Save each fact at the narrowest level that fits:
 

@@ -459,6 +459,14 @@ export async function moveOwnerLearning({
     fn: () => {
       const space = memoryAccess({ hydraId }).write()
       const owner = readLog({ space })
+
+      if (meta.ifRevision !== undefined && owner.revision !== meta.ifRevision) {
+        throw new HydraError({
+          message: 'Source memory changed; read it again before moving the learning',
+          code: 'REVISION_CONFLICT',
+        })
+      }
+
       const before = owner.memory.learnings?.text ?? ''
       const lines = before.split('\n')
 
@@ -590,6 +598,13 @@ export function moveOwnerSpace({
 
       const source = readLog({ space })
       const target = readLog({ space: destination })
+
+      if (meta.ifRevision !== undefined && source.revision !== meta.ifRevision) {
+        throw new HydraError({
+          message: 'Source memory changed; read it again before moving the document',
+          code: 'REVISION_CONFLICT',
+        })
+      }
 
       if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
         throw new HydraError({

@@ -148,7 +148,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
           [identity.id]: space,
         },
       },
-      meta: m,
+      meta: {
+        ...m,
+        ifRevision: m.ifRevision ?? read.revision,
+      },
     })
 
     return {
