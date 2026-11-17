@@ -117,7 +117,7 @@ export function HydraNameEditor({
 
   return (
     <form
-      className="hydra-name-editor"
+      className="hydra-name-editor flex items-start gap-1.5 min-w-0"
       onSubmit={e => {
         e.preventDefault(); commit({ blocking: true })
       }}
@@ -136,7 +136,7 @@ export function HydraNameEditor({
           setIcon(icon); input.current?.focus()
         }}
       />
-      <span className="hydra-name-field">
+      <span className="hydra-name-field flex flex-1 flex-col gap-0.75 min-w-0 [&_.input]:w-full [&_.input]:py-1 [&_.input]:px-2 [&_.input]:font-label">
         <Input
           ref={input}
           aria-label="Hydra name"
@@ -154,7 +154,7 @@ export function HydraNameEditor({
           }}
         />
         {(note || counter) && (
-          <span className={isDuplicate ? 'hydra-name-note error' : 'hydra-name-note'} role={isDuplicate ? 'alert' : undefined}>
+          <span className={`hydra-name-note flex justify-between gap-1.5 text-meta ${isDuplicate ? 'error text-red' : 'text-muted'}`} role={isDuplicate ? 'alert' : undefined}>
             <span>{note}</span><span>{counter}</span>
           </span>
         )}

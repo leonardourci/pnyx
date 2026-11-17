@@ -142,7 +142,7 @@ export function ReviewSummary({
   open(): void
 }) {
   return (
-    <div className="card-question" aria-label="Pull request review summary">
+    <div className="card-question shrink-0 flex flex-col items-start gap-1.25 py-2 px-2.5 bg-surface border border-line border-l-3 border-l-gold rounded-question-summary text-meta [&>strong]:text-gold [&_p]:m-0" aria-label="Pull request review summary">
       <strong className="eyebrow">{reviewState({ request })}</strong>
       <CollapsibleText text={request.link.title ?? request.link.url} />
       <Button variant="primary" onClick={open}>Answer</Button>

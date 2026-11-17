@@ -76,7 +76,7 @@ export function Icon({
     return (
       <svg
         aria-hidden="true"
-        className={name === 'hydra' ? 'identity-icon hydra-icon' : 'identity-icon'}
+        className={`identity-icon shrink-0 overflow-visible ${name === 'hydra' ? 'hydra-icon' : ''}`}
         data-icon={name}
         width={size}
         height={size}
