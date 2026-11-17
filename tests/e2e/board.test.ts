@@ -1817,13 +1817,9 @@ test(
       await page.reload()
       await page.locator(`[data-hydra-workspace="${second.id}"][data-connected="true"]`).waitFor()
       await title.waitFor()
-      expect((await workspace.locator(`[data-column="${atlas}"] .project-card-grid [data-card]`).allTextContents()).slice(
-        0,
-        2,
-      ).map(text => text.includes('Shortcut Boreal') ? 'b' : 'a')).toEqual([
-        'b',
-        'a',
-      ])
+      const reloadedCards = await workspace.locator(`[data-column="${atlas}"] .project-card-grid [data-card]`).allTextContents()
+      expect(reloadedCards[0]).toContain('Shortcut Boreal')
+      expect(reloadedCards[1]).toContain('Shortcut Atlas')
       await page.getByRole(
         'button',
         {
