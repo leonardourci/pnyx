@@ -69,6 +69,11 @@
   --text-settings-section: calc(var(--text-ui) * 21 / 14);
   --text-workspace: 21px;
   --text-count: 11px;
+  --text-micro: 10px;
+  --text-tiny: 9px;
+  --text-usage-empty: 12px;
+  --spacing-usage-content: calc(100vw - 50px);
+  --spacing-usage-tooltip: min(360px, calc(100vw - 16px));
   --font-weight-label: 650;
   --spacing-card-details: 220px;
   --spacing-card-chat: 260px;
@@ -84,6 +89,9 @@
   --shadow-comment-jump: 0 0 0 1px var(--color-gold);
   --shadow-comment-marker: 0 0 0 1px var(--color-surface);
   --shadow-comment-pill: 0 4px 14px var(--color-shadow);
+  --color-usage-line: color-mix(in srgb, var(--color-surface) 22%, transparent);
+  --color-usage-badge: color-mix(in srgb, var(--color-surface) 30%, transparent);
+  --color-usage-hover: color-mix(in srgb, var(--color-surface) 13%, transparent);
   --color-comment-emphasis: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised));
   --spacing-dispatch-issue: 70px;
   --shadow-invalid: inset 0 0 0 1px var(--color-red);
@@ -233,6 +241,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 }
 
 @theme inline {
+  --color-usage-fill: color-mix(in srgb, var(--usage-tone, var(--color-surface)) 72%, var(--color-surface));
   --animate-comment-jump: comment-jump var(--comment-jump-duration) ease-out both;
   --color-attachment-comments: color-mix(in srgb, var(--color-gold) 8%, transparent);
   --color-update-hydra: color-mix(in srgb, var(--color-teal) 12%, var(--color-surface));
@@ -330,6 +339,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* The textarea and its chip mirror share every metric, so chips sit exactly over the text they stand for. */
 
 /* A compact field grows with its text up to its limit, then scrolls. */
+
 
 
 
@@ -523,12 +533,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .slider-track input::-moz-range-progress { @apply h-1 rounded-sm bg-gold-fill; }
 .slider-track input::-webkit-slider-thumb { @apply appearance-none size-4 -mt-1.5 border-2 border-gold rounded-full bg-surface shadow-range; }
 .slider-track input::-moz-range-thumb { @apply size-3 border-2 border-gold rounded-full bg-surface; }
-
-
-
-/* Usage content sizes its surrounding tooltip, including the session-details sibling. */
-.tooltip:has(.shared-usage) { @apply w-84 max-w-(--spacing-usage-tooltip) p-0; }
-.tooltip .tooltip-panel:has(> .shared-usage) { @apply p-0 gap-0; }
 
 
 
