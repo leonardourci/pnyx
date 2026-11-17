@@ -11,7 +11,7 @@ export function Disclosure({
   onToggle,
   leading = false,
 }: {
-  title: ReactNode
+  title: ReactNode | (({ open }: { open: boolean }) => ReactNode)
   children: ReactNode
   className?: string
   open?: boolean
@@ -37,7 +37,7 @@ export function Disclosure({
       }}
     >
       <summary className={`list-none cursor-pointer relative text-ui [&::-webkit-details-marker]:hidden ${summaryPadding}`} contentEditable={false}>
-        {title}
+        {typeof title === 'function' ? title({ open: expanded }) : title}
         <span className={`disclosure-chevron absolute top-0 ${position}`} aria-hidden="true"><DisclosureChevron expanded={expanded} /></span>
       </summary>
       <div className="disclosure-body">{children}</div>

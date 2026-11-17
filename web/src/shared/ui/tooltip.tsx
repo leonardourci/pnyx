@@ -21,6 +21,7 @@ export function TooltipSection({
 
 export function Tooltip({
   content,
+  anchorClassName = '',
   delay = 0,
   children,
   interactive = false,
@@ -28,6 +29,7 @@ export function Tooltip({
   disabled = false,
 }: {
   content: ReactNode
+  anchorClassName?: string
   delay?: number
   children: ReactNode
   interactive?: boolean
@@ -206,7 +208,7 @@ export function Tooltip({
   return (
     <span
       ref={anchor}
-      className="tooltip-anchor inline-flex min-w-0 max-w-full"
+      className={`tooltip-anchor [:where(&)]:inline-flex min-w-0 max-w-full ${anchorClassName}`}
       data-tooltip-active={visible || undefined}
       aria-describedby={visible ? id : undefined}
       onPointerEnter={show}

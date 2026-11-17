@@ -71,7 +71,7 @@ function MessageTask({ entry }: { entry: ChatEntry }) {
   const task = leadingTask({ entry })
 
   return task ? (
-    <span className="message-lead">
+    <span className="message-lead relative z-1 float-left max-w-full mr-message-reference text-chat leading-(--chat-line) font-chat [&_.task-reference-space]:hidden [&_.draft-chip]:m-0 [&:is(:has(+.markdown>:first-child:not(.message-block)),:has(+.markdown>.message-block:first-child>:first-child:not(p)))]:float-none [&:is(:has(+.markdown>:first-child:not(.message-block)),:has(+.markdown>.message-block:first-child>:first-child:not(p)))]:block [&:is(:has(+.markdown>:first-child:not(.message-block)),:has(+.markdown>.message-block:first-child>:first-child:not(p)))]:mb-(--block-gap)">
       <TaskReference id={task} />
     </span>
   ) : null
@@ -214,7 +214,7 @@ const MessageRow = memo(function MessageRow({
 
   return entry.kind === 'divider' ? (
     <div
-      className="chat-divider"
+      className="chat-divider flex items-center gap-2.5 my-2.5 mx-0 text-muted text-meta before:content-[''] before:flex-1 before:border-t before:border-line after:content-[''] after:flex-1 after:border-t after:border-line"
       role="separator"
       aria-label={entry.text}
     >
