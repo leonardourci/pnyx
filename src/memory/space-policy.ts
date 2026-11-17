@@ -37,12 +37,11 @@ export function canWrite({
   spaces,
   space,
 }: Parameters<typeof canRead>[0]): boolean {
-  const write = (state.config?.memory ?? DEFAULT_MEMORY_ACCESS).write
-
-  return write === space && canRead({
-    hydraId,
-    state,
-    spaces,
-    space,
-  })
+  return (state.config?.memory ?? DEFAULT_MEMORY_ACCESS).write === space
+    && canRead({
+      hydraId,
+      state,
+      spaces,
+      space,
+    })
 }

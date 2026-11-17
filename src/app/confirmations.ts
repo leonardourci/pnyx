@@ -1,3 +1,5 @@
+import { readSettings } from '#settings/store.ts'
+import type { Settings } from '#settings/model.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { parseArgs, promisify } from 'node:util'
@@ -12,7 +14,7 @@ import { withWriter } from './writer.ts'
 import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { requestCwd, requestEnv } from '#app/request-context.ts'
+import { requestCwd, requestEnv, IDENTITY } from '#app/request-context.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -33,14 +35,24 @@ const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' |
   ? effectiveDispatch()
   : undefined
 
+function memoryRulesFor({ target }: { target: Target }): Settings | undefined {
+  const memoryCommand = target.name === 'settings' || target.name === 'owner'
+    || (target.name === 'project' && target.args[0] === 'move')
+    || (target.name === 'hydra' && target.args.some(arg => arg.startsWith('--memory-')))
+
+  return memoryCommand ? readSettings().settings : undefined
+}
+
 function context({
   state,
   target,
   dispatch,
+  memory,
 }: {
   state: HydraState
   target: Target
   dispatch?: EffectiveDispatch
+  memory?: Settings
 }): string {
   const {
     name,
@@ -62,6 +74,7 @@ function context({
     config: name === 'hydra' || name === 'setup' ? state.config : undefined,
     projects: name === 'project' ? state.projects : undefined,
     dispatch,
+    memory,
     card: card && {
       agent: card.agent,
       settings: card.settings,
@@ -112,6 +125,7 @@ export function proposeOwnerCommand({
   const value = JSON.stringify(target)
   const summary = `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
   const dispatch = dispatchFor({ target })
+  const memory = memoryRulesFor({ target })
   withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -132,6 +146,7 @@ export function proposeOwnerCommand({
               state: writer.state,
               target,
               dispatch,
+              memory,
             }),
             value,
             summary,
@@ -194,6 +209,8 @@ export const approval = guard({
     const dispatch = action === 'confirm' && asked?.kind === 'command'
       ? dispatchFor({ target: JSON.parse(asked.value) as Target })
       : undefined
+    const memory = action === 'confirm' && asked?.kind === 'command'
+      ? memoryRulesFor({ target: JSON.parse(asked.value) as Target }) : undefined
     const selected = withWriter({
       hydraId,
       fn: ({ writer }) => {
@@ -225,6 +242,7 @@ export const approval = guard({
           state: writer.state,
           target: JSON.parse(proposal.value) as Target,
           dispatch,
+          memory,
         }) !== proposal.before) {
           throw new HydraError({
             message: 'The target changed; dismiss this question and ask Hydra to propose it again',
@@ -282,6 +300,14 @@ export const approval = guard({
 
     const target = JSON.parse(selected.value) as Target
     let output: string
+    const ownerEnv = { ...process.env }
+
+    for (const name of IDENTITY) {
+      delete ownerEnv[name]
+    }
+
+    ownerEnv.PNYX_HOME = pnyxHome()
+    ownerEnv.PNYX_ACTOR = 'web'
 
     try {
       const { stdout } = await exec(
@@ -307,11 +333,7 @@ export const approval = guard({
         ],
         {
           cwd: target.cwd,
-          env: {
-            ...process.env,
-            PNYX_HOME: pnyxHome(),
-            PNYX_ACTOR: 'web',
-          },
+          env: ownerEnv,
           maxBuffer: 4 * 1024 * 1024,
         },
       )

@@ -1,4 +1,5 @@
-import { canRead, readableProjects, requireProjectMemory } from '#memory/spaces.ts'
+import { sharesWithMore } from '#memory/access-changes.ts'
+import { canRead, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/spaces.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
@@ -49,6 +50,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       landing: { type: 'string' },
       merge: { type: 'string' },
       space: { type: 'string' },
+      propose: { type: 'boolean' },
     },
     positionals: 2,
   })
@@ -93,7 +95,8 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       attached: true,
     })
     const identity = await projectIdentity(project)
-    const settings = readSettings().settings
+    const read = readSettings()
+    const settings = read.settings
     const source = settings.projectSpaces[identity.id] ?? 'shared'
     const space = required({
       value: values.space as string | undefined,
@@ -113,6 +116,29 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         message: 'project not found',
         code: 'NOT_FOUND',
       })
+    }
+
+    const proposalArgs = values['if-revision'] !== undefined ? args : [
+      ...args,
+      '--if-revision',
+      String(read.revision),
+    ]
+    const proposal = memoryPermission({
+      hydraId,
+      name: 'project',
+      args: proposalArgs,
+      propose: Boolean(values.propose),
+      actor: m.actor,
+      widening: sharesWithMore({
+        source,
+        destination: space,
+        before: settings,
+        hydras: memoryHydras(),
+      }),
+    })
+
+    if (proposal) {
+      return proposal
     }
 
     const saved = saveSettings({
@@ -471,7 +497,7 @@ pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra
 pnyx-axi project add --clone <url> --into <folder> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
 pnyx-axi project list [--hydra <id>]
 pnyx-axi project show <name|path> [--hydra <id>]
-pnyx-axi project move <name|path> --space <space> [--hydra <id>]
+pnyx-axi project move <name|path> --space <space> [--propose] [--hydra <id>]
 pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
 pnyx-axi project remove <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]

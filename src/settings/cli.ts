@@ -1,3 +1,7 @@
+import { HydraError } from '#store/errors.ts'
+import { widensSpaceReaders } from '#memory/access-changes.ts'
+import { memoryHydras, memoryPermission, memoryCaller } from '#memory/spaces.ts'
+import { patchSettings } from './settings.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { canRead } from '#memory/space-policy.ts'
 import { AxiError } from 'axi-sdk-js'
@@ -9,7 +13,6 @@ import type { AgentConfig } from '#workers/model.ts'
 import { knownHarness } from '#workers/providers.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { loadHydra } from '#app/store.ts'
-import { HydraError } from '#store/errors.ts'
 
 const USE = 'use settings show, schema or set'
 
@@ -27,6 +30,7 @@ export const settings = guard({
       options: {
         ...WRITE,
         json: { type: 'string' },
+        propose: { type: 'boolean' },
       },
       positionals: 0,
     })
@@ -53,7 +57,7 @@ export const settings = guard({
         help: [
           'defaultColumnWidth is the fallback for every existing and future column; defaultColumnWidths holds per-column overrides',
           'Every key applies to every Hydra; a patch names only what changes',
-          'memorySpaces replaces the space map (shared is reserved); each value has readers: Hydra ids or *; projectSpaces maps project memory ids to spaces',
+          'memorySpaces patches named spaces (null removes, shared is reserved); readers are Hydra ids or *; projectSpaces patches project assignments (null restores shared); --propose saves a Confirm question',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
@@ -83,11 +87,44 @@ export const settings = guard({
       )
     }
 
+    const change = meta({ values })
+
+    const read = readSettings()
+    const after = patchSettings({
+      current: read.settings,
+      input: patch,
+    })
+    const proposalArgs = values['if-revision'] !== undefined ? args : [
+      ...args,
+      '--if-revision',
+      String(read.revision),
+    ]
+    const memoryPatch = patch && typeof patch === 'object' && ('memorySpaces' in patch || 'projectSpaces' in patch)
+
+    if (memoryPatch || values.propose) {
+      const proposal = memoryPermission({
+        hydraId,
+        name: 'settings',
+        args: proposalArgs,
+        propose: Boolean(values.propose),
+        actor: change.actor,
+        widening: widensSpaceReaders({
+          before: read.settings,
+          after,
+          hydras: memoryHydras(),
+        }),
+      })
+
+      if (proposal) {
+        return proposal
+      }
+    }
+
     const receipt = settingsReceipt({
       saved: saveSettings({
         hydraId,
         patch,
-        meta: meta({ values }),
+        meta: change,
       }),
     })
 
@@ -224,7 +261,7 @@ function visibleSettings({
 
   const state = loadHydra({ hydraId }).state
   const spaces = readSettings().settings.memorySpaces
-  const readable = ({ space }: { space: string }) => canRead({
+  const readable = ({ space }: { space: string }) => memoryCaller({ hydraId }) && canRead({
     hydraId,
     state,
     spaces,
@@ -235,8 +272,6 @@ function visibleSettings({
     ...settings,
     memorySpaces: Object.fromEntries(Object.entries(settings.memorySpaces)
       .filter(([space]) => readable({ space }))),
-    projectSpaces: Object.fromEntries(Object.entries(settings.projectSpaces).filter(([
-      , space,
-    ]) => readable({ space }))),
+    projectSpaces: {},
   }
 }

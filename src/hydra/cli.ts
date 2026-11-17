@@ -1,5 +1,6 @@
+import { requestedMemoryAccess, widensHydraReads } from '#memory/access-changes.ts'
 import { projectRows } from '#projects/read.ts'
-import { DEFAULT_MEMORY_ACCESS, SPACE_NAME, readableProjects, memoryAccess } from '#memory/spaces.ts'
+import { readableProjects, memoryAccess, memoryPermission } from '#memory/spaces.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -34,6 +35,29 @@ import { workerIdentity, workerRefusal } from '#workers/worker-identity.ts'
 import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
+function visibleHydraConfig({
+  config,
+  hydraId,
+}: {
+  config: HydraConfig
+  hydraId: string
+}): Output {
+  const shown: Output = { ...config }
+
+  if (hydraActor({})) {
+    const access = memoryAccess({ hydraId })
+    const memory: Output = { reads: access.reads }
+
+    if (access.writableSpace !== undefined) {
+      memory.write = access.writableSpace
+    }
+
+    shown.memory = memory
+  }
+
+  return shown
+}
+
 async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
@@ -46,6 +70,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       name: { type: 'string' },
       'memory-reads': { type: 'string' },
       'memory-write': { type: 'string' },
+      propose: { type: 'boolean' },
       icon: { type: 'string' },
       position: { type: 'string' },
       identity: { type: 'string' },
@@ -124,26 +149,12 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     delete hydra.reviewMinutes
     delete hydra.helper
     const shared = readSettings().settings
-    const shownHydra: Output = { ...hydra }
-
-    if (hydraActor({})) {
-      const access = memoryAccess({
-        hydraId: id,
-        state,
-        settings: shared,
-      })
-      const memory: Output = { reads: access.reads }
-      const write = (hydra.memory ?? DEFAULT_MEMORY_ACCESS).write
-
-      if (access.reads.includes(write)) {
-        memory.write = write
-      }
-
-      shownHydra.memory = memory
-    }
 
     return {
-      hydra: shownHydra,
+      hydra: visibleHydraConfig({
+        config: hydra,
+        hydraId: id,
+      }),
       settings: {
         doneAfterHours: shared.doneAfterHours,
         reviewMinutes: shared.reviewMinutes,
@@ -179,6 +190,31 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   if (shared) {
     checkSettings({ patch: shared })
+  }
+
+  const previousMemory = action === 'set' ? loadHydra({ hydraId: id }).state.config?.memory : undefined
+  const memory = requestedMemoryAccess({
+    current: previousMemory,
+    reads: values['memory-reads'],
+    write: values['memory-write'],
+  })
+
+  if (memory) {
+    const proposal = memoryPermission({
+      hydraId,
+      name: 'hydra',
+      args,
+      propose: Boolean(values.propose),
+      actor: m.actor,
+      widening: widensHydraReads({
+        before: previousMemory,
+        after: memory,
+      }),
+    })
+
+    if (proposal) {
+      return proposal
+    }
   }
 
   const committed = onlySettings ? undefined : commit({
@@ -269,24 +305,8 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         hydra,
       }
 
-      if (values['memory-reads'] !== undefined || values['memory-write'] !== undefined) {
-        const previous = current.memory ?? DEFAULT_MEMORY_ACCESS
-        const reads = values['memory-reads'] === undefined ? previous.reads : String(values['memory-reads']).split(',')
-          .filter(Boolean)
-        const write = String(values['memory-write'] ?? previous.write)
-
-        if (!SPACE_NAME.test(write) || !reads.every(space => SPACE_NAME.test(space))
-          || new Set(reads).size !== reads.length) {
-          throw new HydraError({
-            message: 'Memory spaces use lowercase letters, digits and dashes; reads is a comma-separated list',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        data.memory = {
-          reads,
-          write,
-        }
+      if (memory) {
+        data.memory = memory
       }
 
       if (named) {
@@ -374,6 +394,16 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       })
     },
   })
+
+  if (committed && hydraActor({}) && 'hydra' in committed) {
+    committed.hydra = visibleHydraConfig({
+      config: hydraConfig({
+        state: loadHydra({ hydraId: id }).state,
+        id,
+      }),
+      hydraId: id,
+    })
+  }
 
   if (!shared) {
     return committed!
