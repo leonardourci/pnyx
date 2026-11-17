@@ -194,21 +194,28 @@ export function App() {
     commit().catch((error: Error) => setRootError(error.message))
   }
 
-  useEffect(
+  const workspaceOrder = workspaces.map(workspace => workspace.navigation.hydraId).join(':')
+
+  useLayoutEffect(
     () => {
-      if (!hydra.loaded) {
+      const surface = axis.current
+      const inner = track.current
+      const group = surface?.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(current)}"]`)
+
+      if (!hydra.loaded || !surface || !inner || !group) {
         return
       }
 
-      document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(current)}"]`)
-        ?.scrollIntoView({
-          inline: 'start',
-          block: 'nearest',
-        })
+      const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
+      surface.scrollTo({
+        left: group.offsetLeft + inner.offsetLeft - surface.offsetLeft - padding,
+        behavior: 'instant',
+      })
     },
     [
       current,
       hydra.loaded,
+      workspaceOrder,
     ],
   )
 

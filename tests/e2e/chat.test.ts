@@ -125,6 +125,7 @@ test(
     )
     await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('Plan:').waitFor()
+    expect(new URL(page.url()).pathname).toBe(`/hydra/${hydra.id}/`)
     const partial = await conversation.textContent() ?? ''
     expect(partial).not.toContain('**')
     expect(partial).not.toContain('freeze')
