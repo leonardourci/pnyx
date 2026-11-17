@@ -92,41 +92,6 @@ export async function hostRequestUnlocked({
         now: body.now === true,
       })
 
-    case 'tool-catalog': {
-      const folder = field({
-        body,
-        name: 'folder',
-        optional: true,
-      })
-
-      if (folder !== undefined && !isAbsolute(folder)) {
-        throw new HydraError({
-          message: 'folder must be an absolute path',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      return {
-        tools: await host.toolCatalog({
-          task: field({
-            body,
-            name: 'task',
-          })!,
-          harness: field({
-            body,
-            name: 'harness',
-            optional: true,
-          }),
-          account: field({
-            body,
-            name: 'account',
-            optional: true,
-          }),
-          folder,
-        }),
-      }
-    }
-
     case 'tools-changed': {
       const failed = host.toolsChanged({
         task: field({
