@@ -138,6 +138,15 @@
   /* The theme tiles show both palettes whichever one is active. */
   --color-tile-light: #ffffff;
   --color-tile-dark: #0e0f11;
+  --leading-prose-heading: 1.35;
+  --spacing-prose-heading: 1.2em;
+  --spacing-prose-heading-bottom: .5em;
+  --spacing-prose-list: 1.6em;
+  --spacing-prose-item: .25em;
+  --spacing-prose-question: .3em;
+  --spacing-prose-question-item: .15em;
+  --spacing-prose-question-list: 1.4em;
+  --text-prose-question-code: .95em;
   --leading-answer: 1.6;
   --leading-answer-question: 1.45;
   --spacing-message-reference: .5em;
@@ -349,60 +358,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .button.surface { border-color: var(--color-control); }
 
 .activity-stopped > i { border-radius: 1px; background: currentColor; }
-
-.disclosure-body { padding-top: 8px; }
-
-.markdown { min-width: 0; max-width: 100%; font: var(--text-chat)/var(--chat-line) var(--font-chat); overflow-wrap: anywhere; }
-
-.markdown p { margin: var(--block-gap) 0; }
-
-.markdown > :first-child, .markdown > .message-block:first-child > :first-child { margin-top: 0; }
-
-.markdown > :last-child, .markdown > .message-block:last-child > :last-child { margin-bottom: 0; }
-
-.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-family: var(--font-chat); font-size: var(--text-pane); font-weight: 700; line-height: 1.35; margin: 1.2em 0 .5em; }
-
-.markdown h1 { font-size: var(--text-pane); }
-
-.markdown h2 { font-size: var(--text-pane); }
-
-.markdown ul, .markdown ol { padding-left: 1.6em; margin: var(--block-gap) 0; }
-
-.markdown ul { list-style: disc; }
-
-.markdown ol { list-style: decimal; }
-
-.markdown li { margin: .25em 0; }
-
-.markdown li p { display: inline; }
-
-.markdown a { color: var(--color-blue); text-decoration: underline; text-underline-offset: 3px; }
-
-.markdown code { font: var(--text-code) var(--font-mono); background: var(--color-raised); border-radius: 3px; padding: 1px 4px; }
-
-.markdown blockquote { border-left: 2px solid var(--color-gold-line); margin: var(--block-gap) 0; padding-left: 12px; color: var(--color-muted); }
-
-.markdown hr { border: 0; border-top: 1px solid var(--color-line); margin: var(--block-gap) 0; }
-
-.code-block { background: var(--color-background); border: 1px solid var(--color-line); border-radius: 6px; margin: 8px 0; min-width: 0; }
-
-.code-language { display: block; padding: 6px 10px 0; font: var(--text-meta) var(--font-mono); color: var(--color-muted); }
-
-.code-block pre { margin: 0; overflow: auto; max-width: 100%; padding: 10px; font: var(--text-code)/1.65 var(--font-mono); white-space: pre; }
-
-.markdown .code-block code { padding: 0; font-size: var(--text-code); background: transparent; }
-
-.markdown .code-block, .markdown .markdown-table { margin-block: var(--block-gap); }
-
-.markdown-table { overflow: auto; max-width: 100%; margin: 8px 0; }
-
-.markdown table { border-collapse: collapse; width: max-content; min-width: 100%; }
-
-.markdown th, .markdown td { border: 1px solid var(--color-line); padding: 5px 9px; max-width: 360px; text-align: left; }
-
-.markdown th { background: var(--color-raised); font-weight: 600; }
-
-.task-marker { margin-right: 6px; color: var(--color-green); }
 
 .message-block { position: relative; min-width: 0; border-radius: 3px; }
 
@@ -635,9 +590,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .message .attachment-card:not(.composer-field *) { margin: 0 1px; user-select: auto; }
 
 /* A chip is one --chip-h box around the text's own line box (--chip-text in the chat font), so it fits inside the line. */
-.markdown .attachment-card:not(.composer-field *) { top: var(--chip-pad); vertical-align: text-bottom; }
-
-.markdown :is(.chip.column-chip, .chip.reference-chip):not(.composer-field *) { position: relative; top: var(--chip-pad); height: var(--chip-h); padding-block: 0; align-items: center; font-size: inherit; vertical-align: text-bottom; }
 
 /* A chip moves to the next line whole instead of breaking, and only a chip longer than a line wraps, inside its own box. */
 :is(.markdown, .message .message-lead) .draft-chip:not(.composer-field *) { display: inline-block; max-width: 100%; line-height: var(--chip-text); }
@@ -699,10 +651,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .account-model-pin[aria-pressed=true] { color: var(--color-gold); }
 .account-model-add { flex: 0 0 auto; border-top: 1px solid var(--color-line); padding-top: 8px; }
 .account-model-add > .button { width: 100%; font-size: var(--text-ui); }
-.account-model-add > p { margin: 5px 0 0; text-align: center; font-size: var(--text-meta); color: var(--color-muted); } .ask .markdown { font-weight: inherit; }
-
-.task-updates .markdown > :first-child { margin-top: 0; }
-.task-updates .markdown > :last-child { margin-bottom: 0; }
+.account-model-add > p { margin: 5px 0 0; text-align: center; font-size: var(--text-meta); color: var(--color-muted); }
 /* Lines are the shown text's own, so the clamp cuts between lines, never through one. */
 .text-preview { max-height: 3lh; font-size: var(--text-chat); line-height: var(--chat-line); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .button.show-more { justify-self: start; min-height: 0; padding: 0; color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
@@ -741,7 +690,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .waiting-decisions .popover-panel { padding: 5px; max-height: min(40vh, 360px); }
 .waiting-decisions li .button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: 0; padding: 7px; text-align: left; white-space: normal; overflow-wrap: anywhere; font-size: inherit; line-height: 1.5; }
 .waiting-decision-task { color: var(--color-muted); }
-.waiting-decision-question { color: var(--color-gold); } .ask .markdown :is(h1, h2, h3, h4, h5, h6) { font-size: 1em; margin: .5em 0 .25em; }
+.waiting-decision-question { color: var(--color-gold); }
 .ask .disclosure > summary { padding-block: 3px; }
 
 .draft-skill { cursor: default; }
@@ -961,17 +910,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hidden-hydras h3 { color: var(--color-muted); font-size: var(--text-ui); margin-bottom: 6px; }
 
 .icon-fold-columns { transform: rotate(90deg); }
-
-.ask .markdown :is(p, ul, ol) { margin-block: .3em; }
-.ask .markdown li { margin-block: .15em; }
-.ask .markdown :is(ul, ol) { padding-left: 1.4em; }
-.ask .markdown blockquote { margin-block: .3em; padding-left: 7px; }
-.ask .markdown .code-block { margin-block: 4px; }
-.ask .markdown .code-block pre { padding: 6px; font-size: inherit; line-height: 1.4; }
-.ask .markdown :is(th, td) { padding: 3px 5px; }
-.ask .markdown-table { margin-block: 4px; }
-.ask .markdown code { font-size: .95em; }
-
 /* The overlay and editable text need identical metrics to keep chips on their text. */
 .composer-text {
   @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];

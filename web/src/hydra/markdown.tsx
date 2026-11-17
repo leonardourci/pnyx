@@ -1,3 +1,4 @@
+import { Prose, ProseCode } from './prose.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
@@ -105,7 +106,7 @@ const inline = ({
       case 'strong': return <strong key={i}>{children}</strong>
       case 'em': return <em key={i}>{children}</em>
       case 'del': return <del key={i}>{children}</del>
-      case 'codespan': return <code key={i}><ChatTokenText text={token.text} code /></code>
+      case 'codespan': return <ProseCode key={i}><ChatTokenText text={token.text} code /></ProseCode>
       case 'html': return <ChatTokenText key={i} text={token.text} />
       case 'br': return <br key={i} />
       case 'image': {
@@ -228,10 +229,10 @@ function Code({
   const lang = language?.split(/\s/)[0]?.toLowerCase() ?? ''
 
   return (
-    <div className="code-block">
-      {lang && <span className="code-language">{lang}</span>}
-      <pre>
-        <code><ChatTokenText text={text} code /></code>
+    <div className="code-block bg-background border border-line rounded-md my-(--block-gap) mx-0 min-w-0 in-[.ask]:my-1">
+      {lang && <span className="code-language block pt-1.5 px-2.5 pb-0 text-meta leading-[normal] font-mono text-muted">{lang}</span>}
+      <pre className="m-0 overflow-auto max-w-full p-2.5 text-code leading-(--chat-line) font-mono whitespace-pre in-[.ask]:p-1.5 in-[.ask]:text-[length:inherit] in-[.ask]:leading-question">
+        <ProseCode block><ChatTokenText text={text} code /></ProseCode>
       </pre>
     </div>
   )
@@ -254,7 +255,7 @@ function Table({
     cell,
     n,
   ) => (
-    <Cell key={n} style={align[n]}>{inline({
+    <Cell key={n} style={align[n]} className="border border-line py-1.25 px-2.25 max-w-90 text-left [&:is(th)]:bg-raised [&:is(th)]:font-semibold in-[.ask]:py-0.75 in-[.ask]:px-1.25">{inline({
       tokens: cell.tokens,
       openTask,
       columnLook,
@@ -264,8 +265,8 @@ function Table({
   ))
 
   return (
-    <div className="markdown-table">
-      <table>
+    <div className="markdown-table overflow-auto max-w-full my-(--block-gap) mx-0 in-[.ask]:my-1">
+      <table className="border-collapse w-max min-w-full">
         <thead>
           <tr>
             {cells({
@@ -466,7 +467,7 @@ const renderBlocks = ({
             <span
               role="img"
               aria-label={item.checked ? 'Completed' : 'Not completed'}
-              className="task-marker"
+              className="task-marker mr-1.5 text-green"
             >
               {item.checked ? '☑' : '☐'}
             </span>
@@ -552,7 +553,7 @@ export const Markdown = memo(function Markdown({
         tokens: prepared,
       }}
     >
-      <div className="markdown">{renderBlocks({
+      <Prose>{renderBlocks({
         text,
         tokens,
         block: block ? ({
@@ -566,7 +567,7 @@ export const Markdown = memo(function Markdown({
         columnLook,
         images,
       })}
-      </div>
+      </Prose>
     </ChatTokensContext.Provider>
   )
 })

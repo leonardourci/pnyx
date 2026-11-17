@@ -40,7 +40,7 @@ export function Disclosure({
         {typeof title === 'function' ? title({ open: expanded }) : title}
         <span className={`disclosure-chevron absolute top-0 ${position}`} aria-hidden="true"><DisclosureChevron expanded={expanded} /></span>
       </summary>
-      <div className="disclosure-body">{children}</div>
+      <div className="disclosure-body pt-2">{children}</div>
     </details>
   )
 }
