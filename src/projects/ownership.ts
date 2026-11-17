@@ -12,6 +12,23 @@ import { matchesProject } from './identity.ts'
 import { findProject, sharingHydras } from './read.ts'
 import type { HydraProject } from './model.ts'
 
+function checkKeeperRevision({
+  state,
+  meta,
+}: {
+  state: HydraState
+  meta: Meta
+}) {
+  const revision = state.projectsRevision ?? 0
+
+  if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
+    throw new HydraError({
+      message: `revision ${revision}, not ${meta.ifRevision}`,
+      code: 'REVISION_CONFLICT',
+    })
+  }
+}
+
 function migrationPlan({
   to,
   project,
@@ -99,14 +116,10 @@ export async function keepProject({
   }
 
   const keeper = loadHydra({ hydraId }).state
-  const revision = keeper.projectsRevision ?? 0
-
-  if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
-    throw new HydraError({
-      message: `revision ${revision}, not ${meta.ifRevision}`,
-      code: 'REVISION_CONFLICT',
-    })
-  }
+  checkKeeperRevision({
+    state: keeper,
+    meta,
+  })
 
   const sourceMeta = {
     ...meta,
@@ -149,20 +162,16 @@ export async function keepProject({
       writer: target,
       writers,
     }) => {
-      const kept = findProject({
+      findProject({
         state: target.state,
         ref: project.path,
         attached: true,
       })
 
-      const currentRevision = target.state.projectsRevision ?? 0
-
-      if (meta.ifRevision !== undefined && meta.ifRevision !== currentRevision) {
-        throw new HydraError({
-          message: 'Keeper projects changed; retry the keeper choice',
-          code: 'REVISION_CONFLICT',
-        })
-      }
+      checkKeeperRevision({
+        state: target.state,
+        meta,
+      })
 
       const current = migrationPlan({
         to: hydraId,
@@ -212,26 +221,6 @@ export async function keepProject({
 
         if ('event' in detached) {
           source.append({ event: detached.event })
-        }
-      }
-
-      if (current.length) {
-        const affirmed = hydraEvent({
-          state: target.state,
-          meta: sourceMeta,
-          cardId: '$projects',
-          change: {
-            type: 'hydra.project',
-            data: {
-              before: kept,
-              after: kept,
-              sharedWith: [],
-            },
-          },
-        })
-
-        if ('event' in affirmed) {
-          target.append({ event: affirmed.event })
         }
       }
 
