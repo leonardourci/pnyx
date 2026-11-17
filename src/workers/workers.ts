@@ -385,7 +385,11 @@ const hydraDigestHandler = guard({
     })
 
     const owner = ownerMemory({ hydraId })
-    const state = loadHydra({ hydraId }).state
+    const current = loadHydra({ hydraId }).state
+    const state = memoryCaller({ hydraId }) ? current : {
+      ...current,
+      hydraMemory: undefined,
+    }
     const [
       projects,
       items,
@@ -416,3 +420,4 @@ export const workerCommands = {
     handler: ({ args }) => (args[0] === 'check' ? hydraCheckHandler(args) : args[0] === 'digest' ? hydraDigestHandler(args) : commands.hydra(args)),
   }),
 }
+import { memoryCaller } from '#memory/spaces.ts'

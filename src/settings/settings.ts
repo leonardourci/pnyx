@@ -226,6 +226,8 @@ export function patchSettings({
       return invalid({ detail: 'projectSpaces maps project memory ids to space names' })
     }
 
+    next.projectSpaces = { ...next.projectSpaces }
+
     for (const [
       id,
       space,
@@ -237,7 +239,7 @@ export function patchSettings({
       if (space === null) {
         delete next.projectSpaces[id]
       } else {
-        next.projectSpaces[id] = space as string
+        next.projectSpaces[id] = space
       }
     }
   }
@@ -248,6 +250,8 @@ export function patchSettings({
     if (!spaces || typeof spaces !== 'object' || Array.isArray(spaces)) {
       return invalid({ detail: 'memorySpaces takes named spaces, each with a readers list' })
     }
+
+    next.memorySpaces = { ...next.memorySpaces }
 
     for (const [
       name,

@@ -145,7 +145,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       hydraId,
       patch: {
         projectSpaces: {
-          ...settings.projectSpaces,
           [identity.id]: space,
         },
       },

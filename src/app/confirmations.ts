@@ -71,8 +71,8 @@ function context({
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
 
   return createHash('sha256').update(JSON.stringify({
-    config: name === 'hydra' || name === 'setup' ? state.config : undefined,
-    projects: name === 'project' ? state.projects : undefined,
+    config: name === 'hydra' || name === 'setup' || name === 'owner' ? state.config : undefined,
+    projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
     memory,
     card: card && {

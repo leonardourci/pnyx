@@ -109,6 +109,24 @@ test(
       PNYX_HYDRA: work.id,
       PNYX_TASK: undefined,
     }
+    await personal.owner({
+      args: ['hydra', 'memory', 'set', '--key', 'scope', '--text', 'Private Hydra scope'],
+    })
+    const crossHydraRead = await pnyxAxi({
+      args: ['hydra', 'memory', 'list', '--hydra', personal.id],
+      env: crossEnv,
+    })
+    expect(crossHydraRead.status).toBe(0)
+    expect(crossHydraRead.stdout).not.toContain('Private Hydra scope')
+    const crossHydraWrite = await pnyxAxi({
+      args: ['hydra', 'memory', 'forget', '--key', 'scope', '--hydra', personal.id],
+      env: crossEnv,
+    })
+    expect(crossHydraWrite.status).not.toBe(0)
+    expect(crossHydraWrite.stdout).toContain('NOT_FOUND')
+    expect(JSON.stringify(await personal.owner({
+      args: ['hydra', 'memory', 'list'],
+    }))).toContain('Private Hydra scope')
     const crossRead = await pnyxAxi({
       args: [
         'owner',
@@ -273,6 +291,22 @@ test(
     })
     expect(shown.status).toBe(0)
     expect(shown.stdout).not.toContain('personal')
+    const hiddenSpaceEdit = await pnyxAxi({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"memorySpaces":{"personal":null}}',
+        '--hydra',
+        work.id,
+      ],
+      env: crossEnv,
+    })
+    expect(hiddenSpaceEdit.status).not.toBe(0)
+    expect(hiddenSpaceEdit.stdout).toContain('NOT_FOUND')
+    expect(JSON.stringify(await personal.owner({
+      args: ['owner', 'memory', 'list'],
+    }))).toContain('Secret nebula preference')
     const selfGrant = await pnyxAxi({
       args: [
         'hydra',
@@ -962,26 +996,15 @@ test(
         'list',
       ],
     }))).not.toContain('Controlled magnetar note')
-    const inheritedTask = process.env.PNYX_TASK
-    process.env.PNYX_TASK = 'task-server-worker'
-
-    try {
-      await hydra.owner({
-        args: [
-          'approval',
-          'confirm',
-          moveProposal.token,
-          '--confirm',
-          moveProposal.token,
-        ],
-      })
-    } finally {
-      if (inheritedTask === undefined) {
-        delete process.env.PNYX_TASK
-      } else {
-        process.env.PNYX_TASK = inheritedTask
-      }
-    }
+    await hydra.owner({
+      args: [
+        'approval',
+        'confirm',
+        moveProposal.token,
+        '--confirm',
+        moveProposal.token,
+      ],
+    })
 
     expect(JSON.stringify(await other.owner({
       args: [

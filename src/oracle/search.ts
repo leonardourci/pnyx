@@ -228,7 +228,7 @@ export function search({
     at: entry.at,
     text: redact({ text: entry.text }),
   })) : []
-  const projectDocuments = memoryDocuments.map(document => ({
+  const projectDocuments = (includeMemory ? memoryDocuments : []).map(document => ({
     ...document,
     text: redact({ text: document.text }),
   }))
@@ -304,7 +304,12 @@ export function search({
         continue
       }
 
-      const entries = (grouped.get(card.id) ?? []).filter(entry => card.id !== '$board' || !query.projects?.length || query.projects.includes(entry.project ?? ''))
+      let entries = grouped.get(card.id) ?? []
+
+      if (card.id === '$board' && query.projects?.length) {
+        const projects = new Set(query.projects)
+        entries = entries.filter(entry => entry.project !== undefined && projects.has(entry.project))
+      }
 
       if (query.since) {
         const cutoff = Date.parse(query.since)

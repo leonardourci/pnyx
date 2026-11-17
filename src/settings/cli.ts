@@ -101,6 +101,29 @@ export const settings = guard({
     ]
     const memoryPatch = patch && typeof patch === 'object' && ('memorySpaces' in patch || 'projectSpaces' in patch)
 
+    if (memoryPatch && hydraActor({ actor: change.actor })) {
+      const state = loadHydra({ hydraId }).state
+      const spaces = read.settings.memorySpaces
+
+      if ('projectSpaces' in patch) {
+        throw new HydraError({
+          message: 'Use project move to change the memory space of an attached project',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      if ('memorySpaces' in patch && patch.memorySpaces && typeof patch.memorySpaces === 'object') {
+        for (const space of Object.keys(patch.memorySpaces)) {
+          if (Object.hasOwn(spaces, space) && !canRead({ hydraId, state, spaces, space })) {
+            throw new HydraError({
+              message: 'Memory is unavailable',
+              code: 'NOT_FOUND',
+            })
+          }
+        }
+      }
+    }
+
     if (memoryPatch || values.propose) {
       const proposal = memoryPermission({
         hydraId,

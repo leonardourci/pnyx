@@ -10,6 +10,7 @@ import { withWriter } from '#app/writer.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
+import { memoryCaller } from './spaces.ts'
 
 function memoryList({
   memory,
@@ -289,6 +290,21 @@ export function hydraMemory({
 }): Output {
   const action = positionals[1] ?? 'list'
 
+  if (!memoryCaller({ hydraId })) {
+    if (action === 'list') {
+      return memoryList({
+        memory: {},
+        budget: HYDRA_MEMORY_BUDGET,
+        empty: 'none: no Hydra memory yet',
+      })
+    }
+
+    throw new HydraError({
+      message: 'Memory is unavailable',
+      code: 'NOT_FOUND',
+    })
+  }
+
   if (action === 'list') {
     const state = loadHydra({ hydraId }).state
 
@@ -320,7 +336,7 @@ export function hydraMemory({
     key,
   )) {
     throw new HydraError({
-      message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} are Pnyx-wide owner memory`,
+      message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} belong in owner memory`,
       code: 'VALIDATION_ERROR',
       help: [`Run \`pnyx-axi owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
     })
