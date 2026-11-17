@@ -1549,7 +1549,7 @@ test(
       '--if-revision',
       '0',
       '--event-id',
-      'attach-repositories',
+      'constructor',
     ]
     await hydra.owner({ args })
     expect((await hydra.owner({

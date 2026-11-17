@@ -67,6 +67,9 @@ export function useSmoothScroll({
       resize()
       const sizes = new ResizeObserver(resize)
       sizes.observe(inner)
+      if (inner !== wrapper) {
+        sizes.observe(wrapper)
+      }
       const surface = wrapper.closest<HTMLElement>('.workspace-axis') ?? wrapper
 
       const syncScrolling = () => {
