@@ -33,12 +33,14 @@ export function Tabs({
   select,
   prefix,
   label,
+  divider = true,
 }: {
   tabs: Tab[]
   selected: string
   select({ id }: { id: string }): void
   prefix: string
   label: string
+  divider?: boolean
 }) {
   const list = useRef<HTMLDivElement>(null)
 
@@ -62,7 +64,7 @@ export function Tabs({
   return (
     <div
       ref={list}
-      className="tabs flex gap-0.5 border-b border-line"
+      className={`tabs flex gap-0.5 ${divider ? 'border-b border-line' : ''}`}
       role="tablist"
       aria-label={label}
     >
@@ -81,7 +83,7 @@ export function Tabs({
             id: tab.id,
           })}
           tabIndex={tab.id === selected ? 0 : -1}
-          className="tab border-0 bg-transparent text-muted px-2 py-0.75 -mb-px border-b-2 border-b-transparent whitespace-nowrap aria-selected:text-gold aria-selected:border-b-gold aria-selected:font-semibold"
+          className="tab border-0 bg-transparent text-muted px-2 py-0.75 whitespace-nowrap -mb-px border-b-2 border-b-transparent aria-selected:text-gold aria-selected:font-semibold aria-selected:border-b-gold"
           onClick={event => {
             event.stopPropagation(); select({ id: tab.id })
           }}

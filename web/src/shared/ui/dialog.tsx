@@ -1,17 +1,25 @@
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { OverlaySurface } from './overlay-surface.tsx'
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useLayoutEffect, useId, useRef, type ReactNode, type CSSProperties } from 'react'
+import { motion } from 'motion/react'
+
 import { IconButton } from './icon-button.tsx'
+
+const AnimatedOverlaySurface = motion.create(OverlaySurface)
 
 export function Dialog({
   title,
   className = '',
   actions,
+  layoutId,
+  style,
   close,
   children,
 }: {
   title: ReactNode
   className?: string
+  layoutId?: string
+  style?: CSSProperties
   // Buttons for the dialog's subject, shown before Close.
   actions?: ReactNode
   close(): void
@@ -21,9 +29,14 @@ export function Dialog({
   const heading = useId()
   // A text selection dragged out of the panel ends on the backdrop; only a press there closes.
   const pressed = useRef<EventTarget | null>(null)
-  useEffect(
+  useLayoutEffect(
     () => {
       const element = dialog.current
+
+      if (element?.open) {
+        element.close()
+      }
+
       element?.showModal()
 
       return () => element?.close()
@@ -32,7 +45,12 @@ export function Dialog({
   )
 
   return (
-    <OverlaySurface
+    <AnimatedOverlaySurface
+      open={!!layoutId}
+      layoutId={layoutId}
+      initial={false}
+      exit={{ opacity: 0 }}
+      style={style}
       ref={dialog}
       aria-labelledby={heading}
       className={className}
@@ -84,6 +102,6 @@ export function Dialog({
         />
       </header>
       {children}
-    </OverlaySurface>
+    </AnimatedOverlaySurface>
   )
 }
