@@ -122,6 +122,8 @@ pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
+pnyx-axi hydra set --memory-reads <comma-separated spaces> --memory-write <space> [--hydra <id>]
+Memory reads require both allow-lists. One owner-memory write space per Hydra; shared is the default.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
 At start the server names, once, every Hydra still called by its id or by no name; a Firstmate Hydra keeps its home's name.
@@ -190,17 +192,20 @@ a compact conversations digest of the owner's queued task replies (read them who
 typed straight into the session of a worker Pnyx does not run, which carry their time, count once an event follows them, wake --wait
 and are read whole with task chat <task>. Pass the printed through as the next --after.
 `,
-  owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
+  owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--to <space>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
 pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <n>]
-Standing worker instructions for every Hydra (${WORKER_NOTES_BUDGET} characters, one rule per line, owner memory key workers) are included verbatim in every new worker header, before the Hydra's and the project's.
-Owner memory is Pnyx-wide. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
+Standing worker instructions from readable spaces (${WORKER_NOTES_BUDGET} characters, one rule per line, owner memory key workers) are included verbatim in every new worker header, before the Hydra's and the project's.
+Owner memory reads only spaces allowed by both the Hydra reads list and each space readers list. Writes use the Hydra's one write space, resolved by the server. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
 one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
 Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
-Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
+Move a whole document to another readable space with owner memory move --key <key> --to <space>.
+shared keeps $PNYX_HOME/owner/memory.jsonl; other spaces use owner/spaces/<space>/memory.jsonl. Every replacement and removal stays in the log.
+New and existing Hydras read/write shared by default. Manage readers with settings set --json and access with hydra set --memory-reads <comma-separated spaces> --memory-write <space>.
+These checks guard Pnyx output, not raw disk access from a local shell.
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]

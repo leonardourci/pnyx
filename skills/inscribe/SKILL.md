@@ -8,10 +8,12 @@ metadata:
 
 # inscribe
 
+Owner-memory writes always use this Hydra's configured write space; reads include only spaces allowed by both the Hydra reads list and each space readers list. New and existing Hydras default to `shared`. Never copy a note across spaces implicitly: use `owner memory move --key <key> --to <space> --hydra <hydra>` for an explicit document move. Project memory has one assigned space; `project move <project> --space <space>` moves its assignment. Raw local shell access is outside these output checks.
+
 Keep saved context brief and up to date, and edit or remove entries when things change. Save each fact at the narrowest level that fits:
 
-- Owner memory, Pnyx-wide and read by every Hydra (24000 characters): the owner's preferences under `preferences`, general learnings about tools, workers and routes under `learnings`, and standing worker instructions for every Hydra under `workers` (1500 characters, added verbatim to every new worker header; change them with `pnyx-axi owner worker-notes set --text "<whole document>" --reason "<why>"` and keep the key).
-- Project memory, shared by every Hydra on that project (10000 characters): facts, conventions and owner preferences that hold only for that project.
+- Owner memory in named spaces (24000 characters per space): the owner's preferences under `preferences`, general learnings about tools, workers and routes under `learnings`, and standing worker instructions for every Hydra under `workers` (1500 characters, added verbatim to every new worker header; change them with `pnyx-axi owner worker-notes set --text "<whole document>" --reason "<why>"` and keep the key).
+- Project memory in one assigned space, shared by attached Hydras that may read that space (10000 characters): facts, conventions and owner preferences that hold only for that project.
 - Hydra memory, this Hydra only (1500 characters): its scope, where it left off, its check cursor. Successful inscribe milestones track what has been read.
 
 A fresh session and a session after compaction receive owner memory within a 3000 estimated-token budget and Hydra memory in full. Read `pnyx-axi owner memory list` when a decision needs omitted owner memory. A resumed session receives only changed digest sections, and later wakes carry a short memory-changed note. Project memory loads only on demand and for workers assigned to that project, so every line must earn its place.
