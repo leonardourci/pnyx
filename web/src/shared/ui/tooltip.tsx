@@ -238,7 +238,7 @@ export function Tooltip({
           role={interactive ? 'dialog' : 'tooltip'}
           aria-label={label}
           popover="manual"
-          className="tooltip fixed inset-auto m-0 max-w-floating-panel py-1.25 px-2 border-0 rounded-md bg-ink text-surface text-meta leading-[1.4] wrap-anywhere overflow-y-auto overscroll-contain pointer-events-auto opacity-100 transition-opacity duration-180 ease-[ease] motion-reduce:transition-none [&_:where(strong,span)]:block [&_mark]:px-px [&_mark]:py-0 [&_mark]:rounded-xs [&_mark]:bg-gold/45 [&_mark]:text-inherit"
+          className="tooltip fixed inset-auto m-0 max-w-floating-panel py-1.25 px-2 border-0 rounded-md bg-ink text-surface text-meta leading-[1.4] wrap-anywhere overflow-y-auto overscroll-contain pointer-events-auto opacity-100 transition-opacity duration-180 ease-[ease] motion-reduce:transition-none [:where(&)_:is(strong,span)]:block [&_mark]:px-px [&_mark]:py-0 [&_mark]:rounded-xs [&_mark]:bg-gold/45 [&_mark]:text-inherit"
           onPointerEnter={() => clearTimeout(closeTimer.current)}
           onPointerLeave={leave}
         >{content}
