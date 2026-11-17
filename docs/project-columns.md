@@ -15,7 +15,7 @@ This is the living spec for task `task-ecfe3cac-541d-4dd5-a876-5cc8229f2365`. It
 - During dragging, the full card or family follows the pointer. A marked landing slot moves only when the card crosses into the next position. Small movements leave the order alone. Neighbors slide aside and fill its origin.
 - Plain dragging only reorders siblings within their state group. Holding Shift over a root card nests the task beneath it; releasing Shift returns to reorder. Escape cancels without closing an open card. A task with children cannot nest. Only during the gesture, the lifted card shows one “⇧ Sub-task” keycap, lit while Shift is held. The target has an inset drop outline. During an eligible task drag, its source project header shows “Hold Shift and drop on a task to make it a sub-task” without moving the grid. A nesting drop shrinks the lifted card into its parent, then reveals the child; reorder drops retain their landing motion. There is no nesting pill. “Move out of its parent” in the shared hover menu detaches a child and returns it to its own project. Plain drag never changes parentage.
 - One shared hover pill provides actions for open, closed and child cards.
-- Project and Hydra order can be changed from their content or navigation chips, including folded strips. All reversible edits appear immediately and reconcile through the existing pending resource, preserving DOM identity.
+- Project and Hydra order can be changed from their content or navigation chips, including folded strips. All reversible edits appear immediately and reconcile through the existing pending resource, preserving DOM identity. A refused creation draft is restored only in its own repository or project group.
 - Vertical chat gestures stay in their chat; only horizontal gestures move the Hydra axis. Chat retains its own follow/anchor controller.
 - Scroll, resizing and opening feel continuous. Expansion, folding and dragging animate without jumps. Reduced motion is respected.
 - Restart, dropped and slept connections reconcile without a manual reload. Connection transitions, recovery and slow renders have structured bounded logs.
@@ -84,11 +84,11 @@ The comparison uses separate isolated instances of the native-animation revision
 | Open | 46.7 / 76.6 | 52.6 / 75.5 |
 | Close | 56.7 / 78.2 | 33.3 / 79.2 |
 
-The libraries add about 62.5 KB gzip JS. There is no measured speed change within this noise. The gains are keyboard dragging with the same legal destinations as pointer sorting, continuous reflow and deleting the handwritten engines. Hydra confirmed retaining the libraries with that cost (ask-207933). Earlier faster samples are not a performance claim. The completed UI adds further components and the nest animation. Total JS is 509,968 gzip bytes versus 440,022 before the libraries: 69,946 bytes overall. The initial Tailwind baseline CSS was 150,454 bytes raw / 28,379 gzip; the completed UI is 149,788 / 28,123. Authored qualified rules fell from 1,463 to 1,108, removing 355 rules; this counts nested media/supports rules and excludes keyframe steps and theme declarations. Exact build provenance, matching clips and sanitized traces are linked from PR #410.
+The libraries add about 62.5 KB gzip JS. There is no measured speed change within this noise. The gains are keyboard dragging with the same legal destinations as pointer sorting, continuous reflow and deleting the handwritten engines. Hydra confirmed retaining the libraries with that cost (ask-207933). Earlier faster samples are not a performance claim. The measured component/nesting build, before readiness fixes, totals 509,968 gzip JS bytes versus 440,022 before the libraries: 69,946 bytes overall. Current build totals and hashes are recorded in the PR measurement artifact. The initial Tailwind baseline CSS was 150,454 bytes raw / 28,379 gzip; the completed UI is 149,788 / 28,123. Authored qualified rules fell from 1,463 to 1,108, removing 355 rules; this counts nested media/supports rules and excludes keyframe steps and theme declarations. Exact build provenance, matching clips and sanitized traces are linked from PR #410.
 
 ## Behavioral validation
 
-The nine project-view browser journeys pass. The focused saved-width migration also passes. Full integration and browser suites run in required CI on the final head. All local code checks run again through deslop.
+The nine original project-view browser journeys and the additional refused-draft journey pass. The two affected browser files also passed all 20 original journeys in the failed CI order after test-context cleanup and visible-target corrections. All ten worker-scope checks pass. The focused saved-width migration also passes. Full integration and browser suites run in required CI on the final head. All local code checks run again through deslop.
 
 | Behavior | Failing mutation / observed refusal |
 | --- | --- |
@@ -107,6 +107,7 @@ The nine project-view browser journeys pass. The focused saved-width migration a
 | Saved-width cleanup | Suppressing migration cleanup leaves the retired card-width map in the stored view |
 | Shared worker attachments | Restoring the plain worker form removes the file-attachment control |
 | Reply recovery | Suppressing delivery leaves the reply undelivered after reconnect; the passing flow asserts one delivery with file name and body |
+| Refused creation recovery | Omitting destination matching restores a repository draft when opening Ideas |
 | Settings route | Removing server route support loses Settings on reload |
 | Folding identity | Unmounting folded content disconnects the original selected card |
 | Parent retention | Suppressing all-children completion leaves the parent's completion timestamp absent |
