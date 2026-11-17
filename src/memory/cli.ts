@@ -3,7 +3,7 @@ import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
-import { ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis } from './owner-memory.ts'
+import { ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis, type OwnerMeta } from './owner-memory.ts'
 import { findProject } from '#projects/read.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -11,6 +11,7 @@ import { scanEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 import { memoryCaller } from './poleis.ts'
+import { POLIS_NAME } from './polis-policy.ts'
 
 function memoryList({
   memory,
@@ -89,6 +90,36 @@ function memoryChange({
   return {
     key,
     after,
+  }
+}
+
+function ownerMeta({ values }: {
+  values: Record<string, string | boolean | undefined>
+}): OwnerMeta {
+  const revision = values['if-revision']
+
+  if (revision === undefined) {
+    return meta({ values })
+  }
+
+  const parts = String(revision).split(':')
+  const polis = parts.length === 1 ? 'shared' : parts[0]!
+
+  if (!POLIS_NAME.test(polis) || parts.length > 2) {
+    throw new HydraError({
+      message: 'Use the revision from owner memory list',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return {
+    ...meta({
+      values: {
+        ...values,
+        'if-revision': parts.at(-1),
+      },
+    }),
+    ifPolis: polis,
   }
 }
 
@@ -176,13 +207,13 @@ export const owner = guard({
         key: 'learnings',
         after: null,
         learning,
-        meta: meta({ values }),
+        meta: ownerMeta({ values }),
       })
 
       return {
         memory: 'learnings',
         state: action === 'save' ? 'saved' : 'archived',
-        revision: entry?.seq,
+        revision: entry?.revision,
       }
     }
 
@@ -200,7 +231,7 @@ export const owner = guard({
           value: values.key as string | undefined,
           what: '--key',
         }),
-        meta: meta({ values }),
+        meta: ownerMeta({ values }),
       })
     }
 
@@ -227,7 +258,7 @@ export const owner = guard({
           value: values.text as string | undefined,
           what: '--text <existing learning line>',
         }),
-        meta: meta({ values }),
+        meta: ownerMeta({ values }),
       })
     }
 
@@ -241,13 +272,13 @@ export const owner = guard({
         key: 'learnings',
         after: null,
         confirmed: line,
-        meta: meta({ values }),
+        meta: ownerMeta({ values }),
       })
 
       return {
         memory: 'learnings',
         state: 'confirmed',
-        revision: entry?.seq,
+        revision: entry?.revision,
       }
     }
 
@@ -259,7 +290,7 @@ export const owner = guard({
       values,
       usage,
     })
-    const m = meta({ values })
+    const m = ownerMeta({ values })
 
     if (key === 'workers') {
       checkWorkerNotes({
@@ -279,7 +310,7 @@ export const owner = guard({
     return entry ? {
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
-      revision: entry.seq,
+      revision: entry.revision,
       used: `${memorySize({ memory: writableOwnerMemory({ hydraId })?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,

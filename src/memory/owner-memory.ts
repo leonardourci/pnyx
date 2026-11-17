@@ -2,7 +2,7 @@ import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
 import { canRead, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
-import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
+import { ownerMemoryLogPath as logPath, readOwnerEntries, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
 import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
 import { existsSync } from 'node:fs'
@@ -15,6 +15,10 @@ import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
+
+export interface OwnerMeta extends Meta {
+  ifPolis?: string
+}
 
 interface OwnerLog {
   memory: Memory
@@ -90,6 +94,28 @@ function readLog({ polis = 'shared' }: { polis?: string } = {}): OwnerLog {
   }
 }
 
+function checkOwnerRevision({
+  polis,
+  revision,
+  meta,
+}: {
+  polis: string
+  revision: number
+  meta: OwnerMeta
+}): void {
+  if (meta.ifRevision === undefined) {
+    return
+  }
+
+  if (meta.ifRevision !== revision || (meta.ifPolis ?? 'shared') !== polis) {
+    throw new HydraError({
+      message: 'Owner memory changed; read its writable documents again before saving',
+      code: 'REVISION_CONFLICT',
+      help: ['Run `pnyx-axi owner memory list`, merge your change into the current text and save again'],
+    })
+  }
+}
+
 // Call only under the registry lock. `change` gets the current text and returns the new one.
 function append({
   key,
@@ -105,7 +131,7 @@ function append({
   polis?: string
   key: string
   change: ({ before }: { before: string | null }) => string | null
-  meta: Meta
+  meta: OwnerMeta
   budget?: number
   confirmed?: string
   polisMove?: OwnerEntry['polisMove']
@@ -122,13 +148,11 @@ function append({
     })
   }
 
-  if (meta.ifRevision !== undefined && meta.ifRevision !== log.revision) {
-    throw new HydraError({
-      message: `Owner memory revision is ${log.revision}`,
-      code: 'REVISION_CONFLICT',
-      help: ['Run `pnyx-axi owner memory list`, merge your change into the current text and save again'],
-    })
-  }
+  checkOwnerRevision({
+    polis,
+    revision: log.revision,
+    meta,
+  })
 
   const before = log.memory[key]?.text ?? null
   const after = learningText({
@@ -293,7 +317,7 @@ function move({
   meta,
 }: {
   hydraId: string
-  meta: Meta
+  meta: OwnerMeta
 }): void {
   withWriter({
     hydraId,
@@ -402,7 +426,19 @@ export function ownerArchive({ hydraId }: { hydraId: string }): ArchivedLine[] {
 export function writableOwnerMemory({ hydraId }: { hydraId: string }) {
   const { writablePolis } = polisAccess({ hydraId })
 
-  return writablePolis === undefined ? undefined : readLog({ polis: writablePolis })
+  if (writablePolis === undefined) {
+    return undefined
+  }
+
+  const log = readLog({ polis: writablePolis })
+
+  return {
+    ...log,
+    revision: ownerRevision({
+      polis: writablePolis,
+      revision: log.revision,
+    }),
+  }
 }
 
 export function saveOwnerMemory({
@@ -415,23 +451,34 @@ export function saveOwnerMemory({
 }: {
   key: string
   after: string | null
-  meta: Meta
+  meta: OwnerMeta
   confirmed?: string
   learning?: LearningChange
   hydraId: string
-}): OwnerEntry | undefined {
+}): (OwnerEntry & { revision: string | number }) | undefined {
   tryMigrate()
 
   return withRegistryLock({
-    fn: () => append({
-      polis: polisAccess({ hydraId }).write(),
-      key,
-      change: ({ before }) => confirmed === undefined ? after : before,
-      meta,
-      budget: OWNER_MEMORY_BUDGET,
-      confirmed,
-      learning,
-    }),
+    fn: () => {
+      const polis = polisAccess({ hydraId }).write()
+      const entry = append({
+        polis,
+        key,
+        change: ({ before }) => confirmed === undefined ? after : before,
+        meta,
+        budget: OWNER_MEMORY_BUDGET,
+        confirmed,
+        learning,
+      })
+
+      return entry ? {
+        ...entry,
+        revision: ownerRevision({
+          polis,
+          revision: entry.seq,
+        }),
+      } : undefined
+    },
   })
 }
 
@@ -450,7 +497,7 @@ export async function moveOwnerLearning({
   path: string
   hydraId: string
   text: string
-  meta: Meta
+  meta: OwnerMeta
 }) {
   tryMigrate()
   const facts = await projectFacts({ path })
@@ -460,12 +507,11 @@ export async function moveOwnerLearning({
       const polis = polisAccess({ hydraId }).write()
       const owner = readLog({ polis })
 
-      if (meta.ifRevision !== undefined && owner.revision !== meta.ifRevision) {
-        throw new HydraError({
-          message: 'Source memory changed; read it again before moving the learning',
-          code: 'REVISION_CONFLICT',
-        })
-      }
+      checkOwnerRevision({
+        polis,
+        revision: owner.revision,
+        meta,
+      })
 
       const before = owner.memory.learnings?.text ?? ''
       const lines = before.split('\n')
@@ -550,7 +596,10 @@ export async function moveOwnerLearning({
         memory: 'learnings',
         state: 'moved',
         project: project.id,
-        revision: entry?.seq,
+        revision: entry ? ownerRevision({
+          polis,
+          revision: entry.seq,
+        }) : undefined,
       }
     },
   })
@@ -571,7 +620,7 @@ export function moveOwnerPolis({
   hydraId: string
   destination: string
   key: string
-  meta: Meta
+  meta: OwnerMeta
 }) {
   tryMigrate()
 
@@ -599,12 +648,11 @@ export function moveOwnerPolis({
       const source = readLog({ polis })
       const target = readLog({ polis: destination })
 
-      if (meta.ifRevision !== undefined && source.revision !== meta.ifRevision) {
-        throw new HydraError({
-          message: 'Source memory changed; read it again before moving the document',
-          code: 'REVISION_CONFLICT',
-        })
-      }
+      checkOwnerRevision({
+        polis,
+        revision: source.revision,
+        meta,
+      })
 
       if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
         throw new HydraError({
@@ -688,7 +736,10 @@ export function moveOwnerPolis({
       return {
         memory: key,
         state: 'moved',
-        revision: entry?.seq,
+        revision: entry ? ownerRevision({
+          polis,
+          revision: entry.seq,
+        }) : undefined,
       }
     },
   })

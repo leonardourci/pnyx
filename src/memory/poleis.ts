@@ -1,3 +1,4 @@
+import { ownerRevision } from './owner-memory-log.ts'
 import { sharesWithMore } from './access-changes.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { hydraActor, requestEnv } from '#app/request-context.ts'
@@ -219,7 +220,10 @@ export function memoryMovePermission({
   const sourceArgs = pinned ? args : [
     ...args,
     '--if-revision',
-    String(revision),
+    String(ownerRevision({
+      polis: source,
+      revision,
+    })),
   ]
 
   const destinationPinned = args.some(arg => arg === '--if-destination-revision' || arg.startsWith('--if-destination-revision='))

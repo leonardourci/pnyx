@@ -30,6 +30,16 @@ export interface OwnerEntry {
   }
 }
 
+export function ownerRevision({
+  polis,
+  revision,
+}: {
+  polis: string
+  revision: number
+}): string | number {
+  return polis === 'shared' ? revision : `${polis}:${revision}`
+}
+
 export function ownerMemoryLogPath({ polis = 'shared' }: { polis?: string } = {}) {
   const owner = join(
     pnyxHome(),

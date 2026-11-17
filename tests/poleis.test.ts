@@ -1380,3 +1380,105 @@ test(
     }))).toContain('Controlled axion line')
   },
 )
+
+test(
+  'owner-memory revisions cannot cross a home-polis change',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            'revision-first': { readers: [hydra.id] },
+            'revision-next': { readers: [hydra.id] },
+          },
+        }),
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'revision-first',
+        '--read-poleis',
+        'revision-first,revision-next',
+      ],
+    })
+    const first = await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'revision-first',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'revision-next',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'revision-next',
+      ],
+    })
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'stale replacement',
+        '--if-revision',
+        String(first.revision),
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    const current = await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    expect(current.writable.preferences.text).toBe('revision-next')
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'fresh replacement',
+        '--if-revision',
+        String(current.revision),
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable.preferences.text).toBe('fresh replacement')
+  },
+)
