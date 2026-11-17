@@ -4,7 +4,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
-import { candidates, effectiveDispatch, type Candidate } from '#workers/dispatch-config.ts'
+import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
 import { withWriter } from '#app/writer.ts'
@@ -78,31 +78,6 @@ export function hydraAgentCommand({
     })
   }
 
-  saveAgent({
-    ws,
-    id,
-    send,
-    hydraId,
-    agents,
-    kick,
-    agent,
-  })
-}
-
-function saveAgent({
-  ws,
-  id,
-  send,
-  hydraId,
-  agents,
-  kick,
-  agent,
-}: Omit<CommandRequest, 'fail' | 'args'> & {
-  hydraId: string
-  agents: ReturnType<typeof createHost>
-  kick(): void
-  agent: Candidate
-}) {
   const {
     previous,
     running,

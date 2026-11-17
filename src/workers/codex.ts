@@ -1018,20 +1018,14 @@ async function scopedConfig({
     'features.plugins': false,
     mcp_servers: serverOverrides,
     plugins: pluginOverrides,
+    'skills.config': disabledSkills,
+    'skills.bundled.enabled': false,
+    'skills.include_instructions': false,
+    'features.sleep_tool': false,
+    'features.default_mode_request_user_input': false,
+    'tools.update_plan.enabled': false,
+    web_search: 'disabled',
   }
-
-  Object.assign(
-    overrides,
-    {
-      'skills.config': disabledSkills,
-      'skills.bundled.enabled': false,
-      'skills.include_instructions': false,
-      'features.sleep_tool': false,
-      'features.default_mode_request_user_input': false,
-      'tools.update_plan.enabled': false,
-      web_search: 'disabled',
-    },
-  )
 
   for (const name of Object.keys(servers)) {
     serverOverrides[name] = { enabled: false }
