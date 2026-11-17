@@ -188,7 +188,7 @@ export function WorkerChat({
   )
   useEffect(
     () => {
-      if (!connected || card.createdSeq === 0) {
+      if (!connected) {
         return
       }
 
@@ -213,7 +213,6 @@ export function WorkerChat({
     },
     [
       card.id,
-      card.createdSeq,
       command,
       connected,
     ],
