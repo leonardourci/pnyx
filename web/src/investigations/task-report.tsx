@@ -95,7 +95,7 @@ export function TaskReport({
   const loading = connected && report === null && !error
 
   return (
-    <section className="task-report" aria-label="Report" aria-busy={loading}>
+    <section className="task-report shrink-0 flex flex-col items-start gap-1.25 py-2 px-2.5 bg-raised border border-line rounded-question-summary text-meta" aria-label="Report" aria-busy={loading}>
       <strong className="eyebrow">Report</strong>
       <span className="muted small">Stored {relativeTime({
         at: card.report.at,
@@ -103,7 +103,7 @@ export function TaskReport({
       })}
       </span>
       {error && <span className="muted small">{error}</span>}
-      {report !== null && <div className="task-report-body"><CollapsibleText text={report} /></div>}
+      {report !== null && <div className="task-report-body self-stretch max-h-90 overflow-auto text-ui"><CollapsibleText text={report} /></div>}
     </section>
   )
 }

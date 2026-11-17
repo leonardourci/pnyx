@@ -109,7 +109,7 @@ export function TaskEditor({
 
   return (
     <form
-      className="task-editor"
+      className="task-editor flex flex-col gap-1.5 [&>.row]:flex-wrap"
       aria-label="Edit title and brief"
       onSubmit={event => {
         event.preventDefault(); save()
