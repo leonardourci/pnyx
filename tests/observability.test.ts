@@ -158,6 +158,19 @@ test(
     logPageLines({
       value: [
         {
+          operation: 'page.slow-interaction',
+          surface: 'settings',
+          action: 'settings.open',
+          ms: 120,
+          totalMs: 120,
+          samples: 1,
+          frameCount: 3,
+          inputDelayMs: 8,
+          processingMs: 100,
+          presentationMs: 12,
+          privateText: 'private-owner-message',
+        },
+        {
           operation: 'page.privacy',
           level: 'error',
           error: {
@@ -179,6 +192,20 @@ test(
     })
     await flushLogs()
     const recorded = lines()
+    expect(recorded).toContainEqual(expect.objectContaining({
+      source: 'web',
+      operation: 'page.slow-interaction',
+      surface: 'settings',
+      action: 'settings.open',
+      ms: 120,
+      totalMs: 120,
+      samples: 1,
+      frameCount: 3,
+      inputDelayMs: 8,
+      processingMs: 100,
+      presentationMs: 12,
+    }))
+    expect(recorded.find(line => line.operation === 'page.slow-interaction')).not.toHaveProperty('privateText')
     expect(recorded).toEqual(expect.arrayContaining([
       expect.objectContaining({
         operation: 'command.cli',
