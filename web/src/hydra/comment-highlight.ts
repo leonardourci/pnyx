@@ -1,3 +1,4 @@
+import { motionDuration } from '#web-shared/motion.ts'
 import { MESSAGE_DECORATIONS, messageBlockKey } from './message-selection.ts'
 import { quoteStart, type ChatComment } from './chat.ts'
 
@@ -233,7 +234,7 @@ export function fadeHighlight({
   const before = CSS.highlights.get(name)
   CSS.highlights.delete(name)
 
-  if (!before || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (!before || motionDuration() === 0) {
     return
   }
 
@@ -244,7 +245,7 @@ export function fadeHighlight({
   }
 
   const theme = getComputedStyle(first.startContainer.parentElement ?? document.documentElement)
-  const duration = parseFloat(theme.getPropertyValue('--comment-fade-duration'))
+  const duration = motionDuration()
   const strength = parseFloat(theme.getPropertyValue(emphasis ? '--comment-emphasis-strength' : '--comment-highlight-strength'))
   const copy = new Highlight(...before)
   copy.priority = before.priority
@@ -272,7 +273,7 @@ export function fadeHighlight({
       (performance.now() - started) / duration,
     )
 
-    if (progress === 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (progress === 1 || motionDuration() === 0) {
       clear()
 
       return

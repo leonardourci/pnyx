@@ -47,7 +47,7 @@ import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
 import { readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
-import { REDUCED_MOTION } from './streaming.tsx'
+import { motionDuration } from '#web-shared/motion.ts'
 
 // The share of the distance to the bottom that following covers per frame.
 const GLIDE = 0.3
@@ -903,7 +903,7 @@ export function HydraChat({
         const left = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
 
         // A page load or a jump of more than a screen snaps; only a growing reply glides.
-        if (left > scroller.clientHeight || matchMedia(REDUCED_MOTION).matches) {
+        if (left > scroller.clientHeight || motionDuration() === 0) {
           bottom()
         } else {
           glide.current = requestAnimationFrame(settle)

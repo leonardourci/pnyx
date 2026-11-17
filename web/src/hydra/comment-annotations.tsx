@@ -1,3 +1,4 @@
+import { motionDuration } from '#web-shared/motion.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { ChatComment } from './chat.ts'
@@ -7,7 +8,6 @@ import { COMMENT_BADGE_SIZE, commentPileLayout, commentPiles } from './comment-p
 import { COMMENT_FOCUS, COMMENT_REVEAL } from './comment-motion.ts'
 import { revealComment } from './comment-reveal.ts'
 
-const JUMP_DURATION = 1800
 type Rect = {
   top: number
   left: number
@@ -228,7 +228,7 @@ export function CommentAnnotations({
       void card.offsetWidth
       card.style.setProperty(
         '--comment-jump-duration',
-        `${JUMP_DURATION}ms`,
+        `${motionDuration({ speed: 'ambient' })}ms`,
       )
       card.dataset.jump = ''
 
@@ -251,7 +251,7 @@ export function CommentAnnotations({
 
       const timer = setTimeout(
         () => setJump(null),
-        JUMP_DURATION,
+        motionDuration({ speed: 'ambient' }),
       )
 
       return () => clearTimeout(timer)
@@ -434,10 +434,10 @@ export function CommentAnnotations({
       ) => (
         <span
           key={`${jump.key}-${index}`}
-          className="comment-jump absolute z-1 rounded-preview bg-(--comment-jump-highlight) [animation-name:comment-jump] [animation-timing-function:ease-out] [animation-fill-mode:both] motion-reduce:animate-none motion-reduce:opacity-50"
+          className="comment-jump absolute z-1 rounded-preview bg-(--comment-jump-highlight) [animation-name:comment-jump] [animation-timing-function:var(--ease-ui)] [animation-fill-mode:both] motion-reduce:animate-none motion-reduce:opacity-50"
           style={{
             ...rect,
-            animationDuration: `${JUMP_DURATION}ms`,
+            animationDuration: `${motionDuration({ speed: 'ambient' })}ms`,
           }}
           aria-hidden="true"
         />
