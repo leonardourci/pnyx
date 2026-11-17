@@ -125,3 +125,7 @@ Copy settlement holds the task lease until its folder decision is saved. A serve
 Older child records without the background-preservation marker retain the earlier startup group cleanup behavior. New records preserve background tools across restart.
 
 Motion timing lives in `web/src/shared/motion.ts` and the matching `@theme` tokens in `web/src/index.css`; change `MOTION_MODE` to `off` for instant motion, and keep token values together when changing the timings.
+
+Interface icons share `web/src/shared/icons.tsx`: `Icon`, `hasIcon`, `ICON_SIZE` and `ICON_STROKE`. Use the size roles (`badge`, `inline`, `control`, `toolbar`, `heading`, `brand`) instead of pixel literals. Line glyphs use Tabler at a constant 1.5 screen-pixel stroke; identity and provider marks retain their licensed filled artwork. The registry and identity assets live in `web/src/shared/ui/icons/`. All marks resist flex shrinking so adjacent text cannot change their size.
+
+Card geometry lives in `src/preferences/workspace.ts`; shared controls live in `web/src/shared/ui/` (`IconButton`, `DisclosureChevron`, `Resize`, `HoverActions`, `Dialog`). Change those primitives for repeated patterns instead of styling a second version inside a feature.
