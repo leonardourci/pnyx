@@ -1248,7 +1248,13 @@ test(
   async () => {
     const hydra = await pnyx.hydra()
     const path = hydra.folder({ name: 'draft-project' })
-    await hydra.owner({ args: ['project', 'add', path] })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -1288,20 +1294,78 @@ test(
 
     try {
       const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
-      await workspace.getByRole('button', { name: 'New task in draft-project', exact: true }).click()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'New task in draft-project',
+          exact: true,
+        },
+      ).click()
       const form = workspace.locator('.task-create')
-      await form.getByRole('textbox', { name: 'Task title', exact: true }).fill('Project-only draft')
-      await form.getByRole('button', { name: 'Save task', exact: true }).click()
-      await page.getByText('Task creation refused', { exact: true }).first().waitFor()
-      await form.getByRole('textbox', { name: 'Task title', exact: true }).waitFor()
+      await form.getByRole(
+        'textbox',
+        {
+          name: 'Task title',
+          exact: true,
+        },
+      ).fill('Project-only draft')
+      await form.getByRole(
+        'button',
+        {
+          name: 'Save task',
+          exact: true,
+        },
+      ).click()
+      await page.getByText(
+        'Task creation refused',
+        { exact: true },
+      ).first()
+        .waitFor()
+      await form.getByRole(
+        'textbox',
+        {
+          name: 'Task title',
+          exact: true,
+        },
+      ).waitFor()
       await until({
         what: 'the refused project draft is restored',
-        check: async () => await form.getByRole('textbox', { name: 'Task title', exact: true }).inputValue() === 'Project-only draft'
-          && await form.getByRole('button', { name: 'Cancel', exact: true }).isEnabled(),
+        check: async () => await form.getByRole(
+          'textbox',
+          {
+            name: 'Task title',
+            exact: true,
+          },
+        ).inputValue() === 'Project-only draft'
+          && await form.getByRole(
+            'button',
+            {
+              name: 'Cancel',
+              exact: true,
+            },
+          ).isEnabled(),
       })
-      await form.getByRole('button', { name: 'Cancel', exact: true }).click()
-      await workspace.getByRole('button', { name: 'New task in Ideas', exact: true }).click()
-      expect(await form.getByRole('textbox', { name: 'Task title', exact: true }).inputValue()).toBe('')
+      await form.getByRole(
+        'button',
+        {
+          name: 'Cancel',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'New task in Ideas',
+          exact: true,
+        },
+      ).click()
+      expect(await form.getByRole(
+        'textbox',
+        {
+          name: 'Task title',
+          exact: true,
+        },
+      ).inputValue()).toBe('')
     } finally {
       await page.context().close()
     }
