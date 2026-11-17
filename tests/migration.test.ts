@@ -328,6 +328,15 @@ test(
         await closePostgres()
         await sql({
           database: homeDatabase(),
+          text: 'update events set data = jsonb_set(data::jsonb, \'{data,after,workspace,cardWidths}\', $3::jsonb)::json where hydra_id = $1 and id = $2',
+          values: [
+            hydra.id,
+            changed.event.id,
+            JSON.stringify({ [task.card.id]: 880 }),
+          ],
+        })
+        await sql({
+          database: homeDatabase(),
           text: `update hydra_values set value = jsonb_set(value::jsonb, '{workspace,cardWidths}', $2::jsonb)::json
           where hydra_id = $1 and key = 'view';`,
           values: [
@@ -362,7 +371,13 @@ test(
         changed.event.id,
       ],
     })[0]!
-    expect(historical.data.data.after).toMatchObject(layout)
+    expect(historical.data.data.after).toMatchObject({
+      ...layout,
+      workspace: {
+        ...layout.workspace,
+        cardWidths: { [task.card.id]: 880 },
+      },
+    })
     const refused = await hydra.ownerRefused({
       args: [
         'view',
