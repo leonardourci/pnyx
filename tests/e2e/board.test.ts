@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
-import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { pnyxAxi, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
 

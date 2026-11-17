@@ -11,8 +11,21 @@ export function taskProjectGroup({
   state: HydraState
   card: Card
 }) {
-  const parent = card.parentId && state.cards[card.parentId]
-  const label = parent ? parent.project : card.project
+  let root = card
+  const visited = new Set([card.id])
+
+  while (root.parentId) {
+    const parent = state.cards[root.parentId]
+
+    if (!parent || visited.has(parent.id)) {
+      break
+    }
+
+    visited.add(parent.id)
+    root = parent
+  }
+
+  const label = root.project
   const project = state.projects?.find(project =>
     project.path === label || project.name === label)
 
