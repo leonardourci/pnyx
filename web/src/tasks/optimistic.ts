@@ -61,6 +61,26 @@ export function optimisticState({
       },
     } : state
 
+  if (name === 'task' && action === 'hold' && card) {
+    const id = option({ flag: '--event-id' })
+    const reason = option({ flag: '--reason' })
+
+    if (!id || !reason) {
+      return state
+    }
+
+    return update({
+      patch: {
+        hold: {
+          id,
+          reason,
+          actor: 'web',
+          at: new Date().toISOString(),
+        },
+      },
+    })
+  }
+
   if (name === 'task' && action === 'create') {
     const event = option({ flag: '--event-id' })
     const title = option({ flag: '--title' })?.trim()

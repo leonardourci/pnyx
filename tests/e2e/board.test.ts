@@ -14,9 +14,29 @@ test(
   'the project view follows a task from queued through running to done in Ideas',
   async () => {
     const hydra = await pnyx.hydra()
+    let releasePause: (() => void) | undefined
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.type === 'command' && frame.name === 'task' && frame.args?.[0] === 'hold') {
+              releasePause = () => server.send(message)
+
+              return
+            }
+
+            server.send(message)
+          })
+        },
+      ),
     })
     await page.locator('[aria-label="Work columns"]').waitFor()
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
@@ -92,6 +112,45 @@ test(
       )
       .waitFor()
     expect(await shown({ title: 'Ship the export' }).count()).toBe(1)
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'pause-preview',
+        '--title',
+        'Pause preview',
+      ],
+    })
+    await page.getByRole(
+      'button',
+      {
+        name: 'Pause preview',
+        exact: true,
+      },
+    ).click()
+    await shown({ title: 'Pause preview' }).getByRole(
+      'button',
+      {
+        name: 'Pause task',
+        exact: true,
+      },
+    )
+      .click()
+    await until({
+      what: 'pause request is withheld',
+      check: () => !!releasePause,
+    })
+    await shown({ title: 'Pause preview' }).locator(
+      '.agent-activity',
+      { hasText: 'hold' },
+    )
+      .waitFor()
+    releasePause!()
+    await until({
+      what: 'pause persists after confirmation',
+      check: async () => !!(await hydra.task({ key: 'pause-preview' })).hold,
+    })
   },
 )
 
