@@ -122,7 +122,7 @@ pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
-pnyx-axi hydra set --memory-reads <comma-separated spaces> --memory-write <space> [--hydra <id>]
+pnyx-axi hydra set --memory-reads <comma-separated spaces> --memory-write <space> [--propose] [--hydra <id>]
 Memory reads require both allow-lists. One owner-memory write space per Hydra; shared is the default.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
@@ -202,9 +202,11 @@ New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|ve
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
 Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
-Move a whole document to another readable space with owner memory move --key <key> --to <space>.
+Move a whole document to another readable space with owner memory move --key <key> --to <space> [--propose].
 shared keeps $PNYX_HOME/owner/memory.jsonl; other spaces use owner/spaces/<space>/memory.jsonl. Every replacement and removal stays in the log.
 New and existing Hydras read/write shared by default. Manage readers with settings set --json and access with hydra set --memory-reads <comma-separated spaces> --memory-write <space>.
+Hydra may narrow access directly. Widening reads, readers or memory distribution needs the owner's Confirm, even in bypass modes. Repeat with --propose to save the question.
+Use owner memory list's writable documents when editing; memory combines all readable spaces.
 These checks guard Pnyx output, not raw disk access from a local shell.
 `,
   column: `usage: pnyx-axi column list

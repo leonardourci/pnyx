@@ -133,7 +133,7 @@ function ownerDigest({
       '',
     ]),
     ...(owner.workers ? [
-      'Standing worker instructions for every Hydra (owner memory key workers):',
+      'Standing worker instructions (owner memory key workers):',
       owner.workers.text,
       '',
     ] : []),

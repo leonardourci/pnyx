@@ -8,11 +8,11 @@ metadata:
 
 # inscribe
 
-Owner-memory writes always use this Hydra's configured write space; reads include only spaces allowed by both the Hydra reads list and each space readers list. New and existing Hydras default to `shared`. Never copy a note across spaces implicitly: use `owner memory move --key <key> --to <space> --hydra <hydra>` for an explicit document move. Project memory has one assigned space; `project move <project> --space <space>` moves its assignment. Raw local shell access is outside these output checks.
+Owner-memory writes always use this Hydra's configured write space; reads include only spaces allowed by both the Hydra reads list and each space readers list. New and existing Hydras default to `shared`. Never copy a note across spaces implicitly: use `owner memory move --key <key> --to <space> --hydra <hydra>` for an explicit document move. Project memory has one assigned space; `project move <project> --space <space>` moves its assignment. Moves to additional readers require the owner's Confirm, even in bypass modes; repeat with `--propose` to save the owner question. Moves within the same readership apply directly. Raw local shell access is outside these output checks.
 
 Keep saved context brief and up to date, and edit or remove entries when things change. Save each fact at the narrowest level that fits:
 
-- Owner memory in named spaces (24000 characters per space): the owner's preferences under `preferences`, general learnings about tools, workers and routes under `learnings`, and standing worker instructions for every Hydra under `workers` (1500 characters, added verbatim to every new worker header; change them with `pnyx-axi owner worker-notes set --text "<whole document>" --reason "<why>"` and keep the key).
+- Owner memory in named spaces (24000 characters per space) holds the owner's `preferences`, general `learnings` about tools and workers, and standing instructions under `workers`. Each space can hold 1500 characters of worker notes. New workers receive notes from the spaces their Hydra may read. Change the write space's notes with `pnyx-axi owner worker-notes set --text "<whole document>" --reason "<why>"`.
 - Project memory in one assigned space, shared by attached Hydras that may read that space (10000 characters): facts, conventions and owner preferences that hold only for that project.
 - Hydra memory, this Hydra only (1500 characters): its scope, where it left off, its check cursor. Successful inscribe milestones track what has been read.
 
@@ -28,7 +28,7 @@ Save each document whole with `pnyx-axi project memory set --project <name|path>
 
 Without a project, sweep for every layer: route project facts and project preferences as above, and curate owner and Hydra memory with the steps below.
 
-1. Read the current memory: `pnyx-axi owner memory list` and `pnyx-axi hydra memory list --hydra <hydra>` (each shows the characters used; owner memory also prints its revision).
+1. Read the current memory with `pnyx-axi owner memory list` and `pnyx-axi hydra memory list --hydra <hydra>`. For owner-memory edits, use the documents under `writable` and the revision printed alongside them. The combined `memory` output is for reference.
 2. Start or resume the pass with `pnyx-axi hydra inscribe start --hydra <hydra>`. Keep its `milestone` ID and `through`, and run the history command it returns. It reads since the last successful inscribe, including the owner's messages, your replies read from your native transcripts, task briefs, intents and helper results. Helper results are historical context with their task and outcome status; unchanged waits and duplicate automated chat copies are omitted. Follow every `--after <cursor>` until `more` is false; each page ends at a whole message. When more follows, carry forward the facts from this page for your next update before finishing the pass. Keep the owner's messages and the briefs' standing rules:
    - Owner preferences: how the owner wants work done, standing decisions, people and tools they named. These hold until the owner changes them.
    - Learnings: facts you had to discover the hard way about tools, workers and routes, which would cost the next session time to rediscover. Each must still be true; check one you doubt before keeping it.
