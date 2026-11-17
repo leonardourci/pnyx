@@ -1,4 +1,6 @@
 import { beforeAll, expect, test } from 'vitest'
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { startPnyx, pnyxAxi, parsed, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -1582,6 +1584,72 @@ test(
         'list',
       ],
     })).writable.preferences.text).toBe('fresh replacement')
+    const path = join(
+      process.env.PNYX_HOME!,
+      'owner',
+      'poleis',
+      'revision-next',
+      'memory.jsonl',
+    )
+    const beforeCorruption = readFileSync(path)
+
+    try {
+      appendFileSync(
+        path,
+        JSON.stringify({
+          v: 1,
+          seq: 9007199254740992,
+          at: '2026-01-01T00:00:00Z',
+          actor: 'web',
+          key: 'preferences',
+          before: 'fresh replacement',
+          after: 'Invalid local sequence',
+        }) + '\n' + JSON.stringify({
+          v: 1,
+          seq: 3,
+          at: '2026-01-01T00:00:00Z',
+          actor: 'web',
+          key: 'preferences',
+          before: 'fresh replacement',
+          after: null,
+          polisMove: {
+            polis: 'revision-first',
+            entry: {
+              v: 1,
+              seq: 0,
+              at: '2026-01-01T00:00:00Z',
+              actor: 'web',
+              key: 'preferences',
+              before: null,
+              after: 'Invalid imported sequence',
+            },
+          },
+        }) + '\n',
+      )
+      expect((await hydra.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })).writable.preferences.text).toBe('fresh replacement')
+      expect((await hydra.ownerRefused({
+        args: [
+          'owner',
+          'memory',
+          'set',
+          '--key',
+          'preferences',
+          '--text',
+          'Overwrite corrupt log',
+        ],
+      })).code).toBe('LOG_CORRUPT')
+    } finally {
+      writeFileSync(
+        path,
+        beforeCorruption,
+      )
+    }
   },
 )
 
