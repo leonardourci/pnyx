@@ -1,3 +1,4 @@
+import { StatusNotice, StatusMessage, ErrorBanner } from '#web-shared/ui/status-message.tsx'
 import { projectTitle } from '#web-projects/view.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { createPortal } from 'react-dom'
@@ -1049,20 +1050,20 @@ export function HydraView({
             data-provisional={hydra.creating || undefined}
           >
             {(loading || !loaded || hydra.offline) && (
-              <p className="loading-status" role="status">
+              <StatusMessage role="status">
                 {hydra.offline && 'Connection lost. Reconnecting automatically.'}
                 {!hydra.offline && <>{hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…</>}
-              </p>
+              </StatusMessage>
             )}
-            {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.dismissError}>Dismiss</Button></p>}
+            {error && <ErrorBanner role="alert">{error} <Button onClick={hydra.dismissError}>Dismiss</Button></ErrorBanner>}
             {hydra.recovery && (
-              <p className="error-banner" role="alert">
+              <ErrorBanner role="alert">
                 {hydra.recovery.message}
                 {hydra.recovery.action === 'retry' && <Button onClick={hydra.retryHydra}>{retryLabel}</Button>}
                 {hydra.recovery.action === 'reload' && <Button onClick={() => location.reload()}>Reload page</Button>}
-              </p>
+              </ErrorBanner>
             )}
-            {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
+            {checking && <StatusMessage className="save-checking" role="status">Checking whether your changes were saved. Retrying automatically.</StatusMessage>}
             <PendingStatus
               intents={[
                 ...hydra.intents,
@@ -1259,14 +1260,14 @@ export function HydraView({
             )}
           </main>
           {notice && createPortal(
-            <div className="notice" role="status">
+            <StatusNotice role="status">
               <span>{notice.text}</span>
               <IconButton
                 label="Dismiss notification"
                 onClick={() => setNotice(null)}
                 icon="close"
               />
-            </div>,
+            </StatusNotice>,
             document.body,
           )}
         </motion.div>

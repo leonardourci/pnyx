@@ -1,3 +1,4 @@
+import { StatusNotice } from '#web-shared/ui/status-message.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
@@ -335,12 +336,12 @@ export function App() {
         >
           <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
             {rootError && (
-              <div className="notice" role="alert">{rootError}<IconButton
+              <StatusNotice role="alert">{rootError}<IconButton
                 label="Dismiss"
                 onClick={() => setRootError('')}
                 icon="close"
               />
-              </div>
+              </StatusNotice>
             )}
             <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
               {workspaces.map(workspace => (

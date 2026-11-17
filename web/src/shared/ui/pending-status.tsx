@@ -1,3 +1,4 @@
+import { StatusMessage } from './status-message.tsx'
 import type { PendingIntent } from '#web-shared/pending-intents.ts'
 
 export function PendingStatus({ intents }: { intents: PendingIntent<unknown>[] }) {
@@ -13,8 +14,8 @@ export function PendingStatus({ intents }: { intents: PendingIntent<unknown>[] }
   }
 
   return (
-    <p className="pending-status" role="status" data-pending={unknown ? 'unknown' : 'saving'}>
+    <StatusMessage pending role="status" data-pending={unknown ? 'unknown' : 'saving'}>
       {unknown ? 'Checking whether your changes were saved…' : 'Saving changes…'}
-    </p>
+    </StatusMessage>
   )
 }

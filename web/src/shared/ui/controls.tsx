@@ -574,3 +574,5 @@ function NumberSlider({
     </div>
   )
 }
+
+export const DATE_EDITOR = 'reminder-editor flex flex-col gap-2 mt-2.5 p-2.5 border border-line rounded-lg bg-surface [&_[role=alert]]:text-red'

@@ -1,7 +1,7 @@
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { useId, useRef, useState } from 'react'
 import type { Card } from '#tasks/model.ts'
-import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { Button, Input, DATE_EDITOR } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { reminderIntervalText } from '#tasks/time.ts'
@@ -29,7 +29,7 @@ export function ReminderLabel({ card }: { card: Card }) {
   const repeat = card.reminder.repeat
   const cadence = repeat ? ` · every ${reminderIntervalText({ milliseconds: repeat.everyMs })}, until ${STOP_LABELS[repeat.until]}` : ''
 
-  return <span className="reminder-label" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}{cadence}</span>
+  return <span className="reminder-label inline-flex items-center gap-1.25 mt-2 text-gold text-meta" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}{cadence}</span>
 }
 
 export interface ReminderDraft {
@@ -121,7 +121,7 @@ export function ReminderEditor({
 
   return (
     <form
-      className="reminder-editor"
+      className={DATE_EDITOR}
       aria-label={`Reminder for ${card.title}`}
       onSubmit={event => {
         event.preventDefault(); void save({ value: when })

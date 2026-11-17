@@ -4,7 +4,7 @@ import type { Ask, Card } from '#tasks/model.ts'
 import { reminderTime } from '#tasks/time.ts'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
-import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { Button, Input, DATE_EDITOR } from '#web-shared/ui/controls.tsx'
 
 export function QuestionTiming({
   card,
@@ -98,7 +98,7 @@ export function QuestionTiming({
   if (editing) {
     return (
       <form
-        className="reminder-editor"
+        className={DATE_EDITOR}
         aria-label="Question date"
         onSubmit={async event => {
           event.preventDefault(); await save({ value: when })

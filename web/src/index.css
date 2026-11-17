@@ -66,6 +66,9 @@
   --radius-control: 7px;
   --radius-question-summary: 9px;
   --spacing-icon-menu: min(300px, calc(100vw - 16px));
+  --spacing-status: min(480px, calc(100vw - 32px));
+  --shadow-status: 0 2px 8px var(--color-shadow);
+  --shadow-notice: 0 2px 12px var(--color-shadow);
   --spacing-waiting-menu: min(40vh, 360px);
   --radius-message: 16px 2px 16px 16px;
   --radius-card: 10px;
@@ -320,7 +323,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.error-banner { padding: 9px 12px; color: var(--color-red); border: 1px solid var(--color-line); border-radius: 6px; font-size: var(--text-ui); }
 @media (prefers-reduced-motion: reduce) {
 * { transition: none!important; } }
 
@@ -376,7 +378,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 ::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
 
 :hover::-webkit-scrollbar-thumb, .scrolling::-webkit-scrollbar-thumb { background: var(--color-control); }
-.hydra-project-setup { padding: 8px 0 16px; }
 [data-label-color="slate"] { --label-color: var(--color-slate); }
 [data-label-color="blue"] { --label-color: var(--color-blue); }
 [data-label-color="gold"] { --label-color: var(--color-gold); }
@@ -385,9 +386,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 [data-label-color="rose"] { --label-color: var(--color-rose); }
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
-.reminder-label { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--color-gold); font-size: var(--text-meta); }
-.reminder-editor { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
-.reminder-editor [role=alert] { color: var(--color-red); }
 .copy-warning { color: var(--color-gold); font-size: var(--text-meta); }
 
 
@@ -401,11 +399,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
 
-
-.loading-status { position: absolute; top: 8px; left: 50%; z-index: 70; padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); }
-.pending-status { position: fixed; right: 16px; bottom: 16px; z-index: 70; max-width: min(480px, calc(100vw - 32px)); padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); pointer-events: none; }
-
-.notice { position: fixed; bottom: 16px; right: 16px; z-index: 80; display: flex; align-items: center; gap: 12px; max-width: min(480px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 2px 12px var(--color-shadow); }
 
 @starting-style { .tooltip:popover-open { opacity: 0; } }
 .task-report { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 8px 10px; background: var(--color-raised); border: 1px solid var(--color-line); border-radius: 9px; font-size: var(--text-meta); }
@@ -440,8 +433,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-hide { opacity: 0; }
 @media (hover: none) { .hydra-hide { opacity: 1; } }
-.hidden-hydras { margin-top: 12px; padding: 0 8px; }
-.hidden-hydras h3 { color: var(--color-muted); font-size: var(--text-ui); margin-bottom: 6px; }
 
 .icon-fold-columns { transform: rotate(90deg); }
 /* The overlay and editable text need identical metrics to keep chips on their text. */
