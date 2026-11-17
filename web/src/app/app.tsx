@@ -1,3 +1,4 @@
+import { useMotionDuration, MOTION_EASING } from '#web-shared/motion.ts'
 import { StatusNotice } from '#web-shared/ui/status-message.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -14,6 +15,7 @@ import { reportRender } from './render-log.ts'
 import { HydraView } from './workspace.tsx'
 
 export function App() {
+  const duration = useMotionDuration()
   const rendering = performance.now()
   useLayoutEffect(() => reportRender({
     name: 'hydra-workspaces',
@@ -320,17 +322,17 @@ export function App() {
 
   return (
     <MotionConfig
-      reducedMotion="user"
+      reducedMotion={duration === 0 ? 'always' : 'user'}
+      skipAnimations={duration === 0}
       transition={{
-        type: 'spring',
-        stiffness: 480,
-        damping: 42,
+        duration: duration / 1000,
+        ease: MOTION_EASING,
       }}
     >
       <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
         <div
           ref={axis}
-          className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-15 pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-14.5 max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
+          className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
           data-page={hydra.navigation.page}
           aria-label="Hydras"
         >
