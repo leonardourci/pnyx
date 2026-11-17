@@ -20,7 +20,7 @@ export function FolderChoice({
   className = '',
   retainFocus = false,
   ...props
-}: ComponentProps<'button'> & { retainFocus?: boolean }) {
+}: Omit<ComponentProps<'button'>, 'onPointerDown'> & { retainFocus?: boolean }) {
   return (
     <Button
       {...props}
