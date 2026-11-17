@@ -445,131 +445,136 @@ export const HydraCard = memo(function HydraCard({
 
     >
       <AnimatedCardContent layout="position">
-        {!selected && (
-          <CardSummary
-            card={card}
-            status={status}
-            now={now}
-            colors={labelColors}
-            legacyProject={legacyProject}
-            progress={progress}
-            hasChildren={hasChildren}
-            childrenOpen={childrenOpen}
-            toggleChildren={toggleChildren}
-            open={() => modal ? closeModal() : void open({ id: card.id })}
-            agentDetails={card.agent ? <AgentDetails card={card} command={command} /> : undefined}
-            editing={!!editing}
-            tabIndex={tabIndex}
-          />
-        )}
-        {selected && (
-          <>
-            <CardState
+        <header
+          data-card-header
+          className={selected ? `flex shrink-0 flex-col gap-1.5 ${modal ? '' : 'touch-none cursor-grab [&_.card-open]:cursor-grab'}` : 'contents'}
+          onPointerDown={selected && !modal ? sort.pointerDown : undefined}
+        >
+          {!selected && (
+            <CardSummary
               card={card}
               status={status}
               now={now}
-              labelColors={labelColors}
-              tooltips
-              compact={!selected}
-              progress={progress}
-              showProject={selected && showProject}
+              colors={labelColors}
               legacyProject={legacyProject}
-            >
-              {card.agent && (
-                <Tooltip
-                  content={<AgentDetails card={card} command={command} />}
-                  interactive
-                  label="Agent details"
-                >
-                  <span className="card-agent ml-auto inline-flex text-muted" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
-                    <Icon name={card.agent.provider} />
-                  </span>
-                </Tooltip>
-              )}
-            </CardState>
-            {!modal && (
-              <CardHeading
-                title={card.title}
+              progress={progress}
+              hasChildren={hasChildren}
+              childrenOpen={childrenOpen}
+              toggleChildren={toggleChildren}
+              open={() => modal ? closeModal() : void open({ id: card.id })}
+              agentDetails={card.agent ? <AgentDetails card={card} command={command} /> : undefined}
+              editing={!!editing}
+              tabIndex={tabIndex}
+            />
+          )}
+          {selected && (
+            <>
+              <CardState
+                card={card}
+                status={status}
+                now={now}
+                labelColors={labelColors}
+                tooltips
+                compact={!selected}
+                progress={progress}
+                showProject={selected && showProject}
+                legacyProject={legacyProject}
               >
-                {!editing && (
-                  <CardTitle
-                    title={card.title}
-                    onPointerDown={modal ? undefined : sort.pointerDown}
-                    expanded={selected}
-                    open={() => modal ? closeModal() : void open({ id: card.id })}
-                    aria-controls={selected ? panelId({
-                      prefix: tabsId,
-                      id: 'context',
-                    }) : undefined}
-                    data-card={card.id}
-                    data-key-scope="hydra"
-                    tabIndex={tabIndex}
+                {card.agent && (
+                  <Tooltip
+                    content={<AgentDetails card={card} command={command} />}
+                    interactive
+                    label="Agent details"
+                  >
+                    <span className="card-agent ml-auto inline-flex text-muted" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
+                      <Icon name={card.agent.provider} />
+                    </span>
+                  </Tooltip>
+                )}
+              </CardState>
+              {!modal && (
+                <CardHeading
+                  title={card.title}
+                >
+                  {!editing && (
+                    <CardTitle
+                      title={card.title}
+                      expanded={selected}
+                      open={() => modal ? closeModal() : void open({ id: card.id })}
+                      aria-controls={selected ? panelId({
+                        prefix: tabsId,
+                        id: 'context',
+                      }) : undefined}
+                      data-card={card.id}
+                      data-key-scope="hydra"
+                      tabIndex={tabIndex}
+                    />
+                  )}
+
+                </CardHeading>
+              )}
+            </>
+          )}
+          {editing && (
+            <TaskEditor
+              key={editing.version}
+              card={card}
+              draft={editing.draft}
+              command={command}
+              close={() => {
+                refocusTitle.current = true; setEditing(null)
+              }}
+              failed={({
+                draft,
+                error,
+              }) => {
+                if (editVersion.current === editing.version) {
+                  edit({ draft })
+                }
+
+                notify({ text: error.message })
+              }}
+            />
+          )}
+          {selected && (
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <Tabs
+                divider={false}
+                prefix={tabsId}
+                label="Card sections"
+                selected={tab}
+                select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
+                tabs={[
+                  {
+                    id: 'context',
+                    label: 'Context',
+                  },
+                  {
+                    id: 'activity',
+                    label: 'Activity',
+                  },
+                ]}
+              />
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                {hasChildren && toggleChildren && (
+                  <IconButton
+                    icon={childrenOpen ? 'fold_tasks' : 'unfold_tasks'}
+                    label={`Sub-tasks of ${card.title}`}
+                    title={childrenOpen ? 'Fold sub-tasks' : 'Unfold sub-tasks'}
+                    aria-expanded={childrenOpen}
+                    onClick={toggleChildren}
                   />
                 )}
-
-              </CardHeading>
-            )}
-          </>
-        )}
-        {editing && (
-          <TaskEditor
-            key={editing.version}
-            card={card}
-            draft={editing.draft}
-            command={command}
-            close={() => {
-              refocusTitle.current = true; setEditing(null)
-            }}
-            failed={({
-              draft,
-              error,
-            }) => {
-              if (editVersion.current === editing.version) {
-                edit({ draft })
-              }
-
-              notify({ text: error.message })
-            }}
-          />
-        )}
-        {selected && (
-          <div className="flex min-w-0 items-center justify-between gap-2">
-            <Tabs
-              divider={false}
-              prefix={tabsId}
-              label="Card sections"
-              selected={tab}
-              select={({ id }) => setTab(id === 'activity' ? 'activity' : 'context')}
-              tabs={[
-                {
-                  id: 'context',
-                  label: 'Context',
-                },
-                {
-                  id: 'activity',
-                  label: 'Activity',
-                },
-              ]}
-            />
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              {hasChildren && toggleChildren && (
                 <IconButton
-                  icon={childrenOpen ? 'fold_tasks' : 'unfold_tasks'}
-                  label={`Sub-tasks of ${card.title}`}
-                  title={childrenOpen ? 'Fold sub-tasks' : 'Unfold sub-tasks'}
-                  aria-expanded={childrenOpen}
-                  onClick={toggleChildren}
+                  icon={chatOnly ? 'summary_show' : 'summary_hide'}
+                  label={chatOnly ? 'Show task summary' : 'Focus on chat'}
+                  aria-pressed={chatOnly}
+                  onClick={toggleChatOnly}
                 />
-              )}
-              <IconButton
-                icon={chatOnly ? 'summary_show' : 'summary_hide'}
-                label={chatOnly ? 'Show task summary' : 'Focus on chat'}
-                aria-pressed={chatOnly}
-                onClick={toggleChatOnly}
-              />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </header>
         {selected && (
           <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.worker-chat]:border-l-0 [&>.worker-chat]:pl-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @task-details/task:grid-rows-1'}`}>
             <div hidden={chatOnly} className="card-details [&[hidden]]:hidden flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">

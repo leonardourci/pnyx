@@ -3300,23 +3300,22 @@ test(
         x: box!.x + box!.width * 0.82 + 20,
         y: box!.y + box!.height * 0.65,
       })
-      const target = await page.getByRole(
+      const targetCard = page.getByRole(
         'button',
         {
           name: 'A nesting target',
           exact: true,
         },
       ).locator('xpath=ancestor::article[1]')
-        .boundingBox()
+      const target = await targetCard.boundingBox()
       const point = {
         x: target!.x + target!.width / 2,
         y: target!.y + target!.height / 2,
       }
-      await page.mouse.move(
-        point.x,
-        point.y,
-        { steps: 12 },
-      )
+      await targetCard.hover()
+      const settledTarget = await targetCard.boundingBox()
+      point.x = settledTarget!.x + settledTarget!.width / 2
+      point.y = settledTarget!.y + settledTarget!.height / 2
       await until({
         what: 'crossing another column compacts the wide lift',
         check: async () => Math.abs((await preview.boundingBox())!.width - 303.333) < 1,
@@ -3465,7 +3464,13 @@ test(
         },
       )
       expect(await handle.isEnabled()).toBe(true)
-      const grip = await handle.boundingBox()
+      const grip = await card.getByRole(
+        'button',
+        {
+          name: 'A wide closed card',
+          exact: true,
+        },
+      ).boundingBox()
       const opened = await card.boundingBox()
       await page.mouse.move(
         grip!.x + grip!.width / 2,
@@ -3487,6 +3492,7 @@ test(
         0,
       )
       expect(await ghost.locator('.worker-chat').count()).toBe(1)
+      const workspaceTitles = () => page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column="ideas"] .card-open`).allTextContents()
       const neighbor = page.getByRole(
         'button',
         {
@@ -3534,6 +3540,78 @@ test(
           values: [hydra.id],
         }).map(card => card.key)
           .join('|') === 'neighbor|wide',
+      })
+      expect(await liveDraft!.evaluate(({ isConnected }) => isConnected)).toBe(true)
+      expect(await draft.inputValue()).toBe('Keep the open conversation while moving')
+
+      await card.locator('.agent-activity').first()
+        .hover()
+      const tooltip = card.getByRole('tooltip').first()
+      await tooltip.hover()
+      const tooltipBox = await tooltip.boundingBox()
+      await page.mouse.down()
+      await page.mouse.move(
+        tooltipBox!.x + tooltipBox!.width / 2 + 12,
+        tooltipBox!.y + tooltipBox!.height / 2,
+        { steps: 4 },
+      )
+      expect(await ghost.count()).toBe(0)
+      await page.mouse.up()
+      expect(await draft.isVisible()).toBe(true)
+      await page.evaluate(() => getSelection()?.removeAllRanges())
+
+      const tab = card.getByRole(
+        'tab',
+        {
+          name: 'Context',
+          exact: true,
+        },
+      )
+      await tab.hover()
+      const tabBox = await tab.boundingBox()
+      await page.mouse.down()
+      await page.mouse.move(
+        tabBox!.x + 12,
+        tabBox!.y + tabBox!.height / 2,
+        { steps: 4 },
+      )
+      expect(await ghost.count()).toBe(0)
+      await page.mouse.up()
+      const options = card.getByRole(
+        'tablist',
+        {
+          name: 'Card sections',
+          exact: true,
+        },
+      ).locator('..')
+      await options.hover()
+      const optionsBox = await options.boundingBox()
+      await page.mouse.down()
+      await page.mouse.move(
+        optionsBox!.x + optionsBox!.width / 2 + 12,
+        optionsBox!.y + optionsBox!.height / 2,
+        { steps: 4 },
+      )
+      await ghost.waitFor()
+      const before = await neighbor.boundingBox()
+      await page.mouse.move(
+        before!.x + before!.width / 2,
+        before!.y + 4,
+        { steps: 12 },
+      )
+      await until({
+        what: 'the options row picks up and reorders the open task',
+        check: async () => (await workspaceTitles()).join('|') === 'A wide closed card|A reorder neighbor',
+      })
+      await page.mouse.up()
+      await ghost.waitFor({ state: 'detached' })
+      await until({
+        what: 'options-row dragging persists the new order',
+        check: () => rows<{ key: string }>({
+          text: "select key from cards where hydra_id = $1 and key in ('wide', 'neighbor') order by coalesce(rank, created_seq)",
+          values: [hydra.id],
+        }).map(card => card.key)
+          .join('|') === 'wide|neighbor',
       })
       expect(await liveDraft!.evaluate(({ isConnected }) => isConnected)).toBe(true)
       expect(await draft.inputValue()).toBe('Keep the open conversation while moving')
