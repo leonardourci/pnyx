@@ -1230,7 +1230,7 @@ export function HydraView({
             </div>
             {(settingsVisited || page === 'settings') && createPortal(
               <div
-                className="settings-route fixed inset-x-0 top-12.5 bottom-0 z-65 flex bg-background [&[hidden]]:hidden [&>.settings-page]:w-full [&>.settings-page]:min-w-0"
+                className="settings-route fixed inset-x-0 top-topbar-height bottom-0 z-65 flex bg-background [&[hidden]]:hidden [&>.settings-page]:w-full [&>.settings-page]:min-w-0"
                 data-settings-hydra={navigation.hydraId}
                 hidden={!active || page !== 'settings'}
                 style={{
