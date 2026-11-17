@@ -54,10 +54,14 @@ export function recordEventId({
   seq: number
 }) {
   // Define an own property so __proto__ never invokes Object's legacy setter.
-  Object.defineProperty(state.eventIds, id, {
-    value: seq,
-    enumerable: true,
-    configurable: true,
-    writable: true,
-  })
+  Object.defineProperty(
+    state.eventIds,
+    id,
+    {
+      value: seq,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    },
+  )
 }
