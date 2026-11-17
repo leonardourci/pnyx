@@ -13,10 +13,10 @@ export function Button({
     'menu-choice': 'bg-transparent border-transparent flex-1 min-w-0 justify-start min-h-9 gap-2 p-1.75 text-ui text-left [&>span]:flex-1 [&>span]:min-w-0 [&>span]:wrap-anywhere [&>svg]:shrink-0',
     quiet: '[:where(&)]:bg-transparent [:where(&)]:border-transparent enabled:hover:bg-hover',
     surface: 'bg-raised border-control enabled:hover:bg-hover',
-    primary: 'bg-gold-fill border-gold-fill enabled:hover:bg-hover enabled:hover:brightness-108',
+    primary: 'bg-gold-fill text-gold-ink border-gold-fill enabled:hover:bg-hover enabled:hover:brightness-108',
   }[variant]
 
-  return <button type="button" className={`button ${variant} inline-flex items-center justify-center [:where(&)]:gap-1.5 [:where(&)]:rounded-md border [:where(&)]:px-2.25 [:where(&)]:py-1.5 [:where(&)]:min-h-7.5 [:where(&)]:text-[length:inherit] leading-[inherit] ${appearance} ${className}`} {...props} />
+  return <button type="button" className={`button ${variant} inline-flex items-center justify-center [:where(&)]:gap-1.5 [:where(&)]:rounded-md border [:where(&)]:px-2.25 [:where(&)]:py-1.5 [:where(&)]:min-h-7.5 [:where(&)]:text-ui [:where(&)]:leading-question ${appearance} ${className}`} {...props} />
 }
 
 const INPUT_CLASSES = 'input [:where(&)]:appearance-none [:where(&)]:border [:where(&)]:border-control [:where(&)]:rounded-md [:where(&)]:px-2.25 [:where(&)]:py-1.75 [:where(&)]:min-w-0 [:where(&)]:text-ui [:where(&)]:leading-normal placeholder:text-muted placeholder:opacity-85 [&::-webkit-search-cancel-button]:appearance-none'

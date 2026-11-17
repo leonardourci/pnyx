@@ -268,8 +268,6 @@
 @layer base {
 html, body, #root {
   @apply m-0 h-full overflow-hidden; }
-button, input, textarea {
-  @apply [font:inherit] text-inherit; }
 button, a {
   @apply touch-manipulation; }
 button {
