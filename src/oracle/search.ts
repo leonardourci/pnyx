@@ -1,3 +1,4 @@
+import { ownerMemory } from '#memory/owner-memory.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -189,11 +190,13 @@ function snippet({
 export function search({
   hydraId,
   query,
+  memoryDocuments = [],
   state = loadHydra({ hydraId }).state,
 }: {
   hydraId: string
   query: Query
   state?: HydraState
+  memoryDocuments?: Document[]
 }): {
   hits: Hit[]
   total: number
@@ -217,10 +220,24 @@ export function search({
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
 
-    for (const document of index.documents({
-      terms,
-      fuzzy,
-    })) {
+    const memory = Object.values(ownerMemory({ hydraId })).map(entry => ({
+      card: '$board',
+      kind: 'note' as const,
+      at: entry.at,
+      text: redact({ text: entry.text }),
+    }))
+
+    for (const document of [
+      ...index.documents({
+        terms,
+        fuzzy,
+      }),
+      ...memory,
+      ...memoryDocuments.map(document => ({
+        ...document,
+        text: redact({ text: document.text }),
+      })),
+    ]) {
       if (!terms.some(term => wordMatches({
         text: document.text,
         term,
@@ -277,16 +294,17 @@ export function search({
         continue
       }
 
-      if (query.projects?.length && !query.projects.includes(card.project ?? '')) {
+      if (query.projects?.length && card.id !== '$board' && !query.projects.includes(card.project ?? '')) {
         continue
       }
 
-      const entries = grouped.get(card.id) ?? []
+      const entries = (grouped.get(card.id) ?? []).filter(entry => card.id !== '$board' || !query.projects?.length || query.projects.includes(entry.project ?? ''))
 
       if (query.since) {
         const cutoff = Date.parse(query.since)
         const recentCard = Date.parse(card.updatedAt) >= cutoff
         const recent = recentCard || index.newestAt({ card: card.id }) >= cutoff
+          || entries.some(entry => Date.parse(entry.at) >= cutoff)
 
         if (!recent) {
           continue

@@ -1,9 +1,11 @@
+import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Kind } from './model.ts'
 import { chunk, eventText, redact } from './text.ts'
 
 export interface Document {
+  project?: string
   card: string
   kind: Kind
   at: string
@@ -28,7 +30,10 @@ function* documentChunks({
 
 export function* eventDocuments({ event }: { event: HydraEvent }): Generator<Document> {
   // Conversation copies an older Pnyx logged are agent transcripts, not Pnyx data.
-  if (event.type === 'chat.message') {
+  if (event.type === 'chat.message' || (event.type === 'hydra.memory' && Object.hasOwn(
+    OWNER_DOCUMENTS,
+    event.data.key,
+  ))) {
     return
   }
 

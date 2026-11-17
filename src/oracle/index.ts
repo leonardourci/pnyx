@@ -26,7 +26,7 @@ function sqlite(): typeof import('node:sqlite') {
 }
 
 // Bump when the schema, stored text, visibility or tokenization changes.
-const INDEX_VERSION = 5
+const INDEX_VERSION = 6
 const CATCH_UP_BATCH_EVENTS = 500
 const EVENTS = 'events'
 // The full-text index an earlier version kept beside each Hydra.
