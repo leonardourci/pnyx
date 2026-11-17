@@ -1415,6 +1415,29 @@ test(
       expect(Number(await grip.getAttribute('aria-valuenow'))).toBe(original)
       await page.mouse.up()
       expect(Number(await grip.getAttribute('aria-valuenow'))).toBe(original)
+      await grip.focus()
+      const cancelledHandle = await grip.boundingBox()
+
+      if (!cancelledHandle) {
+        throw new Error('Missing resize grip')
+      }
+
+      await page.mouse.move(
+        cancelledHandle.x + cancelledHandle.width / 2,
+        cancelledHandle.y + cancelledHandle.height / 2,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        cancelledHandle.x + cancelledHandle.width / 2 + 64,
+        cancelledHandle.y + cancelledHandle.height / 2,
+      )
+      await until({
+        what: 'cancelled resize previews its width',
+        check: async () => Number(await grip.getAttribute('aria-valuenow')) === original + 64,
+      })
+      await page.keyboard.press('Escape')
+      await page.mouse.up()
+      expect(Number(await grip.getAttribute('aria-valuenow'))).toBe(original)
       await grip.hover()
       const handle = await grip.boundingBox()
 
@@ -1673,6 +1696,79 @@ test(
         .locator('.worker-chat')
         .waitFor()
       expect((await hydra.task({ key: 'leaf' })).parent).toBe('child')
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+test(
+  'scrolling a column advances the drop target beneath a stationary pointer',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: Array.from(
+          { length: 12 },
+          (
+            _,
+            index,
+          ) => ({
+            op: 'task.create',
+            key: `scroll-${index + 1}`,
+            title: `Scroll task ${index + 1}`,
+          }),
+        ),
+      }),
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    const cards = workspace.locator('[data-column="ideas"] .card-open')
+    const scroller = workspace.locator('[data-column="ideas"] .column-cards')
+
+    try {
+      const source = cards.filter({ hasText: /^Scroll task 1$/ })
+      const target = cards.filter({ hasText: /^Scroll task 3$/ })
+      await source.scrollIntoViewIfNeeded()
+      const from = await source.boundingBox()
+      const to = await target.boundingBox()
+
+      if (!from || !to) {
+        throw new Error('Missing scroll drag cards')
+      }
+
+      await page.mouse.move(
+        from.x + 12,
+        from.y + 8,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        to.x + 12,
+        to.y + to.height - 3,
+        { steps: 12 },
+      )
+      await until({
+        what: 'the held card moves behind the initial target',
+        check: async () => (await cards.allTextContents()).indexOf('Scroll task 1') > 0,
+      })
+      const before = (await cards.allTextContents()).indexOf('Scroll task 1')
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      await scroller.evaluate(element => {
+        element.scrollTop += 180
+      })
+      await until({
+        what: 'scrolling advances the stationary-pointer landing slot',
+        check: async () => (await cards.allTextContents()).indexOf('Scroll task 1') > before,
+      })
+      await page.mouse.up()
     } finally {
       await page.context().close()
     }

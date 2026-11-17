@@ -25,7 +25,7 @@ export function SortableChip({
       {...props}
       className={`${className} ${sort.isDragging ? 'opacity-0' : ''}`}
       ref={sort.setNodeRef}
-      {...sort.attributes}
+      {...(disabledSort ? {} : sort.attributes)}
       {...sort.listeners}
       data-sort-key={sort.key}
       data-sort-id={item.id}

@@ -32,6 +32,10 @@ export function useSmoothScroll({
         content: inner,
         orientation: horizontal ? 'horizontal' : 'vertical',
         gestureOrientation: horizontal ? 'horizontal' : 'vertical',
+        virtualScroll: ({
+          deltaX,
+          deltaY,
+        }) => !horizontal || Math.abs(deltaX) > Math.abs(deltaY),
         smoothWheel: true,
         autoRaf: true,
         lerp: SCROLL_LERP,

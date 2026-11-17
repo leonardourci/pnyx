@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler } from 'react'
+import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler } from 'react'
 import { createPortal } from 'react-dom'
 import {
   DndContext,
@@ -373,10 +373,34 @@ export function SortableWorkspace({
   const modifier = useRef(false)
   const plain = useRef<SortMove | null>(null)
   const latestDetection = useRef<Parameters<CollisionDetection>[0] | null>(null)
+  const scrollGeneration = useRef(0)
+  useEffect(
+    () => {
+      const surface = root.current
+
+      const scrolled = () => {
+        scrollGeneration.current += 1
+      }
+
+      surface?.addEventListener(
+        'scroll',
+        scrolled,
+        true,
+      )
+
+      return () => surface?.removeEventListener(
+        'scroll',
+        scrolled,
+        true,
+      )
+    },
+    [root],
+  )
   const detection = useRef<{
     x: number
     y: number
     nesting: boolean
+    scroll: number
     hits: ReturnType<CollisionDetection>
   } | null>(null)
   const nestingDrop = useRef<{
@@ -475,9 +499,10 @@ export function SortableWorkspace({
     const nesting = source?.kind === 'task' && modifier.current
     const pointer = args.pointerCoordinates
     const previous = detection.current
+    const scroll = scrollGeneration.current
 
     if (pointer && previous?.x === pointer.x && previous.y === pointer.y
-      && previous.nesting === nesting) {
+      && previous.nesting === nesting && previous.scroll === scroll) {
       return previous.hits
     }
 
@@ -490,6 +515,7 @@ export function SortableWorkspace({
       detection.current = {
         ...pointer,
         nesting,
+        scroll,
         hits,
       }
     }

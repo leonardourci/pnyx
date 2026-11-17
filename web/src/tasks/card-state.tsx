@@ -34,16 +34,18 @@ function StatePill({
   text,
   compact,
   progress,
+  focusable = false,
 }: {
   status: ObservedStatus
   text: string
   compact: boolean
   progress?: string
+  focusable?: boolean
 }) {
   const color = STATE_COLORS[status.kind] ?? 'text-muted'
 
   return (
-    <span className={`agent-activity activity-${status.kind} flex min-w-0 max-w-full items-center overflow-hidden rounded-full bg-activity-fill py-0.5 text-meta font-semibold whitespace-nowrap ${color} ${compact ? 'gap-1 px-1.25' : 'gap-1.5 px-1.75'}`} aria-label={text}>
+    <span className={`agent-activity activity-${status.kind} flex min-w-0 max-w-full items-center overflow-hidden rounded-full bg-activity-fill py-0.5 text-meta font-semibold whitespace-nowrap ${color} ${compact ? 'gap-1 px-1.25' : 'gap-1.5 px-1.75'}`} aria-label={text} tabIndex={focusable ? 0 : undefined}>
       {status.kind === 'working' ? <WorkingDots /> : <i className="size-1.75 shrink-0 rounded-full border border-current" aria-hidden="true" />}
       <span className="activity-text min-w-0 truncate">{text}</span>
       {progress && <span className="task-progress shrink-0 border-l border-current pl-1 tabular-nums">{progress}</span>}
@@ -96,6 +98,7 @@ export function CardState({
       text={text}
       compact={compact}
       progress={progress}
+      focusable={tooltips}
     />
   )
   const since = (

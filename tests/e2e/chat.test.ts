@@ -313,6 +313,39 @@ test.each([
     ).count()).toBe(0)
 
     await conversation.hover()
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+    const beforeVertical = await conversation.evaluate(element => {
+      const axis = document.querySelector<HTMLElement>('.workspace-axis')!
+      axis.scrollLeft += 100
+
+      return {
+        x: axis.scrollLeft,
+        y: element.scrollTop,
+      }
+    })
+    await page.mouse.wheel(
+      0,
+      -160,
+    )
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+    const vertical = await conversation.evaluate(async element => {
+      const axis = document.querySelector<HTMLElement>('.workspace-axis')!
+      const horizontal: number[] = []
+
+      for (let frame = 0; frame < 60; frame++) {
+        await new Promise(requestAnimationFrame)
+        horizontal.push(axis.scrollLeft)
+      }
+
+      return {
+        horizontal,
+        y: element.scrollTop,
+      }
+    })
+    expect(vertical.y).toBeLessThan(beforeVertical.y)
+    expect(Math.max(...vertical.horizontal)).toBe(beforeVertical.x)
+    expect(Math.min(...vertical.horizontal)).toBe(beforeVertical.x)
+    await conversation.hover()
     holding = true
     await until({
       what: 'scrolling up to ask for an older page',
