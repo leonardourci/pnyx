@@ -413,7 +413,8 @@ export function HydraView({
       if (project !== undefined) {
         matchesProject = refusedProject === project
       } else if (destination && destination.repositories.length > 0) {
-        matchesProject = refusedProject !== undefined && destination.repositories.includes(refusedProject)
+        matchesProject = refusedProject !== undefined
+          && destination.repositories.includes(refusedProject)
       }
 
       return intent.stage === 'refused' && name === 'task' && args[0] === 'create'
