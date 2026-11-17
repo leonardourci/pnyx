@@ -12,6 +12,19 @@ import { CardTitle } from './card-title.tsx'
 export const CARD_SURFACE = 'card group/card relative m-0 flex min-h-0 min-w-0 w-full shrink-0 cursor-pointer flex-col gap-1.75 overflow-visible rounded-card border bg-card-fill px-2.75 pt-2.25 pb-2.5'
 export const CARD_CONTENT = 'card-content flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden [&>*]:shrink-0 [&>.card-open-content]:shrink'
 
+export function cardTint({
+  card,
+  colors,
+}: {
+  card: Card
+  colors?: SavedLabelColor[]
+}) {
+  const label = colors?.find(entry => entry.label === card.project)
+    ?? colors?.find(entry => card.tags.includes(entry.label))
+
+  return label?.color
+}
+
 export function TaskLabels({
   card,
   showProject,

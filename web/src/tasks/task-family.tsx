@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
-import { CardSummary, CARD_SURFACE, CARD_CONTENT } from './card-summary.tsx'
+import { CardSummary, CARD_SURFACE, CARD_CONTENT, cardTint } from './card-summary.tsx'
 import { taskProjectColumn } from './project-view.ts'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
@@ -122,7 +122,14 @@ export function TaskFamily({
         dragChildren: childrenOpen && (
           <div className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]" style={style}>
             {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
-              <div key={child.key} className={`${CARD_SURFACE} border-line`}>
+              <div
+                key={child.key}
+                className={`${CARD_SURFACE} border-line`}
+                data-label-color={cardTint({
+                  card: child,
+                  colors: state.labelColors,
+                })}
+              >
                 <div className={CARD_CONTENT}>
                   <CardSummary
                     card={child}

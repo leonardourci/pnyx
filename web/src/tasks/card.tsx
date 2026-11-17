@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { DragNestHint, useSortItem, useSortState, useDropZone } from '#web-shared/ui/sortable.tsx'
-import { CardSummary, TaskLabels, CARD_SURFACE, CARD_CONTENT } from './card-summary.tsx'
+import { CardSummary, TaskLabels, CARD_SURFACE, CARD_CONTENT, cardTint } from './card-summary.tsx'
 import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { memo, useCallback, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
@@ -301,8 +301,10 @@ export const HydraCard = memo(function HydraCard({
     action,
     now,
   })
-  const tint = labelColors?.find(entry => entry.label === card.project)
-    ?? labelColors?.find(entry => card.tags.includes(entry.label))
+  const tint = cardTint({
+    card,
+    colors: labelColors,
+  })
   const said = currentState({ card })
   const stateSource = said ? STATE_SOURCE[said.source] : "Agent's last message"
   const factual = said ? {
@@ -344,7 +346,7 @@ export const HydraCard = memo(function HydraCard({
       hydra: hydraId,
       parent: card.parentId,
       hasChildren,
-      overlay: <div><div className={`${CARD_SURFACE} border-gold-line`} data-label-color={tint?.color}><div className={CARD_CONTENT}>{summary}</div></div>{dragChildren}</div>,
+      overlay: <div><div className={`${CARD_SURFACE} border-gold-line`} data-label-color={tint}><div className={CARD_CONTENT}>{summary}</div></div>{dragChildren}</div>,
     },
     disabled: {
       draggable: selected || !connected || !!reminding || !!editing,
@@ -438,7 +440,7 @@ export const HydraCard = memo(function HydraCard({
       data-windowed={windowed}
       onKeyDown={keyDown}
       data-tab={selected ? tab : undefined}
-      data-label-color={tint?.color}
+      data-label-color={tint}
       onClick={click}
       data-sort-id={card.id}
       data-sort-kind="task"
