@@ -255,8 +255,12 @@ export function search({
       ...projectDocuments,
       ...hydraDocuments,
     ]
+
     function* documents() {
-      yield* index.documents({ terms, fuzzy })
+      yield* index.documents({
+        terms,
+        fuzzy,
+      })
       yield* memoryEntries
     }
 

@@ -103,7 +103,10 @@ function ownerMeta({ values }: {
   }
 
   const parts = String(revision).split(':')
-  const [first, second] = parts
+  const [
+    first,
+    second,
+  ] = parts
   const polis = second === undefined ? 'shared' : first
 
   if (polis === undefined || !POLIS_NAME.test(polis) || parts.length > 2) {

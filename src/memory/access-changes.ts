@@ -122,6 +122,7 @@ export function requestedPolisAccess({
   if (reads !== undefined) {
     readPoleis = reads === '' ? [] : String(reads).split(',')
   }
+
   const nextPolis = String(polis ?? current.polis)
 
   if (!POLIS_NAME.test(nextPolis) || !readPoleis.every(name => POLIS_NAME.test(name))
