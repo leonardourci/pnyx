@@ -40,6 +40,8 @@ test(
       ],
     })
     let releaseCreate: (() => void) | undefined
+    let creatingTask: string | undefined
+    const prematureReads: string[] = []
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -75,8 +77,18 @@ test(
             socket.onMessage(message => {
               const frame = JSON.parse(String(message))
 
+              if (creatingTask && (frame.name === 'thread' || frame.name === 'page')
+                && frame.args?.includes(`task:${creatingTask}`)) {
+                prematureReads.push(frame.name)
+              }
+
               if (frame.name === 'task' && frame.args?.[0] === 'create' && (frame.args?.includes('An unassigned idea') || frame.args?.includes('A new quick task'))) {
-                releaseCreate = () => server.send(message)
+                creatingTask = frame.args[frame.args.indexOf('--event-id') + 1]
+
+                releaseCreate = () => {
+                  creatingTask = undefined
+                  server.send(message)
+                }
               } else {
                 server.send(message)
               }
@@ -138,6 +150,7 @@ test(
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       }))
       expect(await card.count()).toBe(1)
+      expect(prematureReads).toEqual([])
       releaseCreate!()
       releaseCreate = undefined
       await until({
@@ -266,6 +279,7 @@ test(
       )
         .locator('xpath=ancestor::section[@data-column][1]')
       expect(await pendingProject.getAttribute('data-column')).toBe(repository)
+      expect(prematureReads).toEqual([])
       const pendingQuickTask = await pendingProject.locator('.card.selected').elementHandle()
       releaseCreate!()
       await until({
