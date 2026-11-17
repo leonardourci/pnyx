@@ -76,9 +76,6 @@
   --text-settings-section: calc(var(--text-ui) * 21 / 14);
   --text-workspace: 21px;
   --text-count: 11px;
-  --text-micro: 10px;
-  --text-tiny: 9px;
-  --text-usage-empty: 12px;
   --spacing-usage-content: calc(100vw - 50px);
   --spacing-usage-tooltip: min(360px, calc(100vw - 16px));
   --font-weight-label: 650;
@@ -99,7 +96,7 @@
   --color-usage-line: color-mix(in srgb, var(--color-surface) 22%, transparent);
   --color-usage-badge: color-mix(in srgb, var(--color-surface) 30%, transparent);
   --color-usage-hover: color-mix(in srgb, var(--color-surface) 13%, transparent);
-  --color-comment-emphasis: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised));
+  --color-comment-card-emphasis: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised));
   --spacing-dispatch-issue: 70px;
   --shadow-invalid: inset 0 0 0 1px var(--color-red);
   --shadow-dispatch: -14px 0 12px -2px var(--color-surface);
@@ -168,11 +165,6 @@
   --text-usage-heading: 11px;
   --text-usage-detail: 10px;
   --text-usage-reset: 9px;
-  --spacing-usage-content: calc(100vw - 50px);
-  --spacing-usage-tooltip: min(360px, calc(100vw - 16px));
-  --color-usage-line: color-mix(in srgb, var(--color-surface) 22%, transparent);
-  --color-usage-badge: color-mix(in srgb, var(--color-surface) 30%, transparent);
-  --color-usage-hover: color-mix(in srgb, var(--color-surface) 13%, transparent);
   --spacing-image-viewer: min(960px, calc(100vw - 32px));
   --spacing-image-viewer-content: calc(100dvh - 140px);
   --spacing-chip-inline: .25em;
@@ -205,6 +197,9 @@
   --spacing-prose-question: .3em;
   --spacing-prose-question-item: .15em;
   --spacing-prose-question-list: 1.4em;
+  --text-prose-question-heading: 1em;
+  --spacing-prose-question-heading: .5em;
+  --spacing-prose-question-heading-bottom: .25em;
   --text-prose-question-code: .95em;
   --leading-answer: 1.6;
   --leading-detail: 1.45;
@@ -290,7 +285,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 }
 
 @theme inline {
-  --color-usage-fill: color-mix(in srgb, var(--usage-tone, var(--color-surface)) 72%, var(--color-surface));
   --color-usage-tone: var(--usage-tone, var(--color-muted));
   --color-chip-column: var(--column-color, var(--color-slate));
   --color-chip-column-fill: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, transparent);
@@ -344,19 +338,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 @keyframes chat-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* The textarea and its chip mirror share every metric, so chips sit exactly over the text they stand for. */
-
-/* A compact field grows with its text up to its limit, then scrolls. */
-
-
-
 @media (prefers-reduced-motion: reduce) {
 * { transition: none!important; } }
 
 .thread:focus-visible { outline-offset: -3px; }
-
-
-
 
 .inline-title { padding: 0; text-align: left; justify-content: flex-start; font-size: inherit; font-weight: 600; }
 
@@ -367,11 +352,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .activity-stopped > i { border-radius: 1px; background: currentColor; }
 @keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
 
-
 .running { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; font-size: var(--text-meta); color: var(--color-blue); }
 
 .running i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-
 
 .last-message { margin: 0; padding: 0; border: 0; background: transparent; color: var(--color-muted); font-size: var(--text-ui); }
 
@@ -407,21 +390,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 [data-label-color="coral"] { --label-color: var(--color-coral); }
 .copy-warning { color: var(--color-gold); font-size: var(--text-meta); }
 
-
-
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
-/* A card in a message selects with the text around it, like the other chips. */
 .message .attachment-card:not(.composer-field *) { margin: 0 1px; user-select: auto; }
 
-
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
-
-
-
-
-
-
 
 @keyframes hydra-spin { to { transform: rotate(360deg); } }
 
