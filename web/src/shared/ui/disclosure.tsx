@@ -24,7 +24,7 @@ export function Disclosure({
   ] = useState(open ?? false)
   const expanded = open ?? nativeOpen
   const summaryPadding = leading ? 'pl-3.5' : 'pr-5'
-  const position = leading ? 'left-0' : 'right-0.5'
+  const position = leading ? 'left-0 text-inherit' : 'right-0.5 text-muted'
 
   return (
     <details
@@ -38,7 +38,7 @@ export function Disclosure({
     >
       <summary className={`list-none cursor-pointer relative text-ui [&::-webkit-details-marker]:hidden ${summaryPadding}`} contentEditable={false}>
         {title}
-        <span className={`disclosure-chevron absolute top-0 text-muted ${position}`} aria-hidden="true"><DisclosureChevron expanded={expanded} /></span>
+        <span className={`disclosure-chevron absolute top-0 ${position}`} aria-hidden="true"><DisclosureChevron expanded={expanded} /></span>
       </summary>
       <div className="disclosure-body">{children}</div>
     </details>
