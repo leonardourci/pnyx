@@ -7,22 +7,30 @@ beforeAll(async () => {
 })
 
 test(
-  'memory spaces enforce both locks and resolve every write from the Hydra',
+  'poleis enforce both locks and resolve every write from the Hydra',
   async () => {
     const work = await pnyx.hydra()
+    const defaults = (await work.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra
+    expect(defaults.polis).toBe('shared')
+    expect(defaults.readPoleis).toEqual(['shared'])
     expect((await work.ownerRefused({
       args: [
         'settings',
         'set',
         '--json',
-        '{"memorySpaces":{"shared":null}}',
+        '{"poleis":{"shared":null}}',
       ],
     })).code).toBe('VALIDATION_ERROR')
     expect((await work.ownerRefused({
       args: [
         'hydra',
         'set',
-        '--memory-write',
+        '--polis',
         '../outside',
       ],
     })).code).toBe('VALIDATION_ERROR')
@@ -51,7 +59,7 @@ test(
         'set',
         '--json',
         JSON.stringify({
-          memorySpaces: {
+          poleis: {
             shared: { readers: ['*'] },
             work: { readers: [work.id] },
             personal: { readers: [personal.id] },
@@ -63,9 +71,9 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,work',
-        '--memory-write',
+        '--polis',
         'work',
       ],
     })
@@ -73,9 +81,9 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'personal',
-        '--memory-write',
+        '--polis',
         'personal',
       ],
     })
@@ -192,7 +200,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,personal',
         '--propose',
         '--hydra',
@@ -217,7 +225,7 @@ test(
         personal.id,
       ],
       env: crossEnv,
-    })).hydra.memory.reads).toEqual([])
+    })).hydra.readPoleis).toEqual([])
     const visible = JSON.stringify(await work.owner({
       args: [
         'owner',
@@ -331,7 +339,7 @@ test(
         'settings',
         'set',
         '--json',
-        '{"memorySpaces":{"personal":null}}',
+        '{"poleis":{"personal":null}}',
         '--hydra',
         work.id,
       ],
@@ -344,7 +352,7 @@ test(
         'settings',
         'set',
         '--json',
-        '{"memorySpaces":{"missing":null}}',
+        '{"poleis":{"missing":null}}',
         '--hydra',
         work.id,
       ],
@@ -356,7 +364,7 @@ test(
         'settings',
         'set',
         '--json',
-        '{"memorySpaces":{"personal":null}}',
+        '{"poleis":{"personal":null}}',
         '--propose',
         '--hydra',
         work.id,
@@ -376,7 +384,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,work,personal',
         '--hydra',
         work.id,
@@ -437,7 +445,7 @@ test(
         'test private instructions',
       ],
     })
-    const { worker } = await work.startTask({ key: 'space-header' })
+    const { worker } = await work.startTask({ key: 'polis-header' })
     expect(worker.received.join('\n')).toContain('Work header quasar')
     expect(worker.received.join('\n')).not.toContain('Secret header nebula')
     const workerSettings = await pnyxAxi({
@@ -493,7 +501,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'work',
       ],
     })
@@ -508,7 +516,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,work',
       ],
     })
@@ -531,9 +539,9 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,work,personal',
-        '--memory-write',
+        '--polis',
         'personal',
       ],
     })
@@ -559,9 +567,9 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,work',
-        '--memory-write',
+        '--polis',
         'shared',
       ],
     })
@@ -580,7 +588,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-write',
+        '--polis',
         'work',
       ],
     })
@@ -590,7 +598,7 @@ test(
         'worker-notes',
         'forget',
         '--reason',
-        'test write-space usage',
+        'test write-polis usage',
       ],
     })
     await work.owner({
@@ -619,7 +627,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-write',
+        '--polis',
         'shared',
       ],
     })
@@ -637,11 +645,11 @@ test(
 )
 
 test(
-  'project memory has one space and requires attachment and both read locks',
+  'project memory has one polis and requires attachment and both read locks',
   async () => {
     const allowed = await pnyx.hydra()
     const hidden = await pnyx.hydra()
-    const path = allowed.folder({ name: 'spaced-project' })
+    const path = allowed.folder({ name: 'polis-project' })
 
     await allowed.owner({
       args: [
@@ -672,7 +680,7 @@ test(
         'set',
         '--json',
         JSON.stringify({
-          memorySpaces: {
+          poleis: {
             shared: { readers: ['*'] },
             vault: { readers: [allowed.id] },
           },
@@ -683,7 +691,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,vault',
       ],
     })
@@ -713,7 +721,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,vault',
       ],
     })
@@ -722,7 +730,7 @@ test(
         'project',
         'move',
         path,
-        '--space',
+        '--polis',
         'vault',
       ],
     })
@@ -731,7 +739,7 @@ test(
         'project',
         'list',
       ],
-    }))).not.toContain('spaced-project')
+    }))).not.toContain('polis-project')
     expect((await pnyxAxi({
       args: [
         'project',
@@ -814,7 +822,7 @@ test(
         '--key',
         'preferences',
         '--text',
-        'Write project while owner write space remains shared',
+        'Write project while owner write polis remains shared',
         '--reason',
         'test project write exception',
       ],
@@ -830,7 +838,7 @@ test(
 )
 
 test(
-  'Hydra proposes wider memory access for Confirm and narrows directly',
+  'Hydra proposes wider polis access for Confirm and narrows directly',
   async () => {
     const hydra = await pnyx.hydra()
     const other = await pnyx.hydra()
@@ -840,7 +848,7 @@ test(
         'set',
         '--json',
         JSON.stringify({
-          memorySpaces: {
+          poleis: {
             controlled: { readers: [hydra.id] },
             extra: { readers: [hydra.id] },
           },
@@ -851,7 +859,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,controlled',
       ],
     })
@@ -873,7 +881,7 @@ test(
     const widerReads = [
       'hydra',
       'set',
-      '--memory-reads',
+      '--read-poleis',
       'shared,controlled,extra',
       '--hydra',
       hydra.id,
@@ -897,7 +905,7 @@ test(
         'hydra',
         'show',
       ],
-    })).hydra.memory.reads).toEqual([
+    })).hydra.readPoleis).toEqual([
       'shared',
       'controlled',
     ])
@@ -915,7 +923,7 @@ test(
         'hydra',
         'show',
       ],
-    })).hydra.memory.reads).toEqual([
+    })).hydra.readPoleis).toEqual([
       'shared',
       'controlled',
       'extra',
@@ -924,7 +932,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-reads',
+        '--read-poleis',
         'shared,controlled',
         '--hydra',
         hydra.id,
@@ -937,7 +945,7 @@ test(
       'set',
       '--json',
       JSON.stringify({
-        memorySpaces: {
+        poleis: {
           controlled: {
             readers: [
               hydra.id,
@@ -965,7 +973,7 @@ test(
         'settings',
         'show',
       ],
-    })).settings.memorySpaces.controlled.readers).toEqual([hydra.id])
+    })).settings.poleis.controlled.readers).toEqual([hydra.id])
     await hydra.owner({
       args: [
         'settings',
@@ -1011,7 +1019,7 @@ test(
         'settings',
         'show',
       ],
-    })).settings.memorySpaces.controlled.readers).toEqual([
+    })).settings.poleis.controlled.readers).toEqual([
       hydra.id,
       other.id,
     ])
@@ -1020,7 +1028,7 @@ test(
         'settings',
         'set',
         '--json',
-        JSON.stringify({ memorySpaces: { controlled: { readers: [hydra.id] } } }),
+        JSON.stringify({ poleis: { controlled: { readers: [hydra.id] } } }),
         '--hydra',
         hydra.id,
       ],
@@ -1031,7 +1039,7 @@ test(
         'settings',
         'show',
       ],
-    })).settings.memorySpaces.controlled.readers).toEqual([hydra.id])
+    })).settings.poleis.controlled.readers).toEqual([hydra.id])
 
     const project = hydra.folder({ name: 'permission-project' })
     await hydra.owner({
@@ -1062,7 +1070,7 @@ test(
         'project',
         'move',
         project,
-        '--space',
+        '--polis',
         'controlled',
         '--hydra',
         hydra.id,
@@ -1080,7 +1088,7 @@ test(
         'project',
         'move',
         project,
-        '--space',
+        '--polis',
         'shared',
         '--hydra',
         hydra.id,
@@ -1092,7 +1100,7 @@ test(
         'project',
         'move',
         project,
-        '--space',
+        '--polis',
         'shared',
         '--propose',
         '--hydra',
@@ -1126,7 +1134,7 @@ test(
       args: [
         'hydra',
         'set',
-        '--memory-write',
+        '--polis',
         'controlled',
       ],
     })
@@ -1170,7 +1178,13 @@ test(
     })
     expect((await hydra.ownerRefused({
       args: [
-        ...move,
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'preferences',
+        '--to',
+        'shared',
         '--if-revision',
         String(sourceMemory.revision),
       ],
