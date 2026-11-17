@@ -62,7 +62,7 @@ export function Tabs({
   return (
     <div
       ref={list}
-      className="tabs"
+      className="tabs flex gap-0.5 border-b border-line"
       role="tablist"
       aria-label={label}
     >
@@ -81,7 +81,7 @@ export function Tabs({
             id: tab.id,
           })}
           tabIndex={tab.id === selected ? 0 : -1}
-          className="tab"
+          className="tab border-0 bg-transparent text-muted px-2 py-0.75 -mb-px border-b-2 border-b-transparent whitespace-nowrap aria-selected:text-gold aria-selected:border-b-gold aria-selected:font-semibold"
           onClick={event => {
             event.stopPropagation(); select({ id: tab.id })
           }}

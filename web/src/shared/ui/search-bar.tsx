@@ -150,7 +150,7 @@ export function SearchBar({
         onBlur={() => setMarked(undefined)}
       />
       {count && <span className="search-bar-count text-meta text-muted whitespace-nowrap" aria-live="polite">{count}</span>}
-      {hint && <kbd className="search-bar-key inline-flex items-center px-1.25 py-0 border border-line border-b-2 rounded-[5px] bg-raised text-muted font-mono text-meta">{hint}</kbd>}
+      {hint && <kbd className="search-bar-key inline-flex items-center px-1.25 py-0 border border-line border-b-2 rounded-compact bg-raised text-muted font-mono text-meta">{hint}</kbd>}
     </div>
   )
 }

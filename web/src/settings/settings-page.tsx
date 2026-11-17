@@ -756,7 +756,7 @@ export function SettingsPage({
           aria-labelledby={`settings-${item.id}-title`}
         >
           <h2 id={`settings-${item.id}-title`}>
-            <span className="settings-section-icon grid place-items-center size-7 border border-gold-line rounded-[7px] bg-gold-wash text-gold"><Icon name={item.icon} size={16} /></span>{item.label}
+            <span className="settings-section-icon grid place-items-center size-7 border border-gold-line rounded-control bg-gold-wash text-gold"><Icon name={item.icon} size={16} /></span>{item.label}
           </h2>
           {'note' in item && <p className="settings-section-note mt-0.5 mx-0 mb-2.5 text-muted text-ui">{item.note}</p>}
           <SettingsRows>
