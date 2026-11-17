@@ -18,6 +18,14 @@ test(
     })).hydra
     expect(defaults.polis).toBe('shared')
     expect(defaults.readPoleis).toEqual(['shared'])
+    await work.owner({ args: ['hydra', 'set', '--polis', 'work'] })
+    const changedHome = (await work.owner({ args: ['hydra', 'show'] })).hydra
+    expect(changedHome.polis).toBe('work')
+    expect(changedHome.readPoleis).toEqual(['shared'])
+    expect((await work.ownerRefused({
+      args: ['owner', 'memory', 'set', '--key', 'preferences', '--text', 'Unavailable home'],
+    })).code).toBe('NOT_FOUND')
+    await work.owner({ args: ['hydra', 'set', '--polis', 'shared'] })
     expect((await work.ownerRefused({
       args: [
         'settings',

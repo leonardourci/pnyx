@@ -31,7 +31,6 @@ try {
   parentPort?.postMessage({
     result: search({
       ...input,
-      state,
       memoryDocuments,
     }),
   } satisfies SearchAnswer)

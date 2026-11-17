@@ -48,6 +48,8 @@ Without a project, sweep for every layer: route project facts and project prefer
    pnyx-axi hydra memory set --key scope --text "<text>" --reason "<what changed>" --hydra <hydra>
    ```
 
+   Use the latest owner-memory revision for each write. A successful write prints the revision for the next one.
+
    Before writing `left-off`, put each wait or next step on its own task: `task depend <task> --on <prerequisite>` for another task, `task ask <task> --to owner` for the owner, `task brief` for a next step, `task create` for untracked work. `left-off` then links those tasks as `[@Title](pnyx-task:<id>)` references and says what comes next; the timed review flags it once they are all done, or after 7 days.
 
    Forget keys that became stale with `owner memory forget --key <key>` or `hydra memory forget --key <key> --hydra <hydra>`, each with `--reason "<why>"`. If a save exceeds the budget, shorten the document and retry. If the home polis revision changed, list its writable documents again and merge your edits before saving.

@@ -375,12 +375,12 @@ export const approval = guard({
         },
       })
 
-      const conflict = /^code: (REVISION_CONFLICT|CONFLICT)$/m.exec(stdout)
+      const code = /^code: (REVISION_CONFLICT|CONFLICT)$/m.exec(stdout)?.[1]
 
-      if (conflict && (memory || conflict[1] === 'REVISION_CONFLICT')) {
+      if (memory && (code === 'CONFLICT' || code === 'REVISION_CONFLICT')) {
         throw new HydraError({
           message: 'Memory changed; propose the action again',
-          code: conflict[1]!,
+          code,
         })
       }
 

@@ -92,7 +92,8 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
       entry = undefined
     }
 
-    if (typeof entry?.key !== 'string' || (entry.after !== null && typeof entry.after !== 'string')) {
+    if (typeof entry?.key !== 'string' || !Number.isSafeInteger(entry.seq) || entry.seq < 1
+      || (entry.after !== null && typeof entry.after !== 'string')) {
       corrupt = true
       continue
     }
@@ -105,7 +106,8 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
 
     if (entry.polisMove && (!POLIS_NAME.test(entry.polisMove.polis)
       || entry.polisMove.entry?.key !== entry.key || typeof entry.polisMove.entry.after !== 'string'
-      || !Number.isInteger(entry.polisMove.entry.seq) || entry.polisMove.entry.polisMove)) {
+      || !Number.isSafeInteger(entry.polisMove.entry.seq) || entry.polisMove.entry.seq < 1
+      || entry.polisMove.entry.polisMove)) {
       corrupt = true
       continue
     }

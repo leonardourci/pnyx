@@ -103,9 +103,10 @@ function ownerMeta({ values }: {
   }
 
   const parts = String(revision).split(':')
-  const polis = parts.length === 1 ? 'shared' : parts[0]!
+  const [first, second] = parts
+  const polis = second === undefined ? 'shared' : first
 
-  if (!POLIS_NAME.test(polis) || parts.length > 2) {
+  if (polis === undefined || !POLIS_NAME.test(polis) || parts.length > 2) {
     throw new HydraError({
       message: 'Use the revision from owner memory list',
       code: 'VALIDATION_ERROR',
