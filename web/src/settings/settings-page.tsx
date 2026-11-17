@@ -261,10 +261,10 @@ function ColumnWidths({
           value,
         })}
       />
-      <Disclosure className="setting-more" title="Per column" leading>
-        <div className="setting-per-column">
+      <Disclosure className="setting-more mt-2.5 [&_summary]:text-gold [&_summary]:text-meta [&_summary]:cursor-pointer" title="Per column" leading>
+        <div className="setting-per-column grid gap-2 mt-2">
           {columns.map(column => (
-            <div className="setting-labeled" key={column.id}>
+            <div className="setting-labeled grid grid-cols-[var(--spacing-setting-label)_minmax(0,1fr)] items-center gap-x-(--settings-column-gap) gap-y-2 text-meta" key={column.id}>
               <span>{column.title}</span>
               <NumberField
                 label={`${column.title} width`}
@@ -783,7 +783,7 @@ export function SettingsPage({
 
               // Heads dispatch and Accounts are whole editors, so they fill the box instead of sitting in a row.
               if (match.entry.id === 'headsDispatch' || match.entry.id === 'accounts') {
-                return <div key={match.entry.id} className="settings-wide min-w-0 px-5 py-4">{control}</div>
+                return <div key={match.entry.id} className="settings-wide min-w-0 px-5 py-4 has-[>.account-settings]:p-0">{control}</div>
               }
 
               return (

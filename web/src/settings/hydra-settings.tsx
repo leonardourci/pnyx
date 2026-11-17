@@ -30,7 +30,7 @@ export function DispatchStatus({ error }: { error?: string }) {
 }
 
 export function Help({ text }: { text: string }) {
-  return <p className="setting-help"><Icon name="about" size={14} />{text}</p>
+  return <p className="setting-help flex items-start gap-1.5 mt-2 mx-0 mb-0 text-muted text-meta [&_svg]:shrink-0 [&_svg]:mt-0.5 [&_svg]:text-blue"><Icon name="about" size={14} />{text}</p>
 }
 
 const doneHelp = ({ hours }: { hours: DoneAfterHours }) => {

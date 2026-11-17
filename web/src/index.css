@@ -73,6 +73,8 @@
   --spacing-card-details: 220px;
   --spacing-card-chat: 260px;
   --spacing-settings-content: 880px;
+  --spacing-setting-label: 90px;
+  --spacing-settings-field: min(100%, 440px);
   --spacing-setting-icon: var(--control-h);
   --spacing-setting-preview: 280px;
   --spacing-settings-search: 560px;
@@ -445,8 +447,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
 .identity-icon { flex-shrink: 0; overflow: visible; }
-.about summary { cursor: pointer; }
-.about a { text-decoration: underline; }
 
 .hydra-name-editor { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 
@@ -650,20 +650,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .upgrade-popover strong { font-weight: 600; }
 .upgrade-popover p { margin: 0; color: var(--color-muted); }
 .upgrade-actions { display: flex; justify-content: flex-end; gap: 8px; }
-
-.about { display: flex; flex-direction: column; gap: 8px; font-size: var(--text-ui); }
-.about-version { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.setting-help { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; color: var(--color-muted); font-size: var(--text-meta); }
-.setting-help svg { flex-shrink: 0; margin-top: 2px; color: var(--color-blue); }
 .settings-page .hydra-agent-pickers { gap: var(--settings-column-gap); }
 .settings-page .hydra-agent-pickers :is(.select > .button, .account-model-picker > .button, .fast-toggle) { min-height: var(--agent-control-h); font-size: var(--text-ui); }
 .settings-page .account-model-picker > .button { max-width: 100%; }
 .settings-page .hydra-agent-pickers .fast-toggle { width: var(--agent-control-h); }
-.setting-more { margin-top: 10px; }
-.setting-more summary { color: var(--color-gold); font-size: var(--text-meta); cursor: pointer; }
-.setting-per-column { display: grid; gap: 8px; margin-top: 8px; }
-.setting-labeled { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; column-gap: var(--settings-column-gap); row-gap: 8px; font-size: var(--text-meta); }
-.settings-page .inline-confirm-trigger { min-height: 28px; gap: 6px; padding: 5px 9px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font-size: var(--text-ui); }
 /* Range tracks and thumbs require browser-specific pseudo-elements. */
 .slider-track input::-webkit-slider-runnable-track { @apply h-1 rounded-sm; background: linear-gradient(var(--color-gold-fill), var(--color-gold-fill)) 0 / var(--fill, 50%) 100% no-repeat, var(--color-line); }
 .slider-track input::-moz-range-track { @apply h-1 rounded-sm bg-line; }
@@ -753,20 +743,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .model-picker { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .picker-retry.button { min-height: 24px; padding: 0 4px; color: var(--color-gold); }
 
-.account-settings { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-/* The accounts are rows of the section's own box, not a box inside it. */
-.settings-wide:has(> .account-settings) { padding: 0; }
-.account-settings > .settings-rows { border: 0; background: none; }
-.account-settings > :not(.settings-rows) { margin: 0 20px 16px; }
-.account-add-row { padding: 16px 20px; border-top: 1px solid var(--color-subtle); }
-.account-form { min-width: 0; gap: var(--settings-column-gap); }
-.account-form-field { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.account-form-field .setting-description { margin: 0; }
-.account-form :is(.input, .select) { width: min(100%, 440px); }
-.account-form .select > .button { justify-content: flex-start; }
-.account-form .select > .button > svg:last-child { margin-left: auto; }
-.account-form-actions { display: flex; flex-wrap: wrap; gap: var(--settings-column-gap); }
-.account-form-error { color: var(--color-red); font-size: var(--text-ui); }
+
 
 .agent-change-choice { margin-block: 0 8px; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); font-size: var(--text-ui); }
 .agent-change-choice p { margin: 4px 0 10px; color: var(--color-muted); }

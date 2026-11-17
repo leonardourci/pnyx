@@ -191,12 +191,12 @@ export function AccountSettings({
     <form
       ref={form}
       id={`${errorId}-form`}
-      className={`${SETTING_STACK} account-form`}
+      className={`${SETTING_STACK} account-form min-w-0 gap-(--settings-column-gap) [&_:is(.input,.select)]:w-settings-field [&_.select>.button]:justify-start [&_.select>.button>svg:last-child]:ml-auto`}
       onSubmit={event => {
         event.preventDefault(); commit({ left: false })
       }}
     >
-      <div className="account-form-field">
+      <SettingField>
         <span className="setting-name text-ui font-semibold">Provider</span>
         <Select
           label="Account provider"
@@ -212,8 +212,8 @@ export function AccountSettings({
             provider: value as Harness,
           })}
         />
-      </div>
-      <div className="account-form-field">
+      </SettingField>
+      <SettingField>
         <label className="setting-name text-ui font-semibold" htmlFor={`${errorId}-name`}>Display name</label>
         <Input
           id={`${errorId}-name`}
@@ -230,8 +230,8 @@ export function AccountSettings({
           })}
           onBlur={() => commit({ left: true })}
         />
-      </div>
-      <div className="account-form-field">
+      </SettingField>
+      <SettingField>
         <label className="setting-name text-ui font-semibold" htmlFor={`${errorId}-home`}>Existing home folder</label>
         <p className="setting-description mt-0.75 mb-2.5 mx-0 text-muted text-ui">Use a home folder you have already configured for this provider.</p>
         <Input
@@ -248,10 +248,10 @@ export function AccountSettings({
           })}
           onBlur={() => commit({ left: true })}
         />
-      </div>
+      </SettingField>
       {visibleFailure && (
         <p
-          className="account-form-error"
+          className="account-form-error text-red text-ui"
           id={errorId}
           role="alert"
           data-account-field="form"
@@ -260,7 +260,7 @@ export function AccountSettings({
         </p>
       )}
       {!draft.key && (
-        <div className="account-form-actions">
+        <div className="account-form-actions flex flex-wrap gap-(--settings-column-gap)">
           <Button
             onClick={() => {
               setDraft(undefined); setFailure(undefined)
@@ -274,7 +274,7 @@ export function AccountSettings({
   const adding = draft && !draft.key
 
   return (
-    <div className="account-settings">
+    <div className="account-settings flex flex-col gap-3 min-w-0 [&>.settings-rows]:border-0 [&>.settings-rows]:bg-transparent [&>:not(.settings-rows)]:mt-0 [&>:not(.settings-rows)]:mx-5 [&>:not(.settings-rows)]:mb-4">
       <SettingsRows>
         {Object.entries(accounts).map(([
           key,
@@ -324,7 +324,7 @@ export function AccountSettings({
           >{editor}
           </SettingRow>
         ) : (
-          <div className="account-add-row" key="add-account">
+          <div className="account-add-row py-4 px-5 border-t border-subtle" key="add-account">
             <Button
               variant="surface"
               disabled={!base}

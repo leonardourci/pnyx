@@ -82,11 +82,18 @@ export function SettingsRows({
   return <div {...props} className={`settings-rows border border-line rounded-card bg-surface [&>:first-child]:border-t-0 ${className}`} />
 }
 
-export const SETTING_STACK = 'setting-stack flex flex-col items-start gap-2 [&>.slider-field]:self-stretch [&>.hydra-agent-pickers]:self-stretch'
+export const SETTING_STACK = 'setting-stack flex flex-col items-start [:where(&)]:gap-2 [&>.slider-field]:self-stretch [&>.hydra-agent-pickers]:self-stretch'
 
 export function SettingStack({
   className = '',
   ...props
 }: ComponentProps<'div'>) {
   return <div {...props} className={`${SETTING_STACK} ${className}`} />
+}
+
+export function SettingField({
+  className = '',
+  ...props
+}: ComponentProps<'div'>) {
+  return <div {...props} className={`setting-field flex flex-col gap-2 w-full [&_.setting-description]:m-0 ${className}`} />
 }
