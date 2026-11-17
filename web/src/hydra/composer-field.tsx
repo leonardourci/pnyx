@@ -749,7 +749,7 @@ export function ComposerField({
           />
         )}
         <Textarea
-          className="composer-text group-[.comment-note]/composer-field:select-text h-auto min-h-(--spacing-composer-line) max-h-[min(50vh,var(--spacing-composer-max))] resize-none overflow-y-auto bg-transparent outline-none group-data-[standalone=true]/composer-field:min-h-0 group-data-[standalone=true]/composer-field:max-h-[min(40vh,12lh)] in-[.ask]:min-h-[calc(2lh+0.625rem)] in-[.task-create]:min-h-[calc(3lh+0.625rem)] in-[.task-editor]:min-h-[calc(5lh+0.625rem)] in-[.task-editor]:max-h-[min(50vh,24lh)] group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
+          className="composer-text group-[.comment-note]/composer-field:select-text h-auto max-h-[min(50vh,var(--spacing-composer-max))] resize-none overflow-y-auto bg-transparent outline-none group-data-[standalone=true]/composer-field:max-h-[min(40vh,12lh)] in-[.task-editor]:max-h-[min(50vh,24lh)] group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
           ref={input}
           rows={1}
           data-key-scope={keyScope}

@@ -160,9 +160,6 @@
   --shadow-menu: 0 8px 24px var(--color-shadow);
   --shadow-dialog: 0 18px 50px var(--color-shadow);
   --shadow-oracle: 0 24px 64px var(--color-shadow);
-  --spacing-task-modal: calc(100vw - 2rem);
-  --spacing-task-modal-height: 90dvh;
-  --spacing-task-modal-body: calc(var(--spacing-task-modal-height) - 4rem);
   --container-task-details: 35rem;
   --shadow-window: 0 18px 70px var(--color-shadow);
   --shadow-actions: 0 3px 10px var(--color-shadow);
@@ -392,7 +389,7 @@ kbd {
 
 /* Standard scrollbar properties override the explicit thumb size in Chromium. */
 @supports selector(::-webkit-scrollbar) {
-  .thread, .composer-field .textarea, .draft-mirror { scrollbar-width: auto; scrollbar-color: auto; }
+  .thread { scrollbar-width: auto; scrollbar-color: auto; }
 }
 
 ::-webkit-scrollbar { width: var(--spacing); height: var(--spacing); }
@@ -424,7 +421,10 @@ kbd {
 .icon-fold-columns { transform: rotate(90deg); }
 /* The overlay and editable text need identical metrics to keep chips on their text. */
 .composer-text {
-  @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];
+  @apply m-0 min-h-12 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];
+  @supports selector(::-webkit-scrollbar) {
+    @apply [scrollbar-width:auto] [scrollbar-color:auto];
+  }
 }
 /* Utility aliases keep shared layout on semantic elements owned by their callers. */
 @layer utilities{
