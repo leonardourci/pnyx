@@ -7,6 +7,7 @@ import { withWriter } from '#app/writer.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
+import type { HydraProject } from './model.ts'
 import { findProject, projectFolder, sharingHydras } from './read.ts'
 
 export function childRepositories({ path }: { path: string }) {
@@ -40,6 +41,8 @@ export function attachProjectGroup({
   groupId,
   meta: commandMeta,
   attach,
+  landing,
+  merge,
 }: {
   hydraId: string
   paths: string[]
@@ -47,6 +50,8 @@ export function attachProjectGroup({
   groupId?: string
   meta: Meta
   attach: boolean
+  landing?: HydraProject['landing']
+  merge?: HydraProject['merge']
 }) {
   return withRegistryLock({
     fn: () => withWriter({
@@ -58,6 +63,19 @@ export function attachProjectGroup({
           throw new HydraError({
             message: 'Firstmate manages this Hydra’s projects',
             code: 'READ_ONLY',
+          })
+        }
+
+        if (commandMeta.id && commandMeta.id in state.eventIds) {
+          return { skipped: 'duplicate' }
+        }
+
+        const revision = state.projectsRevision ?? 0
+
+        if (commandMeta.ifRevision !== undefined && commandMeta.ifRevision !== revision) {
+          throw new HydraError({
+            message: `revision ${revision}, not ${commandMeta.ifRevision}`,
+            code: 'REVISION_CONFLICT',
           })
         }
 
@@ -103,27 +121,28 @@ export function attachProjectGroup({
               ...before,
               path,
               name: before?.name ?? basename(path),
+              landing: landing ?? before?.landing,
+              merge: merge ?? before?.merge,
               detached: false,
               group,
             },
           }
         })
 
+        const changes = after.filter(change =>
+          JSON.stringify(change.before) !== JSON.stringify(change.after))
         const attempt = commandMeta.id ?? randomUUID()
 
         for (const [
           index,
           change,
-        ] of after.entries()) {
-          if (JSON.stringify(change.before) === JSON.stringify(change.after)) {
-            continue
-          }
-
+        ] of changes.entries()) {
           const event = hydraEvent({
             state: writer.state,
             meta: {
               ...commandMeta,
-              id: `${attempt}:${index}`,
+              ifRevision: undefined,
+              id: index === changes.length - 1 ? attempt : `${attempt}:${index}`,
             },
             cardId: '$projects',
             change: {

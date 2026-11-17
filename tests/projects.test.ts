@@ -1439,11 +1439,22 @@ test(
         task.card.id,
       ],
     })
+    expect((await owner.ownerRefused({
+      args: [
+        'project',
+        'keep',
+        path,
+        '--if-revision',
+        '0',
+      ],
+    })).code).toBe('REVISION_CONFLICT')
     const kept = await owner.owner({
       args: [
         'project',
         'keep',
         path,
+        '--if-revision',
+        '1',
       ],
     })
     expect(kept.moved).toEqual(expect.arrayContaining([
@@ -1485,5 +1496,93 @@ test(
         path,
       ],
     })).moved).toEqual([])
+  },
+)
+
+test(
+  'parent-folder attachment preserves rules, guards one revision and retries once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const parent = hydra.folder({ name: 'repositories' })
+    const first = join(
+      parent,
+      'atlas',
+    )
+    const second = join(
+      parent,
+      'boreal',
+    )
+    mkdirSync(
+      join(
+        first,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    mkdirSync(
+      join(
+        second,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    const args = [
+      'project',
+      'add',
+      parent,
+      '--landing',
+      'branch',
+      '--merge',
+      'hydra',
+      '--if-revision',
+      '0',
+      '--event-id',
+      'attach-repositories',
+    ]
+    await hydra.owner({ args })
+    expect((await hydra.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual([
+      expect.objectContaining({
+        path: first,
+        landing: 'branch',
+        merge: 'hydra',
+      }),
+      expect.objectContaining({
+        path: second,
+        landing: 'branch',
+        merge: 'hydra',
+      }),
+    ])
+    const third = join(
+      parent,
+      'cedar',
+    )
+    mkdirSync(
+      join(
+        third,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    await hydra.owner({ args })
+    expect((await hydra.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toHaveLength(2)
+    expect((await hydra.ownerRefused({
+      args: [
+        'project',
+        'add',
+        parent,
+        '--if-revision',
+        '0',
+      ],
+    })).code).toBe('REVISION_CONFLICT')
   },
 )

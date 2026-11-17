@@ -327,6 +327,8 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       return attachProjectGroup({
         hydraId,
         paths: repositories,
+        landing,
+        merge,
         name: projectName({ path }),
         groupId: path,
         meta: m,
