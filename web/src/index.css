@@ -263,25 +263,37 @@
   *, *::before, *::after { animation-duration: var(--transition-duration-instant)!important; animation-delay: var(--transition-duration-instant)!important; animation-iteration-count: 1!important; transition-duration: var(--transition-duration-instant)!important; transition-delay: var(--transition-duration-instant)!important; scroll-behavior: auto!important; }
 }
 
+/* Native elements share defaults before component utilities, where no React component fits. */
+
 @layer base {
-* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--color-line) transparent; }
-html, body, #root { margin: 0; height: 100%; overflow: hidden; }
-button, input, textarea { font: inherit; color: inherit; }
-button, a { touch-action: manipulation; }
-button { cursor: pointer; }
-button:disabled { opacity: .45; cursor: default; }
-a { color: inherit; text-decoration: none; }
-a:hover { text-decoration: underline; }
-svg { flex-shrink: 0; }
-code, pre { font-family: var(--font-mono); font-size: var(--text-code); }
-h1, h2, h3, p { margin: 0; overflow-wrap: anywhere; }
-h1 { font-size: var(--text-pane); }
-h2 { font-size: var(--text-pane); }
-h1, h2 { font-weight: 700; }
-h3 { font-weight: 600; }
-:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 3px; }
-h1 { font-size: var(--text-pane); }
-kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-line); border-radius: 4px; padding: 3px 5px; background: var(--color-background); color: var(--color-muted); white-space: nowrap; }
+html, body, #root {
+  @apply m-0 h-full overflow-hidden; }
+button, input, textarea {
+  @apply [font:inherit] text-inherit; }
+button, a {
+  @apply touch-manipulation; }
+button {
+  @apply cursor-pointer; }
+button:disabled {
+  @apply opacity-45 cursor-default; }
+a {
+  @apply text-inherit [text-decoration:none]; }
+a:hover {
+  @apply [text-decoration:underline]; }
+svg {
+  @apply shrink-0; }
+code, pre {
+  @apply font-mono text-code; }
+h1, h2, h3, p {
+  @apply m-0 wrap-anywhere; }
+h1, h2 {
+  @apply text-pane font-bold; }
+h3 {
+  @apply font-semibold; }
+:focus-visible {
+  @apply outline-2 outline-solid outline-gold outline-offset-3; }
+kbd {
+  @apply [font:var(--text-meta)_var(--font-mono)] border border-solid border-line rounded-sm py-0.75 px-1.25 bg-background text-muted whitespace-nowrap; }
 * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 }
 
