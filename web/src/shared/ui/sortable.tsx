@@ -17,6 +17,7 @@ import {
   type DragStartEvent,
   type Active,
   type DropAnimationFunction,
+  type KeyboardCoordinateGetter,
   type DropAnimation,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
@@ -194,20 +195,22 @@ const itemOf = ({ data }: {
   data: { current?: { item?: SortItem } } | undefined
 }): SortItem | undefined => data?.current?.item
 
-function collisions({
-  args,
+function dropTargets({
+  active,
+  containers,
   nesting,
 }: {
-  args: Parameters<CollisionDetection>[0]
+  active: Active
+  containers: Parameters<CollisionDetection>[0]['droppableContainers']
   nesting: boolean
 }) {
-  const source = itemOf({ data: args.active.data })
+  const source = itemOf({ data: active.data })
 
   if (!source) {
     return []
   }
 
-  const containers = args.droppableContainers.filter(container => {
+  return containers.filter(container => {
     const target = itemOf({ data: container.data })
     const sameHydra = source.kind === 'hydra' || target?.hydra === source.hydra
 
@@ -219,10 +222,56 @@ function collisions({
       return target.zone === 'nest' && !source.hasChildren && source.id !== target.id
     }
 
-    const group = args.active.data.current?.sortable?.containerId
+    const group = active.data.current?.sortable?.containerId
 
     return !target.zone && container.data.current?.sortable?.containerId === group
       && source.scope === target.scope
+  })
+}
+
+// eslint-disable-next-line pnyx/object-params -- dnd-kit owns coordinate getter signatures.
+const keyboardCoordinates: KeyboardCoordinateGetter = (
+  event,
+  args,
+) => {
+  const active = args.context.active
+
+  if (!active) {
+    return undefined
+  }
+
+  const source = itemOf({ data: active.data })
+  const targets = dropTargets({
+    active,
+    containers: args.context.droppableContainers.getEnabled(),
+    nesting: source?.kind === 'task' && event.shiftKey,
+  })
+  const ids = new Set(targets.map(target => target.id))
+  const droppableRects = new Map([...args.context.droppableRects].filter(([id]) => ids.has(id)))
+
+  return sortableKeyboardCoordinates(
+    event,
+    {
+      ...args,
+      context: {
+        ...args.context,
+        droppableRects,
+      },
+    },
+  )
+}
+
+function collisions({
+  args,
+  nesting,
+}: {
+  args: Parameters<CollisionDetection>[0]
+  nesting: boolean
+}) {
+  const containers = dropTargets({
+    active: args.active,
+    containers: args.droppableContainers,
+    nesting,
   })
 
   if (args.pointerCoordinates) {
@@ -343,7 +392,7 @@ export function SortableWorkspace({
     useSensor(
       KeyboardSensor,
       {
-        coordinateGetter: sortableKeyboardCoordinates,
+        coordinateGetter: keyboardCoordinates,
         keyboardCodes: {
           start: ['Space'],
           end: [

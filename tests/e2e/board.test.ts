@@ -621,6 +621,51 @@ test(
         check: async () => (await cards.allTextContents()).join('|') === 'Third task|First task|Second task',
       })
       await connected.waitFor()
+
+      const keyboardMove = async ({
+        key,
+        expected,
+      }: {
+        key: string
+        expected: string
+      }) => {
+        await first.hover()
+        const grip = first.locator('xpath=ancestor::article').getByRole(
+          'button',
+          {
+            name: 'Move First task',
+            exact: true,
+          },
+        )
+        await grip.focus()
+        await page.keyboard.press('Space')
+        await ghost.waitFor()
+        await page.evaluate(() => new Promise<void>(resolve => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        }))
+        await page.keyboard.press(key)
+        await until({
+          what: 'keyboard movement changes the rendered order',
+          check: async () => (await cards.allTextContents()).join('|') === expected,
+        })
+        await page.keyboard.press('Enter')
+        await ghost.waitFor({ state: 'detached' })
+        await page.reload()
+        await until({
+          what: 'keyboard order persists after reload',
+          check: async () => (await cards.allTextContents()).join('|') === expected,
+        })
+        await connected.waitFor()
+      }
+
+      await keyboardMove({
+        key: 'ArrowDown',
+        expected: 'Third task|Second task|First task',
+      })
+      await keyboardMove({
+        key: 'ArrowUp',
+        expected: 'Third task|First task|Second task',
+      })
       await first.scrollIntoViewIfNeeded()
       await third.scrollIntoViewIfNeeded()
       const cancelledFrom = await first.boundingBox()
