@@ -16,6 +16,9 @@ const COMPACT_STATES: Record<string, string> = {
   'asks-hydra': 'waiting',
   answering: 'sending',
   unknown: 'unknown',
+  done: 'done',
+  stopped: 'stopped',
+  'not-started': 'queued',
 }
 
 const STATE_COLORS: Record<string, string> = {

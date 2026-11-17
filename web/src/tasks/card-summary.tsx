@@ -74,6 +74,7 @@ export function CardSummary({
   toggleChildren,
   open,
   agentDetails,
+  heading,
   editing = false,
   tabIndex = -1,
 }: {
@@ -88,6 +89,7 @@ export function CardSummary({
   toggleChildren?(): void
   open?(): void
   agentDetails?: ReactNode
+  heading?: ReactNode
   editing?: boolean
   tabIndex?: number
 }) {
@@ -113,7 +115,7 @@ export function CardSummary({
         childrenOpen={childrenOpen}
         toggleChildren={toggleChildren}
       >
-        {!editing && (
+        {heading ?? (!editing && (
           <CardTitle
             title={card.title}
             expanded={false}
@@ -122,7 +124,7 @@ export function CardSummary({
             data-key-scope="hydra"
             tabIndex={tabIndex}
           />
-        )}
+        ))}
       </CardHeading>
       <TaskLabels
         card={card}

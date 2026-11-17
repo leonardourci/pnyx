@@ -30,8 +30,9 @@ import { markdownText } from '#web-hydra/markdown-text.ts'
 import { Highlight, SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
-import { CardState } from '#web-tasks/card-state.tsx'
-import { taskRollup } from '#web-tasks/project-view.ts'
+import { CardSummary } from '#web-tasks/card-summary.tsx'
+import { CardContent } from '#web-tasks/card-shell.tsx'
+import { taskRollup, taskProjectColumn } from '#web-tasks/project-view.ts'
 import { cardState } from '#web-tasks/view.ts'
 import type { AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
@@ -133,15 +134,21 @@ function TaskPreview({
   return (
     <>
       <div className="oracle-card flex flex-col items-start gap-1.75 px-3 py-2.5 border border-line rounded-card bg-background">
-        <CardState
-          card={card}
-          status={status}
-          now={now}
-          labelColors={state.labelColors}
-        />
-        <h3 className="oracle-card-title font-semibold"><Highlight text={card.title} terms={terms} /></h3>
-        {said && <p className="oracle-card-said text-muted line-clamp-4"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
-        <CardLinks links={card.links} expanded={false} />
+        <CardContent className="w-full">
+          <CardSummary
+            card={card}
+            status={status}
+            now={now}
+            colors={state.labelColors}
+            legacyProject={taskProjectColumn({
+              state,
+              card,
+            }) === 'ideas'}
+            heading={<h3 className="oracle-card-title font-semibold"><Highlight text={card.title} terms={terms} /></h3>}
+          />
+          {said && <p className="oracle-card-said text-muted line-clamp-4"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
+          <CardLinks links={card.links} expanded={false} />
+        </CardContent>
       </div>
       <Snippets hit={hit} now={now} />
     </>
