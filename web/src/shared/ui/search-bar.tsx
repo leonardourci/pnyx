@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent, type ComponentProps, type Ref } from 'react'
 import { composing } from '#web-shared/ime.ts'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { badgeKey } from './search-badges.ts'
 
 export interface SearchBadge {
@@ -49,7 +49,7 @@ function Badge({
 }) {
   return (
     <SearchBadgeLabel kind={badge.kind} data-marked={marked || undefined}>
-      {badge.icon && <Icon name={badge.icon} size={14} />}
+      {badge.icon && <Icon name={badge.icon} size={ICON_SIZE.inline} />}
       {badge.label}
       <button
         type="button"
@@ -58,7 +58,7 @@ function Badge({
         tabIndex={-1}
         onClick={remove}
       >
-        <Icon name="close" size={12} />
+        <Icon name="close" size={ICON_SIZE.badge} />
       </button>
     </SearchBadgeLabel>
   )
@@ -99,7 +99,7 @@ export function SearchBar({
 
   return (
     <div className="search-bar flex items-center flex-wrap gap-1.5 min-h-10.5 px-2.5 py-1.5 border border-line rounded-card bg-surface focus-within:border-gold-line focus-within:shadow-search-focus" role="search" aria-label={label}>
-      <span className="search-bar-eye inline-flex flex-none text-gold"><Icon name="oracle" size={20} /></span>
+      <span className="search-bar-eye inline-flex flex-none text-gold"><Icon name="oracle" size={ICON_SIZE.heading} /></span>
       {badges.map(badge => (
         <Badge
           key={badge.id}

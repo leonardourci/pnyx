@@ -5,7 +5,7 @@ import type { RuleNow } from '#workers/dispatch.ts'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { AgentPickers } from './agent-pickers.tsx'
@@ -142,11 +142,11 @@ function useStartsNow({
 function HowPicked() {
   return (
     <section className="dispatch-how py-2.5 px-3 border border-subtle rounded-lg bg-background [&_ol]:mt-2 [&_ol]:mx-0 [&_ol]:mb-0 [&_ol]:p-0 [&_ol]:list-none [&_ol]:grid [&_ol]:grid-cols-3 [&_ol]:gap-2.5 [&_li]:pl-2 [&_li]:border-l-2 [&_li]:border-gold-line [&_li]:text-muted [&_li]:text-meta [&_li_strong]:flex [&_li_strong]:items-center [&_li_strong]:gap-1.25 [&_li_strong]:mb-0.5 [&_li_strong]:text-ink [&_li_strong]:text-ui [&>.dispatch-desc]:mt-2 [&>.dispatch-desc]:mx-0 [&>.dispatch-desc]:mb-0 max-[760px]:[&_ol]:grid-cols-1" aria-labelledby="dispatch-how">
-      <h4 id="dispatch-how"><Icon name="about" size={14} />How a worker’s agent is picked</h4>
+      <h4 id="dispatch-how"><Icon name="about" size={ICON_SIZE.inline} />How a worker’s agent is picked</h4>
       <ol>
-        <li><strong><Icon name="dispatch" size={14} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
-        <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
-        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts.</li>
+        <li><strong><Icon name="dispatch" size={ICON_SIZE.inline} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
+        <li><strong><Icon name="you" size={ICON_SIZE.inline} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
+        <li><strong><Icon name="effort" size={ICON_SIZE.inline} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts.</li>
       </ol>
       <DispatchDescription>
         Fast on in a Hydra’s composer puts every worker that Hydra starts on Fast, whatever its
@@ -268,7 +268,7 @@ function RuleGroup({
         <div className="dispatch-rule-text contents [&>:first-child]:justify-self-start [&>:not(:first-child)]:col-span-full">
           {fixed ? (
             <>
-              <span className="dispatch-rule-name inline-flex items-center gap-1 font-mono font-semibold px-1.5 [&_svg]:text-muted"><Icon name="dispatch" size={14} />default</span>
+              <span className="dispatch-rule-name inline-flex items-center gap-1 font-mono font-semibold px-1.5 [&_svg]:text-muted"><Icon name="dispatch" size={ICON_SIZE.inline} />default</span>
               <span className="dispatch-when-fixed px-1.5 text-muted text-meta">Tasks without a named rule.</span>
             </>
           ) : (
@@ -374,7 +374,7 @@ function RuleGroup({
             effective={effective}
             command={command}
             connected
-            trigger={<><Icon name="plus" size={14} />Add candidate</>}
+            trigger={<><Icon name="plus" size={ICON_SIZE.inline} />Add candidate</>}
             change={({ next }) => setCandidates({
               next: [
                 ...candidates,
@@ -440,7 +440,7 @@ function ConfirmRemove({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen(true)}
-      ><Icon name="close" size={14} />
+      ><Icon name="close" size={ICON_SIZE.inline} />
       </Button>
       {/* Always mounted so it can unfold from the x; hidden, it cannot be reached. Focus starts on Cancel, the safe choice. */}
       <div
@@ -489,7 +489,7 @@ function RulesTable({
 
   return (
     <DispatchSection aria-labelledby="dispatch-rules">
-      <h4 id="dispatch-rules"><Icon name="dispatch" size={14} />Rules</h4>
+      <h4 id="dispatch-rules"><Icon name="dispatch" size={ICON_SIZE.inline} />Rules</h4>
       <DispatchDescription>
         Each rule, then the candidates Hydra tries for it. Change any cell in place. A valid
         change saves as soon as you pick it or leave the field; a problem shows beside its rule
@@ -520,7 +520,7 @@ function RulesTable({
       </div>
       <IssueList issues={issues.filter(issue => !BESIDE_A_RULE.test(issue.path))} />
       {starts?.error && <DispatchDescription role="status">{starts.error}</DispatchDescription>}
-      <Button variant="surface" className="dispatch-add-rule self-start" onClick={() => edit({ next: withNewRule({ draft }) })}><Icon name="plus" size={14} />Add rule</Button>
+      <Button variant="surface" className="dispatch-add-rule self-start" onClick={() => edit({ next: withNewRule({ draft }) })}><Icon name="plus" size={ICON_SIZE.inline} />Add rule</Button>
     </DispatchSection>
   )
 }
@@ -782,7 +782,7 @@ export function DispatchSettings({
   return (
     <DispatchFrame ref={root} onBlur={() => setLeft(count => count + 1)}>
       <div className="dispatch-top flex items-center justify-between flex-wrap gap-3">
-        <span className="dispatch-source inline-flex items-center gap-1.5 text-muted text-meta"><Icon name="file" size={14} />Shared by every Hydra · revision <code>{saved.revision}</code></span>
+        <span className="dispatch-source inline-flex items-center gap-1.5 text-muted text-meta"><Icon name="file" size={ICON_SIZE.inline} />Shared by every Hydra · revision <code>{saved.revision}</code></span>
         <Segmented
           label="Heads dispatch view"
           value={json ? 'json' : 'table'}

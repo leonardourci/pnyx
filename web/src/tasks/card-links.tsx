@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { failedChecks, type Link } from '#tasks/delivery/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Tooltip, LINK_TOOLTIP_DELAY } from '#web-shared/ui/tooltip.tsx'
 
 const LINK_TONES: Record<string, string> = {
@@ -71,7 +71,7 @@ export function LinkChip({
         target="_blank"
         rel="noreferrer"
       >
-        <Icon name={icon} size={13} />
+        <Icon name={icon} size={ICON_SIZE.inline} />
         {state && <i className={`link-state size-1.5 shrink-0 rounded-full ${tone} link-${state}`} aria-label={state === 'failing' ? 'checks failed' : state} />}
         <span>{label}{pending && ` · ${pending}`}</span>
       </a>

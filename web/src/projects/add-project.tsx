@@ -1,7 +1,7 @@
 import { ProjectForm, ProjectList, ProjectActions, FolderChoice, FolderDescription } from './folder-ui.tsx'
 import { useProjectsResource } from './project-resource.ts'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useFolders } from './folders.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
@@ -297,7 +297,7 @@ export function ProjectSharing({
       <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((
         hydra,
         n,
-      ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydraTitle(hydra)} <Icon name="external" size={12} /></a></span>)}
+      ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydraTitle(hydra)} <Icon name="external" size={ICON_SIZE.badge} /></a></span>)}
       </span>
       <p className="small muted">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>
       <ProjectActions>

@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { useEffect, useState } from 'react'
 import { IconButton } from './icon-button.tsx'
 
@@ -40,7 +41,7 @@ export function CopyButton({
       className={`copy-button data-copied:text-green ${className}`}
       label={title}
       icon={result === 'copied' ? 'check' : 'copy'}
-      iconSize={14}
+      iconSize={ICON_SIZE.inline}
       size="copy"
       title={title}
       data-copied={result === 'copied' || undefined}

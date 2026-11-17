@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 export function AttachmentCard({
   slot,
@@ -67,7 +67,7 @@ export function AttachmentCard({
           onBlur={leaveRemove}
           onClick={remove}
         >
-          {removeText ?? <Icon name="close" size={14} />}
+          {removeText ?? <Icon name="close" size={ICON_SIZE.inline} />}
         </Button>
       )}
     </span>

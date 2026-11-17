@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react'
 import { STEP_WORDS, type UpgradeOperation, type UpgradeStepName } from '#upgrade/model.ts'
 import { useElapsed } from '#web-workers/compaction.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { fixPrompt, stoppedWhile } from './fix-prompt.ts'
 
 function UpgradeAction({ ...props }: ComponentProps<typeof Button>) {
@@ -36,9 +36,9 @@ function Steps({ operation }: { operation: UpgradeOperation }) {
 
         return (
           <li key={name} data-state={step?.state ?? 'todo'}>
-            {step?.state === 'done' ? <>{done}<Icon name="check" size={12} /></>
+            {step?.state === 'done' ? <>{done}<Icon name="check" size={ICON_SIZE.badge} /></>
               : step?.state === 'running' ? `${doing}…`
-                : step?.state === 'failed' ? <>{doing} failed<Icon name="error" size={12} /></>
+                : step?.state === 'failed' ? <>{doing} failed<Icon name="error" size={ICON_SIZE.badge} /></>
                   : step?.state === 'stopped' ? `${doing} stopped`
                     : todo}
           </li>
@@ -110,7 +110,7 @@ export function UpgradeRow({
 
   return (
     <OperationLine upgrade data-state={needsFix ? 'failed' : operation.state} role={active ? 'status' : undefined}>
-      <Icon name={active ? activeIcon : needsFix ? 'error' : operation.state === 'stopped' ? 'stop' : 'check'} size={14} />
+      <Icon name={active ? activeIcon : needsFix ? 'error' : operation.state === 'stopped' ? 'stop' : 'check'} size={ICON_SIZE.inline} />
       <div className="upgrade-body grid gap-1.5 min-w-0 flex-1">
         <span className="upgrade-title font-medium">{title}</span>
         {detail && <span className="upgrade-detail text-muted -mt-1">{detail}</span>}
@@ -121,24 +121,24 @@ export function UpgradeRow({
         ) : operation.steps.length > 0 && operation.state !== 'current' && <Steps operation={operation} />}
         {operation.state === 'running' && (
           <UpgradeAction onClick={stop}>
-            <Icon name="stop" size={12} />Stop
+            <Icon name="stop" size={ICON_SIZE.badge} />Stop
           </UpgradeAction>
         )}
         {operation.state === 'waiting' && (
           <UpgradeAction onClick={restartNow}>
-            <Icon name="restart" size={12} />Restart now
+            <Icon name="restart" size={ICON_SIZE.badge} />Restart now
           </UpgradeAction>
         )}
         {operation.state === 'restarting' && (
           <span className="upgrade-stop-note flex flex-wrap items-center gap-2 text-muted">
-            <UpgradeAction disabled><Icon name="stop" size={12} />Stop</UpgradeAction>
+            <UpgradeAction disabled><Icon name="stop" size={ICON_SIZE.badge} />Stop</UpgradeAction>
             Can't stop during the restart.
           </span>
         )}
         {needsFix && operation.error && <pre className="upgrade-error max-h-upgrade-error m-0 py-1.5 px-2 overflow-auto border border-line rounded-md bg-raised text-ink text-meta leading-normal font-mono whitespace-pre-wrap wrap-anywhere">{operation.error}</pre>}
         {needsFix && !restartOnly && (
           <UpgradeAction onClick={() => askHydra({ text: fixPrompt({ operation }) })}>
-            <Icon name="fix" size={14} />Ask Hydra to fix
+            <Icon name="fix" size={ICON_SIZE.inline} />Ask Hydra to fix
           </UpgradeAction>
         )}
       </div>

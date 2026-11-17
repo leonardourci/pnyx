@@ -12,7 +12,7 @@ import type { SavedLabelColor } from '#tasks/model.ts'
 import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
 import {
@@ -121,7 +121,7 @@ function MilestoneIcon({ text }: { text: string }) {
   })
   const name = text === 'Inscribed' ? inscribe : upgradeMilestoneIcon({ text })
 
-  return name ? <Icon name={name} size={14} /> : null
+  return name ? <Icon name={name} size={ICON_SIZE.inline} /> : null
 }
 
 interface RowComment {
@@ -368,7 +368,7 @@ const MessageRow = memo(function MessageRow({
           {entry.checking && <span className="muted" role="status">Checking…</span>}
           {entry.unsent !== undefined && (
             <span className="unsent inline-flex items-center gap-1 px-1 py-0 text-red" role="alert">
-              <Icon name="error" size={14} />Not sent · {entry.unsent}
+              <Icon name="error" size={ICON_SIZE.inline} />Not sent · {entry.unsent}
             </span>
           )}
           {retryMessage && (
@@ -1180,7 +1180,7 @@ export function Messages({
               title="Enter, or start typing"
               onClick={() => addComment({ quote: selection })}
             >
-              <Icon name="comment" size={14} />
+              <Icon name="comment" size={ICON_SIZE.inline} />
               Comment
               <kbd>↵</kbd>
             </Button>
@@ -1190,7 +1190,7 @@ export function Messages({
               title="Shift+Enter"
               onClick={() => quoteSelection({ passage: selection })}
             >
-              <Icon name="quote" size={14} />
+              <Icon name="quote" size={ICON_SIZE.inline} />
               Quote
               <kbd>⇧↵</kbd>
             </Button>

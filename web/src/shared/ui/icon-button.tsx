@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react'
 import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 const SIZES = {
   usage: 'size-6.25 min-h-0 shrink-0 p-1 border-0 rounded-compact bg-transparent text-inherit opacity-76 cursor-pointer [&:not([aria-disabled=true]):hover]:opacity-100 enabled:hover:bg-usage-hover focus-visible:outline-1 focus-visible:outline-current focus-visible:outline-offset-2 aria-disabled:cursor-wait aria-disabled:opacity-45',
@@ -17,7 +17,7 @@ export function IconButton({
   icon,
   label,
   size = 'normal',
-  iconSize = 16,
+  iconSize = ICON_SIZE.control,
   className = '',
   ...props
 }: Omit<ComponentProps<typeof Button>, 'children'> & {

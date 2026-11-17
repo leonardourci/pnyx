@@ -1,5 +1,5 @@
 import { DisclosureChevron } from './disclosure-chevron.tsx'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react'
 import { sliderValue } from './slider-value.ts'
 import { MenuOption } from './menu-option.tsx'
@@ -146,7 +146,7 @@ export function Select({
   title,
   defaultValue,
   onDefault,
-  iconSize = 14,
+  iconSize = ICON_SIZE.inline,
 }: {
   label: string
   value: string
@@ -338,11 +338,11 @@ export function Select({
                       aria-label="Default"
                       title="The default"
                     >
-                      <Icon name="pinned" size={12} />
+                      <Icon name="pinned" size={ICON_SIZE.badge} />
                     </span>
                   )}
                 </span>
-                <span aria-hidden="true">{o.value === value && <Icon name="check" size={14} />}</span>
+                <span aria-hidden="true">{o.value === value && <Icon name="check" size={ICON_SIZE.inline} />}</span>
               </MenuOption>
             </Fragment>
           ))}
@@ -422,7 +422,7 @@ export function NumberField({
               value - step,
             ),
           })}
-        ><Icon name="minus" size={14} />
+        ><Icon name="minus" size={ICON_SIZE.inline} />
         </Button>
         <Input
           id={id}
@@ -453,7 +453,7 @@ export function NumberField({
               value + step,
             ),
           })}
-        ><Icon name="plus" size={14} />
+        ><Icon name="plus" size={ICON_SIZE.inline} />
         </Button>
       </span>
     </div>

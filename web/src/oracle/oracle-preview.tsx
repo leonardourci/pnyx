@@ -25,7 +25,7 @@ import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { SETTING_PREVIEWS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { markdownText } from '#web-hydra/markdown-text.ts'
 import { Highlight, SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
@@ -160,7 +160,7 @@ function ProjectPreview({
 
   return (
     <>
-      <PreviewTitle><Icon name="project" size={16} />{project.name}</PreviewTitle>
+      <PreviewTitle><Icon name="project" size={ICON_SIZE.control} />{project.name}</PreviewTitle>
       <p className="muted small"><code>{project.path}</code></p>
       <section className="oracle-project-tasks flex flex-col gap-1.5" aria-label="Live tasks">
         <h3 className="eyebrow">{tasks.length === 1 ? '1 live task' : `${tasks.length} live tasks`}</h3>
@@ -180,7 +180,9 @@ function ActionPreview({ action }: { action: OracleAction }) {
 
   return (
     <>
-      <PreviewTitle><Icon name={ACTION_ICONS[action.run]} size={16} />{action.label}</PreviewTitle>
+      <PreviewTitle>
+        <Icon name={ACTION_ICONS[action.run]} size={ICON_SIZE.control} />{action.label}
+      </PreviewTitle>
       <p>{action.does}</p>
       {keys && <p className="muted small">Its shortcut: <kbd>{keys}</kbd></p>}
     </>
@@ -220,7 +222,7 @@ export function FilterPreview({
       <PreviewTitle>
         {TYPE_LABELS[filter.type]}:
         <SearchBadgeLabel kind={filter.type}>
-          <Icon name={filter.icon} size={14} />{filter.label}
+          <Icon name={filter.icon} size={ICON_SIZE.inline} />{filter.label}
         </SearchBadgeLabel>
       </PreviewTitle>
       <p className="muted"><kbd>Space</kbd>, <kbd>Tab</kbd> or <kbd>Enter</kbd> makes it a badge.</p>
@@ -418,7 +420,7 @@ export function ResultPreview({
       )}
       {result.kind === 'conversation' && !card && (
         <>
-          <PreviewTitle><Icon name="comments" size={16} />{result.title}</PreviewTitle>
+          <PreviewTitle><Icon name="comments" size={ICON_SIZE.control} />{result.title}</PreviewTitle>
           <Snippets hit={result.hit} now={now} />
         </>
       )}
@@ -458,7 +460,7 @@ export function AskPreview({
 
   return (
     <>
-      <PreviewTitle><Icon name={to?.icon ?? HYDRA_MARK} size={16} />Request to {to?.name ?? 'a Hydra'}</PreviewTitle>
+      <PreviewTitle><Icon name={to?.icon ?? HYDRA_MARK} size={ICON_SIZE.control} />Request to {to?.name ?? 'a Hydra'}</PreviewTitle>
       {request.trim() && <p className="oracle-ask-message m-0 px-3 py-2.5 border border-subtle rounded-lg bg-background whitespace-pre-wrap wrap-anywhere">{request.trim()}</p>}
       {error && <p className="oracle-ask-error text-red" role="alert">{error}</p>}
       {sending && <p className="muted small" role="status">{progress}</p>}

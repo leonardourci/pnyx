@@ -10,7 +10,7 @@ import { Messages, type ChatEntry } from '#web-hydra/messages.tsx'
 import { Composer } from '#web-hydra/composer.tsx'
 import { useChatDrafts, useDraftSnapshot } from '#web-hydra/chat-drafts.ts'
 import { pnyxLookup } from '#web-hydra/pnyx-action.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { CommandFailure, createPendingResource } from '#web-shared/pending-intents.ts'
 

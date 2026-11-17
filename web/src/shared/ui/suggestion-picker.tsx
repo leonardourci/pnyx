@@ -2,7 +2,7 @@ import { FloatingPanel } from './floating-panel.tsx'
 import { suggestionMatch, type SuggestionMatch } from '#hydra/suggestion-matches.ts'
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { ReactNode } from 'react'
 
 export interface PickerItem {
@@ -203,7 +203,7 @@ export function SuggestionPicker<T extends PickerItem>({
             >
               <span className="mention-heading flex items-center gap-2 min-w-0 [&>strong]:flex-1 [&>strong]:min-w-0 [&>strong]:wrap-anywhere [&>small]:shrink [&>small]:min-w-0 [&>small]:max-w-[45%] [&>small]:truncate [&>small]:text-muted [&>small]:text-meta group-[.slash-menu]/suggestions:items-start group-[.slash-menu]/suggestions:[&_small]:block group-[.slash-menu]/suggestions:[&_small]:mt-0.75">
                 <span className={`mention-icon inline-flex text-(--column-color,currentColor) group-[.slash-menu]/suggestions:items-center group-[.slash-menu]/suggestions:h-[1lh] ${item.tone ?? ''}`}>
-                  {(item.icons ?? ['star']).map(icon => <Icon key={icon} name={icon} size={14} />)}
+                  {(item.icons ?? ['star']).map(icon => <Icon key={icon} name={icon} size={ICON_SIZE.inline} />)}
                 </span>
                 {item.badge && <span className="picker-project flex-[0_1_auto] max-w-[42%] min-w-0 [&_.task-label]:text-meta">{item.badge}</span>}
                 <strong><MatchedText text={item.title} query={query} /></strong>

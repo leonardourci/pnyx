@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import type { RefObject } from 'react'
 import { openDecisions, type OpenDecision } from '#tasks/decisions.ts'
 import type { HydraState } from '#app/model.ts'
@@ -64,7 +65,7 @@ export function WaitingDecisions({
     >
       <Popover
         label="Waiting on you"
-        chevronSize={14}
+        chevronSize={ICON_SIZE.inline}
         triggerRef={triggerRef}
         trigger={(
           <>

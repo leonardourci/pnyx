@@ -2,7 +2,7 @@ import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { hydraTitle } from '#web-app/view.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { ContextMenu,menuPoint,opensMenu } from '#web-shared/ui/menu.tsx'
 import { useCallback,useState,type ReactNode } from 'react'
 import { HYDRA_ICONS,HydraNameEditor,type HydraIdentity } from './hydra-title.tsx'
@@ -66,7 +66,7 @@ export function HydraHead({
             icon,
           }}
           taken={taken}
-          iconSize={24}
+          iconSize={ICON_SIZE.brand}
           save={({
             name,
             icon,
@@ -91,7 +91,7 @@ export function HydraHead({
                 icon,
               })}
             />
-          ) : <Icon name={icon} size={24} />}
+          ) : <Icon name={icon} size={ICON_SIZE.brand} />}
           <Button
             className="hydra-title min-w-0 min-h-0 py-0.5 px-1.5 -ml-1.5 justify-start text-[length:inherit]"
             disabled={!canEdit}

@@ -6,7 +6,7 @@ import type { EffectiveDispatch, Harness } from '#workers/dispatch-config.ts'
 import { accountLabel } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { MenuOption } from '#web-shared/ui/menu-option.tsx'
@@ -28,10 +28,6 @@ export const PROVIDERS = [
 
 export const ACCOUNT_SETTINGS = 'pnyx-account-settings'
 const HOLD_MS = 500
-// Icon sizes shared by every menu built on these rows.
-export const MENU_ROW_ICON = 18
-export const MENU_MARK_ICON = 16
-export const TRIGGER_CHEVRON = 14
 
 export type Provider = (typeof PROVIDERS)[number]
 
@@ -65,7 +61,7 @@ export function MenuHead({
           icon="arrow_left"
           label="Back"
           size="menu"
-          iconSize={MENU_MARK_ICON}
+          iconSize={ICON_SIZE.control}
           onClick={back}
         />
       )}
@@ -381,8 +377,8 @@ export function SelectionMenu({
             ? 'Default for new sessions'
             : 'Set as default for new sessions'
           const mark = onModels
-            ? current && <Icon name="check" size={MENU_MARK_ICON} />
-            : <Icon name="chevron_right" size={MENU_MARK_ICON} />
+            ? current && <Icon name="check" size={ICON_SIZE.control} />
+            : <Icon name="chevron_right" size={ICON_SIZE.control} />
 
           return (
             <MenuOption
@@ -429,7 +425,7 @@ export function SelectionMenu({
                   }
                 }}
               >
-                {choice.icon && <Icon name={choice.icon} size={MENU_ROW_ICON} />}
+                {choice.icon && <Icon name={choice.icon} size={ICON_SIZE.toolbar} />}
                 <span>{choice.label}</span>
                 {wasUsed && <small className="muted">Last used</small>}
                 {mark}
@@ -456,7 +452,7 @@ export function SelectionMenu({
       </ModelResults>
       {step !== 'model' && (
         <div className="account-model-add flex-none border-t border-line pt-2 [&>.button]:w-full [&>.button]:text-ui [&>p]:mt-1.25 [&>p]:mx-0 [&>p]:mb-0 [&>p]:text-center [&>p]:text-meta [&>p]:text-muted">
-          <Button variant="surface" onClick={add}><Icon name="plus" size={16} />{addLabel}</Button>
+          <Button variant="surface" onClick={add}><Icon name="plus" size={ICON_SIZE.control} />{addLabel}</Button>
           <p>Or ask Hydra to add it for you.</p>
         </div>
       )}
@@ -492,13 +488,13 @@ export function AccountModelPicker({
     <ModelPicker
       label={accessible}
 
-      chevronSize={defaultTrigger ? TRIGGER_CHEVRON : undefined}
+      chevronSize={defaultTrigger ? ICON_SIZE.inline : undefined}
       disabled={disabled}
       invalid={invalid}
       describedBy={describedBy}
       trigger={trigger ?? (
         <>
-          <Icon name={provider.icon} size={20} />
+          <Icon name={provider.icon} size={ICON_SIZE.heading} />
           <span className="account-model-label flex flex-col min-w-0 max-w-45 leading-prose-heading [&>span]:text-ui [&>span]:truncate [&>small]:text-muted [&>small]:text-meta [&>small]:truncate">
             <span>{modelLabel}</span>
             <small>{name}</small>

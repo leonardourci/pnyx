@@ -5,10 +5,9 @@ import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { COMPOSER_ICON } from '#web-workers/agent-pickers.tsx'
 import { sendableRequest } from './project-request.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
@@ -18,9 +17,6 @@ import { placeMessageCaret, conversationMessages, latestAgentMessage } from './c
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
 import { draftView, hasPendingImage } from './draft.ts'
-
-// Icons beside the text of the composer's menu items.
-const MENU_ICON = 16
 
 export function Composer({
   hydraId,
@@ -379,7 +375,7 @@ export function Composer({
           projectRequested={projectRequested}
         />
         <ComposerBar>
-          <Popover label="Add to message" className="composer-add [&>.button]:size-(--spacing-composer-control) [&>.button]:min-h-(--spacing-composer-control) [&>.button]:justify-center [&>.button]:p-0 [&>.popover-panel]:w-max! [&>.popover-panel]:p-1.25! [&>.popover-panel>.button]:flex [&>.popover-panel>.button]:w-full [&>.popover-panel>.button]:justify-start [&>.popover-panel>.button]:gap-2 [&>.popover-panel>.button]:whitespace-nowrap" trigger={<Icon name="paperclip" size={COMPOSER_ICON} />}>
+          <Popover label="Add to message" className="composer-add [&>.button]:size-(--spacing-composer-control) [&>.button]:min-h-(--spacing-composer-control) [&>.button]:justify-center [&>.button]:p-0 [&>.popover-panel]:w-max! [&>.popover-panel]:p-1.25! [&>.popover-panel>.button]:flex [&>.popover-panel>.button]:w-full [&>.popover-panel>.button]:justify-start [&>.popover-panel>.button]:gap-2 [&>.popover-panel>.button]:whitespace-nowrap" trigger={<Icon name="paperclip" size={ICON_SIZE.toolbar} />}>
             {({ close }) => (
               <>
                 <Button
@@ -387,14 +383,14 @@ export function Composer({
                     close(); files.current?.click()
                   }}
                 >
-                  <Icon name="paperclip" size={MENU_ICON} />Insert files or images
+                  <Icon name="paperclip" size={ICON_SIZE.control} />Insert files or images
                 </Button>
                 <Button
                   onClick={() => {
                     close(); field.current?.mention()
                   }}
                 >
-                  <Icon name="mention" size={MENU_ICON} />Mention
+                  <Icon name="mention" size={ICON_SIZE.control} />Mention
                 </Button>
               </>
             )}
@@ -482,7 +478,7 @@ export function Composer({
               title={compacting ? 'Cancel compaction' : stopTitle}
               onClick={() => void stop()}
             >
-              <Icon name="stop" size={12} />
+              <Icon name="stop" size={ICON_SIZE.badge} />
             </ComposerAction>
           )}
           <ComposerAction
@@ -493,7 +489,7 @@ export function Composer({
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={unavailable || sending || disabled}
           >
-            <Icon name="send" size={COMPOSER_ICON} />
+            <Icon name="send" size={ICON_SIZE.toolbar} />
           </ComposerAction>
         </ComposerBar>
       </ComposerFrame>

@@ -6,7 +6,7 @@ import { logDay, logged, type LogLine, type LogMode } from '#app/log-line.ts'
 import { keptDays } from '#diagnostics/retention.ts'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 
 // The board preview draws a 1440 px screen this many times smaller.
@@ -142,7 +142,7 @@ export function ThemePreview({
             aria-pressed={view.theme === tile.value}
             onClick={() => choose({ theme: tile.value })}
           >
-            <span><Icon name={tile.icon} size={14} />{tile.label}</span>
+            <span><Icon name={tile.icon} size={ICON_SIZE.inline} />{tile.label}</span>
           </button>
         ))}
       </div>
@@ -158,11 +158,11 @@ export function CardTextPreview({ view }: { view: ViewPreferences }) {
       <PreviewCard style={{ fontSize: view.fontSize }}>
         <PreviewTitle >Add CSV export to reports</PreviewTitle>
         <PreviewMeta style={{ fontSize: detail }}>
-          <Icon name="in_progress" size={12} /> In progress · <Icon name="claude-code" size={12} /> Claude Code · 12 min
+          <Icon name="in_progress" size={ICON_SIZE.badge} /> In progress · <Icon name="claude-code" size={ICON_SIZE.badge} /> Claude Code · 12 min
         </PreviewMeta>
         <PreviewMeta style={{ fontSize: detail }}>
           <PreviewChip >build</PreviewChip>
-          <PreviewChip kind="pr"><Icon name="github_pr" size={12} />PR #212</PreviewChip>
+          <PreviewChip kind="pr"><Icon name="github_pr" size={ICON_SIZE.badge} />PR #212</PreviewChip>
           <PreviewChip >atlas</PreviewChip>
         </PreviewMeta>
       </PreviewCard>
@@ -175,13 +175,13 @@ export function ChatTextPreview({ view }: { view: ViewPreferences }) {
     <Preview>
       <PreviewConversation style={{ fontSize: view.chatFontSize }}>
         <PreviewBubble owner>
-          Ship <PreviewChip kind="task"><Icon name="task" size={12} />Add CSV export</PreviewChip> behind a flag, like
-          {' '}<PreviewChip kind="pr"><Icon name="github_pr" size={12} />#198</PreviewChip>.
+          Ship <PreviewChip kind="task"><Icon name="task" size={ICON_SIZE.badge} />Add CSV export</PreviewChip> behind a flag, like
+          {' '}<PreviewChip kind="pr"><Icon name="github_pr" size={ICON_SIZE.badge} />#198</PreviewChip>.
           {' '}Empty state: <span className="preview-image-chip inline-flex items-center gap-preview-image-gap h-preview-image-height pl-preview-image-left pr-preview-image-right py-0 border border-line rounded-preview-image bg-surface align-middle [&>span:first-child]:w-preview-thumbnail [&>span:first-child]:h-[1em] [&>span:first-child]:rounded-preview-thumbnail [&>span:first-child]:bg-[linear-gradient(135deg,var(--color-gold-wash),var(--color-blue))] [&>span:last-child]:text-preview-image"><span /><span>export-empty.png</span></span>
         </PreviewBubble>
         <PreviewBubble >
-          On it with <PreviewChip kind="skill"><Icon name="skill" size={12} />pnyx-report-progress</PreviewChip>.
-          {' '}Running <PreviewChip kind="command"><Icon name="terminal" size={12} />/test</PreviewChip> next.
+          On it with <PreviewChip kind="skill"><Icon name="skill" size={ICON_SIZE.badge} />pnyx-report-progress</PreviewChip>.
+          {' '}Running <PreviewChip kind="command"><Icon name="terminal" size={ICON_SIZE.badge} />/test</PreviewChip> next.
         </PreviewBubble>
       </PreviewConversation>
     </Preview>
@@ -309,7 +309,7 @@ export function CardUpdatesPreview({ view }: { view: ViewPreferences }) {
     <Preview>
       <PreviewCard >
         <PreviewTitle >Fix login redirect loop</PreviewTitle>
-        <PreviewMeta ><Icon name="in_progress" size={12} /> In progress · <Icon name="codex" size={12} /> Codex · 4 min</PreviewMeta>
+        <PreviewMeta ><Icon name="in_progress" size={ICON_SIZE.badge} /> In progress · <Icon name="codex" size={ICON_SIZE.badge} /> Codex · 4 min</PreviewMeta>
         {view.lastMessageOnCards && <span className="preview-card-latest pt-1 border-t border-subtle text-meta [&_b]:text-muted [&_b]:font-medium"><b>Latest:</b> Found it: the session cookie is set after the redirect. Writing the fix now.</span>}
       </PreviewCard>
     </Preview>
@@ -335,13 +335,13 @@ export function ConversationPreview({
         <PreviewBubble owner>Why does the export test fail?</PreviewBubble>
         {traces && (
           <PreviewTrace >
-            <Icon name="thinking" size={12} /> Thinking
+            <Icon name="thinking" size={ICON_SIZE.badge} /> Thinking
             {view.thinkingDetails && <pre>{THINKING}</pre>}
           </PreviewTrace>
         )}
         {traces && (
           <PreviewTrace >
-            <Icon name="tool" size={12} /> Ran <code>pnpm test reports</code>
+            <Icon name="tool" size={ICON_SIZE.badge} /> Ran <code>pnpm test reports</code>
             {view.toolDetails && <pre>{'✓ 41 passed  ✗ 1 failed\n  export › empty report'}</pre>}
           </PreviewTrace>
         )}
@@ -634,7 +634,7 @@ function Pill({
   label: string
   helper?: boolean
 }) {
-  return <span className="preview-pill inline-flex items-center gap-1 justify-self-start max-w-full min-w-0 wrap-anywhere py-px px-2 border border-line rounded-full bg-surface whitespace-normal data-helper:border-gold/50 data-helper:text-gold" data-helper={helper || undefined}><Icon name={icon} size={12} />{label}</span>
+  return <span className="preview-pill inline-flex items-center gap-1 justify-self-start max-w-full min-w-0 wrap-anywhere py-px px-2 border border-line rounded-full bg-surface whitespace-normal data-helper:border-gold/50 data-helper:text-gold" data-helper={helper || undefined}><Icon name={icon} size={ICON_SIZE.badge} />{label}</span>
 }
 
 export function HelperPreview({
@@ -676,7 +676,7 @@ export function HelperPreview({
         ]) => (
           <div key={what} className="preview-route-row grid grid-cols-[auto_minmax(0,1fr)] gap-y-1 gap-x-1.5 items-center [&>span:first-child]:col-span-full [&>span:first-child]:text-muted [&>svg]:text-muted">
             <span>{what}</span>
-            <Icon name="arrow_right" size={12} />
+            <Icon name="arrow_right" size={ICON_SIZE.badge} />
             {who}
           </div>
         ))}
@@ -697,11 +697,11 @@ export function AgentPreview({ agent }: { agent: Partial<AgentConfig> }) {
     <Preview>
       <div className="preview-lanes grid gap-1.5 text-meta">
         <PreviewLane data-on>
-          <b><Icon name="hydra" size={14} />Hydra, the orchestrator</b>
+          <b><Icon name="hydra" size={ICON_SIZE.inline} />Hydra, the orchestrator</b>
           <span>{details}</span>
         </PreviewLane>
         <PreviewLane >
-          <b><Icon name="workers" size={14} />Workers</b>
+          <b><Icon name="workers" size={ICON_SIZE.inline} />Workers</b>
           <span>Picked per task by heads dispatch, not by this setting.</span>
         </PreviewLane>
       </div>

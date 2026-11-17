@@ -2,7 +2,7 @@ import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import { memo, useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { commentUpdates, groupComments, orderedComments, sendableComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
@@ -25,7 +25,7 @@ export function CommentsPill({
     <div className="composer-comments group/comments inline-flex self-start text-chat data-armed:[&_.card-x]:w-auto data-armed:[&_.card-x]:px-1.75 data-armed:[&_.card-x]:text-red" data-armed={armed || undefined}>
       <AttachmentCard
         tone="comments"
-        slot={<Icon name="comments" size={13} />}
+        slot={<Icon name="comments" size={ICON_SIZE.inline} />}
         label={`Comments · ${count}`}
         title="Show comments"
         open={open}

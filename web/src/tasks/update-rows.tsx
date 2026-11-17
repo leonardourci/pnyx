@@ -3,7 +3,7 @@ import { DisclosureChevron } from '#web-shared/ui/disclosure-chevron.tsx'
 import type { MouseEvent, ReactNode } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { CollapsibleText, Disclosure } from '#web-shared/ui/disclosure.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { LINK_ICONS, LinkChip } from './card-links.tsx'
 import type { TaskUpdate, UpdateKind } from '#tasks/updates.ts'
@@ -104,7 +104,7 @@ function UpdateIcon({
 
   return (
     <Tooltip content={label}>
-      <span className={`update-icon update-icon-${kind} inline-flex items-center justify-center size-5.5 rounded-md ${appearance}`} role="img" aria-label={label}><Icon name={icon} size={14} /></span>
+      <span className={`update-icon update-icon-${kind} inline-flex items-center justify-center size-5.5 rounded-md ${appearance}`} role="img" aria-label={label}><Icon name={icon} size={ICON_SIZE.inline} /></span>
     </Tooltip>
   )
 }

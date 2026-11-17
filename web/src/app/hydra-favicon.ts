@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
-import { identityGlyph } from '#web-shared/ui/icon.tsx'
+import { identityGlyph } from '#web-shared/icons.tsx'
 
 // The tab shows the open Hydra's icon, drawn in the theme's gold so it reads on light and dark tab bars.
 export function useHydraFavicon({ icon = HYDRA_MARK }: { icon?: string }) {

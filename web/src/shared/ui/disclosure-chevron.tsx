@@ -1,8 +1,8 @@
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 export function DisclosureChevron({
   expanded,
-  size = 14,
+  size = ICON_SIZE.inline,
 }: {
   expanded: boolean
   size?: number

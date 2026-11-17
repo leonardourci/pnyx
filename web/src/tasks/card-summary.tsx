@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Card, SavedLabelColor } from '#tasks/model.ts'
 import { Label } from '#web-shared/ui/label.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { harnessName } from '#web-workers/view.ts'
 import type { ObservedStatus } from './observed-status.ts'

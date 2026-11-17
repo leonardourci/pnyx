@@ -4,7 +4,7 @@ import { ATTACHMENT_NAME, imageLine, imageType } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 // A Hydra serves its stored attachments and the images inside its task copies; any other path has no source.
 export function attachmentSource({ path }: { path: string }) {
@@ -135,12 +135,12 @@ export const ImageThumb = memo(function ImageThumb({ path }: { path: string }) {
   const src = attachmentSource({ path })
 
   if (!src || failed) {
-    return <Icon name="image" size={13} />
+    return <Icon name="image" size={ICON_SIZE.inline} />
   }
 
   return (
     <>
-      {!loaded && <Icon name="image" size={13} />}
+      {!loaded && <Icon name="image" size={ICON_SIZE.inline} />}
       <img
         src={src}
         alt=""

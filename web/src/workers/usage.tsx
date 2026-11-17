@@ -1,6 +1,6 @@
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import type { AgentUsage } from '#workers/provider.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { UsageRow, UsageStack, UsageText, UsageSection, USAGE_TONE } from './usage-ui.tsx'
 
 const WARNING_PERCENT = 70
@@ -141,7 +141,7 @@ export function Usage({
     <span className="shared-usage flex flex-col w-full max-w-(--spacing-usage-content) p-3.25 gap-2.5">
       <UsageSection className="shared-context">
         <UsageRow variant="header" className="shared-header">
-          <UsageRow variant="icon" className="usage-icon-line"><Icon name="context" size={13} /><strong>Context window</strong></UsageRow>
+          <UsageRow variant="icon" className="usage-icon-line"><Icon name="context" size={ICON_SIZE.inline} /><strong>Context window</strong></UsageRow>
           {percent !== undefined && <span className="shared-context-percent text-usage-detail">{percent}% used</span>}
         </UsageRow>
         {context ? (
@@ -156,18 +156,18 @@ export function Usage({
             {context.window !== undefined && (
               <UsageText className="context-capacity">{tokens({ count: context.window })} token capacity</UsageText>
             )}
-            <UsageRow variant="source" className="shared-source"><Icon name={sourceIcon} size={13} />{source}</UsageRow>
+            <UsageRow variant="source" className="shared-source"><Icon name={sourceIcon} size={ICON_SIZE.inline} />{source}</UsageRow>
           </UsageStack>
         ) : <span className="context-empty text-xs opacity-70 py-1" title={usage?.unavailable}>Usage unavailable</span>}
       </UsageSection>
       <UsageSection divided className="shared-plan">
         <UsageRow variant="header" className="shared-header">
-          <UsageRow variant="icon" className="usage-icon-line"><Icon name="effort" size={13} /><strong>Plan limits</strong></UsageRow>
+          <UsageRow variant="icon" className="usage-icon-line"><Icon name="effort" size={ICON_SIZE.inline} /><strong>Plan limits</strong></UsageRow>
           {refresh && (
             <IconButton
               icon="reset"
               size="usage"
-              iconSize={13}
+              iconSize={ICON_SIZE.inline}
               className="plan-refresh"
               label="Refresh plan limits"
               aria-disabled={refreshing}
@@ -176,7 +176,7 @@ export function Usage({
             />
           )}
         </UsageRow>
-        <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={13} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge text-usage-detail border border-usage-badge px-1.75 py-px rounded-compact leading-[1.4] capitalize">{who.plan}</span>}</UsageRow>
+        <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={ICON_SIZE.inline} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge text-usage-detail border border-usage-badge px-1.75 py-px rounded-compact leading-[1.4] capitalize">{who.plan}</span>}</UsageRow>
         {who?.model && <UsageText className="shared-sub">{who.model}</UsageText>}
         {windows.map(window => {
           const windowTone = usageTone({ percent: window.used })
@@ -210,7 +210,7 @@ export function Usage({
               <UsageBar percent={window.used} label={`${window.label} plan use`} />
               {reset && (
                 <UsageRow variant="reset" className="shared-reset">
-                  <Icon name="reminder" size={11} />
+                  <Icon name="reminder" size={ICON_SIZE.badge} />
                   <span>Resets in {reset.relative}</span>
                   <span>·</span>
                   <time dateTime={reset.at}>{reset.date}</time>
@@ -224,7 +224,7 @@ export function Usage({
       </UsageSection>
       {showFooter && (
         <UsageSection divided className="shared-footer">
-          <UsageRow variant="icon" className="usage-icon-line"><Icon name={footerIcon} size={13} /><span>{footerTitle}</span><b>{footerValue}</b></UsageRow>
+          <UsageRow variant="icon" className="usage-icon-line"><Icon name={footerIcon} size={ICON_SIZE.inline} /><span>{footerTitle}</span><b>{footerValue}</b></UsageRow>
           <UsageText className="shared-sub">{footerSource}</UsageText>
         </UsageSection>
       )}

@@ -7,7 +7,7 @@ import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { useModels } from '#web-workers/agent-picker.tsx'
 import { resolvedAccount, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 
@@ -165,13 +165,13 @@ function HeldMessageCard({
           aria-describedby={captionId}
           onClick={() => choose({ choice: 'inscribe' })}
         >
-          <Icon name="inscribe" size={16} />
+          <Icon name="inscribe" size={ICON_SIZE.control} />
           Inscribe +{' '}
-          <Icon name="compact" size={16} />
+          <Icon name="compact" size={ICON_SIZE.control} />
           compact
         </Button>
         <Button variant="surface" disabled={actionsDisabled} onClick={() => choose({ choice: 'compact' })}>
-          <Icon name="compact" size={16} />
+          <Icon name="compact" size={ICON_SIZE.control} />
           Compact only
         </Button>
         <Button

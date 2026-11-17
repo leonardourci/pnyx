@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { questionPreview, type AnswerLead } from './answer-leads.ts'
 
@@ -23,7 +23,7 @@ function AnswerChoices({ lead }: { lead: AnswerLead }) {
 
         return (
           <li key={option} aria-current={chosen || undefined}>
-            {chosen && <span aria-hidden="true"><Icon name="check" size={12} /></span>}{option}
+            {chosen && <span aria-hidden="true"><Icon name="check" size={ICON_SIZE.badge} /></span>}{option}
             {lead.recommended === i + 1 && <span className="answer-recommended font-normal italic"> · recommended</span>}
           </li>
         )

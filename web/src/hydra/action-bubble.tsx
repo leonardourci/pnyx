@@ -1,4 +1,4 @@
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
@@ -21,7 +21,7 @@ const shownKey = ({ value }: { value: Shown }) => {
 
 const ShownLabel = ({ value }: { value: Shown }) => (
   <>
-    {value.icon && <Icon name={value.icon} size={13} />}
+    {value.icon && <Icon name={value.icon} size={ICON_SIZE.inline} />}
     <span className="action-text flex items-center gap-1 min-w-0 overflow-hidden">
       {value.sentence.map((
         part,

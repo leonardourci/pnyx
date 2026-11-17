@@ -1,7 +1,7 @@
 import { DraftChip } from './draft-chip.tsx'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Fragment,useLayoutEffect,type ReactNode,type RefObject } from 'react'
 import { ImageThumb } from './attached-image.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
@@ -97,7 +97,7 @@ function DraftCard({
   const image = chip.kind === 'image'
   const loading = image && isPendingImage({ path: chip.value })
   const stored = image && !loading
-  const slot = stored ? <ImageThumb path={chip.value} /> : <Icon name={image ? 'image' : 'file'} size={13} />
+  const slot = stored ? <ImageThumb path={chip.value} /> : <Icon name={image ? 'image' : 'file'} size={ICON_SIZE.inline} />
   const label = loading ? <>{chip.name}<UploadBar fraction={progress} /></> : chip.name
 
   return (

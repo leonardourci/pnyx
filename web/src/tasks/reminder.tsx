@@ -1,4 +1,4 @@
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { useId, useRef, useState } from 'react'
 import type { Card } from '#tasks/model.ts'
 import { Button, Input, DATE_EDITOR } from '#web-shared/ui/controls.tsx'
@@ -29,7 +29,7 @@ export function ReminderLabel({ card }: { card: Card }) {
   const repeat = card.reminder.repeat
   const cadence = repeat ? ` · every ${reminderIntervalText({ milliseconds: repeat.everyMs })}, until ${STOP_LABELS[repeat.until]}` : ''
 
-  return <span className="reminder-label inline-flex items-center gap-1.25 mt-2 text-gold text-meta" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}{cadence}</span>
+  return <span className="reminder-label inline-flex items-center gap-1.25 mt-2 text-gold text-meta" title={date.toISOString()}><Icon name="reminder" size={ICON_SIZE.inline} />reminds you {when}{cadence}</span>
 }
 
 export interface ReminderDraft {

@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react'
 import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 export function Highlight({
   text,
@@ -55,7 +55,7 @@ export function SettingRow({
 }) {
   return (
     <div className="setting-row group/setting grid grid-cols-[var(--spacing-setting-icon)_minmax(0,1fr)] gap-(--settings-column-gap) items-start px-5 py-4 border-t border-subtle data-preview:grid-cols-[var(--spacing-setting-icon)_minmax(0,1fr)_var(--spacing-setting-preview)] max-[760px]:data-preview:grid-cols-[var(--spacing-setting-icon)_minmax(0,1fr)]" data-changed={changed || undefined} data-preview={preview ? '' : undefined}>
-      <span className="setting-icon grid place-items-center size-setting-icon border border-subtle rounded-control bg-raised text-muted group-data-changed/setting:border-gold-line group-data-changed/setting:bg-gold-wash group-data-changed/setting:text-gold"><Icon name={icon} size={16} /></span>
+      <span className="setting-icon grid place-items-center size-setting-icon border border-subtle rounded-control bg-raised text-muted group-data-changed/setting:border-gold-line group-data-changed/setting:bg-gold-wash group-data-changed/setting:text-gold"><Icon name={icon} size={ICON_SIZE.control} /></span>
       <div className="setting-body min-w-0 [&_mark]:bg-gold/28 [&_mark]:text-inherit [&_mark]:rounded-xs [&_mark]:px-px [&_mark]:py-0">
         <div className="setting-head flex items-center flex-wrap gap-2 has-[.setting-action]:flex-nowrap [&:has(.setting-action)>.setting-name]:flex-1 [&:has(.setting-action)>.setting-name]:min-w-0 [&:has(.setting-action)>.setting-name]:wrap-anywhere">
           <span className="setting-name text-ui font-semibold"><Highlight text={label} terms={terms} /></span>
@@ -66,7 +66,7 @@ export function SettingRow({
         {children && <div className="setting-control min-w-0">{children}</div>}
         {changed && reset && (
           <Button className="setting-reset min-h-0 mt-1.5 p-0 gap-1 bg-transparent text-gold text-meta enabled:hover:bg-transparent enabled:hover:underline" onClick={reset}>
-            <Icon name="reset" size={12} />Reset to default{resetTo ? ` (${resetTo})` : ''}
+            <Icon name="reset" size={ICON_SIZE.badge} />Reset to default{resetTo ? ` (${resetTo})` : ''}
           </Button>
         )}
       </div>

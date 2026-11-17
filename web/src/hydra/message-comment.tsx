@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useEffect,useRef } from 'react'
 import type { ChatDrafts } from './chat-drafts.ts'
@@ -177,7 +178,7 @@ export function MessageComment({
           <IconButton
             size="small"
             icon="external"
-            iconSize={14}
+            iconSize={ICON_SIZE.inline}
             label="Show in chat"
             title="Show in chat"
             onClick={show}
@@ -186,7 +187,7 @@ export function MessageComment({
         <IconButton
           size="small"
           icon="close"
-          iconSize={14}
+          iconSize={ICON_SIZE.inline}
           label="Remove comment"
           onClick={remove}
         />

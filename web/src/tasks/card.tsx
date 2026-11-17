@@ -27,7 +27,7 @@ import { harnessName } from '#web-workers/view.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
 
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { CardState } from './card-state.tsx'
@@ -644,7 +644,7 @@ export const HydraCard = memo(function HydraCard({
           label={`Move ${card.title}`}
           disabled={selected || !connected}
           icon="grip"
-          iconSize={15}
+          iconSize={ICON_SIZE.control}
           size="compact"
         />
         <Tooltip content={modal ? 'Close task modal' : 'Open as a modal'}>
@@ -662,7 +662,7 @@ export const HydraCard = memo(function HydraCard({
               }
             }}
             icon="open"
-            iconSize={15}
+            iconSize={ICON_SIZE.control}
             size="compact"
           />
         </Tooltip>
@@ -682,7 +682,7 @@ export const HydraCard = memo(function HydraCard({
               ],
             }).catch((error: Error) => notify({ text: error.message }))}
             icon="pause"
-            iconSize={15}
+            iconSize={ICON_SIZE.control}
             size="compact"
           />
         </Tooltip>
@@ -704,7 +704,7 @@ export const HydraCard = memo(function HydraCard({
               }
             }}
             icon="stop"
-            iconSize={12}
+            iconSize={ICON_SIZE.badge}
             size="compact"
           />
         )}
@@ -724,7 +724,7 @@ export const HydraCard = memo(function HydraCard({
                 ],
               }).catch((error: Error) => notify({ text: error.message }))}
               icon="chevron_right"
-              iconSize={15}
+              iconSize={ICON_SIZE.control}
               size="compact"
             />
           </Tooltip>
@@ -735,7 +735,7 @@ export const HydraCard = memo(function HydraCard({
             disabled={!connected || !!editing}
             onClick={() => edit()}
             icon="renamed"
-            iconSize={15}
+            iconSize={ICON_SIZE.control}
             size="compact"
           />
         </Tooltip>
@@ -745,7 +745,7 @@ export const HydraCard = memo(function HydraCard({
             disabled={!connected}
             onClick={() => setReminding({ version: ++reminderVersion.current })}
             icon="reminder"
-            iconSize={15}
+            iconSize={ICON_SIZE.control}
             size="compact"
           />
         </Tooltip>
@@ -781,7 +781,7 @@ export const HydraCard = memo(function HydraCard({
               }
             }}
             icon="review"
-            iconSize={15}
+            iconSize={ICON_SIZE.control}
             size="compact"
           />
         </Tooltip>

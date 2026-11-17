@@ -6,7 +6,7 @@ import type { Attention, PermissionRequest } from '#workers/model.ts'
 import { permissionDetails } from '#workers/permission-rules.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { Form, Questions } from '#web-tasks/questions.tsx'
 
@@ -106,7 +106,7 @@ export function InlinePermissions({
 
         return (
           <QuestionPanel key={request.id} answered={!pending} aria-label={request.questions ? 'Agent question' : 'Tool permission'}>
-            <QuestionHeading ><Icon name="agent" size={14} />{title({ request })}</QuestionHeading>
+            <QuestionHeading ><Icon name="agent" size={ICON_SIZE.inline} />{title({ request })}</QuestionHeading>
             {details.length > 0 && (
               <dl className="permission-details grid gap-1 m-0 text-ui [&>div]:grid [&>div]:grid-cols-[var(--spacing-permission-label)_minmax(0,1fr)] [&>div]:gap-2 [&_dt]:text-muted [&_dd]:m-0 [&_dd]:wrap-anywhere [&_dd]:whitespace-pre-wrap [&_code]:font-mono">
                 {details.map(row => (

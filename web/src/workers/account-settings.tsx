@@ -4,7 +4,7 @@ import { ACCOUNT_LABEL_MAX, accountLabel, accountRegistration, homeFolderValid, 
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { Button, Input, Select } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SettingRow, SettingsRows, SettingField, SETTING_STACK } from '#web-shared/ui/setting-row.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { PROVIDERS } from './account-model-picker.tsx'
@@ -308,7 +308,7 @@ export function AccountSettings({
                       folder: account.folder,
                     })
                   }}
-                >{editing ? <><Icon name="check" size={14} />Done</> : <><Icon name="edit" size={14} />Edit</>}
+                >{editing ? <><Icon name="check" size={ICON_SIZE.inline} />Done</> : <><Icon name="edit" size={ICON_SIZE.inline} />Edit</>}
                 </Button>
               )}
             >{editing && editor}
@@ -336,7 +336,7 @@ export function AccountSettings({
                   folder: '',
                 })
               }}
-            ><Icon name="plus" size={16} />Add account
+            ><Icon name="plus" size={ICON_SIZE.control} />Add account
             </Button>
           </div>
         )}

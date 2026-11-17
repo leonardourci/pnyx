@@ -2,7 +2,7 @@ import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useEffect, useState, type ComponentProps } from 'react'
 import { bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
 import { Button, useBusy } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { capturedKey } from './key-capture.ts'
 import { useKeyAction, useKeyboard } from './keyboard-registry.tsx'
 import { groupOf, keyActionsMatching } from './key-search.ts'
@@ -171,7 +171,7 @@ export function KeyRows({
                       <IconButton
                         size="key"
                         icon="close"
-                        iconSize={12}
+                        iconSize={ICON_SIZE.badge}
                         label={`Remove ${key} from ${a.label}`}
                         disabled={busy || keys.length < 2}
                         title={keys.length < 2 ? 'An action keeps at least one key' : undefined}
@@ -190,7 +190,7 @@ export function KeyRows({
                         onClick={() => {
                           setCapturing(a.id); setError('')
                         }}
-                      ><Icon name="plus" size={14} />
+                      ><Icon name="plus" size={ICON_SIZE.inline} />
                       </KeyAction>
                     )}
                   {customized && (

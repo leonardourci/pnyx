@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { OverlaySurface } from './overlay-surface.tsx'
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { IconButton } from './icon-button.tsx'
@@ -77,7 +78,7 @@ export function Dialog({
         <IconButton
           size="small"
           icon="close"
-          iconSize={14}
+          iconSize={ICON_SIZE.inline}
           label="Close"
           onClick={close}
         />

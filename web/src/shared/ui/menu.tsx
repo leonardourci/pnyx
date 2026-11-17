@@ -1,5 +1,5 @@
 import { FloatingPanel } from './floating-panel.tsx'
-import { Icon } from './icon.tsx'
+import { Icon } from '#web-shared/icons.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 

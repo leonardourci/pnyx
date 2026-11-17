@@ -19,7 +19,7 @@ import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SettingRow, SettingStack, SettingsRows } from '#web-shared/ui/setting-row.tsx'
 import { useSharedSettings } from './shared-settings.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
@@ -733,7 +733,7 @@ export function SettingsPage({
             aria-pressed={onlyChanged}
             onClick={() => setOnlyChanged(current => !current)}
           >
-            <Icon name="edit" size={14} />Changed{changed.size > 0 && <span className="settings-chip-count text-gold font-semibold">{changed.size}</span>}
+            <Icon name="edit" size={ICON_SIZE.inline} />Changed{changed.size > 0 && <span className="settings-chip-count text-gold font-semibold">{changed.size}</span>}
           </Chip>
           {SETTINGS_SECTIONS.map(item => (
             <Chip
@@ -742,7 +742,7 @@ export function SettingsPage({
               data-zero={(filtering && !counts[item.id]) || undefined}
               onClick={() => goTo({ id: item.id })}
             >
-              <Icon name={item.icon} size={14} />{item.label}
+              <Icon name={item.icon} size={ICON_SIZE.inline} />{item.label}
               {filtering && counts[item.id] ? <span className="settings-chip-count text-gold font-semibold">{counts[item.id]}</span> : null}
             </Chip>
           ))}
@@ -756,7 +756,7 @@ export function SettingsPage({
           aria-labelledby={`settings-${item.id}-title`}
         >
           <h2 id={`settings-${item.id}-title`}>
-            <span className="settings-section-icon grid place-items-center size-7 border border-gold-line rounded-control bg-gold-wash text-gold"><Icon name={item.icon} size={16} /></span>{item.label}
+            <span className="settings-section-icon grid place-items-center size-7 border border-gold-line rounded-control bg-gold-wash text-gold"><Icon name={item.icon} size={ICON_SIZE.control} /></span>{item.label}
           </h2>
           {'note' in item && <p className="settings-section-note mt-0.5 mx-0 mb-2.5 text-muted text-ui">{item.note}</p>}
           <SettingsRows>

@@ -4,16 +4,13 @@ import type { AgentConfig } from '#workers/model.ts'
 import { harnessControls } from '#workers/controls.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button, type Option } from '#web-shared/ui/controls.tsx'
-import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, hasIcon, Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { PickerField, PickerShell, useModels, type CellMark } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
 import { AccountModelPicker, type Selection } from './account-model-picker.tsx'
 import { AgentSettingsMenu, useFolded, type FastSetting, type SettingChoice } from './agent-settings-menu.tsx'
 import { hydraDefault, resolvedAccount, useHeadsDispatch } from './heads-dispatch.ts'
-
-// The composer's control icons, one size so they read alike.
-export const COMPOSER_ICON = 18
 
 const PICKERS_CLASS = 'hydra-agent-pickers flex flex-1 flex-wrap items-center gap-0.5 min-w-0 [&_.picker-field]:block [&_.picker-field]:min-w-0 [&_.picker-field]:text-meta [&_.picker-field>span]:hidden [&_.select>.button]:min-h-6.5 [&_.select>.button]:gap-0.75 [&_.select>.button]:border-0 [&_.select>.button]:py-0.5 [&_.select>.button]:px-1.25 [&_.select>.button]:bg-transparent [&_.select>.button]:text-muted [&_.select>.button]:text-meta [&_.select-menu]:absolute [&_.select-menu]:top-auto [&_.select-menu]:bottom-[calc(100%+5px)] [&_.select]:min-w-0 [&_.select>.button>svg:not(:last-child)]:text-ink [&_:is(.select>.button,.account-model-picker>.button,.fast-toggle):is(:hover,:focus-visible):not(:disabled)]:bg-hover data-folded:relative [&[data-folded]>.agent-pickers-row]:absolute [&[data-folded]>.agent-pickers-row]:invisible [&[data-folded]>.agent-pickers-row]:pointer-events-none in-[.settings-page]:gap-(--settings-column-gap) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:min-h-(--agent-control-h) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:text-ui in-[.settings-page]:[&_.fast-toggle]:w-(--agent-control-h)'
 
@@ -265,7 +262,7 @@ export function AgentPickers({
       {choices.map(choice => (
         <PickerField
           key={choice.field}
-          iconSize={COMPOSER_ICON}
+          iconSize={ICON_SIZE.toolbar}
           label={choice.field === 'mode' ? 'Permissions' : 'Effort'}
           value={choice.value}
           options={choice.options}
@@ -294,7 +291,7 @@ export function AgentPickers({
             disabled={locked}
             onClick={toggleFast}
           >
-            <Icon name={agent.fast ? 'fast-on' : 'fast'} size={COMPOSER_ICON} />
+            <Icon name={agent.fast ? 'fast-on' : 'fast'} size={ICON_SIZE.toolbar} />
           </Button>
         </Tooltip>
       )}
@@ -322,7 +319,7 @@ export function AgentPickers({
           choices={choices}
           fast={fast}
           disabled={locked}
-          iconSize={COMPOSER_ICON}
+          iconSize={ICON_SIZE.toolbar}
         />
       )}
       {alert}

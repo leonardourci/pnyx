@@ -4,7 +4,7 @@ import type { SavedLabelColor } from '#tasks/model.ts'
 import type { SkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { skillIcon } from './skill-icons.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
 
 export function SkillBadge({
@@ -25,7 +25,7 @@ export function SkillBadge({
       // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
       onMouseDown={event => event.preventDefault()}
     >
-      <ChipIcon>{ICON_SPACE}<Icon name={icon} size={14} /></ChipIcon>{CHIP_JOIN}
+      <ChipIcon>{ICON_SPACE}<Icon name={icon} size={ICON_SIZE.inline} /></ChipIcon>{CHIP_JOIN}
       {skill.project && (
         <><Label
           project
@@ -46,7 +46,7 @@ export function SkillBadge({
               aria-label={`Remove /${skill.name}`}
               onClick={remove}
             >
-              <Icon name="close" size={12} />
+              <Icon name="close" size={ICON_SIZE.badge} />
             </Button>
           </span>
         </>

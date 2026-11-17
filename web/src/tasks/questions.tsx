@@ -8,7 +8,7 @@ import type { Card } from '#tasks/model.ts'
 import type { Attention, FormField, Question } from '#workers/model.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { markdownText } from '#web-hydra/markdown-text.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { Command } from '#web-app/connection.ts'
 
 const QUESTION_FIELD_CLASS = 'ask-question border-0 p-0 m-0 flex flex-col gap-1 min-w-0 [&_legend]:p-0 [&_legend]:mb-1 [&_legend]:font-chat [&_legend]:text-meta [&_legend]:leading-question [&_legend]:font-normal [&_legend]:not-italic [&_legend]:text-ink'
@@ -429,7 +429,7 @@ export function InlineQuestions({
         return (
           <QuestionPanel key={requestId({ request })} answered={!!request.answered} aria-label={TITLE[request.kind] ?? 'Agent request'}>
             <QuestionHeading>
-              <Icon name="agent" size={14} />
+              <Icon name="agent" size={ICON_SIZE.inline} />
               {TITLE[request.kind] ?? 'Agent request'}
             </QuestionHeading>
             {request.kind !== 'question' && <CollapsibleText text={request.text ?? ''} />}

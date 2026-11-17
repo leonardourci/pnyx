@@ -2,7 +2,7 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import type { OracleWorkspace } from './workspaces.ts'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { type ReactNode } from 'react'
 import { ASK_BADGE,type Asking } from './ask-mode.ts'
@@ -39,7 +39,7 @@ function Option({
       onMouseDown={event => event.preventDefault()}
       onClick={pick}
     >
-      <Icon name={icon} size={15} />
+      <Icon name={icon} size={ICON_SIZE.control} />
       <span className="oracle-option-label min-w-0 flex-1 truncate text-ink"><Highlight text={label} terms={terms} /></span>
       {meta && <span className="oracle-option-meta flex-none max-w-[45%] truncate text-meta">{meta}</span>}
     </div>

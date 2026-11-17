@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import type { ReactNode } from 'react'
 import { OverlaySurface } from '#web-shared/ui/overlay-surface.tsx'
 import { useMemo } from 'react'
@@ -992,7 +993,7 @@ export function Oracle({
       <IconButton
         className="oracle-trigger"
         icon="oracle"
-        iconSize={15}
+        iconSize={ICON_SIZE.control}
         label="Oracle"
         aria-haspopup="dialog"
         aria-expanded={open}

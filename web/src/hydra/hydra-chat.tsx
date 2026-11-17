@@ -15,7 +15,7 @@ import { RECENT_THREAD_PAGES, pageCount } from '#hydra/thread-history.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { InlineQuestions } from '#web-tasks/questions.tsx'
 import { AnsweredQuestions } from '#web-tasks/answered-questions.tsx'
@@ -1264,7 +1264,7 @@ export function HydraChat({
                 {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
               </p>
             )}
-            {errors.map(a => <p key={a.key} className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert"><Icon name="error" size={16} />{a.text}</p>)}
+            {errors.map(a => <p key={a.key} className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert"><Icon name="error" size={ICON_SIZE.control} />{a.text}</p>)}
             {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
             {card && (
               <InlinePermissions
@@ -1314,7 +1314,7 @@ export function HydraChat({
                 })
               }}
             >
-              <Icon name="chevron_down" size={18} />
+              <Icon name="chevron_down" size={ICON_SIZE.toolbar} />
             </Button>
           </>
         )}

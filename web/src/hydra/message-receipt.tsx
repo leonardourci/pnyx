@@ -1,5 +1,5 @@
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { receiptLines, type ReceiptLine } from './receipt-lines.ts'
 
@@ -13,7 +13,7 @@ function Receipt({ line }: { line: ReceiptLine }) {
   const appearance = tones[line.tone] ?? ''
   const shown = (
     <span className={`receipt-line inline-flex items-center gap-1 receipt-${line.tone} ${appearance}`} tabIndex={line.hint ? 0 : undefined}>
-      {line.icon && <Icon name={line.icon} size={14} />}
+      {line.icon && <Icon name={line.icon} size={ICON_SIZE.inline} />}
       {line.text}
     </span>
   )

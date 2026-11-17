@@ -1,16 +1,13 @@
 import { ModelPicker, ModelMenu, ModelResults } from './model-menu.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { Button, type Option } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { MenuOption } from '#web-shared/ui/menu-option.tsx'
 import {
   accountName,
-  MENU_MARK_ICON,
-  MENU_ROW_ICON,
   MenuHead,
   providerFor,
   SelectionMenu,
-  TRIGGER_CHEVRON,
   type Provider,
   type Selection,
 } from './account-model-picker.tsx'
@@ -226,9 +223,9 @@ function SettingsMenuRow({
         disabled={disabled}
         onClick={onClick}
       >
-        <Icon name={icon} size={MENU_ROW_ICON} />
+        <Icon name={icon} size={ICON_SIZE.toolbar} />
         <span className="agent-setting-text flex items-baseline gap-1.5 [&>small]:text-muted [&>small]:text-ui [&>small]:truncate"><span>{name}</span><small>{value}</small></span>
-        {drills && <Icon name="chevron_right" size={MENU_MARK_ICON} />}
+        {drills && <Icon name="chevron_right" size={ICON_SIZE.control} />}
       </Button>
     </MenuOption>
   )
@@ -265,9 +262,9 @@ function ChoiceList({
                 back()
               }}
             >
-              {option.icon && <Icon name={option.icon} size={MENU_ROW_ICON} />}
+              {option.icon && <Icon name={option.icon} size={ICON_SIZE.toolbar} />}
               <span>{option.label}</span>
-              {current && <Icon name="check" size={MENU_MARK_ICON} />}
+              {current && <Icon name="check" size={ICON_SIZE.control} />}
             </Button>
           </MenuOption>
         )
@@ -396,7 +393,7 @@ export function AgentSettingsMenu({
     <ModelPicker
       label={`${label}: ${summary}`}
       className="agent-settings-menu"
-      chevronSize={TRIGGER_CHEVRON}
+      chevronSize={ICON_SIZE.inline}
       disabled={disabled}
       trigger={(
         <>

@@ -1,7 +1,7 @@
 import { motion } from 'motion/react'
 import type { useSortItem } from '#web-shared/ui/sortable.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { ProjectCounts } from './project-counts.tsx'
 import type { ProjectColumnData } from './project-view.ts'
@@ -35,7 +35,7 @@ export function ProjectColumnHeader({
           data-key-scope="hydra"
           aria-label={`${folded ? 'Unfold' : 'Fold'} ${column.title}`}
           onClick={fold}
-        ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={15} /><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
+        ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} /><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
         </Button>
         {!folded && <IconButton icon="plus" label={`New task in ${column.title}`} onClick={create} />}
       </div>

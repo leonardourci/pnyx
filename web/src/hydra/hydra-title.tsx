@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { HYDRA_ICONS as NAME_ICONS, HYDRA_MARK, HYDRA_NAME_MAX } from '#hydra/hydra-names.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
 import { Input } from '#web-shared/ui/controls.tsx'
 import { hydraTitle } from '#web-app/view.ts'
@@ -19,7 +19,7 @@ export interface HydraIdentity {
 export function HydraLabel({
   name,
   icon,
-  size = 20,
+  size = ICON_SIZE.heading,
 }: {
   name: string
   icon?: string
@@ -61,7 +61,7 @@ function editorNote({
 export function HydraNameEditor({
   saved,
   taken,
-  iconSize = 20,
+  iconSize = ICON_SIZE.heading,
   save,
   cancel,
 }: {

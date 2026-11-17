@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SentencePart } from './action-bubble.tsx'
 import type { PnyxLookup } from './pnyx-action.ts'
 import { progressLabel, type TraceRow } from './progress-rows.ts'
@@ -59,7 +59,7 @@ export function ProgressTrace({
       open={open}
     >
       <summary className="flex items-center gap-2 min-w-0 py-1 px-0 cursor-pointer list-none [&::-webkit-details-marker]:hidden [&_strong]:shrink-0 [&_strong]:font-medium [&_span]:min-w-0 [&_span]:overflow-hidden [&_span]:text-ellipsis [&_span]:whitespace-nowrap [&_span]:opacity-80 [&>svg]:bg-raised [&>svg]:rounded-full [&>svg]:size-5 [&>svg]:p-0.75">
-        <Icon name={label.icon} size={14} />
+        <Icon name={label.icon} size={ICON_SIZE.inline} />
         <span className="trace-label">{words}</span>
         <CopyButton className="trace-copy ml-auto opacity-0 group-has-[:is(summary,.trace-summary):is(:hover,:focus-within)]/trace:opacity-100 [@media(hover:none)]:opacity-100" label="Copy" text={() => copied} />
       </summary>

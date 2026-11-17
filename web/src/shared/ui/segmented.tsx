@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useBusy } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 export interface SegmentedOption {
   value: string
@@ -75,7 +75,7 @@ export function Segmented({
           tabIndex={index === chosen ? 0 : -1}
           onClick={() => choose({ index })}
         >
-          {option.icon && <Icon name={option.icon} size={14} />}
+          {option.icon && <Icon name={option.icon} size={ICON_SIZE.inline} />}
           {option.label}
         </button>
       ))}

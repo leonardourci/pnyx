@@ -1,12 +1,12 @@
 import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Popover } from './popover.tsx'
 
 export function IconPicker({
   value,
   choices,
   label,
-  size = 16,
+  size = ICON_SIZE.control,
   pick,
 }: {
   value: string
@@ -34,7 +34,7 @@ export function IconPicker({
               onClick={() => {
                 pick({ icon }); close()
               }}
-            ><Icon name={icon} size={22} />
+            ><Icon name={icon} size={ICON_SIZE.brand} />
             </Button>
           ))}
         </div>

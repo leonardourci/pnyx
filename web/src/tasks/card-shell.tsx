@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import type { ComponentProps, ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
@@ -56,7 +57,7 @@ export function CardHeading({
       {hasChildren && (
         <IconButton
           icon={childrenOpen ? 'chevron_up' : 'chevron_down'}
-          iconSize={14}
+          iconSize={ICON_SIZE.inline}
           size="toggle"
           className="subtask-toggle"
           label={`Sub-tasks of ${title}`}

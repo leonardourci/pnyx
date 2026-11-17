@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { clock } from '#web-hydra/chat.ts'
@@ -37,7 +37,7 @@ export function UpgradeHint({
       below
       label="Upgrade available"
       className="upgrade-hint shrink-0 [&_.tooltip-anchor]:items-center [&_.tooltip-anchor]:gap-1 [&>.button]:inline-flex [&>.button]:items-center [&>.button]:gap-1 [&>.button]:py-px [&>.button]:px-2 [&>.button]:border [&>.button]:border-gold-line [&>.button]:rounded-full [&>.button]:bg-gold-wash [&>.button]:text-gold [&>.button]:font-medium [&>.button]:text-meta [&>.button]:font-sans [&>.button]:tracking-normal [&>.button]:whitespace-nowrap max-[760px]:[&>.button]:p-0.75 [&_.popover-panel]:w-upgrade-menu"
-      trigger={<Tooltip content="Upgrade available"><Icon name="upgrade" size={14} /><span className="upgrade-hint-label max-[760px]:hidden">Upgrade</span></Tooltip>}
+      trigger={<Tooltip content="Upgrade available"><Icon name="upgrade" size={ICON_SIZE.inline} /><span className="upgrade-hint-label max-[760px]:hidden">Upgrade</span></Tooltip>}
     >
       {({ close }) => (
         <div className="upgrade-popover grid gap-2 text-ui leading-detail font-sans tracking-normal [&_strong]:font-semibold [&_p]:m-0 [&_p]:text-muted">
