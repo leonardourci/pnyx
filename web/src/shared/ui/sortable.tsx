@@ -18,10 +18,9 @@ import {
   type Active,
   type DropAnimationFunction,
   type KeyboardCoordinateGetter,
-  type DropAnimation,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
-import { animate, useReducedMotion } from 'motion/react'
+import { animate, motion, useReducedMotion } from 'motion/react'
 import { DragPreview, dragSnapshot } from './drag-preview.tsx'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
@@ -32,8 +31,15 @@ const DRAG_EDGE_THRESHOLD = {
 }
 const NEST_DROP_SECONDS = 0.26
 const NEST_DROP_SCALE = 0.12
-const DROP_DURATION = 220
-const DROP_EASING = 'cubic-bezier(.22,1,.36,1)'
+const DROP_SECONDS = 0.22
+const NEST_HOVER_SCALE = 0.84
+const NEST_HOVER_SECONDS = 0.16
+const DROP_EASING = [
+  0.22,
+  1,
+  0.36,
+  1,
+] as const
 
 export interface SortMove {
   id: string
@@ -341,6 +347,37 @@ export function DragNestHint() {
   const { shift } = useSortState()
 
   return <span data-drag-nest-hint data-shift={shift} className="inline-flex max-w-full items-center whitespace-nowrap rounded border border-line bg-surface px-1.5 py-0.5 text-meta font-medium text-muted transition-colors data-[shift=true]:border-gold-line data-[shift=true]:bg-gold-wash data-[shift=true]:text-gold">⇧ Sub-task</span>
+}
+
+function DragGhost({
+  item,
+  snapshot,
+}: {
+  item: SortItem
+  snapshot: HTMLElement | null
+}) {
+  const {
+    over,
+    shift,
+  } = useSortState()
+  const reducedMotion = useReducedMotion()
+  const canNest = item.kind === 'task' && !item.hasChildren
+  const inside = canNest && shift && over?.zone === 'nest' && over.id !== item.parent
+
+  return (
+    <div className={`physical-ghost pointer-events-none relative w-full select-none opacity-95 ${item.kind === 'task' ? 'overflow-visible' : 'h-full overflow-hidden'}`} inert>
+      <motion.div
+        data-drag-preview
+        initial={false}
+        animate={{ scale: inside ? NEST_HOVER_SCALE : 1 }}
+        transition={{ duration: reducedMotion ? 0 : NEST_HOVER_SECONDS }}
+        className="rounded-card shadow-window"
+      >
+        {snapshot ? <DragPreview snapshot={snapshot} /> : item.overlay}
+      </motion.div>
+      {canNest && <div className="absolute -top-3 right-2"><DragNestHint /></div>}
+    </div>
+  )
 }
 
 export function SortableWorkspace({
@@ -681,26 +718,37 @@ export function SortableWorkspace({
     clear()
   }
 
-  const nestDrop: DropAnimationFunction = async ({
+  const animateDrop: DropAnimationFunction = async ({
     active,
     dragOverlay,
     ...rest
   }) => {
     const destination = nestingDrop.current
 
-    if (!destination) {
-      return
-    }
-
-    const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(destination.hydra)}"]`)
-    const parent = scope?.querySelector<HTMLElement>(`[data-task="${CSS.escape(destination.parent)}"]`)
     const ghost = dragOverlay.node.querySelector<HTMLElement>('.physical-ghost')
 
-    if (!parent || !ghost) {
+    if (!ghost) {
       return
     }
 
-    const from = ghost.getBoundingClientRect(), to = parent.getBoundingClientRect()
+    let to = active.rect
+
+    if (destination) {
+      const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(destination.hydra)}"]`)
+      const parent = scope?.querySelector<HTMLElement>(`[data-task="${CSS.escape(destination.parent)}"]`)
+
+      if (!parent) {
+        return
+      }
+
+      to = parent.getBoundingClientRect()
+    }
+
+    const from = ghost.getBoundingClientRect()
+    const x = to.left - from.left
+    const y = to.top - from.top
+    const centerX = x + (to.width - from.width) / 2
+    const centerY = y + (to.height - from.height) / 2
     const restore = defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } })({
       active,
       dragOverlay,
@@ -711,20 +759,20 @@ export function SortableWorkspace({
       await animate(
         ghost,
         {
-          x: to.left + to.width / 2 - from.left - from.width / 2,
-          y: to.top + to.height / 2 - from.top - from.height / 2,
+          x: destination ? centerX : x,
+          y: destination ? centerY : y,
           scale: [
             1,
-            NEST_DROP_SCALE,
+            destination ? NEST_DROP_SCALE : 1,
           ],
           opacity: [
             1,
-            0,
+            destination ? 0 : 1,
           ],
         },
         {
-          duration: NEST_DROP_SECONDS,
-          ease: 'easeOut',
+          duration: destination ? NEST_DROP_SECONDS : DROP_SECONDS,
+          ease: DROP_EASING,
         },
       ).finished
     } finally {
@@ -734,17 +782,6 @@ export function SortableWorkspace({
         nestingDrop.current = null
       }
     }
-  }
-
-  let dropAnimation: DropAnimation | null = {
-    duration: DROP_DURATION,
-    easing: DROP_EASING,
-  }
-
-  if (reducedMotion) {
-    dropAnimation = null
-  } else if (nestingDrop.current) {
-    dropAnimation = nestDrop
   }
 
   return (
@@ -770,12 +807,10 @@ export function SortableWorkspace({
             adjustScale={false}
             style={{ pointerEvents: 'none' }}
             zIndex={1000}
-            dropAnimation={dropAnimation}
+            dropAnimation={reducedMotion ? null : animateDrop}
           >
             {active && (
-              <div className={`physical-ghost w-full pointer-events-none select-none rounded-card shadow-window opacity-95 ${active.kind === 'task' ? 'overflow-visible' : 'h-full overflow-hidden'}`} inert>
-                {snapshot ? <DragPreview snapshot={snapshot} /> : active.overlay}
-              </div>
+              <DragGhost item={active} snapshot={snapshot} />
             )}
           </DragOverlay>,
           document.body,

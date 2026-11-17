@@ -661,10 +661,7 @@ test(
       })
       const connected = page.locator(`[data-hydra-workspace="${hydra.id}"][data-connected=true]`)
       await connected.waitFor()
-      const instruction = page.getByText(
-        'Hold Shift and drop on a task to make it a sub-task',
-        { exact: true },
-      )
+      const instruction = page.locator('[data-drag-column-hint]')
       expect(await instruction.count()).toBe(0)
       const first = cards.filter({ hasText: 'First task' })
       const third = cards.filter({ hasText: 'Third task' })
@@ -694,9 +691,10 @@ test(
       expect((await cards.allTextContents()).join('|')).toBe('First task|Second task|Third task')
       expect(await instruction.count()).toBe(1)
       expect(await instruction.isVisible()).toBe(true)
+      expect(await instruction.locator('kbd').textContent()).toBe('⇧ shift')
       await page.mouse.move(
-        to.x + 8,
-        to.y + 3,
+        to.x + 84,
+        to.y + 20,
         { steps: 15 },
       )
       await until({
@@ -723,7 +721,45 @@ test(
           return !!filled && filled.y >= from.y - 3
         },
       })
+      const landing = await third.locator('xpath=ancestor::*[@data-drag-slot]').boundingBox()
+
+      if (!landing) {
+        throw new Error('The landing slot is not visible')
+      }
+
+      const travel = page.evaluate(
+        async ({
+          x,
+          y,
+        }) => {
+          const distances: number[] = []
+
+          for (let frame = 0; frame < 30; frame++) {
+            const node = document.querySelector('.physical-ghost')
+
+            if (!node) {
+              break
+            }
+
+            const rect = node.getBoundingClientRect()
+            distances.push(Math.hypot(
+              rect.x - x,
+              rect.y - y,
+            ))
+            await new Promise(requestAnimationFrame)
+          }
+
+          return distances
+        },
+        landing,
+      )
       await page.mouse.up()
+      const distances = await travel
+      const distance = distances[0]!
+      expect(distance).toBeGreaterThan(20)
+      expect(distances.some(value => value > 2 && value < distance * 0.8)).toBe(true)
+      expect(Math.max(...distances)).toBeLessThan(distance + 3)
+      expect(distances.at(-1)).toBeLessThan(3)
       await ghost.waitFor({ state: 'detached' })
       expect(await instruction.count()).toBe(0)
       expect((await hydra.task({ key: 'c' })).parent).toBe('none')
@@ -917,6 +953,10 @@ test(
           { steps: 5 },
         )
         await ghost.waitFor()
+        const preview = ghost.locator('[data-drag-preview]')
+        const keycap = ghost.locator('[data-drag-nest-hint]')
+        const fullWidth = (await preview.boundingBox())!.width
+        const keycapWidth = (await keycap.boundingBox())!.width
         await page.keyboard.down('Shift')
         const target = await parent.boundingBox()
         const visible = await parent.locator('xpath=ancestor::*[contains(@class, "project-cards")]').boundingBox()
@@ -959,8 +999,21 @@ test(
           check: async () => await parent.getAttribute('data-nest-armed') === 'true',
         })
 
+        await until({
+          what: 'Shift-hover shrinks the lifted card into the parent',
+          check: async () => (await preview.boundingBox())!.width < fullWidth * 0.9,
+        })
+        expect((await keycap.boundingBox())!.width).toBeCloseTo(
+          keycapWidth,
+          0,
+        )
+
         if (releaseShift) {
           await page.keyboard.up('Shift')
+          await until({
+            what: 'releasing Shift restores the full lifted card',
+            check: async () => Math.abs((await preview.boundingBox())!.width - fullWidth) < 1,
+          })
         }
 
         if (cancel) {

@@ -1,5 +1,5 @@
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
-import { DragNestHint, useSortItem, useSortState, useDropZone } from '#web-shared/ui/sortable.tsx'
+import { useSortItem, useSortState, useDropZone } from '#web-shared/ui/sortable.tsx'
 import { CardSummary, TaskLabels, cardTint } from './card-summary.tsx'
 import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { memo, useCallback, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
@@ -336,7 +336,6 @@ export const HydraCard = memo(function HydraCard({
       progress={progress}
       hasChildren={hasChildren}
       childrenOpen={childrenOpen}
-      trailingLabel={!hasChildren && <DragNestHint />}
     />
   )
   const sort = useSortItem({

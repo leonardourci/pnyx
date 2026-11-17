@@ -27,17 +27,15 @@ export function TaskLabels({
   showProject,
   legacyProject,
   colors,
-  children,
 }: {
   card: Card
   showProject: boolean
   legacyProject?: boolean
   colors?: SavedLabelColor[]
-  children?: ReactNode
 }) {
   const tags = card.tags.filter(tag => tag !== card.project)
 
-  if (!showProject && !tags.length && !children) {
+  if (!showProject && !tags.length) {
     return null
   }
 
@@ -60,7 +58,6 @@ export function TaskLabels({
           compact
         />
       ))}
-      {children}
     </div>
   )
 }
@@ -79,7 +76,6 @@ export function CardSummary({
   agentDetails,
   editing = false,
   tabIndex = -1,
-  trailingLabel,
 }: {
   card: Card
   status: ObservedStatus
@@ -94,7 +90,6 @@ export function CardSummary({
   agentDetails?: ReactNode
   editing?: boolean
   tabIndex?: number
-  trailingLabel?: ReactNode
 }) {
   const agent = card.agent && <span className="card-agent ml-auto inline-flex text-muted" tabIndex={agentDetails ? 0 : undefined} aria-label={harnessName({ provider: card.agent.provider })}><Icon name={card.agent.provider} /></span>
 
@@ -134,8 +129,7 @@ export function CardSummary({
         showProject={!!card.project}
         legacyProject={legacyProject}
         colors={colors}
-      >{trailingLabel}
-      </TaskLabels>
+      />
     </>
   )
 }

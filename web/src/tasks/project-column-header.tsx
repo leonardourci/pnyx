@@ -43,10 +43,10 @@ export function ProjectColumnHeader({
         <motion.p
           data-drag-column-hint
           role="status"
-          className="absolute inset-x-2 inset-y-1 m-0 flex items-center text-meta leading-tight text-gold"
+          className="absolute inset-x-2 inset-y-1 m-0 flex flex-wrap content-center items-center justify-center gap-x-1 text-center text-meta leading-tight text-gold"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-        >Hold Shift and drop on a task to make it a sub-task
+        >Hold <kbd className="inline-flex items-center gap-0.5 rounded border border-gold-line px-1 py-px font-sans font-medium">⇧ shift</kbd> and drop on a task to make it a sub-task
         </motion.p>
       )}
     </header>
