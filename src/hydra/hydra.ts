@@ -19,7 +19,10 @@ export function hydraEvent({
   cardId: string
   change: Pick<HydraChange, 'type' | 'data'>
 }): Decision {
-  if (meta.id && meta.id in state.eventIds) {
+  if (meta.id && Object.hasOwn(
+    state.eventIds,
+    meta.id,
+  )) {
     return { skipped: 'duplicate' }
   }
 
