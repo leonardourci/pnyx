@@ -193,7 +193,6 @@
   --spacing-attachment-top: .0625em;
   --text-attachment: .75em;
   --text-composer-account: calc(var(--text-meta) * 5 / 6);
-  --composer-icon-size: 18px;
   --composer-control-gap: 6px;
   /* The theme tiles show both palettes whichever one is active. */
   --color-tile-light: #ffffff;
