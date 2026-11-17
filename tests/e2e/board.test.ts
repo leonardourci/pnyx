@@ -721,46 +721,50 @@ test(
           return !!filled && filled.y >= from.y - 3
         },
       })
-      const landing = await third.locator('xpath=ancestor::*[@data-drag-slot]').boundingBox()
+      const travel = page.evaluate(async () => {
+        const positions: {
+          x: number
+          y: number
+        }[] = []
 
-      if (!landing) {
-        throw new Error('The landing slot is not visible')
-      }
+        for (let frame = 0; frame < 30; frame++) {
+          const node = document.querySelector('.physical-ghost')
 
-      const travel = page.evaluate(
-        async ({
-          x,
-          y,
-        }) => {
-          const distances: number[] = []
-
-          for (let frame = 0; frame < 30; frame++) {
-            const node = document.querySelector('.physical-ghost')
-
-            if (!node) {
-              break
-            }
-
-            const rect = node.getBoundingClientRect()
-            distances.push(Math.hypot(
-              rect.x - x,
-              rect.y - y,
-            ))
-            await new Promise(requestAnimationFrame)
+          if (!node) {
+            break
           }
 
-          return distances
-        },
-        landing,
-      )
+          const {
+            x,
+            y,
+          } = node.getBoundingClientRect()
+          positions.push({
+            x,
+            y,
+          })
+          await new Promise(requestAnimationFrame)
+        }
+
+        return positions
+      })
       await page.mouse.up()
-      const distances = await travel
+      const positions = await travel
+      await ghost.waitFor({ state: 'detached' })
+      const landing = await third.locator('xpath=ancestor::*[@data-family][1]').boundingBox()
+
+      if (!landing) {
+        throw new Error('The destination card is not visible')
+      }
+
+      const distances = positions.map(point => Math.hypot(
+        point.x - landing.x,
+        point.y - landing.y,
+      ))
       const distance = distances[0]!
       expect(distance).toBeGreaterThan(20)
       expect(distances.some(value => value > 2 && value < distance * 0.8)).toBe(true)
       expect(Math.max(...distances)).toBeLessThan(distance + 3)
       expect(distances.at(-1)).toBeLessThan(3)
-      await ghost.waitFor({ state: 'detached' })
       expect(await instruction.count()).toBe(0)
       expect((await hydra.task({ key: 'c' })).parent).toBe('none')
       await page.reload()
@@ -1007,6 +1011,25 @@ test(
           keycapWidth,
           0,
         )
+
+        await page.mouse.move(
+          source.x + 20,
+          source.y + 8,
+          { steps: 8 },
+        )
+        await until({
+          what: 'leaving the parent restores the full lifted card',
+          check: async () => Math.abs((await preview.boundingBox())!.width - fullWidth) < 1,
+        })
+        await page.mouse.move(
+          point.x,
+          point.y,
+          { steps: 8 },
+        )
+        await until({
+          what: 'returning over the parent shrinks the lifted card again',
+          check: async () => (await preview.boundingBox())!.width < fullWidth * 0.9,
+        })
 
         if (releaseShift) {
           await page.keyboard.up('Shift')
