@@ -191,12 +191,14 @@ export function search({
   hydraId,
   query,
   memoryDocuments = [],
+  includeMemory = true,
   state = loadHydra({ hydraId }).state,
 }: {
   hydraId: string
   query: Query
   state?: HydraState
   memoryDocuments?: Document[]
+  includeMemory?: boolean
 }): {
   hits: Hit[]
   total: number
@@ -217,26 +219,30 @@ export function search({
     state,
   })
 
+  const ownerDocuments = includeMemory ? Object.values(ownerMemory({
+    hydraId,
+    migrate: false,
+  })).map(entry => ({
+    card: '$board',
+    kind: 'note' as const,
+    at: entry.at,
+    text: redact({ text: entry.text }),
+  })) : []
+  const projectDocuments = memoryDocuments.map(document => ({
+    ...document,
+    text: redact({ text: document.text }),
+  }))
+
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
-
-    const memory = Object.values(ownerMemory({ hydraId })).map(entry => ({
-      card: '$board',
-      kind: 'note' as const,
-      at: entry.at,
-      text: redact({ text: entry.text }),
-    }))
 
     for (const document of [
       ...index.documents({
         terms,
         fuzzy,
       }),
-      ...memory,
-      ...memoryDocuments.map(document => ({
-        ...document,
-        text: redact({ text: document.text }),
-      })),
+      ...ownerDocuments,
+      ...projectDocuments,
     ]) {
       if (!terms.some(term => wordMatches({
         text: document.text,

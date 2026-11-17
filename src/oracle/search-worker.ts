@@ -10,7 +10,7 @@ const input: SearchInput = workerData
 
 try {
   const state = loadHydra({ hydraId: input.hydraId }).state
-  const projects = (await readableProjects({
+  const projects = input.includeMemory === false ? [] : (await readableProjects({
     hydraId: input.hydraId,
     state,
   })).filter(project => !project.detached)

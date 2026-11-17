@@ -1,3 +1,5 @@
+import { memoryCaller } from '#memory/spaces.ts'
+import { migrateOwnerMemory } from '#memory/owner-memory.ts'
 import { Worker } from 'node:worker_threads'
 import { log } from '#app/diagnostics.ts'
 import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
@@ -15,6 +17,7 @@ const searches = new Map<string, Promise<ReturnType<typeof search>>>()
 export interface SearchInput {
   hydraId: string
   query: Query
+  includeMemory?: boolean
 }
 
 export type SearchAnswer = { result: ReturnType<typeof search> } | {
@@ -44,6 +47,10 @@ export async function searchInBackground({
         message: 'Oracle search cancelled',
         code: 'CANCELLED',
       })
+    }
+
+    if (memoryCaller({ hydraId })) {
+      migrateOwnerMemory()
     }
 
     return runSearch({
@@ -84,6 +91,7 @@ function runSearch({
         workerData: {
           hydraId,
           query,
+          includeMemory: memoryCaller({ hydraId }),
         },
       },
     )
