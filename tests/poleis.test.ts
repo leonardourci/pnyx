@@ -185,7 +185,7 @@ test(
         'private',
       ],
     }))).toContain('[Private] Hydra scope')
-    expect((await pnyxAxi({
+    const crossHydraSearch = await pnyxAxi({
       args: [
         'oracle',
         'scope',
@@ -193,7 +193,9 @@ test(
         personal.id,
       ],
       env: crossEnv,
-    })).stdout).not.toContain('Private')
+    })
+    expect(crossHydraSearch.status).toBe(0)
+    expect(crossHydraSearch.stdout).not.toContain('Private')
     const crossHydraWrite = await pnyxAxi({
       args: [
         'hydra',
@@ -894,6 +896,15 @@ test(
       ],
     })
     expect(Array.isArray(noProjectHit.results)).toBe(false)
+    const projectHit = await allowed.owner({
+      args: [
+        'oracle',
+        'pulsar',
+        '--project',
+        path,
+      ],
+    })
+    expect(JSON.stringify(projectHit)).toContain('Project [pulsar]')
     expect(JSON.stringify(await allowed.owner({
       args: [
         'oracle',

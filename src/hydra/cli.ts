@@ -230,6 +230,17 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     },
     decide: ({ state }) => {
       checkMemoryApproval()
+
+      if (memory && action === 'set' && !isDeepStrictEqual(
+        previousMemory,
+        hydraPolisConfig({ state }),
+      )) {
+        throw new HydraError({
+          message: 'Hydra memory access changed; read its settings and retry',
+          code: 'CONFLICT',
+        })
+      }
+
       const current = hydraConfig({
         state,
         id,

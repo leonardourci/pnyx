@@ -194,9 +194,9 @@ and are read whole with task chat <task>. Pass the printed through as the next -
 `,
   owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--to <polis>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <revision>]
 pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <revision>]
-Standing worker instructions from readable poleis (${WORKER_NOTES_BUDGET} characters, one rule per line, owner memory key workers) are included verbatim in every new worker header, before the Hydra's and the project's.
+New worker headers include standing instructions from readable poleis before Hydra and project instructions. The workers key holds ${WORKER_NOTES_BUDGET} characters per polis, one rule per line.
 Owner memory reads only poleis allowed by both the Hydra reads list and each polis readers list. Writes use the Hydra's one write polis, resolved by the server. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
-one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
+one line per entry, and save each document whole. Each polis holds ${OWNER_MEMORY_BUDGET} characters.
 Pass the revision from list unchanged as --if-revision; it guards the home polis and log position, so stale saves and home changes are refused.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
