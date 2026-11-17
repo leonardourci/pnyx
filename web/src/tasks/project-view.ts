@@ -41,6 +41,64 @@ const rollups = new WeakMap<HydraState, {
   tasks: Map<string, Rollup>
 }>()
 
+/* eslint-disable pnyx/object-params -- Array sort comparator contract. */
+export function compareTasks({
+  state,
+  actions,
+}: {
+  state: HydraState
+  actions: Record<string, CurrentAction>
+}) {
+  return (
+    a: Card,
+    b: Card,
+  ) => statusPriority({
+    status: taskRollup({
+      state,
+      card: a,
+      actions,
+    }).status,
+  })
+    - statusPriority({
+      status: taskRollup({
+        state,
+        card: b,
+        actions,
+      }).status,
+    })
+    || rankOf({ card: a }) - rankOf({ card: b })
+}
+/* eslint-enable pnyx/object-params */
+
+export function nextSibling({
+  state,
+  actions,
+  card,
+  cards,
+}: {
+  state: HydraState
+  actions: Record<string, CurrentAction>
+  card: Card
+  cards: Card[]
+}) {
+  const priority = statusPriority({
+    status: taskRollup({
+      state,
+      card,
+      actions,
+    }).status,
+  })
+
+  return cards.slice(cards.findIndex(item => item.id === card.id) + 1).find(item =>
+    statusPriority({
+      status: taskRollup({
+        state,
+        card: item,
+        actions,
+      }).status,
+    }) === priority)
+}
+
 export function taskRollup({
   state,
   card,
@@ -55,14 +113,28 @@ export function taskRollup({
   if (!cached || cached.actions !== actions) {
     const children = new Map<string, Card[]>()
 
-    for (const child of Object.values(knownCards({ state }))) {
+    const cards = knownCards({ state })
+
+    for (const child of Object.values(cards)) {
       if (!child.parentId) {
         continue
       }
 
-      const siblings = children.get(child.parentId) ?? []
+      let ancestor = child.parentId
+      const visited = new Set([child.id])
+
+      while (cards[ancestor]?.parentId && !visited.has(ancestor)) {
+        visited.add(ancestor)
+        ancestor = cards[ancestor]!.parentId!
+      }
+
+      if (visited.has(ancestor)) {
+        continue
+      }
+
+      const siblings = children.get(ancestor) ?? []
       siblings.push(child); children.set(
-        child.parentId,
+        ancestor,
         siblings,
       )
     }
@@ -254,24 +326,10 @@ export function projectColumns({
     }))
     column.asks = priorities.filter(priority => priority === 0).length
     column.running = priorities.filter(priority => priority === 1).length
-    column.cards.sort((
-      a,
-      b,
-    ) => statusPriority({
-      status: taskRollup({
-        state,
-        card: a,
-        actions,
-      }).status,
-    })
-      - statusPriority({
-        status: taskRollup({
-          state,
-          card: b,
-          actions,
-        }).status,
-      })
-      || rankOf({ card: a }) - rankOf({ card: b }))
+    column.cards.sort(compareTasks({
+      state,
+      actions,
+    }))
   }
 
   return [...columns.values()].sort((

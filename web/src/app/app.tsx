@@ -4,8 +4,7 @@ import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-sh
 import { MotionConfig } from 'motion/react'
 import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
 import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
-import { projectColumns, taskProjectColumn, statusPriority, taskRollup } from '#web-tasks/project-view.ts'
-import { rankOf } from '#tasks/select.ts'
+import { projectColumns, taskProjectColumn, compareTasks, nextSibling } from '#web-tasks/project-view.ts'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
@@ -152,22 +151,10 @@ export function App() {
       })
       const childCards = Object.values(workspace.state.cards).filter(item =>
         item.parentId === card.parentId)
-        .sort((
-          a,
-          b,
-        ) => statusPriority({
-          status: taskRollup({
-            state: workspace.state,
-            card: a,
-            actions: workspace.actions,
-          }).status,
-        }) - statusPriority({
-          status: taskRollup({
-            state: workspace.state,
-            card: b,
-            actions: workspace.actions,
-          }).status,
-        }) || rankOf({ card: a }) - rankOf({ card: b }))
+        .sort(compareTasks({
+          state: workspace.state,
+          actions: workspace.actions,
+        }))
       const siblings = card.parentId ? childCards
         : columns.find(column => column.id === taskProjectColumn({
           state: workspace.state,
@@ -178,7 +165,12 @@ export function App() {
         ...preview,
         key: ({ item }) => item.id,
       })
-      const next = ordered[ordered.findIndex(item => item.id === card.id) + 1]
+      const next = nextSibling({
+        state: workspace.state,
+        actions: workspace.actions,
+        card,
+        cards: ordered,
+      })
       const args = [
         'arrange',
         card.id,

@@ -8,8 +8,7 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
-import { rankOf } from '#tasks/select.ts'
-import { statusPriority, taskRollup } from './project-view.ts'
+import { compareTasks, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { CLOSED_CARD_MIN_WIDTH, SUBTASK_INDENT } from './project-layout.ts'
 
@@ -67,22 +66,10 @@ export function TaskFamily({
     card,
     actions,
   })
-  const sorted = children.toSorted((
-    a,
-    b,
-  ) => statusPriority({
-    status: taskRollup({
-      state,
-      card: a,
-      actions,
-    }).status,
-  }) - statusPriority({
-    status: taskRollup({
-      state,
-      card: b,
-      actions,
-    }).status,
-  }) || rankOf({ card: a }) - rankOf({ card: b }))
+  const sorted = children.toSorted(compareTasks({
+    state,
+    actions,
+  }))
   const shown = preview?.kind === 'task' && !preview.nest && preview.scope === preview.targetScope
     ? movedOrder({
       items: sorted,
