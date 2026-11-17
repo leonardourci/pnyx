@@ -29,7 +29,7 @@ import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { CardState } from './card-state.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
-import { HoverActions, CARD_LAYOUT_COMPLETE } from '#web-shared/ui/hover-actions.tsx'
+import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 
@@ -419,14 +419,9 @@ export const HydraCard = memo(function HydraCard({
     }
   }
 
-  const layoutComplete = () => {
-    element.current?.dispatchEvent(new Event(CARD_LAYOUT_COMPLETE))
-  }
-
   return (
     <motion.article
       layout={preview === null}
-      onLayoutAnimationComplete={layoutComplete}
       ref={attach}
       onPointerDown={sort.pointerDown}
       data-sort-key={sort.key}

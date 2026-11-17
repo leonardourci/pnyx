@@ -7,8 +7,6 @@ export function dragSnapshot({ element }: { element: HTMLElement }) {
     snapshot,
     ...snapshot.querySelectorAll<HTMLElement>('*'),
   ]) {
-    node.style.anchorName = 'none'
-    node.style.positionAnchor = 'auto'
     node.removeAttribute('id')
     node.removeAttribute('data-sort-key')
     node.removeAttribute('aria-controls')
