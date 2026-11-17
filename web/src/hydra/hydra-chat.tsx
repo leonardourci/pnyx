@@ -183,7 +183,10 @@ export function HydraChat({
   const [
     sending,
     setSending,
-  ] = useState<Sending[]>(() => readUnsent({ key: hydraId }).map(item => ({
+  ] = useState<Sending[]>(() => readUnsent({
+    key: hydraId,
+    hydraId: storageIdentity,
+  }).map(item => ({
     ...item,
     confirmed: false,
   })))
@@ -355,10 +358,12 @@ export function HydraChat({
   useEffect(
     () => saveUnsent({
       key: hydraId,
+      hydraId: storageIdentity,
       items: unsent,
     }),
     [
       hydraId,
+      storageIdentity,
       unsentKey,
     ],
   )
@@ -977,9 +982,13 @@ export function HydraChat({
           failed: reason,
         }))
         // Saved here too, so a refusal that arrives after the owner left this Hydra is still there on return.
-        const saved = readUnsent({ key: hydraId })
+        const saved = readUnsent({
+          key: hydraId,
+          hydraId: storageIdentity,
+        })
         saveUnsent({
           key: hydraId,
+          hydraId: storageIdentity,
           items: [
             ...saved.filter(item => item.id !== id),
             {
@@ -1043,6 +1052,7 @@ export function HydraChat({
       command,
       notify,
       hydraId,
+      storageIdentity,
     ],
   )
 

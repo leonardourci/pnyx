@@ -141,9 +141,18 @@ export interface UnsentMessage {
   failed: string
 }
 
-export function readUnsent({ key }: { key: string }): UnsentMessage[] {
+export function readUnsent({
+  key,
+  hydraId,
+}: {
+  key: string
+  hydraId: string
+}): UnsentMessage[] {
   try {
-    const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey({ key: `unsent:${key}` })) ?? '[]')
+    const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey({
+      key: `unsent:${key}`,
+      hydraId,
+    })) ?? '[]')
 
     return Array.isArray(saved) ? saved.filter((item): item is UnsentMessage => typeof item?.id === 'string'
       && typeof item.text === 'string' && typeof item.at === 'string' && typeof item.failed === 'string') : []
@@ -154,19 +163,27 @@ export function readUnsent({ key }: { key: string }): UnsentMessage[] {
 
 export function saveUnsent({
   key,
+  hydraId,
   items,
 }: {
   key: string
   items: UnsentMessage[]
+  hydraId: string
 }): void {
   try {
     if (items.length) {
       sessionStorage.setItem(
-        storageKey({ key: `unsent:${key}` }),
+        storageKey({
+          key: `unsent:${key}`,
+          hydraId,
+        }),
         JSON.stringify(items),
       )
     } else {
-      sessionStorage.removeItem(storageKey({ key: `unsent:${key}` }))
+      sessionStorage.removeItem(storageKey({
+        key: `unsent:${key}`,
+        hydraId,
+      }))
     }
   } catch { /* The mounted chat still shows unsent messages when storage is blocked. */ }
 }

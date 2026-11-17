@@ -1077,6 +1077,19 @@ test(
           socket.onMessage(message => {
             const frame = JSON.parse(String(message))
 
+            if (frame.type === 'command' && frame.name === 'hydra' && frame.args?.some((arg: string) => arg.includes('Refused second Hydra message'))) {
+              socket.send(JSON.stringify({
+                type: 'error',
+                scope: frame.scope,
+                id: frame.id,
+                error: 'Send refused for this test',
+                saved: false,
+                code: 'VALIDATION_ERROR',
+              }))
+
+              return
+            }
+
             if (frame.type === 'command' && frame.name === 'hydra' && frame.args?.[0] === 'send') {
               sent.push({
                 scope: frame.scope,
@@ -1141,6 +1154,31 @@ test(
         { exact: true },
       )
         .count()).toBe(0)
+      await composer.fill('Refused second Hydra message')
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Send reply',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'region',
+        { name: 'Hydra conversation' },
+      ).getByRole('alert')
+        .filter({ hasText: 'Send refused for this test' })
+        .waitFor()
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${second.id}/`)
+      await workspace.getByText(
+        'Refused second Hydra message',
+        { exact: true },
+      ).waitFor()
+      await workspace.getByRole(
+        'region',
+        { name: 'Hydra conversation' },
+      ).getByRole('alert')
+        .filter({ hasText: 'Send refused for this test' })
+        .waitFor()
     } finally {
       await page.context().close()
     }
