@@ -9,15 +9,13 @@ export type Restore = {
     ids: string[]
   }
   page?: string
-  panel?: boolean
   drafts?: Record<string, string>
   scroll?: Record<string, [number, number]>
 }
 
-// What the open Hydra shows: its page, whether the panel is open, the selected and opened cards and the revealed ones.
+// What the open Hydra shows: its page, the selected and opened cards and the revealed ones.
 export type PageView = {
   page: string
-  panel: boolean
   selected: string | null
   expanded: string[]
   revealed: NonNullable<Restore['revealed']>
@@ -32,7 +30,6 @@ export function openingView({ restored }: { restored: Restore }): PageView {
 
   return {
     page: 'hydra',
-    panel: restored.panel ?? true,
     selected: openProject ? null : restored.selected ?? lastOpened,
     expanded: openProject ? [] : opened,
     revealed: restored.revealed ?? {
@@ -144,7 +141,6 @@ export function usePersistView({
   expanded,
   revealed,
   page,
-  panel,
   drafts,
   scroll,
   seq,
@@ -165,7 +161,6 @@ export function usePersistView({
           expanded,
           revealed,
           page,
-          panel,
           drafts,
         },
       })
@@ -176,7 +171,6 @@ export function usePersistView({
       expanded,
       revealed,
       page,
-      panel,
       drafts,
       key,
     ],
@@ -194,7 +188,6 @@ export function usePersistView({
             expanded,
             revealed,
             page,
-            panel,
             drafts,
           },
         })
@@ -215,7 +208,6 @@ export function usePersistView({
       expanded,
       revealed,
       page,
-      panel,
       drafts,
       key,
     ],

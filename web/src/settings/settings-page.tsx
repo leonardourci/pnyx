@@ -679,7 +679,7 @@ export function SettingsPage({
     [connected],
   )
 
-  const goTo = ({ id }: { id: string }) => document.getElementById(`settings-${id}`)?.scrollIntoView({
+  const goTo = ({ id }: { id: string }) => surface.current?.querySelector(`#settings-${id}`)?.scrollIntoView({
     behavior: 'smooth',
     block: 'start',
   })

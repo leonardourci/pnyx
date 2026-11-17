@@ -39,6 +39,8 @@ export function useTaskNavigation({
     revealed,
   } = view
   const selected = selectedRef ? state.keys[selectedRef] ?? selectedRef : null
+  const currentState = useRef(state)
+  currentState.current = state
   const currentCards = useRef(state.cards)
   currentCards.current = state.cards
   const pendingColumns = useRef<Record<string, string>>({})
@@ -453,10 +455,10 @@ export function useTaskNavigation({
       if (!pointer) {
         const card = currentCards.current[id]
         const column = card && taskProjectColumn({
-          state,
+          state: currentState.current,
           card,
         })
-        const workspace = state.view?.workspace
+        const workspace = currentState.current.view?.workspace
 
         if (column && (workspace?.collapsed || workspace?.foldedProjects.includes(column))) {
           command({

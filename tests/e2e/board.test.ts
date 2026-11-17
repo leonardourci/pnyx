@@ -1605,6 +1605,238 @@ test(
   },
 )
 test(
+  'workspace shortcuts keep focus, order and chat inside their owning Hydra',
+  async () => {
+    const first = await pnyx.hydra()
+    const second = await pnyx.hydra()
+    const atlas = second.folder({ name: 'atlas-shortcuts' })
+    const boreal = second.folder({ name: 'boreal-shortcuts' })
+    await second.owner({
+      args: [
+        'project',
+        'add',
+        atlas,
+      ],
+    })
+    await second.owner({
+      args: [
+        'project',
+        'add',
+        boreal,
+      ],
+    })
+    await second.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'done',
+        '--title',
+        'Finished task',
+        '--project',
+        atlas,
+      ],
+    })
+    await second.owner({
+      args: [
+        'task',
+        'status',
+        'done',
+        'done',
+        '--note',
+        'Finished',
+      ],
+    })
+    const a = await second.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'a',
+        '--title',
+        'Shortcut Atlas',
+        '--project',
+        atlas,
+      ],
+    })
+    await second.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'b',
+        '--title',
+        'Shortcut Boreal',
+        '--project',
+        atlas,
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: first.id,
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${second.id}"]`)
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+
+    try {
+      const heading = workspace.locator('[data-column-heading="ideas"]')
+      await heading.scrollIntoViewIfNeeded()
+      await heading.focus()
+      await page.keyboard.press('ArrowDown')
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      expect(await heading.evaluate(element => element === document.activeElement)).toBe(true)
+      const ideas = workspace.locator('button[data-sort-kind="project"][data-sort-id="ideas"]')
+      expect(await ideas.getAttribute('aria-disabled')).not.toBe('true')
+      const title = workspace.getByRole(
+        'button',
+        {
+          name: 'Shortcut Atlas',
+          exact: true,
+        },
+      )
+      await title.focus()
+      await page.keyboard.press(`${mod}+ArrowDown`)
+      await until({
+        what: 'task shortcut reorders within its status group',
+        check: async () => {
+          const cards = await workspace.locator(`[data-column="${atlas}"] .project-card-grid [data-card]`).allTextContents()
+
+          return cards[0]?.includes('Shortcut Boreal') === true && cards[1]?.includes('Shortcut Atlas') === true
+        },
+      })
+      await page.reload()
+      await page.locator(`[data-hydra-workspace="${second.id}"][data-connected="true"]`).waitFor()
+      await title.waitFor()
+      await page.getByRole(
+        'button',
+        {
+          name: 'Settings',
+          exact: true,
+        },
+      ).click()
+      await page.locator(`[data-settings-hydra="${first.id}"] .settings-chips`).waitFor()
+      await page.getByRole(
+        'button',
+        {
+          name: 'Close Settings',
+          exact: true,
+        },
+      ).click()
+
+      const stored = await second.task({ key: a.card.id })
+      expect(stored.project).toBe('atlas-shortcuts')
+      const status = title.locator('xpath=ancestor::article').locator('.agent-activity')
+      await status.focus()
+      await page.getByRole('tooltip').filter({ hasText: 'no worker assigned' })
+        .waitFor()
+      const projectHeading = workspace.locator(`[data-column-heading="${boreal}"]`)
+      await projectHeading.focus()
+      await page.keyboard.press(`${mod}+ArrowLeft`)
+      await until({
+        what: 'project shortcut saves project order',
+        check: async () => {
+          const { view } = await second.owner({
+            args: [
+              'view',
+              'show',
+            ],
+          })
+
+          return view.workspace.projectOrder[0] === boreal
+        },
+      })
+      await title.focus()
+      await page.keyboard.press(`${mod}+b`)
+      await until({
+        what: 'chat shortcut folds the owning chat',
+        check: async () => await workspace.locator('.workspace-chat.collapsed').count() === 1,
+      })
+      await page.keyboard.press(`${mod}+b`)
+      await until({
+        what: 'chat shortcut reveals the owning chat',
+        check: async () => await workspace.locator('.workspace-chat:not(.collapsed)').count() === 1,
+      })
+      await second.owner({
+        args: [
+          'push',
+          '--key',
+          'a',
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          attention: [
+            {
+              kind: 'question',
+              key: 'direction',
+              blocking: true,
+              text: 'Choose the direction',
+            },
+          ],
+        }),
+      })
+      await title.click()
+      await second.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({ workspace: { chatCollapsed: true } }),
+        ],
+      })
+      await workspace.locator('.workspace-chat.collapsed').waitFor()
+      await title.locator('xpath=ancestor::article').getByRole(
+        'button',
+        {
+          name: 'Answer',
+          exact: true,
+        },
+      )
+        .click()
+      await workspace.locator('.workspace-chat:not(.collapsed)').waitFor()
+      expect(await workspace.getByRole(
+        'textbox',
+        {
+          name: 'Reply to Hydra',
+          exact: true,
+        },
+      ).inputValue()).toContain('Shortcut Atlas')
+      await title.focus()
+      await page.keyboard.press(`${mod}+,`)
+      const settings = page.locator(`[data-settings-hydra="${second.id}"]`).getByRole(
+        'region',
+        {
+          name: 'Settings',
+          exact: true,
+        },
+      )
+      await settings.getByRole(
+        'navigation',
+        { name: 'Settings sections' },
+      ).getByRole(
+        'button',
+        {
+          name: 'Keyboard',
+          exact: true,
+        },
+      )
+        .click()
+      await until({
+        what: 'the second Hydra settings scroll to their own Keyboard section',
+        check: async () => {
+          const section = await settings.locator('#settings-keyboard').boundingBox()
+          const frame = await settings.boundingBox()
+
+          return !!section && !!frame && section.y > frame.y && section.y < frame.y + frame.height
+        },
+      })
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
   'legacy grandchildren stay openable in their top-level family without rewriting parentage',
   async () => {
     const id = 'legacy-deep-family'
@@ -1701,6 +1933,134 @@ test(
     }
   },
 )
+test(
+  'opening an unloaded task mention preserves projects folded during its read',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const atlas = hydra.folder({ name: 'loading-atlas' })
+    const boreal = hydra.folder({ name: 'loading-boreal' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        atlas,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        boreal,
+      ],
+    })
+    const task = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Unloaded linked task',
+        '--project',
+        atlas,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        task.card.id,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { foldedProjects: [atlas] } }),
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        `Open [@Unloaded linked task](pnyx-task:${task.card.id})`,
+      ],
+    })
+    let release: (() => void) | undefined
+    let heldId: string | undefined
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.type === 'command' && frame.name === 'page' && frame.args?.includes(task.card.id)) {
+              heldId = frame.id
+            }
+
+            server.send(message)
+          })
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
+          server.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (heldId && frame.id === heldId) {
+              release = () => socket.send(message)
+
+              return
+            }
+
+            socket.send(message)
+          })
+        },
+      ),
+    })
+
+    try {
+      await page.locator('.hydra-chat').getByText(
+        'Unloaded linked task',
+        { exact: true },
+      )
+        .click()
+      await until({
+        what: 'task mention waits for its missing card',
+        check: () => !!release,
+      })
+      await page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column-heading="${boreal}"]`).click()
+      await page.getByRole(
+        'button',
+        {
+          name: 'Unfold loading-boreal',
+          exact: true,
+        },
+      ).waitFor()
+      release!()
+      await until({
+        what: 'opening Atlas keeps Boreal folded',
+        check: async () => {
+          const { view } = await hydra.owner({
+            args: [
+              'view',
+              'show',
+            ],
+          })
+
+          return view.workspace.foldedProjects.length === 1
+            && view.workspace.foldedProjects[0] === boreal
+        },
+      })
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
 test(
   'scrolling a column advances the drop target beneath a stationary pointer',
   async () => {

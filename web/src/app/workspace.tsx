@@ -115,7 +115,6 @@ export function HydraView({
     setPageView,
   ] = useState(() => openingView({ restored }))
   const {
-    panel,
     selected: selectedRef,
     expanded,
     revealed,
@@ -304,7 +303,6 @@ export function HydraView({
     expanded,
     revealed,
     page,
-    panel,
     drafts: drafts.current,
     scroll: restored.scroll,
     seq: state.seq,
@@ -480,6 +478,7 @@ export function HydraView({
 
   const keyboard = useHydraKeyboard({
     state,
+    actions,
     hydraId: navigation.hydraId,
     groups: columns.map(c => ({
       id: c.id,
@@ -495,10 +494,9 @@ export function HydraView({
     notify,
     newColumn: false,
     cancelColumn: () => {},
-    togglePanel: () => setPageView(view => ({
-      ...view,
-      panel: !view.panel,
-    })),
+    togglePanel: () => {
+      void save({ patch: { workspace: { chatCollapsed: !view.workspace.chatCollapsed } } })
+    },
     openSettings: () => {
       if (page === 'settings') {
         setPage({ page: 'hydra' })
@@ -511,10 +509,7 @@ export function HydraView({
   })
 
   const answerTask = ({ card }: { card: Card }) => {
-    setPageView(view => ({
-      ...view,
-      panel: true,
-    }))
+    void save({ patch: { workspace: { chatCollapsed: false } } })
     chatDrafts.setDraft({
       text: `${chatDrafts.read().text}\nFor ${taskMention({
         id: card.id,
@@ -748,29 +743,6 @@ export function HydraView({
     path: p.path,
     hydra: hydraTitle(h),
   })))
-
-  const addProject = async ({ id }: { id: string }) => {
-    if (id === navigation.hydraId) {
-      setPage({ page: 'hydra' }); setProjectRequest(true)
-
-      return
-    }
-
-    const url = new URL(
-      `/hydra/${encodeURIComponent(id)}/`,
-      location.href,
-    )
-    url.searchParams.set(
-      'add-project',
-      '1',
-    )
-
-    try {
-      await navigate({ url: url.href })
-    } catch (error) {
-      notify({ text: (error as Error).message })
-    }
-  }
 
   const revealProject = ({ id }: { id: string }) => {
     save({
@@ -1109,7 +1081,7 @@ export function HydraView({
                       icon,
                     })}
                     storageIdentity={hydra.storageHydra}
-                    addProject={() => addProject({ id: navigation.hydraId })}
+                    addProject={createColumn}
                     projectRequest={projectRequest}
                     projectRequested={() => setProjectRequest(false)}
                     state={state}
