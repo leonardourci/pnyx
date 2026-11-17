@@ -351,7 +351,7 @@ kbd {
 ::highlight(reveal-2) { color: color-mix(in srgb, var(--color-ink) 65%, transparent); }
 ::highlight(reveal-3) { color: color-mix(in srgb, var(--color-ink) 85%, transparent); }
 ::highlight(reveal-hide) { color: transparent; }
-/* Streaming animations use keyframes; reduced motion keeps only the dot fade. */
+/* Streaming text and status indicators need keyframes. */
 @keyframes reply-appear { from { opacity: 0; transform: translateY(calc(var(--spacing) * .75)); } to { opacity: 1; transform: translateY(0); } }
 @keyframes reply-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(calc(var(--spacing) * -.5)); } }
 @keyframes reply-dot-fade { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
@@ -363,9 +363,6 @@ kbd {
 @keyframes live-label-fade-out { to { opacity: 0; } }
 
 @keyframes chat-fade-in { from { opacity: 0; } to { opacity: 1; } }
-
-@media (prefers-reduced-motion: reduce) {
-* { transition: none!important; } }
 
 .thread:focus-visible { outline-offset: -3px; }
 
