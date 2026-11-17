@@ -38,6 +38,20 @@ export function Dialog({
       data-key-scope="overlay"
       // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onKeyDown={e => {
+        if (e.key === 'Tab') {
+          const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')]
+            .filter(element => element.getClientRects().length > 0 && !element.closest('[hidden], [inert]'))
+          const first = controls[0]
+          const last = controls.at(-1)
+          const boundary = e.shiftKey ? first : last
+          const destination = e.shiftKey ? last : first
+
+          if (document.activeElement === boundary && destination) {
+            e.preventDefault()
+            destination.focus()
+          }
+        }
+
         if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
           e.preventDefault(); e.stopPropagation(); close()
         }

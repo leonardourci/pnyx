@@ -123,7 +123,7 @@ export function Resize({
       }}
       onBlur={() => finish({ cancel: drag.current !== null })}
       onKeyDown={e => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && baseline.current !== null) {
           e.preventDefault(); e.stopPropagation(); finish({ cancel: true })
 
           return
