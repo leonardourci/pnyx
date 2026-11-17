@@ -403,9 +403,21 @@ export function HydraView({
           args,
           flag: '--parent',
         }) === parent
+      const refusedProject = argument({
+        args,
+        flag: '--project',
+      })
+      const destination = columns.find(column => column.id === group)
+      let matchesProject = !refusedProject
+
+      if (project !== undefined) {
+        matchesProject = refusedProject === project
+      } else if (destination && destination.repositories.length > 0) {
+        matchesProject = refusedProject !== undefined && destination.repositories.includes(refusedProject)
+      }
 
       return intent.stage === 'refused' && name === 'task' && args[0] === 'create'
-        && matchesForm && !state.keys[`task:${attempt}`]
+        && matchesForm && matchesProject && !state.keys[`task:${attempt}`]
     })
     const draft = refused && {
       title: argument({

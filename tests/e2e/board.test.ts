@@ -1244,6 +1244,71 @@ test(
 )
 
 test(
+  'a refused project task draft does not appear when creating an Idea',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const path = hydra.folder({ name: 'draft-project' })
+    await hydra.owner({ args: ['project', 'add', path] })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: async ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the route callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright passes the frame.
+          socket.onMessage(message => {
+            const sent = JSON.parse(String(message)) as {
+              type?: string
+              name?: string
+              args?: string[]
+              id?: string
+              scope?: string
+            }
+
+            if (sent.type === 'command' && sent.name === 'task' && sent.args?.[0] === 'create') {
+              socket.send(JSON.stringify({
+                type: 'error',
+                scope: sent.scope,
+                id: sent.id,
+                error: 'Task creation refused',
+                saved: false,
+                code: 'VALIDATION_ERROR',
+              }))
+
+              return
+            }
+
+            server.send(message)
+          })
+        },
+      ),
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      await workspace.getByRole('button', { name: 'New task in draft-project', exact: true }).click()
+      const form = workspace.locator('.task-create')
+      await form.getByRole('textbox', { name: 'Task title', exact: true }).fill('Project-only draft')
+      await form.getByRole('button', { name: 'Save task', exact: true }).click()
+      await page.getByText('Task creation refused', { exact: true }).first().waitFor()
+      await form.getByRole('textbox', { name: 'Task title', exact: true }).waitFor()
+      await until({
+        what: 'the refused project draft is restored',
+        check: async () => await form.getByRole('textbox', { name: 'Task title', exact: true }).inputValue() === 'Project-only draft'
+          && await form.getByRole('button', { name: 'Cancel', exact: true }).isEnabled(),
+      })
+      await form.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await workspace.getByRole('button', { name: 'New task in Ideas', exact: true }).click()
+      expect(await form.getByRole('textbox', { name: 'Task title', exact: true }).inputValue()).toBe('')
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
   'project resizing starts only on the visible grip and persists a genuine drag',
   async () => {
     const hydra = await pnyx.hydra()
