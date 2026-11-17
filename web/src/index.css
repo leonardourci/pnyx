@@ -291,9 +291,9 @@ h1, h2 {
 h3 {
   @apply font-semibold; }
 :focus-visible {
-  @apply outline-2 outline-solid outline-gold outline-offset-3; }
+  @apply outline-2 outline-gold outline-offset-3; }
 kbd {
-  @apply [font:var(--text-meta)_var(--font-mono)] border border-solid border-line rounded-sm py-0.75 px-1.25 bg-background text-muted whitespace-nowrap; }
+  @apply [font:var(--text-meta)_var(--font-mono)] border border-line rounded-sm py-0.75 px-1.25 bg-background text-muted whitespace-nowrap; }
 * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 }
 
@@ -354,13 +354,13 @@ kbd {
 ::highlight(reveal-3) { color: color-mix(in srgb, var(--color-ink) 85%, transparent); }
 ::highlight(reveal-hide) { color: transparent; }
 /* Streaming animations use keyframes; reduced motion keeps only the dot fade. */
-@keyframes reply-appear { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes reply-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes reply-appear { from { opacity: 0; transform: translateY(calc(var(--spacing) * .75)); } to { opacity: 1; transform: translateY(0); } }
+@keyframes reply-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(calc(var(--spacing) * -.5)); } }
 @keyframes reply-dot-fade { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
 
-@keyframes live-label-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes live-label-in { from { opacity: 0; transform: translateY(var(--spacing)); } to { opacity: 1; transform: none; } }
 
-@keyframes live-label-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px); } }
+@keyframes live-label-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(calc(var(--spacing) * -1)); } }
 
 @keyframes live-label-fade-out { to { opacity: 0; } }
 
@@ -394,16 +394,16 @@ kbd {
 
 *:hover, *.scrolling { scrollbar-color: var(--color-control) transparent; }
 
-/* Standard scrollbar properties override the explicit 4px thumb in Chromium. */
+/* Standard scrollbar properties override the explicit thumb size in Chromium. */
 @supports selector(::-webkit-scrollbar) {
   .thread, .composer-field .textarea, .draft-mirror { scrollbar-width: auto; scrollbar-color: auto; }
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar { width: var(--spacing); height: var(--spacing); }
 
 ::-webkit-scrollbar-track { background: transparent; }
 
-::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: var(--radius-sm); }
 
 :hover::-webkit-scrollbar-thumb, .scrolling::-webkit-scrollbar-thumb { background: var(--color-control); }
 [data-label-color="slate"] { --label-color: var(--color-slate); }
