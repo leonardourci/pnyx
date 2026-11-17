@@ -45,7 +45,7 @@ export interface AgentSession {
   answered: number
   closed: boolean
   model?: string
-  // Codex: the config Pnyx opened the thread with.
+  // Provider options Pnyx supplied when opening the session.
   config?: Record<string, unknown>
   // Claude: the agent calls a tool that needs permission mid-turn and gets Pnyx's decision.
   useTool?({
@@ -168,6 +168,14 @@ export function fakeClaude() {
       answered: 0,
       closed: false,
       model: options.model,
+      config: {
+        tools: options.tools,
+        settingSources: options.settingSources,
+        strictMcpConfig: options.strictMcpConfig,
+        mcpServers: options.mcpServers,
+        plugins: options.plugins,
+        settings: options.settings,
+      },
       useTool: ({
         tool,
         input,
@@ -461,7 +469,7 @@ export function fakeClaude() {
 }
 
 // An app-server in this process: each request gets its recorded result and the notifications recorded after it.
-export function fakeCodex() {
+export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } = {}) {
   const sessions: AgentSession[] = []
   const turns = plans()
   const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
@@ -560,7 +568,7 @@ export function fakeCodex() {
           send({
             message: {
               id: message.id,
-              result: { config: {} },
+              result: { config },
             },
           })
 

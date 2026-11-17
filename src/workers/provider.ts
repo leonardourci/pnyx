@@ -319,13 +319,6 @@ export async function hydraFastReaches({
 }
 
 export interface Provider {
-  toolCatalog({
-    cwd,
-    env,
-  }: {
-    cwd: string
-    env: NodeJS.ProcessEnv
-  }): Promise<string[]>
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({

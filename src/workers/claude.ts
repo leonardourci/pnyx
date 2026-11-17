@@ -159,9 +159,13 @@ function sdkOptions({
   enabledPlugins,
 }: {
   settings: AgentSettings
-  enabledPlugins: Record<string, boolean>
+  enabledPlugins?: Record<string, boolean>
 }): Partial<Options> {
-  const sessionSettings: Settings = { enabledPlugins }
+  const sessionSettings: Settings = {}
+
+  if (enabledPlugins) {
+    sessionSettings.enabledPlugins = enabledPlugins
+  }
 
   if (settings.fast !== undefined) {
     sessionSettings.fastMode = settings.fast === 'true'
@@ -236,15 +240,6 @@ export function claudeProvider({
 }): Provider {
   return {
     compact: true,
-    async toolCatalog({
-      cwd,
-      env,
-    }) {
-      return (await claudeTools({
-        cwd,
-        env,
-      })).catalog
-    },
     async models({
       cwd,
       env,
@@ -314,16 +309,14 @@ export function claudeProvider({
       instructions,
       outputSchema,
       toolScope,
-      capabilities: grants = [],
       allow,
       context,
       spawned,
     }) {
-      const restricted = await claudeTools({
+      const restricted = toolScope === 'routine' ? await claudeTools({
         cwd,
         env,
-        grants,
-      })
+      }) : undefined
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
         cwd,
@@ -466,13 +459,11 @@ export function claudeProvider({
             type: 'preset',
             preset: 'claude_code',
           }
-          const capabilities: Pick<Options, 'skills' | 'strictMcpConfig' | 'mcpServers' | 'agents'> = {
-            strictMcpConfig: true,
-            mcpServers: restricted.mcpServers,
-          }
+          const capabilities: Pick<Options, 'skills' | 'strictMcpConfig' | 'mcpServers' | 'agents'> = {}
 
           if (toolScope === 'routine') {
             tools = ['Bash']
+            capabilities.strictMcpConfig = true
             capabilities.skills = []
             capabilities.mcpServers = {}
             capabilities.agents = {}
@@ -503,7 +494,6 @@ export function claudeProvider({
                 ...(instructions ? { append: instructions } : {}),
               },
               tools,
-              plugins: restricted.localPlugins,
               ...capabilities,
               ...(allow?.length ? { allowedTools: allow.map(command => `Bash(${command}:*)`) } : {}),
               // After a compaction, even mid-turn, the context comes back.
@@ -580,7 +570,7 @@ export function claudeProvider({
               env,
               ...sdkOptions({
                 settings,
-                enabledPlugins: restricted.enabledPlugins,
+                enabledPlugins: restricted?.enabledPlugins,
               }),
             },
           })

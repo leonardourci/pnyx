@@ -18,6 +18,162 @@ beforeAll(async () => {
   pnyx = await startPnyx()
 })
 
+test(
+  'registered hosted workers keep native features and connections without grants, while browser remains opt-in',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker: codex } = await hydra.startTask({
+      key: 'native-codex',
+      harness: 'codex',
+    })
+    expect(codex.env.CODEX_HOME).toBe(join(
+      process.env.TMPDIR!,
+      'pnyx-run',
+      'codex-login',
+    ))
+    expect(codex.config).not.toHaveProperty('features.apps')
+    expect(codex.config).not.toHaveProperty('features.plugins')
+    expect(codex.config).not.toHaveProperty('features.image_generation')
+    expect(codex.config).not.toHaveProperty('features.default_mode_request_user_input')
+    expect(codex.config).not.toHaveProperty('web_search')
+    expect(codex.config).not.toHaveProperty('mcp_servers')
+    expect(codex.config).not.toHaveProperty('plugins')
+    expect(codex.config).not.toHaveProperty('skills.config')
+    expect(codex.env.CHROME_DEVTOOLS_AXI_SESSION).toBeUndefined()
+
+    const { worker: claude } = await hydra.startTask({ key: 'native-claude' })
+    expect(claude.config).toMatchObject({
+      tools: {
+        type: 'preset',
+        preset: 'claude_code',
+      },
+      settingSources: [
+        'user',
+        'project',
+        'local',
+      ],
+    })
+    expect(claude.config?.strictMcpConfig).toBeUndefined()
+    expect(claude.config?.mcpServers).toBeUndefined()
+    expect(claude.config?.plugins).toBeUndefined()
+    expect(claude.config?.settings).not.toHaveProperty('enabledPlugins')
+
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'tools',
+        'native-codex',
+        '--available',
+      ],
+    })).tools).toEqual(['browser'])
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'tools',
+        'native-codex',
+        '--grant',
+        'mcp:example',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'tools',
+        'native-codex',
+        '--grant',
+        'plugin:example',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'tools',
+        'native-codex',
+        '--revoke',
+        'mcp:example',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    await hydra.owner({
+      args: [
+        'task',
+        'tools',
+        'native-codex',
+        '--grant',
+        'browser',
+      ],
+    })
+    const browser = await until({
+      what: 'browser selection to reach the resumed worker',
+      check: () => pnyx.codex.sessions.find(session =>
+        session.resumed && session.cwd === codex.cwd && session.env.CHROME_DEVTOOLS_AXI_SESSION),
+    })
+    expect(browser.env.CHROME_DEVTOOLS_AXI_HEADED).toBe('0')
+    expect(browser.config).not.toHaveProperty('mcp_servers')
+    expect(browser.config).not.toHaveProperty('plugins')
+  },
+)
+
+test(
+  'Codex routine helpers still disable configured services, skills and web search',
+  async ({ onTestFinished }) => {
+    const codex = fakeCodex({
+      config: {
+        features: {
+          apps: true,
+          plugins: true,
+          image_generation: true,
+        },
+        web_search: 'live',
+        mcp_servers: { example: { command: 'example' } },
+        plugins: {
+          example: {
+            enabled: true,
+            mcp_servers: { bundled: {} },
+          },
+        },
+      },
+    })
+    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
+      cwd: process.env.TMPDIR!,
+      settings: {},
+      env: {},
+      signal: new AbortController().signal,
+      toolScope: 'routine',
+    })
+    const { input } = await driven({
+      session,
+      onEnd: ({ end }) => onTestFinished(end),
+    })
+    input.push({
+      id: 'routine',
+      text: 'routine turn',
+    })
+    await until({
+      what: 'routine helper turn',
+      check: () => codex.sessions[0]?.answered === 1,
+    })
+    expect(codex.sessions[0]?.config).toMatchObject({
+      'features.apps': false,
+      'features.plugins': false,
+      'skills.config': [],
+      'skills.bundled.enabled': false,
+      'skills.include_instructions': false,
+      'features.sleep_tool': false,
+      'features.default_mode_request_user_input': false,
+      'tools.update_plan.enabled': false,
+      web_search: 'disabled',
+      mcp_servers: { example: { enabled: false } },
+      plugins: {
+        _default: { enabled: false },
+        example: {
+          enabled: false,
+          mcp_servers: { bundled: { enabled: false } },
+        },
+      },
+    })
+  },
+)
+
 const times = ({
   sessions,
   text,

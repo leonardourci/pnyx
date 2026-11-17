@@ -9,46 +9,19 @@ import { workerIdentity } from './worker-identity.ts'
 import type { Meta } from '#app/command-meta.ts'
 
 export const BROWSER_TOOL = 'browser'
-const MAX_TOOL_NAME_LENGTH = 200
-const CONFIGURED_TOOL = new RegExp(
-  `^(mcp|plugin):[^\\s\\p{Cc}]{1,${MAX_TOOL_NAME_LENGTH}}$`,
-  'u',
-)
 
 export function toolNames({ names }: { names: string[] }): string[] {
   for (const name of names) {
-    if (name !== BROWSER_TOOL && !CONFIGURED_TOOL.test(name)) {
+    if (name !== BROWSER_TOOL) {
       throw new HydraError({
         message: `Invalid tool capability: ${name}`,
         code: 'VALIDATION_ERROR',
-        help: ['Use browser, mcp:<configured-name> or plugin:<installed-id>'],
+        help: ['Use browser; native MCP servers, plugins and apps need no grant'],
       })
     }
   }
 
   return [...new Set(names)].sort()
-}
-
-export function requireConfigured({
-  names,
-  offered,
-  task,
-  hydraId,
-}: {
-  names: string[]
-  offered: string[]
-  task: string
-  hydraId: string
-}): void {
-  const missing = names.find(name => !offered.includes(name))
-
-  if (missing) {
-    throw new HydraError({
-      message: `Tool capability is not configured: ${missing}`,
-      code: 'TOOL_UNAVAILABLE',
-      help: [`Configure it for that login, or revoke the grant with \`pnyx-axi task tools ${task} --revoke ${missing} --hydra ${hydraId}\``],
-    })
-  }
 }
 
 export function recordTools({
@@ -127,7 +100,7 @@ export function writeTools({
   const before = card.tools ?? []
   const after = toolNames({
     names: [
-      ...before,
+      ...before.filter(name => name === BROWSER_TOOL),
       ...additions,
     ].filter(name => !removals.includes(name)),
   })
@@ -176,9 +149,9 @@ export function toolInstructions({
   worker: boolean
 }): string {
   return [
-    `Pnyx external tool grants: ${tools.join(', ') || 'none'}.`,
+    'Use the harness’s native tools, MCP servers, plugins and apps as configured by the owner.',
     tools.includes(BROWSER_TOOL) ? 'Use chrome-devtools-axi with your own isolated headless browser. Run chrome-devtools-axi stop when finished. Do not control the owner’s browser.' : undefined,
-    worker ? 'For another tool, ask Hydra with pnyx-axi task ask; Hydra grants configured tools with task tools --grant and Pnyx resumes this conversation after the current native work settles.' : undefined,
+    worker ? 'For an isolated browser, ask Hydra with pnyx-axi task ask; Hydra grants browser with task tools --grant browser.' : undefined,
   ].filter(Boolean).join(' ')
 }
 

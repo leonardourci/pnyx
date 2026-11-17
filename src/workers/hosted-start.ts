@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs'
-import { requireToolAuthority, toolNames, writeTools } from './tools.ts'
+import { BROWSER_TOOL, requireToolAuthority, toolNames, writeTools } from './tools.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { transcriptPath } from './claude.ts'
 import type { trackChildren } from './children.ts'
@@ -262,7 +262,7 @@ export function createWorkerStarts({
         cwd,
         capabilities: tools ? toolNames({
           names: [
-            ...target.tools ?? [],
+            ...(target.tools ?? []).filter(name => name === BROWSER_TOOL),
             ...tools,
           ],
         }) : undefined,
