@@ -36,17 +36,17 @@ export function UpgradeHint({
     <Popover
       below
       label="Upgrade available"
-      className="upgrade-hint"
-      trigger={<Tooltip content="Upgrade available"><Icon name="upgrade" size={14} /><span className="upgrade-hint-label">Upgrade</span></Tooltip>}
+      className="upgrade-hint shrink-0 [&_.tooltip-anchor]:items-center [&_.tooltip-anchor]:gap-1 [&>.button]:inline-flex [&>.button]:items-center [&>.button]:gap-1 [&>.button]:py-px [&>.button]:px-2 [&>.button]:border [&>.button]:border-gold-line [&>.button]:rounded-full [&>.button]:bg-gold-wash [&>.button]:text-gold [&>.button]:font-medium [&>.button]:text-meta [&>.button]:font-sans [&>.button]:tracking-normal [&>.button]:whitespace-nowrap max-[760px]:[&>.button]:p-0.75 [&_.popover-panel]:w-upgrade-menu"
+      trigger={<Tooltip content="Upgrade available"><Icon name="upgrade" size={14} /><span className="upgrade-hint-label max-[760px]:hidden">Upgrade</span></Tooltip>}
     >
       {({ close }) => (
-        <div className="upgrade-popover">
+        <div className="upgrade-popover grid gap-2 text-ui leading-detail font-sans tracking-normal [&_strong]:font-semibold [&_p]:m-0 [&_p]:text-muted">
           <strong>Upgrade available</strong>
           <p>
             Checked {checkedDay({ at: status.checkedAt })} at {clock({ at: status.checkedAt })}.
             {' '}Restarts the server; workers keep going and the page reconnects.
           </p>
-          <div className="upgrade-actions">
+          <div className="upgrade-actions flex justify-end gap-2">
             <Button
               onClick={() => {
                 setLater(status.checkedAt); close()

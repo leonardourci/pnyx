@@ -1,8 +1,14 @@
+import { OperationLine } from '#web-shared/ui/operation-line.tsx'
+import type { ComponentProps } from 'react'
 import { STEP_WORDS, type UpgradeOperation, type UpgradeStepName } from '#upgrade/model.ts'
 import { useElapsed } from '#web-workers/compaction.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { fixPrompt, stoppedWhile } from './fix-prompt.ts'
+
+function UpgradeAction({ ...props }: ComponentProps<typeof Button>) {
+  return <Button variant="surface" {...props} className="upgrade-fix justify-self-start inline-flex items-center gap-1.5" />
+}
 
 const STEPS: UpgradeStepName[] = [
   'pull',
@@ -19,7 +25,7 @@ function Steps({ operation }: { operation: UpgradeOperation }) {
   const shown = active && !restartOnly ? STEPS : operation.steps.map(step => step.step)
 
   return (
-    <ol className="upgrade-steps">
+    <ol className="upgrade-steps flex flex-wrap gap-y-1 gap-x-3 m-0 p-0 list-none text-muted [&_li]:inline-flex [&_li]:items-center [&_li]:gap-1 [&_li[data-state=todo]]:text-control [&_li[data-state=done]_svg]:text-green [&_li[data-state=failed]]:text-red [&_li[data-state=stopped]]:text-ink">
       {shown.map(name => {
         const step = operation.steps.find(item => item.step === name)
         const [
@@ -103,39 +109,39 @@ export function UpgradeRow({
                 ]
 
   return (
-    <div className="compaction-row upgrade-row" data-state={needsFix ? 'failed' : operation.state} role={active ? 'status' : undefined}>
+    <OperationLine upgrade data-state={needsFix ? 'failed' : operation.state} role={active ? 'status' : undefined}>
       <Icon name={active ? activeIcon : needsFix ? 'error' : operation.state === 'stopped' ? 'stop' : 'check'} size={14} />
-      <div className="upgrade-body">
-        <span className="upgrade-title">{title}</span>
-        {detail && <span className="upgrade-detail">{detail}</span>}
+      <div className="upgrade-body grid gap-1.5 min-w-0 flex-1">
+        <span className="upgrade-title font-medium">{title}</span>
+        {detail && <span className="upgrade-detail text-muted -mt-1">{detail}</span>}
         {operation.state === 'refused' ? (
-          <ul className="upgrade-reasons">
+          <ul className="upgrade-reasons text-muted grid gap-0.5 m-0 pl-4 list-disc">
             {operation.reasons?.map(reason => <li key={reason}>{reason}</li>)}
           </ul>
         ) : operation.steps.length > 0 && operation.state !== 'current' && <Steps operation={operation} />}
         {operation.state === 'running' && (
-          <Button variant="surface" className="upgrade-fix" onClick={stop}>
+          <UpgradeAction onClick={stop}>
             <Icon name="stop" size={12} />Stop
-          </Button>
+          </UpgradeAction>
         )}
         {operation.state === 'waiting' && (
-          <Button variant="surface" className="upgrade-fix" onClick={restartNow}>
+          <UpgradeAction onClick={restartNow}>
             <Icon name="restart" size={12} />Restart now
-          </Button>
+          </UpgradeAction>
         )}
         {operation.state === 'restarting' && (
-          <span className="upgrade-stop-note">
-            <Button variant="surface" className="upgrade-fix" disabled><Icon name="stop" size={12} />Stop</Button>
+          <span className="upgrade-stop-note flex flex-wrap items-center gap-2 text-muted">
+            <UpgradeAction disabled><Icon name="stop" size={12} />Stop</UpgradeAction>
             Can't stop during the restart.
           </span>
         )}
-        {needsFix && operation.error && <pre className="upgrade-error">{operation.error}</pre>}
+        {needsFix && operation.error && <pre className="upgrade-error max-h-upgrade-error m-0 py-1.5 px-2 overflow-auto border border-line rounded-md bg-raised text-ink text-meta leading-normal font-mono whitespace-pre-wrap wrap-anywhere">{operation.error}</pre>}
         {needsFix && !restartOnly && (
-          <Button variant="surface" className="upgrade-fix" onClick={() => askHydra({ text: fixPrompt({ operation }) })}>
+          <UpgradeAction onClick={() => askHydra({ text: fixPrompt({ operation }) })}>
             <Icon name="fix" size={14} />Ask Hydra to fix
-          </Button>
+          </UpgradeAction>
         )}
       </div>
-    </div>
+    </OperationLine>
   )
 }
