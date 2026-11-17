@@ -264,6 +264,12 @@ export const viewFor = ({
 
 export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
   hydraWidth: view.defaultHydraWidth,
+  workspace: {
+    projectWidths: Object.fromEntries(Object.keys(view.workspace.projectWidths).map(id => [
+      id,
+      null,
+    ])),
+  },
   columnWidths: {
     ...Object.fromEntries(Object.keys(view.columnWidths).map(id => [
       id,

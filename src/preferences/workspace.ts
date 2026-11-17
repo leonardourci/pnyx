@@ -92,6 +92,12 @@ export function patchWorkspace({
           })
         }
 
+        if (width === null) {
+          delete next[key][id]
+
+          continue
+        }
+
         const minimum = PROJECT_MIN_WIDTH
 
         if (typeof width !== 'number' || !Number.isSafeInteger(width) || width < minimum) {
