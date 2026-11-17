@@ -370,7 +370,7 @@ export function Composer({
           projectRequested={projectRequested}
         />
         <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={COMPOSER_ICON} />}>
+          <Popover label="Add to message" className="composer-add" trigger={<Icon name="paperclip" size={COMPOSER_ICON} />}>
             {({ close }) => (
               <>
                 <Button
@@ -441,11 +441,10 @@ export function Composer({
                     card,
                   })
                   const id = crypto.randomUUID()
-                  const name = 'hydra'
+                  const name = 'reply'
                   const args = [
-                    'send',
-                    `--text=${text}`,
-                    '--event-id',
+                    card,
+                    text,
                     id,
                   ]
 
