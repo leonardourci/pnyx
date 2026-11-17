@@ -238,10 +238,9 @@ test(
       { name: 'Activity' },
     ).click()
     const updates = shown.locator('[aria-label="Task updates"]')
-    await updates.getByText('Brief updated').first()
-      .waitFor()
-
-    await updates.hover()
+    const recentUpdate = updates.getByText('Brief updated').first()
+    await recentUpdate.waitFor()
+    await recentUpdate.hover()
     await until({
       what: 'scrolling down to reach the task\'s creation',
       check: async () => {
