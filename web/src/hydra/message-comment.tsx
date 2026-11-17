@@ -1,8 +1,7 @@
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useEffect,useRef } from 'react'
 import type { ChatDrafts } from './chat-drafts.ts'
-import { Button } from '#web-shared/ui/controls.tsx'
 import { ComposerField,type ComposerFieldHandle } from './composer-field.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { markdownText } from './markdown-text.ts'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
@@ -175,18 +174,22 @@ export function MessageComment({
           }}
         />
         {show && !inline && (
-          <Button
-            className="icon-button"
-            aria-label="Show in chat"
+          <IconButton
+            size="small"
+            icon="external"
+            iconSize={14}
+            label="Show in chat"
             title="Show in chat"
             onClick={show}
-          >
-            <Icon name="external" size={14} />
-          </Button>
+          />
         )}
-        <Button className="icon-button" aria-label="Remove comment" onClick={remove}>
-          <Icon name="close" size={14} />
-        </Button>
+        <IconButton
+          size="small"
+          icon="close"
+          iconSize={14}
+          label="Remove comment"
+          onClick={remove}
+        />
       </div>
     </div>
   )

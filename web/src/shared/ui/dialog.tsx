@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
-import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { IconButton } from './icon-button.tsx'
 
 export function Dialog({
   title,
@@ -56,9 +55,7 @@ export function Dialog({
       <header className="dialog-head">
         <h2 id={heading}>{title}</h2>
         {actions}
-        <Button className="icon-button" aria-label="Close" onClick={close}>
-          <Icon name="close" size={14} />
-        </Button>
+        <IconButton size="small" icon="close" iconSize={14} label="Close" onClick={close} />
       </header>
       {children}
     </dialog>
