@@ -1,6 +1,6 @@
 // The owner's browser for the journeys: the installed Chrome, headless, with its own profile and no Keychain prompt.
-import { chromium, type Browser, type Page } from 'playwright-core'
-import { afterAll } from 'vitest'
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
+import { afterAll, afterEach } from 'vitest'
 import { localToken } from '#app/server-state.ts'
 import { zeroCookieName } from '#app/server-protocol.ts'
 import { zeroReady } from './zero.ts'
@@ -12,6 +12,12 @@ const KEYCHAIN_FLAGS = [
 ]
 
 let browser: Browser | undefined
+const contexts = new Set<BrowserContext>()
+
+afterEach(async () => {
+  await Promise.all([...contexts].map(context => context.close()))
+  contexts.clear()
+})
 
 afterAll(async () => {
   await browser?.close()
@@ -44,13 +50,15 @@ export async function openHydra({
     })
   }
 
-  const page = await (await browser.newContext({
+  const context = await browser.newContext({
     viewport: {
       width: 1440,
       height: 900,
     },
     reducedMotion: reducedMotion ? 'reduce' : 'no-preference',
-  })).newPage()
+  })
+  contexts.add(context)
+  const page = await context.newPage()
   await prepare?.({ page })
   await page.goto(`http://127.0.0.1:${port}/hydra/${hydraId}/`)
 
