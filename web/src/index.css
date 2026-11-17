@@ -43,6 +43,7 @@
   --text-ui: 14px;
   --text-chat: 16px;
   --text-code: 13px;
+  --ease-ui: ease;
   --radius-compact: 5px;
   --shadow-range: 0 1px 3px var(--color-shadow);
   --radius-control: 7px;
