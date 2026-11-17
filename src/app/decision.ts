@@ -85,7 +85,10 @@ export function decided({
   meta: Meta
   event: HydraEvent
 }): Decision {
-  if (event.id in state.eventIds) {
+  if (Object.hasOwn(
+    state.eventIds,
+    event.id,
+  )) {
     return { skipped: 'duplicate' }
   }
 

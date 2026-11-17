@@ -1,3 +1,4 @@
+import { recordEventId } from './command-meta.ts'
 import { hash } from 'node:crypto'
 import { restoreObservations, sourceFacts, sessionFacts, type ObservationRow } from '#tasks/observations.ts'
 import type { HydraEvent, HydraState } from './model.ts'
@@ -1041,7 +1042,11 @@ export function stateFromRows({
     id,
     seq,
   } of events) {
-    state.eventIds[id] = Number(seq)
+    recordEventId({
+      state,
+      id,
+      seq: Number(seq),
+    })
   }
 
   restoreObservations({

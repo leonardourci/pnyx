@@ -503,7 +503,11 @@ export function commit(
     create,
     fn: ({ writer }) => {
       const spool = drainSpool({ writer })
-      const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
+      const known = meta.id !== undefined && Object.hasOwn(
+        writer.state.eventIds,
+        meta.id,
+      )
+      const seq = known ? writer.state.eventIds[meta.id!] : undefined
       let out: Output
 
       if (seq !== undefined) {

@@ -43,3 +43,25 @@ export function base({
 
   return event
 }
+
+export function recordEventId({
+  state,
+  id,
+  seq,
+}: {
+  state: Pick<HydraState, 'eventIds'>
+  id: string
+  seq: number
+}) {
+  // A computed field keeps __proto__ as data instead of invoking Object's legacy setter.
+  if (id === '__proto__') {
+    state.eventIds = {
+      ...state.eventIds,
+      [id]: seq,
+    }
+
+    return
+  }
+
+  state.eventIds[id] = seq
+}

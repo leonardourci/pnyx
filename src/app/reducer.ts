@@ -1,3 +1,4 @@
+import { recordEventId } from './command-meta.ts'
 import { draft } from './draft.ts'
 import { applyHistory } from '#hydra/history.ts'
 import type { HydraState, HydraEvent } from './model.ts'
@@ -43,12 +44,19 @@ function apply({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  if (event.seq <= state.seq || event.id in state.eventIds) {
+  if (event.seq <= state.seq || Object.hasOwn(
+    state.eventIds,
+    event.id,
+  )) {
     return false
   }
 
   state.seq = event.seq
-  state.eventIds[event.id] = event.seq
+  recordEventId({
+    state,
+    id: event.id,
+    seq: event.seq,
+  })
 
   if (event.type === 'apply.recorded') {
     return true

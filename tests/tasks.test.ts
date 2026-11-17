@@ -723,7 +723,7 @@ test(
       '--before',
       'b',
       '--event-id',
-      'arrange-atlas',
+      'constructor',
     ]
     await hydra.owner({ args })
     await hydra.owner({
