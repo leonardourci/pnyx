@@ -247,7 +247,10 @@ export function AgentPickers({
   const pickers = (
     <>
       {selection ? (
-        <PickerShell data-changed={marks?.model?.changed || undefined} data-invalid={marks?.model?.invalid || undefined}>
+        <PickerShell
+          data-changed={marks?.model?.changed || undefined}
+          data-invalid={marks?.model?.invalid || undefined}
+        >
           <AccountModelPicker
             {...selection}
             label={selectionLabel}

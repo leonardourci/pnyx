@@ -28,7 +28,10 @@ export function PickerField({
   onChange({ value }: { value: string }): void
 } & Look) {
   return (
-    <PickerShell data-changed={mark?.changed || undefined} data-invalid={mark?.invalid || undefined}>
+    <PickerShell
+      data-changed={mark?.changed || undefined}
+      data-invalid={mark?.invalid || undefined}
+    >
       <span>{label}</span>
       <Select
         label={label}
