@@ -14,12 +14,15 @@ import { canRead, canWrite, DEFAULT_MEMORY_ACCESS } from './space-policy.ts'
 
 export { canRead, canWrite, DEFAULT_MEMORY_ACCESS, SPACE_NAME } from './space-policy.ts'
 
-export function memoryCaller({ hydraId }: { hydraId: string }): boolean {
+export function memoryAgent(): boolean {
   const env = requestEnv()
   const actor = env.PNYX_ACTOR ?? ''
-  const agent = actor === 'hydra' || actor.startsWith('worker:') || actor.startsWith('helper:') || Boolean(env.PNYX_TASK)
 
-  return !agent || env.PNYX_HYDRA === hydraId
+  return actor === 'hydra' || actor.startsWith('worker:') || actor.startsWith('helper:') || Boolean(env.PNYX_TASK)
+}
+
+export function memoryCaller({ hydraId }: { hydraId: string }): boolean {
+  return !memoryAgent() || requestEnv().PNYX_HYDRA === hydraId
 }
 
 export function memoryAccess({
@@ -176,6 +179,7 @@ export function memoryPermission({
 }
 
 export function memoryMovePermission({
+  destinationRevision,
   revision,
   hydraId,
   destination,
@@ -183,6 +187,7 @@ export function memoryMovePermission({
   propose,
   actor,
 }: {
+  destinationRevision: number
   revision: number
   hydraId: string
   destination: string
@@ -211,10 +216,17 @@ export function memoryMovePermission({
   }
 
   const pinned = args.some(arg => arg === '--if-revision' || arg.startsWith('--if-revision='))
-  const proposalArgs = pinned ? args : [
+  const sourceArgs = pinned ? args : [
     ...args,
     '--if-revision',
     String(revision),
+  ]
+
+  const destinationPinned = args.some(arg => arg === '--if-destination-revision' || arg.startsWith('--if-destination-revision='))
+  const proposalArgs = destinationPinned ? sourceArgs : [
+    ...sourceArgs,
+    '--if-destination-revision',
+    String(destinationRevision),
   ]
 
   return memoryPermission({

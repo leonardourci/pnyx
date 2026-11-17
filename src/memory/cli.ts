@@ -1,5 +1,5 @@
 import { memorySize, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget, type Memory } from './budgets.ts'
-import { required, guard, parse, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
+import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
@@ -129,6 +129,7 @@ export const owner = guard({
         project: { type: 'string' },
         to: { type: 'string' },
         propose: { type: 'boolean' },
+        'if-destination-revision': { type: 'string' },
         kind: { type: 'string' },
         until: { type: 'string' },
         used: { type: 'string' },
@@ -190,6 +191,10 @@ export const owner = guard({
         hydraId,
         args,
         propose: Boolean(values.propose),
+        ifDestinationRevision: integer({
+          value: values['if-destination-revision'],
+          flag: '--if-destination-revision',
+        }),
         destination: String(values.to),
         key: required({
           value: values.key as string | undefined,
@@ -212,6 +217,10 @@ export const owner = guard({
       return moveOwnerLearning({
         args,
         propose: Boolean(values.propose),
+        ifDestinationRevision: integer({
+          value: values['if-destination-revision'],
+          flag: '--if-destination-revision',
+        }),
         path: project.path,
         hydraId,
         text: required({

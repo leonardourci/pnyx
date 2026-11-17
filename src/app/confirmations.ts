@@ -347,7 +347,8 @@ export const approval = guard({
 
       output = stdout.trim()
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
+      const stdout = error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string' ? error.stdout : ''
+      const detail = stdout.trim() || (error instanceof Error ? error.message : String(error))
       withWriter({
         hydraId,
         fn: ({ writer }) => {
@@ -370,6 +371,14 @@ export const approval = guard({
           }
         },
       })
+
+      if (/^code: REVISION_CONFLICT$/m.test(stdout)) {
+        throw new HydraError({
+          message: 'Memory changed; propose the action again',
+          code: 'REVISION_CONFLICT',
+        })
+      }
+
       throw error
     }
 

@@ -438,6 +438,7 @@ export function saveOwnerMemory({
 export async function moveOwnerLearning({
   args,
   propose = false,
+  ifDestinationRevision,
   path,
   hydraId,
   text,
@@ -445,6 +446,7 @@ export async function moveOwnerLearning({
 }: {
   args: string[]
   propose?: boolean
+  ifDestinationRevision?: number
   path: string
   hydraId: string
   text: string
@@ -471,6 +473,14 @@ export async function moveOwnerLearning({
         facts,
         hydraId,
       })
+
+      if (ifDestinationRevision !== undefined && project.revision !== ifDestinationRevision) {
+        throw new HydraError({
+          message: 'Destination memory changed; propose the move again',
+          code: 'REVISION_CONFLICT',
+        })
+      }
+
       const projectBefore = project.documents.learnings ?? null
       const projectLines = (projectBefore ?? '').split('\n')
       let projectAfter = projectBefore ?? ''
@@ -493,6 +503,7 @@ export async function moveOwnerLearning({
         propose,
         actor: meta.actor,
         revision: owner.revision,
+        destinationRevision: project.revision,
         destination: readSettings().settings.projectSpaces[facts.identity.id] ?? 'shared',
       })
 
@@ -540,6 +551,7 @@ export async function moveOwnerLearning({
 export function moveOwnerSpace({
   args,
   propose = false,
+  ifDestinationRevision,
   hydraId,
   destination,
   key,
@@ -547,6 +559,7 @@ export function moveOwnerSpace({
 }: {
   args: string[]
   propose?: boolean
+  ifDestinationRevision?: number
   hydraId: string
   destination: string
   key: string
@@ -577,6 +590,13 @@ export function moveOwnerSpace({
 
       const source = readLog({ space })
       const target = readLog({ space: destination })
+
+      if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
+        throw new HydraError({
+          message: 'Destination memory changed; propose the move again',
+          code: 'REVISION_CONFLICT',
+        })
+      }
 
       if (source.corrupt || target.corrupt) {
         throw new HydraError({
@@ -622,6 +642,7 @@ export function moveOwnerSpace({
         propose,
         actor: meta.actor,
         revision: source.revision,
+        destinationRevision: target.revision,
       })
 
       if (proposal) {
