@@ -32,16 +32,17 @@ Grouping A is settled. Labels do not define columns.
   a state group. Done tasks disappear after 24 hours, honoring task hide overrides.
 - Clicking opens a card in place. Clicking its title folds it. The open card has
   all existing details and worker chat side by side, minimum 560×440, no maximum.
-  It initially opens at 660px. Switching cards in a column retains column width.
+  It fills its project column in its own row at its place in task order.
   Window mode is an explicit action and never changes the next click's behavior.
-  Neighboring cards fill available spaces before, beside and below an expanded family. A wider project
-  keeps enough room for a closed card beside it; children include their indent in
-  the required width. Columns scroll vertically, with no horizontal scrollbar.
+  Cards before and after it fill complete rows, including partial rows that stretch
+  to the available width. Children include their indent in the required width.
+  The project handle is the only width control; cards keep their height handle.
+  Columns scroll vertically, with no horizontal scrollbar.
 - One level of sub-tasks, compact and indented beneath their parent. Cross-project
   children show their project. Each retains its own worker, PR and lifecycle.
 - During dragging, the full card or family follows the pointer. A marked landing
   slot moves through the layout as other cards slide aside and fill its origin.
-  Position checks use the resting layout so slides do not bounce. A drop settles
+  Drag targets remain stable while neighbors animate. A drop settles
   into its slot; pill nesting tucks the lifted card around the pointer. Hover menus
   and text selection stay out of the gesture. Other states stay visibly distinct. Only dropping on the small
   central sub-task pill nests a card. The rest of a card reorders it. A task with
@@ -59,7 +60,10 @@ Grouping A is settled. Labels do not define columns.
 
 ## Layers and current state
 
-The core and UI layers are implemented. The live-app pass covers desktop and phone. The previous head passed deslop and required CI; the settled three-row card change is repeating that gate with new browser evidence.
+The core and UI layers are implemented. Owner refinements for full-width rows,
+shared worker composition and Tailwind are checked locally. The approved library
+replacement and its matching measurements are in progress. Previous deslop/CI
+proof does not cover these newer commits.
 
 - [x] Read settled design and record its migration decisions.
 - [x] Automatic stopped-client/query recovery and bounded connection logs.
@@ -72,7 +76,8 @@ The core and UI layers are implemented. The live-app pass covers desktop and pho
 - [x] Run desktop/phone interaction and restart/drop proof. Upload the synthetic media to the PR.
 - [x] Give Settings its own page, move the Oracle beside it, fill earlier card gaps and match the settled physical drag behavior.
 - [x] Commit the implementation in layers. Push and refresh the same draft PR at the checkpoint.
-- [ ] Refresh deslop and required CI for the settled three-row closed cards. The five focused regression flips passed on the preceding head.
+- [ ] Replace handwritten drag/layout animation with dnd-kit and Motion; compare traces and bundles.
+- [ ] Refresh focused flips, deslop and required CI for the latest refinements.
 
 ## Migration inventory
 
@@ -179,7 +184,8 @@ After its quick local commands pass, ask Hydra for CI approval with the waiting 
 | Repository grouping | Reuse the group ID for repeated command event IDs | The third repository task never enters Suite |
 | Closed-card labels | Omit the closed-card label row | The grouped repository tag is absent; the passing flow also checks labels through open/close and the legacy Ideas tag |
 | Visual arrangement | Omit the live drag preview; earlier proof also ignored arrangement persistence | Neighbors never move while the pointer is held; the earlier mutation loses the saved order |
-| Dense packing | Prefer the lowest free space over earlier gaps | The later card no longer fills the earlier space beside the open family |
+| Full-width open rows | Pending flip of the full-row layout | The open row or its surrounding partial rows no longer fill the project |
+| Project resizing | Pending flip of the grip hit area | A drag begun in the blank project edge changes width while held |
 | Settings page | Remove the server's Settings-route support | Reload returns to the Hydra instead of Settings |
 | Parent retention | Suppress all-children completion | The parent's completion timestamp remains absent |
 | Folding identity | Unmount folded project content | The original open card is disconnected |
@@ -192,3 +198,35 @@ The passing reply flow drops the first command before the server receives it, th
 The first full CI run exposed old chat journeys that selected conversations globally and a privacy allowlist that omitted the new public sequence. Chat selectors, paging counters, loader checks and touch input now target their own workspace/conversation. The privacy assertion still names every allowed field explicitly, including `seq`.
 
 The scoped journeys also reproduced competing scroll controllers and vertical gestures moving the horizontal Hydra axis. Keep chat's existing follow/anchor controller and give the axis horizontal gestures only. The affected chat and access suites pass all 19 cases after those fixes.
+
+## Latest owner refinements
+
+Open cards occupy their own full-width row at their position in task order. Cards
+before and after them fill their rows, including a partial final row. The project
+handle controls width; an open card keeps only its height handle. Saved per-card
+widths are removed on upgrade and historical view events cannot restore them.
+Instructions always appear in full. Worker replies use the Hydra's full Composer,
+including task/file mentions, commands, skills and attachments, without model controls.
+
+A project resize must start on its visible grip. Releases or drags begun elsewhere
+cannot resize a column. Pointer capture and the gesture's starting value determine
+whether a resize commits; preview updates do not change that starting value.
+
+The approved next layer uses dnd-kit sortable for pointer and keyboard dragging,
+and Motion for layout animation. It replaces the handwritten drag, packing and
+animation code. Measure the same full-column drag and card open/close in Chrome
+traces before and after, plus gzip bundle and CSS sizes. Report to Hydra before
+retaining heavier or slower libraries when they provide no visible improvement.
+
+All rewritten workspace pieces use Tailwind utilities and theme tokens. Shared
+Button, Label and HoverActions convert once for every caller; chat, Oracle and
+Settings section layouts stay as they are. Both-theme before/after captures of
+chat and Oracle must show that those shared controls retain their appearance.
+
+
+The latest focused checks pass for full-width rows, genuine grip resizing and
+persistence, worker reply recovery through the shared Composer, and upgrade cleanup
+of saved card widths while preserving heights, project widths and event history.
+Both-theme trial captures cover the full-row layout at 390, 1440 and 1920px.
+Library performance uses a separate isolated 24-card instance at 1440×960 with a
+944px project. Before-library traces and gzip sizes are saved for matching comparison.
