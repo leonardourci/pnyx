@@ -1,4 +1,3 @@
-import type { MemoryAccess } from '#memory/space-policy.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { AnswerMessage } from '#tasks/model.ts'
@@ -14,7 +13,8 @@ export interface HydraIdentity {
 }
 
 export interface HydraConfig {
-  memory?: MemoryAccess
+  polis?: string
+  readPoleis?: string[]
   helper?: AgentConfig | false
   id: string
   name: string

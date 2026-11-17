@@ -1,9 +1,9 @@
 import { HydraError } from '#store/errors.ts'
-import { widensSpaceReaders } from '#memory/access-changes.ts'
-import { memoryHydras, memoryPermission, memoryCaller, memoryAgent } from '#memory/spaces.ts'
+import { widensPolisReaders } from '#memory/access-changes.ts'
+import { memoryHydras, memoryPermission, memoryCaller, memoryAgent } from '#memory/poleis.ts'
 import { patchSettings } from './settings.ts'
 import { hydraActor } from '#app/request-context.ts'
-import { canRead } from '#memory/space-policy.ts'
+import { canRead } from '#memory/polis-policy.ts'
 import { AxiError } from 'axi-sdk-js'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
 import { readSettings, saveSettings, settingsReceipt, shownSettings } from './store.ts'
@@ -57,7 +57,7 @@ export const settings = guard({
         help: [
           'defaultColumnWidth is the fallback for every existing and future column; defaultColumnWidths holds per-column overrides',
           'Every key applies to every Hydra; a patch names only what changes',
-          'memorySpaces patches named spaces (null removes, shared is reserved); readers are Hydra ids or *; projectSpaces patches project assignments (null restores shared); --propose saves a Confirm question',
+          'poleis patches named poleis (null removes, shared is reserved); readers are Hydra ids or *; projectPoleis patches project assignments (null restores shared); --propose saves a Confirm question',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
@@ -99,27 +99,27 @@ export const settings = guard({
       '--if-revision',
       String(read.revision),
     ]
-    const memoryPatch = patch && typeof patch === 'object' && ('memorySpaces' in patch || 'projectSpaces' in patch)
+    const memoryPatch = patch && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch)
 
     if (memoryPatch && typeof patch === 'object' && patch !== null
       && (memoryAgent() || hydraActor({ actor: change.actor }))) {
       const state = loadHydra({ hydraId }).state
-      const spaces = read.settings.memorySpaces
+      const poleis = read.settings.poleis
 
-      if ('projectSpaces' in patch) {
+      if ('projectPoleis' in patch) {
         throw new HydraError({
-          message: 'Use project move to change the memory space of an attached project',
+          message: 'Use project move to change the polis of an attached project',
           code: 'VALIDATION_ERROR',
         })
       }
 
-      if ('memorySpaces' in patch && patch.memorySpaces && typeof patch.memorySpaces === 'object') {
-        for (const space of Object.keys(patch.memorySpaces)) {
+      if ('poleis' in patch && patch.poleis && typeof patch.poleis === 'object') {
+        for (const polis of Object.keys(patch.poleis)) {
           if (!canRead({
             hydraId,
             state,
-            spaces,
-            space,
+            poleis,
+            polis,
           })) {
             throw new HydraError({
               message: 'Memory is unavailable',
@@ -137,7 +137,7 @@ export const settings = guard({
         args: proposalArgs,
         propose: Boolean(values.propose),
         actor: change.actor,
-        widening: widensSpaceReaders({
+        widening: widensPolisReaders({
           before: read.settings,
           after,
           hydras: memoryHydras(),
@@ -170,12 +170,12 @@ export const settings = guard({
         const changed = receipt.changed as Record<string, unknown>
         const visible = receipt.settings as Settings
 
-        if ('memorySpaces' in changed) {
-          changed.memorySpaces = visible.memorySpaces
+        if ('poleis' in changed) {
+          changed.poleis = visible.poleis
         }
 
-        if ('projectSpaces' in changed) {
-          changed.projectSpaces = visible.projectSpaces
+        if ('projectPoleis' in changed) {
+          changed.projectPoleis = visible.projectPoleis
         }
       }
     }
@@ -292,18 +292,18 @@ function visibleSettings({
   }
 
   const state = loadHydra({ hydraId }).state
-  const spaces = readSettings().settings.memorySpaces
-  const readable = ({ space }: { space: string }) => memoryCaller({ hydraId }) && canRead({
+  const poleis = readSettings().settings.poleis
+  const readable = ({ polis }: { polis: string }) => memoryCaller({ hydraId }) && canRead({
     hydraId,
     state,
-    spaces,
-    space,
+    poleis,
+    polis,
   })
 
   return {
     ...settings,
-    memorySpaces: Object.fromEntries(Object.entries(settings.memorySpaces)
-      .filter(([space]) => readable({ space }))),
-    projectSpaces: {},
+    poleis: Object.fromEntries(Object.entries(settings.poleis)
+      .filter(([polis]) => readable({ polis }))),
+    projectPoleis: {},
   }
 }

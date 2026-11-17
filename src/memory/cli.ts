@@ -3,14 +3,14 @@ import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
-import { ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerSpace } from './owner-memory.ts'
+import { ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis } from './owner-memory.ts'
 import { findProject } from '#projects/read.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
-import { memoryCaller } from './spaces.ts'
+import { memoryCaller } from './poleis.ts'
 
 function memoryList({
   memory,
@@ -187,7 +187,7 @@ export const owner = guard({
     }
 
     if (action === 'move' && values.to !== undefined) {
-      return moveOwnerSpace({
+      return moveOwnerPolis({
         hydraId,
         args,
         propose: Boolean(values.propose),

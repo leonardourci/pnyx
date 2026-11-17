@@ -1,4 +1,4 @@
-import { readableProjects } from '#memory/spaces.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { matchesProject } from './identity.ts'

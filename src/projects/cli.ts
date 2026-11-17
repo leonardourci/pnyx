@@ -1,5 +1,5 @@
 import { sharesWithMore } from '#memory/access-changes.ts'
-import { canRead, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/spaces.ts'
+import { canRead, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
@@ -49,7 +49,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       copy: { type: 'string' },
       landing: { type: 'string' },
       merge: { type: 'string' },
-      space: { type: 'string' },
+      polis: { type: 'string' },
       propose: { type: 'boolean' },
     },
     positionals: 2,
@@ -97,20 +97,20 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     const identity = await projectIdentity(project)
     const read = readSettings()
     const settings = read.settings
-    const source = settings.projectSpaces[identity.id] ?? 'shared'
-    const space = required({
-      value: values.space as string | undefined,
-      what: '--space',
+    const source = settings.projectPoleis[identity.id] ?? 'shared'
+    const polis = required({
+      value: values.polis as string | undefined,
+      what: '--polis',
     })
 
     if (![
       source,
-      space,
-    ].every(space => canRead({
+      polis,
+    ].every(polis => canRead({
       hydraId,
       state: current,
-      spaces: settings.memorySpaces,
-      space,
+      poleis: settings.poleis,
+      polis,
     }))) {
       throw new HydraError({
         message: 'project not found',
@@ -131,7 +131,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       actor: m.actor,
       widening: sharesWithMore({
         source,
-        destination: space,
+        destination: polis,
         before: settings,
         hydras: memoryHydras(),
       }),
@@ -144,8 +144,8 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     const saved = saveSettings({
       hydraId,
       patch: {
-        projectSpaces: {
-          [identity.id]: space,
+        projectPoleis: {
+          [identity.id]: polis,
         },
       },
       meta: {
@@ -487,7 +487,7 @@ export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project 
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. For every project and Hydra, use owner worker-notes.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
-Each project belongs to one memory space (shared by default); only attached Hydras that may read that space see its memory. Move changes its assigned space explicitly.
+Each project belongs to one polis (shared by default); only attached Hydras that may read that polis see its memory. Move changes its assigned polis explicitly.
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
@@ -499,7 +499,7 @@ pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra
 pnyx-axi project add --clone <url> --into <folder> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
 pnyx-axi project list [--hydra <id>]
 pnyx-axi project show <name|path> [--hydra <id>]
-pnyx-axi project move <name|path> --space <space> [--propose] [--hydra <id>]
+pnyx-axi project move <name|path> --polis <polis> [--propose] [--hydra <id>]
 pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
 pnyx-axi project remove <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]

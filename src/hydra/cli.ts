@@ -1,6 +1,6 @@
-import { requestedMemoryAccess, widensHydraReads } from '#memory/access-changes.ts'
+import { requestedPolisAccess, widensPolisReads } from '#memory/access-changes.ts'
 import { projectRows } from '#projects/read.ts'
-import { readableProjects, memoryAccess, memoryPermission, memoryAgent } from '#memory/spaces.ts'
+import { readableProjects, polisAccess, hydraPolisConfig, memoryPermission, memoryAgent } from '#memory/poleis.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -42,17 +42,20 @@ function visibleHydraConfig({
   config: HydraConfig
   hydraId: string
 }): Output {
-  const shown: Output = { ...config }
+  const shown: Output = {
+    ...config,
+    ...hydraPolisConfig({ state: { config } }),
+  }
 
   if (memoryAgent()) {
-    const access = memoryAccess({ hydraId })
-    const memory: Output = { reads: access.reads }
+    const access = polisAccess({ hydraId })
+    shown.readPoleis = access.reads
 
-    if (access.writableSpace !== undefined) {
-      memory.write = access.writableSpace
+    if (access.writablePolis === undefined) {
+      delete shown.polis
+    } else {
+      shown.polis = access.writablePolis
     }
-
-    shown.memory = memory
   }
 
   return shown
@@ -68,8 +71,8 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     options: {
       ...WRITE,
       name: { type: 'string' },
-      'memory-reads': { type: 'string' },
-      'memory-write': { type: 'string' },
+      'read-poleis': { type: 'string' },
+      'polis': { type: 'string' },
       propose: { type: 'boolean' },
       icon: { type: 'string' },
       position: { type: 'string' },
@@ -192,11 +195,11 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     checkSettings({ patch: shared })
   }
 
-  const previousMemory = action === 'set' ? loadHydra({ hydraId: id }).state.config?.memory : undefined
-  const memory = requestedMemoryAccess({
+  const previousMemory = action === 'set' ? hydraPolisConfig({ state: loadHydra({ hydraId: id }).state }) : undefined
+  const memory = requestedPolisAccess({
     current: previousMemory,
-    reads: values['memory-reads'],
-    write: values['memory-write'],
+    reads: values['read-poleis'],
+    polis: values.polis,
   })
 
   if (memory) {
@@ -206,7 +209,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       args,
       propose: Boolean(values.propose),
       actor: m.actor,
-      widening: widensHydraReads({
+      widening: widensPolisReads({
         before: previousMemory,
         after: memory,
       }),
@@ -306,7 +309,8 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       }
 
       if (memory) {
-        data.memory = memory
+        data.polis = memory.polis
+        data.readPoleis = memory.readPoleis
       }
 
       if (named) {

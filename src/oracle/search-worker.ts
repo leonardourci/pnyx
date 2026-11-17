@@ -1,4 +1,4 @@
-import { readableProjects } from '#memory/spaces.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { loadHydra } from '#app/store.ts'
 import { projectMemoryView } from '#memory/project-memory.ts'
 import { parentPort, workerData } from 'node:worker_threads'

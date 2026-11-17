@@ -10,9 +10,9 @@ import { readSettings } from '#settings/store.ts'
 import type { Settings } from '#settings/model.ts'
 import { HydraError } from '#store/errors.ts'
 
-import { canRead, canWrite, DEFAULT_MEMORY_ACCESS } from './space-policy.ts'
+import { canRead, canWrite, hydraPolisConfig } from './polis-policy.ts'
 
-export { canRead, canWrite, DEFAULT_MEMORY_ACCESS, SPACE_NAME } from './space-policy.ts'
+export { canRead, canWrite, DEFAULT_POLIS_ACCESS, hydraPolisConfig, POLIS_NAME } from './polis-policy.ts'
 
 export function memoryAgent(): boolean {
   const env = requestEnv()
@@ -25,7 +25,7 @@ export function memoryCaller({ hydraId }: { hydraId: string }): boolean {
   return !memoryAgent() || requestEnv().PNYX_HYDRA === hydraId
 }
 
-export function memoryAccess({
+export function polisAccess({
   hydraId,
   state = loadHydra({ hydraId }).state,
   settings = readSettings().settings,
@@ -37,31 +37,31 @@ export function memoryAccess({
   const input = {
     hydraId,
     state,
-    spaces: settings.memorySpaces,
+    poleis: settings.poleis,
   }
-  const access = state.config?.memory ?? DEFAULT_MEMORY_ACCESS
+  const access = hydraPolisConfig({ state })
   const allowed = memoryCaller({ hydraId })
-  const reads = access.reads.filter(space => allowed && canRead({
+  const reads = access.readPoleis.filter(polis => allowed && canRead({
     ...input,
-    space,
+    polis,
   }))
-  const writableSpace = allowed && canWrite({
+  const writablePolis = allowed && canWrite({
     ...input,
-    space: access.write,
-  }) ? access.write : undefined
+    polis: access.polis,
+  }) ? access.polis : undefined
 
   return {
     reads,
-    writableSpace,
+    writablePolis,
     write: () => {
-      if (writableSpace === undefined) {
+      if (writablePolis === undefined) {
         throw new HydraError({
           message: 'Memory is unavailable',
           code: 'NOT_FOUND',
         })
       }
 
-      return writableSpace
+      return writablePolis
     },
   }
 }
@@ -80,8 +80,8 @@ export function canReadProject({
   return memoryCaller({ hydraId }) && canRead({
     hydraId,
     state,
-    spaces: settings.memorySpaces,
-    space: settings.projectSpaces[id] ?? 'shared',
+    poleis: settings.poleis,
+    polis: settings.projectPoleis[id] ?? 'shared',
   })
 }
 
@@ -197,7 +197,7 @@ export function memoryMovePermission({
 }) {
   const settings = readSettings().settings
   const state = loadHydra({ hydraId }).state
-  const source = memoryAccess({
+  const source = polisAccess({
     hydraId,
     state,
     settings,
@@ -206,8 +206,8 @@ export function memoryMovePermission({
   if (!canRead({
     hydraId,
     state,
-    spaces: settings.memorySpaces,
-    space: destination,
+    poleis: settings.poleis,
+    polis: destination,
   })) {
     throw new HydraError({
       message: 'Memory is unavailable',

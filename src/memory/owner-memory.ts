@@ -1,6 +1,6 @@
 import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
-import { canRead, memoryAccess, memoryMovePermission } from './spaces.ts'
+import { canRead, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
@@ -33,11 +33,11 @@ const migratedPath = () => join(
   'migrated',
 )
 
-function readLog({ space = 'shared' }: { space?: string } = {}): OwnerLog {
+function readLog({ polis = 'shared' }: { polis?: string } = {}): OwnerLog {
   const {
     entries,
     corrupt,
-  } = readOwnerEntries({ space })
+  } = readOwnerEntries({ polis })
   const memory: Memory = Object.create(null) as Memory
   let archived: ArchivedLine[] = []
   let revision = 0
@@ -46,7 +46,7 @@ function readLog({ space = 'shared' }: { space?: string } = {}): OwnerLog {
     revision = entry.seq
 
     // Moved lines remain in destination memory.
-    if (!entry.projectMove && !entry.spaceMove) {
+    if (!entry.projectMove && !entry.polisMove) {
       archived = archiveRemoved({
         archived,
         key: entry.key,
@@ -98,27 +98,27 @@ function append({
   budget,
   confirmed,
   projectMove,
-  spaceMove,
+  polisMove,
   learning,
-  space = 'shared',
+  polis = 'shared',
 }: {
-  space?: string
+  polis?: string
   key: string
   change: ({ before }: { before: string | null }) => string | null
   meta: Meta
   budget?: number
   confirmed?: string
-  spaceMove?: OwnerEntry['spaceMove']
+  polisMove?: OwnerEntry['polisMove']
   projectMove?: OwnerEntry['projectMove']
   learning?: LearningChange
 }): OwnerEntry | undefined {
-  const log = readLog({ space })
+  const log = readLog({ polis })
 
   if (log.corrupt) {
     throw new HydraError({
       message: 'Owner memory has an unreadable line; inspect its log before writing',
       code: 'LOG_CORRUPT',
-      help: [`Inspect ${logPath({ space })}`],
+      help: [`Inspect ${logPath({ polis })}`],
     })
   }
 
@@ -189,17 +189,17 @@ function append({
     entry.projectMove = projectMove
   }
 
-  if (spaceMove) {
-    entry.spaceMove = spaceMove
+  if (polisMove) {
+    entry.polisMove = polisMove
   }
 
   if (learning) {
     entry.learning = learning
   }
 
-  privateDir({ dir: dirname(logPath({ space })) })
+  privateDir({ dir: dirname(logPath({ polis })) })
   writeDurably({
-    path: logPath({ space }),
+    path: logPath({ polis }),
     data: `${JSON.stringify(entry)}\n`,
     flag: 'a',
   })
@@ -370,11 +370,11 @@ export function ownerMemory({
 
   const memory: Memory = Object.create(null) as Memory
 
-  for (const space of memoryAccess({ hydraId }).reads) {
+  for (const polis of polisAccess({ hydraId }).reads) {
     for (const [
       key,
       entry,
-    ] of Object.entries(readLog({ space }).memory)) {
+    ] of Object.entries(readLog({ polis }).memory)) {
       const previous = memory[key]
       memory[key] = previous ? {
         text: mergeLines({
@@ -396,13 +396,13 @@ export function ownerMemory({
 }
 
 export function ownerArchive({ hydraId }: { hydraId: string }): ArchivedLine[] {
-  return memoryAccess({ hydraId }).reads.flatMap(space => readLog({ space }).archived)
+  return polisAccess({ hydraId }).reads.flatMap(polis => readLog({ polis }).archived)
 }
 
 export function writableOwnerMemory({ hydraId }: { hydraId: string }) {
-  const { writableSpace } = memoryAccess({ hydraId })
+  const { writablePolis } = polisAccess({ hydraId })
 
-  return writableSpace === undefined ? undefined : readLog({ space: writableSpace })
+  return writablePolis === undefined ? undefined : readLog({ polis: writablePolis })
 }
 
 export function saveOwnerMemory({
@@ -424,7 +424,7 @@ export function saveOwnerMemory({
 
   return withRegistryLock({
     fn: () => append({
-      space: memoryAccess({ hydraId }).write(),
+      polis: polisAccess({ hydraId }).write(),
       key,
       change: ({ before }) => confirmed === undefined ? after : before,
       meta,
@@ -457,8 +457,8 @@ export async function moveOwnerLearning({
 
   return withRegistryLock({
     fn: () => {
-      const space = memoryAccess({ hydraId }).write()
-      const owner = readLog({ space })
+      const polis = polisAccess({ hydraId }).write()
+      const owner = readLog({ polis })
 
       if (meta.ifRevision !== undefined && owner.revision !== meta.ifRevision) {
         throw new HydraError({
@@ -512,7 +512,7 @@ export async function moveOwnerLearning({
         actor: meta.actor,
         revision: owner.revision,
         destinationRevision: project.revision,
-        destination: readSettings().settings.projectSpaces[facts.identity.id] ?? 'shared',
+        destination: readSettings().settings.projectPoleis[facts.identity.id] ?? 'shared',
       })
 
       if (proposal) {
@@ -521,7 +521,7 @@ export async function moveOwnerLearning({
 
       const projectEvent: ProjectMemoryEvent = {
         v: 1,
-        id: space === 'shared' ? `owner-move:${owner.revision + 1}` : `owner-move:${space}:${owner.revision + 1}`,
+        id: polis === 'shared' ? `owner-move:${owner.revision + 1}` : `owner-move:${polis}:${owner.revision + 1}`,
         seq: project.revision + 1,
         at: meta.at,
         actor: meta.actor,
@@ -535,7 +535,7 @@ export async function moveOwnerLearning({
       }
       const remaining = lines.filter(line => line !== text).join('\n')
       const entry = append({
-        space,
+        polis,
         key: 'learnings',
         change: () => remaining || null,
         meta,
@@ -556,7 +556,7 @@ export async function moveOwnerLearning({
   })
 }
 
-export function moveOwnerSpace({
+export function moveOwnerPolis({
   args,
   propose = false,
   ifDestinationRevision,
@@ -577,14 +577,14 @@ export function moveOwnerSpace({
 
   return withRegistryLock({
     fn: () => {
-      const space = memoryAccess({ hydraId }).write()
+      const polis = polisAccess({ hydraId }).write()
       const state = loadHydra({ hydraId }).state
 
       if (!canRead({
         hydraId,
         state,
-        spaces: readSettings().settings.memorySpaces,
-        space: destination,
+        poleis: readSettings().settings.poleis,
+        polis: destination,
       })) {
         throw new HydraError({
           message: 'Memory is unavailable',
@@ -592,12 +592,12 @@ export function moveOwnerSpace({
         })
       }
 
-      if (space === destination) {
+      if (polis === destination) {
         return { skipped: 'unchanged' }
       }
 
-      const source = readLog({ space })
-      const target = readLog({ space: destination })
+      const source = readLog({ polis })
+      const target = readLog({ polis: destination })
 
       if (meta.ifRevision !== undefined && source.revision !== meta.ifRevision) {
         throw new HydraError({
@@ -665,12 +665,12 @@ export function moveOwnerSpace({
       }
 
       const entry = append({
-        space,
+        polis,
         key,
         change: () => null,
         meta,
-        spaceMove: {
-          space: destination,
+        polisMove: {
+          polis: destination,
           entry: {
             v: 1,
             seq: target.revision + 1,

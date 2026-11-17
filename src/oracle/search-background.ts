@@ -1,4 +1,4 @@
-import { memoryCaller } from '#memory/spaces.ts'
+import { memoryCaller } from '#memory/poleis.ts'
 import { migrateOwnerMemory } from '#memory/owner-memory.ts'
 import { Worker } from 'node:worker_threads'
 import { log } from '#app/diagnostics.ts'

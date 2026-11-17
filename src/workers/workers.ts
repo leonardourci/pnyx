@@ -1,4 +1,4 @@
-import { memoryCaller } from '#memory/spaces.ts'
+import { memoryCaller } from '#memory/poleis.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'

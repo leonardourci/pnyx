@@ -1,5 +1,5 @@
 import { HydraError } from '#store/errors.ts'
-import { SPACE_NAME } from './space-policy.ts'
+import { POLIS_NAME } from './polis-policy.ts'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Learning, LearningChange } from './learnings.ts'
@@ -20,8 +20,8 @@ export interface OwnerEntry {
   before: string | null
   after: string | null
   // One source entry commits both sides; destination replay imports its entry.
-  spaceMove?: {
-    space: string
+  polisMove?: {
+    polis: string
     entry: OwnerEntry
   }
   projectMove?: {
@@ -30,15 +30,15 @@ export interface OwnerEntry {
   }
 }
 
-export function ownerMemoryLogPath({ space = 'shared' }: { space?: string } = {}) {
+export function ownerMemoryLogPath({ polis = 'shared' }: { polis?: string } = {}) {
   const owner = join(
     pnyxHome(),
     'owner',
   )
-  const folder = space === 'shared' ? owner : join(
+  const folder = polis === 'shared' ? owner : join(
     owner,
-    'spaces',
-    space,
+    'poleis',
+    polis,
   )
 
   return join(
@@ -47,7 +47,7 @@ export function ownerMemoryLogPath({ space = 'shared' }: { space?: string } = {}
   )
 }
 
-function readLogEntries({ space = 'shared' }: { space?: string } = {}): {
+function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
   entries: OwnerEntry[]
   corrupt: boolean
 } {
@@ -55,7 +55,7 @@ function readLogEntries({ space = 'shared' }: { space?: string } = {}): {
 
   try {
     text = readFileSync(
-      ownerMemoryLogPath({ space }),
+      ownerMemoryLogPath({ polis }),
       'utf8',
     )
   } catch (error) {
@@ -93,9 +93,9 @@ function readLogEntries({ space = 'shared' }: { space?: string } = {}): {
       continue
     }
 
-    if (entry.spaceMove && (!SPACE_NAME.test(entry.spaceMove.space)
-      || entry.spaceMove.entry?.key !== entry.key || typeof entry.spaceMove.entry.after !== 'string'
-      || !Number.isInteger(entry.spaceMove.entry.seq) || entry.spaceMove.entry.spaceMove)) {
+    if (entry.polisMove && (!POLIS_NAME.test(entry.polisMove.polis)
+      || entry.polisMove.entry?.key !== entry.key || typeof entry.polisMove.entry.after !== 'string'
+      || !Number.isInteger(entry.polisMove.entry.seq) || entry.polisMove.entry.polisMove)) {
       corrupt = true
       continue
     }
@@ -109,14 +109,14 @@ function readLogEntries({ space = 'shared' }: { space?: string } = {}): {
   }
 }
 
-function ownerLogSpaces(): string[] {
+function ownerLogPoleis(): string[] {
   let names: string[] = []
 
   try {
     names = readdirSync(join(
       pnyxHome(),
       'owner',
-      'spaces',
+      'poleis',
     ))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -126,13 +126,13 @@ function ownerLogSpaces(): string[] {
 
   return [
     'shared',
-    ...names.filter(name => name !== 'shared' && SPACE_NAME.test(name)),
+    ...names.filter(name => name !== 'shared' && POLIS_NAME.test(name)),
   ]
 }
 
 export function ownerProjectMoves({ id }: { id: string }) {
-  return ownerLogSpaces().flatMap(space => {
-    const log = readLogEntries({ space })
+  return ownerLogPoleis().flatMap(polis => {
+    const log = readLogEntries({ polis })
 
     if (log.corrupt) {
       throw new HydraError({
@@ -151,19 +151,19 @@ export function ownerProjectMoves({ id }: { id: string }) {
   })
 }
 
-export function readOwnerEntries({ space = 'shared' }: { space?: string } = {}) {
-  const result = readLogEntries({ space })
+export function readOwnerEntries({ polis = 'shared' }: { polis?: string } = {}) {
+  const result = readLogEntries({ polis })
 
-  for (const source of ownerLogSpaces()) {
-    if (source === space) {
+  for (const source of ownerLogPoleis()) {
+    if (source === polis) {
       continue
     }
 
-    const log = readLogEntries({ space: source })
+    const log = readLogEntries({ polis: source })
 
     for (const entry of log.entries) {
-      if (entry.spaceMove?.space === space) {
-        result.entries.push(entry.spaceMove.entry)
+      if (entry.polisMove?.polis === polis) {
+        result.entries.push(entry.polisMove.entry)
       }
     }
   }

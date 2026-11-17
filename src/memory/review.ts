@@ -1,4 +1,4 @@
-import { readableProjects } from '#memory/spaces.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { learningDigest, staleLearnings } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { ownerMemory } from './owner-memory.ts'

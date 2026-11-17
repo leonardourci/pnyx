@@ -1,21 +1,21 @@
 import { HydraError } from '#store/errors.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Settings } from '#settings/model.ts'
-import { canRead, DEFAULT_MEMORY_ACCESS, SPACE_NAME, type MemoryAccess } from './space-policy.ts'
+import { canRead, DEFAULT_POLIS_ACCESS, POLIS_NAME, type PolisAccess } from './polis-policy.ts'
 
-export function widensHydraReads({
+export function widensPolisReads({
   before,
   after,
 }: {
-  before?: MemoryAccess
-  after: MemoryAccess
+  before?: PolisAccess
+  after: PolisAccess
 }): boolean {
-  const reads = (before ?? DEFAULT_MEMORY_ACCESS).reads
+  const reads = (before ?? DEFAULT_POLIS_ACCESS).readPoleis
 
-  return after.reads.some(space => !reads.includes(space))
+  return after.readPoleis.some(polis => !reads.includes(polis))
 }
 
-export function widensSpaceReaders({
+export function widensPolisReaders({
   before,
   after,
   hydras,
@@ -28,10 +28,10 @@ export function widensSpaceReaders({
   }[]
 }): boolean {
   for (const [
-    space,
+    polis,
     access,
-  ] of Object.entries(after.memorySpaces)) {
-    const previous = before.memorySpaces[space]?.readers ?? []
+  ] of Object.entries(after.poleis)) {
+    const previous = before.poleis[polis]?.readers ?? []
 
     if (!previous.includes('*') && access.readers.some(reader => !previous.includes(reader))) {
       return true
@@ -39,13 +39,13 @@ export function widensSpaceReaders({
   }
 
   const projects = new Set([
-    ...Object.keys(before.projectSpaces),
-    ...Object.keys(after.projectSpaces),
+    ...Object.keys(before.projectPoleis),
+    ...Object.keys(after.projectPoleis),
   ])
 
   for (const project of projects) {
-    const source = before.projectSpaces[project] ?? 'shared'
-    const destination = after.projectSpaces[project] ?? 'shared'
+    const source = before.projectPoleis[project] ?? 'shared'
+    const destination = after.projectPoleis[project] ?? 'shared'
 
     if (source === destination) {
       continue
@@ -82,7 +82,7 @@ export function sharesWithMore({
   }[]
 }): boolean {
   const futureSharedReader = destination === 'shared' && source !== 'shared'
-    && after.memorySpaces.shared?.readers.includes('*')
+    && after.poleis.shared?.readers.includes('*')
 
   return Boolean(futureSharedReader) || hydras.some(({
     id,
@@ -91,44 +91,44 @@ export function sharesWithMore({
     canRead({
       hydraId: id,
       state,
-      spaces: after.memorySpaces,
-      space: destination,
+      poleis: after.poleis,
+      polis: destination,
     })
     && !canRead({
       hydraId: id,
       state,
-      spaces: before.memorySpaces,
-      space: source,
+      poleis: before.poleis,
+      polis: source,
     }))
 }
 
-export function requestedMemoryAccess({
-  current = DEFAULT_MEMORY_ACCESS,
+export function requestedPolisAccess({
+  current = DEFAULT_POLIS_ACCESS,
   reads,
-  write,
+  polis,
 }: {
-  current?: MemoryAccess
+  current?: PolisAccess
   reads?: string | boolean
-  write?: string | boolean
-}): MemoryAccess | undefined {
-  if (reads === undefined && write === undefined) {
+  polis?: string | boolean
+}): PolisAccess | undefined {
+  if (reads === undefined && polis === undefined) {
     return undefined
   }
 
-  const requestedReads = reads === undefined ? current.reads : String(reads).split(',')
-  const nextReads = reads === '' ? [] : requestedReads
-  const nextWrite = String(write ?? current.write)
+  const requestedReads = reads === undefined ? current.readPoleis : String(reads).split(',')
+  const readPoleis = reads === '' ? [] : requestedReads
+  const nextPolis = String(polis ?? current.polis)
 
-  if (!SPACE_NAME.test(nextWrite) || !nextReads.every(space => SPACE_NAME.test(space))
-    || new Set(nextReads).size !== nextReads.length) {
+  if (!POLIS_NAME.test(nextPolis) || !readPoleis.every(name => POLIS_NAME.test(name))
+    || new Set(readPoleis).size !== readPoleis.length) {
     throw new HydraError({
-      message: 'Memory spaces use lowercase letters, digits and dashes; reads is a comma-separated list',
+      message: 'Polis names use lowercase letters, digits and dashes; read-poleis is a comma-separated list',
       code: 'VALIDATION_ERROR',
     })
   }
 
   return {
-    reads: nextReads,
-    write: nextWrite,
+    polis: nextPolis,
+    readPoleis,
   }
 }

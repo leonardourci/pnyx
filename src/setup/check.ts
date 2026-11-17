@@ -1,4 +1,4 @@
-import { readableProjects } from '#memory/spaces.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { SET_UP_SKILL } from './skill-names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'

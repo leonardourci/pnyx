@@ -14,8 +14,8 @@ import { withWriter } from './writer.ts'
 import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { requestCwd, requestEnv, IDENTITY } from '#app/request-context.ts'
-import { memoryAgent } from '#memory/spaces.ts'
+import { requestCwd, IDENTITY } from '#app/request-context.ts'
+import { memoryAgent } from '#memory/poleis.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -39,7 +39,7 @@ const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' |
 function memoryRulesFor({ target }: { target: Target }): Settings | undefined {
   const memoryCommand = target.name === 'settings' || target.name === 'owner'
     || (target.name === 'project' && target.args[0] === 'move')
-    || (target.name === 'hydra' && target.args.some(arg => arg.startsWith('--memory-')))
+    || (target.name === 'hydra' && target.args.some(arg => /^--(?:polis|read-poleis)(?:=|$)/.test(arg)))
 
   return memoryCommand ? readSettings().settings : undefined
 }

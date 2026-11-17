@@ -1,4 +1,4 @@
-import { readableProjects } from '#memory/spaces.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
 import { projectIdentity } from '#projects/sources.ts'

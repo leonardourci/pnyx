@@ -1,4 +1,4 @@
-import { requireProjectMemory } from './spaces.ts'
+import { requireProjectMemory } from './poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { ownerProjectMoves } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'

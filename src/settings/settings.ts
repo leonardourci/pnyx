@@ -1,4 +1,4 @@
-import { SPACE_NAME } from '#memory/space-policy.ts'
+import { POLIS_NAME } from '#memory/polis-policy.ts'
 import { LOG_MODES } from '#app/log-line.ts'
 import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
@@ -30,8 +30,8 @@ export const DEFAULT_SETTINGS: Settings = {
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
   postgresUrl: '',
-  projectSpaces: {},
-  memorySpaces: {
+  projectPoleis: {},
+  poleis: {
     shared: { readers: ['*'] },
     work: { readers: [] },
     personal: { readers: [] },
@@ -219,50 +219,50 @@ export function patchSettings({
     }),
   }
 
-  if ('projectSpaces' in patch) {
-    const assignments = patch.projectSpaces
+  if ('projectPoleis' in patch) {
+    const assignments = patch.projectPoleis
 
     if (!assignments || typeof assignments !== 'object' || Array.isArray(assignments)) {
-      return invalid({ detail: 'projectSpaces maps project memory ids to space names' })
+      return invalid({ detail: 'projectPoleis maps project memory ids to polis names' })
     }
 
-    next.projectSpaces = { ...next.projectSpaces }
+    next.projectPoleis = { ...next.projectPoleis }
 
     for (const [
       id,
-      space,
+      polis,
     ] of Object.entries(assignments)) {
-      if (!/^[a-f0-9]{64}$/.test(id) || (space !== null && (typeof space !== 'string' || !SPACE_NAME.test(space)))) {
-        return invalid({ detail: 'projectSpaces maps project memory ids to space names or null for shared' })
+      if (!/^[a-f0-9]{64}$/.test(id) || (polis !== null && (typeof polis !== 'string' || !POLIS_NAME.test(polis)))) {
+        return invalid({ detail: 'projectPoleis maps project memory ids to polis names or null for shared' })
       }
 
-      if (space === null) {
-        delete next.projectSpaces[id]
+      if (polis === null) {
+        delete next.projectPoleis[id]
       } else {
-        next.projectSpaces[id] = space
+        next.projectPoleis[id] = polis
       }
     }
   }
 
-  if ('memorySpaces' in patch) {
-    const spaces = patch.memorySpaces
+  if ('poleis' in patch) {
+    const poleis = patch.poleis
 
-    if (!spaces || typeof spaces !== 'object' || Array.isArray(spaces)) {
-      return invalid({ detail: 'memorySpaces takes named spaces, each with a readers list' })
+    if (!poleis || typeof poleis !== 'object' || Array.isArray(poleis)) {
+      return invalid({ detail: 'poleis takes named poleis, each with a readers list' })
     }
 
-    next.memorySpaces = { ...next.memorySpaces }
+    next.poleis = { ...next.poleis }
 
     for (const [
       name,
       value,
-    ] of Object.entries(spaces)) {
-      if (!SPACE_NAME.test(name) || (name === 'shared' && value === null)) {
-        return invalid({ detail: 'space names use lowercase letters, digits and dashes; shared cannot be removed' })
+    ] of Object.entries(poleis)) {
+      if (!POLIS_NAME.test(name) || (name === 'shared' && value === null)) {
+        return invalid({ detail: 'polis names use lowercase letters, digits and dashes; shared cannot be removed' })
       }
 
       if (value === null) {
-        delete next.memorySpaces[name]
+        delete next.poleis[name]
         continue
       }
 
@@ -270,10 +270,10 @@ export function patchSettings({
         || Object.keys(value).some(key => key !== 'readers') || !Array.isArray(value.readers)
         || !value.readers.every((id: unknown) => typeof id === 'string' && (id === '*' || HYDRA_ID.test(id)))
         || new Set(value.readers).size !== value.readers.length) {
-        return invalid({ detail: 'memorySpaces takes named spaces with unique Hydra ids in readers (* allows every Hydra)' })
+        return invalid({ detail: 'poleis takes named poleis with unique Hydra ids in readers (* allows every Hydra)' })
       }
 
-      next.memorySpaces[name] = { readers: [...value.readers] }
+      next.poleis[name] = { readers: [...value.readers] }
     }
   }
 
