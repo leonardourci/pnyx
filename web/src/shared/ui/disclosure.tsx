@@ -111,7 +111,7 @@ export function CollapsibleText({
   )
 
   return (
-    <div className={`collapsible-text ${className}`}>
+    <div className={`collapsible-text in-[.card]:min-w-0 in-[.card]:max-w-full ${className}`}>
       <div id={id} ref={preview} className={expanded ? undefined : 'text-preview max-h-[3lh] text-chat leading-(--chat-line) line-clamp-3'}><RichText text={shown} /></div>
       {(long || expanded) && (
         <Button
