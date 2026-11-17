@@ -1,3 +1,5 @@
+import { hydraActor } from '#app/request-context.ts'
+import { canRead } from '#memory/space-policy.ts'
 import { AxiError } from 'axi-sdk-js'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
 import { readSettings, saveSettings, settingsReceipt, shownSettings } from './store.ts'
@@ -33,7 +35,10 @@ export const settings = guard({
       const read = readSettings()
 
       return {
-        settings: shownSettings({ settings: read.settings }),
+        settings: visibleSettings({
+          settings: shownSettings({ settings: read.settings }),
+          hydraId,
+        }),
         revision: read.revision,
         help: ['settings set --json <patch> --if-revision <revision>'],
       }
@@ -41,10 +46,14 @@ export const settings = guard({
 
     if (sub === 'schema') {
       return {
-        defaults: DEFAULT_SETTINGS,
+        defaults: visibleSettings({
+          settings: DEFAULT_SETTINGS,
+          hydraId,
+        }),
         help: [
           'defaultColumnWidth is the fallback for every existing and future column; defaultColumnWidths holds per-column overrides',
           'Every key applies to every Hydra; a patch names only what changes',
+          'memorySpaces replaces the space map (shared is reserved); each value has readers: Hydra ids or *; projectSpaces maps project memory ids to spaces',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
@@ -74,13 +83,35 @@ export const settings = guard({
       )
     }
 
-    return settingsReceipt({
+    const receipt = settingsReceipt({
       saved: saveSettings({
         hydraId,
         patch,
         meta: meta({ values }),
       }),
     })
+
+    if (hydraActor({})) {
+      receipt.settings = visibleSettings({
+        settings: shownSettings({ settings: readSettings().settings }),
+        hydraId,
+      })
+
+      if (receipt.changed && typeof receipt.changed === 'object') {
+        const changed = receipt.changed as Record<string, unknown>
+        const visible = receipt.settings as Settings
+
+        if ('memorySpaces' in changed) {
+          changed.memorySpaces = visible.memorySpaces
+        }
+
+        if ('projectSpaces' in changed) {
+          changed.projectSpaces = visible.projectSpaces
+        }
+      }
+    }
+
+    return receipt
   },
 })
 
@@ -178,4 +209,34 @@ export function sharedSettingFlags({
   }
 
   return Object.keys(patch).length ? patch : undefined
+}
+
+function visibleSettings({
+  settings,
+  hydraId,
+}: {
+  settings: Settings
+  hydraId: string
+}): Settings {
+  if (!hydraActor({})) {
+    return settings
+  }
+
+  const state = loadHydra({ hydraId }).state
+  const spaces = readSettings().settings.memorySpaces
+  const readable = ({ space }: { space: string }) => canRead({
+    hydraId,
+    state,
+    spaces,
+    space,
+  })
+
+  return {
+    ...settings,
+    memorySpaces: Object.fromEntries(Object.entries(settings.memorySpaces)
+      .filter(([space]) => readable({ space }))),
+    projectSpaces: Object.fromEntries(Object.entries(settings.projectSpaces).filter(([
+      , space,
+    ]) => readable({ space }))),
+  }
 }

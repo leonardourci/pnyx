@@ -1,3 +1,5 @@
+import { projectRows } from '#projects/read.ts'
+import { DEFAULT_MEMORY_ACCESS, SPACE_NAME, readableProjects, memoryAccess } from '#memory/spaces.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -9,7 +11,6 @@ import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
 import { hydraConfig } from './config.ts'
 import { readServer, askHost } from '#app/server-state.ts'
-import { projectRows } from '#projects/read.ts'
 import { firstmateHomes } from '#integrations/cli.ts'
 import { HydraError } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
@@ -33,7 +34,7 @@ import { workerIdentity, workerRefusal } from '#workers/worker-identity.ts'
 import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
-function hydraConfigCommand({ args }: { args: string[] }): Output {
+async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
@@ -43,6 +44,8 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     options: {
       ...WRITE,
       name: { type: 'string' },
+      'memory-reads': { type: 'string' },
+      'memory-write': { type: 'string' },
       icon: { type: 'string' },
       position: { type: 'string' },
       identity: { type: 'string' },
@@ -121,15 +124,38 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     delete hydra.reviewMinutes
     delete hydra.helper
     const shared = readSettings().settings
+    const shownHydra: Output = { ...hydra }
+
+    if (hydraActor({})) {
+      const access = memoryAccess({
+        hydraId: id,
+        state,
+        settings: shared,
+      })
+      const memory: Output = { reads: access.reads }
+      const write = (hydra.memory ?? DEFAULT_MEMORY_ACCESS).write
+
+      if (access.reads.includes(write)) {
+        memory.write = write
+      }
+
+      shownHydra.memory = memory
+    }
 
     return {
-      hydra,
+      hydra: shownHydra,
       settings: {
         doneAfterHours: shared.doneAfterHours,
         reviewMinutes: shared.reviewMinutes,
         helper: shared.helper,
       },
-      projects: projectRows({ state }),
+      projects: projectRows({
+        state,
+        projects: await readableProjects({
+          state,
+          hydraId: id,
+        }),
+      }),
       revision: state.configRevision ?? 0,
     }
   }
@@ -241,6 +267,26 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         id,
         name: String(values.name ?? named?.name ?? current.name),
         hydra,
+      }
+
+      if (values['memory-reads'] !== undefined || values['memory-write'] !== undefined) {
+        const previous = current.memory ?? DEFAULT_MEMORY_ACCESS
+        const reads = values['memory-reads'] === undefined ? previous.reads : String(values['memory-reads']).split(',')
+          .filter(Boolean)
+        const write = String(values['memory-write'] ?? previous.write)
+
+        if (!SPACE_NAME.test(write) || !reads.every(space => SPACE_NAME.test(space))
+          || new Set(reads).size !== reads.length) {
+          throw new HydraError({
+            message: 'Memory spaces use lowercase letters, digits and dashes; reads is a comma-separated list',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        data.memory = {
+          reads,
+          write,
+        }
       }
 
       if (named) {

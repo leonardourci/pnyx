@@ -1,3 +1,4 @@
+import type { MemorySpaces } from '#memory/space-policy.ts'
 import type { LogMode } from '#app/log-line.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -37,6 +38,8 @@ export const HELPER_MODELS = {
 } as const
 
 export interface Settings extends SharedView {
+  memorySpaces: MemorySpaces
+  projectSpaces: Record<string, string>
   doneAfterHours: DoneAfterHours
   reviewMinutes: number
   helper: HelperSetting
@@ -67,6 +70,8 @@ export const SETTING_KEYS = [
   'logDays',
   'logMaxMB',
   'postgresUrl',
+  'memorySpaces',
+  'projectSpaces',
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]

@@ -31,8 +31,14 @@ export function projectsFor({
     || a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
 }
 
-export function projectRows({ state }: { state: HydraState }) {
-  return projectsFor({ state }).map(p => ({
+export function projectRows({
+  state,
+  projects = projectsFor({ state }),
+}: {
+  state: HydraState
+  projects?: HydraProject[]
+}) {
+  return projects.map(p => ({
     name: p.name,
     path: p.path,
     state: p.detached ? 'detached' : 'attached',
@@ -65,7 +71,7 @@ export function findProject({
 
   if (!project || others.length) {
     throw new HydraError({
-      message: matches.length ? `project name is ambiguous: ${ref}; use its full path` : `project not found: ${ref}`,
+      message: matches.length ? `project name is ambiguous: ${ref}; use its full path` : 'project not found',
       code: matches.length ? 'CONFLICT' : 'NOT_FOUND',
     })
   }

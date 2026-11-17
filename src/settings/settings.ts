@@ -1,3 +1,4 @@
+import { SPACE_NAME } from '#memory/space-policy.ts'
 import { LOG_MODES } from '#app/log-line.ts'
 import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
@@ -29,6 +30,12 @@ export const DEFAULT_SETTINGS: Settings = {
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
   postgresUrl: '',
+  projectSpaces: {},
+  memorySpaces: {
+    shared: { readers: ['*'] },
+    work: { readers: [] },
+    personal: { readers: [] },
+  },
 }
 
 export function pickView({ view }: { view: SharedView }): SharedView {
@@ -210,6 +217,45 @@ export function patchSettings({
       current: pickView({ view: current }),
       input: viewInput,
     }),
+  }
+
+  if ('projectSpaces' in patch) {
+    const assignments = patch.projectSpaces
+
+    if (!assignments || typeof assignments !== 'object' || Array.isArray(assignments)
+      || !Object.entries(assignments).every(([
+        id,
+        space,
+      ]) => /^[a-f0-9]{64}$/.test(id) && typeof space === 'string' && SPACE_NAME.test(space))) {
+      return invalid({ detail: 'projectSpaces maps project memory ids to space names' })
+    }
+
+    next.projectSpaces = structuredClone(assignments) as Settings['projectSpaces']
+  }
+
+  if ('memorySpaces' in patch) {
+    const spaces = patch.memorySpaces
+
+    if (!spaces || typeof spaces !== 'object' || Array.isArray(spaces) || !Object.hasOwn(
+      spaces,
+      'shared',
+    )) {
+      return invalid({ detail: 'memorySpaces takes named spaces including shared, each with a readers list' })
+    }
+
+    for (const [
+      name,
+      value,
+    ] of Object.entries(spaces)) {
+      if (!SPACE_NAME.test(name) || !value || typeof value !== 'object' || Array.isArray(value)
+        || Object.keys(value).some(key => key !== 'readers') || !Array.isArray(value.readers)
+        || !value.readers.every((id: unknown) => typeof id === 'string' && (id === '*' || HYDRA_ID.test(id)))
+        || new Set(value.readers).size !== value.readers.length) {
+        return invalid({ detail: 'memorySpaces takes named spaces with unique Hydra ids in readers (* allows every Hydra)' })
+      }
+    }
+
+    next.memorySpaces = structuredClone(spaces) as Settings['memorySpaces']
   }
 
   if ('doneAfterHours' in patch) {
