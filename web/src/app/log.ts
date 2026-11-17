@@ -1,3 +1,4 @@
+import { noteUIMetricsWork, setUIMetricsEnabled, startUIMetrics } from './ui-metrics.ts'
 import { MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { logged, PAGE_LINES_MAX, SAMPLE_MS, STACK_MAX, TEXT_MAX, type LogMode, type PageLine } from '#app/log-line.ts'
 
@@ -9,8 +10,6 @@ const QUEUE_MAX = 1000
 const UTF8_BYTES_PER_UNIT = 3
 const MESSAGE_ROOM_BYTES = 1024
 const BATCH_LENGTH = Math.floor((MAX_MESSAGE_BYTES - MESSAGE_ROOM_BYTES) / UTF8_BYTES_PER_UNIT)
-const SLOW_FRAMES = 'long-animation-frame'
-const LONG_TASKS = 'longtask'
 // A reply's first text later than this belongs to something else, such as a wake long after the send.
 const FIRST_TEXT_MAX_MS = 5 * 60_000
 // A reveal frame counts as slow past this many of the display's frames; the display's frame is the shortest one seen.
@@ -18,15 +17,6 @@ const SLOW_FRAME_BUDGETS = 1.5
 const DISPLAY_FRAME_MS = 1000 / 60
 // No display refreshes faster than this, so a shorter interval, such as two ticks in one frame, says nothing about it.
 const FASTEST_FRAME_MS = 1000 / 240
-
-// The long-animation-frame fields read here; TypeScript's DOM types do not describe that entry yet.
-interface SlowFrame extends PerformanceEntry {
-  blockingDuration?: number
-  scripts?: {
-    duration: number
-    invoker?: string
-  }[]
-}
 
 // Chromium's JS heap figure; other browsers have none, and the line leaves it out.
 type HeapPerformance = Performance & { memory?: { usedJSHeapSize: number } }
@@ -150,6 +140,7 @@ function schedule() {
 
 export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
   mode = next
+  setUIMetricsEnabled({ enabled: next !== 'off' })
 }
 
 // Queues the line for the server when the level allows it: a detailed line only under Detailed, a warning or error always.
@@ -265,6 +256,7 @@ function memoryLine() {
     return
   }
 
+  const since = performance.now()
   const chat = output.chat()
   log({
     operation: 'page.memory',
@@ -273,6 +265,7 @@ function memoryLine() {
     elements: document.getElementsByTagName('*').length,
     heapUsed: (performance as HeapPerformance).memory?.usedJSHeapSize,
   })
+  noteUIMetricsWork({ since })
 }
 
 const whenIdle = () => {
@@ -299,23 +292,7 @@ export function startPageLog({
     chat,
   }
   schedule()
-  const slowFramesSupported = PerformanceObserver.supportedEntryTypes.includes(SLOW_FRAMES)
-  // eslint-disable-next-line pnyx/object-params -- PerformanceObserver owns its callback signature.
-  const observer = new PerformanceObserver(list => {
-    for (const entry of list.getEntries() as SlowFrame[]) {
-      const longest = entry.scripts?.toSorted((
-        a,
-        b,
-      ) => b.duration - a.duration)[0]
-      log({
-        operation: slowFramesSupported ? 'page.slow-frame' : 'page.long-task',
-        ms: entry.duration,
-        blockingMs: entry.blockingDuration,
-        script: longest?.invoker === undefined ? undefined : bounded({ text: longest.invoker }),
-      })
-    }
-  })
-  observer.observe({ type: slowFramesSupported ? SLOW_FRAMES : LONG_TASKS })
+  const stopMetrics = startUIMetrics({ log })
   const memory = setInterval(
     whenIdle,
     SAMPLE_MS,
@@ -349,7 +326,7 @@ export function startPageLog({
   )
 
   return () => {
-    observer.disconnect()
+    stopMetrics()
     clearInterval(memory)
     removeEventListener(
       'error',
