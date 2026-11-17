@@ -64,6 +64,7 @@ export function useSmoothScroll({
       const sizes = new ResizeObserver(resize)
       sizes.observe(inner)
       const surface = wrapper.closest<HTMLElement>('.workspace-axis') ?? wrapper
+
       const syncScrolling = () => {
         if (surface.dataset.dragging || surface.dataset.page === 'settings') {
           lenis.stop()
@@ -71,6 +72,7 @@ export function useSmoothScroll({
           lenis.start()
         }
       }
+
       syncScrolling()
       const observer = new MutationObserver(syncScrolling)
       observer.observe(
