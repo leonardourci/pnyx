@@ -605,7 +605,13 @@ export async function moveTask({
   const target = loadHydra({ hydraId: to }).state
   const move = meta.id ?? `move:${randomUUID()}`
 
-  if (move in state.eventIds || move in target.eventIds) {
+  if (Object.hasOwn(
+    state.eventIds,
+    move,
+  ) || Object.hasOwn(
+    target.eventIds,
+    move,
+  )) {
     throw refuse({
       message: `event id ${move} is already in use`,
       help: 'Repeat the command without --event-id, or with a new one',
