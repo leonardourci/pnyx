@@ -85,6 +85,7 @@ export default defineConfig({
     ],
   },
   build: {
+    sourcemap: process.env.VITE_PNYX_PROFILE === '1',
     outDir: '../dist/web',
     emptyOutDir: true,
   },
