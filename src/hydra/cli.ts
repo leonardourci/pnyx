@@ -1,6 +1,6 @@
 import { requestedPolisAccess, widensPolisReads } from '#memory/access-changes.ts'
 import { projectRows } from '#projects/read.ts'
-import { readableProjects, polisAccess, hydraPolisConfig, memoryPermission, memoryAgent } from '#memory/poleis.ts'
+import { checkMemoryApproval, readableProjects, polisAccess, hydraPolisConfig, memoryPermission, memoryAgent } from '#memory/poleis.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -229,6 +229,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       card: '$board',
     },
     decide: ({ state }) => {
+      checkMemoryApproval()
       const current = hydraConfig({
         state,
         id,
@@ -414,6 +415,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   const saved = saveSettings({
+    beforeSave: onlySettings ? checkMemoryApproval : undefined,
     // A combined edit gets one chat notice from its Hydra receipt.
     hydraId: onlySettings ? id : undefined,
     patch: shared,
