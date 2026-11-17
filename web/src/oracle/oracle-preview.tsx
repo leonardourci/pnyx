@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -50,6 +51,10 @@ const KIND_NAMES: Record<string, string> = {
   action: 'actions',
 }
 
+function PreviewTitle({ children }: { children: ReactNode }) {
+  return <h3 className="oracle-preview-title flex flex-wrap items-center gap-2">{children}</h3>
+}
+
 function Snippets({
   hit,
   now,
@@ -62,13 +67,13 @@ function Snippets({
   }
 
   return (
-    <section className="oracle-snippets" aria-label="Matches">
+    <section className="oracle-snippets flex flex-col gap-1.5" aria-label="Matches">
       <h3 className="eyebrow">Matches</h3>
       {hit.snippets.map((
         snippet,
         index,
       ) => (
-        <p key={index} className="oracle-snippet">
+        <p key={index} className="oracle-snippet flex flex-col gap-0.5 max-h-[9em] overflow-hidden px-2 py-1.5 border-l-2 border-gold-line rounded-sm bg-background whitespace-pre-wrap wrap-anywhere">
           <span className="muted small">{SNIPPET_SOURCES[snippet.kind]} · {relativeTime({
             at: snippet.at,
             now,
@@ -126,15 +131,15 @@ function TaskPreview({
 
   return (
     <>
-      <div className="oracle-card">
+      <div className="oracle-card flex flex-col items-start gap-1.75 px-3 py-2.5 border border-line rounded-card bg-background">
         <CardState
           card={card}
           status={status}
           now={now}
           labelColors={state.labelColors}
         />
-        <h3 className="oracle-card-title"><Highlight text={card.title} terms={terms} /></h3>
-        {said && <p className="oracle-card-said"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
+        <h3 className="oracle-card-title font-semibold"><Highlight text={card.title} terms={terms} /></h3>
+        {said && <p className="oracle-card-said text-muted line-clamp-4"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
         <CardLinks links={card.links} expanded={false} />
       </div>
       <Snippets hit={hit} now={now} />
@@ -154,12 +159,12 @@ function ProjectPreview({
 
   return (
     <>
-      <h3 className="oracle-preview-title"><Icon name="project" size={16} />{project.name}</h3>
+      <PreviewTitle><Icon name="project" size={16} />{project.name}</PreviewTitle>
       <p className="muted small"><code>{project.path}</code></p>
-      <section className="oracle-project-tasks" aria-label="Live tasks">
+      <section className="oracle-project-tasks flex flex-col gap-1.5" aria-label="Live tasks">
         <h3 className="eyebrow">{tasks.length === 1 ? '1 live task' : `${tasks.length} live tasks`}</h3>
         {tasks.map(card => (
-          <p key={card.id} className="oracle-project-task">
+          <p key={card.id} className="oracle-project-task flex items-center justify-between gap-2">
             <span>{card.title}</span>
           </p>
         ))}
@@ -174,7 +179,7 @@ function ActionPreview({ action }: { action: OracleAction }) {
 
   return (
     <>
-      <h3 className="oracle-preview-title"><Icon name={ACTION_ICONS[action.run]} size={16} />{action.label}</h3>
+      <PreviewTitle><Icon name={ACTION_ICONS[action.run]} size={16} />{action.label}</PreviewTitle>
       <p>{action.does}</p>
       {keys && <p className="muted small">Its shortcut: <kbd>{keys}</kbd></p>}
     </>
@@ -211,7 +216,7 @@ export function FilterPreview({
 
   return (
     <>
-      <h3 className="oracle-preview-title">{TYPE_LABELS[filter.type]}: <span className="search-badge" data-kind={filter.type}><Icon name={filter.icon} size={14} />{filter.label}</span></h3>
+      <PreviewTitle>{TYPE_LABELS[filter.type]}: <span className="search-badge" data-kind={filter.type}><Icon name={filter.icon} size={14} />{filter.label}</span></PreviewTitle>
       <p className="muted"><kbd>Space</kbd>, <kbd>Tab</kbd> or <kbd>Enter</kbd> makes it a badge.</p>
       <p className="muted">{filterReach({ filter })}{either}</p>
     </>
@@ -407,7 +412,7 @@ export function ResultPreview({
       )}
       {result.kind === 'conversation' && !card && (
         <>
-          <h3 className="oracle-preview-title"><Icon name="comments" size={16} />{result.title}</h3>
+          <PreviewTitle><Icon name="comments" size={16} />{result.title}</PreviewTitle>
           <Snippets hit={result.hit} now={now} />
         </>
       )}
@@ -422,7 +427,7 @@ export function ResultPreview({
         />
       )}
       {result.kind === 'action' && <ActionPreview action={result.action} />}
-      <div className="oracle-preview-foot">
+      <div className="oracle-preview-foot mt-auto flex flex-col items-start gap-1.5 pt-2 border-t border-subtle">
         <Button variant="surface" onClick={() => choose({ elsewhere })}>{OPEN_LABELS[shownKind]}</Button>
       </div>
     </>
@@ -447,9 +452,9 @@ export function AskPreview({
 
   return (
     <>
-      <h3 className="oracle-preview-title"><Icon name={to?.icon ?? HYDRA_MARK} size={16} />Request to {to?.name ?? 'a Hydra'}</h3>
-      {request.trim() && <p className="oracle-ask-message">{request.trim()}</p>}
-      {error && <p className="oracle-ask-error" role="alert">{error}</p>}
+      <PreviewTitle><Icon name={to?.icon ?? HYDRA_MARK} size={16} />Request to {to?.name ?? 'a Hydra'}</PreviewTitle>
+      {request.trim() && <p className="oracle-ask-message m-0 px-3 py-2.5 border border-subtle rounded-lg bg-background whitespace-pre-wrap wrap-anywhere">{request.trim()}</p>}
+      {error && <p className="oracle-ask-error text-red" role="alert">{error}</p>}
       {sending && <p className="muted small" role="status">{progress}</p>}
     </>
   )

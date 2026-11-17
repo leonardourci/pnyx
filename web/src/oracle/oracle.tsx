@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+import { OverlaySurface } from '#web-shared/ui/overlay-surface.tsx'
 import { useMemo } from 'react'
 import { workspaceResults, type OracleWorkspace } from './workspaces.ts'
 import { tokens } from '#oracle/query.ts'
@@ -52,6 +54,10 @@ const onBackdrop = ({ event }: { event: MouseEvent<HTMLDialogElement> }) => {
   const inside = across && event.clientY >= box.top && event.clientY <= box.bottom
 
   return event.target === event.currentTarget && !inside
+}
+
+function EmptyResult({ children }: { children: ReactNode }) {
+  return <p className="oracle-empty px-2 py-4 text-muted">{children}</p>
 }
 
 export function Oracle({
@@ -853,20 +859,24 @@ export function Oracle({
   })
   // The previous results stay, dimmed, until the new query's answer arrives.
   const dimmed = found.pending && !token && !ask
-  const empty = token ? <p className="oracle-empty">Nothing matches “{token.text}” here. Esc drops it.</p> : <p className="oracle-empty">{nothing}</p>
+  const empty = token
+    ? <EmptyResult>Nothing matches “{token.text}” here. Esc drops it.</EmptyResult>
+    : <EmptyResult>{nothing}</EmptyResult>
   const listLabel = token ? MENU_LABEL : 'Oracle results'
   const searchPlaceholder = 'Search…'
 
   const previewWorkspace = workspaces.find(item => item.hydra.id === shownResult?.hydra)
   const palette = (
-    <dialog
+    <OverlaySurface
       ref={dialog}
-      className="oracle-palette"
+      variant="oracle"
       aria-label="Oracle"
       onClose={() => setOpen(false)}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onCancel={event => {
         event.preventDefault(); close({ restore: true })
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onKeyDown={event => {
         if (event.key === 'Tab' && !composing({ event: event.nativeEvent })) {
           cycleFocus({ event })
@@ -874,6 +884,7 @@ export function Oracle({
           event.preventDefault(); event.stopPropagation(); close({ restore: true })
         }
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onMouseDown={event => {
         if (onBackdrop({ event })) {
           close({ restore: true })
@@ -897,11 +908,11 @@ export function Oracle({
         onKeyDown={inputKey}
       />
       {open && (
-        <div className="oracle-body">
+        <div className="oracle-body grid flex-1 min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t border-subtle max-[760px]:grid-cols-1 max-[760px]:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
           <div
             ref={list}
             id={listId}
-            className="oracle-list"
+            className="oracle-list overflow-auto pt-1 px-1.5 pb-2 border-r border-subtle transition-opacity duration-120 data-pending:opacity-55 max-[760px]:border-r-0 max-[760px]:border-b"
             role="listbox"
             aria-label={ask ? 'Ask' : listLabel}
             data-pending={dimmed || undefined}
@@ -915,10 +926,11 @@ export function Oracle({
           </div>
           <div
             ref={preview}
-            className="oracle-preview"
+            className="oracle-preview flex flex-col gap-2.5 overflow-auto px-4 py-3.5 [&_mark]:bg-gold-wash [&_mark]:text-inherit [&_mark]:rounded-xs [&_.setting-row]:border-t-0 [&_.setting-row]:pt-0"
             role="region"
             aria-label="Preview"
             onKeyDownCapture={event => previewArrow({ event })}
+
             onKeyDown={event => previewKey({ event })}
             onFocus={event => {
               const controls = previewControls()
@@ -972,7 +984,7 @@ export function Oracle({
           </div>
         </div>
       )}
-    </dialog>
+    </OverlaySurface>
   )
 
   return (

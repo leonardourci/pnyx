@@ -52,6 +52,14 @@
   --spacing-card-chat: 260px;
   --spacing-settings-content: 880px;
   --spacing-card-window-top: 8dvh;
+  --spacing-dialog: min(600px, calc(100vw - 32px));
+  --spacing-oracle: min(980px, calc(100vw - 32px));
+  --spacing-oracle-top: 9vh;
+  --spacing-oracle-mobile: calc(100dvh - 24px);
+  --spacing-dialog-height: min(78vh, 760px);
+  --spacing-oracle-height: min(660px, 82dvh);
+  --shadow-dialog: 0 18px 50px var(--color-shadow);
+  --shadow-oracle: 0 24px 64px var(--color-shadow);
   --shadow-window: 0 18px 70px var(--color-shadow);
   --shadow-actions: 0 3px 10px var(--color-shadow);
   --control-h: 30px;
@@ -864,39 +872,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .fast-toggle[aria-checked=true] { color: var(--color-gold); background: var(--color-gold-wash); }
 
-.oracle-palette { margin: 9vh auto auto; width: min(980px, calc(100vw - 32px)); height: min(660px, 82dvh); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 24px 64px var(--color-shadow); overflow: hidden; }
-.oracle-palette[open] { display: flex; flex-direction: column; }
-.oracle-palette::backdrop { background: var(--color-shadow); }
-.oracle-palette > .search-bar { margin: 10px; }
-.oracle-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); flex: 1; min-height: 0; border-top: 1px solid var(--color-subtle); }
-.oracle-list { overflow: auto; padding: 4px 6px 8px; border-right: 1px solid var(--color-subtle); transition: opacity .12s; }
-.oracle-list[data-pending] { opacity: .55; }
-.oracle-caption { padding: 10px 8px 4px; font-size: var(--text-meta); color: var(--color-muted); }
-.oracle-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: var(--text-ui); color: var(--color-muted); cursor: pointer; }
-.oracle-option[aria-selected=true] { background: var(--color-raised); color: var(--color-ink); }
-.oracle-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink); }
-.oracle-option-meta { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-meta); }
-.oracle-option mark, .oracle-preview mark { background: var(--color-gold-wash); color: inherit; border-radius: 2px; }
-.oracle-empty { padding: 16px 8px; color: var(--color-muted); font-size: var(--text-body); }
-.oracle-preview { overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; font-size: var(--text-body); }
-.oracle-preview-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--text-label); }
-.oracle-preview .setting-row { border-top: 0; padding-top: 0; }
-.oracle-card { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-background); }
-.oracle-card-title { font-size: var(--text-label); font-weight: 600; }
-.oracle-card-said { color: var(--color-muted); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.oracle-snippets, .oracle-project-tasks { display: flex; flex-direction: column; gap: 6px; }
-.oracle-snippet { display: flex; flex-direction: column; gap: 2px; max-height: 9em; overflow: hidden; padding: 6px 8px; border-left: 2px solid var(--color-gold-line); border-radius: 4px; background: var(--color-background); white-space: pre-wrap; overflow-wrap: anywhere; }
-.oracle-project-task { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.oracle-preview-foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 8px; border-top: 1px solid var(--color-subtle); }
 .search-badge[data-kind=hydra] { background: var(--color-gold-wash); color: var(--color-gold); }
 .search-badge[data-kind=kind] { color: var(--color-slate); }
 .search-badge[data-kind=column] { color: var(--color-blue); }
 .search-badge[data-kind=project] { color: var(--color-teal); }
 .search-badge[data-kind=when] { color: var(--color-purple); }
 .search-badge[data-kind=ask] { background: var(--color-gold-wash); color: var(--color-gold); }
-.oracle-ask-message { margin: 0; padding: 10px 12px; border: 1px solid var(--color-subtle); border-radius: 8px; background: var(--color-background); white-space: pre-wrap; overflow-wrap: anywhere; }
-.oracle-ask-error { color: var(--color-red); }
-@media (max-width: 760px) { .oracle-palette { margin-top: 12px; height: calc(100dvh - 24px); }.oracle-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }.oracle-list { border-right: 0; border-bottom: 1px solid var(--color-subtle); } }
 
 .permission-input { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
 .permission-details { display: grid; gap: 4px; margin: 0; font-size: var(--text-ui); }
