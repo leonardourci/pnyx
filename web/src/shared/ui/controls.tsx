@@ -534,7 +534,7 @@ function NumberSlider({
     <div className="slider-field flex items-center gap-2.5 w-full" aria-busy={busy}>
       <span className="slider-track relative flex-1 flex items-center h-5.5" style={{ '--fill': share({ at: shown }) } as CSSProperties}>
         <input
-          className="appearance-none w-full h-5.5 m-0 bg-transparent cursor-pointer focus-visible:outline-2 focus-visible:outline-gold-line focus-visible:outline-offset-2 focus-visible:rounded-sm"
+          className="appearance-none w-full h-5.5 m-0 bg-transparent cursor-pointer focus-visible:outline-2 focus-visible:outline-gold-line focus-visible:outline-offset-2 focus-visible:rounded-sm [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-sm [&::-webkit-slider-runnable-track]:[background:linear-gradient(var(--color-gold-fill),var(--color-gold-fill))_0/var(--fill,50%)_100%_no-repeat,var(--color-line)] [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-sm [&::-moz-range-track]:bg-line [&::-moz-range-progress]:h-1 [&::-moz-range-progress]:rounded-sm [&::-moz-range-progress]:bg-gold-fill [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:-mt-1.5 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gold [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-surface [&::-webkit-slider-thumb]:shadow-range [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-gold [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-surface"
           type="range"
           aria-label={label}
           min={min}
