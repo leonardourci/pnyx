@@ -1,3 +1,4 @@
+import { DraftChip } from './draft-chip.tsx'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -40,7 +41,7 @@ export function writeDraftMirror({
         to,
       )
       const marked = document.createElement('span')
-      marked.className = 'draft-path'
+      marked.className = 'draft-path rounded bg-gold-wash shadow-draft-path text-gold'
       marked.textContent = view.display.slice(
         start,
         end,
@@ -100,7 +101,12 @@ function DraftCard({
   const label = loading ? <>{chip.name}<UploadBar fraction={progress} /></> : chip.name
 
   return (
-    <span className="draft-chip draft-card relative m-0! cursor-default bg-none! p-0! text-transparent shadow-none! [&>.attachment-card]:absolute [&>.attachment-card]:inset-x-0 [&>.attachment-card]:top-[calc(50%-var(--chip-h)/2)] data-loading:[&_.card-label]:text-muted" data-kind={chip.kind} data-loading={loading || undefined}>
+    <DraftChip
+      variant="card"
+      className="draft-card [&>.attachment-card]:absolute [&>.attachment-card]:inset-x-0 [&>.attachment-card]:top-[calc(50%-var(--chip-h)/2)] data-loading:[&_.card-label]:text-muted"
+      data-kind={chip.kind}
+      data-loading={loading || undefined}
+    >
       {chip.label}
       <AttachmentCard
         keepsInputFocus
@@ -112,7 +118,7 @@ function DraftCard({
         remove={remove}
         removeLabel={`Remove ${chip.name}`}
       />
-    </span>
+    </DraftChip>
   )
 }
 

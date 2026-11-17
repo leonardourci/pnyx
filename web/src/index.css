@@ -279,32 +279,21 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.draft-chip { cursor: pointer; margin: 0 -.25em; padding: var(--chip-pad) .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
-
-.draft-path { border-radius: 4px; background: var(--color-gold-wash); box-shadow: 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
-
-.draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
-
-.draft-chip[data-kind=file], .draft-chip[data-kind=column] { cursor: default; }
-
-.draft-chip[data-kind=project] { cursor: pointer; }
-
-.draft-chip.reference[data-kind=slot] { cursor: pointer; color: var(--color-muted); font-style: italic; background: transparent; box-shadow: inset 0 0 0 1px var(--color-gold-line); }
-
-.draft-chip.reference:is([data-kind=column], [data-kind=task]), .chip.column-chip { color: var(--column-color, var(--color-slate)); background: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--column-color, var(--color-slate)) 45%, transparent); }
-
-.chip-icon { position: relative; display: inline; }
-
-.chip-icon > svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 
 
 
 
 
 
-.chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
 
-.mention-icon { display: inline-flex; color: var(--column-color, currentColor); }
+
+
+
+
+
+
+
+
 
 .usage-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: var(--composer-control-h); height: var(--composer-control-h); color: var(--color-muted); font: 400 8px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 
@@ -338,7 +327,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.picker-group { display: block; padding: 8px 10px 4px; color: var(--color-muted); font-size: var(--text-meta); }
 
 .error-banner { padding: 9px 12px; color: var(--color-red); border: 1px solid var(--color-line); border-radius: 6px; font-size: var(--text-ui); }
 @media (prefers-reduced-motion: reduce) {
@@ -346,11 +334,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .thread:focus-visible { outline-offset: -3px; }
 
-.slash-menu small { display: block; font-size: var(--text-meta); color: var(--color-muted); margin-top: 3px; }
 
-.slash-menu .button { gap: 12px; text-align: left; }
 
-.slash-menu .button > span { flex: 1; font-size: var(--text-ui); color: var(--color-muted); }
 
 .inline-title { padding: 0; text-align: left; justify-content: flex-start; font-size: inherit; font-weight: 600; }
 
@@ -554,21 +539,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .picker-field .select-menu { position: relative; inset: auto; max-height: 160px; margin-top: 4px; }
 
-.mention-menu { position: fixed; inset: auto; margin: 0; color: var(--color-ink); max-height: 320px; overflow: auto; background: var(--color-raised); border: 1px solid var(--color-gold-line); border-radius: 7px; padding: 10px; z-index: 8; box-shadow: 0 8px 20px var(--color-shadow); }
 
-.mention-menu .button { display: flex; flex-direction: column; align-items: stretch; width: 100%; gap: 4px; text-align: left; padding: 8px; }
 
-.mention-menu .active { background: var(--color-hover); }
 
-.mention-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
 
-.mention-heading strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
-.mention-heading small { flex-shrink: 1; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.mention-heading small, .mention-excerpt, .mention-menu p { color: var(--color-muted); font-size: var(--text-meta); }
 
-.mention-excerpt { white-space: normal; overflow-wrap: anywhere; }
 
 .attached-image { display: inline-block; max-width: 100%; }
 .attached-image img { display: block; max-width: 100%; max-height: 240px; border: 1px solid var(--color-line); border-radius: 6px; }
@@ -595,7 +572,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* A chip is one --chip-h box around the text's own line box (--chip-text in the chat font), so it fits inside the line. */
 
 /* A chip moves to the next line whole instead of breaking, and only a chip longer than a line wraps, inside its own box. */
-:is(.markdown, .message .message-lead) .draft-chip:not(.composer-field *) { display: inline-block; max-width: 100%; line-height: var(--chip-text); }
 
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
@@ -696,16 +672,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .waiting-decision-question { color: var(--color-gold); }
 .ask .disclosure > summary { padding-block: 3px; }
 
-.draft-skill { cursor: default; }
-.draft-skill .tooltip-anchor { display: inline; }
-.draft-skill .task-label { display: inline; font: inherit; line-height: 1; white-space: inherit; border: 0; padding: 0 .125em; margin: 0 -.125em; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--label-color, var(--color-muted)) 55%, transparent); }
-.draft-skill .skill-remove-slot { position: relative; }
-.draft-skill .skill-remove { position: absolute; left: 0; top: 50%; transform: translateY(-50%); display: inline-flex; vertical-align: baseline; align-items: center; justify-content: center; width: 1em; min-height: 0; height: 1em; padding: 0; border: 0; font: inherit; line-height: 1; color: inherit; }
-.picker-project { flex: 0 1 auto; max-width: 42%; min-width: 0; }
-.picker-project .task-label { font-size: var(--text-meta); }
-.slash-menu .mention-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slash-menu .mention-heading { align-items: flex-start; }
-.slash-menu .mention-icon { align-items: center; height: 1lh; }
 
 .compaction-row { display: flex; align-items: center; gap: 8px; color: var(--color-muted); font-size: var(--text-ui); font-variant-numeric: tabular-nums; }
 .compaction-row[data-state="failed"] { color: var(--color-red); }
@@ -845,7 +811,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .model-picker { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .picker-retry.button { min-height: 24px; padding: 0 4px; color: var(--color-gold); }
 
-.mention-menu mark { padding: 0; border-radius: 2px; color: inherit; background: var(--comment-emphasis); }
 .account-settings { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 /* The accounts are rows of the section's own box, not a box inside it. */
 .settings-wide:has(> .account-settings) { padding: 0; }
@@ -916,4 +881,22 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* The overlay and editable text need identical metrics to keep chips on their text. */
 .composer-text {
   @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];
+}
+
+@theme {
+  --spacing-chip-inline: .25em;
+  --spacing-skill-label: .125em;
+  --text-column-chip: .92em;
+  --shadow-chip-reference: inset 0 0 0 1px var(--color-gold-line);
+  --shadow-draft-path: 0 0 0 1px var(--color-gold-line);
+  --shadow-suggestions: 0 8px 20px var(--color-shadow);
+  --radius-panel: 7px;
+}
+
+@theme inline {
+  --color-chip-column: var(--column-color, var(--color-slate));
+  --color-chip-column-fill: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, transparent);
+  --color-comment-emphasis: var(--comment-emphasis);
+  --shadow-chip-column: inset 0 0 0 1px color-mix(in srgb, var(--column-color, var(--color-slate)) 45%, transparent);
+  --shadow-skill-label: inset 0 0 0 1px color-mix(in srgb, var(--label-color, var(--color-muted)) 55%, transparent);
 }

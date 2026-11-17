@@ -1,3 +1,4 @@
+import { DraftChip, ChipIcon } from './draft-chip.tsx'
 import { CHIP_JOIN, ICON_SPACE, skillProjectLabel } from './draft.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import type { SkillReference } from '#hydra/transcripts-skill-reference.ts'
@@ -18,8 +19,13 @@ export function SkillBadge({
   const icon = skillIcon({ skill })
 
   return (
-    <span className="draft-chip reference draft-skill" data-kind="skill" onMouseDown={event => event.preventDefault()}>
-      <span className="chip-icon">{ICON_SPACE}<Icon name={icon} size={14} /></span>{CHIP_JOIN}
+    <DraftChip
+      className="draft-skill cursor-default! [&_.tooltip-anchor]:inline [&_.task-label]:inline [&_.task-label]:[font:inherit] [&_.task-label]:leading-none [&_.task-label]:whitespace-[inherit] [&_.task-label]:border-0 [&_.task-label]:px-(--spacing-skill-label) [&_.task-label]:py-0 [&_.task-label]:-mx-(--spacing-skill-label) [&_.task-label]:my-0 [&_.task-label]:rounded-preview [&_.task-label]:shadow-skill-label"
+      data-kind="skill"
+      // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
+      onMouseDown={event => event.preventDefault()}
+    >
+      <ChipIcon>{ICON_SPACE}<Icon name={icon} size={14} /></ChipIcon>{CHIP_JOIN}
       {skill.project && (
         <><Label
           project
@@ -32,10 +38,10 @@ export function SkillBadge({
       /{skill.name}{remove && (
         <>
           {CHIP_JOIN}
-          <span className="skill-remove-slot">
+          <span className="skill-remove-slot relative">
             {ICON_SPACE}
             <Button
-              className="skill-remove"
+              className="skill-remove absolute left-0 top-1/2 -translate-y-1/2 inline-flex align-baseline items-center justify-center size-[1em] min-h-0 p-0 border-0 [font:inherit] leading-none text-inherit"
               tabIndex={-1}
               aria-label={`Remove /${skill.name}`}
               onClick={remove}
@@ -45,6 +51,6 @@ export function SkillBadge({
           </span>
         </>
       )}
-    </span>
+    </DraftChip>
   )
 }
