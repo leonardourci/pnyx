@@ -126,6 +126,8 @@ test(
         'scope',
         '--text',
         'Private Hydra scope',
+        '--reason',
+        'Private Hydra scope',
       ],
     })
     const crossHydraRead = await pnyxAxi({
@@ -140,7 +142,12 @@ test(
     })
     expect(crossHydraRead.status).toBe(0)
     expect(crossHydraRead.stdout).not.toContain('Private Hydra scope')
-    expect(JSON.stringify(await personal.owner({ args: ['oracle', 'private'] }))).toContain('[Private] Hydra scope')
+    expect(JSON.stringify(await personal.owner({
+      args: [
+        'oracle',
+        'private',
+      ],
+    }))).toContain('[Private] Hydra scope')
     expect((await pnyxAxi({
       args: [
         'oracle',
@@ -171,8 +178,21 @@ test(
         'list',
       ],
     }))).toContain('Private Hydra scope')
-    await personal.owner({ args: ['hydra', 'memory', 'forget', '--key', 'scope'] })
-    expect(JSON.stringify(await personal.owner({ args: ['oracle', 'private'] }))).not.toContain('[Private] Hydra scope')
+    await personal.owner({
+      args: [
+        'hydra',
+        'memory',
+        'forget',
+        '--key',
+        'scope',
+      ],
+    })
+    expect(JSON.stringify(await personal.owner({
+      args: [
+        'oracle',
+        'private',
+      ],
+    }))).not.toContain('[Private] Hydra scope')
     const crossRead = await pnyxAxi({
       args: [
         'owner',
@@ -338,7 +358,14 @@ test(
     expect(shown.status).toBe(0)
     expect(shown.stdout).not.toContain('personal')
     const sharedSettingsEdit = await pnyxAxi({
-      args: ['hydra', 'set', '--review-minutes', '0', '--hydra', work.id],
+      args: [
+        'hydra',
+        'set',
+        '--review-minutes',
+        '0',
+        '--hydra',
+        work.id,
+      ],
       env: crossEnv,
     })
     expect(sharedSettingsEdit.status).toBe(0)
@@ -899,6 +926,8 @@ test(
       'set',
       '--read-poleis',
       'shared,controlled,extra',
+      '--review-minutes',
+      '25',
       '--hydra',
       hydra.id,
     ]
@@ -1177,13 +1206,33 @@ test(
       hydra.id,
     ]
     await hydra.owner({
-      args: ['settings', 'set', '--json', JSON.stringify({
-        poleis: { shared: { readers: [hydra.id, 'future-polis-reader'] } },
-      })],
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            shared: {
+              readers: [
+                hydra.id,
+                'future-polis-reader',
+              ],
+            },
+          },
+        }),
+      ],
     })
-    expect((await pnyxAxi({ args: move, env })).stdout).toContain('OWNER_ONLY')
+    expect((await pnyxAxi({
+      args: move,
+      env,
+    })).stdout).toContain('OWNER_ONLY')
     await hydra.owner({
-      args: ['settings', 'set', '--json', '{"poleis":{"shared":{"readers":["*"]}}}'],
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"poleis":{"shared":{"readers":["*"]}}}',
+      ],
     })
     const sourceMemory = await hydra.owner({
       args: [
@@ -1498,5 +1547,114 @@ test(
         'list',
       ],
     })).writable.preferences.text).toBe('fresh replacement')
+  },
+)
+
+test(
+  'memory move confirmation refuses a changed destination audience',
+  async () => {
+    const author = await pnyx.hydra()
+    const reader = await pnyx.hydra()
+    const newcomer = await pnyx.hydra()
+    await author.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            'audience-private': { readers: [author.id] },
+            'audience-destination': {
+              readers: [
+                author.id,
+                reader.id,
+                newcomer.id,
+              ],
+            },
+          },
+        }),
+      ],
+    })
+    await author.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'audience-private',
+        '--read-poleis',
+        'audience-private,audience-destination',
+      ],
+    })
+    await reader.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'audience-destination',
+      ],
+    })
+    await author.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Audience-bound cobalt preference',
+      ],
+    })
+    const proposal = parsed(await pnyxAxi({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'preferences',
+        '--to',
+        'audience-destination',
+        '--propose',
+        '--hydra',
+        author.id,
+      ],
+      env: {
+        ...process.env,
+        PNYX_ACTOR: 'hydra',
+        PNYX_HYDRA: author.id,
+        PNYX_TASK: undefined,
+      },
+    }))
+    expect(proposal.confirmation).toBe('needed')
+    await newcomer.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'audience-destination',
+      ],
+    })
+    expect((await author.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        proposal.token,
+        '--confirm',
+        proposal.token,
+      ],
+    })).code).toBe('CONFLICT')
+    expect((await author.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable.preferences.text).toBe('Audience-bound cobalt preference')
+    expect(JSON.stringify(await reader.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    }))).not.toContain('Audience-bound cobalt preference')
   },
 )
