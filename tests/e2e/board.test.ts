@@ -2272,3 +2272,136 @@ test(
     }
   },
 )
+test(
+  'reopening stopped Zero clears the previous installation query failure',
+  async () => {
+    const hydra = await pnyx.hydra()
+    let installationHash = ''
+    let failInstallation: (() => void) | undefined
+    let stopZero: (() => void) | undefined
+    let connections = 0
+    let holdingInitialRows = true
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: async ({ page }) => {
+        await page.addInitScript(() => {
+          globalThis.WebSocket = new Proxy(
+            WebSocket,
+            {
+              // eslint-disable-next-line pnyx/object-params -- Proxy owns the constructor trap.
+              construct(
+                Target,
+                args,
+                NewTarget,
+              ) {
+                if (String(args[0]).includes('/zero/') && typeof args[1] === 'string') {
+                  const protocols = JSON.parse(atob(decodeURIComponent(args[1])))
+                  const initial = protocols.initConnectionMessage
+                  const patches = initial?.[1]?.desiredQueriesPatch ?? []
+                  const installation = patches.find((patch: { name?: string }) => patch.name === 'hydras.list')
+
+                  if (installation) {
+                    sessionStorage.setItem(
+                      'test-installation-query',
+                      installation.hash,
+                    )
+                  }
+                }
+
+                return Reflect.construct(
+                  Target,
+                  args,
+                  NewTarget,
+                )
+              },
+            },
+          )
+        })
+        await page.routeWebSocket(
+          /\/zero\//,
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
+          socket => {
+            connections += 1
+            const server = socket.connectToServer()
+            // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback.
+            server.onMessage(message => {
+              if (typeof message !== 'string') {
+                if (!holdingInitialRows) {
+                  socket.send(message)
+                }
+
+                return
+              }
+
+              const frame = JSON.parse(String(message))
+
+              if (holdingInitialRows && [
+                'pokeStart',
+                'pokePart',
+                'pokeEnd',
+              ].includes(frame[0])) {
+                return
+              }
+
+              socket.send(message)
+            })
+
+            failInstallation = () => socket.send(JSON.stringify([
+              'transformError',
+              [
+                {
+                  error: 'app',
+                  id: installationHash,
+                  name: 'hydras.list',
+                },
+              ],
+            ]))
+
+            stopZero = () => {
+              socket.send(JSON.stringify([
+                'error',
+                {
+                  kind: 'AuthInvalidated',
+                  message: 'Test access expired',
+                },
+              ]))
+              server.close()
+            }
+          },
+        )
+      },
+    })
+
+    try {
+      await until({
+        what: 'the initial installation read starts',
+        check: async () => {
+          installationHash = await page.evaluate(() => sessionStorage.getItem('test-installation-query') ?? '')
+
+          return installationHash !== '' && !!failInstallation
+        },
+      })
+      expect(installationHash).not.toBe('')
+      failInstallation!()
+      await page.getByText(
+        'Could not read the Hydra list or shared settings',
+        { exact: false },
+      ).waitFor()
+      const original = connections
+      holdingInitialRows = false
+      stopZero!()
+      await until({
+        what: 'a replacement Zero connection reads normally',
+        check: () => connections > original,
+      })
+      await page.locator(`[data-hydra-workspace="${hydra.id}"][data-connected="true"]`).waitFor()
+      expect(await page.getByText(
+        'Could not read the Hydra list or shared settings',
+        { exact: false },
+      ).count()).toBe(0)
+    } finally {
+      await page.context().close()
+    }
+  },
+)

@@ -783,6 +783,7 @@ export function createHydraConnection({
     installationViews?.close()
     closePageZero()
     zeroState = undefined
+    installationError = ''
     installationViews = readInstallation()
 
     for (const scope of scopes.values()) {
@@ -1497,6 +1498,7 @@ export function createHydraConnection({
     start() {
       active = true
       dropSnapshots()
+      installationError = ''
       installationViews = readInstallation()
       const stopLog = startPageLog({
         send: ({ lines }) => {
