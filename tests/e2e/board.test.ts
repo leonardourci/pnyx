@@ -1934,6 +1934,85 @@ test(
   },
 )
 test(
+  'Oracle keeps healthy Hydra results and names the failed search',
+  async () => {
+    const first = await pnyx.hydra()
+    const second = await pnyx.hydra()
+    await first.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Resilient indexed needle',
+      ],
+    })
+    let failAll = false
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: first.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.type === 'command' && frame.name === 'oracle' && (failAll || frame.scope === second.id)) {
+              socket.send(JSON.stringify({
+                type: 'error',
+                scope: frame.scope,
+                id: frame.id,
+                error: 'Search disconnected',
+                saved: false,
+                code: 'DISCONNECTED',
+              }))
+
+              return
+            }
+
+            server.send(message)
+          })
+        },
+      ),
+    })
+
+    try {
+      await page.getByRole(
+        'button',
+        {
+          name: 'Oracle',
+          exact: true,
+        },
+      ).click()
+      const search = page.getByRole(
+        'combobox',
+        {
+          name: 'Oracle',
+          exact: true,
+        },
+      )
+      await search.fill('Resilient indexed needle')
+      await page.getByRole('option').filter({ hasText: 'Resilient indexed needle' })
+        .waitFor()
+      await page.getByText(
+        `${second.id}: Search disconnected`,
+        { exact: false },
+      ).waitFor()
+      failAll = true
+      await search.fill('Entirely unavailable search')
+      await page.getByText(
+        'Search unavailable',
+        { exact: true },
+      ).waitFor()
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
   'opening an unloaded task mention preserves projects folded during its read',
   async () => {
     const hydra = await pnyx.hydra()

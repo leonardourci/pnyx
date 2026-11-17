@@ -819,7 +819,7 @@ export function Oracle({
     failed: found.failed,
     count: results.length,
   })
-  const searchCount = token ? MENU_LABEL : resultCount
+  const searchCount = token ? MENU_LABEL : found.partialFailure ? `${resultCount} · ${found.partialFailure}` : resultCount
   const count = ask ? 'Ask' : searchCount
   const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'hydra')
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
@@ -827,6 +827,8 @@ export function Oracle({
 
   const shownList = oracleResultList({
     terms,
+    actions: cardActions,
+    workspaces,
     state,
     keys,
     now,

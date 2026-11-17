@@ -1,3 +1,5 @@
+import type { CurrentAction } from '#hydra/calls.ts'
+import type { OracleWorkspace } from './workspaces.ts'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -62,6 +64,8 @@ function Group({
 export function oracleResultList({
   terms,
   state,
+  actions,
+  workspaces,
   keys,
   now,
   choose,
@@ -85,6 +89,8 @@ export function oracleResultList({
 }: {
   terms: string[]
   state: HydraState
+  actions: Record<string, CurrentAction>
+  workspaces: OracleWorkspace[]
   keys({ id }: { id: string }): string
   now: number
   choose({
@@ -140,7 +146,9 @@ export function oracleResultList({
       terms={terms}
       meta={resultMeta({
         result,
-        state,
+        state: workspaces.find(workspace => workspace.hydra.id === result.hydra)?.state ?? state,
+        actions: workspaces.find(workspace =>
+          workspace.hydra.id === result.hydra)?.actions ?? actions,
         keys,
         now,
       })}

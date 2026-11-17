@@ -31,7 +31,7 @@ export function workspaceSearch({
     name,
     args,
   }) => {
-    const receipts = await Promise.all(ids.map(async id => {
+    const receipts = await Promise.allSettled(ids.map(async id => {
       const receipt = await commandFor({ id })({
         name,
         args,
@@ -44,7 +44,28 @@ export function workspaceSearch({
       }))
     }))
 
-    return { hits: receipts.flat() }
+    const hits: ScopedHit[] = []
+    const failures: string[] = []
+
+    for (const [
+      index,
+      receipt,
+    ] of receipts.entries()) {
+      if (receipt.status === 'fulfilled') {
+        hits.push(...receipt.value)
+      } else {
+        failures.push(`${ids[index]}: ${receipt.reason instanceof Error ? receipt.reason.message : String(receipt.reason)}`)
+      }
+    }
+
+    if (failures.length === ids.length && failures.length) {
+      throw new Error(failures.join('; '))
+    }
+
+    return {
+      hits,
+      partialFailure: failures.join('; '),
+    }
   }
 }
 

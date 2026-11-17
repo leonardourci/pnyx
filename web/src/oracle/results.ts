@@ -369,7 +369,9 @@ export function resultMeta({
   state,
   keys,
   now,
+  actions,
 }: {
+  actions: Record<string, CurrentAction>
   result: OracleResult
   state: HydraState
   keys({ id }: { id: string }): string
@@ -381,7 +383,7 @@ export function resultMeta({
         status: taskRollup({
           state,
           card: result.card,
-          actions: {},
+          actions,
         }).status,
       })} · ${relativeTime({
         at: result.at,

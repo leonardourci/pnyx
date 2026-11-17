@@ -90,6 +90,7 @@ function TaskPreview({
   hit,
   state,
   action,
+  actions,
   connected,
   terms,
   doneAfterHours,
@@ -99,6 +100,7 @@ function TaskPreview({
   hit?: Hit
   state: HydraState
   action?: CurrentAction
+  actions: Record<string, CurrentAction>
   connected: boolean
   terms: string[]
   doneAfterHours?: DoneAfterHours
@@ -110,7 +112,7 @@ function TaskPreview({
     ? taskRollup({
       state,
       card,
-      actions: action ? { [card.id]: action } : {},
+      actions,
     }).status
     : cardState({
       card,
@@ -383,6 +385,7 @@ export function ResultPreview({
           hit={result.hit}
           state={state}
           action={cardActions[result.card.id]}
+          actions={cardActions}
           connected={connected}
           terms={terms}
           doneAfterHours={doneAfterHours}
@@ -395,6 +398,7 @@ export function ResultPreview({
           hit={result.hit}
           state={state}
           action={cardActions[result.card.id]}
+          actions={cardActions}
           connected={connected}
           terms={terms}
           doneAfterHours={doneAfterHours}
