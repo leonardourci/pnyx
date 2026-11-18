@@ -6,7 +6,7 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
-import type { ModelInfo, Options, PermissionResult, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { ModelInfo, Options, PermissionResult, SDKControlGetContextUsageResponse, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { transcriptPath, type QueryFn } from '#workers/claude.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 
@@ -24,6 +24,7 @@ const recording = <T>({ name }: { name: string }) => JSON.parse(readFileSync(
 
 const claudeRecording = recording<{
   models: ModelInfo[]
+  context: Pick<SDKControlGetContextUsageResponse, 'model' | 'rawMaxTokens'>
   turn: SDKMessage[]
 }>({ name: 'claude.json' })
 const codexRecording = recording<{
@@ -68,6 +69,8 @@ export interface TurnPlan {
   hold?: boolean
   // Claude reports a compaction while the turn waits, as it does for /compact.
   compacting?: boolean
+  // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does, Codex mid-turn.
+  compactTo?: number
   // Claude folds a message sent while the turn waits into it at once, as Claude Code does at a step boundary; its transcript record waits for the turn's end.
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
@@ -311,6 +314,42 @@ export function fakeClaude() {
           } as SDKMessage
         }
 
+        if (plan?.compacting && plan.compactTo !== undefined && !interrupted) {
+          appendFileSync(
+            transcript,
+            `${JSON.stringify({
+              type: 'system',
+              subtype: 'compact_boundary',
+              timestamp: new Date().toISOString(),
+              compactMetadata: {
+                trigger: 'manual',
+                postTokens: plan.compactTo,
+              },
+            })}\n`,
+          )
+          yield {
+            type: 'system',
+            subtype: 'compact_boundary',
+            compact_metadata: {
+              trigger: 'manual',
+              pre_tokens: 0,
+              post_tokens: plan.compactTo,
+            },
+            uuid: randomUUID(),
+            session_id: id,
+          } as SDKMessage
+          yield {
+            ...claudeRecording.turn.find(recorded => recorded.type === 'result')!,
+            session_id: id,
+            user_message_uuids: [message.uuid],
+            queued_turn_count: 0,
+            result: '',
+          } as SDKMessage
+          stop = undefined
+          session.answered = session.received.length
+          continue
+        }
+
         for (const recorded of claudeRecording.turn) {
           if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'
             && recorded.event.delta.type === 'text_delta') {
@@ -456,6 +495,7 @@ export function fakeClaude() {
             still_queued: queued,
           }
         },
+        getContextUsage: async () => claudeRecording.context,
         setModel: async () => {},
         setPermissionMode: async () => {},
         applyFlagSettings: async () => {},
@@ -463,11 +503,20 @@ export function fakeClaude() {
     )
   }) as unknown as QueryFn
 
+  const request = claudeRecording.turn.find(recorded => recorded.type === 'stream_event' && recorded.event.type === 'message_start')
+  const requestUsage = request?.type === 'stream_event' && request.event.type === 'message_start' ? request.event.message.usage : undefined
+
   return {
     query,
     sessions,
     plan: turns.plan,
     reply: recordedReply,
+    // The context the recorded turn reports: its request's input and the window Claude Code measures it against.
+    context: {
+      used: (requestUsage?.input_tokens ?? 0) + (requestUsage?.cache_creation_input_tokens ?? 0)
+        + (requestUsage?.cache_read_input_tokens ?? 0),
+      window: claudeRecording.context.rawMaxTokens,
+    },
   }
 }
 
@@ -554,6 +603,53 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           session.id,
         )}\n`)
       }
+    }
+
+    // Codex's auto-compaction: the compaction item, then the count it reports for the compacted context.
+    const compact = ({
+      usage,
+      tokens,
+    }: {
+      usage: Message
+      tokens: number
+    }) => {
+      const params = usage.params as Message & { tokenUsage: Message & { last: Message } }
+      const item = {
+        type: 'contextCompaction',
+        id: randomUUID(),
+      }
+
+      for (const method of [
+        'item/started',
+        'item/completed',
+      ]) {
+        send({
+          message: {
+            method,
+            params: {
+              threadId: params.threadId,
+              turnId: params.turnId,
+              item,
+            },
+          },
+        })
+      }
+
+      send({
+        message: {
+          ...usage,
+          params: {
+            ...params,
+            tokenUsage: {
+              ...params.tokenUsage,
+              last: {
+                ...params.tokenUsage.last,
+                totalTokens: tokens,
+              },
+            },
+          },
+        },
+      })
     }
 
     createInterface({ input: stdin }).on(
@@ -685,6 +781,13 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
             await plan?.wait
           }
 
+          if (notification.method === 'turn/completed' && plan?.compactTo !== undefined) {
+            compact({
+              usage: found.notifications.find(n => n.method === 'thread/tokenUsage/updated')!,
+              tokens: plan.compactTo,
+            })
+          }
+
           send({ message: notification })
 
           if (notification.method === 'turn/completed') {
@@ -697,10 +800,22 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     return child as unknown as ChildProcessWithoutNullStreams
   }
 
+  const usage = (notifications.find(n => n.method === 'thread/tokenUsage/updated')!.params as {
+    tokenUsage: {
+      last: { totalTokens: number }
+      modelContextWindow: number
+    }
+  }).tokenUsage
+
   return {
     spawnCodex,
     sessions,
     plan: turns.plan,
     reply,
+    // The context the recorded turn reports.
+    context: {
+      used: usage.last.totalTokens,
+      window: usage.modelContextWindow,
+    },
   }
 }
