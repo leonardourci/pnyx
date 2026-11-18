@@ -22,6 +22,7 @@ Commit with Conventional Commits, split by concern. Push the branch and open a d
 Run `pnpm deslop` before marking the pull request ready; see [Verification](docs/development.md#verification) for the checks and CI approval steps. The owner runs deslop for pull requests from forks.
 
 Both required checks, `deslop` and `Lint, build and tests`, must pass. The owner reviews and merges with a merge commit.
+The test job also builds the opt-in profiling variant for the separate performance journey; the ordinary journeys keep the normal renderer. See [Testing](docs/testing.md#performance-journey).
 
 ## CodeRabbit challenger review
 

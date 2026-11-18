@@ -27,6 +27,18 @@ Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Pos
 
 A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, and none of the calling shell's identity or settings. Files run in parallel and in a random order, and so do the tests in each file: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
+### Performance journey
+
+Normal builds run the integration and ordinary browser projects. The separate `performance` project uses the existing React profiling flag, so it can count task commits through the same UI metrics written to the log file:
+
+```sh
+VITE_PNYX_PROFILE=1 pnpm run build
+VITE_PNYX_PROFILE=1 pnpm exec vitest run --project performance
+pnpm run build
+```
+
+CI runs the normal suite first, then builds the profiling variant for this one journey. The fixture has 628 tasks, 12 project columns and six Hydras. It permits at most 70 mounted cards in the visible Hydra, four mounted project columns and 6,000 total DOM elements, with no cards in an off-screen Hydra. A task rename or streamed reply may commit at most four task surfaces, with none in the other Hydra. The same fixture checks a late Hydra address and keyboard pickup, ArrowDown and Escape without a render loop. Drag and wheel-scroll windows may contain no main-thread task above 50ms. The ordinary stationary-pointer drag/scroll journey enforces the same long-task budget with the normal renderer. Rebuild normally after local profiling; the default build bypasses all Profiler boundaries.
+
 ## Writing a test
 
 Every change to behaviour adds or updates the tests for it; documentation-only and behaviour-preserving changes need none. A bug fix starts with a test that reproduces the bug. Before the PR is ready, revert the behaviour change in a throwaway copy, run each new test of that behaviour and see it fail; the PR's Validation names the test and what failed.
