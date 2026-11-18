@@ -1271,7 +1271,7 @@ test(
     const session = await hydra.chat({ text: 'Decide export scope' })
     const asHydra = hydra.as({ session })
     const card = await hydra.task({ key: 'questions' })
-    const context = `Archived invoices change totals. After the answer I will build the export. [Export](pnyx-task:${card.id})`
+    const context = `Archived invoices change totals. After the answer I will build the export. [Export \\[scope\\]](pnyx-task:${card.id})`
     const fields = [
       [
         '--question',
@@ -1313,6 +1313,7 @@ test(
     }
 
     for (const question of [
+      '?',
       'Ready for review',
       'Ship CSV? Or JSON?',
     ]) {

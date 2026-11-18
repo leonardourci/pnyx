@@ -183,11 +183,13 @@ function validateOwnerQuestion({
 }): void {
   const missing: string[] = []
 
-  if (!question.endsWith('?') || question.split('?').length !== 2) {
+  const decision = question.slice(0, -1).trim()
+
+  if (!question.endsWith('?') || !decision || /[?\r\n]/.test(decision)) {
     missing.push('--question with one plain decision ending in ?')
   }
 
-  const taskLinks = /\[[^\]\n]+\]\(pnyx-task:([^\s)]+)\)/g
+  const taskLinks = /\[(?:\\[^\r\n]|[^\\\]\r\n])+\]\(pnyx-task:([^\s)]+)\)/g
   const explanation = context?.replace(
     taskLinks,
     '',
@@ -488,7 +490,8 @@ export const askReport = ({
     i,
   ) => `${i + 1}. ${o.label}${o.description ? ` — ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
   ...(ask.details ? [`Details: \`pnyx-axi task show ${task} --full --hydra ${hydraId}\``] : []),
-  `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\`; hand on only an owner decision: \`pnyx-axi task escalate ${task} ${ask.id} --reason "<why>" --hydra ${hydraId}\``,
+  `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\``,
+  `If the owner must decide, use \`pnyx-axi task escalate ${task} ${ask.id} --question "<decision?>" --context "<what changes, next action and [Card](pnyx-task:${encodeURIComponent(task)})>" --choice "<recommended choice>" --choice "<alternative>" --recommend 1 --reason "<why>" --hydra ${hydraId}\``,
 ].join('\n')
 
 const answeredMergeHold = ({ ask }: { ask: Ask }) =>

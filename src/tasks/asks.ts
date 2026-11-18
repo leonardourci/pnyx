@@ -649,12 +649,13 @@ async function answerGroup({
     state,
     ref,
   })
+  const cardsByKey = new Map(Object.values(state.cards).map(card => [encodeURIComponent(card.id), card]))
   const selected = members.map(key => {
     const [
       task,
       id,
     ] = key.split('/')
-    const target = Object.values(state.cards).find(card => encodeURIComponent(card.id) === task)
+    const target = cardsByKey.get(task)
     const ask = target?.asks?.find(ask => encodeURIComponent(ask.id) === id && ask.audience === 'owner')
     const event = `${attempt}:${key}`
     const parent = target?.parentId ? state.cards[target.parentId] : undefined

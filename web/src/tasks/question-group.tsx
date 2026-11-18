@@ -74,7 +74,15 @@ export function useGroupAnswers({
           attempt.id,
         ],
       })
-      const answers = receipt.answers as { state?: string }[]
+      const answers = receipt.answers
+
+      if (!Array.isArray(answers) || answers.length !== attempt.questions.length
+        || !answers.every(answer => answer && typeof answer === 'object')) {
+        notify({ text: 'Group answer receipt is incomplete. Retry to check delivery.' })
+
+        return
+      }
+
       const unsettled = answers.some(answer => answer.state === 'queued'
         || answer.state === 'failed' || answer.state === 'delivery_unknown')
 
@@ -153,12 +161,15 @@ export function QuestionGroupAnswers({
     return null
   }
 
+  const hasPendingAnswer = answers.pending.some(attempt => attempt.task === group.card.id)
+  const unavailable = disabled || answers.busy !== null || hasPendingAnswer
+
   return (
     <div className="flex flex-wrap gap-1.5" role="group" aria-label="Answer group">
       {group.choices.map(choice => (
         <Button
           key={choice}
-          disabled={disabled || !!answers.busy}
+          disabled={unavailable}
           aria-label={`Answer all ${group.decisions.length}: ${choice}`}
           onClick={() => answers.answer({
             group,
