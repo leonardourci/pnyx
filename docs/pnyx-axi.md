@@ -259,6 +259,8 @@ Each polis can hold 24000 characters of owner memory. It stores `preferences`, `
 
 Pnyx makes up to three attempts to assemble memory when access, home or project attachments change during the read. If all attempts see changes, the command returns `CONFLICT` without the assembled memory.
 
+Agent history omits saved memory-review blocks when their recorded poleis or project attachments are no longer readable. Owner history keeps the full record, and task events remain visible. Older reviews without source metadata are omitted from agent history.
+
 Agents need read access to the target Hydra's home polis and every polis the target can read before changing another Hydra or controlling its workers. Missing access returns `NOT_FOUND`. A worker starts with the target Hydra's memory under the worker's identity. Direct CLI memory calls use the caller's native Hydra.
 
 ### Worker instructions and memory curation
