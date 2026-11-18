@@ -195,18 +195,7 @@ export function withWriter<T>({
   try {
     for (const stage of stages) {
       if (migrate) {
-        let review = migrateReviewQuestion({
-          state: stage.writer.state,
-          at: new Date().toISOString(),
-        })
-
-        while (review) {
-          stage.writer.append({ event: review })
-          review = migrateReviewQuestion({
-            state: stage.writer.state,
-            at: new Date().toISOString(),
-          })
-        }
+        retireReviewQuestions({ writer: stage.writer })
       }
 
       const migrated = migrate ? migrateColumns({
@@ -226,6 +215,13 @@ export function withWriter<T>({
       writer: primary,
       writers,
     })
+
+    if (migrate) {
+      for (const stage of stages) {
+        retireReviewQuestions({ writer: stage.writer })
+      }
+    }
+
     const changes = stages.filter(stage => stage.pending.length).map(stage => {
       const rows = rowChanges({
         hydraId: stage.id,
@@ -614,4 +610,19 @@ export function eventWriter({
   }
 
   return writer
+}
+
+function retireReviewQuestions({ writer }: { writer: Writer }): void {
+  let review = migrateReviewQuestion({
+    state: writer.state,
+    at: new Date().toISOString(),
+  })
+
+  while (review) {
+    writer.append({ event: review })
+    review = migrateReviewQuestion({
+      state: writer.state,
+      at: new Date().toISOString(),
+    })
+  }
 }

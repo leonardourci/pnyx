@@ -3605,16 +3605,6 @@ test(
         'hydra',
       ],
     })
-    await hydra.owner({
-      args: [
-        'task',
-        'status',
-        'review-update',
-        'needs_you',
-        '--note',
-        'Ready for review',
-      ],
-    })
     const current = await hydra.owner({
       args: [
         'task',
