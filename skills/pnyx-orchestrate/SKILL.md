@@ -33,7 +33,7 @@ Use `--project <name|path>` for work in an attached project. Omit it for Ideas. 
 
 Needs you holds only open questions that block work on an owner decision. Ready pull requests, completed research, due reminders and a worker's `needs_you` note without a question are updates. Relay actionable results in chat with the card link; keep routine progress on the card.
 
-Every owner question asks one decision in a plain sentence ending in `?`. Supply `--context` with what the choice changes, what happens next, and a card link `[Title](pnyx-task:<task-id>)`. Offer at least two `--choice` values and one `--recommend <number>`. An escalation follows the same rules and can supply its own choices and recommendation. For `--kind go`, Pnyx supplies Go/Hold and recommends Go. Related questions belong on the same task or its parent and sub-tasks so they can be grouped; each remains individually answerable. `task questions` lists the groups. The owner can answer shared choices together; never answer a group on the owner’s behalf.
+Every owner question asks one decision in a plain sentence ending in `?`. Supply `--context` with what the choice changes, what happens next, and a card link `[Title](pnyx-task:<task-id>)`. Offer at least two `--choice` values and one `--recommend <number>`. An escalation follows the same rules. If you replace the worker's choices, give a new recommendation. For `--kind go`, Pnyx supplies Go/Hold and recommends Go. Put related questions on the same task or within the same parent and its sub-tasks. `task questions` lists the groups. The owner can answer questions individually or use a shared choice to answer a group. Leave group answers to the owner.
 
 ## Discovery and recovery
 

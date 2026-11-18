@@ -309,7 +309,7 @@ A worker's question goes to Hydra (the default); only Hydra asks the owner, with
 pnyx-axi task questions
 Lists owner-question groups, their question keys and shared choices. A task and its sub-tasks share one group; worker questions and updates do not count.
 pnyx-axi task answer-group <task> --questions <JSON-array-of-keys> --choice <shared-label> --event-id <attempt>
-The owner answers the displayed group with one shared choice. A changed question list refuses the batch before sending; permissions and incompatible choices must be answered individually. Retry with the same event id and question keys.
+The owner answers the displayed group with one shared choice. The server checks the question list before each send. If it changes during delivery, earlier answers may already have been sent. Answer permissions and incompatible choices individually. Retry an uncertain receipt with the same event ID, question keys and choice.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
 Short requests such as "why?" or "explain", and recognized clarification questions ending in "?", keep the question open. Longer instructions remain answers even when they begin with those words. Use discuss-question for other follow-up wording; an explicit discussion cannot be quoted as an answer.
 Sends merge answers and answers to Hydra's questions to Hydra, and answers to worker questions to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice; --text with a choice adds a note sent with the choice. Retry failed delivery with reply --idempotency-key <reply-id>.
@@ -325,7 +325,7 @@ pnyx-axi task defer-question <task> <question> --until <future-time|clear> [--fr
 Later pauses active Waiting on you and question reminders until the owner's date. The question stays unanswered and still gates work. Hydra needs the owner's newer message; workers cannot defer owner questions.
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--choice <label>]... [--recommend <n>] [--undelivered] --reason <text>
-Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history. Supply --choice and --recommend to replace worker choices; owner-question validation applies.
+Hydra hands a worker's question to the owner under the same id. The worker's wording stays in its history. Owner-question validation applies. When replacing choices with --choice, supply a new --recommend.
 pnyx-axi task history <id> [--before <seq>|<hydra>:<seq>] [--limit <n>] [--full]
 A moved task's history continues into the Hydras it came from; those rows name their Hydra, and --before <hydra>:<seq> pages through them.
 pnyx-axi task updates <id> [--before <seq>] [--limit <n>]

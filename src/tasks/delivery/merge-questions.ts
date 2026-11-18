@@ -119,13 +119,13 @@ export function isCanonicalQuestion({
   return canonical?.card.id === card.id && canonical.ask.id === ask.id
 }
 
-export function migrateReviewQuestion({
+export function* retireableReviewQuestions({
   state,
   at,
 }: {
   state: HydraState
   at: string
-}): HydraEvent | undefined {
+}): Iterable<HydraEvent> {
   for (const card of Object.values(state.cards)) {
     const ownerMerges = cardLanding({
       card,
@@ -146,25 +146,23 @@ export function migrateReviewQuestion({
         meta: {
           at,
           actor: 'pnyx',
-          id: `${ask.id}:${card.id}:review-update`,
+          id: `${ask.id}:${card.id}:${state.seq}:review-update`,
         },
         change: {
           type: 'task.ask.closed',
           data: {
             ask: ask.id,
-            reason: 'Ready for review is an update; this task does not require an owner merge decision',
+            reason: 'The current landing rule does not require an owner merge decision',
             evidence: ask.url ?? card.id,
           },
         },
       })
 
       if ('event' in decision) {
-        return decision.event
+        yield decision.event
       }
     }
   }
-
-  return undefined
 }
 
 export function reconcileAsks({

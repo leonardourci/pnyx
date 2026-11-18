@@ -209,10 +209,7 @@ function validateOwnerQuestion({
     missing.push('at least two --choice values')
   }
 
-  const missingRecommendation = recommended === undefined || !Number.isInteger(recommended)
-    || recommended < 1 || recommended > options.length
-
-  if (missingRecommendation) {
+  if (recommended === undefined) {
     missing.push('--recommend with one choice number')
   }
 
@@ -444,9 +441,10 @@ export function decideEscalation({
     }),
   }
 
+  const recommendation = options === undefined ? recommended ?? ask.recommended : recommended
   const choices = questionChoices({
     options: options ?? ask.options,
-    recommended: recommended ?? ask.recommended,
+    recommended: recommendation,
   })
 
   validateOwnerQuestion({
@@ -454,7 +452,7 @@ export function decideEscalation({
     question: owner.question ?? ask.question,
     context: owner.context ?? ask.context,
     options: choices,
-    recommended: recommended ?? ask.recommended,
+    recommended: recommendation,
   })
 
   return hydraEvent({
@@ -466,7 +464,7 @@ export function decideEscalation({
       data: {
         ask: ask.id,
         options: choices,
-        recommended: recommended ?? ask.recommended,
+        recommended: recommendation,
         ...(owner.question ? { question: owner.question } : {}),
         ...(owner.context ? { context: owner.context } : {}),
       },

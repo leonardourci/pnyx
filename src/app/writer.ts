@@ -17,7 +17,7 @@ import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
 import { replayOwned } from './reducer.ts'
 import { preimage, type PreimageObserver, type Touched } from './preimage.ts'
-import { migrateReviewQuestion, reconcileAsks } from '#tasks/delivery/merge-questions.ts'
+import { reconcileAsks, retireableReviewQuestions } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
@@ -612,16 +612,10 @@ export function eventWriter({
 }
 
 function retireReviewQuestions({ writer }: { writer: Writer }): void {
-  let review = migrateReviewQuestion({
+  for (const review of retireableReviewQuestions({
     state: writer.state,
     at: new Date().toISOString(),
-  })
-
-  while (review) {
+  })) {
     writer.append({ event: review })
-    review = migrateReviewQuestion({
-      state: writer.state,
-      at: new Date().toISOString(),
-    })
   }
 }

@@ -242,14 +242,23 @@ export function currentState({ card }: { card: Card }): {
   const note = (card.statusLog ?? [])
     .filter(entry => entry.note.trim() && reportActor({ actor: entry.actor }))
     .at(-1)
-  const reviews = card.links.filter(link => readyForReview({ link }) && !!link.checkedAt
-    && !(card.asks ?? []).some(ask => ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered))
-  const said = [
-    ...reviews.map(link => ({
+  const reviewUpdates = card.links.flatMap(link => {
+    const at = link.checkedAt
+    const openDecision = (card.asks ?? []).some(ask =>
+      ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered)
+
+    if (!at || openDecision || !readyForReview({ link })) {
+      return []
+    }
+
+    return [{
       text: `[${link.title ?? 'Pull request'}](${link.url}) is ready for review.`,
-      at: link.checkedAt!,
+      at,
       source: 'review' as const,
-    })),
+    }]
+  })
+  const said = [
+    ...reviewUpdates,
     card.reminder?.dueAt ? {
       text: 'Reminder due',
       at: card.reminder.dueAt,

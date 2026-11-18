@@ -1368,6 +1368,15 @@ test(
     })
     const inProgress = await hydra.column({ role: 'in_progress' })
     expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
+    const beforeReminder = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        card.id,
+        '--full',
+      ],
+    })
+    expect(beforeReminder.task.status).toMatchObject({ state: 'needs_you' })
     await hydra.owner({
       args: [
         'column',
@@ -1395,6 +1404,15 @@ test(
       at: new Date(Date.parse(due) + 1).toISOString(),
     })
     expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
+    const afterReminder = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        card.id,
+        '--full',
+      ],
+    })
+    expect(afterReminder.task.status).toEqual(beforeReminder.task.status)
     const updates = await hydra.owner({
       args: [
         'task',
@@ -1435,6 +1453,12 @@ test(
         'questions',
         '--question',
         'Which export?',
+        '--choice',
+        'CSV',
+        '--choice',
+        'JSON',
+        '--recommend',
+        '2',
       ],
     })
     expect((await hydra.owner({
@@ -1453,6 +1477,17 @@ test(
         'escalate',
         'questions',
         workerAsk.ask,
+        '--reason',
+        'Accounting decision',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await asHydra.refused({
+      args: [
+        'task',
+        'escalate',
+        'questions',
+        workerAsk.ask,
+        ...fields.slice(0, 3).flat(),
         '--reason',
         'Accounting decision',
       ],
