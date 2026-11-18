@@ -301,7 +301,8 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
 
     const expectedTask = committed ? intent.target : intent.source
     const copy = state.cards[expectedTask]?.copy
-    const copyChanged = copy && (copy.path !== intent.cwd || (committed && copy.branch !== intent.branch))
+    const copyChanged = copy && (copy.path !== intent.cwd
+      || (committed && copy.branch !== intent.branch))
 
     if (!state.cards[expectedTask] || assigned?.taskId !== expectedTask || copyChanged
       || assigned.agent.cwd !== intent.cwd) {
