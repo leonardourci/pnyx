@@ -990,7 +990,7 @@ test(
 )
 
 test(
-  'a Claude interrupt on an idle session does not mark the next turn interrupted',
+  'a Claude interrupt on an idle session does not mark the next turn interrupted, and stopping a compacted turn keeps its count',
   async ({ onTestFinished }) => {
     const claude = fakeClaude()
     const session = await claudeProvider({ query: claude.query }).open({
@@ -999,7 +999,10 @@ test(
       env: { PNYX_HOME: process.env.PNYX_HOME! },
       signal: new AbortController().signal,
     })
-    const { input } = await driven({
+    const {
+      input,
+      events,
+    } = await driven({
       session,
       onEnd: ({ end }) => onTestFinished(end),
     })
@@ -1017,6 +1020,27 @@ test(
       check: () => session.snapshot().outcome !== undefined,
     })
     expect(session.snapshot().outcome?.status).toBe('completed')
+
+    claude.plan({
+      text: '/compact',
+      compacting: true,
+      compactTo: 3_000,
+      hold: true,
+    })
+    input.push({
+      id: 'compact',
+      text: '/compact',
+    })
+    await until({
+      what: 'the compacted count before stopping',
+      check: () => events.some(event => typeof event === 'object' && event.type === 'usage' && event.used === 3_000),
+    })
+    await session.interrupt({ cancelQueued: false })
+    await until({
+      what: 'the stopped compaction result',
+      check: () => session.snapshot().outcome?.status === 'interrupted',
+    })
+    expect(events.filter(event => typeof event === 'object' && event.type === 'usage' && event.used !== undefined).at(-1)).toMatchObject({ used: 3_000 })
   },
 )
 
