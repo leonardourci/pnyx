@@ -229,3 +229,8 @@ Open: the fresh stress rerun, final trace comparison and final visible media. Hy
 
 
 On-screen windows reconcile cached scroll margins in the same observer pass. Whole-Hydra layout animation runs for explicit folding and Hydra dragging; background width changes keep the viewport anchor without a second translation. Opening a card focuses its panel before scrolling, so its row stays protected. A modal card has no sortable registration while its inline card returns, preserving the reverse animation and focus.
+
+
+The independent anchoring investigation separated two failures. Scroll compensation runs before Motion measures the horizontal axis; the axis uses viewport coordinates, so widening an earlier Hydra does not animate the selected Hydra’s cards. A per-frame regression checks that the visible card stays fixed throughout that change. The chat surface paints above sliding project columns, and an unfold-frame hit test catches a click that would otherwise reach Fold Ideas. The folding journey keeps its existing horizontal position instead of letting Playwright’s retry scrolling move the Hydra.
+
+A fresh Zero read can replace row objects while their decoded card values stay equal. The row cache also retains equal cards from the preceding snapshot, so one changed card does not redraw every visible card. Its regression reads through separate real Zero clients, keeps an unchanged card, and publishes the renamed card. The original profiling bound remains four task commits; the production drag/scroll limit remains 50ms. Final combined proof and the stress rerun remain open.
