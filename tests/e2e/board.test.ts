@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { beginUIWindow, reportDragResponsiveness } from '../setup/ui-metrics.ts'
+import { MOTION_DURATIONS } from '../../web/src/shared/motion.ts'
 import { openHydra } from '../setup/browser.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
@@ -4102,13 +4103,78 @@ test(
         what: 'the open task compacts after entering its next slot',
         check: async () => Math.abs((await ghost.boundingBox())!.width - 303.333) < 1,
       })
+      // The landing's own animation is recorded as it starts, so a slow runner cannot skip past it.
+      await page.evaluate(() => {
+        const recorded: {
+          widths: string[]
+          duration: number
+          animation: Animation
+        }[] = []
+        const start = Element.prototype.animate
+        Object.assign(
+          window,
+          { landings: recorded },
+        )
+
+        // eslint-disable-next-line pnyx/object-params -- Element.animate owns this signature.
+        Element.prototype.animate = function (...args: Parameters<Element['animate']>) {
+          const animation = start.apply(
+            this,
+            args,
+          )
+          const [
+            keyframes,
+            options,
+          ] = args
+
+          if (this.classList.contains('physical-ghost') && Array.isArray(keyframes) && typeof options === 'object') {
+            recorded.push({
+              widths: keyframes.map(keyframe => String(keyframe.width)),
+              duration: Number(options.duration),
+              animation,
+            })
+          }
+
+          return animation
+        }
+      })
+      const released = (await ghost.boundingBox())!.width
       const dropping = landingFrames()
       await page.mouse.up()
       const dropFrames = await dropping
-      expect(dropFrames.some(sample => sample.width > 350 && sample.width < 850)).toBe(true)
       const dropTitleWidths = dropFrames.map(sample => sample.title)
       expect(Math.max(...dropTitleWidths) - Math.min(...dropTitleWidths)).toBeLessThan(1)
       await ghost.waitFor({ state: 'detached' })
+      const drop = await page.evaluate(async () => {
+        const [landing] = (window as unknown as {
+          landings: {
+            widths: string[]
+            duration: number
+            animation: Animation
+          }[]
+        }).landings
+        await landing?.animation.finished
+
+        return landing && {
+          widths: landing.widths.map(parseFloat),
+          duration: landing.duration,
+          played: landing.animation.playState,
+        }
+      })
+      expect(
+        drop,
+        'the drop lands through its own animation',
+      ).toBeTruthy()
+      expect(drop!.duration).toBe(MOTION_DURATIONS.base)
+      expect(drop!.played).toBe('finished')
+      expect(drop!.widths[0]).toBeCloseTo(
+        released,
+        0,
+      )
+      expect(drop!.widths[1]).toBeCloseTo(
+        (await card.boundingBox())!.width,
+        0,
+      )
       await until({
         what: 'the opened task reorders without losing its conversation',
         check: async () => {
@@ -4289,6 +4355,16 @@ test(
                 },
               )
             })
+            // The fold's own animation and starting size, read as it opens, so a slow runner cannot skip past them.
+            const start = target.getBoundingClientRect()[axis]
+            const fades = content.getAnimations().map(animation => {
+              const effect = animation.effect as KeyframeEffect
+
+              return {
+                duration: Number(effect.getTiming().duration),
+                opacity: effect.getKeyframes().map(keyframe => keyframe.opacity),
+              }
+            })
             const samples: {
               dimension: number
               opacity: number
@@ -4302,7 +4378,15 @@ test(
               })
             }
 
-            return samples
+            await Promise.all(content.getAnimations().map(animation => animation.finished))
+            await new Promise(requestAnimationFrame)
+
+            return {
+              start,
+              end: target.getBoundingClientRect()[axis],
+              fades,
+              samples,
+            }
           },
           {
             body,
@@ -4311,7 +4395,14 @@ test(
             axis,
           },
         )
-        const [samples] = await Promise.all([
+        const [
+          {
+            start,
+            end,
+            fades,
+            samples,
+          },
+        ] = await Promise.all([
           frames,
           workspace.getByRole(
             'button',
@@ -4329,8 +4420,21 @@ test(
           expect(samples.every(sample => sample.opacity === 1)).toBe(true)
           expect(change).toBeLessThan(1)
         } else {
-          expect(samples.some(sample => sample.opacity > 0 && sample.opacity < 1)).toBe(true)
-          expect(change).toBeGreaterThan(4)
+          expect(
+            fades,
+            JSON.stringify(fades),
+          ).toContainEqual({
+            duration: MOTION_DURATIONS.base,
+            opacity: [
+              '0',
+              '1',
+            ],
+          })
+          expect(end - start).toBeGreaterThan(4)
+          expect(samples.at(-1)!.dimension).toBeCloseTo(
+            end,
+            0,
+          )
         }
       }
 
@@ -4865,6 +4969,7 @@ test(
     try {
       await first.waitFor()
       await second.waitFor()
+      await first.locator('.column-cards').waitFor()
       const body = (await first.locator('.column-cards').boundingBox())!
       await page.mouse.move(
         body.x + body.width / 2,
