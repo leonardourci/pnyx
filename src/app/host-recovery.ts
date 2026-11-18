@@ -81,6 +81,7 @@ export function createHostRecovery({
     fenced = false
     fenced = await children.sweep()
     upgrades.recover()
+
     if (fenced) {
       await recoverHandoffs({ hydraId })
     }

@@ -875,6 +875,7 @@ export async function advanceQueues({
         taskId: current.id,
         error,
       })
+
       if (active()) {
         releaseQueue({
           hydraId,
