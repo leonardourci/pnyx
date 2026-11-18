@@ -13,7 +13,7 @@ import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo
 import type { AgentSettings } from './model.ts'
 import { questions } from './native-prompts.ts'
 import { object, count, usageNumber, taskContext, textContent } from './transcript-usage.ts'
-import type { TranscriptUsageReader, HostedImage, InputReceipt, ModelOption, Provider } from './provider.ts'
+import type { TranscriptUsageReader, HostedImage, HostedUsage, InputReceipt, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
 import { compactCommand } from './compact-command.ts'
@@ -578,17 +578,23 @@ export function claudeProvider({
           const session = running
 
           // Only the window, read without a model call: the /context total overestimates, so each request sets the count.
-          const readWindow = () => {
-            session.getContextUsage({ detail: 'summary' }).then(
-              ({ rawMaxTokens }) => emit({
-                event: {
-                  type: 'usage',
-                  window: rawMaxTokens,
-                },
-              }),
+          const readWindow = async () => {
+            let window: number
+
+            try {
+              const { rawMaxTokens } = await session.getContextUsage({ detail: 'summary' })
+              window = rawMaxTokens
+            } catch {
               // A missed read keeps the window last reported; the session reports its own failures.
-              () => {},
-            )
+              return
+            }
+
+            emit({
+              event: {
+                type: 'usage',
+                window,
+              },
+            })
           }
 
           readWindow()
@@ -852,14 +858,17 @@ export function claudeProvider({
               }
 
               const usage = 'usage' in message ? message.usage : undefined
-              yield {
-                type: 'usage' as const,
+              const spent: HostedUsage = {
+                type: 'usage',
                 cost: message.total_cost_usd,
-                ...(usage ? {
-                  inputTokens: usage.input_tokens + usage.cache_creation_input_tokens
-                  + usage.cache_read_input_tokens,
-                } : {}),
               }
+
+              if (usage) {
+                spent.inputTokens = usage.input_tokens + usage.cache_creation_input_tokens
+                  + usage.cache_read_input_tokens
+              }
+
+              yield spent
 
               // The turn may have changed the model, and with it the window.
               readWindow()

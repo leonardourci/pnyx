@@ -1344,7 +1344,7 @@ type ContextReading = {
   window?: number
 }
 
-// The context the owner's view of a task reads, once it matches what its agent reported.
+// Waits until the owner's usage view of the task shows a context that check accepts.
 const contextReported = ({
   hydra,
   key,
@@ -1367,7 +1367,7 @@ const contextReported = ({
       ],
     }) as { context?: ContextReading }
 
-    return context && check({ context }) && context
+    return context !== undefined && check({ context })
   },
 })
 
@@ -1389,7 +1389,7 @@ const reply = ({
 })
 
 test(
-  'Claude\'s context reading takes the compacted size at once, keeps it across a restart and has its window while the resumed turn runs',
+  'Claude\'s context reading takes the compacted size at once, keeps it across a restart, has its window while the resumed turn runs and follows a new window once a turn ends',
   async () => {
     const hydra = await pnyx.hydra()
     const key = 'claude-context'
@@ -1436,13 +1436,14 @@ test(
       hydra: hydra.id,
       match: ({ text }) => text.includes('carry on'),
       hold: true,
+      window: 200_000,
     })
     await reply({
       hydra,
       key,
       text: 'carry on',
     })
-    const resumed = await until({
+    const resumedSession = await until({
       what: 'the session to resume',
       check: () => pnyx.claude.sessions.find(({
         id,
@@ -1455,8 +1456,15 @@ test(
       what: 'the window while the resumed turn runs',
       check: ({ context }) => context.window === recorded.window,
     })
-    expect(resumed.answered).toBe(0)
+    expect(resumedSession.answered).toBe(0)
+
     resumedTurn.release()
+    await contextReported({
+      hydra,
+      key,
+      what: 'the window of the model the turn switched to',
+      check: ({ context }) => context.window === 200_000,
+    })
   },
 )
 

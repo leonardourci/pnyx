@@ -71,6 +71,8 @@ export interface TurnPlan {
   compacting?: boolean
   // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does, Codex mid-turn.
   compactTo?: number
+  // Claude Code measures the session against this window from this turn on, as after a model switch.
+  window?: number
   // Claude folds a message sent while the turn waits into it at once, as Claude Code does at a step boundary; its transcript record waits for the turn's end.
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
@@ -221,6 +223,8 @@ export function fakeClaude() {
       })}\n`,
     )
 
+    let contextWindow = claudeRecording.context.rawMaxTokens
+
     // Like the SDK, the fake reads Pnyx's messages as they are sent, not one turn at a time.
     const waiting: SDKUserMessage[] = []
     const folded: string[] = []
@@ -281,6 +285,11 @@ export function fakeClaude() {
         })
         const answer = plan?.reply ?? recordedReply
         folding = Boolean(plan?.folds)
+
+        if (plan?.window !== undefined) {
+          contextWindow = plan.window
+        }
+
         arrived()
         let interrupted = false
         // A planned turn waits for its release, or for Pnyx to stop it.
@@ -495,7 +504,10 @@ export function fakeClaude() {
             still_queued: queued,
           }
         },
-        getContextUsage: async () => claudeRecording.context,
+        getContextUsage: async () => ({
+          ...claudeRecording.context,
+          rawMaxTokens: contextWindow,
+        }),
         setModel: async () => {},
         setPermissionMode: async () => {},
         applyFlagSettings: async () => {},
@@ -532,6 +544,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     .join('')
   const started = codexRecording.session.find(entry => 'method' in entry && entry.method === 'thread/start') as { result: Message }
   const recordedThread = (started.result.thread as Message).id as string
+  const recordedUsage = notifications.find(n => n.method === 'thread/tokenUsage/updated')!
 
   const recorded = ({ method }: { method: string }) => {
     const name = method === 'thread/resume' ? 'thread/start' : method
@@ -606,14 +619,8 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     }
 
     // Codex's auto-compaction: the compaction item, then the count it reports for the compacted context.
-    const compact = ({
-      usage,
-      tokens,
-    }: {
-      usage: Message
-      tokens: number
-    }) => {
-      const params = usage.params as Message & { tokenUsage: Message & { last: Message } }
+    const compact = ({ tokens }: { tokens: number }) => {
+      const params = recordedUsage.params as Message & { tokenUsage: Message & { last: Message } }
       const item = {
         type: 'contextCompaction',
         id: randomUUID(),
@@ -637,7 +644,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
 
       send({
         message: {
-          ...usage,
+          ...recordedUsage,
           params: {
             ...params,
             tokenUsage: {
@@ -782,10 +789,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           }
 
           if (notification.method === 'turn/completed' && plan?.compactTo !== undefined) {
-            compact({
-              usage: found.notifications.find(n => n.method === 'thread/tokenUsage/updated')!,
-              tokens: plan.compactTo,
-            })
+            compact({ tokens: plan.compactTo })
           }
 
           send({ message: notification })
@@ -800,7 +804,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     return child as unknown as ChildProcessWithoutNullStreams
   }
 
-  const usage = (notifications.find(n => n.method === 'thread/tokenUsage/updated')!.params as {
+  const usage = (recordedUsage.params as {
     tokenUsage: {
       last: { totalTokens: number }
       modelContextWindow: number

@@ -125,7 +125,7 @@ export function Usage({
   if (cost !== undefined) {
     footerTitle = 'Session cost'
     footerValue = `$${cost.toFixed(2)}`
-    footerSource = `From ${provider}`
+    footerSource = source
     footerIcon = 'cost'
   } else if (context) {
     footerTitle = 'Context tokens'
