@@ -19,6 +19,7 @@ interface AgentMemory {
 
 interface LogFields {
   operation: string
+  durationMs?: number
   frameCount?: number
   surface?: string
   action?: string
@@ -92,6 +93,7 @@ interface LogFields {
 // Every field a line may carry besides its operation, id and duration: a line is built from these and nothing else
 // its object holds, and a field added above must be listed here.
 const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | 'ms'>]-?: true } = {
+  durationMs: true,
   frameCount: true,
   surface: true,
   action: true,
@@ -182,6 +184,7 @@ export const PAGE_TEXT_FIELDS = [
   'script',
 ] as const
 export const PAGE_NUMBER_FIELDS = [
+  'durationMs',
   'frameCount',
   'samples',
   'totalMs',
