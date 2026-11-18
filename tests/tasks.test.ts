@@ -1,7 +1,7 @@
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
@@ -1487,7 +1487,10 @@ test(
         'escalate',
         'questions',
         workerAsk.ask,
-        ...fields.slice(0, 3).flat(),
+        ...fields.slice(
+          0,
+          3,
+        ).flat(),
         '--reason',
         'Accounting decision',
       ],
@@ -1869,22 +1872,22 @@ test(
     const firstId = decodeURIComponent(questions[0].key.split('/')[0])
     const firstKey = (await hydra.task({ key: 'first' })).id === firstId ? 'first' : 'second'
     process.env.PATH = `${bin}:${originalPath}`
-    const answer = hydra.ownerRefused({
-      args: [
-        'task',
-        'answer-group',
-        parent.card.id,
-        '--questions',
-        JSON.stringify(questions.map(question => question.key)),
-        '--choice',
-        'Open only',
-        '--event-id',
-        'gated-delivery',
-      ],
-    }).then(
+    const attempt = [
+      'task',
+      'answer-group',
+      parent.card.id,
+      '--questions',
+      JSON.stringify(questions.map(question => question.key)),
+      '--choice',
+      'Open only',
+      '--event-id',
+      'gated-delivery',
+    ]
+    const answer = hydra.ownerRefused({ args: attempt }).then(
       result => ({ result }),
       error => ({ error }),
     )
+    let arrived: string | undefined
 
     try {
       await until({
@@ -1894,7 +1897,7 @@ test(
           'received',
         )),
       })
-      await asHydra.run({
+      const added = await asHydra.run({
         args: [
           'task',
           'ask',
@@ -1915,6 +1918,7 @@ test(
           'New accounting scope',
         ],
       })
+      arrived = added.ask
     } finally {
       writeFileSync(
         join(
@@ -1968,5 +1972,85 @@ test(
       ],
     })
     expect(remaining.groups[0].count).toBe(2)
+    await hydra.owner({
+      args: [
+        'task',
+        'answer',
+        parent.card.id,
+        arrived!,
+        '--choice',
+        '1',
+      ],
+    })
+    const fail = join(
+      gate,
+      'fail',
+    )
+    writeFileSync(
+      fail,
+      '',
+    )
+    process.env.PATH = `${bin}:${originalPath}`
+
+    try {
+      const failed = await hydra.owner({ args: attempt })
+      expect(failed.answers).toMatchObject([
+        { repeat: true },
+        { state: 'failed' },
+      ])
+      expect(readFileSync(
+        join(
+          gate,
+          'sent',
+        ),
+        'utf8',
+      ).trim()
+        .split('\n')).toHaveLength(1)
+      unlinkSync(fail)
+      const recovered = await hydra.owner({ args: attempt })
+      expect(recovered.answers).toMatchObject([
+        { repeat: true },
+        { state: 'delivered' },
+      ])
+    } finally {
+      process.env.PATH = originalPath
+    }
+
+    expect(readFileSync(
+      join(
+        gate,
+        'sent',
+      ),
+      'utf8',
+    ).trim()
+      .split('\n')
+      .sort()).toEqual([
+      '%1',
+      '%2',
+    ])
+
+    for (const key of [
+      'first',
+      'second',
+    ]) {
+      const shown = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      expect(shown.task.replies).toHaveLength(1)
+      expect(shown.task.replies[0].state).toBe('delivered')
+      expect(shown.task.asks[0].choice).toBe('Open only')
+    }
+
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })).count).toBe(0)
   },
 )
