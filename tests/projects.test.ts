@@ -2188,6 +2188,29 @@ test(
         '--show-current',
       ],
     })).toBe('poseidon-2/shared-name-2')
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'chart',
+        '--title',
+        'Renamed chart',
+      ],
+    })
+    const reopened = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'chart',
+      ],
+    })
+    expect(git({
+      cwd: reopened.agent.folder,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('poseidon-2/chart-2')
   },
 )
 

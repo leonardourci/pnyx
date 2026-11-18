@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { git, checkoutRoot, checkoutState, restoreCheckout, saveHandoff, clearHandoff, readHandoffEvent, otherWorkers } from './handoff-checkout.ts'
+import { git, checkoutRoot, checkoutState, restoreCheckout, saveHandoff, clearHandoff, readHandoffEvent, otherWorkers, handoffPending } from './handoff-checkout.ts'
 import { sameProjectPath } from '#projects/identity.ts'
+import { copySettling } from '#projects/copy-lease.ts'
 import { createTaskBranch } from '#projects/git.ts'
 import { recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
@@ -40,6 +41,10 @@ function contextSize({ session }: { session: AgentSession }): number {
   } catch {
     return 0
   }
+}
+
+function handoffBlocked({ hydraId, task }: { hydraId: string; task: string }): boolean {
+  return handoffPending({ hydraId, task }) || copySettling({ hydraId, task })
 }
 
 function releaseQueue({
@@ -399,7 +404,10 @@ async function deliverHandoffs({
       state,
       card,
     }).ready || card.sessionIds?.[0] !== event.data.session
-      || receipt && receipt.state !== 'failed') {
+      || receipt && receipt.state !== 'failed' || handoffPending({
+        hydraId,
+        task: card.id,
+      })) {
       continue
     }
 
@@ -487,9 +495,9 @@ export async function advanceQueues({
       continue
     }
 
-    const current = state.cards[session!.taskId!]!
+    const current = session?.taskId ? state.cards[session.taskId] : undefined
 
-    if (session!.activity === 'working' || session!.attention.some(a => a.blocking && !a.answered)
+    if (!session || !current || session.activity === 'working' || session.attention.some(a => a.blocking && !a.answered)
       || pendingPermissions({ card: current }).length > 0) {
       continue
     }
@@ -530,7 +538,8 @@ export async function advanceQueues({
         session: id,
       })[0]
 
-      if (!next || !taskReadiness({
+      if (!next || handoffBlocked({ hydraId, task: card.id })
+        || handoffBlocked({ hydraId, task: next.id }) || !taskReadiness({
         state,
         card: next,
       }).ready) {
@@ -631,6 +640,10 @@ export async function advanceQueues({
 
       if (!active()) {
         return false
+      }
+
+      if (handoffBlocked({ hydraId, task: card.id }) || handoffBlocked({ hydraId, task: next.id })) {
+        continue
       }
 
       const eventId = randomUUID()

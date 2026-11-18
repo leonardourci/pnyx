@@ -1,4 +1,4 @@
-import { recoverHandoffs } from '#workers/handoff-checkout.ts'
+import { handoffPending, recoverHandoffs } from '#workers/handoff-checkout.ts'
 import { applyDecision } from './decision.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
@@ -199,6 +199,7 @@ export function createHostRecovery({
               resumeAttemptId = cutHydraTurn.resumeAttemptId
             }
           } else if (resumable && task && liveTask({ card: task })
+            && !handoffPending({ hydraId, task: task.id })
             && !closedTask({
               state: writer.state,
               card: task,

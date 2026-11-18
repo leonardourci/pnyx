@@ -6,8 +6,14 @@ import { startServer } from '#app/server-daemon.ts'
 import { fakeClaude, fakeCodex } from '../agents.ts'
 
 process.env.PNYX_HANDOFF_CRASH_PID = String(process.pid)
+const crashAfterCommit = process.env.PNYX_CRASH_AFTER_COMMIT
+const hydraId = process.env.PNYX_CRASH_HYDRA
 
-if (process.env.PNYX_CRASH_AFTER_COMMIT) {
+if (!hydraId) {
+  throw new Error('PNYX_CRASH_HYDRA is required')
+}
+
+if (crashAfterCommit) {
   const receive = workerThreads.receiveMessageOnPort
 
   // eslint-disable-next-line pnyx/object-params -- Node owns this transport signature.
@@ -19,7 +25,7 @@ if (process.env.PNYX_CRASH_AFTER_COMMIT) {
         'git',
         [
           '-C',
-          process.env.PNYX_CRASH_AFTER_COMMIT!,
+          crashAfterCommit,
           'branch',
           '--show-current',
         ],
@@ -45,5 +51,5 @@ const server = await startServer({
   spawnCodex: codex.spawnCodex,
   recoveryPause: 100,
 })
-await server.open({ id: process.env.PNYX_CRASH_HYDRA! })
+await server.open({ id: hydraId })
 process.send?.('ready')

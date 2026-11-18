@@ -176,9 +176,12 @@ async function worktreeCopy({
     state,
     project: project.path,
   })
-  const existingCopy = liveCopy({ card })
-  const previous = existingCopy?.via === 'worktree' ? existingCopy : undefined
-  const branch = previous?.branch ?? await createTaskBranch({
+  const previous = card.copy?.via === 'worktree' && sameProjectPath({
+    left: card.copy.project,
+    right: project.path,
+  }) ? card.copy : undefined
+  const previousBranch = previous?.branch
+  const branch = previousBranch ?? await createTaskBranch({
     cwd: project.path,
     hydraName: state.config?.name || hydraId,
     task: card.id,
@@ -202,6 +205,10 @@ async function worktreeCopy({
     hydraId,
     project,
   })
+  const previousPath = previous?.path
+  const candidates = previousPath && pooled.includes(previousPath)
+    ? [previousPath, ...pooled.filter(path => path !== previousPath)]
+    : pooled
   const common = await commonDir({ cwd: project.path })
 
   const pruned = await git({
@@ -220,12 +227,12 @@ async function worktreeCopy({
     })
   }
 
-  const exists = !previous || await branchExists({
+  const exists = !previousBranch || await branchExists({
     cwd: project.path,
     branch,
   })
   // A deleted branch starts again from the current base, even when it keeps its old name.
-  const copyBase = previous && exists ? previous.base : base
+  const copyBase = previousBranch && exists ? previous?.base : base
 
   const made = ({ path }: { path: string }): TaskCopy => {
     const copy: TaskCopy = {
@@ -244,7 +251,7 @@ async function worktreeCopy({
   }
 
   // Ignored files such as installed dependencies stay with the slot; the clean check leaves nothing else to reset.
-  for (const path of pooled) {
+  for (const path of candidates) {
     if (!take({
       hydraId,
       card,

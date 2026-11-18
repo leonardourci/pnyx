@@ -5,6 +5,7 @@ import { realpathSync, readdirSync, readFileSync, rmSync, existsSync } from 'nod
 import { join } from 'node:path'
 import { git as projectGit } from '#projects/git.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { log } from '#app/diagnostics.ts'
 import { loadHydra, reloadHydra } from '#app/store.ts'
 import { query } from '#store/postgres.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -283,7 +284,7 @@ export function requireHandoffAvailable({
 
 // Runs before any worker resumes, so its checkout agrees with the committed assignment.
 export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise<void> {
-  for (const path of handoffFiles({ hydraId })) {
+  const recover = async ({ path }: { path: string }) => {
     const intent = readHandoff({ path })
     const event = readHandoffEvent({
       hydraId,
@@ -299,10 +300,8 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
     }
 
     const expectedTask = committed ? intent.target : intent.source
-    const expectedBranch = committed ? intent.branch : intent.previousBranch
-
     const copy = state.cards[expectedTask]?.copy
-    const copyChanged = copy && (copy.path !== intent.cwd || copy.branch !== expectedBranch)
+    const copyChanged = copy && (copy.path !== intent.cwd || (committed && copy.branch !== intent.branch))
 
     if (!state.cards[expectedTask] || assigned?.taskId !== expectedTask || copyChanged
       || assigned.agent.cwd !== intent.cwd) {
@@ -335,6 +334,19 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
     }
 
     clearHandoff({ path })
+  }
+
+  for (const path of handoffFiles({ hydraId })) {
+    try {
+      await recover({ path })
+    } catch (error) {
+      log({
+        level: 'error',
+        operation: 'recover handoff',
+        hydraId,
+        error,
+      })
+    }
   }
 }
 
