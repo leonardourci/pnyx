@@ -442,21 +442,21 @@ test(
 test(
   'tab titles identify the Hydra, focused task and settings',
   () => {
-    const cards = {} as Parameters<typeof pageTitle>[0]['cards']
     expect(pageTitle({
-      cards,
       hydra: 'Poseidon',
     })).toBe('Poseidon · Pnyx')
-    cards.cart = { title: 'Add the cart' } as typeof cards[string]
     expect(pageTitle({
-      cards,
       hydra: 'Poseidon',
-      selected: 'cart',
+      taskTitle: 'Add the cart',
     })).toBe('Add the cart · Poseidon · Pnyx')
     expect(pageTitle({
-      cards,
       hydra: 'Poseidon',
       page: 'settings',
+      taskTitle: 'Add the cart',
     })).toBe('Settings · Poseidon · Pnyx')
+    expect(pageTitle({
+      hydra: 'Poseidon',
+      taskTitle: '0123456789 0123456789 0123456789 0123456789 0123456789 12345 extra',
+    })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789 12345… · Poseidon · Pnyx')
   },
 )

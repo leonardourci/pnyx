@@ -1,7 +1,7 @@
 import { closeSync, existsSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { matchesProject } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, commonDir, git, onBranch } from './git.ts'
+import { matchesProject, sameProjectPath } from './identity.ts'
+import { COPY_TIMEOUT_MS, commonDir, git, onBranch } from './git.ts'
 import { checkCopy, removeCopy } from './copy-check.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
@@ -17,6 +17,25 @@ const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
 export const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
+
+export function recordedBranches({
+  state,
+  project,
+}: {
+  state: HydraState
+  project: string
+}): string[] {
+  return Object.values(state.cards).flatMap(({ copy }) => {
+    if (!copy?.branch || !sameProjectPath({
+      left: copy.project,
+      right: project,
+    })) {
+      return []
+    }
+
+    return [copy.branch]
+  })
+}
 
 export const copiesDir = ({ hydraId }: { hydraId: string }) => join(
   hydraDir({ hydraId }),
@@ -105,22 +124,19 @@ export async function reusable({
   return status.ok && status.out === '' && await commonDir({ cwd: path }) === common && await onBranch({ cwd: path })
 }
 
-export const checkout = async ({
+export const checkout = ({
   cwd,
   branch,
   start,
-  reuse = false,
+  exists,
 }: {
   cwd: string
   branch: string
   start: string
-  reuse?: boolean
+  exists: boolean
 }) =>
-  reuse && await branchExists({
-    cwd,
-    branch,
-  })
-    ? await git({
+  exists
+    ? git({
       cwd,
       args: [
         'checkout',
@@ -128,7 +144,7 @@ export const checkout = async ({
         branch,
       ],
     })
-    : await git({
+    : git({
       cwd,
       args: [
         'checkout',

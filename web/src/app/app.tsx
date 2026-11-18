@@ -315,8 +315,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const shownHydra = edits.hydras.find(h => h.id === navigation.hydraId)
   const title = pageTitle({
     page,
-    cards: state.cards,
-    selected,
+    taskTitle: selected ? state.cards[selected]?.title : undefined,
     hydra: shownHydra && hydraTitle(shownHydra),
   })
   useHydraFavicon({ icon: shownHydra?.icon })

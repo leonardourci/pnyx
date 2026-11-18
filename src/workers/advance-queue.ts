@@ -1,5 +1,6 @@
 import { sameProjectPath } from '#projects/identity.ts'
 import { taskBranch } from '#projects/git.ts'
+import { recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { runFile, runProcess } from '#app/run-process.ts'
@@ -621,8 +622,10 @@ export async function advanceQueues({
         hydraName: state.config?.name || hydraId,
         task: next.id,
         title: next.title,
-        reserved: Object.values(state.cards).flatMap(card =>
-          card.copy?.branch ? [card.copy.branch] : []),
+        reserved: recordedBranches({
+          state,
+          project: card.copy?.project ?? card.project ?? prepared.root,
+        }),
       })
       const brief = await taskPrompt({
         hydraId,
@@ -670,7 +673,11 @@ export async function advanceQueues({
         throw new Error('The worker folder changed during branch preparation')
       }
 
-      // ponytail: the branch is made before the write; a task that changed meanwhile leaves it unused, and a retry reports it exists.
+      if (!active()) {
+        return false
+      }
+
+      // Git runs outside the event write, so the task can change before the handoff is recorded.
       const run = await runProcess({
         command: 'git',
         args: [

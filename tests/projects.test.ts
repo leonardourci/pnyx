@@ -147,7 +147,7 @@ test(
         'hydra',
         'set',
         '--name',
-        'Poséidon',
+        'Hércules',
       ],
     })
     const path = await createProject({
@@ -188,7 +188,7 @@ test(
         '--abbrev-ref',
         'HEAD',
       ],
-    })).toBe('poseidon/add-cart')
+    })).toBe('hercules/add-cart')
 
     writeFileSync(
       join(
@@ -1168,6 +1168,15 @@ test(
         'gone',
       ],
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'gone',
+        '--title',
+        'Renamed after allocation',
+      ],
+    })
     git({
       cwd: project,
       args: [
@@ -1288,5 +1297,62 @@ test(
       title: 'Chart',
       reserved: ['poseidon/chart-3'],
     })).toBe('poseidon/chart-4')
+    git({
+      cwd,
+      args: [
+        'branch',
+        '-d',
+        'poseidon/chart',
+      ],
+    })
+    git({
+      cwd,
+      args: [
+        'branch',
+        'poseidon',
+      ],
+    })
+    git({
+      cwd,
+      args: [
+        'push',
+        'origin',
+        'HEAD:refs/heads/poseidon-2/chart/details',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Poséidon',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Chart',
+        '--key',
+        'chart',
+        '--project',
+        'shop',
+      ],
+    })
+    const started = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'chart',
+      ],
+    })
+    expect(git({
+      cwd: started.agent.folder,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('poseidon-2/chart-2')
   },
 )

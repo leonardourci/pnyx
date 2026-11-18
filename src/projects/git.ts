@@ -28,31 +28,31 @@ function branchSlug({ text }: { text: string }): string {
   )
     .toLowerCase()
     .match(/[a-z0-9]+/g) ?? []
-  const kept: string[] = []
+  let slug = ''
 
   for (const word of words) {
     if (FILLER_WORDS.has(word)) {
       continue
     }
 
-    if ([
-      ...kept,
-      word,
-    ].join('-').length > BRANCH_SLUG_LENGTH) {
-      if (!kept.length) {
-        kept.push(word.slice(
-          0,
-          BRANCH_SLUG_LENGTH,
-        ))
-      }
+    if (!slug) {
+      slug = word.slice(
+        0,
+        BRANCH_SLUG_LENGTH,
+      )
+      continue
+    }
 
+    const candidate = `${slug}-${word}`
+
+    if (candidate.length > BRANCH_SLUG_LENGTH) {
       break
     }
 
-    kept.push(word)
+    slug = candidate
   }
 
-  return kept.join('-')
+  return slug
 }
 
 export async function taskBranch({
@@ -87,7 +87,7 @@ export async function taskBranch({
 
   const existing = new Set(reserved)
 
-  for (const ref of refs.out.split('\n')) {
+  for (const ref of refs.out.split('\n').filter(Boolean)) {
     existing.add(ref.replace(
       /^refs\/(heads|remotes\/[^/]+)\//,
       '',
@@ -112,6 +112,7 @@ export async function taskBranch({
       args: [
         'ls-remote',
         '--heads',
+        '--',
         remote,
       ],
     })
@@ -123,8 +124,13 @@ export async function taskBranch({
       })
     }
 
-    for (const line of heads.out.split('\n')) {
-      existing.add(line.split('refs/heads/')[1] ?? '')
+    for (const line of heads.out.split('\n').filter(Boolean)) {
+      const prefix = '\trefs/heads/'
+      const separator = line.indexOf(prefix)
+
+      if (separator >= 0) {
+        existing.add(line.slice(separator + prefix.length))
+      }
     }
   }
 
@@ -132,10 +138,22 @@ export async function taskBranch({
     /^task-/,
     '',
   ).split('-')[0]
-  const base = `${branchSlug({ text: hydraName }) || 'hydra'}/${branchSlug({ text: title }) || shortId}`
+  const hydraSlug = branchSlug({ text: hydraName }) || 'hydra'
+  const titleSlug = branchSlug({ text: title }) || shortId
+  let namespace = hydraSlug
+
+  for (let suffix = 2; existing.has(namespace); suffix++) {
+    namespace = `${hydraSlug}-${suffix}`
+  }
+
+  const base = `${namespace}/${titleSlug}`
+  const occupied = new Set([...existing].map(name => name.split('/').slice(
+    0,
+    2,
+  ).join('/')))
   let branch = base
 
-  for (let suffix = 2; existing.has(branch) || [...existing].some(name => name.startsWith(`${branch}/`)); suffix++) {
+  for (let suffix = 2; occupied.has(branch); suffix++) {
     branch = `${base}-${suffix}`
   }
 

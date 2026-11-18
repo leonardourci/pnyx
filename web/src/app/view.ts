@@ -1,31 +1,34 @@
-import type { HydraState } from '#app/model.ts'
-
 const TAB_TITLE_LENGTH = 60
 
 export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
 
 export function pageTitle({
   page = 'hydra',
-  cards,
-  selected = null,
+  taskTitle,
   hydra = 'Hydra',
 }: {
   page?: string
-  cards: HydraState['cards']
-  selected?: string | null
+  taskTitle?: string
   hydra?: string
 }): string {
-  const label = page === 'settings' ? 'Settings' : selected && cards[selected]?.title
-  const shortTitle = label && label.length > TAB_TITLE_LENGTH ? `${label.slice(
-    0,
-    TAB_TITLE_LENGTH,
-  ).replace(
-    /\s+\S*$/,
-    '',
-  )}…` : label
+  let label = page === 'settings' ? 'Settings' : taskTitle
+
+  if (label && label.length > TAB_TITLE_LENGTH) {
+    const prefix = label.slice(
+      0,
+      TAB_TITLE_LENGTH,
+    )
+    const next = label[TAB_TITLE_LENGTH]
+    const endsInsideWord = !/\s$/.test(prefix) && next !== undefined && !/\s/.test(next)
+    const wholeWords = endsInsideWord ? prefix.replace(
+      /\s+\S*$/,
+      '',
+    ) : prefix
+    label = `${wholeWords.trimEnd()}…`
+  }
 
   return [
-    shortTitle,
+    label,
     hydra,
     'Pnyx',
   ].filter(Boolean).join(' · ')

@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path'
 import { matchesProject } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, taskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
-import { checkout, copiesDir, freshSlot, liveCopy, reusable, slots, take, unclaim } from './copy-pool.ts'
+import { checkout, copiesDir, freshSlot, liveCopy, recordedBranches, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import { runProcess } from '#app/run-process.ts'
@@ -147,26 +147,21 @@ async function worktreeCopy({
     start,
   } = await branchStart({ project })
   const state = loadHydra({ hydraId }).state
-  const branch = card.copy?.state === 'active' && card.copy.branch || await taskBranch({
+  const branches = recordedBranches({
+    state,
+    project: project.path,
+  })
+  const previous = card.copy?.state === 'active' ? card.copy : undefined
+  const branch = previous?.branch ?? await taskBranch({
     cwd: project.path,
     hydraName: state.config?.name || hydraId,
     task: card.id,
     title: card.title,
-    reserved: Object.values(state.cards).flatMap(card =>
-      card.copy?.branch ? [card.copy.branch] : []),
+    reserved: branches,
   })
   await clearDefaultUpstreams({
     cwd: project.path,
-    branches: Object.values(state.cards).flatMap(card =>
-      card.copy?.branch ? [card.copy.branch] : []),
-  })
-  const made = ({ path }: { path: string }): TaskCopy => ({
-    path,
-    project: project.path,
-    via: 'worktree',
-    branch,
-    ...(base ? { base } : {}),
-    state: 'active',
+    branches,
   })
   const pooled = slots({
     hydraId,
@@ -174,38 +169,82 @@ async function worktreeCopy({
   })
   const common = await commonDir({ cwd: project.path })
 
-  // Only registrations whose folders are gone are pruned, so a deleted copy does not block its branch.
-  await git({
+  const pruned = await git({
     cwd: project.path,
     args: [
       'worktree',
       'prune',
+      '--expire=now',
     ],
   })
 
+  if (!pruned.ok) {
+    throw new HydraError({
+      message: `could not prune missing worktrees: ${pruned.err}`,
+      code: 'COPY_FAILED',
+    })
+  }
+
+  const exists = Boolean(previous?.branch) && await branchExists({
+    cwd: project.path,
+    branch,
+  })
+  const copyBase = exists ? previous?.base : base
+  const made = ({ path }: { path: string }): TaskCopy => {
+    const copy: TaskCopy = {
+      path,
+      project: project.path,
+      via: 'worktree',
+      branch,
+      state: 'active',
+    }
+
+    if (copyBase) {
+      copy.base = copyBase
+    }
+
+    return copy
+  }
+
   // Ignored files such as installed dependencies stay with the slot; the clean check leaves nothing else to reset.
   for (const path of pooled) {
-    if (take({
+    if (!take({
       hydraId,
       card,
       path,
     })) {
-      if (await releasedCopyLanded({
+      continue
+    }
+
+    let allocated = false
+
+    try {
+      if (!await releasedCopyLanded({
         hydraId,
         path,
-      }) && await reusable({
+      }) || !await reusable({
         path,
         common,
-      }) && (await checkout({
+      })) {
+        continue
+      }
+
+      const checkedOut = await checkout({
         cwd: path,
         branch,
         start,
-        reuse: card.copy?.state === 'active',
-      })).ok) {
+        exists,
+      })
+
+      if (checkedOut.ok) {
+        allocated = true
+
         return made({ path })
       }
-
-      unclaim({ path })
+    } finally {
+      if (!allocated) {
+        unclaim({ path })
+      }
     }
   }
 
@@ -213,38 +252,45 @@ async function worktreeCopy({
     hydraId,
     project,
   })
-  const exists = card.copy?.state === 'active' && await branchExists({
-    cwd: project.path,
+  const checkoutArgs = exists ? [
+    path,
     branch,
-  })
-  const added = await git({
-    cwd: project.path,
-    args: [
-      'worktree',
-      'add',
-      ...(exists ? [
-        path,
-        branch,
-      ] : [
-        '--no-track',
-        '-b',
-        branch,
-        path,
-        start,
-      ]),
-    ],
-  })
+  ] : [
+    '--no-track',
+    '-b',
+    branch,
+    path,
+    start,
+  ]
+  let allocated = false
 
-  if (!added.ok) {
-    unclaim({ path })
-    throw new HydraError({
-      message: `git could not make the task's copy: ${added.err}`,
-      code: 'COPY_FAILED',
-      help: ['Fix the project folder, or start with --in-place'],
+  try {
+    const added = await git({
+      cwd: project.path,
+      args: [
+        'worktree',
+        'add',
+        ...checkoutArgs,
+      ],
     })
-  }
 
-  return made({ path: realpathSync(path) })
+    if (!added.ok) {
+      throw new HydraError({
+        message: `git could not make the task's copy: ${added.err}`,
+        code: 'COPY_FAILED',
+        help: ['Fix the project folder, or start with --in-place'],
+      })
+    }
+
+    const copy = made({ path: realpathSync(path) })
+    allocated = true
+
+    return copy
+  } finally {
+    if (!allocated) {
+      unclaim({ path })
+    }
+  }
 }
 
 async function commandCopy({
