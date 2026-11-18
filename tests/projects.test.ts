@@ -1731,7 +1731,10 @@ test(
         'remote',
         'add',
         'unavailable',
-        join(cwd, 'missing-remote.git'),
+        join(
+          cwd,
+          'missing-remote.git',
+        ),
       ],
     })
     expect(await hydra.ownerRefused({

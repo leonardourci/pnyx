@@ -879,7 +879,10 @@ export async function advanceQueues({
             })
           } catch (restoreError) {
             if (handoffError instanceof Error && restoreError instanceof Error) {
-              throw new Error(`${handoffError.message}\n${restoreError.message}`, { cause: handoffError })
+              throw new Error(
+                `${handoffError.message}\n${restoreError.message}`,
+                { cause: handoffError },
+              )
             }
 
             throw restoreError
