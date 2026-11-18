@@ -7,7 +7,7 @@ import { AnimatePresence } from 'motion/react'
 import { TaskCardModal } from './task-modal.tsx'
 import { useTaskChatOnly, useTaskModal } from './presentation.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
-import { useSortItem, useSortState, useDropZone, nestingRefusal } from '#web-shared/ui/sortable.tsx'
+import { TaskCardDrag, TaskDragHandle } from './card-drag.tsx'
 import { CardSummary, TaskLabels, cardTint } from './card-summary.tsx'
 import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { memo, useCallback, useMemo, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
@@ -18,7 +18,7 @@ import type { Card as CardData, SavedLabelColor } from '#tasks/model.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { CardTitle } from './card-title.tsx'
-import { CardShell, CardContent, AnimatedCardShell, AnimatedCardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
+import { CardShell, CardContent, AnimatedCardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
 import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 import type { ObservedStatus } from './observed-status.ts'
@@ -441,52 +441,12 @@ export const HydraCard = memo(function HydraCard({
       tabIndex,
     ],
   )
-  const sort = useSortItem({
-    item: {
-      id: card.id,
-      kind: 'task',
-      scope: sortScope ?? '',
-      hydra: hydraId,
-      parent: card.parentId,
-      hasChildren,
-      open: selected,
-      overlay: (
-        <div>
-          <CardShell lifted tint={tint}><CardContent>{summary}</CardContent></CardShell>
-        </div>
-      ),
-    },
-    disabled: {
-      draggable: modal || !connected || !!reminding || !!editing,
-      droppable: !connected,
-    },
-  })
-  const hoverZone = useDropZone({
-    item: {
-      id: card.id,
-      kind: 'task',
-      scope: sortScope ?? '',
-      hydra: hydraId,
-      zone: 'nest',
-      parent: card.parentId,
-      hasChildren,
-    },
-    disabled: !connected,
-  })
-  const sortableNode = sort.setNodeRef
   const attachInline = useCallback(
     // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
     (node: HTMLElement | null) => {
       inlineElement.current = node
-      hoverZone.setNodeRef(node)
-      const wrapper = card.parentId ? '[data-child]' : '[data-family]'
-      sortableNode(node?.closest<HTMLElement>(wrapper) ?? node)
     },
-    [
-      sortableNode,
-      hoverZone.setNodeRef,
-      card.parentId,
-    ],
+    [],
   )
   const attachModal = useCallback(
     // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
@@ -495,7 +455,6 @@ export const HydraCard = memo(function HydraCard({
     },
     [],
   )
-  const drag = useSortState()
   const panel = ({ id }: { id: 'context' | 'activity' }) => ({
     role: 'tabpanel',
     id: panelId({
@@ -623,11 +582,7 @@ export const HydraCard = memo(function HydraCard({
   const hoverActions = useMemo(
     () => (
       <HoverActions anchor={element}>
-        <IconButton
-          {...sort.attributes}
-          {...sort.listeners}
-          ref={sort.setActivatorNodeRef}
-          data-drag-handle
+        <TaskDragHandle
           label={`Move ${card.title}`}
           disabled={modal || !connected}
           icon="grip"
@@ -701,9 +656,6 @@ export const HydraCard = memo(function HydraCard({
     ),
     [
       element,
-      sort.attributes,
-      sort.listeners,
-      sort.setActivatorNodeRef,
       card.title,
       card.parentId,
       modal,
@@ -715,20 +667,28 @@ export const HydraCard = memo(function HydraCard({
   )
 
   const shell = (
-    <AnimatedCardShell
+    <TaskCardDrag
+      item={{
+        id: card.id,
+        kind: 'task',
+        scope: sortScope ?? '',
+        hydra: hydraId,
+        parent: card.parentId,
+        hasChildren,
+        open: selected,
+        overlay: (
+          <div><CardShell lifted tint={tint}><CardContent>{summary}</CardContent></CardShell></div>
+        ),
+      }}
+      disabled={{
+        draggable: modal || !connected || !!reminding || !!editing,
+        droppable: !connected,
+      }}
+      modal={modal}
       layout={preview === null && !modal}
       layoutId={modal ? undefined : `task:${hydraId}:${card.id}`}
       className={`@container/task ${modal ? 'min-h-0! flex-1! rounded-none! border-0! bg-transparent!' : ''}`}
-      ref={modal ? attachModal : attachInline}
-      onPointerDown={selected ? undefined : sort.pointerDown}
-      data-sort-key={sort.key}
-      nesting={drag.shift && drag.over?.zone === 'nest' && drag.over.id === card.id
-        && drag.over.hydra === hydraId && !!drag.active
-        && !nestingRefusal({
-          source: drag.active,
-          target: drag.over,
-        })
-        && drag.active.parent !== card.id}
+      elementRef={modal ? attachModal : attachInline}
       selected={selected}
       style={{
         height: selected && !modal ? (preview ?? height) : undefined,
@@ -750,7 +710,6 @@ export const HydraCard = memo(function HydraCard({
         <header
           data-card-header
           className={selected ? `flex shrink-0 flex-col gap-1.5 ${modal ? '' : 'touch-none cursor-grab [&_.card-open]:cursor-grab'}` : 'contents'}
-          onPointerDown={selected && !modal ? sort.pointerDown : undefined}
         >
           {!selected && closedSummary}
           {selected && (
@@ -985,7 +944,7 @@ export const HydraCard = memo(function HydraCard({
           }}
         />
       )}
-    </AnimatedCardShell>
+    </TaskCardDrag>
   )
 
   return (

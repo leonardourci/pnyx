@@ -983,6 +983,8 @@ export function SortableWorkspace({
       ...rest,
     })
 
+    const duration = motionDuration({ speed: destination ? 'slow' : 'base' }) / 1000
+
     try {
       await animate(
         ghost,
@@ -1008,10 +1010,14 @@ export function SortableWorkspace({
           ],
         },
         {
-          duration: motionDuration({ speed: destination ? 'slow' : 'base' }) / 1000,
+          duration,
           ease: MOTION_EASING,
         },
       ).finished
+
+      if (duration > 0) {
+        await new Promise(requestAnimationFrame)
+      }
     } finally {
       restore?.()
 
