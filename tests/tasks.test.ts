@@ -1335,6 +1335,7 @@ test(
     for (const badContext of [
       'Totals change after the answer.',
       '[Wrong](pnyx-task:another-card)',
+      `Totals change after the answer. ](pnyx-task:${card.id})`,
     ]) {
       expect((await asHydra.refused({
         args: [
@@ -1373,6 +1374,8 @@ test(
         await hydra.column({ role: 'needs_you' }),
         '--when',
         'reminder-due',
+        '--when',
+        'owner-question',
         '--reason',
         'A legacy custom reminder rule',
       ],

@@ -636,7 +636,7 @@ async function answerGroup({
     })
   }
 
-  if (!Array.isArray(members) || !members.length || members.some(key => typeof key !== 'string')
+  if (!Array.isArray(members) || !members.length || !members.every((key): key is string => typeof key === 'string')
     || new Set(members).size !== members.length) {
     throw new HydraError({
       code: 'VALIDATION_ERROR',
@@ -649,16 +649,15 @@ async function answerGroup({
     state,
     ref,
   })
-  const selected = (members as string[]).map(key => {
-    const [
-      task,
-      id,
-    ] = key.split('/')
-    const target = task ? state.cards[task] : undefined
-    const ask = target?.asks?.find(ask => ask.id === id && ask.audience === 'owner')
+  const selected = members.map(key => {
+    const [task, id] = key.split('/')
+    const target = Object.values(state.cards).find(card => encodeURIComponent(card.id) === task)
+    const ask = target?.asks?.find(ask => encodeURIComponent(ask.id) === id && ask.audience === 'owner')
     const event = `${attempt}:${key}`
+    const parent = target?.parentId ? state.cards[target.parentId] : undefined
+    const root = parent ?? target
 
-    if (!target || !ask) {
+    if (!target || !ask || root?.id !== card.id) {
       throw new HydraError({
         code: 'CONFLICT',
         message: 'The question group changed; read task questions again',
@@ -669,7 +668,7 @@ async function answerGroup({
       && (reply.state === 'queued' || reply.state === 'delivery_unknown' || reply.accepted))
 
     const priorReply = target.replies?.find(reply => reply.id === event)
-    const priorChoice = ask.choice ?? priorReply?.decision?.choice
+    const priorChoice = priorReply?.decision?.choice ?? ask.choice
 
     if (repeat && priorChoice !== choice) {
       throw new HydraError({
@@ -698,9 +697,9 @@ async function answerGroup({
   }
 
   for (const member of pending) {
-    const option = member.ask.options?.find(option => option.label === choice)
+    const index = member.ask.options?.findIndex(option => option.label === choice) ?? -1
 
-    if (!option || !group?.choices.includes(choice)) {
+    if (index < 0 || !group?.choices.includes(choice)) {
       throw new HydraError({
         code: 'VALIDATION_ERROR',
         message: 'Use a shared choice label; answer different decisions individually',
@@ -711,12 +710,14 @@ async function answerGroup({
       card: member.card,
       id: member.ask.id,
       actor: meta.actor,
-      choice,
+      choice: String(index + 1),
       state,
     })
   }
 
   const answers: Output[] = []
+  const remaining = new Set(pending.map(member => member.key))
+  const attempted = new Set<string>()
 
   for (const member of selected) {
     if (member.repeat) {
@@ -728,6 +729,22 @@ async function answerGroup({
       continue
     }
 
+    // Sending an earlier answer can yield while the owner or a worker changes the group.
+    const latest = loadHydra({ hydraId }).state
+    const latestGroup = ownerQuestionGroups({ state: latest }).find(group => group.card.id === card.id)
+    const latestKeys = latestGroup?.decisions.map(decision => decisionKey({ decision }))
+      .filter(key => !attempted.has(key))
+    const latestAsk = latest.cards[member.card.id]?.asks?.find(ask => ask.id === member.ask.id)
+    const index = latestAsk?.options?.findIndex(option => option.label === choice) ?? -1
+
+    if (!latestKeys || latestKeys.length !== remaining.size || latestKeys.some(key => !remaining.has(key))
+      || !latestGroup?.choices.includes(choice) || index < 0) {
+      throw new HydraError({
+        code: 'CONFLICT',
+        message: 'The question group changed during delivery. Earlier answers may have been sent. Read task questions again.',
+      })
+    }
+
     answers.push(await answerCommand({
       ref: member.card.id,
       positionals: [
@@ -736,8 +753,7 @@ async function answerGroup({
         member.ask.id,
       ],
       values: {
-        choice,
-        text: text({ value: values.text }),
+        choice: String(index + 1),
       },
       hydraId,
       meta: {
@@ -745,6 +761,8 @@ async function answerGroup({
         id: member.event,
       },
     }))
+    attempted.add(member.key)
+    remaining.delete(member.key)
   }
 
   return {

@@ -143,7 +143,6 @@ export function fireReminders({
               reminder: reminder.id,
               nextAt,
               grouped: true,
-              column: card.column,
               message: {
                 task: card.id,
                 action: 'send',

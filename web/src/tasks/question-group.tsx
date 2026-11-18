@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { QuestionGroup } from '#tasks/question-groups.ts'
 import { decisionKey } from '#tasks/question-groups.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -19,12 +19,26 @@ export function QuestionGroupAnswers({
     busy,
     setBusy,
   ] = useState(false)
+  const attempt = useRef<{ snapshot: string; choice: string; id: string } | null>(null)
 
   if (group.decisions.length < 2 || !group.choices.length) {
     return null
   }
 
   const send = async ({ choice }: { choice: string }) => {
+    if (busy) {
+      return
+    }
+
+    const snapshot = JSON.stringify(group.decisions.map(decision => decisionKey({ decision })))
+    const previous = attempt.current
+    const id = previous?.snapshot === snapshot && previous.choice === choice
+      ? previous.id : crypto.randomUUID()
+    attempt.current = {
+      snapshot,
+      choice,
+      id,
+    }
     setBusy(true)
 
     try {
@@ -36,14 +50,15 @@ export function QuestionGroupAnswers({
           '--choice',
           choice,
           '--questions',
-          JSON.stringify(group.decisions.map(decision => decisionKey({ decision }))),
+          snapshot,
           '--event-id',
-          crypto.randomUUID(),
+          id,
         ],
       })
+      attempt.current = null
       notify({ text: 'Group answer submitted' })
     } catch (error) {
-      notify({ text: (error as Error).message })
+      notify({ text: error instanceof Error ? error.message : String(error) })
     } finally {
       setBusy(false)
     }
@@ -56,7 +71,9 @@ export function QuestionGroupAnswers({
           key={choice}
           disabled={disabled || busy}
           aria-label={`Answer all ${group.decisions.length}: ${choice}`}
-          onClick={() => void send({ choice })}
+          onClick={async () => {
+            await send({ choice })
+          }}
         >
           {choice} · all {group.decisions.length}
         </Button>

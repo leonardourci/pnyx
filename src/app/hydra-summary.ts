@@ -80,7 +80,6 @@ export function summarize({
     })
     const cards = Object.values(state.cards).filter(c => liveTask({ card: c }))
     const groups = ownerQuestionGroups({ state })
-    const askingIds = new Set(groups.map(group => group.card.id))
     const projects = projectsFor({
       state,
       aliases: true,
@@ -96,7 +95,11 @@ export function summarize({
         const tasks = cards.filter(c => c.project && references.includes(c.project))
 
         const live = tasks.filter(c => c.agent && (c.sessionActivity ?? c.activity) === 'working')
-        const asks = tasks.filter(card => askingIds.has(card.id))
+        const asks = groups.filter(group => group.decisions.some(decision => {
+          const project = state.cards[decision.card.id]?.project
+
+          return project !== undefined && references.includes(project)
+        }))
 
         return {
           name: p.name,

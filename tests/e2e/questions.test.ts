@@ -216,9 +216,7 @@ test(
     await waiting.click()
     const group = page.locator('.waiting-question-group')
 
-    if (await group.count()) {
-      await group.locator('summary').click()
-    }
+    await group.locator('summary').click()
 
     if (process.env.PNYX_KEEP_TEST_FILES) {
       mkdirSync(

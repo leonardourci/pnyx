@@ -294,6 +294,23 @@ export function applyReminder({
       delete card.reminder.repeat
     }
 
+    if (event.data.column !== undefined) {
+      // Older receipts moved the card and declared a status when replayed.
+      card.column = event.data.column
+      const declaration = {
+        id: event.id,
+        at: event.at,
+        actor: event.actor,
+        state: 'needs_you' as const,
+        note: event.data.message.text,
+      }
+      card.status = declaration
+      card.statusLog = [
+        ...(card.statusLog ?? []),
+        declaration,
+      ]
+    }
+
     card.hidden = false
     delete card.expired
 

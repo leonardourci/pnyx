@@ -148,9 +148,7 @@ function questionChoices({
     throw invalid({ message: 'choices must have different labels' })
   }
 
-  const fits = Number.isInteger(recommended) && recommended! >= 1 && recommended! <= choices.length
-
-  if (recommended !== undefined && !fits) {
+  if (recommended !== undefined && (!Number.isInteger(recommended) || recommended < 1 || recommended > choices.length)) {
     throw invalid({ message: choices.length ? `--recommend takes a choice number from 1 to ${choices.length}` : '--recommend needs choices' })
   }
 
@@ -167,7 +165,7 @@ function validateOwnerQuestion({
   card: Card
   question: string
   context?: string
-  options: Question['options']
+  options: NonNullable<Question['options']>
   recommended?: number
 }): void {
   const missing: string[] = []
@@ -180,15 +178,19 @@ function validateOwnerQuestion({
     missing.push('--context explaining what changes and what happens next')
   }
 
-  if (!context?.includes(`](pnyx-task:${encodeURIComponent(card.id)})`)) {
-    missing.push(`a card link in --context: [${card.title}](pnyx-task:${encodeURIComponent(card.id)})`)
+  const taskId = encodeURIComponent(card.id)
+  const links = context?.matchAll(/\[[^\]\n]+\]\(pnyx-task:([^\s)]+)\)/g)
+  const linksToCard = links && [...links].some(link => link[1] === taskId)
+
+  if (!linksToCard) {
+    missing.push(`a card link in --context: [Card](pnyx-task:${taskId})`)
   }
 
-  if ((options?.length ?? 0) < 2) {
+  if (options.length < 2) {
     missing.push('at least two --choice values')
   }
 
-  if (!Number.isInteger(recommended) || recommended! < 1 || recommended! > (options?.length ?? 0)) {
+  if (recommended === undefined || !Number.isInteger(recommended) || recommended < 1 || recommended > options.length) {
     missing.push('--recommend with one choice number')
   }
 
