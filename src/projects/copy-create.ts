@@ -37,6 +37,30 @@ function taskProject({
   }))
 }
 
+async function verifyCopyBranch({
+  path,
+  branch,
+}: {
+  path: string
+  branch: string
+}): Promise<void> {
+  const head = await git({
+    cwd: path,
+    args: [
+      'symbolic-ref',
+      '--quiet',
+      'HEAD',
+    ],
+  })
+
+  if (!head.ok || head.out !== `refs/heads/${branch}`) {
+    throw new HydraError({
+      code: 'COPY_FAILED',
+      message: `the task copy did not stay on branch ${branch}`,
+    })
+  }
+}
+
 // ponytail: an attached session stands for a live worker; a presence check could replace it.
 function refuseShared({
   hydraId,
@@ -255,6 +279,7 @@ async function worktreeCopy({
         })
       }
 
+      await verifyCopyBranch({ path, branch })
       allocated = true
 
       return made({ path })
@@ -299,6 +324,7 @@ async function worktreeCopy({
       })
     }
 
+    await verifyCopyBranch({ path, branch })
     const copy = made({ path: realpathSync(path) })
     allocated = true
 

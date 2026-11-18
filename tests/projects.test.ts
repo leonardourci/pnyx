@@ -1757,14 +1757,6 @@ test(
       0,
       8,
     )}`)
-    await titleHydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--name',
-        'Poséidon!',
-      ],
-    })
     git({
       cwd: titleProject,
       args: [
@@ -2033,6 +2025,23 @@ test(
         'refs/heads/poseidon-2/retry-allocation',
       ],
     })
+    writeFileSync(
+      join(
+        failingHooks,
+        'post-checkout',
+      ),
+      '#!/bin/sh\ngit update-ref --no-deref HEAD "$(git rev-parse HEAD)"\n',
+    )
+    expect(await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'retry',
+      ],
+    })).toMatchObject({
+      code: 'COPY_FAILED',
+      error: expect.stringContaining('did not stay on branch poseidon-2/retry-allocation-2'),
+    })
     git({
       cwd,
       args: [
@@ -2054,7 +2063,7 @@ test(
         'branch',
         '--show-current',
       ],
-    })).toBe('poseidon-2/retry-allocation-2')
+    })).toBe('poseidon-2/retry-allocation-3')
     expect(git({
       cwd,
       args: [

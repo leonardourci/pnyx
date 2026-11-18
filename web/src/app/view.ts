@@ -21,7 +21,7 @@ export function pageTitle({
       TAB_TITLE_LENGTH,
     ).join('')
     const next = characters[TAB_TITLE_LENGTH]
-    const endsInsideWord = next && /\S$/.test(prefix) && /\S/.test(next)
+    const endsInsideWord = /\S$/.test(prefix) && /\S/.test(next)
     const wholeWords = endsInsideWord ? prefix.replace(
       /\s+\S*$/,
       '',

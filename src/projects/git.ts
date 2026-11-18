@@ -185,13 +185,13 @@ export async function createTaskBranch({
   active?(): boolean
   prepare?({ branch }: { branch: string }): Promise<boolean>
 }): Promise<string | undefined> {
+  if (!active()) {
+    return undefined
+  }
+
+  let branch = await taskBranch(naming)
+
   for (let attempt = 0; attempt < BRANCH_CREATE_ATTEMPTS; attempt++) {
-    if (!active()) {
-      return undefined
-    }
-
-    const branch = await taskBranch(naming)
-
     if (!active()) {
       return undefined
     }
@@ -222,12 +222,20 @@ export async function createTaskBranch({
       return undefined
     }
 
-    if (await taskBranch(naming) === branch) {
+    if (attempt + 1 === BRANCH_CREATE_ATTEMPTS) {
+      break
+    }
+
+    const nextBranch = await taskBranch(naming)
+
+    if (nextBranch === branch) {
       throw new HydraError({
         code: 'COPY_FAILED',
         message: `could not create task branch: ${created.err}`,
       })
     }
+
+    branch = nextBranch
   }
 
   throw new HydraError({

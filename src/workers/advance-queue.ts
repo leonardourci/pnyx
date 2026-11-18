@@ -235,7 +235,7 @@ function assertUnshared({
   }).some(other => {
     const cwd = other.agent.cwd
 
-    return cwd && (!roots.has(cwd) || roots.get(cwd) === root)
+    return cwd && (cwd === session.agent.cwd || !roots.has(cwd) || roots.get(cwd) === root)
   })) {
     throw new Error('Another worker uses this folder or its checkout could not be checked')
   }
@@ -654,7 +654,12 @@ export async function advanceQueues({
         continue
       }
 
-      const card = state.cards[current.id]!
+      const card = state.cards[current.id]
+
+      if (!card) {
+        continue
+      }
+
       const sourceRevision = card.revision
       const prs = card.links.filter(l => l.kind === 'github_pr')
 
