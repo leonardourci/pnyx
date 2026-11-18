@@ -1,3 +1,5 @@
+import workerThreads from 'node:worker_threads'
+import { syncBuiltinESMExports } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -326,13 +328,30 @@ if (branch === 'hercules/next-chart-2') {
       'pnyx-axi.js',
     ),
     'task',
+    'brief',
+    'next',
+    '--brief',
+    'Updated chart brief',
+    '--hydra',
+  ])}.concat(${JSON.stringify(hydra.id)}))
+  writeFileSync(${JSON.stringify(hookMarker)}, 'declined')
+}
+if (branch === 'hercules/add-cart') {
+  execFileSync(process.execPath, ${JSON.stringify([
+    join(
+      import.meta.dirname,
+      '..',
+      'dist',
+      'cli',
+      'pnyx-axi.js',
+    ),
+    'task',
     'depend',
     'next',
     '--on',
     'gate',
     '--hydra',
   ])}.concat(${JSON.stringify(hydra.id)}))
-  writeFileSync(${JSON.stringify(hookMarker)}, 'declined')
 }
 `
     writeFileSync(
@@ -434,50 +453,89 @@ if (branch === 'hercules/next-chart-2') {
         'gate',
       ],
     })
-    await pnyx.restart({
-      whileStopped: () => {
-        expect(git({
-          cwd: copy,
-          args: [
-            'branch',
-            '--show-current',
-          ],
-        })).toBe('hercules/add-cart')
-        expect(git({
-          cwd: path,
-          args: [
-            'branch',
-            '--list',
-            'hercules/next-chart-2',
-          ],
-        })).toContain('hercules/next-chart-2')
-      },
-    })
-    await until({
-      what: 'queued task handoff on its readable branch',
-      check: async () => {
-        const { copy } = await hydra.owner({
-          args: [
-            'task',
-            'copy',
-            'next',
-          ],
-        })
+    const receive = workerThreads.receiveMessageOnPort
+    let lostReply = false
 
-        return copy?.branch === 'hercules/next-chart-3'
-      },
-    })
-    expect(git({
-      cwd: copy,
-      args: [
-        'branch',
-        '--show-current',
-      ],
-    })).toBe('hercules/next-chart-3')
-    await until({
-      what: 'readable branch in delivered brief',
-      check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-3')),
-    })
+    // eslint-disable-next-line pnyx/object-params -- Node owns this transport signature.
+    workerThreads.receiveMessageOnPort = port => {
+      const reply = receive(port)
+
+      if (!lostReply && reply && !reply.message.error && reply.message.results?.length > 1 && git({
+        cwd: copy,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      }) === 'hercules/next-chart-3') {
+        lostReply = true
+
+        // Lose the database worker's successful commit reply at the transport boundary.
+        return undefined
+      }
+
+      return reply
+    }
+
+    syncBuiltinESMExports()
+
+    try {
+      await pnyx.restart({
+        whileStopped: () => {
+          expect(git({
+            cwd: copy,
+            args: [
+              'branch',
+              '--show-current',
+            ],
+          })).toBe('hercules/add-cart')
+          expect(git({
+            cwd: path,
+            args: [
+              'branch',
+              '--list',
+              'hercules/next-chart-2',
+            ],
+          })).toContain('hercules/next-chart-2')
+        },
+      })
+      await until({
+        what: 'queued task handoff on its readable branch',
+        check: async () => {
+          const { copy } = await hydra.owner({
+            args: [
+              'task',
+              'copy',
+              'next',
+            ],
+          })
+
+          return copy?.branch === 'hercules/next-chart-3'
+        },
+      })
+      expect(git({
+        cwd: copy,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      })).toBe('hercules/next-chart-3')
+      await until({
+        what: 'readable branch in delivered brief',
+        check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-3')),
+      })
+      expect(lostReply).toBe(true)
+      expect(git({
+        cwd: copy,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      })).toBe('hercules/next-chart-3')
+    } finally {
+      workerThreads.receiveMessageOnPort = receive
+      syncBuiltinESMExports()
+    }
+
     await hydra.owner({
       args: [
         'task',

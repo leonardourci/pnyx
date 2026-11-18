@@ -22,6 +22,7 @@ import { pullRequestLanding, pullRequestState } from '#integrations/github/pull-
 import { checkAttachments, seenAt } from './presence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { hydraIds } from '#app/home-migration.ts'
+import { query } from '#store/postgres.ts'
 import { loadHydra } from '#app/store.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
@@ -646,6 +647,7 @@ export async function advanceQueues({
       }
 
       const card = state.cards[current.id]!
+      const sourceRevision = card.revision
       const prs = card.links.filter(l => l.kind === 'github_pr')
 
       const landed = prs.length ? prs.every(l => l.state === 'merged')
@@ -677,6 +679,7 @@ export async function advanceQueues({
         throw new Error('The next task needs a brief and the same project with a reusable git folder')
       }
 
+      const targetRevision = next.revision
       const prepared = await landedBranch({
         readLanding,
         hydraId,
@@ -720,8 +723,8 @@ export async function advanceQueues({
           session: id,
         })[0]
 
-        if (currentSource?.revision !== card.revision || currentTarget?.id !== next.id
-          || currentTarget.revision !== next.revision) {
+        if (currentSource?.revision !== sourceRevision || currentTarget?.id !== next.id
+          || currentTarget.revision !== targetRevision) {
           return false
         }
 
@@ -767,6 +770,7 @@ export async function advanceQueues({
         return false
       }
 
+      let handoffEvent: string | undefined
       let recorded = false
       let handoffError: unknown
       let handoffFailed = false
@@ -796,8 +800,8 @@ export async function advanceQueues({
               session: id,
             })[0]
 
-            if (!active() || source?.revision !== card.revision || target?.id !== next.id
-              || target.revision !== next.revision || source.sessionIds?.[0] !== id
+            if (!active() || source?.revision !== sourceRevision || target?.id !== next.id
+              || target.revision !== targetRevision || source.sessionIds?.[0] !== id
               || source.activity === 'working') {
               return
             }
@@ -846,6 +850,7 @@ export async function advanceQueues({
               }
 
               decision.event.data.brief = brief
+              handoffEvent = decision.event.id
               writer.append({ event: decision.event })
 
               return true
@@ -855,6 +860,40 @@ export async function advanceQueues({
       } catch (error) {
         handoffError = error
         handoffFailed = true
+
+        if (handoffEvent) {
+          try {
+            // Wait for the original transaction's row lock before deciding whether its event committed.
+            const [
+              , events,
+            ] = query({
+              transaction: true,
+              statements: [
+                {
+                  text: 'select id from hydras where id = $1 for update',
+                  values: [hydraId],
+                },
+                {
+                  text: 'select id from events where hydra_id = $1 and id = $2',
+                  values: [
+                    hydraId,
+                    handoffEvent,
+                  ],
+                },
+              ],
+            })
+            recorded = Boolean(events?.length)
+          } catch (outcomeError) {
+            throw new AggregateError(
+              [
+                error,
+                outcomeError,
+              ],
+              `Handoff outcome unknown; checkout retained on ${branch}`,
+              { cause: outcomeError },
+            )
+          }
+        }
       }
 
       if (!recorded) {
