@@ -256,6 +256,33 @@ export function fakeClaude() {
       }
     })()
 
+    // Claude Code ends a stopped turn with an error result.
+    const stoppedResult = ({ message }: { message: SDKUserMessage }) => ({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      errors: ['Request was aborted.'],
+      session_id: id,
+      user_message_uuids: [
+        message.uuid,
+        ...foldedUuids.splice(0),
+      ],
+      queued_turn_count: 0,
+      uuid: randomUUID(),
+      duration_ms: 0,
+      duration_api_ms: 0,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      modelUsage: {},
+      permission_denials: [],
+    }) as unknown as SDKMessage
+
     async function* run(): AsyncGenerator<SDKMessage> {
       for (;;) {
         const message = waiting.shift()
@@ -353,8 +380,10 @@ export function fakeClaude() {
           } as SDKMessage
           await held
 
-          // A stopped turn goes on below, which ends it with Claude Code's error result.
-          if (!interrupted) {
+          // /compact makes no model request, so a released or stopped turn ends here, without the recorded reply's usage.
+          if (interrupted) {
+            yield stoppedResult({ message })
+          } else {
             yield {
               ...claudeRecording.turn.find(recorded => recorded.type === 'result')!,
               session_id: id,
@@ -362,10 +391,11 @@ export function fakeClaude() {
               queued_turn_count: 0,
               result: '',
             } as SDKMessage
-            stop = undefined
-            session.answered = session.received.length
-            continue
           }
+
+          stop = undefined
+          session.answered = session.received.length
+          continue
         }
 
         for (const recorded of claudeRecording.turn) {
@@ -455,32 +485,7 @@ export function fakeClaude() {
         }
 
         if (interrupted) {
-          // Claude Code ends a stopped turn with an error result.
-          yield {
-            type: 'result',
-            subtype: 'error_during_execution',
-            is_error: true,
-            errors: ['Request was aborted.'],
-            session_id: id,
-            user_message_uuids: [
-              message.uuid,
-              ...foldedUuids.splice(0),
-            ],
-            queued_turn_count: 0,
-            uuid: randomUUID(),
-            duration_ms: 0,
-            duration_api_ms: 0,
-            num_turns: 1,
-            total_cost_usd: 0,
-            usage: {
-              input_tokens: 0,
-              output_tokens: 0,
-              cache_creation_input_tokens: 0,
-              cache_read_input_tokens: 0,
-            },
-            modelUsage: {},
-            permission_denials: [],
-          } as unknown as SDKMessage
+          yield stoppedResult({ message })
         } else {
           record({
             role: 'assistant',
