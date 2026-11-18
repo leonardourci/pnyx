@@ -338,10 +338,7 @@ export const COMMAND_REGISTRY = {
     scope: { reads: [''] },
   },
   owner: {
-    readOnly: ({ args }) => matchesReadScope({
-      name: 'owner',
-      args,
-    }),
+    readOnly: ({ positionals }) => positionals[0] === 'memory' && (positionals[1] ?? 'list') === 'list',
     scope: { reads: ['memory list'] },
     helper: { reads: ['memory'] },
   },

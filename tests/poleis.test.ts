@@ -314,6 +314,17 @@ test(
     })
     expect(crossRead.status).toBe(0)
     expect(crossRead.stdout).not.toContain('Secret nebula')
+    const implicitOwnerRead = await pnyxAxi({
+      args: [
+        'owner',
+        'memory',
+        '--hydra',
+        personal.id,
+      ],
+      env: crossEnv,
+    })
+    expect(implicitOwnerRead.status).toBe(0)
+    expect(parsed(implicitOwnerRead).memory).toBe('none: no owner memory yet')
     const crossOwnerWrite = await pnyxAxi({
       args: [
         'owner',
@@ -1536,13 +1547,37 @@ test(
       released = true
       sockets.forEach(socket => socket.end())
       expect(JSON.stringify(await listing)).not.toContain(path)
+
+      released = false
+      blockedReads = sockets.length + 1
+      const showing = allowed.owner({ args: ['hydra', 'show'] })
+      await until({
+        what: 'Hydra show Git read is gated',
+        check: () => sockets.length >= blockedReads,
+      })
+      await allowed.owner({
+        args: [
+          'hydra',
+          'set',
+          '--polis',
+          'vault',
+          '--read-poleis',
+          'shared,vault',
+        ],
+      })
+      released = true
+      sockets.forEach(socket => socket.end())
+      const shown = await showing
+      expect(shown.hydra.polis).toBe('vault')
+      expect(shown.projects).toContainEqual(expect.objectContaining({ path }))
+
       delete process.env.PNYX_TEST_GIT_ARG
       await allowed.owner({
         args: [
           'hydra',
           'set',
-          '--read-poleis',
-          'shared,vault',
+          '--polis',
+          'shared',
         ],
       })
       released = false

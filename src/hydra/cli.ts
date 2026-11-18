@@ -1,4 +1,5 @@
 import { requestedPolisAccess, widensPolisReads } from '#memory/access-changes.ts'
+import { readMemoryContext } from '#memory/context.ts'
 import { projectRows } from '#projects/read.ts'
 import { checkMemoryApproval, readableProjects, polisAccess, hydraPolisConfig, memoryPermission, memoryAgent } from '#memory/poleis.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
@@ -141,37 +142,41 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   hydraDir({ hydraId: id })
 
   if (action === 'show') {
-    const state = loadHydra({ hydraId: id }).state
-
-    const hydra = structuredClone(hydraConfig({
-      state,
-      id,
-    }))
-    // These three live in the shared settings; a Hydra's own config copy is never read.
-    delete hydra.doneAfterHours
-    delete hydra.reviewMinutes
-    delete hydra.helper
-    const shared = readSettings().settings
-
-    return {
-      hydra: visibleHydraConfig({
-        config: hydra,
-        hydraId: id,
-      }),
-      settings: {
-        doneAfterHours: shared.doneAfterHours,
-        reviewMinutes: shared.reviewMinutes,
-        helper: shared.helper,
-      },
-      projects: projectRows({
-        state,
-        projects: await readableProjects({
+    return readMemoryContext({
+      read: async () => {
+        const state = loadHydra({ hydraId: id }).state
+        const hydra = structuredClone(hydraConfig({
+          state,
+          id,
+        }))
+        // Legacy config still carries values now owned by shared settings.
+        delete hydra.doneAfterHours
+        delete hydra.reviewMinutes
+        delete hydra.helper
+        const shared = readSettings().settings
+        const projects = await readableProjects({
           state,
           hydraId: id,
-        }),
-      }),
-      revision: state.configRevision ?? 0,
-    }
+        })
+
+        return {
+          hydra: visibleHydraConfig({
+            config: hydra,
+            hydraId: id,
+          }),
+          settings: {
+            doneAfterHours: shared.doneAfterHours,
+            reviewMinutes: shared.reviewMinutes,
+            helper: shared.helper,
+          },
+          projects: projectRows({
+            state,
+            projects,
+          }),
+          revision: state.configRevision ?? 0,
+        }
+      },
+    })
   }
 
   if (action !== 'create' && action !== 'set') {

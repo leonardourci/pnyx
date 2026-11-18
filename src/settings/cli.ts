@@ -94,14 +94,9 @@ export const settings = guard({
       current: read.settings,
       input: patch,
     })
-    const proposalArgs = values['if-revision'] !== undefined ? args : [
-      ...args,
-      '--if-revision',
-      String(read.revision),
-    ]
-    const memoryPatch = patch && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch)
+    const memoryPatch = patch !== null && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch)
 
-    if (patch && typeof patch === 'object' && memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
+    if (memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
       const state = loadHydra({ hydraId }).state
 
       if ('projectPoleis' in patch) {
@@ -129,13 +124,18 @@ export const settings = guard({
     }
 
     if (memoryPatch || values.propose) {
+      const proposalArgs = values['if-revision'] !== undefined ? args : [
+        ...args,
+        '--if-revision',
+        String(read.revision),
+      ]
       const proposal = memoryPermission({
         hydraId,
         name: 'settings',
         args: proposalArgs,
         propose: Boolean(values.propose),
         actor: change.actor,
-        widening: widensPolisReaders({
+        widening: memoryPatch && widensPolisReaders({
           before: read.settings,
           after,
           hydras: memoryHydras(),
