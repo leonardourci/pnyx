@@ -106,6 +106,7 @@ async function taskBranch({
   }
 
   const remoteNames = remotes.out.split('\n').filter(Boolean)
+
   for (const remote of remoteNames) {
     const heads = await git({
       cwd,

@@ -700,6 +700,7 @@ export async function advanceQueues({
       }
 
       let brief: string | undefined
+
       const prepare = async ({ branch }: { branch: string }) => {
         brief = await taskPrompt({
           hydraId,
