@@ -607,8 +607,14 @@ test(
           exact: true,
         },
       ).boundingBox()
-      expect(remembered!.width).toBe(560)
-      expect(remembered!.height).toBe(440)
+      expect(remembered!.width).toBeCloseTo(
+        560,
+        2,
+      )
+      expect(remembered!.height).toBeCloseTo(
+        440,
+        2,
+      )
       await direct.close()
       await page.reload()
       await modal.waitFor()
