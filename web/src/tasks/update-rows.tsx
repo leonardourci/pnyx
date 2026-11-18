@@ -189,7 +189,7 @@ export function UpdateEntry({
               <>
                 <span>{update.state}</span>
                 <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[-2px] text-muted" aria-hidden="true">
-                  <DisclosureChevron expanded={open} size={14} />
+                  <DisclosureChevron expanded={open} size={ICON_SIZE.inline} />
                 </span>
               </>
             )}
@@ -346,7 +346,7 @@ function GroupHeading({
         plain
         title={(
           <>{group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states text-muted text-meta font-normal">{states}</span>
-            <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[-2px] text-muted" aria-hidden="true"><DisclosureChevron expanded={open} size={14} /></span>
+            <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[-2px] text-muted" aria-hidden="true"><DisclosureChevron expanded={open} size={ICON_SIZE.inline} /></span>
           </>
         )}
       />
