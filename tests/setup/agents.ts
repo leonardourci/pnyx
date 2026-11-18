@@ -67,9 +67,9 @@ export interface TurnPlan {
   // Streams this prefix of the reply, then waits for release (or an interrupt) before finishing the turn.
   partial?: string
   hold?: boolean
-  // Claude reports a compaction while the turn waits, as it does for /compact.
+  // Claude reports a compaction that lasts until the turn's release, as /compact does; with compactTo it finishes at once.
   compacting?: boolean
-  // Compacts to this many tokens. Claude (with compacting) finishes the compaction at once, then waits to end the turn as /compact does; Codex compacts mid-turn.
+  // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does once released, Codex mid-turn.
   compactTo?: number
   // Claude Code measures the session against this window from this turn on, as after a model switch.
   window?: number
@@ -352,16 +352,20 @@ export function fakeClaude() {
             session_id: id,
           } as SDKMessage
           await held
-          yield {
-            ...claudeRecording.turn.find(recorded => recorded.type === 'result')!,
-            session_id: id,
-            user_message_uuids: [message.uuid],
-            queued_turn_count: 0,
-            result: '',
-          } as SDKMessage
-          stop = undefined
-          session.answered = session.received.length
-          continue
+
+          // A stopped turn goes on below, which ends it with Claude Code's error result.
+          if (!interrupted) {
+            yield {
+              ...claudeRecording.turn.find(recorded => recorded.type === 'result')!,
+              session_id: id,
+              user_message_uuids: [message.uuid],
+              queued_turn_count: 0,
+              result: '',
+            } as SDKMessage
+            stop = undefined
+            session.answered = session.received.length
+            continue
+          }
         }
 
         for (const recorded of claudeRecording.turn) {
