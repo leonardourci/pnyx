@@ -1420,6 +1420,8 @@ export function HydraChat({
         )}
       </div>
       <WaitingDecisions
+        command={command}
+        notify={notify}
         triggerRef={waitingButton}
         state={state}
         open={async ({ decision }) => {
