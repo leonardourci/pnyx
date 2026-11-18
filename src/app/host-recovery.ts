@@ -1,3 +1,4 @@
+import { recoverHandoffs } from '#workers/handoff-checkout.ts'
 import { applyDecision } from './decision.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
@@ -80,6 +81,7 @@ export function createHostRecovery({
     fenced = false
     fenced = await children.sweep()
     upgrades.recover()
+    await recoverHandoffs({ hydraId })
 
     // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
     // the stop cut, ends here, and Hydra gets the recap and its queue.
