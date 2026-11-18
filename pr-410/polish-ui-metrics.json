@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "sourceHead": "17e4488ada9818cc1f04ab1b0b85fbc20a1b8de9",
+  "viewport": [
+    1440,
+    960
+  ],
+  "fixture": {
+    "hydras": 2,
+    "repositoriesPerHydra": 3,
+    "seededWorkCards": 96,
+    "syntheticTranscriptMessages": 300
+  },
+  "ordinaryBuildComparison": [
+    {
+      "case": "trace-normal-off-before",
+      "head": "e1e5846b87b504b62cf57fb29a5e75226f1dbaf1",
+      "traceMs": 71961.718,
+      "runTaskWallMsSum": 45474.01599999971,
+      "runTaskCpuMsSum": 10794.076000000148,
+      "longTasks": 151,
+      "chromeObservedINPMs": 575.0,
+      "trustedInteractions": 69,
+      "mentionOptionsOpened": true
+    },
+    {
+      "case": "trace-normal-on-before",
+      "head": "e1e5846b87b504b62cf57fb29a5e75226f1dbaf1",
+      "traceMs": 33120.672,
+      "runTaskWallMsSum": 4653.805000000206,
+      "runTaskCpuMsSum": 3879.5610000000434,
+      "longTasks": 12,
+      "chromeObservedINPMs": 108.0,
+      "trustedInteractions": 69,
+      "mentionOptionsOpened": true
+    },
+    {
+      "case": "trace-normal-off-repeat",
+      "head": "e1e5846b87b504b62cf57fb29a5e75226f1dbaf1",
+      "traceMs": 33159.261,
+      "runTaskWallMsSum": 5121.227000000156,
+      "runTaskCpuMsSum": 4657.149000000061,
+      "longTasks": 12,
+      "chromeObservedINPMs": 188.0,
+      "trustedInteractions": 69,
+      "mentionOptionsOpened": true
+    }
+  ],
+  "collectorSelfWork": {
+    "ms": 15.200000000000001,
+    "observedWindowMs": 40015.80000001192,
+    "elapsedPercent": 0.037984995926597674
+  },
+  "profilingProof": {
+    "head": "17e4488ada9818cc1f04ab1b0b85fbc20a1b8de9",
+    "reactSurfaces": {
+      "oracle": {
+        "commitCallbacks": 384,
+        "sampledDurations": 45
+      },
+      "chat": {
+        "commitCallbacks": 304,
+        "sampledDurations": 37
+      },
+      "workspace": {
+        "commitCallbacks": 549,
+        "sampledDurations": 62
+      },
+      "sortable": {
+        "commitCallbacks": 314,
+        "sampledDurations": 36
+      },
+      "settings": {
+        "commitCallbacks": 110,
+        "sampledDurations": 14
+      }
+    },
+    "heapSamples": 2,
+    "nativeMentionSelected": true,
+    "nativeHydraDragCancelled": true,
+    "errors": 0,
+    "drag": {
+      "surface": "sortable",
+      "action": "hydra",
+      "frameCount": 68,
+      "frames": 58,
+      "worstFrameMs": 166.59999999999127,
+      "ms": 2161.6
+    },
+    "sampledHelperSelfMs": {
+      "initialDiagnostic": {
+        "mentionCandidates": 37.1,
+        "clock": 81.1
+      },
+      "finalNativeWorkload": {
+        "mentionCandidates": 0,
+        "clock": 4.677
+      }
+    }
+  },
+  "checks": {
+    "lint": true,
+    "normalBuild": true,
+    "profilingBuild": true,
+    "collectorAndIngestionTests": 12,
+    "clockNativeFormatTest": true,
+    "teardownAssertionFailedBeforeFix": true,
+    "browserMetricModeProofs": [
+      "normal",
+      "profile"
+    ],
+    "browserMetricModeProofHead": "17e4488ada9818cc1f04ab1b0b85fbc20a1b8de9",
+    "finalCaptionLintAndBuildHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab",
+    "metricsCodeUnchangedSinceBrowserProof": true
+  },
+  "limits": [
+    "The ordinary recordings ran on a shared host; their variation does not establish a logging speedup or isolate browser-internal observer overhead.",
+    "Collector self-work is elapsed callback/serialization work, not a CPU percentage.",
+    "The initial and final profiling workloads differ; helper samples do not establish an overall application speedup.",
+    "Nested React surface durations overlap.",
+    "Drag frames are requestAnimationFrame interval estimates, not compositor presentation counts.",
+    "Clock formatters capture the default locale/time zone until reload."
+  ],
+  "polishHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab"
+}
