@@ -42,7 +42,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
   ],
   hold: [],
   release: ['from-message'],
-  parent: [],
+  parent: ['before'],
   arrange: ['before'],
   rename: [
     'title',

@@ -3,6 +3,7 @@ import type { AgentConfig } from '#workers/model.ts'
 import { queueCardInput, validateCardInput } from '#workers/card-input.ts'
 import { knownHarness } from '#workers/providers.ts'
 import { reorderTask } from '#tasks/reorder.ts'
+import { taskRank } from '#tasks/order.ts'
 import { toolsCommand } from '#workers/tools-cli.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
@@ -1125,10 +1126,27 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           })
         }
 
+        if (values.before !== undefined && parent !== 'none') {
+          throw new HydraError({
+            message: '--before places a detached task in the root order; use parent none',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        const rank = parent === 'none' ? taskRank({
+          state,
+          card: {
+            ...task,
+            parentId: undefined,
+          },
+          before: values.before as string | undefined,
+        }) : undefined
+
         return decidePush({
           state,
           key: task.key,
           input: { parent: target?.id ?? null },
+          rank,
           meta: m,
         })
       },

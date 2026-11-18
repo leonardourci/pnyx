@@ -12,7 +12,7 @@ The page groups tasks by project. Ideas is first and contains tasks without an a
 
 - Read `project list --hydra <hydra>` before choosing a repository. Use `project add <path>` for a repository, or for a folder with repositories directly beneath it. Use `project group <name> <repo-path>...` to group attached repositories.
 - Use `task rename <task> --project <repo-path>` to assign a repository. An empty project clears the assignment. A child appears beneath its parent and retains its own repository and worker.
-- `task parent <task> <parent|none>` nests or detaches. There is one level; a task with children cannot become a child. Detaching returns it to its project.
+- `task parent <task> <parent|none>` nests or detaches. There is one level; a task with children cannot become a child. Detaching returns it to its project: `none --before <root>` places it before that root, and `none` places it last. Undo restores its parent and position together.
 - `task arrange <task> [--before <task>]` sets visual order within a project and parent. State groups stay needs you, running, waiting/queued/paused, then done. `task reorder --behind` still changes a worker queue, not visual order.
 - `view set --json '{"workspace":{"projectOrder":["ideas","<project-id>"],"projectWidths":{"<project-id>":560},"foldedProjects":{"<project-id>":true}}}'` saves project layout. Project ids are repository paths or the group's id. Widths have a 280px minimum and no maximum. `collapsed` and `chatCollapsed` fold the Hydra and its chat. Pass `--hydra <hydra>` on every command.
 

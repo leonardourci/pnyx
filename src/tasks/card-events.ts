@@ -73,6 +73,7 @@ export function applyCardEvent({
 
     const {
       parentId,
+      rank,
       activity,
       settings,
       folder,
@@ -143,6 +144,12 @@ export function applyCardEvent({
       }
 
       card.sessionActivity = activity
+    }
+
+    if (rank === null) {
+      delete card.rank
+    } else if (rank !== undefined) {
+      card.rank = rank
     }
 
     if (parentId === null) {

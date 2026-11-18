@@ -15,6 +15,7 @@ export function decidePush({
   key,
   input: rawInput,
   meta,
+  rank,
   newCardId = `task-${randomUUID()}`,
 }: {
   newCardId?: string
@@ -22,6 +23,7 @@ export function decidePush({
   key: string
   input: unknown
   meta: Meta
+  rank?: number
 }): Decision {
   text({
     value: key,
@@ -56,6 +58,11 @@ export function decidePush({
 
   const cardId = state.keys[key] ?? newCardId
   const fields: PushFields = {}
+
+  if (rank !== undefined) {
+    fields.rank = rank
+  }
+
   const title = optionalText({
     value: input.title,
     what: 'title',

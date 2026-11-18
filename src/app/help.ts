@@ -249,7 +249,9 @@ pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task refresh-links <id>
 Reads the task's open pull requests now instead of at their next poll, discarding a read in flight; task show lists what was read.
-pnyx-axi task parent <task> <parent|none> [--event-id <id>]
+pnyx-axi task parent <task> <parent|none> [--before <task>] [--event-id <id>]
+With none, --before places it before a root task in the same project; omit it to place it last.
+Undo restores its parent and order together.
 pnyx-axi task arrange <task> [--before <task>] [--event-id <id>]
 Arrange changes visual order within a project and parent; the page keeps state groups together.
 Task reorder --behind remains the worker queue operation.

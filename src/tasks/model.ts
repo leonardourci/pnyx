@@ -264,6 +264,7 @@ export interface PushFields {
   workspace?: string
   tags?: string[]
   parentId?: string | null
+  rank?: number | null
   activity?: string | null
   agent?: AgentRef
   settings?: AgentSettings | null

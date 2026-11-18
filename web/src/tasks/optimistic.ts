@@ -259,7 +259,19 @@ export function optimisticState({
       const parentRef = args[2]
 
       if (parentRef === 'none') {
-        return update({ patch: { parentId: undefined } })
+        return update({
+          patch: {
+            parentId: undefined,
+            rank: taskRank({
+              state,
+              card: {
+                ...card,
+                parentId: undefined,
+              },
+              before: option({ flag: '--before' }),
+            }),
+          },
+        })
       }
 
       const parent = state.cards[parentRef ?? ''] ?? state.cards[state.keys[parentRef ?? ''] ?? '']
