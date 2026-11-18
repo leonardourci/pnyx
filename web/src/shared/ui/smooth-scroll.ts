@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import Lenis, { type VirtualScrollData } from 'lenis'
 import Snap from 'lenis/snap'
 
@@ -31,6 +31,7 @@ export function useSmoothScroll({
   horizontal?: boolean
   snapKey?: string
 }) {
+  const controller = useRef<Lenis | null>(null)
   useEffect(
     () => {
       const wrapper = root.current
@@ -55,6 +56,7 @@ export function useSmoothScroll({
         allowNestedScroll: true,
         respectReducedMotion: true,
       })
+      controller.current = lenis
       scrolls.add(lenis)
 
       if (scrollFrame === undefined) {
@@ -140,6 +142,7 @@ export function useSmoothScroll({
       )
 
       return () => {
+        controller.current = null
         observer.disconnect(); sizes.disconnect(); removeSnaps.forEach(remove => remove())
         scrolls.delete(lenis)
 
@@ -162,4 +165,6 @@ export function useSmoothScroll({
       snapKey,
     ],
   )
+
+  return controller
 }

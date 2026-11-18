@@ -53,7 +53,7 @@ export function App() {
     () => () => alignment.current?.abort(),
     [],
   )
-  useSmoothScroll({
+  const smoothScroll = useSmoothScroll({
     root: axis,
     content: track,
     horizontal: true,
@@ -247,30 +247,51 @@ export function App() {
 
       let previous: number | undefined
       let clamped = false
+      let previousRange: number | undefined
 
       const align = () => {
         const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
         const left = group.offsetLeft + inner.offsetLeft - surface.offsetLeft - padding
 
-        group.dataset.axisOffset = String(left)
-        group.dataset.axisRange = String(Math.max(
+        const range = Math.max(
           0,
           group.offsetWidth - surface.clientWidth,
-        ))
+        )
+        group.dataset.axisOffset = String(left)
+        group.dataset.axisRange = String(range)
         const available = surface.scrollWidth - surface.clientWidth
         const restore = clamped && available >= left
         const shift = previous === undefined || restore
           ? left - surface.scrollLeft : left - previous
         clamped = available < left
 
-        if (shift) {
-          surface.scrollTo({
-            left: surface.scrollLeft + shift,
-            behavior: 'instant',
-          })
+        const shrinking = previousRange !== undefined && range < previousRange
+        const desired = surface.scrollLeft + shift
+        const destination = shrinking ? Math.min(
+          desired,
+          left + range,
+        ) : desired
+
+        if (destination !== surface.scrollLeft) {
+          if (smoothScroll.current) {
+            smoothScroll.current.resize()
+            smoothScroll.current.scrollTo(
+              destination,
+              {
+                immediate: true,
+                force: true,
+              },
+            )
+          } else {
+            surface.scrollTo({
+              left: destination,
+              behavior: 'instant',
+            })
+          }
         }
 
         previous = left
+        previousRange = range
       }
 
       align()
@@ -289,6 +310,7 @@ export function App() {
       current,
       hydra.loaded,
       workspaceOrder,
+      smoothScroll,
     ],
   )
 

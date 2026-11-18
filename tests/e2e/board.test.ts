@@ -4128,6 +4128,73 @@ test(
 )
 
 test(
+  'fold all anchors a Hydra after a real horizontal scroll through its projects',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await pnyx.hydra()
+
+    for (let index = 0; index < 4; index++) {
+      const project = hydra.folder({ name: `shrinking-project-${index}` })
+      await hydra.owner({
+        args: [
+          'project',
+          'add',
+          project,
+        ],
+      })
+    }
+
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    await until({
+      what: 'the project workspace is wider than the viewport',
+      check: async () => (await workspace.boundingBox())!.width > 2500,
+    })
+    const width = (await workspace.boundingBox())!.width
+    const distance = width - page.viewportSize()!.width - 80
+    await page.mouse.move(
+      1000,
+      400,
+    )
+    await page.mouse.wheel(
+      distance,
+      0,
+    )
+    await until({
+      what: 'the pointer wheel reaches the far projects',
+      check: async () => (await workspace.boundingBox())!.x < -distance / 2,
+    })
+    expect(page.url()).toContain(`/hydra/${hydra.id}/`)
+    await workspace.getByRole(
+      'button',
+      {
+        name:'Fold all projects',
+        exact:true,
+      },
+    ).click({scroll:'none'})
+    await until({
+      what: 'folding the projects returns the selected Hydra to view',
+      check: async () => {
+        const box = await workspace.boundingBox()
+
+        return !!box && box.width < page.viewportSize()!.width && Math.abs(box.x - 12) < 1
+      },
+    })
+    expect(page.url()).toContain(`/hydra/${hydra.id}/`)
+    await workspace.getByRole(
+      'button',
+      {
+        name:'Unfold all projects',
+        exact:true,
+      },
+    ).waitFor()
+  },
+)
+
+test(
   'phone projects fit one viewport and snap to their own start in both themes',
   async () => {
     const hydra = await pnyx.hydra()
