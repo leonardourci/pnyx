@@ -36,7 +36,8 @@ const meta = () => ({
   at: new Date().toISOString(),
 })
 
-const errorText = ({ error }: { error: unknown }) => (error instanceof Error ? error.message : String(error))
+const errorText = ({ error }: { error: unknown }) =>
+  error instanceof Error ? error.message : String(error)
 
 function contextSize({ session }: { session: AgentSession }): number {
   try {
