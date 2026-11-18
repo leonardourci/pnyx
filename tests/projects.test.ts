@@ -39,12 +39,14 @@ const createProject = async ({
   hydra,
   landing,
   remote,
+  name = 'shop',
 }: {
   hydra: Hydra
   landing: 'branch' | 'pr'
   remote?: string
+  name?: string
 }) => {
-  const path = hydra.folder({ name: 'shop' })
+  const path = hydra.folder({ name })
   const origin = remote ?? `${path}.git`
   const steps = [
     [
@@ -2653,3 +2655,113 @@ if (branch === 'iris/target') {
   120_000,
 )
 
+test(
+  'a project reassigned by a checkout hook refuses the old copy and starts in the new project',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    const other = await createProject({
+      hydra,
+      landing: 'branch',
+      name: 'other',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Reassign',
+        '--key',
+        'drift',
+        '--project',
+        'shop',
+      ],
+    })
+    const hooks = join(
+      project,
+      'drift-hooks',
+    )
+    mkdirSync(hooks)
+    writeFileSync(
+      join(
+        hooks,
+        'post-checkout',
+      ),
+      `#!${process.execPath}
+const { execFileSync } = require('node:child_process')
+execFileSync(process.execPath, ${JSON.stringify([
+  join(
+    import.meta.dirname,
+    '..',
+    'dist',
+    'cli',
+    'pnyx-axi.js',
+  ),
+  'task',
+  'project',
+  'drift',
+  '--project',
+  'other',
+  '--hydra',
+])}.concat(${JSON.stringify(hydra.id)}))
+`,
+      { mode: 0o700 },
+    )
+    git({
+      cwd: project,
+      args: [
+        'config',
+        'core.hooksPath',
+        hooks,
+      ],
+    })
+
+    try {
+      expect((await hydra.ownerRefused({
+        args: [
+          'task',
+          'start',
+          'drift',
+        ],
+      })).code).toBe('CONFLICT')
+      const moved = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'drift',
+          '--full',
+        ],
+      })).task
+      expect(moved.project).toBe(other)
+      expect(moved.copy).toBeUndefined()
+      expect(moved.sessionIds ?? []).toEqual([])
+    } finally {
+      git({
+        cwd: project,
+        args: [
+          'config',
+          '--unset',
+          'core.hooksPath',
+        ],
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'drift',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'copy',
+        'drift',
+      ],
+    })).copy.project).toBe(other)
+  },
+)
