@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { expect, inject, test } from 'vitest'
 import { flushLogs } from '#app/diagnostics.ts'
 import { scanEvents } from '#app/event-log.ts'
-import { logFiles } from '#diagnostics/log-files.ts'
+import { uiMetrics } from '../setup/ui-metrics.ts'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until } from '../setup/pnyx.ts'
 
@@ -10,24 +9,6 @@ declare module 'vitest' {
   export interface ProvidedContext {
     uiProfile: boolean
   }
-}
-
-function metrics() {
-  return logFiles().flatMap(file => readFileSync(
-    file.path,
-    'utf8',
-  ).trim()
-    .split('\n')
-    .filter(Boolean)
-    .map(line => JSON.parse(line)))
-    .filter(line => line.source === 'web' && [
-      'page.long-task',
-      'page.slow-interaction',
-      'page.flow',
-      'page.metrics-overhead',
-      'page.react-commit',
-      'page.memory',
-    ].includes(line.operation))
 }
 
 test(
@@ -77,11 +58,11 @@ test(
       check: async () => {
         await flushLogs()
 
-        return metrics().some(line => line.operation === 'page.slow-interaction')
-        && metrics().some(line => line.operation === 'page.long-task')
+        return uiMetrics().some(line => line.operation === 'page.slow-interaction')
+        && uiMetrics().some(line => line.operation === 'page.long-task')
       },
     })
-    const recorded = metrics()
+    const recorded = uiMetrics()
     expect(recorded.some(line => line.operation === 'page.react-commit')).toBe(inject('uiProfile'))
     expect(recorded).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -129,9 +110,9 @@ test(
     const onBatch = recorded.find(line => line.operation === 'page.metrics-overhead')
     expect(onBatch.totalMs).toBeGreaterThan(onBatch.ms)
     await flushLogs()
-    const disabledCount = metrics().length
+    const disabledCount = uiMetrics().length
     await page.close()
     await flushLogs()
-    expect(metrics()).toHaveLength(disabledCount)
+    expect(uiMetrics()).toHaveLength(disabledCount)
   },
 )

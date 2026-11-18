@@ -9,7 +9,7 @@ beforeAll(async () => {
 })
 
 test(
-  'Ideas saves without a repository and both card composers start in the selected repository copy',
+  'Ideas saves a title alone without a repository and both card composers start in the selected repository copy',
   async () => {
     const hydra = await pnyx.hydra()
     const repository = hydra.folder({ name: 'card-repository' })
@@ -109,13 +109,21 @@ test(
           exact: true,
         },
       ).fill('An unassigned idea')
+      await page.reload()
       await form.getByRole(
         'textbox',
         {
-          name: 'Your ask',
+          name: 'Task title',
           exact: true,
         },
-      ).fill('Investigate the parser')
+      ).waitFor()
+      expect(await form.getByRole(
+        'textbox',
+        {
+          name: 'Task title',
+          exact: true,
+        },
+      ).inputValue()).toBe('An unassigned idea')
       expect(await form.getByRole(
         'button',
         {
@@ -399,22 +407,30 @@ test(
           exact: true,
         },
       )
-      await title.click()
-      const card = page.locator('.card.selected')
+      expect(await title.getAttribute('aria-expanded')).toBe('false')
+      const card = title.locator('xpath=ancestor::article[1]')
       await card.hover()
       const opening = page.evaluate(async () => {
         const widths: number[] = []
+        let inlineFrames = 0
 
         for (let frame = 0; frame < 40; frame++) {
           await new Promise(requestAnimationFrame)
           const modal = document.querySelector('dialog.task-modal')
+
+          if (!modal && document.querySelector('.hydra-workspace .card.selected .card-open-content')) {
+            inlineFrames++
+          }
 
           if (modal) {
             widths.push(modal.getBoundingClientRect().width)
           }
         }
 
-        return widths
+        return {
+          widths,
+          inlineFrames,
+        }
       })
       await page.getByRole(
         'button',
@@ -452,7 +468,11 @@ test(
           exact: true,
         },
       ).count()).toBe(1)
-      const widths = await opening
+      const {
+        widths,
+        inlineFrames,
+      } = await opening
+      expect(inlineFrames).toBe(0)
       await until({
         what: 'modal opens at the standard share of the viewport',
         check: async () => {
@@ -496,6 +516,7 @@ test(
         },
       ).click()
       expect(await modal.locator('.card-details').isVisible()).toBe(false)
+      expect(await modal.getByRole('tab').count()).toBe(0)
       await modal.getByRole(
         'textbox',
         {

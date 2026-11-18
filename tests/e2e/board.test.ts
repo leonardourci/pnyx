@@ -1,6 +1,8 @@
+import type { Page } from 'playwright-core'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
+import { beginUIWindow, expectResponsiveUI } from '../setup/ui-metrics.ts'
 import { openHydra } from '../setup/browser.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
@@ -1120,6 +1122,18 @@ test(
         }),
       })
       await connected.waitFor()
+      await first.click()
+      await until({
+        what: 'an expanded closed family owns its full row',
+        check: async () => {
+          const family = await parent.locator('xpath=ancestor::*[@data-family]').boundingBox()
+          const grid = await workspace.locator('.project-card-grid').boundingBox()
+
+          return !!family && !!grid && Math.abs(family.width - grid.width) < 1
+        },
+      })
+      await first.click()
+      await parent.locator('.worker-chat').waitFor()
       await nested.hover({
         position: {
           x: 12,
@@ -1224,8 +1238,59 @@ test(
         what: 'unfinished sub-tasks before completed sub-tasks',
         check: async () => (await workspace.locator('.subtasks .card-open').allTextContents()).join('|') === 'Waiting part|Completed part',
       })
-      const card = await workspace.locator('.card.selected').elementHandle()
-      expect(card).not.toBeNull()
+      await hydra.owner({
+        args: [
+          'apply',
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          version: 1,
+          changes: Array.from(
+            { length: 80 },
+            (
+              _,
+              index,
+            ) => ({
+              op: 'task.create',
+              title: `Off-screen part ${index}`,
+            }),
+          ),
+        }),
+      })
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Fold all projects',
+          exact: true,
+        },
+      ).focus()
+      const scroller = workspace.locator('[data-column="ideas"] .column-cards')
+      await until({
+        what: 'the new off-screen rows reach the live column',
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+        check: () => scroller.evaluate(element => element.scrollHeight > 3000),
+      })
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      await scroller.evaluate(element => element.scrollTo({
+        top: element.scrollHeight,
+        behavior: 'instant',
+      }))
+      await until({
+        what: 'an unfocused open family leaves the viewport',
+        check: async () => await workspace.locator('.card.selected').count() === 0,
+      })
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      await scroller.evaluate(element => element.scrollTo({
+        top: 0,
+        behavior: 'instant',
+      }))
+      await draft.waitFor()
+      expect(await draft.inputValue()).toBe('Keep my unsent reply')
+      expect(await workspace.locator('.subtasks .card-open').allTextContents()).toEqual([
+        'Waiting part',
+        'Completed part',
+      ])
       await workspace.getByRole(
         'button',
         {
@@ -1243,8 +1308,11 @@ test(
       ).click()
       await draft.waitFor()
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
-      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
-      expect(await card?.evaluate(element => element.isConnected)).toBe(true)
+      expect(await workspace.locator('.card.selected').count()).toBe(1)
+      expect(await workspace.locator('.subtasks .card-open').allTextContents()).toEqual([
+        'Waiting part',
+        'Completed part',
+      ])
       expect(await workspace.locator('.card.selected').count()).toBe(1)
       await workspace.getByRole(
         'button',
@@ -1289,8 +1357,11 @@ test(
       await workspace.locator('.workspace-chat.collapsed').waitFor()
       await draft.waitFor()
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
-      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
-      expect(await card?.evaluate(element => element.isConnected)).toBe(true)
+      expect(await workspace.locator('.card.selected').count()).toBe(1)
+      expect(await workspace.locator('.subtasks .card-open').allTextContents()).toEqual([
+        'Waiting part',
+        'Completed part',
+      ])
       await workspace.getByRole(
         'button',
         {
@@ -1308,8 +1379,11 @@ test(
       ).click()
       await draft.waitFor()
       expect(await draft.inputValue()).toBe('Keep my unsent reply')
-      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
-      expect(await card?.evaluate(element => element.isConnected)).toBe(true)
+      expect(await workspace.locator('.card.selected').count()).toBe(1)
+      expect(await workspace.locator('.subtasks .card-open').allTextContents()).toEqual([
+        'Waiting part',
+        'Completed part',
+      ])
       await page.getByRole(
         'button',
         {
@@ -1394,14 +1468,6 @@ test(
     await add({ key: 'Fourth' })
     await add({ key: 'Open this' })
     await add({ key: 'Fill the gap' })
-    await add({
-      key: 'First part',
-      parent: 'First group',
-    })
-    await add({
-      key: 'Second part',
-      parent: 'First group',
-    })
     await hydra.owner({
       args: [
         'view',
@@ -1417,13 +1483,6 @@ test(
 
     try {
       const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
-      await workspace.getByRole(
-        'button',
-        {
-          name: 'Sub-tasks of First group',
-          exact: true,
-        },
-      ).click()
       await workspace.getByRole(
         'button',
         {
@@ -2232,7 +2291,7 @@ test(
     try {
       const workspace = page.locator(`[data-hydra-workspace="${id}"]`)
       const otherWorkspace = page.locator(`[data-hydra-workspace="${otherId}"]`)
-      await otherWorkspace.locator('[data-family="root"]').waitFor({ state: 'attached' })
+      expect(await otherWorkspace.locator('[data-family="root"]').count()).toBe(0)
       await page.locator(`[data-hydra-workspace="${id}"][data-connected="true"]`).waitFor()
       const root = workspace.getByRole(
         'button',
@@ -2258,11 +2317,14 @@ test(
         bounds.y + 8,
       )
       await page.locator('.physical-ghost').waitFor()
+      await otherWorkspace.scrollIntoViewIfNeeded()
+      await otherWorkspace.locator('[data-family="root"]').waitFor({ state: 'attached' })
       expect(await workspace.locator('[data-family="root"]').getAttribute('data-drag-slot')).toBe('true')
       expect(await otherWorkspace.locator('[data-family="root"]').getAttribute('data-drag-slot')).toBe('false')
       await page.keyboard.press('Escape')
       await page.mouse.up()
       await page.locator('.physical-ghost').waitFor({ state: 'detached' })
+      await workspace.scrollIntoViewIfNeeded()
       await workspace.getByRole(
         'button',
         {
@@ -2270,22 +2332,9 @@ test(
           exact: true,
         },
       ).click()
-      await otherWorkspace.getByRole(
-        'button',
-        {
-          name: 'Sub-tasks of Legacy family',
-          exact: true,
-        },
-      ).click()
       const children = workspace.locator('[data-family="root"] [data-child]')
-      const otherChildren = otherWorkspace.locator('[data-family="root"] [data-child]')
       const childIds = async () => Promise.all((await children.all()).map(child => child.getAttribute('data-child')))
-      const otherIds = async () => Promise.all((await otherChildren.all()).map(child => child.getAttribute('data-child')))
-      expect(await otherIds()).toEqual([
-        'child',
-        'leaf',
-        'peer',
-      ])
+      expect(await otherWorkspace.locator('.card').count()).toBe(0)
       const leaf = workspace.getByRole(
         'button',
         {
@@ -2322,11 +2371,7 @@ test(
         what: 'the dragged legacy child previews after its sibling',
         check: async () => (await childIds()).join(',') === 'child,peer,leaf',
       })
-      expect(await otherIds()).toEqual([
-        'child',
-        'leaf',
-        'peer',
-      ])
+      expect(await otherWorkspace.locator('.card').count()).toBe(0)
       await page.keyboard.down('Shift')
       await page.locator('.physical-ghost [data-drag-nest-hint][data-shift=true]').waitFor()
       await root.hover()
@@ -2334,7 +2379,7 @@ test(
         what: 'the source Hydra alone shows the nesting outline',
         check: async () => await workspace.locator('.card[data-task="root"]').getAttribute('data-nest-armed') === 'true',
       })
-      expect(await otherWorkspace.locator('.card[data-task="root"]').getAttribute('data-nest-armed')).toBe('false')
+      expect(await otherWorkspace.locator('.card').count()).toBe(0)
       await page.keyboard.press('Escape')
       await page.keyboard.up('Shift')
       await page.mouse.up()
@@ -2356,6 +2401,20 @@ test(
         .locator('.worker-chat')
         .waitFor()
       expect((await hydra.task({ key: 'leaf' })).parent).toBe('child')
+      await otherWorkspace.scrollIntoViewIfNeeded()
+      await otherWorkspace.getByRole(
+        'button',
+        {
+          name: 'Sub-tasks of Legacy family',
+          exact: true,
+        },
+      ).click()
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element-list callback.
+      expect(await otherWorkspace.locator('[data-family="root"] [data-child]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-child')))).toEqual([
+        'child',
+        'leaf',
+        'peer',
+      ])
       await otherWorkspace.getByRole(
         'button',
         {
@@ -2551,7 +2610,7 @@ test(
         'view',
         'set',
         '--json',
-        JSON.stringify({ workspace: { foldedProjects: [atlas] } }),
+        JSON.stringify({ workspace: { foldedProjects: { [atlas]: true } } }),
       ],
     })
     await hydra.owner({
@@ -2686,6 +2745,7 @@ test(
         throw new Error('Missing scroll drag cards')
       }
 
+      const finishBudget = await beginUIWindow({ page })
       await page.mouse.move(
         from.x + 12,
         from.y + 8,
@@ -2719,6 +2779,7 @@ test(
         }).map(card => card.title)
           .join('|') === expected.join('|'),
       })
+      expectResponsiveUI({ metrics: await finishBudget() })
       await page.reload()
       await until({
         what: 'the scrolled drop survives reload',
@@ -3822,6 +3883,289 @@ test(
       expect(await draft.inputValue()).toBe('Keep the open conversation while moving')
     } finally {
       await page.context().close()
+    }
+  },
+)
+
+test(
+  'two tabs fold different projects without replacing each other’s view edit',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const projects = [
+      hydra.folder({ name: 'fold-a' }),
+      hydra.folder({ name: 'fold-b' }),
+    ]
+
+    for (const project of projects) {
+      mkdirSync(
+        join(
+          project,
+          '.git',
+        ),
+        { recursive: true },
+      )
+      await hydra.owner({
+        args: [
+          'project',
+          'add',
+          project,
+        ],
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: {
+            chatCollapsed: true,
+            projectWidths: Object.fromEntries(projects.map(project => [
+              project,
+              280,
+            ])),
+          },
+        }),
+      ],
+    })
+    const held: (() => void)[] = []
+    const holdFolds = async ({ page }: { page: Page }) => page.routeWebSocket(
+      /\/ws\?/,
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+      socket => {
+        const server = socket.connectToServer()
+        socket.onMessage(
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          message => {
+            const frame = JSON.parse(String(message))
+            const json = frame.args?.[frame.args.indexOf('--json') + 1]
+            const fold = frame.name === 'view' && json && JSON.parse(json).workspace?.foldedProjects
+
+            if (fold) {
+              held.push(() => server.send(message))
+            } else {
+              server.send(message)
+            }
+          },
+        )
+      },
+    )
+    const first = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: holdFolds,
+    })
+    const second = await first.context().newPage()
+    await holdFolds({ page: second })
+    await second.goto(first.url())
+    const inHydra = `[data-hydra-workspace="${hydra.id}"]`
+    await first.locator(inHydra).getByRole(
+      'button',
+      {
+        name: 'Fold fold-a',
+        exact: true,
+      },
+    )
+      .click()
+    await second.locator(inHydra).getByRole(
+      'button',
+      {
+        name: 'Fold fold-b',
+        exact: true,
+      },
+    )
+      .click()
+    await until({
+      what: 'both fold writes are held',
+      check: () => held.length === 2,
+    })
+    expect(await first.locator(inHydra).getByRole(
+      'button',
+      {
+        name: 'Unfold fold-a',
+        exact: true,
+      },
+    )
+      .isVisible()).toBe(true)
+    expect(await second.locator(inHydra).getByRole(
+      'button',
+      {
+        name: 'Unfold fold-b',
+        exact: true,
+      },
+    )
+      .isVisible()).toBe(true)
+    held.toReversed().forEach(release => release())
+    await until({
+      what: 'both independent folds survive on both tabs',
+      check: async () => {
+        for (const page of [
+          first,
+          second,
+        ]) {
+          for (const project of [
+            'fold-a',
+            'fold-b',
+          ]) {
+            if (await page.locator(inHydra).getByRole(
+              'button',
+              {
+                name: `Unfold ${project}`,
+                exact: true,
+              },
+            )
+              .count() !== 1) {
+              return false
+            }
+          }
+        }
+
+        return true
+      },
+    })
+    const { view } = await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })
+    expect(view.workspace.foldedProjects.toSorted()).toEqual(projects.toSorted())
+  },
+)
+
+test(
+  'phone projects fit one viewport and snap to their own start in both themes',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'phone-project' })
+    mkdirSync(
+      join(
+        project,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.create',
+            key: 'phone-idea',
+            title: 'A phone idea',
+          },
+          {
+            op: 'task.create',
+            key: 'phone-task',
+            title: 'A phone project task',
+            project,
+          },
+        ],
+      }),
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    await page.setViewportSize({
+      width: 390,
+      height: 844,
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+
+    for (const theme of [
+      'light',
+      'dark',
+    ]) {
+      await hydra.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({ theme }),
+        ],
+      })
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'phone-project',
+          exact: true,
+        },
+      ).click()
+      const column = workspace.locator(`[data-column="${project}"]`)
+      await until({
+        what: 'the project fills the phone frame',
+        check: async () => {
+          const box = await column.boundingBox()
+
+          return !!box && Math.abs(box.x - 6) < 2 && Math.abs(box.width - 378) < 1
+        },
+      })
+      await column.getByRole(
+        'button',
+        {
+          name: 'A phone project task',
+          exact: true,
+        },
+      ).click()
+      const card = column.locator('.card.selected')
+      await card.locator('.worker-chat').waitFor()
+      expect((await card.boundingBox())!.width).toBeLessThanOrEqual(360)
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      expect(await column.evaluate(element =>
+        element.scrollWidth <= element.clientWidth)).toBe(true)
+      await column.getByRole(
+        'button',
+        {
+          name: 'A phone project task',
+          exact: true,
+        },
+      ).click()
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Ideas',
+          exact: true,
+        },
+      ).click()
+      const ideas = workspace.locator('[data-column="ideas"]')
+      await until({
+        what: 'Ideas aligns with the phone frame',
+        check: async () => {
+          const box = await ideas.boundingBox()
+
+          return !!box && Math.abs(box.x - 6) < 2
+        },
+      })
+      await page.mouse.move(
+        180,
+        140,
+      )
+      await page.mouse.wheel(
+        378,
+        0,
+      )
+      await until({
+        what: 'a horizontal wheel snaps to the next project',
+        check: async () => {
+          const box = await column.boundingBox()
+
+          return !!box && Math.abs(box.x - 6) < 2
+        },
+      })
     }
   },
 )

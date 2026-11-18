@@ -1,4 +1,6 @@
 // The owner's browser for the journeys: the installed Chrome, headless, with its own profile and no Keychain prompt.
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { afterAll, afterEach } from 'vitest'
 import { localToken } from '#app/server-state.ts'
@@ -14,7 +16,59 @@ const KEYCHAIN_FLAGS = [
 let browser: Browser | undefined
 const contexts = new Set<BrowserContext>()
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  const kept = process.env.PNYX_KEEP_TEST_FILES
+
+  if (kept && task.result?.state === 'fail') {
+    const folder = join(
+      kept,
+      'browser',
+      task.id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    let index = 0
+
+    for (const context of contexts) {
+      for (const page of context.pages()) {
+        if (!page.isClosed()) {
+          const path = join(
+            folder,
+            String(index++),
+          )
+          await page.screenshot({ path: `${path}.png` }).catch(() => {})
+          writeFileSync(
+            `${path}.html`,
+            await page.content().catch(() => 'Page unavailable'),
+          )
+          writeFileSync(
+            `${path}.json`,
+            JSON.stringify(
+              await page.evaluate(() => ({
+                url: location.href,
+                focus: document.activeElement?.outerHTML.slice(
+                  0,
+                  1000,
+                ),
+                axis: document.querySelector('.workspace-axis')?.scrollLeft,
+                workspaces: [...document.querySelectorAll<HTMLElement>('[data-hydra-workspace]')].map(node => ({
+                  id: node.dataset.hydraWorkspace,
+                  box: node.getBoundingClientRect().toJSON(),
+                  cards: node.querySelectorAll('.card-open').length,
+                  offset: node.dataset.axisOffset,
+                })),
+              })).catch(() => null),
+              null,
+              2,
+            ),
+          )
+        }
+      }
+    }
+  }
+
   await Promise.all([...contexts].map(context => context.close()))
   contexts.clear()
 })
