@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceHead": "17e4488ada9818cc1f04ab1b0b85fbc20a1b8de9",
+  "sourceHead": "4df83214b75fefd90a641292fcdfe347d72766dd",
   "viewport": [
     1440,
     960
@@ -109,9 +109,11 @@
       "normal",
       "profile"
     ],
-    "browserMetricModeProofHead": "17e4488ada9818cc1f04ab1b0b85fbc20a1b8de9",
-    "finalCaptionLintAndBuildHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab",
-    "metricsCodeUnchangedSinceBrowserProof": true
+    "browserMetricModeProofHead": "4df83214b75fefd90a641292fcdfe347d72766dd",
+    "metricsCodeUnchangedSinceBrowserProof": true,
+    "lintAndBuildHead": "4df83214b75fefd90a641292fcdfe347d72766dd",
+    "underscoreActionNamesRetained": true,
+    "underscoreAssertionFailedBeforeFix": true
   },
   "limits": [
     "The ordinary recordings ran on a shared host; their variation does not establish a logging speedup or isolate browser-internal observer overhead.",
@@ -121,7 +123,7 @@
     "Drag frames are requestAnimationFrame interval estimates, not compositor presentation counts.",
     "Clock formatters capture the default locale/time zone until reload."
   ],
-  "polishHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab",
+  "polishHead": "4df83214b75fefd90a641292fcdfe347d72766dd",
   "ownershipScreenshots": {
     "beforeHead": "e1e5846b87b504b62cf57fb29a5e75226f1dbaf1",
     "afterHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab",
