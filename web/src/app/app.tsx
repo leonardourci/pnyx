@@ -3,7 +3,7 @@ import { WorkspaceViewport } from './workspace-viewport.tsx'
 import { useMotionDuration, MOTION_EASING } from '#web-shared/motion.ts'
 import { StatusNotice } from '#web-shared/ui/status-message.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { MotionConfig } from 'motion/react'
 import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
@@ -15,6 +15,29 @@ import { useHydraFavicon } from './hydra-favicon.ts'
 import { placements } from './hydra-order.ts'
 import { ProfileSurface } from './profile-surface.tsx'
 import { HydraView } from './workspace.tsx'
+
+const WorkspaceInstance = memo(function WorkspaceInstance({
+  hydra,
+  workspace,
+  navigate,
+  ...props
+}: Omit<ComponentProps<typeof HydraView>, 'hydra'> & {
+  hydra: ReturnType<typeof useHydra>
+  workspace: ReturnType<typeof useHydra>['workspaces'][number]
+  navigate: ReturnType<typeof useHydra>['navigate']
+}) {
+  return (
+    <HydraView
+      {...props}
+      hydra={{
+        ...hydra,
+        ...workspace,
+        navigate,
+        command: hydra.commandFor({id: workspace.navigation.hydraId}),
+      }}
+    />
+  )
+})
 
 export function App() {
   const duration = useMotionDuration()
@@ -57,6 +80,16 @@ export function App() {
     ...preview,
     key: ({ item }) => item.id,
   }) : edits.hydras
+  const shownEdits = useMemo(
+    () => ({
+      ...edits,
+      hydras: orderedHydras,
+    }),
+    [
+      edits,
+      orderedHydras,
+    ],
+  )
   const workspaces = [...hydra.workspaces].sort((
     a,
     b,
@@ -212,6 +245,7 @@ export function App() {
       }
 
       let previous: number | undefined
+      let clamped = false
 
       const align = () => {
         const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
@@ -222,10 +256,19 @@ export function App() {
           0,
           group.offsetWidth - surface.clientWidth,
         ))
-        surface.scrollTo({
-          left: previous === undefined ? left : surface.scrollLeft + left - previous,
-          behavior: 'instant',
-        })
+        const available = surface.scrollWidth - surface.clientWidth
+        const restore = clamped && available >= left
+        const shift = previous === undefined || restore
+          ? left - surface.scrollLeft : left - previous
+        clamped = available < left
+
+        if (shift) {
+          surface.scrollTo({
+            left: surface.scrollLeft + shift,
+            behavior: 'instant',
+          })
+        }
+
         previous = left
       }
 
@@ -362,59 +405,65 @@ export function App() {
 
   useHydraFavicon({ icon: hydra.navigation.hydras.find(item => item.id === current)?.icon })
 
-  const navigate = async ({
-    url,
-    replace,
-  }: {
-    url: string
-    replace?: boolean
-  }) => {
-    const destination = decodeURIComponent(new URL(
-      url,
-      location.href,
-    ).pathname.split('/')[2]!)
-    const opening = hydra.commandFor({ id: destination })({
-      name: 'view',
-      args: [
-        'set',
-        '--json',
-        JSON.stringify({
-          workspace: {
-            collapsed: false,
-            chatCollapsed: false,
-          },
-        }),
-        '--event-id',
-        crypto.randomUUID(),
-      ],
-    })
-    opening.catch((error: Error) => setRootError(error.message))
-    await hydra.navigate({
+  const navigate = useCallback(
+    async ({
       url,
       replace,
-    })
-    const group = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(destination)}"]`)
-    group?.scrollIntoView({
-      behavior: scrollBehavior(),
-      inline: 'start',
-      block: 'nearest',
-    })
-    group?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus({ preventScroll: true })
-    alignment.current?.abort()
-    const controller = new AbortController()
-    alignment.current = controller
-
-    if (group && await afterSteadyLayout({
-      element: group,
-      signal: controller.signal,
-    })) {
-      group.scrollIntoView({
+    }: {
+      url: string
+      replace?: boolean
+    }) => {
+      const destination = decodeURIComponent(new URL(
+        url,
+        location.href,
+      ).pathname.split('/')[2]!)
+      const opening = hydra.commandFor({ id: destination })({
+        name: 'view',
+        args: [
+          'set',
+          '--json',
+          JSON.stringify({
+            workspace: {
+              collapsed: false,
+              chatCollapsed: false,
+            },
+          }),
+          '--event-id',
+          crypto.randomUUID(),
+        ],
+      })
+      opening.catch((error: Error) => setRootError(error.message))
+      await hydra.navigate({
+        url,
+        replace,
+      })
+      const group = document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(destination)}"]`)
+      group?.scrollIntoView({
         behavior: scrollBehavior(),
         inline: 'start',
         block: 'nearest',
       })
-    }
-  }
+      group?.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus({ preventScroll: true })
+      alignment.current?.abort()
+      const controller = new AbortController()
+      alignment.current = controller
+
+      if (group && await afterSteadyLayout({
+        element: group,
+        signal: controller.signal,
+      })) {
+        group.scrollIntoView({
+          behavior: scrollBehavior(),
+          inline: 'start',
+          block: 'nearest',
+        })
+      }
+    },
+    [
+      hydra.commandFor,
+      hydra.navigate,
+    ],
+  )
 
   return (
     <MotionConfig
@@ -446,20 +495,14 @@ export function App() {
                 <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
                   {workspaces.map(workspace => (
                     <ProfileSurface key={workspace.viewKey} name="workspace" hydraId={workspace.navigation.hydraId}>
-                      <HydraView
+                      <WorkspaceInstance
                         active={workspace.navigation.hydraId === current}
                         navigatePage={hydra.navigate}
-                        edits={{
-                          ...edits,
-                          hydras: orderedHydras,
-                        }}
-                        preview={preview}
-                        hydra={{
-                          ...hydra,
-                          ...workspace,
-                          navigate,
-                          command: hydra.commandFor({ id: workspace.navigation.hydraId }),
-                        }}
+                        navigate={navigate}
+                        edits={shownEdits}
+                        preview={preview?.hydra === workspace.navigation.hydraId ? preview : null}
+                        hydra={hydra}
+                        workspace={workspace}
                       />
                     </ProfileSurface>
                   ))}

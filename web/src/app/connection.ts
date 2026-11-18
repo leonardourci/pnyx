@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { createHydraConnection } from './connection-store.ts'
 
 export { reconnectDelay, retryable, commandTimeout, withChanges } from './connection-protocol.ts'
@@ -25,15 +25,21 @@ export function useHydra() {
     [connection],
   )
 
-  return {
-    ...snapshot,
-    workspaces: connection.workspaces(),
-    command: connection.commandFor({ id: snapshot.navigation.hydraId }),
-    // Another Hydra's command, over the same connection; the Oracle sends requests to any Hydra.
-    commandFor: connection.commandFor,
-    navigate: connection.navigate,
-    createHydra: connection.create,
-    retryHydra: connection.retry,
-    dismissError: connection.dismissError,
-  }
+  return useMemo(
+    () => ({
+      ...snapshot,
+      workspaces: connection.workspaces(),
+      command: connection.commandFor({ id: snapshot.navigation.hydraId }),
+      // Another Hydra's command, over the same connection; the Oracle sends requests to any Hydra.
+      commandFor: connection.commandFor,
+      navigate: connection.navigate,
+      createHydra: connection.create,
+      retryHydra: connection.retry,
+      dismissError: connection.dismissError,
+    }),
+    [
+      connection,
+      snapshot,
+    ],
+  )
 }

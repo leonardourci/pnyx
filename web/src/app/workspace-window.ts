@@ -4,13 +4,11 @@ import { useWorkspaceViewport } from './workspace-viewport.tsx'
 export function useWorkspaceWindow({
   element,
   hydra,
-  active,
   width,
   collapsed,
 }: {
   element: HTMLElement | null
   hydra: string
-  active: boolean
   width: number
   collapsed: boolean
 }) {
@@ -18,7 +16,7 @@ export function useWorkspaceWindow({
   const [
     visible,
     setVisible,
-  ] = useState(active)
+  ] = useState(false)
   const mounted = visible || viewport.hydras.has(hydra)
   useLayoutEffect(
     () => {
@@ -32,7 +30,11 @@ export function useWorkspaceWindow({
           setVisible(entries.some(entry => entry.isIntersecting && entry.intersectionRect.width > 0
             && entry.intersectionRect.height > 0))
         },
-        { root: viewport.axis.current },
+        {
+          root: viewport.axis.current,
+          // Crossing from an edge-only intersection into view must emit another entry.
+          threshold: Number.EPSILON,
+        },
       )
       observer.observe(element)
 

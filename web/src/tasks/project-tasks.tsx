@@ -145,7 +145,7 @@ export function ProjectTasks({
           row,
           index,
         ) => row.some(family =>
-          family.ids.some(id => viewport.tasks.has(id))) ? [index] : []),
+          family.ids.some(id => viewport.tasks.get(hydra)?.has(id))) ? [index] : []),
       ]),
     ].sort((
       a,

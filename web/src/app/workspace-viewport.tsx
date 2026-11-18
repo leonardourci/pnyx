@@ -1,3 +1,4 @@
+import { kept, useKept } from '#web-shared/stable.ts'
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
 import { useSortState } from '#web-shared/ui/sortable.tsx'
 import { TASK_MODAL_CHANGED } from '#web-tasks/presentation.ts'
@@ -39,7 +40,7 @@ const Context = createContext<{
   axis: RefObject<HTMLDivElement | null>
   width: number
   hydras: Set<string>
-  tasks: Set<string>
+  tasks: Map<string, Set<string>>
   protectsColumn({
     hydra,
     id,
@@ -79,7 +80,10 @@ export function WorkspaceViewport({
   const drag = useSortState()
   useEffect(
     () => {
-      const focus = () => setFocused(targetOf({ target: document.activeElement }))
+      const focus = () => setFocused(current => kept({
+        previous: current,
+        next: targetOf({ target: document.activeElement }),
+      }))
       const blur = () => queueMicrotask(focus)
       const down = (event: Event) => setPressed(targetOf({ target: event.target }))
       const up = () => setPressed({})
@@ -148,24 +152,61 @@ export function WorkspaceViewport({
     },
     [],
   )
-  const value = useMemo(
-    () => {
-      const targets = [
+  const dragged: Target = drag.active ? {
+    hydra: drag.active.hydra,
+    task: drag.active.kind === 'task' ? drag.active.id : undefined,
+    column: drag.active.kind === 'project' ? drag.active.id : drag.active.column,
+  } : {}
+  const targets = useKept({
+    value: [
+      ...new Map([
         focused,
         pressed,
         composing,
         modal,
-      ]
+        dragged,
+      ].filter(target => !!target.hydra).map(target => [
+        JSON.stringify([
+          target.hydra,
+          target.column,
+          target.task,
+        ]),
+        {
+          hydra: target.hydra,
+          column: target.column,
+          task: target.task,
+        },
+      ] as const)).entries(),
+    ].sort((
+      [a],
+      [b],
+    ) => a.localeCompare(b))
+      .map(([
+        , target,
+      ]) => target),
+  })
+  const value = useMemo(
+    () => {
       const hydras = new Set(targets.flatMap(target => target.hydra ? [target.hydra] : []))
-      const tasks = new Set(targets.flatMap(target => target.task ? [target.task] : []))
+      const tasks = new Map<string, Set<string>>()
 
-      if (drag.active) {
-        hydras.add(drag.active.hydra)
-
-        if (drag.active.kind === 'task') {
-          tasks.add(drag.active.id)
+      const retainTask = ({
+        hydra,
+        task,
+      }: Target) => {
+        if (!hydra || !task) {
+          return
         }
+
+        const retained = tasks.get(hydra) ?? new Set<string>()
+        retained.add(task)
+        tasks.set(
+          hydra,
+          retained,
+        )
       }
+
+      targets.forEach(retainTask)
 
       return {
         axis,
@@ -178,20 +219,13 @@ export function WorkspaceViewport({
         }: {
           hydra: string
           id: string
-        }) => targets.some(target =>
-          target.hydra === hydra && target.column === id)
-        || (drag.active?.hydra === hydra && (drag.active.column === id
-          || (drag.active.kind === 'project' && drag.active.id === id))),
+        }) => targets.some(target => target.hydra === hydra && target.column === id),
       }
     },
     [
       axis,
       width,
-      focused,
-      pressed,
-      composing,
-      modal,
-      drag.active,
+      targets,
     ],
   )
 

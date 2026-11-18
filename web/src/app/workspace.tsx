@@ -55,7 +55,7 @@ import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
-import { useCallback,useEffect,useMemo,useRef,useState,type CSSProperties } from 'react'
+import { useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from 'react'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { SortGroup, useSortItem, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
@@ -63,6 +63,43 @@ import { HydraChips } from './hydra-chips.tsx'
 import { Panel } from './panel.tsx'
 import { hydraViews,openingView,restoreView,usePersistView } from './restore.ts'
 import { hydraTitle,pageTitle } from './view.ts'
+
+function HydraDragName({
+  id,
+  name,
+  disabled,
+  children,
+}: {
+  id: string
+  name: string
+  disabled: boolean
+  children: ReactNode
+}) {
+  const sort = useSortItem({
+    item: {
+      id,
+      kind: 'hydra',
+      scope: 'hydras',
+      hydra: id,
+    },
+    disabled,
+  })
+
+  return (
+    <div
+      ref={sort.setNodeRef}
+      {...sort.attributes}
+      {...sort.listeners}
+      data-sort-key={sort.key}
+      aria-label={`Move ${name}`}
+      data-sort-id={id}
+      data-sort-kind="hydra"
+      data-sort-scope="hydras"
+      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-[calc(100vw-10rem)] flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-[18ch] [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
+    >{children}
+    </div>
+  )
+}
 
 export function HydraView({
   hydra,
@@ -556,7 +593,6 @@ export function HydraView({
   const workspaceWindow = useWorkspaceWindow({
     element: layer,
     hydra: navigation.hydraId,
-    active,
     width: modelWidth,
     collapsed: view.workspace.collapsed,
   })
@@ -565,7 +601,7 @@ export function HydraView({
       hydra: navigation.hydraId,
       id: column.id,
     })
-    || [...viewport.tasks].some(id => {
+    || [...(viewport.tasks.get(navigation.hydraId) ?? [])].some(id => {
       const card = state.cards[id]
 
       return card && taskProjectColumn({
@@ -966,16 +1002,6 @@ export function HydraView({
     )
   }
 
-  const hydraSort = useSortItem({
-    item: {
-      id: navigation.hydraId,
-      kind: 'hydra',
-      scope: 'hydras',
-      hydra: navigation.hydraId,
-    },
-    disabled: !connected,
-  })
-
   return (
     <KeyboardProvider
       workspace={navigation.hydraId}
@@ -1085,17 +1111,7 @@ export function HydraView({
             />
           </Panel>
           <motion.header layout="position" className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-[calc(100vw-3.5rem)] flex-none items-center gap-2.5 bg-background px-0.5 pb-2 [&>.button]:flex-none group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col">
-            <div
-              ref={hydraSort.setNodeRef}
-              {...hydraSort.attributes}
-              {...hydraSort.listeners}
-              data-sort-key={hydraSort.key}
-              aria-label={`Move ${shownHydra?.name ?? 'Hydra'}`}
-              data-sort-id={navigation.hydraId}
-              data-sort-kind="hydra"
-              data-sort-scope="hydras"
-              className={`hydra-drag-name ${hydraSort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-[calc(100vw-10rem)] flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-[18ch] [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
-            >
+            <HydraDragName id={navigation.hydraId} name={shownHydra?.name ?? 'Hydra'} disabled={!connected}>
               {view.workspace.collapsed && (
                 <ProjectCounts
                   asks={columns.reduce(
@@ -1115,7 +1131,7 @@ export function HydraView({
                 />
               )}
               <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={ICON_SIZE.heading} />
-            </div>
+            </HydraDragName>
             <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
               <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>
                 {columns.map(column => (

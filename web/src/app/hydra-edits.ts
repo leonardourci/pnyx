@@ -234,9 +234,16 @@ export function useHydraEdits({
     ],
   )
 
-  return {
-    hydras: shown,
-    edit,
-    move,
-  }
+  return useMemo(
+    () => ({
+      hydras: shown,
+      edit,
+      move,
+    }),
+    [
+      shown,
+      edit,
+      move,
+    ],
+  )
 }
