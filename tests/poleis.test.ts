@@ -1,9 +1,10 @@
 import { beforeAll, expect, test } from 'vitest'
 import { searchInBackground } from '#oracle/search-background.ts'
 import { runForClient } from '#app/request-context.ts'
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { startPnyx, pnyxAxi, parsed, type Pnyx } from './setup/pnyx.ts'
+import { createServer, type Socket } from 'node:net'
+import { startPnyx, pnyxAxi, parsed, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 beforeAll(async () => {
@@ -1128,13 +1129,6 @@ test(
     }))).not.toContain('Project [pulsar]')
     await allowed.owner({
       args: [
-        'project',
-        'remove',
-        'polis-project',
-      ],
-    })
-    await allowed.owner({
-      args: [
         'owner',
         'memory',
         'set',
@@ -1144,27 +1138,168 @@ test(
         'Learning stays after project detach',
       ],
     })
-    expect((await allowed.ownerRefused({
-      args: [
-        'owner',
-        'memory',
-        'move',
-        '--project',
-        path,
-        '--text',
-        'Learning stays after project detach',
-        '--reason',
-        'Test detached project memory',
-      ],
-    })).code).toBe('NOT_FOUND')
-    const ownerMemory = await allowed.owner({
-      args: [
-        'owner',
-        'memory',
-        'list',
-      ],
+    const gateBin = allowed.folder({ name: 'git-gate' })
+    const git = join(
+      gateBin,
+      'git',
+    )
+    copyFileSync(
+      new URL(
+        './setup/fixtures/memory/git-read-gate.mjs',
+        import.meta.url,
+      ),
+      git,
+    )
+    chmodSync(
+      git,
+      0o755,
+    )
+    const sockets: Socket[] = []
+    let released = false
+    const gate = createServer(socket => {
+      sockets.push(socket)
+
+      if (released) {
+        socket.end()
+      }
     })
-    expect(ownerMemory.writable.learnings.text).toBe('Learning stays after project detach')
+    const socketPath = join(
+      gateBin,
+      'gate.sock',
+    )
+    await new Promise<void>(resolve => gate.listen(
+      socketPath,
+      resolve,
+    ))
+    const previousPath = process.env.PATH
+    process.env.PATH = `${gateBin}:${previousPath}`
+    process.env.PNYX_TEST_GIT_PROJECT = path
+    process.env.PNYX_TEST_GIT_SOCKET = socketPath
+
+    try {
+      const moving = allowed.ownerRefused({
+        args: [
+          'owner',
+          'memory',
+          'move',
+          '--project',
+          path,
+          '--text',
+          'Learning stays after project detach',
+          '--reason',
+          'Test detached project memory',
+        ],
+      })
+      const writing = allowed.ownerRefused({
+        args: [
+          'project',
+          'memory',
+          'set',
+          '--project',
+          path,
+          '--key',
+          'preferences',
+          '--text',
+          'Detached write must not persist',
+        ],
+      })
+      const pending = Promise.all([
+        moving,
+        writing,
+      ])
+      await until({
+        what: 'both Git reads are gated',
+        check: () => sockets.length === 2,
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'remove',
+          'polis-project',
+        ],
+      })
+      sockets[0]!.end()
+      sockets[1]!.end()
+      const [
+        moved,
+        written,
+      ] = await pending
+      expect(moved.code).toBe('NOT_FOUND')
+      expect(written.code).toBe('NOT_FOUND')
+      released = true
+      const ownerMemory = await allowed.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })
+      expect(ownerMemory.writable.learnings.text).toBe('Learning stays after project detach')
+      const reattach = await allowed.owner({
+        args: [
+          'project',
+          'add',
+          path,
+        ],
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'add',
+          path,
+          '--confirm',
+          reattach.token,
+        ],
+      })
+      expect(JSON.stringify(await allowed.owner({
+        args: [
+          'project',
+          'show',
+          path,
+        ],
+      }))).not.toContain('Detached write must not persist')
+      released = false
+      const previousReads = sockets.length
+      const digest = pnyxAxi({
+        args: [
+          'hydra',
+          'digest',
+          '--hydra',
+          allowed.id,
+        ],
+        env: {
+          ...process.env,
+          PNYX_ACTOR: undefined,
+          PNYX_TASK: undefined,
+          PNYX_HYDRA: undefined,
+        },
+      })
+      await until({
+        what: 'digest Git read is gated',
+        check: () => sockets.length > previousReads,
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'remove',
+          'polis-project',
+        ],
+      })
+      released = true
+      sockets.forEach(socket => socket.end())
+      const digested = await digest
+      expect(
+        digested.status,
+        digested.stdout + digested.stderr,
+      ).toBe(0)
+      expect(digested.stdout).not.toContain('polis-project')
+    } finally {
+      process.env.PATH = previousPath
+      delete process.env.PNYX_TEST_GIT_PROJECT
+      delete process.env.PNYX_TEST_GIT_SOCKET
+      sockets.forEach(socket => socket.destroy())
+      await new Promise<void>(resolve => gate.close(() => resolve()))
+    }
   },
 )
 
