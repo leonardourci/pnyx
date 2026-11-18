@@ -1652,6 +1652,7 @@ test(
           poleis: {
             'revision-first': { readers: [hydra.id] },
             'revision-next': { readers: [hydra.id] },
+            'revision-final': { readers: [hydra.id] },
           },
         }),
       ],
@@ -1663,7 +1664,7 @@ test(
         '--polis',
         'revision-first',
         '--read-poleis',
-        'revision-first,revision-next',
+        'revision-first,revision-next,revision-final',
       ],
     })
     const first = await hydra.owner({
@@ -1738,6 +1739,33 @@ test(
         'list',
       ],
     })).writable.preferences.text).toBe('fresh replacement')
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'revision-final',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'revision-final',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'revision-next',
+      ],
+    })
     const path = join(
       process.env.PNYX_HOME!,
       'owner',
@@ -1746,75 +1774,29 @@ test(
       'memory.jsonl',
     )
     const beforeCorruption = readFileSync(path)
+    const firstPath = join(
+      process.env.PNYX_HOME!,
+      'owner',
+      'poleis',
+      'revision-first',
+      'memory.jsonl',
+    )
+    const beforeFirst = readFileSync(firstPath)
 
     try {
       appendFileSync(
         path,
-        JSON.stringify({
-          v: 1,
-          seq: 9007199254740992,
-          at: '2026-01-01T00:00:00Z',
-          actor: 'web',
-          key: 'preferences',
-          before: 'fresh replacement',
-          after: 'Invalid local sequence',
-        }) + '\n' + JSON.stringify({
-          v: 1,
-          seq: 3,
-          at: '2026-01-01T00:00:00Z',
-          actor: 'web',
-          key: 'preferences',
-          before: 'fresh replacement',
-          after: null,
-          polisMove: {
-            polis: 'revision-first',
-            entry: {
-              v: 1,
-              seq: 0,
-              at: '2026-01-01T00:00:00Z',
-              actor: 'web',
-              key: 'preferences',
-              before: null,
-              after: 'Invalid imported sequence',
-            },
-          },
-        }) + '\n' + JSON.stringify({
-          v: 1,
-          seq: 3,
-          at: '2026-01-01T00:00:00Z',
-          actor: 'web',
-          key: 'preferences',
-          before: 'fresh replacement',
-          after: 'Invalid source rewrite',
-          polisMove: {
-            polis: 'revision-first',
-            entry: {
-              v: 1,
-              seq: 2,
-              at: '2026-01-01T00:00:00Z',
-              actor: 'web',
-              key: 'preferences',
-              before: 'revision-first',
-              after: 'Invalid destination rewrite',
-            },
-          },
-        }) + '\n' + JSON.stringify({
-          v: 1,
-          seq: 3,
-          at: '2026-01-01T00:00:00Z',
-          actor: 'web',
-          key: 'preferences',
-          before: 'fresh replacement',
-          after: 'First conflicting replacement',
-        }) + '\n' + JSON.stringify({
-          v: 1,
-          seq: 3,
-          at: '2026-01-01T00:00:00Z',
-          actor: 'web',
-          key: 'preferences',
-          before: 'fresh replacement',
-          after: 'Second conflicting replacement',
-        }) + '\n',
+        readFileSync(new URL(
+          './setup/fixtures/memory/corrupt-owner-moves.jsonl',
+          import.meta.url,
+        )),
+      )
+      appendFileSync(
+        firstPath,
+        readFileSync(new URL(
+          './setup/fixtures/memory/owner-move-dependent.jsonl',
+          import.meta.url,
+        )),
       )
       expect((await hydra.owner({
         args: [
@@ -1831,6 +1813,10 @@ test(
         ],
       })
       expect(JSON.stringify(combined.memory)).not.toContain('Invalid destination rewrite')
+      expect(JSON.stringify(combined.memory)).not.toContain('Rejected source-position import')
+      expect(JSON.stringify(combined.memory)).not.toContain('Rejected dependent-source import')
+      expect(JSON.stringify(combined.memory)).toContain('revision-final')
+      expect(JSON.stringify(combined.memory)).toContain('revision-first')
       expect((await hydra.ownerRefused({
         args: [
           'owner',
@@ -1842,10 +1828,50 @@ test(
           'Overwrite corrupt log',
         ],
       })).code).toBe('LOG_CORRUPT')
+      writeFileSync(
+        path,
+        beforeCorruption,
+      )
+      writeFileSync(
+        firstPath,
+        beforeFirst,
+      )
+      appendFileSync(
+        path,
+        readFileSync(new URL(
+          './setup/fixtures/memory/owner-move-gap.jsonl',
+          import.meta.url,
+        )),
+      )
+      const gap = await hydra.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })
+      expect(gap.writable.preferences.text).toBe('fresh replacement')
+      expect(JSON.stringify(gap.memory)).not.toContain('Rejected source-gap import')
+      expect(JSON.stringify(gap.memory)).toContain('revision-first')
+      expect((await hydra.ownerRefused({
+        args: [
+          'owner',
+          'memory',
+          'set',
+          '--key',
+          'preferences',
+          '--text',
+          'Overwrite gapped log',
+        ],
+      })).code).toBe('LOG_CORRUPT')
     } finally {
       writeFileSync(
         path,
         beforeCorruption,
+      )
+      writeFileSync(
+        firstPath,
+        beforeFirst,
       )
     }
   },

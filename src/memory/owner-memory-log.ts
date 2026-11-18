@@ -143,10 +143,99 @@ function ownerLogPoleis(): string[] {
   ]
 }
 
-export function ownerProjectMoves({ id }: { id: string }) {
-  return ownerLogPoleis().flatMap(polis => {
-    const log = readLogEntries({ polis })
+type OwnerEntries = ReturnType<typeof readLogEntries>
 
+function keepValidPrefix({ log }: { log: OwnerEntries }): void {
+  for (const [
+    index,
+    entry,
+  ] of log.entries.entries()) {
+    if (entry.seq !== index + 1 || log.entries[index + 1]?.seq === entry.seq) {
+      log.corrupt = true
+      log.entries.length = index
+
+      return
+    }
+  }
+}
+
+function readOwnerLogs(): Map<string, OwnerEntries> {
+  const logs = new Map<string, OwnerEntries>()
+  const entries = ownerLogPoleis().flatMap(polis => {
+    const log = readLogEntries({ polis })
+    logs.set(
+      polis,
+      log,
+    )
+
+    return log.entries
+  })
+  const moveSources = new Map<OwnerEntry, OwnerEntry>()
+
+  for (const source of entries) {
+    const move = source.polisMove
+
+    if (!move) {
+      continue
+    }
+
+    let destination = logs.get(move.polis)
+
+    if (!destination) {
+      destination = {
+        entries: [],
+        corrupt: false,
+      }
+      logs.set(
+        move.polis,
+        destination,
+      )
+    }
+
+    destination.entries.push(move.entry)
+    moveSources.set(
+      move.entry,
+      source,
+    )
+  }
+
+  for (const log of logs.values()) {
+    log.entries.sort((
+      left,
+      right,
+    ) => left.seq - right.seq)
+    keepValidPrefix({ log })
+  }
+
+  // Removing a rejected move can break a later source prefix in another polis.
+  let removed = true
+
+  while (removed) {
+    removed = false
+    const valid = new Set([...logs.values()].flatMap(log => log.entries))
+
+    for (const log of logs.values()) {
+      const kept = log.entries.filter(entry => {
+        const source = moveSources.get(entry)
+
+        return source === undefined || valid.has(source)
+      })
+
+      if (kept.length === log.entries.length) {
+        continue
+      }
+
+      log.entries = kept
+      keepValidPrefix({ log })
+      removed = true
+    }
+  }
+
+  return logs
+}
+
+export function ownerProjectMoves({ id }: { id: string }) {
+  return [...readOwnerLogs().values()].flatMap(log => {
     if (log.corrupt) {
       throw new HydraError({
         message: 'Owner memory has an unreadable line; inspect its log before reading project moves',
@@ -165,37 +254,8 @@ export function ownerProjectMoves({ id }: { id: string }) {
 }
 
 export function readOwnerEntries({ polis = 'shared' }: { polis?: string } = {}) {
-  const result = readLogEntries({ polis })
-
-  for (const source of ownerLogPoleis()) {
-    if (source === polis) {
-      continue
-    }
-
-    const log = readLogEntries({ polis: source })
-
-    for (const entry of log.entries) {
-      if (entry.polisMove?.polis === polis) {
-        result.entries.push(entry.polisMove.entry)
-      }
-    }
+  return readOwnerLogs().get(polis) ?? {
+    entries: [],
+    corrupt: false,
   }
-
-  result.entries.sort((
-    left,
-    right,
-  ) => left.seq - right.seq)
-
-  for (const [
-    index,
-    entry,
-  ] of result.entries.entries()) {
-    if (entry.seq !== index + 1 || result.entries[index + 1]?.seq === entry.seq) {
-      result.corrupt = true
-      result.entries.length = index
-      break
-    }
-  }
-
-  return result
 }
