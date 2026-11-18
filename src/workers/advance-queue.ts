@@ -1,5 +1,5 @@
 import { sameProjectPath } from '#projects/identity.ts'
-import { taskBranch } from '#projects/git.ts'
+import { createTaskBranch } from '#projects/git.ts'
 import { recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
@@ -617,8 +617,9 @@ export async function advanceQueues({
         continue
       }
 
-      const branch = await taskBranch({
+      const branch = await createTaskBranch({
         cwd: prepared.cwd,
+        start: prepared.tip,
         hydraName: state.config?.name || hydraId,
         task: next.id,
         title: next.title,
@@ -684,10 +685,7 @@ export async function advanceQueues({
           '-C',
           prepared.cwd,
           'switch',
-          '--no-track',
-          '-c',
           branch,
-          prepared.tip,
         ],
         timeout: GIT_TIMEOUT_MS,
       })

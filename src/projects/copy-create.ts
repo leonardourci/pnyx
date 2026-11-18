@@ -1,7 +1,7 @@
 import { mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { matchesProject } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, taskBranch } from './git.ts'
+import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
 import { checkout, copiesDir, freshSlot, liveCopy, recordedBranches, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
@@ -152,12 +152,13 @@ async function worktreeCopy({
     project: project.path,
   })
   const previous = card.copy?.state === 'active' ? card.copy : undefined
-  const branch = previous?.branch ?? await taskBranch({
+  const branch = previous?.branch ?? await createTaskBranch({
     cwd: project.path,
     hydraName: state.config?.name || hydraId,
     task: card.id,
     title: card.title,
     reserved: branches,
+    start,
   })
   await clearDefaultUpstreams({
     cwd: project.path,
@@ -185,11 +186,12 @@ async function worktreeCopy({
     })
   }
 
-  const exists = Boolean(previous?.branch) && await branchExists({
+  const exists = await branchExists({
     cwd: project.path,
     branch,
   })
-  const copyBase = exists ? previous?.base : base
+  const copyBase = previous?.base ?? base
+
   const made = ({ path }: { path: string }): TaskCopy => {
     const copy: TaskCopy = {
       path,

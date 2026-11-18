@@ -6,6 +6,7 @@ import type { HydraProject } from './model.ts'
 export const COPY_TIMEOUT_MS = 120_000
 
 const BRANCH_SLUG_LENGTH = 40
+const BRANCH_CREATE_ATTEMPTS = 100
 const FILLER_WORDS = new Set([
   'a',
   'an',
@@ -150,7 +151,8 @@ export async function taskBranch({
   const occupied = new Set([...existing].map(name => name.split('/').slice(
     0,
     2,
-  ).join('/')))
+  )
+    .join('/')))
   let branch = base
 
   for (let suffix = 2; occupied.has(branch); suffix++) {
@@ -158,6 +160,43 @@ export async function taskBranch({
   }
 
   return branch
+}
+
+export async function createTaskBranch({
+  start,
+  ...naming
+}: Parameters<typeof taskBranch>[0] & { start: string }): Promise<string> {
+  for (let attempt = 0; attempt < BRANCH_CREATE_ATTEMPTS; attempt++) {
+    const branch = await taskBranch(naming)
+    const created = await git({
+      cwd: naming.cwd,
+      args: [
+        'branch',
+        '--no-track',
+        branch,
+        start,
+      ],
+    })
+
+    if (created.ok) {
+      return branch
+    }
+
+    if (!await branchExists({
+      cwd: naming.cwd,
+      branch,
+    })) {
+      throw new HydraError({
+        code: 'COPY_FAILED',
+        message: `could not create task branch: ${created.err}`,
+      })
+    }
+  }
+
+  throw new HydraError({
+    code: 'COPY_FAILED',
+    message: 'task branch allocation kept colliding; try again',
+  })
 }
 
 export async function git({

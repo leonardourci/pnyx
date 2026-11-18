@@ -4,7 +4,9 @@ import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
-import { taskBranch } from '#projects/git.ts'
+import { createTaskBranch, taskBranch } from '#projects/git.ts'
+import { advanceQueues } from '#workers/advance-queue.ts'
+import { loadHydra } from '#app/store.ts'
 
 let pnyx: Pnyx
 const github = join(
@@ -225,6 +227,36 @@ test(
         'Add the cart',
       ],
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Next chart',
+        '--key',
+        'next',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'next',
+        '--brief',
+        'Draw the next chart',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'queue',
+        'next',
+        '--behind',
+        'cart',
+      ],
+    })
     await hydra.as({ session: worker }).run({
       args: [
         'task',
@@ -263,6 +295,78 @@ test(
         'main',
       ],
     })).toBe('init')
+    await pnyx.restart({
+      whileStopped: async () => {
+        git({
+          cwd: path,
+          args: [
+            'merge',
+            '--ff-only',
+            'hercules/add-cart',
+          ],
+        })
+        git({
+          cwd: path,
+          args: [
+            'push',
+            'origin',
+            'main',
+          ],
+        })
+        await advanceQueues({
+          hydraId: hydra.id,
+          state: loadHydra({ hydraId: hydra.id }).state,
+          active: () => !git({
+            cwd: path,
+            args: [
+              'branch',
+              '--list',
+              'hercules/next-chart',
+            ],
+          }),
+        })
+        expect(git({
+          cwd: path,
+          args: [
+            'branch',
+            '--list',
+            'hercules/next-chart',
+          ],
+        })).toContain('hercules/next-chart')
+        expect(git({
+          cwd: copy,
+          args: [
+            'branch',
+            '--show-current',
+          ],
+        })).toBe('hercules/add-cart')
+      },
+    })
+    await until({
+      what: 'queued task handoff on its readable branch',
+      check: async () => {
+        const { copy } = await hydra.owner({
+          args: [
+            'task',
+            'copy',
+            'next',
+          ],
+        })
+
+        return copy?.branch === 'hercules/next-chart-2'
+      },
+    })
+    expect(git({
+      cwd: copy,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('hercules/next-chart-2')
+    await until({
+      what: 'readable branch in delivered brief',
+      check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-2')),
+    })
   },
 )
 
@@ -1297,6 +1401,26 @@ test(
       title: 'Chart',
       reserved: ['poseidon/chart-3'],
     })).toBe('poseidon/chart-4')
+    const simultaneous = await Promise.all([
+      createTaskBranch({
+        cwd,
+        hydraName: 'Iris',
+        task: 'task-one',
+        title: 'Chart',
+        start: 'HEAD',
+      }),
+      createTaskBranch({
+        cwd,
+        hydraName: 'Iris',
+        task: 'task-two',
+        title: 'Chart',
+        start: 'HEAD',
+      }),
+    ])
+    expect(simultaneous.sort()).toEqual([
+      'iris/chart',
+      'iris/chart-2',
+    ])
     git({
       cwd,
       args: [
