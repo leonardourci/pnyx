@@ -11,7 +11,7 @@ export type DetailRow = NonNullable<QueryResultType<typeof queries.card.detail>>
 export type ReferenceRow = QueryResultType<typeof queries.cards.references>[number]
 export type MessageRow = NonNullable<QueryResultType<typeof queries.hydra.ownerMessage>>
 
-// Rows keep their identity while unchanged, so each card does too.
+// A fresh read can replace row objects without changing card data.
 const built = new WeakMap<object, Card>()
 
 // The server moves a list with items to its rows and keeps an empty one in the body, so a card tells empty from missing.
@@ -42,7 +42,13 @@ function inPosition<Row extends { position: number }>({ rows }: { rows: readonly
   ) => a.position - b.position)
 }
 
-function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
+function cardFromRow({
+  row,
+  previous,
+}: {
+  row: CardRow | DetailRow
+  previous?: Card
+}): Card {
   const cached = built.get(row)
 
   if (cached) {
@@ -105,12 +111,16 @@ function cardFromRow({ row }: { row: CardRow | DetailRow }): Card {
       })),
     }) : undefined,
   } as Card
+  const retained = previous ? kept({
+    previous,
+    next: card,
+  }) : card
   built.set(
     row,
-    card,
+    retained,
   )
 
-  return card
+  return retained
 }
 
 // A hidden task, for the chips, waits, prerequisites and answer leads that read it, once its reference row has synced.
@@ -227,7 +237,10 @@ export function hydraFromRows({
     ...opened,
   ].map(row => [
     row.id,
-    cardFromRow({ row }),
+    cardFromRow({
+      row,
+      previous: previous?.cards[row.id],
+    }),
   ]))
   const keys = Object.fromEntries([
     ...references,

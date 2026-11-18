@@ -5,6 +5,8 @@ import { beforeAll, expect, test } from 'vitest'
 import { localToken } from '#app/server-state.ts'
 import { zeroCookieName } from '#app/server-protocol.ts'
 import { queries } from '#store/zero-schema.ts'
+import type { QueryResultType } from '@rocicorp/zero'
+import type { HydraState } from '#app/model.ts'
 import { openPage, pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 import { readRows, zeroReady } from './setup/zero.ts'
 
@@ -610,6 +612,93 @@ test(
     ]) {
       expect(read.frames.some(frame => frame.includes(steering))).toBe(false)
     }
+  },
+)
+
+test(
+  'fresh page reads retain unchanged cards while publishing a changed task',
+  async () => {
+    type CardRow = QueryResultType<typeof queries.board.cards>[number]
+    type HydraRow = NonNullable<QueryResultType<typeof queries.hydra.one>>
+    const pageRowsModule: string = '#web-app/hydra-rows.ts'
+    const { hydraFromRows } = await import(pageRowsModule)
+    const hydra = await pnyx.hydra()
+
+    for (const key of [
+      'changed',
+      'retained',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          key,
+          '--title',
+          key,
+        ],
+      })
+    }
+
+    const url = `http://127.0.0.1:${pnyx.port()}/zero`
+    const cookie = `${zeroCookieName({ port: pnyx.port() })}=${localToken()}`
+    await zeroReady({
+      url: `${url}/`,
+      cookie,
+    })
+    const read = () => readRows<CardRow[]>({
+      url,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.board.cards({ hydraId: hydra.id })),
+    })
+    const before = await until({
+      what: 'both page cards replicate',
+      check: async () => {
+        const result = await read()
+
+        return result.rows.length === 2 && result.rows
+      },
+    })
+    const identity = await readRows<HydraRow>({
+      url,
+      cookie,
+      query: ({ zero }) => zero.materialize(queries.hydra.one({ hydraId: hydra.id })),
+    })
+    const previous: HydraState = hydraFromRows({
+      hydra: identity.rows,
+      cards: before,
+      opened: [],
+      references: [],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'changed',
+        '--title',
+        'Changed title',
+      ],
+    })
+    const after = await until({
+      what: 'the renamed card replicates',
+      check: async () => {
+        const result = await read()
+
+        return result.rows.some(row => row.body?.data.title === 'Changed title') && result.rows
+      },
+    })
+    const next: HydraState = hydraFromRows({
+      hydra: identity.rows,
+      cards: after,
+      opened: [],
+      references: [],
+      previous,
+    })
+    const changed = next.keys.changed!, retained = next.keys.retained!
+    expect(after.find(row => row.id === retained)).not.toBe(before.find(row => row.id === retained))
+    expect(next.cards[retained]).toBe(previous.cards[retained])
+    expect(next.cards[changed]).not.toBe(previous.cards[changed])
+    expect(next.cards[changed]!.title).toBe('Changed title')
   },
 )
 
