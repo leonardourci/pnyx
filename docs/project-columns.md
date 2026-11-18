@@ -245,3 +245,7 @@ The reported 1,367ms drag frame was the gesture’s duration: the raw `worstFram
 The normal-renderer open-card trace reproduced an 80.8ms cold task and a 46.9ms warm task. CPU samples attribute much of the cold task to synchronous React mount/commit, with TanStack scroll-limit reads and Motion/layout measurements. The largest individual app paths were small portions of that task; no safe isolated rewrite was identified. These diagnostic traces include profiler overhead and do not establish an interaction-speed improvement. The strict production drag/scroll budget remains 50ms. The final combined proof and focused stress recheck are still required before deslop and CI.
 
 Drag pickup captures the visible card position and its grab point together, so a card lifted during a layout animation stays under the pointer. The existing wide-card journey starts from a translated card and checks its anchoring through compacting and Shift-hover.
+
+Folding also keeps the selected Hydra anchored while wheel packets continue arriving. The axis ignores the tail of that gesture until the width and wheel input settle, using the same idle boundary as snapping. A fresh gesture can then scroll normally. The regression interleaves twelve wheel packets with Fold all, checks the anchor beyond the delayed snap and sends a new gesture.
+
+The owner accepted the remaining open-card latency as a follow-up after merge. The interleaved-fold recheck still gates deslop and CI.
