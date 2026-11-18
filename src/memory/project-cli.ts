@@ -98,6 +98,14 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
       ...project,
       hydraId,
     })
+    const change = meta({ values })
+
+    if (change.ifRevision !== undefined && change.ifRevision !== view.revision) {
+      throw new HydraError({
+        message: 'Project memory changed. Read it again before confirming the learning.',
+        code: 'REVISION_CONFLICT',
+      })
+    }
 
     return writeProjectMemory({
       path: project.path,
@@ -108,7 +116,10 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
         value: values.text as string | undefined,
         what: '--text <existing learning line>',
       }),
-      meta: meta({ values }),
+      meta: {
+        ...change,
+        ifRevision: view.revision,
+      },
     })
   }
 

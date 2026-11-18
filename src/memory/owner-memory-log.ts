@@ -95,7 +95,7 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
     if (typeof entry?.key !== 'string' || !Number.isSafeInteger(entry.seq) || entry.seq < 1
       || (entry.after !== null && typeof entry.after !== 'string')) {
       corrupt = true
-      continue
+      break
     }
 
     if (entry.projectMove && (entry.key !== 'learnings' || typeof entry.projectMove.project !== 'string'
@@ -110,7 +110,7 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
       || !Number.isSafeInteger(entry.polisMove.entry.seq) || entry.polisMove.entry.seq < 1
       || entry.polisMove.entry.polisMove || entry.polisMove.entry.projectMove)) {
       corrupt = true
-      continue
+      break
     }
 
     entries.push(entry)

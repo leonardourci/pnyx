@@ -53,7 +53,7 @@ Hydra config uses `polis` for its home and `readPoleis` for its read list. The d
 
 Pnyx makes up to three attempts to assemble memory when access, home or project attachments change during the read. If all attempts see changes, the command returns `CONFLICT` without the assembled memory.
 
-Native cross-Hydra mutations and worker control require access to the target Hydra's home polis and every polis it may read, through the same two locks. Missing access returns `NOT_FOUND`, without identifying the target's memory. Task reads, owner actions and actions on the caller's own Hydra keep their existing rules. Admitted worker starts receive the target Hydra's memory under the worker's identity; direct CLI memory calls remain bound to the caller's native Hydra.
+To change another Hydra or control its workers, agents need read access to its home polis and every polis it can read. Missing access returns `NOT_FOUND`. Workers start with the target Hydra's memory. Direct CLI memory commands use the caller's native Hydra.
 
 Manage polis names and readers with `settings set --json '{"poleis":{"shared":{"readers":["*"]},"work":{"readers":["hydra-work"]},"personal":{"readers":[]}}}'`. Each named polis updates independently; use `null` to remove a polis. Omitted poleis stay unchanged, so a Hydra can edit its visible poleis without deleting hidden ones. `shared` is reserved and cannot be removed. `*` allows every Hydra through the polis lock; the Hydra's reads list must still allow it. Read the current settings revision before editing and pass `--if-revision`.
 

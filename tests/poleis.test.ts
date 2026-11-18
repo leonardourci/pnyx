@@ -415,6 +415,29 @@ test(
         'memory',
         'set',
         '--key',
+        'preferences',
+        '--text',
+        'Corrected supernova preference',
+      ],
+    })
+    expect(JSON.stringify(await personal.owner({
+      args: [
+        'oracle',
+        'nebula',
+      ],
+    }))).not.toContain('Secret [nebula]')
+    expect(JSON.stringify(await personal.owner({
+      args: [
+        'oracle',
+        'supernova',
+      ],
+    }))).toContain('Corrected [supernova] preference')
+    await personal.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
         'learnings',
         '--text',
         'Private comet learning',
@@ -537,7 +560,7 @@ test(
         'memory',
         'list',
       ],
-    }))).toContain('Secret nebula preference')
+    }))).toContain('Corrected supernova preference')
     const selfGrant = await pnyxAxi({
       args: [
         'hydra',
@@ -840,7 +863,7 @@ test(
       },
     })).stdout
     expect(digest).toContain('Work quasar learning')
-    expect(digest).not.toContain('Secret nebula')
+    expect(digest).not.toContain('Corrected supernova preference')
     await work.owner({
       args: [
         'owner',
@@ -917,7 +940,7 @@ test(
         'memory',
         'list',
       ],
-    }))).not.toContain('Secret nebula')
+    }))).not.toContain('Corrected supernova preference')
     await work.owner({
       args: [
         'hydra',
@@ -1115,13 +1138,14 @@ test(
         path,
       ],
     }))).toContain('Project pulsar learning')
-    expect(JSON.stringify(await allowed.owner({
+    const initialProjectMemory = await allowed.owner({
       args: [
         'project',
         'show',
         'polis-project',
       ],
-    }))).toContain('Project pulsar learning')
+    })
+    expect(JSON.stringify(initialProjectMemory)).toContain('Project pulsar learning')
     await allowed.owner({
       args: [
         'project',
@@ -1137,6 +1161,19 @@ test(
         'test hidden name collision',
       ],
     })
+    expect((await allowed.ownerRefused({
+      args: [
+        'project',
+        'memory',
+        'confirm',
+        '--project',
+        path,
+        '--text',
+        'Project pulsar learning',
+        '--if-revision',
+        String(initialProjectMemory.revision),
+      ],
+    })).code).toBe('REVISION_CONFLICT')
     await allowed.owner({
       args: [
         'owner',
@@ -2588,6 +2625,30 @@ test(
       writeFileSync(
         firstPath,
         beforeFirst,
+      )
+      appendFileSync(
+        path,
+        '{"seq":3,"key":"preferences","after":42}\n',
+      )
+      appendFileSync(
+        path,
+        readFileSync(new URL(
+          './setup/fixtures/memory/owner-move-valid-source.jsonl',
+          import.meta.url,
+        )),
+      )
+      const invalidTail = await hydra.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })
+      expect(invalidTail.writable.preferences.text).toBe('fresh replacement')
+      expect(JSON.stringify(invalidTail.memory)).not.toContain('Rejected destination-conflict import')
+      writeFileSync(
+        path,
+        beforeCorruption,
       )
       appendFileSync(
         path,
