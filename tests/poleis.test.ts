@@ -1809,6 +1809,25 @@ test(
         })
         expect(beforeDetach.events[0].data.block).toContain('Revoked project review learning')
         expect(beforeDetach.events[0].data.block).toContain('Owner review anchor')
+        const readableReview = await pnyxAxi({
+          args: [
+            'history',
+            '--kind',
+            'hydra.review',
+            '--full',
+            '--hydra',
+            allowed.id,
+          ],
+          env: {
+            ...process.env,
+            PNYX_ACTOR: 'hydra',
+            PNYX_HYDRA: allowed.id,
+            PNYX_TASK: undefined,
+          },
+        })
+        expect(readableReview.status).toBe(0)
+        expect(readableReview.stdout).toContain('Revoked project review learning')
+
         expect(JSON.stringify(await allowed.owner({
           args: [
             'oracle',
@@ -1848,6 +1867,33 @@ test(
         expect(afterDetach.events[0].data.block).toContain('Owner review anchor')
         expect(afterDetach.events[0].data.block).not.toContain('Revoked project review learning')
         expect(afterDetach.events[0].data.block).not.toContain('polis-project')
+        const agentHistory = await pnyxAxi({
+          args: [
+            'history',
+            '--kind',
+            'hydra.review',
+            '--full',
+            '--hydra',
+            allowed.id,
+          ],
+          env: {
+            ...process.env,
+            PNYX_ACTOR: 'hydra',
+            PNYX_HYDRA: allowed.id,
+            PNYX_TASK: undefined,
+          },
+        })
+        expect(agentHistory.status).toBe(0)
+        expect(agentHistory.stdout).not.toContain('Revoked project review learning')
+        expect(JSON.stringify(await allowed.owner({
+          args: [
+            'history',
+            '--kind',
+            'hydra.review',
+            '--full',
+          ],
+        }))).toContain('Revoked project review learning')
+
         expect(JSON.stringify(await allowed.owner({
           args: [
             'oracle',
@@ -2850,14 +2896,29 @@ test(
           'Overwrite rejected source move',
         ],
       })).code).toBe('LOG_CORRUPT')
-      writeFileSync(path, beforeCorruption)
-      writeFileSync(firstPath, beforeFirst)
-      appendFileSync(path, [
-        '{"v":1,"seq":4,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"Earlier logical entry","after":"Out-of-order replacement"}',
-        '{"v":1,"seq":3,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"fresh replacement","after":"Earlier logical entry"}',
-        '',
-      ].join('\n'))
-      const outOfOrder = await hydra.owner({ args: ['owner', 'memory', 'list'] })
+      writeFileSync(
+        path,
+        beforeCorruption,
+      )
+      writeFileSync(
+        firstPath,
+        beforeFirst,
+      )
+      appendFileSync(
+        path,
+        [
+          '{"v":1,"seq":4,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"Earlier logical entry","after":"Out-of-order replacement"}',
+          '{"v":1,"seq":3,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"fresh replacement","after":"Earlier logical entry"}',
+          '',
+        ].join('\n'),
+      )
+      const outOfOrder = await hydra.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })
       expect(outOfOrder.writable.preferences.text).toBe('fresh replacement')
       expect((await hydra.ownerRefused({
         args: [
