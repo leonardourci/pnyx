@@ -1,5 +1,5 @@
 import { sharesWithMore } from '#memory/access-changes.ts'
-import { checkMemoryApproval, canRead, findReadableProject, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
+import { canRead, findReadableProject, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
@@ -130,26 +130,34 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       '--if-revision',
       String(read.revision),
     ]
-    const proposal = memoryPermission({
-      hydraId,
-      name: 'project',
-      args: proposalArgs,
-      propose: Boolean(values.propose),
-      actor: m.actor,
-      widening: sharesWithMore({
-        source,
-        destination: polis,
-        before: settings,
-        hydras: memoryHydras(),
-      }),
-    })
 
-    if (proposal) {
-      return proposal
+    if (values.propose) {
+      return memoryPermission({
+        hydraId,
+        name: 'project',
+        args: proposalArgs,
+        propose: true,
+        actor: m.actor,
+        widening: false,
+      })!
     }
 
     const saved = saveSettings({
-      beforeSave: checkMemoryApproval,
+      beforeSave: () => {
+        memoryPermission({
+          hydraId,
+          name: 'project',
+          args: proposalArgs,
+          propose: false,
+          actor: m.actor,
+          widening: sharesWithMore({
+            source,
+            destination: polis,
+            before: settings,
+            hydras: memoryHydras(),
+          }),
+        })
+      },
       hydraId,
       patch: {
         projectPoleis: {
