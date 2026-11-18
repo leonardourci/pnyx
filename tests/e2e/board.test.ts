@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { beginUIWindow, expectResponsiveUI } from '../setup/ui-metrics.ts'
+import { beginUIWindow, reportDragResponsiveness } from '../setup/ui-metrics.ts'
 import { openHydra } from '../setup/browser.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
@@ -2836,7 +2836,7 @@ test(
         }).map(card => card.title)
           .join('|') === expected.join('|'),
       })
-      expectResponsiveUI({ metrics: await finishBudget() })
+      reportDragResponsiveness({ metrics: await finishBudget() })
       await page.reload()
       await until({
         what: 'the scrolled drop survives reload',

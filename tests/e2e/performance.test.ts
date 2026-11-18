@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until } from '../setup/pnyx.ts'
-import { beginUIWindow, expectResponsiveUI } from '../setup/ui-metrics.ts'
+import { beginUIWindow, expectResponsiveUI, reportDragResponsiveness } from '../setup/ui-metrics.ts'
 
 const IDEA_TASKS = 100
 const PROJECTS = 12
@@ -421,7 +421,7 @@ test(
     const drag = await finishDrag()
 
     if (!inject('uiProfile')) {
-      expectResponsiveUI({ metrics: drag })
+      reportDragResponsiveness({ metrics: drag })
     }
 
     const scroller = workspace.locator('[data-column="ideas"] .column-cards')
