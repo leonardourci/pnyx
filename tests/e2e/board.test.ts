@@ -29,6 +29,17 @@ test(
       what: 'Hydra tab title',
       check: async () => await page.title() === 'Poseidon · Pnyx',
     })
+    const needsYou = await hydra.column({ role: 'needs_you' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Review the export',
+        '--column',
+        needsYou,
+      ],
+    })
 
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })
@@ -69,7 +80,7 @@ test(
     ).focus()
     await page.keyboard.press('Enter')
     await until({
-      what: 'focused task tab title',
+      what: 'focused task tab title without an attention count',
       check: async () => await page.title() === 'Ship the export · Poseidon · Pnyx',
     })
     const longTitle = '0123456789 0123456789 0123456789 0123456789 0123456789 12345 extra'

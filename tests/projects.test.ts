@@ -1725,6 +1725,38 @@ test(
         'shop',
       ],
     })
+    git({
+      cwd,
+      args: [
+        'remote',
+        'add',
+        'unavailable',
+        join(cwd, 'missing-remote.git'),
+      ],
+    })
+    expect(await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'chart',
+      ],
+    })).toMatchObject({ code: 'COPY_FAILED' })
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--list',
+        'poseidon-2/chart-2',
+      ],
+    })).toBe('')
+    git({
+      cwd,
+      args: [
+        'remote',
+        'remove',
+        'unavailable',
+      ],
+    })
     const started = await hydra.owner({
       args: [
         'task',

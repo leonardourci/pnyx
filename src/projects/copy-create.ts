@@ -248,11 +248,16 @@ async function worktreeCopy({
         exists,
       })
 
-      if (checkedOut.ok) {
-        allocated = true
-
-        return made({ path })
+      if (!checkedOut.ok) {
+        throw new HydraError({
+          code: 'COPY_FAILED',
+          message: `git could not switch the task's copy: ${checkedOut.err}`,
+        })
       }
+
+      allocated = true
+
+      return made({ path })
     } finally {
       if (!allocated) {
         unclaim({ path })

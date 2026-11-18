@@ -231,8 +231,12 @@ function assertUnshared({
     hydraId,
     state,
     session,
-  }).some(other => roots.get(other.agent.cwd!) === root)) {
-    throw new Error('Another worker uses this folder')
+  }).some(other => {
+    const cwd = other.agent.cwd
+
+    return cwd && (!roots.has(cwd) || roots.get(cwd) === root)
+  })) {
+    throw new Error('Another worker uses this folder or its checkout could not be checked')
   }
 }
 
@@ -431,6 +435,7 @@ async function restoreCheckout({
 
   const args = previousBranch ? [
     'switch',
+    '--no-guess',
     previousBranch,
   ] : [
     'switch',
@@ -777,6 +782,7 @@ export async function advanceQueues({
       }
 
       let recorded = false
+      let handoffError: unknown
 
       try {
         await git({
@@ -858,15 +864,26 @@ export async function advanceQueues({
             }
           },
         }))
+      } catch (error) {
+        handoffError = error
+        throw error
       } finally {
         if (!recorded) {
-          await restoreCheckout({
-            cwd: prepared.cwd,
-            branch,
-            tip: prepared.tip,
-            previousBranch: prepared.previousBranch,
-            previousHead: prepared.head,
-          })
+          try {
+            await restoreCheckout({
+              cwd: prepared.cwd,
+              branch,
+              tip: prepared.tip,
+              previousBranch: prepared.previousBranch,
+              previousHead: prepared.head,
+            })
+          } catch (restoreError) {
+            if (handoffError instanceof Error && restoreError instanceof Error) {
+              throw new Error(`${handoffError.message}\n${restoreError.message}`, { cause: handoffError })
+            }
+
+            throw restoreError
+          }
         }
       }
     } catch (error) {
@@ -875,7 +892,7 @@ export async function advanceQueues({
           hydraId,
           session: id,
           task: current.id,
-          reason: (error as Error).message,
+          reason: error instanceof Error ? error.message : String(error),
         })
       }
     }
