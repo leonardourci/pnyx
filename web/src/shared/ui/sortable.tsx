@@ -68,6 +68,10 @@ export interface SortItem {
     width: number
     height: number
   }
+  origin?: {
+    left: number
+    top: number
+  }
   compactSize?: {
     width: number
     height: number
@@ -789,6 +793,10 @@ export function SortableWorkspace({
         '--text-code': styles?.getPropertyValue('--text-code'),
       } as CSSProperties,
       size,
+      origin: box ? {
+        left: box.left,
+        top: box.top,
+      } : undefined,
       compactSize,
       column: node?.closest<HTMLElement>('.project-column')?.dataset.column,
     })
@@ -1059,6 +1067,8 @@ export function SortableWorkspace({
             transition={dragTransition}
             modifiers={[liftedPosition]}
             style={{
+              left: active?.origin?.left,
+              top: active?.origin?.top,
               pointerEvents: 'none',
               width: active?.kind === 'task' ? active.size?.width : undefined,
               height: active?.kind === 'task' ? active.size?.height : undefined,

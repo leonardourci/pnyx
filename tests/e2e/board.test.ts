@@ -3372,6 +3372,9 @@ test(
       const wide = await hydra.task({ key: 'wide' })
       const card = page.locator(`[data-hydra-workspace="${hydra.id}"] .card[data-task="${wide.id}"]`)
       await card.hover()
+      await card.evaluate(({ style }) => {
+        style.transform = 'translateX(24px)'
+      })
       const box = await card.boundingBox()
       expect(box!.width).toBeGreaterThan(900)
       await page.mouse.move(
@@ -3530,7 +3533,7 @@ test(
       await card.hover()
       await until({
         what: 'three closed cards settle into standard cells',
-        check: async () => Math.abs((await card.boundingBox())!.width - 303.333) < 0.05,
+        check: async () => Math.abs((await card.boundingBox())!.width - 303.333) < 0.005,
       })
       const standard = await card.boundingBox()
       expect(standard!.width).toBeCloseTo(
