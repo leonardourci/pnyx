@@ -1,5 +1,7 @@
+import { requireHydraCapability } from '#memory/command-access.ts'
+import { runForClient, requestEnv, requestCwd } from '#app/request-context.ts'
 import { readMemoryContext } from '#memory/context.ts'
-import { memoryCaller, readableProjects } from '#memory/poleis.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
 import { projectIdentity } from '#projects/sources.ts'
@@ -110,66 +112,79 @@ export async function taskPrompt({
 }): Promise<string> {
   return readMemoryContext({
     read: async () => {
-      const instructions = prompt ?? workerPrompt({
-        hydraId,
-        id: card.id,
-        title: card.title,
-      })
-      const ownerNotes = ownerMemory({ hydraId }).workers?.text
-      const state = loadHydra({ hydraId }).state
-      const attachedProject = (await readableProjects({
-        state,
-        hydraId,
-      })).find(project => !project.detached
+      requireHydraCapability({ hydraId })
+
+      return runForClient({
+        identity: {
+          ...requestEnv(),
+          PNYX_ACTOR: `worker:${card.id}`,
+          PNYX_HYDRA: hydraId,
+          PNYX_TASK: card.id,
+        },
+        cwd: requestCwd(),
+        run: async () => {
+          const instructions = prompt ?? workerPrompt({
+            hydraId,
+            id: card.id,
+            title: card.title,
+          })
+          const ownerNotes = ownerMemory({ hydraId }).workers?.text
+          const state = loadHydra({ hydraId }).state
+          const attachedProject = (await readableProjects({
+            state,
+            hydraId,
+          })).find(project => !project.detached
         && matchesProject({
           project,
           ref: card.project,
         }))
-      const [
-        identity,
-        project,
-      ] = await Promise.all([
-        attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
-        projectWorkerContext({
-          hydraId,
-          state,
-          project: card.project,
-        }),
-      ])
-      const projectNotes = identity ? readProjectMemory({
-        ...identity,
-        hydraId,
-      }).documents.workers ?? '' : ''
+          const [
+            identity,
+            project,
+          ] = await Promise.all([
+            attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
+            projectWorkerContext({
+              hydraId,
+              state,
+              project: card.project,
+            }),
+          ])
+          const projectNotes = identity ? readProjectMemory({
+            ...identity,
+            hydraId,
+          }).documents.workers ?? '' : ''
 
-      const header = workerHeader({
-        hydraId,
-        id: card.id,
-        ownerNotes,
-        hydraNotes: memoryCaller({ hydraId }) ? state.hydraMemory?.workers?.text : undefined,
-        projectNotes,
-        stops: taskStops({
-          state,
-          hydraId,
-          card,
-        }),
+          const header = workerHeader({
+            hydraId,
+            id: card.id,
+            ownerNotes,
+            hydraNotes: state.hydraMemory?.workers?.text,
+            projectNotes,
+            stops: taskStops({
+              state,
+              hydraId,
+              card,
+            }),
+          })
+
+          let progress: string | undefined
+
+          if (replacing) {
+            progress = replacingNote({
+              card,
+              replacing,
+            })
+          }
+
+          return [
+            header,
+            project,
+            taskInstructions({ card }),
+            instructions,
+            progress,
+          ].filter(Boolean).join('\n\n')
+        },
       })
-
-      let progress: string | undefined
-
-      if (replacing) {
-        progress = replacingNote({
-          card,
-          replacing,
-        })
-      }
-
-      return [
-        header,
-        project,
-        taskInstructions({ card }),
-        instructions,
-        progress,
-      ].filter(Boolean).join('\n\n')
     },
   })
 }
