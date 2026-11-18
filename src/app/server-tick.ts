@@ -14,7 +14,6 @@ import { hideDone } from '#tasks/retention.ts'
 import { doneDeadline } from '#tasks/retention-rules.ts'
 import { advanceQueues } from '#workers/advance-queue.ts'
 import { steeringToFollow } from '#workers/inbox-follow-up.ts'
-import { QUEUE_POLL_MS } from '#workers/queue.ts'
 import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
@@ -35,6 +34,7 @@ export function createServerTick({
   closed,
   pump,
   followDelay,
+  queueDelay,
   reminderScheduler,
   runWorker,
   triedResends,
@@ -49,6 +49,7 @@ export function createServerTick({
   closed(): boolean
   pump(): void
   followDelay: number
+  queueDelay: number
   reminderScheduler: ReminderScheduler
   runWorker: ServerWorkers['runWorker']
   triedResends: ServerWorkers['triedResends']
@@ -110,7 +111,7 @@ export function createServerTick({
         })
         pump()
 
-        if (!queueRun && Date.now() - queueCheckedAt >= QUEUE_POLL_MS) {
+        if (!queueRun && Date.now() - queueCheckedAt >= queueDelay) {
           queueCheckedAt = Date.now()
           queueRun = (async () => {
             try {
@@ -305,7 +306,7 @@ export function createServerTick({
             hours: readSettings().settings.doneAfterHours,
           }),
           ...(!queueRun && (queueNeedsRetry || Object.values(state().cards).some(c => c.queue))
-            ? [queueCheckedAt + QUEUE_POLL_MS] : []),
+            ? [queueCheckedAt + queueDelay] : []),
         ]
           .filter((at): at is number => at !== undefined)
 
