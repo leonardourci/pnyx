@@ -251,11 +251,13 @@ export function currentState({ card }: { card: Card }): {
       return []
     }
 
-    return [{
-      text: `[${link.title ?? 'Pull request'}](${link.url}) is ready for review.`,
-      at,
-      source: 'review' as const,
-    }]
+    return [
+      {
+        text: `[${link.title ?? 'Pull request'}](${link.url}) is ready for review.`,
+        at,
+        source: 'review' as const,
+      },
+    ]
   })
   const said = [
     ...reviewUpdates,
