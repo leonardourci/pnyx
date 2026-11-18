@@ -706,10 +706,11 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
       check: async () => (await hydra.owner({
         args: [
           'task',
-          'copy',
+          'show',
           'bystander',
+          '--full',
         ],
-      })).copy?.state === 'removed',
+      })).task.copy?.state === 'removed',
     })
   },
   RESTART_FLOW_TIMEOUT_MS,
@@ -2981,6 +2982,33 @@ throw new Error('fixture allocation refusal')
         'shop',
       ],
     })
+    const other = await createProject({
+      hydra,
+      landing: 'branch',
+      name: 'other',
+    })
+    const foreignSlot = join(
+      orphan,
+      '..',
+      'shop-0',
+    )
+    git({
+      cwd: other,
+      args: [
+        'worktree',
+        'add',
+        '--detach',
+        foreignSlot,
+        'main',
+      ],
+    })
+    writeFileSync(
+      join(
+        foreignSlot,
+        'foreign.txt',
+      ),
+      'another project’s work',
+    )
     const next = await hydra.owner({
       args: [
         'task',
@@ -3003,6 +3031,14 @@ throw new Error('fixture allocation refusal')
         '--full',
       ],
     })
+    expect(JSON.stringify(dirtyMessages.messages)).not.toContain(foreignSlot)
+    expect(readFileSync(
+      join(
+        foreignSlot,
+        'foreign.txt',
+      ),
+      'utf8',
+    )).toBe('another project’s work')
     expect(dirtyMessages.messages).toEqual(expect.any(Array))
     expect(dirtyMessages.messages.find((event: { data: { text: string } }) => event.data.text.includes(orphan) && event.data.text.includes('uncommitted'))).toBeDefined()
     git({
