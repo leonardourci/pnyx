@@ -292,6 +292,10 @@ export async function startPnyx({
       await start()
     },
     start,
+    stop: async () => {
+      await server?.close()
+      server = undefined
+    },
     // A Hydra of its own, created through the CLI and served once the server mounts it.
     // Serves a Hydra whose folder the test made itself, such as one with a legacy events.jsonl; it refuses when the Hydra cannot load.
     open: ({ id }: { id: string }) => server!.open({ id }),

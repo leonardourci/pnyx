@@ -1,6 +1,6 @@
 import workerThreads from 'node:worker_threads'
 import { syncBuiltinESMExports } from 'node:module'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
@@ -2178,4 +2178,414 @@ test(
       ],
     })).toBe('poseidon-2/shared-name-2')
   },
+)
+
+test(
+  'a server killed after handoff checkout restores the recorded source assignment on restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Iris',
+      ],
+    })
+    const project = await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Source',
+        '--key',
+        'source',
+        '--project',
+        'shop',
+      ],
+    })
+    const started = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'source',
+      ],
+    })
+    const cwd = started.agent.folder as string
+    await hydra.agent({ cwd })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Target',
+        '--key',
+        'target',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'target',
+        '--brief',
+        'Prepare target',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Gate',
+        '--key',
+        'gate',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'depend',
+        'target',
+        '--on',
+        'gate',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'queue',
+        'target',
+        '--behind',
+        'source',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'source',
+        'done',
+      ],
+    })
+    await pnyx.stop()
+    const hooks = join(
+      project,
+      'crash-hooks',
+    )
+    const marker = join(
+      project,
+      'crashed',
+    )
+    mkdirSync(hooks)
+    writeFileSync(
+      join(
+        hooks,
+        'post-checkout',
+      ),
+      `#!${process.execPath}
+const { execFileSync } = require('node:child_process')
+const { writeFileSync } = require('node:fs')
+const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
+if (branch === 'iris/target') {
+  execFileSync(process.execPath, ${JSON.stringify([
+    join(
+      import.meta.dirname,
+      '..',
+      'dist',
+      'cli',
+      'pnyx-axi.js',
+    ),
+    'task',
+    'depend',
+    'target',
+    '--on',
+    'gate',
+    '--hydra',
+  ])}.concat(${JSON.stringify(hydra.id)}))
+  writeFileSync(${JSON.stringify(marker)}, branch)
+  process.kill(Number(process.env.PNYX_HANDOFF_CRASH_PID), 'SIGKILL')
+}
+`,
+      { mode: 0o700 },
+    )
+    git({
+      cwd: project,
+      args: [
+        'config',
+        'core.hooksPath',
+        hooks,
+      ],
+    })
+    let ready = false
+    let ended = false
+    let errors = ''
+
+    const launch = ({ afterCommit }: { afterCommit: boolean }) => {
+      ready = false
+      ended = false
+      errors = ''
+      const child = spawn(
+        process.execPath,
+        [
+          '--conditions=source',
+          join(
+            import.meta.dirname,
+            'setup',
+            'fixtures',
+            'handoff-server.ts',
+          ),
+        ],
+        {
+          env: {
+            ...process.env,
+            PNYX_CRASH_HYDRA: hydra.id,
+            PNYX_CRASH_AFTER_COMMIT: afterCommit ? cwd : '',
+          },
+          stdio: [
+            'ignore',
+            'pipe',
+            'pipe',
+            'ipc',
+          ],
+        },
+      )
+      child.on(
+        'message',
+        message => ready = message === 'ready',
+      )
+      child.on(
+        'exit',
+        () => ended = true,
+      )
+      child.stderr!.on(
+        'data',
+        chunk => errors += String(chunk),
+      )
+
+      return child
+    }
+
+    let child = launch({ afterCommit: false })
+
+    try {
+      await until({
+        what: 'scratch child server ready',
+        check: () => {
+          if (ended) {
+            throw new Error(errors)
+          }
+
+          return ready
+        },
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'undepend',
+          'target',
+          '--on',
+          'gate',
+        ],
+      })
+      await until({
+        what: 'checkout hook kills the server before handoff commit',
+        timeoutMs: 45_000,
+        check: () => ended,
+      })
+      expect(readFileSync(
+        marker,
+        'utf8',
+      )).toBe('iris/target')
+      expect(git({
+        cwd,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      })).toBe('iris/target')
+      const kept = join(
+        cwd,
+        'keep.txt',
+      )
+      writeFileSync(
+        kept,
+        'unfinished work',
+      )
+      await pnyx.start()
+      await hydra.task({ key: 'source' })
+      expect(readFileSync(
+        kept,
+        'utf8',
+      )).toBe('unfinished work')
+      expect(git({
+        cwd,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      })).toBe('iris/target')
+      rmSync(kept)
+      await pnyx.restart()
+      const source = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'source',
+          '--full',
+        ],
+      })).task
+      const target = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'target',
+          '--full',
+        ],
+      })).task
+      expect(source.sessionIds).toHaveLength(1)
+      expect(target.sessionIds ?? []).toEqual([])
+      expect(git({
+        cwd,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      })).toBe('iris/source')
+      expect(git({
+        cwd,
+        args: [
+          'branch',
+          '--list',
+          'iris/target',
+        ],
+      })).toContain('iris/target')
+      await pnyx.stop()
+      child = launch({ afterCommit: true })
+      await until({
+        what: 'second scratch server ready',
+        check: () => ready,
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'undepend',
+          'target',
+          '--on',
+          'gate',
+        ],
+      })
+      await until({
+        what: 'server killed after durable handoff commit',
+        timeoutMs: 45_000,
+        check: () => ended,
+      })
+      await pnyx.start()
+      const committedTarget = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'target',
+          '--full',
+        ],
+      })).task
+      const committedSource = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'source',
+          '--full',
+        ],
+      })).task
+      expect(committedTarget.sessionIds).toEqual(source.sessionIds)
+      expect(committedSource.sessionIds ?? []).toEqual([])
+      expect(git({
+        cwd,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      })).toBe('iris/target-2')
+      await until({
+        what: 'recovered target receives its committed brief',
+        check: async () => (await hydra.agent({ cwd })).received.some(text => text.includes('on fresh branch iris/target-2')),
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Final',
+          '--key',
+          'final',
+          '--project',
+          'shop',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'brief',
+          'final',
+          '--brief',
+          'Continue after recovery',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'queue',
+          'final',
+          '--behind',
+          'target',
+        ],
+      })
+      await hydra.as({ session: await hydra.agent({ cwd }) }).run({
+        args: [
+          'task',
+          'status',
+          'target',
+          'done',
+        ],
+      })
+      await pnyx.restart()
+      await until({
+        what: 'worker advances again after committed intent recovery',
+        check: async () => (await hydra.owner({
+          args: [
+            'task',
+            'copy',
+            'final',
+          ],
+        })).copy?.branch === 'iris/final',
+      })
+    } finally {
+      if (!ended) {
+        child.kill('SIGKILL')
+      }
+
+      git({
+        cwd: project,
+        args: [
+          'config',
+          '--unset',
+          'core.hooksPath',
+        ],
+      })
+
+      if (!ended) {
+        await until({
+          what: 'child server exits',
+          check: () => ended,
+        })
+      }
+    }
+  },
+  120_000,
 )
