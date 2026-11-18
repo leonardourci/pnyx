@@ -27,6 +27,14 @@ Raising your own, a worker's or a candidate's permission level still needs the o
 
 Read “Since your last turn” notes for context only. Pnyx already routed the owner answer, routine helper outcome or dependency resume; do not repeat it or start work from that note alone. Notes contain only the newest routine change per task and pending owner answers; overflow names a history command to read the rest. For a worker waiting on another task, record `task status <task> paused --wait-for <dependency> [--ready-when task-done|pr-opened|pr-merged]` (default `task-done`). The server checks readiness and resumes the worker; no Hydra turn is needed.
 
+## Tasks and owner decisions
+
+Create each task with `--project <name|path>`. Work without a project belongs in Ideas. Put related work, including a PR stack or batch, under one parent with `--parent <task>`; keep sub-tasks one level deep.
+
+Needs you holds only open questions that block work on an owner decision. Ready pull requests, completed research, due reminders and a worker's `needs_you` note without a question are updates. Relay actionable results in chat with the card link; keep routine progress on the card.
+
+Every owner question asks one decision in a plain sentence ending in `?`. Supply `--context` with what the choice changes, what happens next, and a card link `[Title](pnyx-task:<task-id>)`. Offer at least two `--choice` values and one `--recommend <number>`. An escalation follows the same rules and can supply its own choices and recommendation. For `--kind go`, Pnyx supplies Go/Hold and recommends Go. Related questions belong on the same task or its parent and sub-tasks so they can be grouped; each remains individually answerable. `task questions` lists the groups. The owner can answer shared choices together; never answer a group on the owner’s behalf.
+
 ## Discovery and recovery
 
 Run `pnyx-axi` for bounded live state, `pnyx-axi --help` for command groups, and `<command> <subcommand> --help` for syntax and next steps. The digest and wake describe current work; read only records a decision needs. Suggestions never grant authority. Reconcile an uncertain side effect from its saved receipt before retrying it.
