@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS } from '#setup/skill-names.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
 
 let pnyx: Pnyx
@@ -1719,5 +1721,93 @@ test(
       },
     })
     expect(await context()).toBe(digest)
+  },
+)
+
+test(
+  'clearing task threads stops every task stream while Hydra and another tab keep following',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const first = await hydra.startTask({ key: 'first-thread' })
+    const second = await hydra.startTask({ key: 'second-thread' })
+    const ids = [
+      (await hydra.task({ key: 'first-thread' })).id,
+      (await hydra.task({ key: 'second-thread' })).id,
+    ]
+    const received = new Set<string>()
+    const watched = new Set<string>()
+
+    const observe = ({ cards }: { cards: Set<string> }) => {
+      return ({ message }: { message: ServerMessage }) => {
+        if (message.type === 'thread') {
+          cards.add(message.thread.card)
+        } else if (message.type === 'thread.delta') {
+          cards.add(message.delta.page.card)
+        }
+      }
+    }
+
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      receive: observe({ cards: received }),
+    })
+    const other = await openPage({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      receive: observe({ cards: watched }),
+    })
+
+    try {
+      await page.send({
+        name: 'thread',
+        args: [HYDRA_CARD],
+      })
+
+      for (const id of ids) {
+        await page.send({
+          name: 'thread',
+          args: [id],
+        })
+        await other.send({
+          name: 'thread',
+          args: [id],
+        })
+      }
+
+      const cleared = await page.send({
+        name: 'thread',
+        args: [],
+      })
+      expect(cleared.type).toBe('receipt')
+      received.clear()
+      watched.clear()
+
+      for (const id of ids) {
+        await hydra.owner({
+          args: [
+            'reply',
+            id,
+            '--text',
+            'Reply after this tab stopped following',
+          ],
+        })
+      }
+
+      await until({
+        what: 'both workers answer and the other tab receives both live threads',
+        check: () => first.worker.answered === 2 && second.worker.answered === 2
+          && ids.every(id => watched.has(id)),
+      })
+      const session = await hydra.chat({ text: 'The Hydra conversation stays subscribed' })
+      await until({
+        what: 'the cleared tab still receives Hydra live replies',
+        check: () => session.answered > 0 && received.has(HYDRA_CARD),
+      })
+      expect([...received]).toEqual([HYDRA_CARD])
+    } finally {
+      page.close()
+      other.close()
+    }
   },
 )
