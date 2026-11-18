@@ -8,6 +8,8 @@ import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 import { createTaskBranch } from '#projects/git.ts'
 
+const RESTART_FLOW_TIMEOUT_MS = 120_000
+
 let pnyx: Pnyx
 const github = join(
   process.env.TMPDIR!,
@@ -671,6 +673,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
       ],
     })
   },
+  RESTART_FLOW_TIMEOUT_MS,
 )
 
 test(
@@ -2678,13 +2681,21 @@ if (branch === 'iris/target') {
       await pnyx.restart()
     }
   },
-  120_000,
+  RESTART_FLOW_TIMEOUT_MS,
 )
 
 test(
   'a project reassigned by a checkout hook refuses the old copy and starts in the new project',
   async () => {
     const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Iris',
+      ],
+    })
     const project = await createProject({
       hydra,
       landing: 'branch',
@@ -2710,6 +2721,10 @@ test(
       project,
       'drift-hooks',
     )
+    const orphanMarker = join(
+      project,
+      'unrecorded-folder',
+    )
     mkdirSync(hooks)
     writeFileSync(
       join(
@@ -2718,6 +2733,7 @@ test(
       ),
       `#!${process.execPath}
 const { execFileSync } = require('node:child_process')
+require('node:fs').writeFileSync(${JSON.stringify(orphanMarker)}, process.cwd())
 execFileSync(process.execPath, ${JSON.stringify([
   join(
     import.meta.dirname,
@@ -2789,5 +2805,304 @@ execFileSync(process.execPath, ${JSON.stringify([
         'drift',
       ],
     })).copy.project).toBe(other)
+    const orphan = readFileSync(
+      orphanMarker,
+      'utf8',
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Reuse clean slot',
+        '--key',
+        'reuse',
+        '--project',
+        'shop',
+      ],
+    })
+    const reused = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'reuse',
+      ],
+    })
+    expect(reused.agent.folder).toBe(orphan)
+    expect(git({
+      cwd: project,
+      args: [
+        'branch',
+        '--list',
+        'iris/reassign',
+      ],
+    })).toContain('iris/reassign')
+  },
+)
+
+test(
+  'unrecorded slots preserve and report dirty or unlanded work, then reuse it after landing',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Iris',
+      ],
+    })
+    const project = await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    const hooks = join(
+      project,
+      'unrecorded-hooks',
+    )
+    const marker = join(
+      project,
+      'unrecorded-path',
+    )
+    mkdirSync(hooks)
+    writeFileSync(
+      join(
+        hooks,
+        'post-checkout',
+      ),
+      `#!${process.execPath}
+const { writeFileSync } = require('node:fs')
+writeFileSync(${JSON.stringify(marker)}, process.cwd())
+writeFileSync('keep.txt', 'unfinished work')
+throw new Error('fixture allocation refusal')
+`,
+      { mode: 0o700 },
+    )
+    git({
+      cwd: project,
+      args: [
+        'config',
+        'core.hooksPath',
+        hooks,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Unrecorded',
+        '--key',
+        'unrecorded',
+        '--project',
+        'shop',
+      ],
+    })
+
+    try {
+      expect((await hydra.ownerRefused({
+        args: [
+          'task',
+          'start',
+          'unrecorded',
+        ],
+      })).code).toBe('COPY_FAILED')
+    } finally {
+      git({
+        cwd: project,
+        args: [
+          'config',
+          '--unset',
+          'core.hooksPath',
+        ],
+      })
+    }
+
+    const orphan = readFileSync(
+      marker,
+      'utf8',
+    )
+    git({
+      cwd: project,
+      args: [
+        'config',
+        'status.showUntrackedFiles',
+        'no',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Next',
+        '--key',
+        'next',
+        '--project',
+        'shop',
+      ],
+    })
+    const next = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'next',
+      ],
+    })
+    expect(next.agent.folder).not.toBe(orphan)
+    expect(readFileSync(
+      join(
+        orphan,
+        'keep.txt',
+      ),
+      'utf8',
+    )).toBe('unfinished work')
+    const dirtyMessages = await hydra.owner({
+      args: [
+        'hydra',
+        'messages',
+        '--full',
+      ],
+    })
+    expect(dirtyMessages.messages).toEqual(expect.any(Array))
+    expect(dirtyMessages.messages.find((event: { data: { text: string } }) => event.data.text.includes(orphan) && event.data.text.includes('uncommitted'))).toBeDefined()
+    git({
+      cwd: orphan,
+      args: [
+        'add',
+        'keep.txt',
+      ],
+    })
+    git({
+      cwd: orphan,
+      args: [
+        'commit',
+        '-qm',
+        'Unlanded work',
+      ],
+    })
+    const unlanded = git({
+      cwd: orphan,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Later',
+        '--key',
+        'later',
+        '--project',
+        'shop',
+      ],
+    })
+    const later = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'later',
+      ],
+    })
+    expect(later.agent.folder).not.toBe(orphan)
+    expect(git({
+      cwd: orphan,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })).toBe(unlanded)
+    const unlandedMessages = await hydra.owner({
+      args: [
+        'hydra',
+        'messages',
+        '--full',
+      ],
+    })
+    expect(unlandedMessages.messages).toEqual(expect.any(Array))
+    expect(unlandedMessages.messages.find((event: { data: { text: string } }) => event.data.text.includes(orphan) && event.data.text.includes('not landed'))).toBeDefined()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Still unlanded',
+        '--key',
+        'again',
+        '--project',
+        'shop',
+      ],
+    })
+    const again = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'again',
+      ],
+    })
+    expect(again.agent.folder).not.toBe(orphan)
+    const repeated = await hydra.owner({
+      args: [
+        'hydra',
+        'messages',
+        '--full',
+      ],
+    })
+    const orphanNotices = repeated.messages.filter(
+      (event: { data: { text: string } }) => event.data.text.includes(orphan),
+    )
+    expect(orphanNotices).toHaveLength(2)
+    git({
+      cwd: orphan,
+      args: [
+        'push',
+        'origin',
+        'HEAD:refs/heads/main',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Recovered',
+        '--key',
+        'recovered',
+        '--project',
+        'shop',
+      ],
+    })
+    const recovered = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'recovered',
+      ],
+    })
+    expect(recovered.agent.folder).toBe(orphan)
+    expect(readFileSync(
+      join(
+        orphan,
+        'keep.txt',
+      ),
+      'utf8',
+    )).toBe('unfinished work')
+    expect(git({
+      cwd: orphan,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('iris/recovered')
+    expect(git({
+      cwd: project,
+      args: [
+        'rev-parse',
+        'iris/unrecorded',
+      ],
+    })).toBe(unlanded)
   },
 )

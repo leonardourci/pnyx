@@ -37,6 +37,7 @@ export async function checkCopy({
     args: [
       'status',
       '--porcelain',
+      '--untracked-files=normal',
     ],
   })
   const head = await git({
@@ -76,6 +77,7 @@ export async function checkCopy({
     args: [
       'status',
       '--porcelain',
+      '--untracked-files=normal',
     ],
   })
 

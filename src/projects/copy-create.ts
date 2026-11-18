@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
@@ -14,6 +15,8 @@ import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
 import { pnyxHome } from '#store/storage.ts'
@@ -83,12 +86,20 @@ function refuseShared({
   }
 }
 
-async function landedSlotBranch({
+async function landedSlotRef({
   hydraId,
   path,
+  card,
+  project,
+  base,
+  common,
 }: {
   hydraId: string
   path: string
+  card: Card
+  project: HydraProject
+  base?: string
+  common: string
 }): Promise<string | undefined> {
   const state = loadHydra({ hydraId }).state
   const branch = (await git({
@@ -102,6 +113,56 @@ async function landedSlotBranch({
     && card.copy.state === 'removed' && card.copy.branch === branch)
 
   if (!previous?.copy) {
+    const copy: TaskCopy = {
+      path,
+      project: project.path,
+      via: 'worktree',
+      state: 'active',
+    }
+
+    if (base) {
+      copy.base = base
+    }
+
+    const sameRepository = await commonDir({ cwd: path }) === common
+    const check = sameRepository ? await checkCopy({
+      card,
+      copy,
+    }) : { reason: 'it belongs to a different git repository' }
+
+    if (!('reason' in check)) {
+      return branch || 'HEAD'
+    }
+
+    const key = createHash('sha256').update(`${path}\0${branch}\0${check.reason}`)
+      .digest('hex')
+    withWriter({
+      hydraId,
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: hydraEvent({
+          state: writer.state,
+          cardId: HYDRA_CARD,
+          meta: {
+            id: `unrecorded-copy:${key}`,
+            actor: 'pnyx',
+            at: new Date().toISOString(),
+          },
+          change: {
+            type: 'hydra.message',
+            data: {
+              action: 'send',
+              text: `Unrecorded copy ${path} was kept: ${check.reason}. Inspect and land its work before reusing it.`,
+              hydra: hydraConfig({
+                state: writer.state,
+                id: hydraId,
+              }).hydra.id,
+            },
+          },
+        }),
+      }),
+    })
+
     return undefined
   }
 
@@ -269,19 +330,23 @@ async function worktreeCopy({
     let allocated = false
 
     try {
-      const slotBranch = await landedSlotBranch({
+      const slotRef = await landedSlotRef({
         hydraId,
         path,
+        card,
+        project,
+        base,
+        common,
       })
 
-      if (!slotBranch || !await reusable({
+      if (!slotRef || !await reusable({
         path,
         common,
       })) {
         continue
       }
 
-      if (slotBranch !== branch) {
+      if (slotRef !== branch) {
         const checkedOut = await checkout({
           cwd: path,
           branch,
