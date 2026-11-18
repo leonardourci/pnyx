@@ -191,6 +191,38 @@ test(
       ),
       { recursive: true },
     )
+
+    const anchorFrames = Promise.allSettled([
+      visibleCard!.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callback signatures.
+        async (
+          element,
+          {
+            hydra,
+            project,
+          },
+        ) => {
+          const positions: number[] = []
+          const selector = `[data-hydra-workspace="${CSS.escape(hydra)}"] [data-sort-kind="project"][data-sort-id="${CSS.escape(project)}"]`
+
+          while (!document.querySelector(selector)) {
+            await new Promise(requestAnimationFrame)
+            positions.push(element.getBoundingClientRect().x)
+          }
+
+          for (let frame = 0; frame < 40; frame++) {
+            await new Promise(requestAnimationFrame)
+            positions.push(element.getBoundingClientRect().x)
+          }
+
+          return positions
+        },
+        {
+          hydra: second.id,
+          project: earlierProject,
+        },
+      ),
+    ])
     await second.owner({
       args: [
         'project',
@@ -214,10 +246,6 @@ test(
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
     expect(await visibleCard!.evaluate(element => element.isConnected)).toBe(true)
     const anchoredBox = await visibleCard!.boundingBox()
-    expect(anchoredBox!.x).toBeCloseTo(
-      originalBox!.x,
-      0,
-    )
     expect(anchoredBox!.y).toBeCloseTo(
       originalBox!.y,
       0,
@@ -296,6 +324,18 @@ test(
       )).toBeLessThanOrEqual(MAX_TASK_COMMITS)
       expect(renders.filter(line => line.hydraId === second.id)).toEqual([])
     }
+
+    const [anchor] = await anchorFrames
+
+    if (anchor.status === 'rejected') {
+      throw anchor.reason
+    }
+
+    const positions = anchor.value
+    expect(
+      positions.every(x => Math.abs(x - originalBox!.x) < 0.5),
+      JSON.stringify(positions),
+    ).toBe(true)
 
     const fourth = workspace.getByRole(
       'button',

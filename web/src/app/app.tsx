@@ -46,6 +46,7 @@ export function App() {
   const current = hydra.navigation.hydraId
   const axis = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
+  const anchor = useRef<() => void>(undefined)
   const alignment = useRef<AbortController | null>(null)
   const ownerAxisScroll = useRef(false)
   useEffect(
@@ -273,12 +274,16 @@ export function App() {
       }
 
       align()
+      anchor.current = align
       const observer = new ResizeObserver(align)
       observer.observe(inner)
       observer.observe(surface)
       surface.querySelectorAll('[data-hydra-workspace]').forEach(workspace => observer.observe(workspace))
 
-      return () => observer.disconnect()
+      return () => {
+        anchor.current = undefined
+        observer.disconnect()
+      }
     },
     [
       current,
@@ -480,7 +485,7 @@ export function App() {
         <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
           <WorkspaceViewport axis={axis}>
             <motion.div
-              layoutScroll
+              onBeforeLayoutMeasure={() => anchor.current?.()}
               ref={axis}
               className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
               data-page={hydra.navigation.page}
