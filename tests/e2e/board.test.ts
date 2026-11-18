@@ -1024,9 +1024,15 @@ test(
           0,
         )
 
+        const heading = await workspace.locator('[data-column-heading="ideas"]').boundingBox()
+
+        if (!heading) {
+          throw new Error('The project heading is not visible')
+        }
+
         await page.mouse.move(
-          source.x + 20,
-          source.y + 8,
+          heading.x + heading.width / 2,
+          heading.y + heading.height / 2,
           { steps: 8 },
         )
         await until({
