@@ -1212,7 +1212,7 @@ export function HydraView({
             />
             {showWorkspace && (
               <div className="hydra-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
-                <motion.div layout data-ui-surface="chat" className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
+                <motion.div layout data-ui-surface="chat" className={`workspace-chat relative z-1 h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
                   <IconButton
                     className="chat-fold absolute top-3 right-1.75 z-4 p-1"
                     label={view.workspace.chatCollapsed ? 'Unfold chat' : 'Fold chat'}

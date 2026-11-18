@@ -3798,7 +3798,7 @@ test(
             name: close,
             exact: true,
           },
-        ).click()
+        ).click({ scroll: 'none' })
         const content = workspace.locator(body)
         await until({
           what: `${close} finishes`,
@@ -3867,7 +3867,7 @@ test(
               name: open,
               exact: true,
             },
-          ).click(),
+          ).click({ scroll: 'none' }),
         ])
 
         const dimensions = samples.map(sample => sample.dimension)
@@ -3913,13 +3913,36 @@ test(
         surface: ':scope',
         axis: 'width',
       })
-      await workspace.getByRole(
+      const unfoldChat = workspace.getByRole(
         'button',
         {
           name: 'Unfold chat',
           exact: true,
         },
-      ).click()
+      )
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+      const chatTargets = unfoldChat.evaluate(async button => {
+        await new Promise<void>(resolve => button.addEventListener(
+          'click',
+          () => resolve(),
+          { once: true },
+        ))
+        const targets: string[] = []
+
+        for (let frame = 0; frame < 24; frame++) {
+          await new Promise(requestAnimationFrame)
+          const box = button.getBoundingClientRect()
+          const hit = document.elementFromPoint(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          )
+          targets.push(hit?.closest('button')?.getAttribute('aria-label') ?? 'none')
+        }
+
+        return targets
+      })
+      await unfoldChat.click({ scroll: 'none' })
+      expect([...new Set(await chatTargets)]).toEqual(['Fold chat'])
       await expand({
         close: 'Fold chat',
         open: 'Unfold chat',
