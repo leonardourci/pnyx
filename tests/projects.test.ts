@@ -564,6 +564,7 @@ if (branch === 'hercules/add-cart') {
       path,
       'checkout-failed',
     )
+    const verboseHookOutput = 'verbose hook trace '.repeat(1000)
     writeFileSync(
       join(
         hooks,
@@ -575,6 +576,7 @@ const { writeFileSync, existsSync } = require('node:fs')
 const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
 if (branch === 'hercules/failure-hook') {
   writeFileSync(${JSON.stringify(failureMarker)}, 'failed')
+  process.stderr.write(${JSON.stringify(verboseHookOutput)})
   throw new Error('fixture checkout failure')
 }
 if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMarker)})) {
@@ -639,6 +641,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         '--full',
       ],
     })
+    expect(failedHandoff.task.queueNote.length).toBeLessThan(verboseHookOutput.length)
     expect(failedHandoff.task.queueNote).toContain('fixture checkout failure')
     expect(failedHandoff.task.queueNote).toContain('the previous checkout could not be restored')
     expect((await hydra.ownerRefused({
