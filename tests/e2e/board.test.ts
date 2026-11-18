@@ -1,10 +1,13 @@
 import type { Page } from 'playwright-core'
+import { setTimeout as delay } from 'node:timers/promises'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { beginUIWindow, expectResponsiveUI } from '../setup/ui-metrics.ts'
 import { openHydra } from '../setup/browser.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+
+const WHEEL_REST_MS = 750
 
 let pnyx: Pnyx
 
@@ -4167,7 +4170,7 @@ test(
 )
 
 test(
-  'fold all anchors a Hydra after a real horizontal scroll through its projects',
+  'fold all anchors a Hydra throughout an arriving wheel gesture',
   async () => {
     const hydra = await pnyx.hydra()
     await pnyx.hydra()
@@ -4192,34 +4195,38 @@ test(
       what: 'the project workspace is wider than the viewport',
       check: async () => (await workspace.boundingBox())!.width > 2500,
     })
-    const width = (await workspace.boundingBox())!.width
-    const distance = width - page.viewportSize()!.width - 80
+    const fold = workspace.getByRole(
+      'button',
+      {
+        name: 'Fold all projects',
+        exact: true,
+      },
+    )
     await page.mouse.move(
       1000,
       400,
     )
-    await page.mouse.wheel(
-      distance,
-      0,
-    )
+
+    for (let index = 0; index < 12; index++) {
+      await page.mouse.wheel(
+        60,
+        0,
+      )
+
+      if (index === 3) {
+        expect((await workspace.boundingBox())!.x).toBeLessThan(0)
+        await fold.click({ scroll: 'none' })
+      }
+
+      await delay(25)
+    }
+
     await until({
-      what: 'the pointer wheel reaches the far projects',
-      check: async () => (await workspace.boundingBox())!.x < -distance / 2,
-    })
-    expect(page.url()).toContain(`/hydra/${hydra.id}/`)
-    await workspace.getByRole(
-      'button',
-      {
-        name:'Fold all projects',
-        exact:true,
-      },
-    ).click({scroll:'none'})
-    await until({
-      what: 'folding the projects returns the selected Hydra to view',
+      what: 'the project shrink finishes',
       check: async () => {
         const box = await workspace.boundingBox()
 
-        return !!box && box.width < page.viewportSize()!.width && Math.abs(box.x - 12) < 1
+        return !!box && box.width < page.viewportSize()!.width
       },
     })
     expect(page.url()).toContain(`/hydra/${hydra.id}/`)
@@ -4230,6 +4237,38 @@ test(
         exact:true,
       },
     ).waitFor()
+
+    const offsets = await workspace.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the page callback signature.
+      async (
+        element,
+        restMs,
+      ) => {
+        const positions = []
+        const started = performance.now()
+
+        while (performance.now() - started < restMs) {
+          await new Promise(requestAnimationFrame)
+          positions.push(element.getBoundingClientRect().x)
+        }
+
+        return positions
+      },
+      WHEEL_REST_MS,
+    )
+    expect(Math.max(...offsets.map(x => Math.abs(x - 12)))).toBeLessThan(1)
+    await page.mouse.move(
+      1000,
+      400,
+    )
+    await page.mouse.wheel(
+      60,
+      0,
+    )
+    await until({
+      what: 'a new wheel gesture can scroll after folding settles',
+      check: async () => (await workspace.boundingBox())!.x < 0,
+    })
   },
 )
 

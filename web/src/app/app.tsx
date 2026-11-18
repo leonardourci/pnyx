@@ -6,7 +6,7 @@ import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { motion, MotionConfig } from 'motion/react'
-import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
+import { useSmoothScroll, scrollBehavior, SCROLL_IDLE_MS } from '#web-shared/ui/smooth-scroll.ts'
 import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
 import { projectColumns, taskProjectColumn, compareTasks, nextSibling } from '#web-tasks/project-view.ts'
 import { useHydra } from './connection.ts'
@@ -248,6 +248,29 @@ export function App() {
       let previous: number | undefined
       let clamped = false
       let previousRange: number | undefined
+      let wheelQuiet: ReturnType<typeof setTimeout> | undefined
+
+      const protectShrink = () => {
+        clearTimeout(wheelQuiet)
+        wheelQuiet = setTimeout(
+          () => {
+            wheelQuiet = undefined
+          },
+          SCROLL_IDLE_MS,
+        )
+      }
+
+      const wheel = (event: WheelEvent) => {
+        const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey
+
+        if (wheelQuiet === undefined || !horizontal || event.ctrlKey) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        protectShrink()
+      }
 
       const align = () => {
         const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
@@ -266,13 +289,18 @@ export function App() {
         clamped = available < left
 
         const shrinking = previousRange !== undefined && range < previousRange
+
+        if (shrinking) {
+          protectShrink()
+        }
+
         const desired = surface.scrollLeft + shift
         const destination = shrinking ? Math.min(
           desired,
           left + range,
         ) : desired
 
-        if (destination !== surface.scrollLeft) {
+        if (destination !== surface.scrollLeft || shrinking) {
           if (smoothScroll.current) {
             smoothScroll.current.resize()
             smoothScroll.current.scrollTo(
@@ -294,6 +322,14 @@ export function App() {
         previousRange = range
       }
 
+      surface.addEventListener(
+        'wheel',
+        wheel,
+        {
+          capture: true,
+          passive: false,
+        },
+      )
       align()
       anchor.current = align
       const observer = new ResizeObserver(align)
@@ -302,6 +338,12 @@ export function App() {
       surface.querySelectorAll('[data-hydra-workspace]').forEach(workspace => observer.observe(workspace))
 
       return () => {
+        clearTimeout(wheelQuiet)
+        surface.removeEventListener(
+          'wheel',
+          wheel,
+          { capture: true },
+        )
         anchor.current = undefined
         observer.disconnect()
       }
