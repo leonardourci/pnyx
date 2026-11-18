@@ -188,7 +188,10 @@ function validateOwnerQuestion({
   }
 
   const taskLinks = /\[[^\]\n]+\]\(pnyx-task:([^\s)]+)\)/g
-  const explanation = context?.replace(taskLinks, '').trim()
+  const explanation = context?.replace(
+    taskLinks,
+    '',
+  ).trim()
 
   if (!explanation) {
     missing.push('--context explaining what changes and what happens next')

@@ -54,7 +54,10 @@ export function useGroupAnswers({
     const alreadySaved = pending.some(saved => saved.id === attempt.id)
 
     if (!alreadySaved) {
-      setPending([...pending, attempt])
+      setPending([
+        ...pending,
+        attempt,
+      ])
     }
 
     try {
