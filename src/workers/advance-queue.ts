@@ -616,9 +616,13 @@ export async function advanceQueues({
         continue
       }
 
-      const branch = taskBranch({
-        hydraId,
+      const branch = await taskBranch({
+        cwd: prepared.cwd,
+        hydraName: state.config?.name || hydraId,
         task: next.id,
+        title: next.title,
+        reserved: Object.values(state.cards).flatMap(card =>
+          card.copy?.branch ? [card.copy.branch] : []),
       })
       const brief = await taskPrompt({
         hydraId,

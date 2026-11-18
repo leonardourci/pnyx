@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
+import { taskBranch } from '#projects/git.ts'
 
 let pnyx: Pnyx
 const github = join(
@@ -141,6 +142,14 @@ test(
   'a project task runs in its own copy on its own branch, leaves the project folder alone, and is done only once its work is committed',
   async () => {
     const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Poséidon',
+      ],
+    })
     const path = await createProject({
       hydra,
       landing: 'branch',
@@ -155,13 +164,6 @@ test(
         'cart',
         '--project',
         'shop',
-      ],
-    })
-    const { task } = await hydra.owner({
-      args: [
-        'task',
-        'show',
-        'cart',
       ],
     })
     const started = await hydra.owner({
@@ -186,7 +188,7 @@ test(
         '--abbrev-ref',
         'HEAD',
       ],
-    })).toBe(`pnyx/${hydra.id}-${task.id}`)
+    })).toBe('poseidon/add-cart')
 
     writeFileSync(
       join(
@@ -1238,5 +1240,53 @@ test(
       cwd: pooled.path,
       branch: pooled.branch,
     })).toBe('')
+  },
+)
+
+test(
+  'readable branch names strip accents and punctuation, shorten at words, and avoid local and remote collisions',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const cwd = await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    const name = ({
+      title,
+      reserved,
+    }: {
+      title: string
+      reserved?: string[]
+    }) => taskBranch({
+      cwd,
+      hydraName: 'Poséidon!',
+      task: 'task-abcdef12-3456',
+      title,
+      reserved,
+    })
+    expect(await name({ title: 'Clientes atendídos / vendas: chart!' })).toBe('poseidon/clientes-atendidos-vendas-chart')
+    expect(await name({ title: 'The chart of the vendas and clientes atendidos across projects' })).toBe('poseidon/chart-vendas-clientes-atendidos-across')
+    expect(await name({ title: '' })).toBe('poseidon/abcdef12')
+    expect(await name({ title: '!!!' })).toBe('poseidon/abcdef12')
+    git({
+      cwd,
+      args: [
+        'branch',
+        'poseidon/chart',
+      ],
+    })
+    git({
+      cwd,
+      args: [
+        'push',
+        'origin',
+        'HEAD:refs/heads/poseidon/chart-2',
+      ],
+    })
+    expect(await name({ title: 'Chart' })).toBe('poseidon/chart-3')
+    expect(await name({
+      title: 'Chart',
+      reserved: ['poseidon/chart-3'],
+    })).toBe('poseidon/chart-4')
   },
 )

@@ -109,12 +109,14 @@ export const checkout = async ({
   cwd,
   branch,
   start,
+  reuse = false,
 }: {
   cwd: string
   branch: string
   start: string
+  reuse?: boolean
 }) =>
-  await branchExists({
+  reuse && await branchExists({
     cwd,
     branch,
   })

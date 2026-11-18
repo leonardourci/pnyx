@@ -5,13 +5,142 @@ import type { HydraProject } from './model.ts'
 
 export const COPY_TIMEOUT_MS = 120_000
 
-export const taskBranch = ({
-  hydraId,
+const BRANCH_SLUG_LENGTH = 40
+const FILLER_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'of',
+  'to',
+  'and',
+  'de',
+  'da',
+  'do',
+  'das',
+  'dos',
+  'e',
+])
+
+function branchSlug({ text }: { text: string }): string {
+  const words = text.normalize('NFKD').replace(
+    /[\u0300-\u036f]/g,
+    '',
+  )
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) ?? []
+  const kept: string[] = []
+
+  for (const word of words) {
+    if (FILLER_WORDS.has(word)) {
+      continue
+    }
+
+    if ([
+      ...kept,
+      word,
+    ].join('-').length > BRANCH_SLUG_LENGTH) {
+      if (!kept.length) {
+        kept.push(word.slice(
+          0,
+          BRANCH_SLUG_LENGTH,
+        ))
+      }
+
+      break
+    }
+
+    kept.push(word)
+  }
+
+  return kept.join('-')
+}
+
+export async function taskBranch({
+  cwd,
+  hydraName,
   task,
+  title,
+  reserved = [],
 }: {
-  hydraId: string
+  cwd: string
+  hydraName: string
   task: string
-}) => `pnyx/${hydraId}-${task}`
+  title: string
+  reserved?: string[]
+}): Promise<string> {
+  const refs = await git({
+    cwd,
+    args: [
+      'for-each-ref',
+      '--format=%(refname)',
+      'refs/heads',
+      'refs/remotes',
+    ],
+  })
+
+  if (!refs.ok) {
+    throw new HydraError({
+      code: 'COPY_FAILED',
+      message: `could not read branches: ${refs.err}`,
+    })
+  }
+
+  const existing = new Set(reserved)
+
+  for (const ref of refs.out.split('\n')) {
+    existing.add(ref.replace(
+      /^refs\/(heads|remotes\/[^/]+)\//,
+      '',
+    ))
+  }
+
+  const remotes = await git({
+    cwd,
+    args: ['remote'],
+  })
+
+  if (!remotes.ok) {
+    throw new HydraError({
+      code: 'COPY_FAILED',
+      message: `could not read remotes: ${remotes.err}`,
+    })
+  }
+
+  for (const remote of remotes.out.split('\n').filter(Boolean)) {
+    const heads = await git({
+      cwd,
+      args: [
+        'ls-remote',
+        '--heads',
+        remote,
+      ],
+    })
+
+    if (!heads.ok) {
+      throw new HydraError({
+        code: 'COPY_FAILED',
+        message: `could not read remote branches: ${heads.err}`,
+      })
+    }
+
+    for (const line of heads.out.split('\n')) {
+      existing.add(line.split('refs/heads/')[1] ?? '')
+    }
+  }
+
+  const shortId = task.replace(
+    /^task-/,
+    '',
+  ).split('-')[0]
+  const base = `${branchSlug({ text: hydraName }) || 'hydra'}/${branchSlug({ text: title }) || shortId}`
+  let branch = base
+
+  for (let suffix = 2; existing.has(branch) || [...existing].some(name => name.startsWith(`${branch}/`)); suffix++) {
+    branch = `${base}-${suffix}`
+  }
+
+  return branch
+}
 
 export async function git({
   cwd,
@@ -198,7 +327,13 @@ export const onBranch = async ({ cwd }: { cwd: string }) =>
   })).out)
 
 // Best effort, so another task's branch config never stops a start: older task branches still track the default branch.
-export async function clearDefaultUpstreams({ cwd }: { cwd: string }): Promise<void> {
+export async function clearDefaultUpstreams({
+  cwd,
+  branches = [],
+}: {
+  cwd: string
+  branches?: string[]
+}): Promise<void> {
   const head = await git({
     cwd,
     args: [
@@ -233,9 +368,9 @@ export async function clearDefaultUpstreams({ cwd }: { cwd: string }): Promise<v
   }>()
 
   for (const line of config.out.split('\n')) {
-    const match = /^branch\.(pnyx\/.+)\.(remote|merge) (.*)$/.exec(line)
+    const match = /^branch\.(.+)\.(remote|merge) (.*)$/.exec(line)
 
-    if (match) {
+    if (match && (match[1].startsWith('pnyx/') || branches.includes(match[1]))) {
       const [
         ,
         branch,

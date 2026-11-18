@@ -142,15 +142,24 @@ async function worktreeCopy({
     copiesDir({ hydraId }),
     { recursive: true },
   )
-  const branch = taskBranch({
-    hydraId,
-    task: card.id,
-  })
   const {
     base,
     start,
   } = await branchStart({ project })
-  await clearDefaultUpstreams({ cwd: project.path })
+  const state = loadHydra({ hydraId }).state
+  const branch = card.copy?.state === 'active' && card.copy.branch || await taskBranch({
+    cwd: project.path,
+    hydraName: state.config?.name || hydraId,
+    task: card.id,
+    title: card.title,
+    reserved: Object.values(state.cards).flatMap(card =>
+      card.copy?.branch ? [card.copy.branch] : []),
+  })
+  await clearDefaultUpstreams({
+    cwd: project.path,
+    branches: Object.values(state.cards).flatMap(card =>
+      card.copy?.branch ? [card.copy.branch] : []),
+  })
   const made = ({ path }: { path: string }): TaskCopy => ({
     path,
     project: project.path,
@@ -163,35 +172,7 @@ async function worktreeCopy({
     hydraId,
     project,
   })
-  const head = async ({ path }: { path: string }) => (await git({
-    cwd: path,
-    args: [
-      'symbolic-ref',
-      '--quiet',
-      '--short',
-      'HEAD',
-    ],
-  })).out
-
   const common = await commonDir({ cwd: project.path })
-
-  // A copy made before its record was written, or this task's own slot still in the pool, is picked up again.
-  let own: string | undefined
-
-  for (const path of pooled) {
-    if (await commonDir({ cwd: path }) === common && await head({ path }) === branch && take({
-      hydraId,
-      card,
-      path,
-    })) {
-      own = path
-      break
-    }
-  }
-
-  if (own) {
-    return made({ path: own })
-  }
 
   // Only registrations whose folders are gone are pruned, so a deleted copy does not block its branch.
   await git({
@@ -219,6 +200,7 @@ async function worktreeCopy({
         cwd: path,
         branch,
         start,
+        reuse: card.copy?.state === 'active',
       })).ok) {
         return made({ path })
       }
@@ -231,7 +213,7 @@ async function worktreeCopy({
     hydraId,
     project,
   })
-  const exists = await branchExists({
+  const exists = card.copy?.state === 'active' && await branchExists({
     cwd: project.path,
     branch,
   })
