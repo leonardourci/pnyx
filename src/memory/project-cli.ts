@@ -100,7 +100,9 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
     })
     const change = meta({ values })
 
-    if (change.ifRevision !== undefined && change.ifRevision !== view.revision) {
+    const duplicate = view.events.some(event => event.id === change.id)
+
+    if (!duplicate && change.ifRevision !== undefined && change.ifRevision !== view.revision) {
       throw new HydraError({
         message: 'Project memory changed. Read it again before confirming the learning.',
         code: 'REVISION_CONFLICT',
