@@ -551,7 +551,11 @@ test(
       })
       await page.keyboard.press('Escape')
       await modal.waitFor({ state: 'detached' })
-      expect((await closing).some(height => height > 450 && height < 510)).toBe(true)
+      const closingHeights = await closing
+      expect(
+        closingHeights.some(height => height > 450 && height < 510),
+        JSON.stringify(closingHeights),
+      ).toBe(true)
       await until({
         what: 'focus returns to the inline task title',
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.

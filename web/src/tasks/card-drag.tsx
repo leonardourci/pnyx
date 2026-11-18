@@ -7,31 +7,53 @@ type DragHandle = Pick<ReturnType<typeof useSortItem>, 'attributes' | 'listeners
 const Context = createContext<DragHandle | null>(null)
 
 export function TaskDragHandle({...props}: ComponentProps<typeof IconButton>) {
-  const drag = useContext(Context)!
+  const drag = useContext(Context)
 
   return (
     <IconButton
-      {...drag.attributes}
-      {...drag.listeners}
+      {...drag?.attributes}
+      {...drag?.listeners}
       {...props}
-      ref={drag.setActivatorNodeRef}
+      ref={drag?.setActivatorNodeRef}
       data-drag-handle
     />
   )
 }
 
-export function TaskCardDrag({
-  item,
-  disabled,
-  modal,
-  elementRef,
-  ...props
-}: Omit<ComponentProps<typeof AnimatedCardShell>, 'ref'> & {
+type TaskCardDragProps = Omit<ComponentProps<typeof AnimatedCardShell>, 'ref'> & {
   item: SortItem
   disabled: Parameters<typeof useSortItem>[0]['disabled']
   modal: boolean
   elementRef: RefCallback<HTMLElement>
-}) {
+}
+
+export function TaskCardDrag({
+  modal,
+  elementRef,
+  item,
+  disabled,
+  ...props
+}: TaskCardDragProps) {
+  if (modal) {
+    return <AnimatedCardShell {...props} ref={elementRef} />
+  }
+
+  return (
+    <SortableTaskCard
+      {...props}
+      elementRef={elementRef}
+      item={item}
+      disabled={disabled}
+    />
+  )
+}
+
+function SortableTaskCard({
+  item,
+  disabled,
+  elementRef,
+  ...props
+}: Omit<TaskCardDragProps, 'modal'>) {
   const sort = useSortItem({
     item,
     disabled,
@@ -49,16 +71,15 @@ export function TaskCardDrag({
     // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
     (node: HTMLElement | null) => {
       elementRef(node)
-      hoverNode(modal ? null : node)
+      hoverNode(node)
       const wrapper = item.parent ? '[data-child]' : '[data-family]'
-      sortableNode(modal ? null : node?.closest<HTMLElement>(wrapper) ?? node)
+      sortableNode(node?.closest<HTMLElement>(wrapper) ?? node)
     },
     [
       elementRef,
       hoverNode,
       sortableNode,
       item.parent,
-      modal,
     ],
   )
   const drag = useSortState()
@@ -94,7 +115,7 @@ export function TaskCardDrag({
           const target = event.target
           const header = target instanceof Element && target.closest('[data-card-header], [data-drag-handle]')
 
-          if (!modal && (!props.selected || header)) {
+          if (!props.selected || header) {
             sort.pointerDown?.(event)
           }
         }}
