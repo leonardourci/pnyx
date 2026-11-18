@@ -16,5 +16,5 @@ export function Chip({
   variant?: keyof typeof VARIANTS
   vertical?: boolean
 }) {
-  return <Button {...props} className={`flex-none whitespace-nowrap rounded-full ${VARIANTS[variant]} ${vertical ? '[writing-mode:vertical-rl]' : ''} ${className}`} />
+  return <Button {...props} className={`w-max flex-none whitespace-nowrap rounded-full ${VARIANTS[variant]} ${vertical ? '[writing-mode:vertical-rl]' : ''} ${className}`} />
 }
