@@ -114,7 +114,7 @@ export function Usage({
   const percent = usagePercent({ usage })
   const tone = usageTone({ percent })
   const provider = who?.provider ?? 'Agent'
-  const source = `From ${provider} · last request`
+  const source = `From ${provider}`
   const sourceIcon = who?.icon ?? 'info'
   const cost = recorded?.cost
   let footerTitle = 'Usage'
