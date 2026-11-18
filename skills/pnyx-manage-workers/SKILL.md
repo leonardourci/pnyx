@@ -143,9 +143,9 @@ are separate from session attachment.
 
 ## Tool capabilities
 
-Hosted agents start with no external MCP servers or plugins. For a UI worker, pass `task start --tool browser` for one isolated headless `chrome-devtools-axi` session. Select other known needs with repeated `--tool mcp:<name>` or `--tool plugin:<installed-id>` flags. Read the configured names with `task tools <task> --available --harness claude|codex [--account <name>]`; never grant an unconfigured name.
+Hosted agents use the selected account’s native tools, skills, MCP servers, plugins and apps. For a UI worker, pass `task start --tool browser` for one isolated headless `chrome-devtools-axi` session. `task tools <task> --available` lists this capability; configured services need no grants.
 
-When a worker asks for a missing capability through `task ask`, decide it yourself within the task, then run `task tools <task> --grant <capability>` and answer the worker's question. Use `--revoke` for removal. Pnyx records the selection and resumes the same conversation after its native work settles, including after restart. No new owner question or approval is needed for the grant. A tool's shared-system writes still need their existing authorization. Outside launch routes cannot enforce these hosted selections.
+When a worker asks for an isolated browser through `task ask`, decide it yourself within the task, then run `task tools <task> --grant browser` and answer the worker's question. Use `--revoke browser` for removal. Other tools use the harness's native configuration; `task tools` cannot enable them. Pnyx records the browser selection and resumes the same conversation after its native work settles, including after restart. No new owner question or approval is needed for the grant. A tool's shared-system writes still need their existing authorization. Outside launch routes cannot enforce these hosted selections.
 
 ## Task copies
 

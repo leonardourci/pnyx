@@ -1,10 +1,8 @@
-import { BROWSER_TOOL, recordTools, requireConfigured, requireToolAuthority } from './tools.ts'
-import { harnessOf } from './providers.ts'
+import { BROWSER_TOOL, recordTools, requireToolAuthority } from './tools.ts'
 import { loadHydra } from '#app/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { askHost } from '#app/server-state.ts'
 import { required } from '#app/cli-support.ts'
-import { HydraError } from '#store/errors.ts'
 import type { Meta } from '#app/command-meta.ts'
 
 export async function toolsCommand({
@@ -32,50 +30,11 @@ export async function toolsCommand({
     requireToolAuthority({ meta })
   }
 
-  const workerHarness = card.agent ? harnessOf({ provider: card.agent.provider }) : undefined
-  const wrongHarness = values.harness && values.harness !== workerHarness
-  const wrongAccount = values.account && values.account !== card.agent?.account
-
-  if (card.agent && values.grant && (wrongHarness || wrongAccount)) {
-    throw new HydraError({
-      message: 'Grant tools for the worker’s current harness and account',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  const grants = values.grant as string[] | undefined
-  // browser is in every login's catalog, so granting only it needs no harness.
-  const configured = grants?.some(name => name !== BROWSER_TOOL)
-
-  if (configured && !card.agent && !values.harness) {
-    throw new HydraError({
-      message: 'Name --harness claude|codex to grant a configured tool to a task with no agent',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  if (values.available || configured) {
-    const catalog = await askHost({
-      hydraId,
-      body: {
-        action: 'tool-catalog',
-        task: card.id,
-        harness: values.harness,
-        account: values.account,
-        actor: meta.actor,
-      },
-    })
-
-    if (values.available && !values.grant && !values.revoke) {
-      return catalog
-    }
-
-    requireConfigured({
-      names: grants ?? [],
-      offered: catalog.tools as string[],
+  if (values.available && !values.grant && !values.revoke) {
+    return {
       task: card.id,
-      hydraId,
-    })
+      tools: [BROWSER_TOOL],
+    }
   }
 
   if (!values.grant && !values.revoke) {
@@ -89,7 +48,7 @@ export async function toolsCommand({
       task: card.id,
       selection,
       tools: card.tools ?? [],
-      help: ['Ask Hydra with task ask for another configured tool'],
+      help: ['Ask Hydra with task ask for an isolated browser'],
     }
   }
 
