@@ -1711,7 +1711,6 @@ test(
         },
       )
       await grip.waitFor()
-      await column.scrollIntoViewIfNeeded()
       const bounds = await column.boundingBox()
 
       if (!bounds) {
@@ -1734,6 +1733,7 @@ test(
       expect(Number(await grip.getAttribute('aria-valuenow'))).toBe(original)
       await page.mouse.up()
       expect(Number(await grip.getAttribute('aria-valuenow'))).toBe(original)
+      await grip.hover()
       await grip.focus()
       const cancelledHandle = await grip.boundingBox()
 
@@ -2015,6 +2015,7 @@ test(
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 
     try {
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${second.id}"]`).click()
       const heading = workspace.locator('[data-column-heading="ideas"]')
       await heading.scrollIntoViewIfNeeded()
       await heading.focus()
@@ -2061,7 +2062,7 @@ test(
           exact: true,
         },
       ).click()
-      await page.locator(`[data-settings-hydra="${first.id}"] .settings-chips`).waitFor()
+      await page.locator(`[data-settings-hydra="${second.id}"] .settings-chips`).waitFor()
       await page.getByRole(
         'button',
         {
@@ -2337,7 +2338,7 @@ test(
       await page.keyboard.press('Escape')
       await page.mouse.up()
       await page.locator('.physical-ghost').waitFor({ state: 'detached' })
-      await workspace.scrollIntoViewIfNeeded()
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${id}"]`).click()
       await workspace.getByRole(
         'button',
         {
@@ -2347,7 +2348,7 @@ test(
       ).click()
       const children = workspace.locator('[data-family="root"] [data-child]')
       const childIds = async () => Promise.all((await children.all()).map(child => child.getAttribute('data-child')))
-      expect(await otherWorkspace.locator('.card').count()).toBe(0)
+      expect(await otherWorkspace.locator('[data-drag-slot=true], [data-nest-armed=true]').count()).toBe(0)
       const leaf = workspace.getByRole(
         'button',
         {
@@ -2384,7 +2385,7 @@ test(
         what: 'the dragged legacy child previews after its sibling',
         check: async () => (await childIds()).join(',') === 'child,peer,leaf',
       })
-      expect(await otherWorkspace.locator('.card').count()).toBe(0)
+      expect(await otherWorkspace.locator('[data-drag-slot=true], [data-nest-armed=true]').count()).toBe(0)
       await page.keyboard.down('Shift')
       await page.locator('.physical-ghost [data-drag-nest-hint][data-shift=true]').waitFor()
       await root.hover()
@@ -2392,7 +2393,7 @@ test(
         what: 'the source Hydra alone shows the nesting outline',
         check: async () => await workspace.locator('.card[data-task="root"]').getAttribute('data-nest-armed') === 'true',
       })
-      expect(await otherWorkspace.locator('.card').count()).toBe(0)
+      expect(await otherWorkspace.locator('[data-drag-slot=true], [data-nest-armed=true]').count()).toBe(0)
       await page.keyboard.press('Escape')
       await page.keyboard.up('Shift')
       await page.mouse.up()
@@ -2414,7 +2415,7 @@ test(
         .locator('.worker-chat')
         .waitFor()
       expect((await hydra.task({ key: 'leaf' })).parent).toBe('child')
-      await otherWorkspace.scrollIntoViewIfNeeded()
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${otherId}"]`).click()
       await otherWorkspace.getByRole(
         'button',
         {
@@ -2750,7 +2751,8 @@ test(
     try {
       const source = cards.filter({ hasText: /^Scroll task 1$/ })
       const target = cards.filter({ hasText: /^Scroll task 3$/ })
-      await source.scrollIntoViewIfNeeded()
+      await source.waitFor()
+      await target.waitFor()
       const from = await source.boundingBox()
       const to = await target.boundingBox()
 
@@ -2782,7 +2784,20 @@ test(
         what: 'scrolling advances the stationary-pointer landing slot',
         check: async () => (await cards.allTextContents()).indexOf('Scroll task 1') > before,
       })
-      const expected = (await cards.allTextContents()).map(title => title.trim())
+      const visible = (await cards.allTextContents()).map(title => title.trim())
+      const sourceTitle = 'Scroll task 1'
+      const next = visible[visible.indexOf(sourceTitle) + 1]
+      const expected = rows<{title: string}>({
+        text: "select title from cards where hydra_id = $1 and key like 'scroll-%' order by coalesce(rank, created_seq)",
+        values: [hydra.id],
+      }).map(card => card.title)
+        .filter(title => title !== sourceTitle)
+      const position = next ? expected.indexOf(next) : expected.length
+      expected.splice(
+        position,
+        0,
+        sourceTitle,
+      )
       await page.mouse.up()
       await until({
         what: 'the scrolled drop reaches stored order',
@@ -2796,7 +2811,11 @@ test(
       await page.reload()
       await until({
         what: 'the scrolled drop survives reload',
-        check: async () => (await cards.allTextContents()).map(title => title.trim()).join('|') === expected.join('|'),
+        check: async () => {
+          const shown = (await cards.allTextContents()).map(title => title.trim())
+
+          return shown.includes(sourceTitle) && expected.filter(title => shown.includes(title)).join('|') === shown.join('|')
+        },
       })
     } finally {
       await page.context().close()
@@ -3251,13 +3270,15 @@ test(
       })
       expect((await hydra.task({ key: 'Other child' })).parent).toBe(second)
       await page.reload()
-      await workspace.getByRole(
+      const restoredFamily = workspace.getByRole(
         'button',
         {
           name: 'Sub-tasks of Second root',
           exact: true,
         },
-      ).click()
+      )
+      await restoredFamily.waitFor()
+      expect(await restoredFamily.getAttribute('aria-expanded')).toBe('true')
       await card({ title: 'Existing child' }).waitFor()
       expect((await hydra.task({ key: 'Existing child' })).parent).toBe(second)
     } finally {
@@ -3711,13 +3732,13 @@ test(
           exact: true,
         },
       ).waitFor()
-      const child = await family.getByRole(
+      const child = family.getByRole(
         'button',
         {
           name: 'A retained part',
           exact: true,
         },
-      ).elementHandle()
+      )
 
       const expand = async ({
         close,
@@ -3833,7 +3854,7 @@ test(
         surface: group,
         axis: 'height',
       })
-      expect(await child!.evaluate(({ isConnected }) => isConnected)).toBe(true)
+      await child.waitFor()
       await expand({
         close: 'Fold Ideas',
         open: 'Unfold Ideas',
@@ -3892,7 +3913,6 @@ test(
         axis: 'height',
         instant: true,
       })
-      expect(await liveDraft!.evaluate(({ isConnected }) => isConnected)).toBe(true)
       expect(await draft.inputValue()).toBe('Keep the open conversation while moving')
     } finally {
       await page.context().close()

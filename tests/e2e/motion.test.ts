@@ -23,6 +23,11 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
     })
+    const label = page.locator(`[data-hydra-workspace="${hydra.id}"] .message`).first()
+    const messageDuration = () => label.evaluate(
+      element => getComputedStyle(element).animationDuration,
+    )
+    expect(parseFloat(await messageDuration())).toBeGreaterThan(0)
     await page.getByRole(
       'button',
       {
@@ -31,24 +36,36 @@ test(
       },
     ).click()
     const knob = page.locator('.settings-page:not([hidden]) .switch-track > span').first()
-    const label = page.locator(`[data-hydra-workspace="${hydra.id}"] .message`).first()
     await knob.waitFor()
     const timing = () => knob.evaluate(element => ({
       duration: getComputedStyle(element).transitionDuration,
       easing: getComputedStyle(element).transitionTimingFunction,
     }))
-    expect(parseFloat(await label.evaluate(
-      element => getComputedStyle(element).animationDuration,
-    ))).toBeGreaterThan(0)
     await page.evaluate(() => {
       document.documentElement.dataset.motion = 'off'
     })
     expect((await timing()).duration).toBe('0s')
-    expect(await label.evaluate(element => getComputedStyle(element).animationDuration)).toBe('0s')
     expect(motionDuration({ mode: 'off' })).toBe(0)
+    await page.getByRole(
+      'button',
+      {
+        name: 'Close Settings',
+        exact: true,
+      },
+    ).click()
+    expect(await messageDuration()).toBe('0s')
     await page.evaluate(() => {
       document.documentElement.dataset.motion = 'normal'
     })
+    expect(parseFloat(await messageDuration())).toBeGreaterThan(0)
+    await page.getByRole(
+      'button',
+      {
+        name: 'Settings',
+        exact: true,
+      },
+    ).click()
+    await knob.waitFor()
     expect(await timing()).toEqual({
       duration: `${MOTION_DURATIONS.base / 1000}s`,
       easing: MOTION_CSS_EASING,
@@ -68,7 +85,14 @@ test(
 
     await page.emulateMedia({ reducedMotion: 'reduce' })
     expect((await timing()).duration).toBe('0s')
-    expect(await label.evaluate(element => getComputedStyle(element).animationDuration)).toBe('0s')
+    await page.getByRole(
+      'button',
+      {
+        name: 'Close Settings',
+        exact: true,
+      },
+    ).click()
+    expect(await messageDuration()).toBe('0s')
     expect(motionDuration({ reducedMotion: true })).toBe(0)
   },
 )
