@@ -1,3 +1,4 @@
+import { MOTION_EASING } from '#web-shared/motion.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
 import { useWorkspaceWindow } from './workspace-window.ts'
 import { useWorkspaceViewport } from './workspace-viewport.tsx'
@@ -597,6 +598,7 @@ export function HydraView({
     hydra: navigation.hydraId,
     width: modelWidth,
     collapsed: view.workspace.collapsed,
+    loaded,
   })
   const protectedColumns = new Set(columns.filter(column =>
     viewport.protectsColumn({
@@ -1025,10 +1027,16 @@ export function HydraView({
         otherProjects={otherProjects}
       >
         <motion.div
-          layout
-          layoutDependency={`${view.workspace.collapsed}:${hydraLayout}`}
+          layout="position"
+          initial={{minWidth: workspaceWindow.minimum}}
+          transition={{
+            layout: {
+              duration: hydraLayout ? workspaceWindow.duration / 1000 : 0,
+              ease: MOTION_EASING,
+            },
+          }}
           ref={setLayer}
-          className="app hydra-workspace group/workspace flex h-full w-max min-w-[calc(100vw-1.5rem)] flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-14.5 max-[760px]:min-w-[calc(100vw-0.75rem)] max-[760px]:p-1.5"
+          className="app hydra-workspace group/workspace flex h-full w-max flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start max-[760px]:p-1.5"
           data-ui-surface="workspace"
           data-hydra-workspace={navigation.hydraId}
           data-active={active}
