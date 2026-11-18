@@ -440,24 +440,13 @@ test(
 )
 
 test(
-  'tab titles identify the Hydra, focused task and settings',
+  'settings take precedence over the task title and truncation keeps a whole Unicode code point',
   () => {
-    expect(pageTitle({
-      hydra: 'Poseidon',
-    })).toBe('Poseidon · Pnyx')
-    expect(pageTitle({
-      hydra: 'Poseidon',
-      taskTitle: 'Add the cart',
-    })).toBe('Add the cart · Poseidon · Pnyx')
     expect(pageTitle({
       hydra: 'Poseidon',
       page: 'settings',
       taskTitle: 'Add the cart',
     })).toBe('Settings · Poseidon · Pnyx')
-    expect(pageTitle({
-      hydra: 'Poseidon',
-      taskTitle: '0123456789 0123456789 0123456789 0123456789 0123456789 12345 extra',
-    })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789 12345… · Poseidon · Pnyx')
     expect(pageTitle({
       hydra: 'Poseidon',
       taskTitle: '01234567890123456789012345678901234567890123456789012345678🚀extra',

@@ -148,10 +148,12 @@ async function worktreeCopy({
   } = await branchStart({ project })
   const state = loadHydra({ hydraId }).state
   const branches = recordedBranches({
+    hydraId,
     state,
     project: project.path,
   })
-  const previous = card.copy?.state === 'active' ? card.copy : undefined
+  const existingCopy = liveCopy({ card })
+  const previous = existingCopy?.via === 'worktree' ? existingCopy : undefined
   const branch = previous?.branch ?? await createTaskBranch({
     cwd: project.path,
     hydraName: state.config?.name || hydraId,

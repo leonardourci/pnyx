@@ -72,6 +72,20 @@ test(
       what: 'focused task tab title',
       check: async () => await page.title() === 'Ship the export · Poseidon · Pnyx',
     })
+    const longTitle = '0123456789 0123456789 0123456789 0123456789 0123456789 12345 extra'
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'export',
+        '--title',
+        longTitle,
+      ],
+    })
+    await until({
+      what: 'renamed task tab title shortened at a word boundary',
+      check: async () => await page.title() === '0123456789 0123456789 0123456789 0123456789 0123456789 12345… · Poseidon · Pnyx',
+    })
 
     await hydra.owner({
       args: [
@@ -80,7 +94,7 @@ test(
         'export',
       ],
     })
-    await column({ title: 'In progress' }).locator(shown({ title: 'Ship the export' }))
+    await column({ title: 'In progress' }).locator(shown({ title: longTitle }))
       .waitFor()
 
     const worker = await hydra.agent({ cwd: folder })
@@ -94,9 +108,9 @@ test(
         'Export shipped',
       ],
     })
-    await column({ title: 'Done' }).locator(shown({ title: 'Ship the export' }))
+    await column({ title: 'Done' }).locator(shown({ title: longTitle }))
       .waitFor()
-    expect(await shown({ title: 'Ship the export' }).count()).toBe(1)
+    expect(await shown({ title: longTitle }).count()).toBe(1)
   },
 )
 

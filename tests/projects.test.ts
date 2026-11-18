@@ -1611,6 +1611,14 @@ test(
         '--show-current',
       ],
     })).toBe('poseidon-2/chart-2')
+    git({
+      cwd,
+      args: [
+        'branch',
+        '--set-upstream-to=origin/main',
+        'poseidon-2/chart-2',
+      ],
+    })
     const failingHooks = join(
       cwd,
       'failing-hooks',
@@ -1651,6 +1659,15 @@ test(
         'retry',
       ],
     })).toMatchObject({ code: 'COPY_FAILED' })
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--format=%(upstream:short)',
+        '--list',
+        'poseidon-2/chart-2',
+      ],
+    })).toBe('')
     const reserved = git({
       cwd,
       args: [

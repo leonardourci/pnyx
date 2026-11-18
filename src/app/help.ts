@@ -365,7 +365,7 @@ The default route is firstmate for a Hydra run by a Firstmate home, otherwise pn
 A task with an attached project starts in its own copy: a git worktree slot copies/<project>-<n> on branch
 <hydra-name-slug>/<task-title-slug> (or the project's copy command, see project set), taken once and reused by later starts. A start
 takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
-dependencies, and starts the branch from the fetched origin default branch. A failed refresh stops allocation;
+dependencies, and starts the branch from the fetched origin default branch. A failed refresh or remote branch listing stops allocation;
 projects without origin use local HEAD. --in-place works in the project folder
 itself and is refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras
 make their own copies.

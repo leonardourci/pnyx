@@ -7,7 +7,7 @@ import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { isFolder } from '#workers/folders.ts'
@@ -19,22 +19,30 @@ export const POOL_IDLE = 2
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
 
 export function recordedBranches({
+  hydraId,
   state,
   project,
 }: {
+  hydraId: string
   state: HydraState
   project: string
 }): string[] {
-  return Object.values(state.cards).flatMap(({ copy }) => {
-    if (!copy?.branch || !sameProjectPath({
-      left: copy.project,
-      right: project,
-    })) {
-      return []
-    }
+  const branches = new Set<string>()
 
-    return [copy.branch]
-  })
+  for (const id of hydraIds()) {
+    const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
+
+    for (const { copy } of Object.values(current.cards)) {
+      if (copy?.branch && sameProjectPath({
+        left: copy.project,
+        right: project,
+      })) {
+        branches.add(copy.branch)
+      }
+    }
+  }
+
+  return [...branches]
 }
 
 export const copiesDir = ({ hydraId }: { hydraId: string }) => join(

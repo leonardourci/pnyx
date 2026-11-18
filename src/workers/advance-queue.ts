@@ -300,18 +300,19 @@ async function landedBranch({
       'HEAD',
     ],
   })
+  const previousBranch = await git({
+    cwd,
+    args: [
+      'branch',
+      '--show-current',
+    ],
+  })
   const copy = card.copy ?? {
     path: cwd,
     project: card.project,
     via: 'worktree' as const,
     state: 'active' as const,
-    branch: await git({
-      cwd,
-      args: [
-        'branch',
-        '--show-current',
-      ],
-    }),
+    branch: previousBranch,
   }
   const context = await landingContext({
     copy: {
@@ -329,13 +330,7 @@ async function landedBranch({
     base: `origin/${context.base}`,
     tip: context.tip,
     head,
-    previousBranch: await git({
-      cwd,
-      args: [
-        'branch',
-        '--show-current',
-      ],
-    }),
+    previousBranch,
     root,
   }
 
@@ -370,19 +365,7 @@ async function landedBranch({
   throw new Error('Local commits are outside the merged pull request or its fetched default branch')
 }
 
-async function restoreCheckout({
-  cwd,
-  branch,
-  tip,
-  previousBranch,
-  previousHead,
-}: {
-  cwd: string
-  branch: string
-  tip: string
-  previousBranch: string
-  previousHead: string
-}): Promise<void> {
+async function checkoutState({ cwd }: { cwd: string }) {
   const currentBranch = await git({
     cwd,
     args: [
@@ -397,6 +380,7 @@ async function restoreCheckout({
       'HEAD',
     ],
   })
+
   const status = await git({
     cwd,
     args: [
@@ -405,7 +389,33 @@ async function restoreCheckout({
     ],
   })
 
-  if (currentBranch !== branch || currentHead !== tip || status) {
+  return {
+    branch: currentBranch,
+    head: currentHead,
+    dirty: Boolean(status),
+  }
+}
+
+async function restoreCheckout({
+  cwd,
+  branch,
+  tip,
+  previousBranch,
+  previousHead,
+}: {
+  cwd: string
+  branch: string
+  tip: string
+  previousBranch: string
+  previousHead: string
+}): Promise<void> {
+  const current = await checkoutState({ cwd })
+
+  if (current.branch === previousBranch && current.head === previousHead) {
+    return
+  }
+
+  if (current.branch !== branch || current.head !== tip || current.dirty) {
     throw new Error('Handoff was not recorded and the checkout changed; inspect the worker folder before continuing')
   }
 
@@ -724,22 +734,9 @@ export async function advanceQueues({
           return false
         }
 
-        const status = await git({
-          cwd: prepared.cwd,
-          args: [
-            'status',
-            '--porcelain',
-          ],
-        })
-        const head = await git({
-          cwd: prepared.cwd,
-          args: [
-            'rev-parse',
-            'HEAD',
-          ],
-        })
+        const current = await checkoutState({ cwd: prepared.cwd })
 
-        if (status || head !== prepared.head) {
+        if (current.dirty || current.head !== prepared.head || current.branch !== prepared.previousBranch) {
           throw new Error('The worker folder changed during branch preparation')
         }
 
@@ -753,13 +750,13 @@ export async function advanceQueues({
       const branch = await createTaskBranch({
         cwd: prepared.cwd,
         start: prepared.tip,
-        checkout: true,
         active,
         prepare,
         hydraName: state.config?.name || hydraId,
         task: next.id,
         title: next.title,
         reserved: recordedBranches({
+          hydraId,
           state,
           project: card.copy?.project ?? card.project ?? prepared.root,
         }),
@@ -773,9 +770,26 @@ export async function advanceQueues({
         continue
       }
 
+      if (!active()) {
+        return false
+      }
+
       let recorded = false
 
       try {
+        await git({
+          cwd: prepared.cwd,
+          args: [
+            'switch',
+            branch,
+          ],
+        })
+        const switched = await checkoutState({ cwd: prepared.cwd })
+
+        if (switched.branch !== branch || switched.head !== prepared.tip || switched.dirty) {
+          throw new Error('The worker folder changed during handoff checkout')
+        }
+
         recorded = Boolean(withWriter({
           hydraId,
           fn: ({ writer }) => {
@@ -786,12 +800,16 @@ export async function advanceQueues({
               session: id,
             })[0]
 
-            if (source?.revision !== card.revision || target?.id !== next.id
-            || !taskReadiness({
+            if (!active() || source?.revision !== card.revision || target?.id !== next.id
+              || target.revision !== next.revision || source.sessionIds?.[0] !== id
+              || source.activity === 'working') {
+              return
+            }
+
+            if (!taskReadiness({
               state: writer.state,
               card: target,
-            }).ready || target.revision !== next.revision
-          || source.sessionIds?.[0] !== id || source.activity === 'working') {
+            }).ready) {
               return
             }
 
@@ -817,18 +835,20 @@ export async function advanceQueues({
                   columns: hydraConfig({ state: writer.state }).columns,
                   role: 'in_progress',
                 }) ?? next.column,
-                ...(source.copy ? {
-                  copy: {
-                    ...source.copy,
-                    branch,
-                    base: prepared.base.replace(
-                      /^origin\//,
-                      '',
-                    ),
-                    state: 'active',
-                  },
-                } : {}),
               }
+
+              if (source.copy) {
+                decision.event.data.handoff.copy = {
+                  ...source.copy,
+                  branch,
+                  base: prepared.base.replace(
+                    /^origin\//,
+                    '',
+                  ),
+                  state: 'active',
+                }
+              }
+
               decision.event.data.brief = brief
               writer.append({ event: decision.event })
 

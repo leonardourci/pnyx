@@ -165,17 +165,19 @@ export async function taskBranch({
 // Failed copy allocations keep their refs reserved, so retries never delete or reuse those names.
 export async function createTaskBranch({
   start,
-  checkout = false,
   active = () => true,
   prepare,
   ...naming
 }: Parameters<typeof taskBranch>[0] & {
   start: string
-  checkout?: boolean
   active?(): boolean
   prepare?({ branch }: { branch: string }): Promise<boolean>
 }): Promise<string | undefined> {
   for (let attempt = 0; attempt < BRANCH_CREATE_ATTEMPTS; attempt++) {
+    if (!active()) {
+      return undefined
+    }
+
     const branch = await taskBranch(naming)
 
     if (!active()) {
@@ -190,18 +192,11 @@ export async function createTaskBranch({
       return undefined
     }
 
-    const args = checkout ? [
-      'switch',
-      '--no-track',
-      '-c',
-    ] : [
-      'branch',
-      '--no-track',
-    ]
     const created = await git({
       cwd: naming.cwd,
       args: [
-        ...args,
+        'branch',
+        '--no-track',
         branch,
         start,
       ],
@@ -211,10 +206,7 @@ export async function createTaskBranch({
       return branch
     }
 
-    if (!await branchExists({
-      cwd: naming.cwd,
-      branch,
-    })) {
+    if (await taskBranch(naming) === branch) {
       throw new HydraError({
         code: 'COPY_FAILED',
         message: `could not create task branch: ${created.err}`,

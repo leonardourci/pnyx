@@ -13,7 +13,7 @@ export function pageTitle({
 }): string {
   let label = page === 'settings' ? 'Settings' : taskTitle
 
-  const characters = Array.from(label ?? '')
+  const characters = label ? Array.from(label) : []
 
   if (characters.length > TAB_TITLE_LENGTH) {
     const prefix = characters.slice(
@@ -21,7 +21,7 @@ export function pageTitle({
       TAB_TITLE_LENGTH,
     ).join('')
     const next = characters[TAB_TITLE_LENGTH]
-    const endsInsideWord = !/\s$/.test(prefix) && next !== undefined && !/\s/.test(next)
+    const endsInsideWord = next && /\S$/.test(prefix) && /\S/.test(next)
     const wholeWords = endsInsideWord ? prefix.replace(
       /\s+\S*$/,
       '',
