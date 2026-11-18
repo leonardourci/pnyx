@@ -115,7 +115,7 @@ export function Usage({
   const percent = usagePercent({ usage })
   const tone = usageTone({ percent })
   const provider = who?.provider ?? 'Agent'
-  const source = `From ${provider} · last request`
+  const source = `From ${provider}`
   const sourceIcon = who?.icon ?? 'info'
   const cost = recorded?.cost
   let footerTitle = 'Usage'
@@ -126,7 +126,7 @@ export function Usage({
   if (cost !== undefined) {
     footerTitle = 'Session cost'
     footerValue = `$${cost.toFixed(2)}`
-    footerSource = `From ${provider}`
+    footerSource = source
     footerIcon = 'cost'
   } else if (context) {
     footerTitle = 'Context tokens'

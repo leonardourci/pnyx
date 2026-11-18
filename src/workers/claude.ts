@@ -13,7 +13,7 @@ import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo
 import type { AgentSettings } from './model.ts'
 import { questions } from './native-prompts.ts'
 import { object, count, usageNumber, taskContext, textContent } from './transcript-usage.ts'
-import type { TranscriptUsageReader, HostedImage, InputReceipt, ModelOption, Provider } from './provider.ts'
+import type { TranscriptUsageReader, HostedImage, HostedUsage, InputReceipt, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
 import { compactCommand } from './compact-command.ts'
@@ -575,6 +575,30 @@ export function claudeProvider({
             },
           })
 
+          const session = running
+
+          // Only the window, read without a model call: the /context total overestimates, so each request sets the count.
+          const readWindow = async () => {
+            let window: number
+
+            try {
+              const { rawMaxTokens } = await session.getContextUsage({ detail: 'summary' })
+              window = rawMaxTokens
+            } catch {
+              // A missed read keeps the window last reported; the session reports its own failures.
+              return
+            }
+
+            emit({
+              event: {
+                type: 'usage',
+                window,
+              },
+            })
+          }
+
+          readWindow()
+
           // The SDK sends each finished block as its own message at index 0, so its text reuses the index it streamed under.
           let messageId = '', textIndex = 0, turnId = randomUUID()
           let compaction: {
@@ -634,6 +658,15 @@ export function claudeProvider({
                   ...(state === 'failed' && message.compact_error ? { error: message.compact_error } : {}),
                 }
                 compaction = undefined
+              }
+            }
+
+            // The compacted size counts at once; the next request reports the exact count.
+            if (message.type === 'system' && message.subtype === 'compact_boundary'
+              && message.compact_metadata.post_tokens !== undefined) {
+              yield {
+                type: 'usage' as const,
+                used: message.compact_metadata.post_tokens,
               }
             }
 
@@ -824,23 +857,21 @@ export function claudeProvider({
                 }
               }
 
-              const windows = Object.values(message.modelUsage ?? {})
-                .map(model => model.contextWindow)
-                .filter(size => size > 0)
-              const cost = message.total_cost_usd
               const usage = 'usage' in message ? message.usage : undefined
-
-              if (windows.length || typeof cost === 'number') {
-                yield {
-                  type: 'usage' as const,
-                  ...(windows.length ? { window: Math.max(...windows) } : {}),
-                  ...(typeof cost === 'number' ? { cost } : {}),
-                  ...(usage ? {
-                    inputTokens: usage.input_tokens + usage.cache_creation_input_tokens
-                    + usage.cache_read_input_tokens,
-                  } : {}),
-                }
+              const spent: HostedUsage = {
+                type: 'usage',
+                cost: message.total_cost_usd,
               }
+
+              if (usage) {
+                spent.inputTokens = usage.input_tokens + usage.cache_creation_input_tokens
+                  + usage.cache_read_input_tokens
+              }
+
+              yield spent
+
+              // The turn may have changed the model, and with it the window.
+              readWindow()
             }
 
             if (message.type === 'result') {
@@ -987,7 +1018,11 @@ export function readClaudeUsage({
   }
 
   if (record.type === 'system' && record.subtype === 'compact_boundary') {
-    reader.current = {}
+    const compacted = usageNumber({
+      value: object({ value: record.compactMetadata }).postTokens,
+      integer: true,
+    })
+    reader.current = compacted === undefined ? {} : { used: compacted }
 
     return
   }

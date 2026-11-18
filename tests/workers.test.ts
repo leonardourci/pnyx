@@ -10,7 +10,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { startPnyx, until, type AgentSession, type Pnyx } from './setup/pnyx.ts'
+import { startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -931,6 +931,10 @@ const refusedAsStopped = ({ events }: { events: HostedEvent[] }) => events.flatM
   && event.type === 'input' && event.receipt.phase === 'refused' && event.receipt.stopped
   ? [event.receipt.inputId] : [])
 
+const contextCounts = ({ events }: { events: HostedEvent[] }) => events.flatMap(event => typeof event === 'object'
+  && event.type === 'usage' && event.used !== undefined
+  ? [event.used] : [])
+
 test(
   'a Stop during Claude\'s context render refuses that input, and the next input still carries the context rendered for it',
   async ({ onTestFinished }) => {
@@ -990,7 +994,7 @@ test(
 )
 
 test(
-  'a Claude interrupt on an idle session does not mark the next turn interrupted',
+  'a Claude interrupt on an idle session does not mark the next turn interrupted, and a Stop after a compaction keeps the compacted context count',
   async ({ onTestFinished }) => {
     const claude = fakeClaude()
     const session = await claudeProvider({ query: claude.query }).open({
@@ -999,7 +1003,10 @@ test(
       env: { PNYX_HOME: process.env.PNYX_HOME! },
       signal: new AbortController().signal,
     })
-    const { input } = await driven({
+    const {
+      input,
+      events,
+    } = await driven({
       session,
       onEnd: ({ end }) => onTestFinished(end),
     })
@@ -1017,6 +1024,27 @@ test(
       check: () => session.snapshot().outcome !== undefined,
     })
     expect(session.snapshot().outcome?.status).toBe('completed')
+
+    claude.plan({
+      text: '/compact',
+      compacting: true,
+      compactTo: 3_000,
+      hold: true,
+    })
+    input.push({
+      id: 'compact',
+      text: '/compact',
+    })
+    await until({
+      what: 'the compacted count before stopping',
+      check: () => contextCounts({ events }).at(-1) === 3_000,
+    })
+    await session.interrupt({ cancelQueued: false })
+    await until({
+      what: 'the stopped compaction result',
+      check: () => session.snapshot().outcome?.status === 'interrupted',
+    })
+    expect(contextCounts({ events }).at(-1)).toBe(3_000)
   },
 )
 
@@ -1336,5 +1364,195 @@ test(
     } finally {
       session.close()
     }
+  },
+)
+
+type ContextReading = {
+  used: number
+  window?: number
+}
+
+// Waits until the owner's usage view of the task shows a context that check accepts.
+const contextReported = ({
+  hydra,
+  key,
+  what,
+  check,
+}: {
+  hydra: Hydra
+  key: string
+  what: string
+  check({ context }: { context: ContextReading }): boolean
+}) => until({
+  what,
+  check: async () => {
+    const { context } = await hydra.owner({
+      args: [
+        'hydra',
+        'usage',
+        '--task',
+        key,
+      ],
+    }) as { context?: ContextReading }
+
+    return context !== undefined && check({ context })
+  },
+})
+
+const reply = ({
+  hydra,
+  key,
+  text,
+}: {
+  hydra: Hydra
+  key: string
+  text: string
+}) => hydra.owner({
+  args: [
+    'reply',
+    key,
+    '--text',
+    text,
+  ],
+})
+
+test(
+  'Claude\'s context reading takes the compacted size at once, keeps it across a restart, has its window while the resumed turn runs and follows a new window once a turn ends',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const key = 'claude-context'
+    const { worker } = await hydra.startTask({ key })
+    const recorded = pnyx.claude.context
+    await contextReported({
+      hydra,
+      key,
+      what: 'the first turn\'s context',
+      check: ({ context }) => context.used === recorded.used && context.window === recorded.window,
+    })
+
+    const compactionTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/compact',
+      compacting: true,
+      compactTo: 3_000,
+      hold: true,
+    })
+    await reply({
+      hydra,
+      key,
+      text: '/compact',
+    })
+
+    await contextReported({
+      hydra,
+      key,
+      what: 'the compacted size before the turn ends',
+      check: ({ context }) => context.used === 3_000,
+    })
+    expect(worker.answered).toBe(1)
+
+    compactionTurn.release()
+    await until({
+      what: 'the compaction turn to end',
+      check: () => worker.answered === 2,
+    })
+
+    await pnyx.restart()
+    await contextReported({
+      hydra,
+      key,
+      what: 'the compacted size from the transcript after the restart',
+      check: ({ context }) => context.used === 3_000,
+    })
+
+    const resumedTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('carry on'),
+      hold: true,
+      window: 200_000,
+    })
+    await reply({
+      hydra,
+      key,
+      text: 'carry on',
+    })
+    const resumedSession = await until({
+      what: 'the session to resume',
+      check: () => pnyx.claude.sessions.find(({
+        id,
+        resumed,
+      }) => id === worker.id && resumed),
+    })
+    await contextReported({
+      hydra,
+      key,
+      what: 'the window while the resumed turn runs',
+      check: ({ context }) => context.window === recorded.window,
+    })
+    expect(resumedSession.answered).toBe(0)
+
+    resumedTurn.release()
+    await contextReported({
+      hydra,
+      key,
+      what: 'the window of the model the turn switched to',
+      check: ({ context }) => context.window === 200_000,
+    })
+  },
+)
+
+test(
+  'Codex\'s context reading follows the count it reports after an auto-compaction and in a resumed thread',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const key = 'codex-context'
+    const { worker } = await hydra.startTask({
+      key,
+      harness: 'codex',
+    })
+    const recorded = pnyx.codex.context
+    await contextReported({
+      hydra,
+      key,
+      what: 'the first turn\'s context',
+      check: ({ context }) => context.used === recorded.used && context.window === recorded.window,
+    })
+
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('keep going'),
+      compactTo: 9_000,
+    })
+    await reply({
+      hydra,
+      key,
+      text: 'keep going',
+    })
+    await contextReported({
+      hydra,
+      key,
+      what: 'the count after the compaction',
+      check: ({ context }) => context.used === 9_000 && context.window === recorded.window,
+    })
+
+    await pnyx.restart()
+    await reply({
+      hydra,
+      key,
+      text: 'after the restart',
+    })
+    await until({
+      what: 'the thread to resume',
+      check: () => pnyx.codex.sessions.find(({
+        id,
+        resumed,
+      }) => id === worker.id && resumed),
+    })
+    await contextReported({
+      hydra,
+      key,
+      what: 'the resumed thread\'s count',
+      check: ({ context }) => context.used === recorded.used && context.window === recorded.window,
+    })
   },
 )
