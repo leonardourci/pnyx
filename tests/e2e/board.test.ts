@@ -17,6 +17,19 @@ test(
       hydraId: hydra.id,
     })
     await page.locator('[aria-label="Work columns"]').waitFor()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Poseidon',
+      ],
+    })
+    await until({
+      what: 'Hydra tab title',
+      check: async () => await page.title() === 'Poseidon · Pnyx',
+    })
+
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })
 
@@ -47,6 +60,18 @@ test(
     )
     await column({ title: 'Queued' }).locator(shown({ title: 'Ship the export' }))
       .waitFor()
+    await page.getByRole(
+      'button',
+      {
+        name: 'Ship the export',
+        exact: true,
+      },
+    ).focus()
+    await page.keyboard.press('Enter')
+    await until({
+      what: 'focused task tab title',
+      check: async () => await page.title() === 'Ship the export · Poseidon · Pnyx',
+    })
 
     await hydra.owner({
       args: [
