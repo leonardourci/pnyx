@@ -6,7 +6,8 @@
       "!!**/node_modules",
       "!!dist",
       "!!dist.next.*",
-      "!!dist.old"
+      "!!dist.old",
+      "!!.vitest"
     ]
   },
   "formatter": {
