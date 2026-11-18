@@ -1,3 +1,5 @@
+import { memoryHistoryFilter } from '#memory/history-access.ts'
+import { memoryAgent } from '#memory/poleis.ts'
 import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
@@ -24,7 +26,7 @@ import { debug, logs } from '#diagnostics/cli.ts'
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })
 
 export const history = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const options: Options = {
       ...COMMON,
       card: { type: 'string' },
@@ -43,6 +45,7 @@ export const history = guard({
       options,
       positionals: 0,
     })
+    const visible = await memoryHistoryFilter({ hydraId })
     const limit = Math.min(
       integer({
         value: values.limit,
@@ -99,7 +102,7 @@ export const history = guard({
     }
     let matches = 0
     const page: HydraEvent[] = []
-    const exactSelection = !workspace && (!cardId || values.updates)
+    const exactSelection = !memoryAgent() && !workspace && (!cardId || values.updates)
 
     if (exactSelection) {
       const read = values.updates ? readUpdateEvents({
@@ -122,6 +125,10 @@ export const history = guard({
         ...selection,
         descending: true,
       })) {
+        if (!visible({ event })) {
+          continue
+        }
+
         if (cardId && !keys({ event }).includes(cardId)) {
           continue
         }
