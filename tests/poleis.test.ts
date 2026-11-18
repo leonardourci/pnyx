@@ -3171,3 +3171,129 @@ test(
     })
   },
 )
+
+test(
+  'a failed hosted memory read preserves the next change notice',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const path = hydra.folder({ name: 'checkpoint-project' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const { worker } = await hydra.startTask({ key: 'checkpoint-worker' })
+    const main = await hydra.chat({ text: 'Remember the initial memory checkpoint' })
+    await until({
+      what: 'the initial checkpoint turn',
+      check: () => main.answered === 1,
+    })
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Changed checkpoint preference',
+      ],
+    })
+    const gateBin = hydra.folder({ name: 'checkpoint-git-gate' })
+    const git = join(
+      gateBin,
+      'git',
+    )
+    copyFileSync(
+      new URL(
+        './setup/fixtures/memory/git-read-gate.mjs',
+        import.meta.url,
+      ),
+      git,
+    )
+    chmodSync(
+      git,
+      0o755,
+    )
+    const sockets: Socket[] = []
+    const gate = createServer(socket => sockets.push(socket))
+    const socketPath = join(
+      gateBin,
+      'gate.sock',
+    )
+    await new Promise<void>(resolve => gate.listen(
+      socketPath,
+      resolve,
+    ))
+    const previousPath = process.env.PATH
+    process.env.PATH = `${gateBin}:${previousPath}`
+    process.env.PNYX_TEST_GIT_PROJECT = path
+    process.env.PNYX_TEST_GIT_SOCKET = socketPath
+
+    try {
+      await hydra.as({ session: worker }).run({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          'checkpoint-worker',
+          '--text',
+          'First checkpoint report',
+        ],
+      })
+
+      for (const [
+        index,
+        reads,
+      ] of [
+          'shared,work',
+          'shared',
+          'shared,work',
+        ].entries()) {
+        await until({
+          what: 'the hosted memory read to reach Git',
+          check: () => sockets.length === index + 1,
+        })
+        await hydra.owner({
+          args: [
+            'hydra',
+            'set',
+            '--read-poleis',
+            reads,
+          ],
+        })
+        sockets[index]!.end()
+      }
+
+      await until({
+        what: 'the hosted context retry bound',
+        check: async () => JSON.stringify(await hydra.owner({ args: ['history'] })).includes('Memory access kept changing'),
+      })
+      expect(main.received).toHaveLength(1)
+      delete process.env.PNYX_TEST_GIT_PROJECT
+      await hydra.as({ session: worker }).run({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          'checkpoint-worker',
+          '--text',
+          'Second checkpoint report',
+        ],
+      })
+      await until({
+        what: 'the recovered wake',
+        check: () => main.received.length > 1,
+      })
+      expect(main.received.slice(1).join('\n')).toContain('Memory changed; load owner memory')
+    } finally {
+      process.env.PATH = previousPath
+      delete process.env.PNYX_TEST_GIT_PROJECT
+      delete process.env.PNYX_TEST_GIT_SOCKET
+      sockets.forEach(socket => socket.destroy())
+      await new Promise<void>(resolve => gate.close(() => resolve()))
+    }
+  },
+)
