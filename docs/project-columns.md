@@ -191,7 +191,7 @@ Open: profile the dense view before and after the performance changes, using Chr
 
 The 628-task, six-Hydra stress run blocks the merge. Required: cards and project columns use TanStack Virtual windows, and off-screen Hydra bodies unmount. Width placeholders keep the horizontal layout steady. Drafts, selection, family folds and scroll offsets live outside those DOM nodes and return when a view remounts. The retention test checks restored state, not a permanently mounted node. Focused fields, composition, an active drag and the modal remain mounted until the owner finishes that interaction (ask-216413).
 
-Scrolling uses one shared Lenis frame loop. A task's modal action selects it without waiting for inline-card scrolling. The addressed Hydra stays anchored as other Hydra widths load. The virtual windows and the 628-task/six-Hydra CI fixture are implemented but still awaiting browser validation. The fixture bounds mounted cards, columns and DOM nodes, preserves a late Hydra address while earlier widths change, and exercises keyboard pickup, streaming, task-render isolation and drag/scroll budgets. Open: validate and fix the stress findings, then await Hydra's stress-complete signal before the single final deslop and CI approval.
+Scrolling uses one shared Lenis frame loop. A task's modal action selects it without waiting for inline-card scrolling. The addressed Hydra stays anchored as other Hydra widths load. The virtual windows and the 628-task/six-Hydra CI fixture pass the local browser checks. The fixture bounds mounted cards, columns and DOM nodes, preserves a late Hydra address while earlier widths change, and exercises keyboard pickup, streaming, task-render isolation and drag/scroll budgets. Open: validate and fix the stress findings, then await Hydra's stress-complete signal before the single final deslop and CI approval.
 
 The title-only Save task path omits an empty ask; it saves an Idea without a repository or worker. The existing start-from-card journey now begins with that empty-ask case and still holds creation confirmation to prove the optimistic card is retained.
 
@@ -201,3 +201,28 @@ Expanded sub-task families take their own full-width row, like an open task; nei
 Windowing proof so far: the recovery, calm reorder/Shift-nest, full-width row and simultaneous two-tab fold journeys pass. The phone journey passes in both themes, including a single horizontal wheel snap. The six-Hydra/628-task profiling journey passes its mounting limits (24 visible cards, no cards in the other Hydras), late-address retention and at-most-four task commits for an isolated rename. It passed the complete drag/scroll budget once; repeat runs still exceed the 50ms drag budget, so this checkpoint is not a performance sign-off. A retained Chrome trace attributes the costly sections to React/Motion commits and layout measurement; further reduction and the fresh stress rerun remain open. Synthetic keyboard checks wait for the lifted card's first paint before the next key, because dnd-kit installs its keyboard listener in a deferred task.
 
 The stress worker retracted the idle Lenis CPU allegation after a matched idle measurement. The shared scroll loop removes duplicate schedulers, but no 8% idle improvement is claimed. Still open from the ranked list: streaming DOM/heap growth attribution, repeated discovery commands, final visual checks of chip/badge containment, and the complete stress rerun. The title-only creation, modal action, chat-only tabs, retained new-task draft and concurrent folds have targeted regression coverage. Final deslop, CI and media remain held until Hydra declares the stress findings complete.
+
+The large-board journey runs twice (r217782): the normal renderer enforces the unchanged 50ms drag/scroll budget, while the profiling renderer enforces redraw counts and mounting bounds. This separates React timing overhead from production latency; no retries hide a miss.
+
+After deferring hidden navigation and composer discovery, and observing project intents without reading their lists, the six-Hydra journey passes in both builds: normal drag/scroll stay within 50ms, and profiling commits and DOM stay within their bounds. Initial discovery is bounded to two model requests, one project-list request, one catalog request and two rule requests. The browser waits for fonts before measuring motion. These are local journey results; the fresh stress rerun and long-stream DOM attribution remain open.
+
+
+Streaming DOM growth is attributed to reused provider message ids retaining the same live render-key alias on several completed replies. TanStack requested seven rows, but duplicate React keys left old rows attached. The shared alias mapping now releases the previous owner before transferring a live key. A real streamed-turn journey checks unique message ids, a bounded history window, and the same reply element through confirmation. In the 40-turn diagnostic, turns 8–40 keep seven mounted messages and 483–484 elements; before the fix, mounted messages rose from 46 to 266 and elements from 2,597 to 14,305. Forced-GC JavaScript heap after the fix grows from 12.2 to 13.9 MB as conversation data grows; no flat-heap claim is made. Workspace visibility also excludes zero-area intersections, so a Hydra touching the viewport edge does not mount its body.
+
+
+Failure flips now prove that the journeys reject mounting off-screen Hydra bodies, mounting every task row or project column, packing an expanded family beside a short neighbor, replacing another tab's folds, restoring six initial project-list reads, and reusing a live reply key on several completed messages. The family fixture retains a multi-card width so its assertion cannot pass just because the column becomes narrow.
+
+| Stress finding | Current result |
+| --- | --- |
+| 1, 3: mounted work and drag cost | Card/column windows and visible Hydra bodies; normal drag/scroll budget and profiling redraw bounds pass locally |
+| 2: streaming redraw and sync | Local streamed-turn and windowing checks pass; complete stress load/recovery rerun remains open |
+| 4, 9: creation and drafts | Title-only save omits empty ask; new-task title and agent choice survive reload |
+| 5, 6: Hydra address and phone layout | Late-Hydra anchoring and 390px project snaps pass |
+| 7: simultaneous folds | Id-to-boolean patches preserve both tabs' folds |
+| 8, 14: modal and chat-only | Closed hover opens the modal; chat-only omits empty Context/Activity tabs |
+| 10: growing DOM | Reused live keys fixed; repeated-stream DOM stays bounded in the diagnostic and journey |
+| 11, 13: chip and folded counts | Non-shrinking chips/counts keep badges contained; final media remains held |
+| 12: nesting gap | Expanded family takes a full-width row; its failure flip catches the gap |
+| 15: repeated discovery | Hidden navigation/catalogs do not mount/read; pending project observers issue no list read. Initial command budgets pass |
+
+Open: the fresh stress rerun, final trace comparison and final visible media. Hydra's stress-complete signal still gates the single deslop and CI approval.
