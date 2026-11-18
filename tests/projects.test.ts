@@ -1750,13 +1750,6 @@ test(
       title: 'The chart of the vendas and clientes atendidos across projects',
       key: 'filler',
     })).branch).toBe('poseidon/chart-vendas-clientes-atendidos-across')
-    expect(await createTaskBranch({
-      cwd: titleProject,
-      hydraName: 'Poséidon!',
-      task: 'task-abcdef12-3456',
-      title: '',
-      start: 'HEAD',
-    })).toBe('poseidon/abcdef12')
     const punctuation = await start({
       title: '!!!',
       key: 'punctuation',

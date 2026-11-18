@@ -3,7 +3,7 @@ import { git, checkoutRoot, checkoutState, restoreCheckout, saveHandoff, clearHa
 import { sameProjectPath } from '#projects/identity.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { createTaskBranch } from '#projects/git.ts'
-import { recordedBranches } from '#projects/copy-pool.ts'
+import { branchHydraName, recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { statSync } from 'node:fs'
@@ -35,6 +35,8 @@ const meta = () => ({
   actor: 'pnyx',
   at: new Date().toISOString(),
 })
+
+const errorText = ({ error }: { error: unknown }) => (error instanceof Error ? error.message : String(error))
 
 function contextSize({ session }: { session: AgentSession }): number {
   try {
@@ -283,6 +285,7 @@ async function landedBranch({
 
   const prepared = {
     cwd,
+    project: copy.project,
     base: `origin/${context.base}`,
     tip: context.tip,
     head,
@@ -624,13 +627,16 @@ export async function advanceQueues({
         start: prepared.tip,
         active,
         prepare,
-        hydraName: state.config?.name || hydraId,
+        hydraName: branchHydraName({
+          hydraId,
+          state,
+        }),
         task: next.id,
         title: next.title,
         reserved: recordedBranches({
           hydraId,
           state,
-          project: card.copy?.project ?? card.project ?? prepared.root,
+          project: prepared.project,
         }),
       })
 
@@ -853,7 +859,7 @@ export async function advanceQueues({
                 failure.error,
                 restoreError,
               ],
-              `${String(failure.error)}\n${String(restoreError)}`,
+              `${errorText({ error: failure.error })}; ${errorText({ error: restoreError })}`,
               { cause: restoreError },
             )
           }
@@ -881,7 +887,7 @@ export async function advanceQueues({
           hydraId,
           session: id,
           task: current.id,
-          reason: error instanceof Error ? error.message : String(error),
+          reason: errorText({ error }),
         })
       }
     }

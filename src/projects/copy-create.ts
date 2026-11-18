@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
-import { checkout, copiesDir, freshSlot, liveCopy, recordedBranches, reusable, slots, take, unclaim } from './copy-pool.ts'
+import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import { runProcess } from '#app/run-process.ts'
@@ -183,7 +183,10 @@ async function worktreeCopy({
   const previousBranch = previous?.branch
   const branch = previousBranch ?? await createTaskBranch({
     cwd: project.path,
-    hydraName: state.config?.name || hydraId,
+    hydraName: branchHydraName({
+      hydraId,
+      state,
+    }),
     task: card.id,
     title: card.title,
     reserved: branches,

@@ -270,6 +270,11 @@ export async function startPnyx({
     port = server.port
   }
 
+  const stop = async () => {
+    await server?.close()
+    server = undefined
+  }
+
   await start()
   afterAll(async () => {
     await server?.close()
@@ -286,16 +291,12 @@ export async function startPnyx({
     port: () => server!.port,
     // Stops the server and starts it again on the same home and port, as a restart does.
     restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
-      await server?.close()
-      server = undefined
+      await stop()
       await whileStopped?.()
       await start()
     },
     start,
-    stop: async () => {
-      await server?.close()
-      server = undefined
-    },
+    stop,
     // A Hydra of its own, created through the CLI and served once the server mounts it.
     // Serves a Hydra whose folder the test made itself, such as one with a legacy events.jsonl; it refuses when the Hydra cannot load.
     open: ({ id }: { id: string }) => server!.open({ id }),

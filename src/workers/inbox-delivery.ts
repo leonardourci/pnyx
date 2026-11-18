@@ -44,7 +44,14 @@ export async function notifySteering({
   if (handoffPending({
     hydraId,
     task: cardId,
-  }) || copySettling({
+  })) {
+    return {
+      result: 'deferred',
+      detail: 'task has an unresolved handoff; restart Pnyx to recover its checkout',
+    }
+  }
+
+  if (copySettling({
     hydraId,
     task: cardId,
   })) {

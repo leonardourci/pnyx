@@ -1,7 +1,7 @@
+// A real server process with fake AI providers, so a checkout hook can kill it mid-handoff.
 import workerThreads from 'node:worker_threads'
 import { syncBuiltinESMExports } from 'node:module'
 import { execFileSync } from 'node:child_process'
-// A real server process with fake AI providers, so a checkout hook can kill it mid-handoff.
 import { startServer } from '#app/server-daemon.ts'
 import { fakeClaude, fakeCodex } from '../agents.ts'
 

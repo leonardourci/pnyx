@@ -18,6 +18,15 @@ export const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
 
+// An unnamed Hydra names its task branches after its id.
+export const branchHydraName = ({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state: HydraState
+}) => state.config?.name || hydraId
+
 export function recordedBranches({
   hydraId,
   state,
