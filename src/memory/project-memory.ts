@@ -1,3 +1,5 @@
+import { loadHydra } from '#app/store.ts'
+import { findProject } from '#projects/read.ts'
 import { requireProjectMemory } from './poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { ownerProjectMoves } from './owner-memory-log.ts'
@@ -201,6 +203,7 @@ function profileStatus({
 
 // What git says about a project, read off the event loop before any lock is taken.
 export type ProjectFacts = {
+  path: string
   identity: Awaited<ReturnType<typeof projectIdentity>>
   sources: Awaited<ReturnType<typeof projectSources>>
 }
@@ -215,6 +218,7 @@ export async function projectFacts({ path }: { path: string }): Promise<ProjectF
   ])
 
   return {
+    path,
     identity,
     sources,
   }
@@ -237,6 +241,27 @@ export async function projectMemoryView({
   })
 }
 
+export async function readableProjectMemory({
+  path,
+  hydraId,
+}: {
+  path: string
+  hydraId: string
+}) {
+  try {
+    return await projectMemoryView({
+      path,
+      hydraId,
+    })
+  } catch (error) {
+    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+      return undefined
+    }
+
+    throw error
+  }
+}
+
 export function projectMemoryViewUnderLock({
   facts,
   hydraId,
@@ -248,6 +273,11 @@ export function projectMemoryViewUnderLock({
     identity,
     sources,
   } = facts
+  findProject({
+    state: loadHydra({ hydraId }).state,
+    ref: facts.path,
+    attached: true,
+  })
   requireProjectMemory({
     hydraId,
     id: identity.id,

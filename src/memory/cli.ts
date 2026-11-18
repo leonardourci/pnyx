@@ -254,7 +254,6 @@ export const owner = guard({
       const project = await findReadableProject({
         hydraId,
         state: loadHydra({ hydraId }).state,
-        attached: true,
         ref: required({
           value: values.project as string | undefined,
           what: '--project <name|path>',
