@@ -7,7 +7,6 @@ Pnyx is named after the hill in Athens where the citizens' assembly met to decid
 - **Pnyx**: this app, where every agent and its work is shown.
 - **Hydra**: an orchestrator, many heads and one body. Each Hydra has its own columns and tasks, and creating a Hydra creates them.
 - **Oracle**: the search field. Search it by keyword; it returns matching tasks, messages, settings and actions, never made-up answers.
-
 - **Polis**: a group of owner and project memory with its own reader list.
 
 Column names are the user's own. Use plain names for the other features.

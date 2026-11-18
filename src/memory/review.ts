@@ -3,8 +3,7 @@ import { learningDigest, staleLearnings } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { ownerMemory } from './owner-memory.ts'
 import type { HydraState } from '#app/model.ts'
-import { readProjectMemory } from './project-memory.ts'
-import { projectIdentity } from '#projects/sources.ts'
+import { readableProjectMemory } from './project-memory.ts'
 
 export async function memoryReview({
   state,
@@ -22,10 +21,10 @@ export async function memoryReview({
   })).filter(project => !project.detached)
   const projectLayers = await Promise.all(attached.map(async project => ({
     name: `Project ${project.name}`,
-    lines: readProjectMemory({
-      ...await projectIdentity(project),
+    lines: (await readableProjectMemory({
+      path: project.path,
       hydraId,
-    }).learnings ?? [],
+    }))?.learnings ?? [],
   })))
   const layers = [
     {

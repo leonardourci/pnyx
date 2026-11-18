@@ -176,6 +176,19 @@ test(
       PNYX_HYDRA: work.id,
       PNYX_TASK: undefined,
     }
+    expect((await work.ownerRefused({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'learnings',
+        '--to',
+        'shared',
+        '--text',
+        'Work quasar learning',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
     await personal.owner({
       args: [
         'hydra',
@@ -1156,10 +1169,11 @@ test(
     )
     const sockets: Socket[] = []
     let released = false
+    let blockedReads = 2
     const gate = createServer(socket => {
       sockets.push(socket)
 
-      if (released) {
+      if (released || sockets.length > blockedReads) {
         socket.end()
       }
     })
@@ -1260,6 +1274,7 @@ test(
       }))).not.toContain('Detached write must not persist')
       released = false
       const previousReads = sockets.length
+      blockedReads = previousReads + 1
       const digest = pnyxAxi({
         args: [
           'hydra',
@@ -2156,6 +2171,25 @@ test(
           'preferences',
           '--text',
           'Overwrite gapped log',
+        ],
+      })).code).toBe('LOG_CORRUPT')
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--polis',
+          'revision-first',
+        ],
+      })
+      expect((await hydra.ownerRefused({
+        args: [
+          'owner',
+          'memory',
+          'set',
+          '--key',
+          'preferences',
+          '--text',
+          'Reuse rejected destination position',
         ],
       })).code).toBe('LOG_CORRUPT')
     } finally {

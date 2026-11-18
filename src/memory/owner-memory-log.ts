@@ -170,7 +170,7 @@ function readOwnerLogs(): Map<string, OwnerEntries> {
 
     return log.entries
   })
-  const moveSources = new Map<OwnerEntry, OwnerEntry>()
+  const moveCounterparts = new Map<OwnerEntry, OwnerEntry>()
 
   for (const source of entries) {
     const move = source.polisMove
@@ -193,9 +193,13 @@ function readOwnerLogs(): Map<string, OwnerEntries> {
     }
 
     destination.entries.push(move.entry)
-    moveSources.set(
+    moveCounterparts.set(
       move.entry,
       source,
+    )
+    moveCounterparts.set(
+      source,
+      move.entry,
     )
   }
 
@@ -207,7 +211,7 @@ function readOwnerLogs(): Map<string, OwnerEntries> {
     keepValidPrefix({ log })
   }
 
-  // Removing a rejected move can break a later source prefix in another polis.
+  // Both sides of a move must survive replay. Truncating one log can invalidate a later move in another.
   let removed = true
 
   while (removed) {
@@ -215,18 +219,18 @@ function readOwnerLogs(): Map<string, OwnerEntries> {
     const valid = new Set([...logs.values()].flatMap(log => log.entries))
 
     for (const log of logs.values()) {
-      const kept = log.entries.filter(entry => {
-        const source = moveSources.get(entry)
+      const rejected = log.entries.findIndex(entry => {
+        const counterpart = moveCounterparts.get(entry)
 
-        return source === undefined || valid.has(source)
+        return counterpart !== undefined && !valid.has(counterpart)
       })
 
-      if (kept.length === log.entries.length) {
+      if (rejected === -1) {
         continue
       }
 
-      log.entries = kept
-      keepValidPrefix({ log })
+      log.entries.length = rejected
+      log.corrupt = true
       removed = true
     }
   }

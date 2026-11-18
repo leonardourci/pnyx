@@ -232,7 +232,18 @@ export const owner = guard({
       }
     }
 
-    if (action === 'move' && values.to !== undefined) {
+    const documentMove = values.to !== undefined
+    const hasLearningSelector = values.project !== undefined || values.text !== undefined
+    const mixedMoveSelectors = documentMove ? hasLearningSelector : values.key !== undefined
+
+    if (action === 'move' && mixedMoveSelectors) {
+      throw new HydraError({
+        message: 'Use --key and --to for a document move, or --project and --text for a learning move',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    if (action === 'move' && documentMove) {
       return moveOwnerPolis({
         hydraId,
         args,
