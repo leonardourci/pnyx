@@ -1,4 +1,6 @@
+import { readMemoryContext } from '#memory/context.ts'
 import { beforeAll, expect, test } from 'vitest'
+import { startReviewTimer } from '#hydra/review-timer.ts'
 import { searchInBackground } from '#oracle/search-background.ts'
 import { runForClient } from '#app/request-context.ts'
 import { appendFileSync, copyFileSync, chmodSync, readFileSync, writeFileSync } from 'node:fs'
@@ -1308,6 +1310,136 @@ test(
         digested.stdout + digested.stderr,
       ).toBe(0)
       expect(digested.stdout).not.toContain('polis-project')
+
+      const restoreProject = await allowed.owner({
+        args: [
+          'project',
+          'add',
+          path,
+        ],
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'add',
+          path,
+          '--confirm',
+          restoreProject.token,
+        ],
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'memory',
+          'set',
+          '--project',
+          path,
+          '--key',
+          'learnings',
+          '--text',
+          'Revoked project review learning',
+          '--kind',
+          'for-now',
+          '--until',
+          'date:2000-01-01',
+        ],
+      })
+      await allowed.owner({
+        args: [
+          'owner',
+          'memory',
+          'set',
+          '--key',
+          'learnings',
+          '--text',
+          'Owner review anchor',
+          '--kind',
+          'for-now',
+          '--until',
+          'date:2000-01-01',
+        ],
+      })
+      const previousReviewMinutes = (await allowed.owner({
+        args: [
+          'settings',
+          'show',
+        ],
+      })).settings.reviewMinutes
+      await allowed.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          '{"reviewMinutes":1}',
+        ],
+      })
+      let reviewNow = Date.parse('2099-01-01T00:00:00Z')
+      const timer = startReviewTimer({
+        hydraId: allowed.id,
+        now: () => reviewNow,
+        wake: () => {},
+        interval: () => () => {},
+      })
+
+      try {
+        reviewNow = Date.parse('2099-01-01T00:01:00Z')
+        await timer.check()
+        const beforeDetach = await allowed.owner({
+          args: [
+            'history',
+            '--kind',
+            'hydra.review',
+            '--full',
+            '--limit',
+            '1',
+          ],
+        })
+        expect(beforeDetach.events[0].data.block).toContain('Revoked project review learning')
+        expect(beforeDetach.events[0].data.block).toContain('Owner review anchor')
+        released = false
+        const reviewReads = sockets.length
+        blockedReads = reviewReads + 1
+        reviewNow = Date.parse('2099-01-01T00:02:00Z')
+        const reviewing = timer.check()
+        await until({
+          what: 'timed review Git read is gated',
+          check: () => sockets.length > reviewReads,
+        })
+        await allowed.owner({
+          args: [
+            'project',
+            'remove',
+            'polis-project',
+          ],
+        })
+        released = true
+        sockets.forEach(socket => socket.end())
+        await reviewing
+        const afterDetach = await allowed.owner({
+          args: [
+            'history',
+            '--kind',
+            'hydra.review',
+            '--full',
+            '--limit',
+            '1',
+          ],
+        })
+        expect(afterDetach.events[0].at).toBe('2099-01-01T00:02:00.000Z')
+        expect(afterDetach.events[0].data.block).toContain('Owner review anchor')
+        expect(afterDetach.events[0].data.block).not.toContain('Revoked project review learning')
+        expect(afterDetach.events[0].data.block).not.toContain('polis-project')
+      } finally {
+        timer.close()
+        await allowed.owner({
+          args: [
+            'settings',
+            'set',
+            '--json',
+            JSON.stringify({ reviewMinutes: previousReviewMinutes }),
+          ],
+        })
+      }
     } finally {
       process.env.PATH = previousPath
       delete process.env.PNYX_TEST_GIT_PROJECT
@@ -2418,5 +2550,53 @@ test(
       ],
     })
     expect(JSON.stringify(newcomerMemory.memory)).not.toContain('Audience-bound cobalt preference')
+  },
+)
+
+test(
+  'async memory contexts stop after three access changes',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ poleis: { 'bound-home': { readers: [hydra.id] } } }),
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,bound-home',
+      ],
+    })
+    let attempts = 0
+    await expect(readMemoryContext({
+      read: async () => {
+        attempts++
+        await hydra.owner({
+          args: [
+            'hydra',
+            'set',
+            '--polis',
+            'bound-home',
+          ],
+        })
+        await hydra.owner({
+          args: [
+            'hydra',
+            'set',
+            '--polis',
+            'shared',
+          ],
+        })
+
+        return 'Unreadable stale summary'
+      },
+    })).rejects.toMatchObject({ code: 'CONFLICT' })
+    expect(attempts).toBe(3)
   },
 )
