@@ -26,6 +26,7 @@ import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { projectDigest } from '#projects/context.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { activeHelperBatches, failedBatches, helperLeases, outcomeLines, ownerOutcomes } from '#routine-helper/state.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { prepareHydraFolder } from '#setup/skills.ts'
@@ -190,6 +191,10 @@ export function createHydraTurns({
         const owner = ownerMemory({ hydraId })
         const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
         const state = loadHydra({ hydraId }).state
+        const readable = (await readableProjects({
+          state,
+          hydraId,
+        })).map(project => project.path)
 
         if (onlyTasks) {
           const digest = hydraDigest({
@@ -197,6 +202,7 @@ export function createHydraTurns({
             state,
             owner,
             ownerWrite,
+            readable,
             onlyTasks,
             previousDigest,
             checkpointed,
@@ -241,6 +247,7 @@ export function createHydraTurns({
           owner,
           ownerWrite,
           projects,
+          readable,
           setup: setupDigest({ items }),
         })
 

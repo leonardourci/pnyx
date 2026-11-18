@@ -1,5 +1,5 @@
 import { readMemoryContext } from '#memory/context.ts'
-import { memoryCaller } from '#memory/poleis.ts'
+import { memoryCaller, readableProjects } from '#memory/poleis.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
@@ -415,6 +415,10 @@ const hydraDigestHandler = guard({
           ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
           state,
           projects,
+          readable: (await readableProjects({
+            state,
+            hydraId,
+          })).map(project => project.path),
           setup: setupDigest({ items }),
         })
       },
