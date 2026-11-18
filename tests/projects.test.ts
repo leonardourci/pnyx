@@ -1687,10 +1687,79 @@ test(
       title,
       reserved,
     })
-    expect(await name({ title: 'Clientes atendídos / vendas: chart!' })).toBe('poseidon/clientes-atendidos-vendas-chart')
-    expect(await name({ title: 'The chart of the vendas and clientes atendidos across projects' })).toBe('poseidon/chart-vendas-clientes-atendidos-across')
+    const titleHydra = await pnyx.hydra()
+    await createProject({
+      hydra: titleHydra,
+      landing: 'branch',
+    })
+    await titleHydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Poséidon!',
+      ],
+    })
+
+    const start = async ({
+      title,
+      key,
+    }: {
+      title: string
+      key: string
+    }) => {
+      await titleHydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          title,
+          '--key',
+          key,
+          '--project',
+          'shop',
+        ],
+      })
+      const started = await titleHydra.owner({
+        args: [
+          'task',
+          'start',
+          key,
+        ],
+      })
+
+      return {
+        id: (await titleHydra.task({ key })).id as string,
+        branch: git({
+          cwd: started.agent.folder,
+          args: [
+            'branch',
+            '--show-current',
+          ],
+        }),
+      }
+    }
+
+    expect((await start({
+      title: 'Clientes atendídos / vendas: chart!',
+      key: 'accents',
+    })).branch).toBe('poseidon/clientes-atendidos-vendas-chart')
+    expect((await start({
+      title: 'The chart of the vendas and clientes atendidos across projects',
+      key: 'filler',
+    })).branch).toBe('poseidon/chart-vendas-clientes-atendidos-across')
     expect(await name({ title: '' })).toBe('poseidon/abcdef12')
-    expect(await name({ title: '!!!' })).toBe('poseidon/abcdef12')
+    const punctuation = await start({
+      title: '!!!',
+      key: 'punctuation',
+    })
+    expect(punctuation.branch).toBe(`poseidon/${punctuation.id.replace(
+      /^task-/,
+      '',
+    ).slice(
+      0,
+      8,
+    )}`)
     git({
       cwd,
       args: [
