@@ -1292,3 +1292,49 @@ test(
     expect(codex.sessions[0]!.received[2]).not.toContain('LATEST_MESSAGE')
   },
 )
+
+test(
+  'a failed Claude context read reaches the session reader without delivering input',
+  async () => {
+    const claude = fakeClaude()
+    const session = await claudeProvider({ query: claude.query }).open({
+      cwd: process.env.TMPDIR!,
+      settings: {},
+      env: { PNYX_HOME: process.env.PNYX_HOME! },
+      signal: new AbortController().signal,
+      context: async () => {
+        throw new Error('Memory access kept changing; retry the command')
+      },
+    })
+
+    const input = async function* () {
+      yield {
+        id: 'rejected-context',
+        text: 'must not arrive',
+        images: [],
+      }
+    }
+
+    const read = async () => {
+      for await (const event of session.run({
+        input: input(),
+        permission: async () => ({
+          behavior: 'deny',
+          message: 'unused',
+        }),
+      })) {
+        expect(event).not.toMatchObject({
+          type: 'input',
+          receipt: { phase: 'taken' },
+        })
+      }
+    }
+
+    try {
+      await expect(read()).rejects.toThrow('Memory access kept changing; retry the command')
+      expect(claude.sessions[0]?.received ?? []).toEqual([])
+    } finally {
+      session.close()
+    }
+  },
+)
