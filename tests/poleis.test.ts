@@ -217,12 +217,16 @@ test(
     })
     expect(crossHydraSearch.status).toBe(0)
     expect(crossHydraSearch.stdout).not.toContain('Private')
+    const privateQuery = {
+      text: 'private',
+      limit: 10,
+    }
     const ownerSearch = runForClient({
       identity: {},
       cwd: process.cwd(),
       run: () => searchInBackground({
         hydraId: personal.id,
-        query: { text: 'private' },
+        query: privateQuery,
       }),
     })
     const nativeSearch = runForClient({
@@ -233,7 +237,7 @@ test(
       cwd: process.cwd(),
       run: () => searchInBackground({
         hydraId: personal.id,
-        query: { text: 'private' },
+        query: privateQuery,
       }),
     })
     const [
