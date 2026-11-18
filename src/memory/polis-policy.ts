@@ -1,5 +1,3 @@
-import type { HydraState } from '#app/model.ts'
-
 export const POLIS_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/
 export const DEFAULT_POLIS_ACCESS = {
   polis: 'shared',
@@ -11,7 +9,9 @@ export type PolisAccess = {
 }
 export type Poleis = Record<string, { readers: string[] }>
 
-export function hydraPolisConfig({ state }: { state: Pick<HydraState, 'config'> }): PolisAccess {
+export function hydraPolisConfig({ state }: {
+  state: { config?: Partial<PolisAccess> }
+}): PolisAccess {
   return {
     polis: state.config?.polis ?? DEFAULT_POLIS_ACCESS.polis,
     readPoleis: state.config?.readPoleis ?? DEFAULT_POLIS_ACCESS.readPoleis,
@@ -25,7 +25,7 @@ export function canRead({
   polis,
 }: {
   hydraId: string
-  state: Pick<HydraState, 'config'>
+  state: { config?: Partial<PolisAccess> }
   poleis: Poleis
   polis: string
 }): boolean {
