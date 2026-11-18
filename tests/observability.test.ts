@@ -11,7 +11,7 @@ import { watchZeroCache } from '#workers/agent-memory.ts'
 import { AsyncResource } from 'node:async_hooks'
 import { readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { beforeAll, expect, test, vi } from 'vitest'
-import { flushLogs, log, setLogBudget } from '#app/diagnostics.ts'
+import { flushLogs, log, logMode, setLogBudget } from '#app/diagnostics.ts'
 import { cleanLogs, logFiles } from '#diagnostics/log-files.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { flushRepeatedLines } from '#diagnostics/repeated-lines.ts'
@@ -422,6 +422,10 @@ test(
         '--json',
         '{"logs":"on"}',
       ],
+    })
+    await until({
+      what: 'the server applies On logging',
+      check: () => logMode() === 'on',
     })
     await flushLogs()
     const start = lines().length
