@@ -23,7 +23,11 @@ export function SkillBadge({
       className="draft-skill cursor-default! [&_.tooltip-anchor]:inline [&_.task-label]:inline [&_.task-label]:[font:inherit] [&_.task-label]:leading-none [&_.task-label]:whitespace-[inherit] [&_.task-label]:border-0 [&_.task-label]:px-(--spacing-skill-label) [&_.task-label]:py-0 [&_.task-label]:-mx-(--spacing-skill-label) [&_.task-label]:my-0 [&_.task-label]:rounded-preview [&_.task-label]:shadow-skill-label"
       data-kind="skill"
       // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
-      onMouseDown={event => event.preventDefault()}
+      onMouseDown={event => {
+        if (remove) {
+          event.preventDefault()
+        }
+      }}
     >
       <ChipIcon>{ICON_SPACE}<Icon name={icon} size={ICON_SIZE.inline} /></ChipIcon>{CHIP_JOIN}
       {skill.project && (

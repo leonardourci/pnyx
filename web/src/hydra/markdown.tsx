@@ -121,7 +121,6 @@ const inline = ({
                 href={href}
                 target="_blank"
                 rel="noreferrer noopener"
-                contentEditable={false}
               >{alt}
               </a>
             ) : <MessageImage src={src} alt={alt} title={token.title ?? undefined} />}
@@ -176,7 +175,7 @@ const inline = ({
         if (pointer) {
           return (
             <Sourced key={i} markdown={token.raw}>
-              <span className="chip reference-chip inline-flex py-px px-1.5 border border-gold-line rounded-md text-gold" contentEditable={false}>{children}</span>
+              <span className="chip reference-chip inline-flex py-px px-1.5 border border-gold-line rounded-md text-gold">{children}</span>
             </Sourced>
           )
         }
@@ -200,7 +199,6 @@ const inline = ({
           <a
             key={i}
             href={href}
-            contentEditable={false}
             target="_blank"
             rel="noreferrer noopener"
           >

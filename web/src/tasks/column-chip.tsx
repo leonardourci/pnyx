@@ -11,7 +11,7 @@ export function ColumnChip({
   label: string
 }) {
   return (
-    <span className={`chip column-chip inline-flex items-center gap-1 px-1.5 py-0 rounded-md text-column-chip align-baseline ${COLUMN_CHIP_TONE} ${tone}`} contentEditable={false}>
+    <span className={`chip column-chip inline-flex items-center gap-1 px-1.5 py-0 rounded-md text-column-chip align-baseline ${COLUMN_CHIP_TONE} ${tone}`}>
       <Icon name={icon} size={ICON_SIZE.inline} />
       {label}
     </span>

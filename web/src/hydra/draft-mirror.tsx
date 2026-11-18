@@ -207,6 +207,8 @@ export function DraftMirror({
         } else {
           token = (
             <ReferenceBadge
+              // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
+              onMouseDown={event => event.preventDefault()}
               icons={look?.icons ?? []}
               className={look?.tone ?? ''}
               data-kind={chip.kind}

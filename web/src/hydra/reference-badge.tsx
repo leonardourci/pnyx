@@ -15,8 +15,6 @@ export function ReferenceBadge({
   return (
     <DraftChip
       className={className}
-      // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
-      onMouseDown={event => event.preventDefault()}
       {...props}
     >
       {icons.map((

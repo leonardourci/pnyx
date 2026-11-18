@@ -25,6 +25,13 @@ export function Input({ ...props }: ComponentProps<'input'>) {
   return <input {...props} className={`${INPUT_CLASSES} [:where(&)]:bg-surface ${props.className ?? ''}`} />
 }
 
+function selectingInlineText({ element }: { element: HTMLElement }) {
+  const selection = window.getSelection()
+
+  return selection && !selection.isCollapsed
+    && element.contains(selection.anchorNode) && element.contains(selection.focusNode)
+}
+
 // A native button is an atomic inline box; a text token must wrap with the words around it.
 export function InlineButton({
   disabled,
@@ -43,11 +50,15 @@ export function InlineButton({
       onClick={event => {
         event.stopPropagation()
 
-        if (!disabled) {
+        if (!disabled && !selectingInlineText({ element: event.currentTarget })) {
           onClick?.()
         }
       }}
       onKeyDown={event => {
+        if (selectingInlineText({ element: event.currentTarget })) {
+          return
+        }
+
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault(); event.stopPropagation()
 

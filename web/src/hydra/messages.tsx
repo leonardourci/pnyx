@@ -1057,7 +1057,7 @@ export function Messages({
         }))}) { background-color: var(--comment-highlight); }`).join('')}
       </style>
       <div
-        className="messages relative flex flex-col gap-message-gap pt-2 in-[.hydra-chat]:gap-(--chat-gap) data-caret-host:outline-none data-caret-host:caret-gold [--message-gap:var(--chat-gap,var(--spacing-message-gap))] [&_.measured-row]:flex [&_.measured-row]:flex-col [&_.measured-row]:gap-(--message-gap) [&_.measured-row]:pb-(--message-gap)"
+        className="messages [&_:is(a,img):not(.composer-field_*)]:[-webkit-user-drag:none] relative flex flex-col gap-message-gap pt-2 in-[.hydra-chat]:gap-(--chat-gap) data-caret-host:outline-none data-caret-host:caret-gold [--message-gap:var(--chat-gap,var(--spacing-message-gap))] [&_.measured-row]:flex [&_.measured-row]:flex-col [&_.measured-row]:gap-(--message-gap) [&_.measured-row]:pb-(--message-gap)"
         data-highlight={highlight}
         ref={root}
         contentEditable={CARET_SUPPORTED}
@@ -1102,10 +1102,7 @@ export function Messages({
           const editing = event.target instanceof Element && isEditing({ target: event.target })
 
           if (!editing) {
-            copyMessageChips({
-              selection: window.getSelection(),
-              clipboard: event.dataTransfer,
-            })
+            event.preventDefault()
           }
         }}
         onPaste={event => paste({ event })}

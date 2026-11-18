@@ -64,14 +64,40 @@ export function selectedPassage({ messages }: {
   messages: HTMLElement | null
 }): CommentPassage | null {
   const selection = window.getSelection()
-  const range = selection?.rangeCount ? selection.getRangeAt(0) : null
-  const block = messageBlock({ node: range?.startContainer })
-  const endBlock = messageBlock({ node: range?.endContainer })
+  const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
 
-  if (!messages || !range || !block || !endBlock || !messages.contains(block)
-    || !messages.contains(endBlock) || block.dataset.messageId !== endBlock.dataset.messageId
+  if (!messages || !range || !messages.contains(range.commonAncestorContainer)
     || document.activeElement?.closest('.comment-card')) {
     return null
+  }
+
+  let block = messageBlock({ node: range.startContainer })
+  let endBlock = messageBlock({ node: range.endContainer })
+
+  if (!block || !endBlock) {
+    const selected = [...messages.querySelectorAll<HTMLElement>('[data-message-block]')]
+      .filter(element => range.intersectsNode(element))
+    block = block ?? selected[0] ?? null
+    endBlock = endBlock ?? selected.at(-1) ?? null
+  }
+
+  if (!block || !endBlock || !messages.contains(block) || !messages.contains(endBlock)
+    || block.dataset.messageId !== endBlock.dataset.messageId) {
+    return null
+  }
+
+  if (!block.contains(range.startContainer)) {
+    range.setStart(
+      block,
+      0,
+    )
+  }
+
+  if (!endBlock.contains(range.endContainer)) {
+    range.setEnd(
+      endBlock,
+      endBlock.childNodes.length,
+    )
   }
 
   const fragment = range.cloneContents()
