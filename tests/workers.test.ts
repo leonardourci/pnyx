@@ -1402,26 +1402,34 @@ test(
       check: ({ context }) => context.used === recorded.used && context.window === recorded.window,
     })
 
-    pnyx.claude.plan({
+    const compactionTurn = pnyx.claude.plan({
       hydra: hydra.id,
       text: '/compact',
       compacting: true,
       compactTo: 3_000,
+      hold: true,
     })
     await reply({
       hydra,
       key,
       text: '/compact',
     })
+
+    try {
+      await contextReported({
+        hydra,
+        key,
+        what: 'the compacted size before the turn ends',
+        check: ({ context }) => context.used === 3_000,
+      })
+      expect(worker.answered).toBe(1)
+    } finally {
+      compactionTurn.release()
+    }
+
     await until({
       what: 'the compaction turn to end',
       check: () => worker.answered === 2,
-    })
-    await contextReported({
-      hydra,
-      key,
-      what: 'the compacted size',
-      check: ({ context }) => context.used === 3_000,
     })
 
     await pnyx.restart()
