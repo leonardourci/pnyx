@@ -1,13 +1,18 @@
 /* eslint-disable pnyx/object-params -- Playwright owns evaluation callback signatures. */
-import { expect, test } from 'vitest'
+import { beforeAll, expect, test } from 'vitest'
 import { MOTION_CSS_EASING, MOTION_DURATIONS, motionDuration } from '../../web/src/shared/motion.ts'
 import { openHydra } from '../setup/browser.ts'
-import { startPnyx, until } from '../setup/pnyx.ts'
+import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+
+const SAMPLE_FRAMES = 60
+let pnyx: Pnyx
+beforeAll(async () => {
+  pnyx = await startPnyx({ zeroCache: true })
+})
 
 test(
   'the global off switch and OS reduced motion make CSS and TypeScript motion instant',
   async () => {
-    const pnyx = await startPnyx({ zeroCache: true })
     const hydra = await pnyx.hydra()
     pnyx.claude.plan({
       hydra: hydra.id,
@@ -94,5 +99,167 @@ test(
     ).click()
     expect(await messageDuration()).toBe('0s')
     expect(motionDuration({ reducedMotion: true })).toBe(0)
+  },
+)
+
+test(
+  'opening a visible card keeps its scroll anchor and contains every painted frame',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'first',
+        '--title',
+        'Keep the first task visible',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'second',
+        '--title',
+        'Keep a longer task title visible before the family opens',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'open',
+        '--title',
+        'Open without a flash',
+        '--brief',
+        'Keep the opening surface calm.',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'next',
+        '--title',
+        'Keep the next task visible',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'child',
+        '--title',
+        'Keep the compact child',
+        '--parent',
+        'open',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectWidths: { ideas: 280 } } }),
+      ],
+    })
+
+    for (const theme of [
+      'light',
+      'dark',
+    ]) {
+      const page = await openHydra({
+        port: pnyx.port(),
+        hydraId: hydra.id,
+      })
+
+      try {
+        await page.evaluate(
+          async theme => {
+            document.documentElement.dataset.theme = theme
+            await document.fonts.ready
+          },
+          theme,
+        )
+        const title = page.getByRole(
+          'button',
+          {
+            name: 'Open without a flash',
+            exact: true,
+          },
+        )
+        await title.hover()
+        const frames = title.evaluate(
+          async (
+            trigger,
+            frameCount,
+          ) => {
+            const card = trigger.closest<HTMLElement>('.card')!
+            const scroll = card.closest<HTMLElement>('.column-cards')!
+            const start = scroll.scrollTop
+            await new Promise<void>(resolve => trigger.addEventListener(
+              'click',
+              () => resolve(),
+              { once: true },
+            ))
+            let scrollDelta = 0, escaped = false, replaced = false
+
+            for (let frame = 0; frame < frameCount; frame++) {
+              await new Promise(requestAnimationFrame)
+              replaced ||= !card.isConnected
+              scrollDelta = Math.max(
+                scrollDelta,
+                Math.abs(scroll.scrollTop - start),
+              )
+              const bounds = card.getBoundingClientRect()
+
+              for (const fraction of [
+                0.25,
+                0.75,
+              ]) {
+                for (const y of [
+                  bounds.bottom + 12,
+                  card.querySelector('.card-content')!.getBoundingClientRect().bottom - 4,
+                ]) {
+                  if (y <= bounds.bottom) {
+                    continue
+                  }
+
+                  const hit = document.elementFromPoint(
+                    bounds.left + bounds.width * fraction,
+                    y,
+                  )
+                  escaped ||= !!hit && card.contains(hit) && !hit.closest('[popover], .resize')
+                }
+              }
+            }
+
+            return {
+              scrollDelta,
+              escaped,
+              replaced,
+            }
+          },
+          SAMPLE_FRAMES,
+        )
+        await title.click()
+        const result = await frames
+        expect(result.scrollDelta).toBeLessThan(0.5)
+        expect({
+          escaped: result.escaped,
+          replaced: result.replaced,
+        }).toEqual({
+          escaped: false,
+          replaced: false,
+        })
+      } finally {
+        await page.context().close()
+      }
+    }
   },
 )

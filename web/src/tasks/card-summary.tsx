@@ -87,7 +87,7 @@ export function CardSummary({
   hasChildren?: boolean
   childrenOpen?: boolean
   toggleChildren?(): void
-  open?(): void
+  open?({ pointer }: { pointer: boolean }): void
   agentDetails?: ReactNode
   heading?: ReactNode
   editing?: boolean

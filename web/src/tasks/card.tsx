@@ -405,7 +405,12 @@ export const HydraCard = memo(function HydraCard({
     />
   )
   const summaryActions = useStableActions({
-    actions: { open: () => modal ? closeModal() : void open({ id: card.id }) },
+    actions: {
+      open: ({ pointer }: { pointer: boolean }) => modal ? closeModal() : void open({
+        id: card.id,
+        pointer,
+      }),
+    },
   })
   const closedSummary = useMemo(
     () => (
@@ -745,7 +750,10 @@ export const HydraCard = memo(function HydraCard({
                     <CardTitle
                       title={card.title}
                       expanded={selected}
-                      open={() => modal ? closeModal() : void open({ id: card.id })}
+                      open={({ pointer }) => modal ? closeModal() : void open({
+                        id: card.id,
+                        pointer,
+                      })}
                       aria-controls={selected ? panelId({
                         prefix: tabsId,
                         id: 'context',

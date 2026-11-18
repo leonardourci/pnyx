@@ -9,7 +9,7 @@ export function CardTitle({
 }: {
   title: string
   expanded: boolean
-  open(): void
+  open({ pointer }: { pointer: boolean }): void
 } & HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -19,7 +19,7 @@ export function CardTitle({
       aria-expanded={expanded}
       aria-description="Enter or Space opens or folds the task, F2 or Command/Control+E edits"
       onClick={event => {
-        event.stopPropagation(); open()
+        event.stopPropagation(); open({ pointer: event.detail > 0 })
       }}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
@@ -27,9 +27,9 @@ export function CardTitle({
         }
 
         if (event.key === 'Enter') {
-          event.preventDefault(); event.stopPropagation(); open()
+          event.preventDefault(); event.stopPropagation(); open({ pointer: false })
         } else if (event.key === ' ') {
-          event.preventDefault(); event.stopPropagation(); open()
+          event.preventDefault(); event.stopPropagation(); open({ pointer: false })
         }
       }}
     >

@@ -146,9 +146,11 @@ function scrollAxis({
 export async function scrollTask({
   element,
   signal,
+  nearest = false,
 }: {
   element: HTMLElement
   signal: AbortSignal
+  nearest?: boolean
 }): Promise<boolean> {
   const kanban = element.closest<HTMLElement>('.workspace-axis')
     ?? element.closest<HTMLElement>('.kanban')
@@ -172,12 +174,22 @@ export async function scrollTask({
       kanban.scrollLeft + shift,
     ),
   ))
+  const cardBounds = element.getBoundingClientRect()
+  const contentBounds = cards.getBoundingClientRect()
+  const spacing = getComputedStyle(cards)
+  const top = contentBounds.top + cards.clientTop + parseFloat(spacing.paddingTop)
+  const bottom = contentBounds.top + cards.clientTop + cards.clientHeight
+    - parseFloat(spacing.paddingBottom)
+  const shiftY = nearest && cardBounds.height <= bottom - top && cardBounds.top >= top
+    ? Math.max(
+      0,
+      cardBounds.bottom - bottom,
+    ) : cardBounds.top - top
   const y = Math.round(Math.max(
     0,
     Math.min(
       cards.scrollHeight - cards.clientHeight,
-      cards.scrollTop + element.getBoundingClientRect().top - cards.getBoundingClientRect().top
-      - cards.clientTop - parseFloat(getComputedStyle(cards).paddingTop),
+      cards.scrollTop + shiftY,
     ),
   ))
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches

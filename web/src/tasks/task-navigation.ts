@@ -418,6 +418,7 @@ export function useTaskNavigation({
     }) && scrollTask({
       element,
       signal,
+      nearest: true,
     }),
     signal,
   })
@@ -448,7 +449,7 @@ export function useTaskNavigation({
     setView(current => showingPage({
       view: current,
       page: 'hydra',
-    })); setRevealing(id)
+    })); setRevealing(pointer ? null : id)
 
     try {
       if (!currentCards.current[id]) {
