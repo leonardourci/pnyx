@@ -383,9 +383,22 @@ test(
     expect(dropped).toBe(true)
 
     if (process.env.PNYX_KEEP_TEST_FILES) {
-      for (const theme of ['light', 'dark']) {
-        await page.evaluate(({ theme }) => { document.documentElement.dataset.theme = theme }, { theme })
-        await page.screenshot({ path: join(process.env.PNYX_KEEP_TEST_FILES, `retry-${theme}.png`) })
+      for (const theme of [
+        'light',
+        'dark',
+      ]) {
+        await page.evaluate(
+          ({ theme }) => {
+            document.documentElement.dataset.theme = theme
+          },
+          { theme },
+        )
+        await page.screenshot({
+          path: join(
+            process.env.PNYX_KEEP_TEST_FILES,
+            `retry-${theme}.png`,
+          ),
+        })
       }
     }
 
