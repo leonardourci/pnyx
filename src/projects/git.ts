@@ -7,6 +7,7 @@ export const COPY_TIMEOUT_MS = 120_000
 
 const BRANCH_SLUG_LENGTH = 40
 const BRANCH_CREATE_ATTEMPTS = 100
+const ORIGIN_REFS = 'refs/remotes/origin/'
 const FILLER_WORDS = new Set([
   'a',
   'an',
@@ -56,7 +57,7 @@ function branchSlug({ text }: { text: string }): string {
   return slug
 }
 
-export async function taskBranch({
+async function taskBranch({
   cwd,
   hydraName,
   task,
@@ -73,9 +74,8 @@ export async function taskBranch({
     cwd,
     args: [
       'for-each-ref',
-      '--format=%(refname)',
+      '--format=%(refname:lstrip=2)',
       'refs/heads',
-      'refs/remotes',
     ],
   })
 
@@ -89,11 +89,7 @@ export async function taskBranch({
   // A ref that differs only in case can still block creation on a case-insensitive filesystem.
   const existing = new Set(reserved.map(branch => branch.toLowerCase()))
 
-  for (const ref of refs.out.split('\n').filter(Boolean)) {
-    const branch = ref.replace(
-      /^refs\/(heads|remotes\/[^/]+)\//,
-      '',
-    )
+  for (const branch of refs.out.split('\n').filter(Boolean)) {
     existing.add(branch.toLowerCase())
   }
 
@@ -272,12 +268,11 @@ async function originHead({ cwd }: { cwd: string }): Promise<string | undefined>
     args: [
       'symbolic-ref',
       '--quiet',
-      '--short',
       'refs/remotes/origin/HEAD',
     ],
   })
 
-  return head.ok && head.out ? head.out : undefined
+  return head.ok && head.out.startsWith(ORIGIN_REFS) ? head.out : undefined
 }
 
 export async function gitProject({ project }: { project: HydraProject }): Promise<void> {
@@ -347,10 +342,7 @@ export async function branchStart({ project }: { project: HydraProject }): Promi
     }
 
     return {
-      base: remote.replace(
-        /^origin\//,
-        '',
-      ),
+      base: remote.slice(ORIGIN_REFS.length),
       start: remote,
     }
   }
@@ -425,21 +417,13 @@ export async function clearDefaultUpstreams({
   cwd: string
   branches?: string[]
 }): Promise<void> {
-  const head = await git({
-    cwd,
-    args: [
-      'symbolic-ref',
-      '--quiet',
-      'refs/remotes/origin/HEAD',
-    ],
-  })
-  const prefix = 'refs/remotes/origin/'
+  const head = await originHead({ cwd })
 
-  if (!head.ok || !head.out.startsWith(prefix)) {
+  if (!head) {
     return
   }
 
-  const defaultMerge = `refs/heads/${head.out.slice(prefix.length)}`
+  const defaultMerge = `refs/heads/${head.slice(ORIGIN_REFS.length)}`
   const config = await git({
     cwd,
     args: [

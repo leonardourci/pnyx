@@ -648,7 +648,9 @@ export async function advanceQueues({
       })
       state = loadHydra({ hydraId }).state
 
-      if (state.sessions?.[id]?.taskId !== current.id) {
+      const attached = state.sessions?.[id]
+
+      if (attached?.taskId !== current.id) {
         continue
       }
 
@@ -690,7 +692,7 @@ export async function advanceQueues({
         readLanding,
         hydraId,
         card,
-        session: session!,
+        session: attached,
       })
 
       if (!prepared || !active()) {
@@ -698,8 +700,6 @@ export async function advanceQueues({
       }
 
       let brief: string | undefined
-      let roots = new Map<string, string | undefined>()
-
       const prepare = async ({ branch }: { branch: string }) => {
         brief = await taskPrompt({
           hydraId,
@@ -711,30 +711,16 @@ export async function advanceQueues({
           throw new Error('The worker checkout changed during branch preparation')
         }
 
-        roots = await workerRoots({
-          hydraId,
-          session: session!,
-        })
         const currentState = loadHydra({ hydraId }).state
-        assertUnshared({
-          hydraId,
-          state: currentState,
-          session: session!,
-          root: prepared.root,
-          roots,
-        })
         const currentSource = currentState.cards[card.id]
         const currentTarget = workerQueue({
           state: currentState,
           session: id,
         })[0]
 
-        if (currentSource?.revision !== sourceRevision || currentTarget?.id !== next.id
-          || currentTarget.revision !== targetRevision) {
-          return false
-        }
-
-        return true
+        return currentSource?.revision === sourceRevision && currentTarget?.id === next.id
+          && currentTarget.revision === targetRevision
+          && currentState.sessions?.[id]?.agent.cwd === prepared.cwd
       }
 
       if (!active()) {
@@ -768,12 +754,24 @@ export async function advanceQueues({
         return false
       }
 
+      const roots = await workerRoots({
+        hydraId,
+        session: attached,
+      })
       const beforeSwitch = await checkoutState({ cwd: prepared.cwd })
       const checkoutChanged = beforeSwitch.head !== prepared.head || beforeSwitch.branch !== prepared.previousBranch
 
       if (beforeSwitch.dirty || checkoutChanged || await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
         throw new Error('The worker folder changed during branch preparation')
       }
+
+      assertUnshared({
+        hydraId,
+        state: loadHydra({ hydraId }).state,
+        session: attached,
+        root: prepared.root,
+        roots,
+      })
 
       if (!active()) {
         return false
@@ -809,10 +807,18 @@ export async function advanceQueues({
               state: writer.state,
               session: id,
             })[0]
+            const currentSession = writer.state.sessions?.[id]
 
             if (!active() || source?.revision !== sourceRevision || target?.id !== next.id
               || target.revision !== targetRevision || source.sessionIds?.[0] !== id
-              || source.activity === 'working') {
+              || currentSession?.taskId !== card.id || currentSession.agent.cwd !== prepared.cwd) {
+              return
+            }
+
+            const workerBusy = source.activity === 'working' || currentSession.activity === 'working'
+              || currentSession.activity === 'ended' || currentSession.attention.some(a => a.blocking && !a.answered)
+
+            if (workerBusy || pendingPermissions({ card: source }).length > 0) {
               return
             }
 
@@ -826,7 +832,7 @@ export async function advanceQueues({
             assertUnshared({
               hydraId,
               state: writer.state,
-              session: session!,
+              session: attached,
               root: prepared.root,
               roots,
             })

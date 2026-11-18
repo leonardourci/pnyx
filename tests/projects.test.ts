@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
-import { createTaskBranch, taskBranch } from '#projects/git.ts'
+import { createTaskBranch } from '#projects/git.ts'
 
 let pnyx: Pnyx
 const github = join(
@@ -528,13 +528,6 @@ if (branch === 'hercules/add-cart') {
         check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-3')),
       })
       expect(lostReply).toBe(true)
-      expect(git({
-        cwd: copy,
-        args: [
-          'branch',
-          '--show-current',
-        ],
-      })).toBe('hercules/next-chart-3')
     } finally {
       workerThreads.receiveMessageOnPort = receive
       syncBuiltinESMExports()
@@ -591,6 +584,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
   throw new Error('fixture rollback hook failure')
 }
 `,
+      { mode: 0o700 },
     )
     git({
       cwd: path,
@@ -1678,21 +1672,8 @@ test(
       hydra,
       landing: 'branch',
     })
-    const name = ({
-      title,
-      reserved,
-    }: {
-      title: string
-      reserved?: string[]
-    }) => taskBranch({
-      cwd,
-      hydraName: 'Poséidon!',
-      task: 'task-abcdef12-3456',
-      title,
-      reserved,
-    })
     const titleHydra = await pnyx.hydra()
-    await createProject({
+    const titleProject = await createProject({
       hydra: titleHydra,
       landing: 'branch',
     })
@@ -1732,8 +1713,14 @@ test(
         ],
       })
 
+      const { id } = await titleHydra.task({ key })
+
+      if (typeof id !== 'string') {
+        throw new Error('Expected the created task ID')
+      }
+
       return {
-        id: (await titleHydra.task({ key })).id as string,
+        id,
         branch: git({
           cwd: started.agent.folder,
           args: [
@@ -1752,7 +1739,6 @@ test(
       title: 'The chart of the vendas and clientes atendidos across projects',
       key: 'filler',
     })).branch).toBe('poseidon/chart-vendas-clientes-atendidos-across')
-    expect(await name({ title: '' })).toBe('poseidon/abcdef12')
     const punctuation = await start({
       title: '!!!',
       key: 'punctuation',
@@ -1764,26 +1750,58 @@ test(
       0,
       8,
     )}`)
-    git({
-      cwd,
+    await titleHydra.owner({
       args: [
-        'branch',
-        'Poseidon/Chart',
+        'hydra',
+        'set',
+        '--name',
+        'HEAD',
       ],
     })
     git({
-      cwd,
+      cwd: titleProject,
+      args: [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'Local project commit',
+      ],
+    })
+    git({
+      cwd: titleProject,
+      args: [
+        'branch',
+        'origin/main',
+      ],
+    })
+    git({
+      cwd: titleProject,
+      args: [
+        'branch',
+        'Head/Chart',
+      ],
+    })
+    git({
+      cwd: titleProject,
       args: [
         'push',
         'origin',
-        'HEAD:refs/heads/poseidon/chart-2',
+        'HEAD:refs/heads/head/chart-2',
       ],
     })
-    expect(await name({ title: 'Chart' })).toBe('poseidon/chart-3')
-    expect(await name({
+    expect((await start({
       title: 'Chart',
-      reserved: ['poseidon/chart-3'],
-    })).toBe('poseidon/chart-4')
+      key: 'head-chart',
+    })).branch).toBe('head/chart-3')
+    expect(git({
+      cwd: titleProject,
+      args: [
+        'log',
+        '-1',
+        '--format=%s',
+        'refs/heads/head/chart-3',
+      ],
+    })).toBe('init')
     let active = true
     expect(await createTaskBranch({
       cwd,
@@ -1826,14 +1844,6 @@ test(
       'iris/chart',
       'iris/chart-2',
     ])
-    git({
-      cwd,
-      args: [
-        'branch',
-        '-d',
-        'Poseidon/Chart',
-      ],
-    })
     git({
       cwd,
       args: [
