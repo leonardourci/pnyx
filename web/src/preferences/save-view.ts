@@ -42,6 +42,11 @@ export function useSaveView({
         }))
       }
 
+      const workspace = boardPatch.workspace
+      const foldOnly = Object.keys(boardPatch).length === 1 && workspace
+        && typeof workspace === 'object'
+        && Object.keys(workspace).every(key => key === 'foldedProjects')
+
       if (!resize && Object.keys(boardPatch).length) {
         writes.push(command({
           name: 'view',
@@ -49,8 +54,10 @@ export function useSaveView({
             'set',
             '--json',
             JSON.stringify(boardPatch),
-            '--if-revision',
-            String(state.viewRevision ?? 0),
+            ...(!foldOnly ? [
+              '--if-revision',
+              String(state.viewRevision ?? 0),
+            ] : []),
             '--event-id',
             crypto.randomUUID(),
           ],

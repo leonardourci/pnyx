@@ -60,7 +60,33 @@ export function patchWorkspace({
       }
 
       next[key] = value
-    } else if (key === 'foldedProjects' || key === 'projectOrder') {
+    } else if (key === 'foldedProjects') {
+      if (!value || typeof value !== 'object' || Array.isArray(value)
+        || Object.entries(value).some(([
+          id,
+          folded,
+        ]) => !id || typeof folded !== 'boolean')) {
+        throw new HydraError({
+          message: 'foldedProjects must be booleans by project id',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      const folded = new Set(next.foldedProjects)
+
+      for (const [
+        id,
+        closed,
+      ] of Object.entries(value)) {
+        if (closed) {
+          folded.add(id)
+        } else {
+          folded.delete(id)
+        }
+      }
+
+      next.foldedProjects = [...folded]
+    } else if (key === 'projectOrder') {
       if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item)) {
         throw new HydraError({
           message: `${key} must be project ids`,

@@ -21,7 +21,7 @@ The page groups tasks by project. Ideas is first and contains tasks without an a
 - `task arrange <task> [--before <task>]` sets visual order within a project and
   parent. State groups stay needs you, running, waiting/queued/paused, then done.
   `task reorder --behind` still changes a worker queue, not visual order.
-- `view set --json '{"workspace":{"projectOrder":["ideas","<project-id>"],"projectWidths":{"<project-id>":560},"foldedProjects":[]}}'`
+- `view set --json '{"workspace":{"projectOrder":["ideas","<project-id>"],"projectWidths":{"<project-id>":560},"foldedProjects":{"<project-id>":true}}}'`
   saves project layout. Project ids are repository paths or the group's id.
   Widths have a 280px minimum and no maximum. `collapsed` and `chatCollapsed`
   fold the Hydra and its chat. Pass `--hydra <hydra>` on every command.
