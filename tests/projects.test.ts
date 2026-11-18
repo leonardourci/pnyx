@@ -631,7 +631,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
           ],
         })
 
-        return task.queueNote?.includes('fixture checkout failure')
+        return task.queueNote
       },
     })
     const failedHandoff = await hydra.owner({
@@ -642,7 +642,16 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         '--full',
       ],
     })
+    expect(failedHandoff.task.queueNote).toContain('fixture checkout failure')
     expect(failedHandoff.task.queueNote).toContain('the previous checkout could not be restored')
+    expect((await hydra.ownerRefused({
+      args: [
+        'reply',
+        'next',
+        '--text',
+        'Hold unresolved handoff',
+      ],
+    })).code).toBe('CONFLICT')
     expect(git({
       cwd: path,
       args: [
@@ -2494,7 +2503,38 @@ if (branch === 'iris/target') {
         timeoutMs: 45_000,
         check: () => ended,
       })
+      const committedWork = join(
+        cwd,
+        'committed-work.txt',
+      )
+      writeFileSync(
+        committedWork,
+        'keep committed-checkout work',
+      )
       await pnyx.start()
+      const blockedTarget = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'target',
+          '--full',
+        ],
+      })).task
+      expect((await hydra.ownerRefused({
+        args: [
+          'reply',
+          'target',
+          '--text',
+          'Hold the dirty target',
+        ],
+      })).code).toBe('CONFLICT')
+      expect(blockedTarget.replies ?? []).toEqual([])
+      expect(readFileSync(
+        committedWork,
+        'utf8',
+      )).toBe('keep committed-checkout work')
+      rmSync(committedWork)
+      await pnyx.restart()
       const committedTarget = (await hydra.owner({
         args: [
           'task',
@@ -2593,7 +2633,10 @@ if (branch === 'iris/target') {
           check: () => ended,
         })
       }
+
+      await pnyx.restart()
     }
   },
   120_000,
 )
+

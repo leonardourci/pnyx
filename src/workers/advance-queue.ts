@@ -204,7 +204,10 @@ async function landedBranch({
     throw new Error('The worker needs an isolated project folder')
   }
 
-  const [root, projectRoot] = await Promise.all([
+  const [
+    root,
+    projectRoot,
+  ] = await Promise.all([
     checkoutRoot({ cwd }),
     checkoutRoot({ cwd: card.project }),
   ])

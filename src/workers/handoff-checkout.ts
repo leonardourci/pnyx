@@ -1,3 +1,4 @@
+import { HydraError } from '#store/errors.ts'
 import type { AgentSession } from './model.ts'
 import { createHash } from 'node:crypto'
 import { realpathSync, readdirSync, readFileSync, rmSync, existsSync } from 'node:fs'
@@ -218,15 +219,17 @@ function readHandoff({ path }: { path: string }): HandoffIntent {
     'tip',
     'previousBranch',
     'previousHead',
-  ].every(key => typeof Object.getOwnPropertyDescriptor(intent, key)?.value === 'string')) {
+  ].every(key => typeof Object.getOwnPropertyDescriptor(
+    intent,
+    key,
+  )?.value === 'string')) {
     throw new Error(`Invalid handoff intent: ${path}`)
   }
 
   return intent as HandoffIntent
 }
 
-// Runs before any worker resumes, so its checkout agrees with the committed assignment.
-export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise<void> {
+function handoffFiles({ hydraId }: { hydraId: string }): string[] {
   const dir = handoffsDir({ hydraId })
   let files: string[]
 
@@ -234,17 +237,53 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
     files = readdirSync(dir).filter(file => file.endsWith('.json'))
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      return
+      return []
     }
 
     throw error
   }
 
-  for (const file of files) {
-    const path = join(
-      dir,
-      file,
-    )
+  return files.map(file => join(
+    dir,
+    file,
+  ))
+}
+
+export function handoffPending({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): boolean {
+  return handoffFiles({ hydraId }).some(path => {
+    const intent = readHandoff({ path })
+
+    return intent.source === task || intent.target === task
+  })
+}
+
+export function requireHandoffAvailable({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): void {
+  if (handoffPending({
+    hydraId,
+    task,
+  })) {
+    throw new HydraError({
+      code: 'CONFLICT',
+      message: `Task ${task} has an unresolved handoff; inspect its checkout and restart Pnyx before delivering more work`,
+    })
+  }
+}
+
+// Runs before any worker resumes, so its checkout agrees with the committed assignment.
+export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise<void> {
+  for (const path of handoffFiles({ hydraId })) {
     const intent = readHandoff({ path })
     const event = readHandoffEvent({
       hydraId,
@@ -287,7 +326,8 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
 
       const root = await checkoutRoot({ cwd: intent.cwd })
 
-      if (root !== intent.root || current.branch !== intent.branch || current.head !== intent.tip || current.dirty) {
+      if (root !== intent.root || current.branch !== intent.branch
+        || current.head !== intent.tip || current.dirty) {
         throw new Error(`Committed handoff checkout changed; inspect ${intent.cwd}`)
       }
     } else {

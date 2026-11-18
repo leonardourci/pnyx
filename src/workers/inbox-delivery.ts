@@ -1,3 +1,4 @@
+import { handoffPending } from './handoff-checkout.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { HydraError } from '#store/errors.ts'
 import { copySettling } from '#projects/copy-lease.ts'
@@ -40,7 +41,10 @@ export async function notifySteering({
     }
   }
 
-  if (copySettling({
+  if (handoffPending({
+    hydraId,
+    task: cardId,
+  }) || copySettling({
     hydraId,
     task: cardId,
   })) {
