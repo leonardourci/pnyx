@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
 import type { HydraState } from '#app/model.ts'
+import type { HydraProject } from '#projects/model.ts'
 import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
 import { skillStatus } from './skills.ts'
@@ -37,12 +38,10 @@ const SIGN_IN: Record<Harness, string> = {
 // Reads files, PATH, each attached project's git sources and one Postgres query: cheap enough for every session open.
 export async function setupCheck({
   hydraId,
-  state,
   readable,
 }: {
   hydraId: string
-  state: HydraState
-  readable?: Awaited<ReturnType<typeof readableProjects>>
+  readable: HydraProject[]
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
   const database = postgresIssue()
@@ -167,10 +166,7 @@ export async function setupCheck({
     })
   }
 
-  const profiles = await Promise.all((readable ?? await readableProjects({
-    state,
-    hydraId,
-  })).filter(project => !project.detached)
+  const profiles = await Promise.all(readable.filter(project => !project.detached)
     .map(async project => ({
       project,
       status: (await readableProjectMemory({
@@ -243,7 +239,10 @@ export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
   const loaded = database ?? hydraIssue({ hydraId })
   const items = 'missing' in loaded ? [loaded] : await setupCheck({
     hydraId,
-    state: loaded,
+    readable: await readableProjects({
+      state: loaded,
+      hydraId,
+    }),
   })
 
   if (!items.length) {

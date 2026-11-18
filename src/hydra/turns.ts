@@ -221,13 +221,11 @@ export function createHydraTurns({
           items,
         ] = await Promise.all([
           projectDigest({
-            state,
             hydraId,
             readable,
           }),
           setupCheck({
             hydraId,
-            state,
             readable,
           }),
         ])
@@ -274,14 +272,18 @@ export function createHydraTurns({
         const owner = ownerMemory({ hydraId })
         const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
         const state = loadHydra({ hydraId }).state
+        const readable = await readableProjects({
+          state,
+          hydraId,
+        })
 
         return JSON.stringify({
           owner,
           ownerWrite,
           hydra: state.hydraMemory,
           projects: await projectDigest({
-            state,
             hydraId,
+            readable,
           }),
         })
       },

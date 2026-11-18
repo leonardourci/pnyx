@@ -4,24 +4,19 @@ import { memoryConditions } from '#memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '#memory/learnings.ts'
 import type { HydraState } from '#app/model.ts'
+import type { HydraProject } from './model.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, readableProjectMemory } from '#memory/project-memory.ts'
 
 const WORKER_DOCUMENT_LIMIT = 400
 
 export async function projectDigest({
-  state,
   hydraId,
   readable,
 }: {
-  state: HydraState
   hydraId: string
-  // The caller's own readableProjects result, so one digest reads each project's identity once.
-  readable?: Awaited<ReturnType<typeof readableProjects>>
+  readable: HydraProject[]
 }): Promise<string[]> {
-  const projects = (readable ?? await readableProjects({
-    state,
-    hydraId,
-  })).filter(project => !project.detached)
+  const projects = readable.filter(project => !project.detached)
 
   if (!projects.length) {
     return []

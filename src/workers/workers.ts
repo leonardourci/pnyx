@@ -403,13 +403,11 @@ const hydraDigestHandler = guard({
           items,
         ] = await Promise.all([
           projectDigest({
-            state,
             hydraId,
             readable,
           }),
           setupCheck({
             hydraId,
-            state,
             readable,
           }),
         ])
