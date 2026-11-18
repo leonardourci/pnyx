@@ -7,7 +7,7 @@ import type { HydraState } from '#app/model.ts'
 import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
 import { skillStatus } from './skills.ts'
-import { projectMemoryView } from '#memory/project-memory.ts'
+import { readableProjectMemory } from '#memory/project-memory.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
@@ -170,10 +170,10 @@ export async function setupCheck({
   })).filter(project => !project.detached)
     .map(async project => ({
       project,
-      status: (await projectMemoryView({
+      status: (await readableProjectMemory({
         ...project,
         hydraId,
-      })).status,
+      }))?.status,
     })))
 
   for (const {
