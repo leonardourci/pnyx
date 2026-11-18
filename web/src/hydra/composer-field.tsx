@@ -190,7 +190,7 @@ export function ComposerField({
     path: selectedFolder.path,
   }
 
-  const matches = mentionCandidates({
+  const matches = mention ? mentionCandidates({
     query,
     view,
     projects,
@@ -199,7 +199,7 @@ export function ComposerField({
     taskLook,
     folderItems,
     typedFolder,
-  })
+  }) : []
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
