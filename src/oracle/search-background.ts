@@ -12,7 +12,7 @@ const WORKER = new URL(
   import.meta.url,
 )
 
-const searches = new Map<string, Promise<ReturnType<typeof search>>>()
+const searchQueues = new Map<string, Promise<ReturnType<typeof search>>>()
 
 export interface SearchInput {
   hydraId: string
@@ -33,11 +33,11 @@ export async function searchInBackground({
   query,
   signal,
 }: SearchInput & { signal?: AbortSignal }): Promise<ReturnType<typeof search>> {
-  const previous = searches.get(hydraId)
+  const previousSearch = searchQueues.get(hydraId)
 
   const next = async () => {
     try {
-      await previous
+      await previousSearch
     } catch {
       // The previous caller receives its failure; later searches still run.
     }
@@ -61,7 +61,7 @@ export async function searchInBackground({
   }
 
   const pending = next()
-  searches.set(
+  searchQueues.set(
     hydraId,
     pending,
   )
@@ -69,8 +69,8 @@ export async function searchInBackground({
   try {
     return await pending
   } finally {
-    if (searches.get(hydraId) === pending) {
-      searches.delete(hydraId)
+    if (searchQueues.get(hydraId) === pending) {
+      searchQueues.delete(hydraId)
     }
   }
 }
