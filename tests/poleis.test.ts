@@ -2644,7 +2644,7 @@ test(
           'list',
         ],
       })
-      expect(invalidTail.writable.preferences.text).toBe('fresh replacement')
+      expect(invalidTail.writable.preferences?.text).toBe('fresh replacement')
       expect(JSON.stringify(invalidTail.memory)).not.toContain('Rejected destination-conflict import')
       writeFileSync(
         path,
