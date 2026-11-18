@@ -1420,6 +1420,7 @@ export function HydraChat({
         )}
       </div>
       <WaitingDecisions
+        hydraId={hydraId}
         command={command}
         notify={notify}
         triggerRef={waitingButton}

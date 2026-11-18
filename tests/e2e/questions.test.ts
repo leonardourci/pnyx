@@ -187,10 +187,52 @@ test(
         ],
       })).task.links?.some((link: { draft?: boolean }) => link.draft === false),
     })
+    const attempts: string[] = []
+    let lostReceipt: string | undefined
+    let dropped = false
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
       reducedMotion: true,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns socket callbacks.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns socket callbacks.
+          socket.onMessage(message => {
+            const sent = JSON.parse(String(message)) as {
+              id?: string
+              type?: string
+              name?: string
+              args?: string[]
+            }
+
+            if (sent.type === 'command' && sent.name === 'task'
+              && sent.args?.[0] === 'answer-group') {
+              attempts.push(sent.args[sent.args.indexOf('--event-id') + 1])
+
+              if (!lostReceipt) {
+                lostReceipt = sent.id
+              }
+            }
+
+            server.send(message)
+          })
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns socket callbacks.
+          server.onMessage(message => {
+            const received = JSON.parse(String(message)) as { id?: string }
+
+            if (!dropped && lostReceipt && received.id === lostReceipt) {
+              dropped = true
+
+              return
+            }
+
+            socket.send(message)
+          })
+        },
+      ),
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
     await workspace.getByRole(
@@ -333,6 +375,36 @@ test(
       },
     ).waitFor()
     expect(await workspace.locator('.waiting-decisions').count()).toBe(0)
+    const retry = workspace.getByRole(
+      'button',
+      { name: 'Retry group answer: Export batch' },
+    )
+    await retry.waitFor()
+    expect(dropped).toBe(true)
+    await retry.click()
+    await until({
+      what: 'the retained group receipt reconciles after reload',
+      check: async () => await workspace.locator('.group-answer-delivery').count() === 0,
+    })
+    expect(attempts).toHaveLength(2)
+    expect(attempts[1]).toBe(attempts[0])
+
+    for (const key of [
+      'Invoices',
+      'Payments',
+    ]) {
+      const card = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      expect(card.task.asks).toHaveLength(1)
+      expect(card.task.asks[0].choice).toBe('Open only')
+    }
+
     await page.context().close()
   },
 )
