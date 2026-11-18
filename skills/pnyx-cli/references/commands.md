@@ -53,6 +53,8 @@ Hydra config uses `polis` for its home and `readPoleis` for its read list. The d
 
 Asynchronous memory contexts retry up to three times when access, home or project attachments change during a read. Continued changes return `CONFLICT` without the assembled memory.
 
+Native cross-Hydra mutations and worker control require access to the target Hydra's home polis and every polis it may read, through the same two locks. Missing access returns `NOT_FOUND`, without identifying the target's memory. Task reads, owner actions and actions on the caller's own Hydra keep their existing rules. Admitted worker starts receive the target Hydra's memory under the worker's identity; direct CLI memory calls remain bound to the caller's native Hydra.
+
 Manage polis names and readers with `settings set --json '{"poleis":{"shared":{"readers":["*"]},"work":{"readers":["hydra-work"]},"personal":{"readers":[]}}}'`. Each named polis updates independently; use `null` to remove a polis. Omitted poleis stay unchanged, so a Hydra can edit its visible poleis without deleting hidden ones. `shared` is reserved and cannot be removed. `*` allows every Hydra through the polis lock; the Hydra's reads list must still allow it. Read the current settings revision before editing and pass `--if-revision`.
 
 `hydra set --read-poleis shared,work --polis work --hydra hydra-work` changes a Hydra's access. An empty `--read-poleis ''` opts out of all poleis. Use `owner memory move --key <key> --to <polis> --hydra <hydra>` to move a whole document from the resolved write polis to another readable polis, merging distinct lines in the destination. Moves append one durable entry; old versions remain in the log. Ordinary sets, confirmations, archives and forgets affect the write polis only.
