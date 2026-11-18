@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto'
+import { git, checkoutRoot, checkoutState, restoreCheckout, saveHandoff, clearHandoff, readHandoffEvent, otherWorkers } from './handoff-checkout.ts'
 import { sameProjectPath } from '#projects/identity.ts'
 import { createTaskBranch } from '#projects/git.ts'
 import { recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
-import { runFile, runProcess } from '#app/run-process.ts'
 import { statSync, realpathSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
@@ -21,8 +22,6 @@ import { sendReply } from './reply.ts'
 import { pullRequestLanding, pullRequestState } from '#integrations/github/pull-request.ts'
 import { checkAttachments, seenAt } from './presence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { hydraIds } from '#app/home-migration.ts'
-import { query } from '#store/postgres.ts'
 import { loadHydra } from '#app/store.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
@@ -30,37 +29,10 @@ import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } fro
 import { pendingPermissions } from './permission-rules.ts'
 import { applyDecision } from '#app/decision.ts'
 
-const GIT_TIMEOUT_MS = 30_000
 const meta = () => ({
   actor: 'pnyx',
   at: new Date().toISOString(),
 })
-
-async function git({
-  cwd,
-  args,
-}: {
-  cwd: string
-  args: string[]
-}): Promise<string> {
-  const { stdout } = await runFile({
-    command: 'git',
-    args: [
-      '-C',
-      cwd,
-      ...args,
-    ],
-    options: {
-      timeout: GIT_TIMEOUT_MS,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-      },
-    },
-  })
-
-  return stdout.trim()
-}
 
 function contextSize({ session }: { session: AgentSession }): number {
   try {
@@ -160,36 +132,6 @@ function unsafeWorker({
 
   return undefined
 }
-
-async function checkoutRoot({ cwd }: { cwd: string }): Promise<string | undefined> {
-  const result = await runProcess({
-    command: 'git',
-    args: [
-      '-C',
-      cwd,
-      'rev-parse',
-      '--show-toplevel',
-    ],
-    timeout: GIT_TIMEOUT_MS,
-  })
-
-  return result.status === 0 ? realpathSync(result.stdout.trim()) : undefined
-}
-
-const otherWorkers = ({
-  hydraId,
-  state,
-  session,
-}: {
-  hydraId: string
-  state: HydraState
-  session: AgentSession
-}) => hydraIds().flatMap(id => {
-  const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
-
-  return Object.values(current.sessions ?? {})
-    .filter(s => (id !== hydraId || s.id !== session.id) && s.taskId && s.agent.cwd && s.activity !== 'ended')
-})
 
 // The checkout each other live worker's folder belongs to, read before the write.
 async function workerRoots({
@@ -359,97 +301,6 @@ async function landedBranch({
   }
 
   throw new Error('Local commits are outside the merged pull request or its fetched default branch')
-}
-
-async function checkoutState({ cwd }: { cwd: string }) {
-  const currentBranch = await git({
-    cwd,
-    args: [
-      'branch',
-      '--show-current',
-    ],
-  })
-  const currentHead = await git({
-    cwd,
-    args: [
-      'rev-parse',
-      'HEAD',
-    ],
-  })
-
-  const status = await git({
-    cwd,
-    args: [
-      'status',
-      '--porcelain',
-    ],
-  })
-
-  return {
-    branch: currentBranch,
-    head: currentHead,
-    dirty: Boolean(status),
-  }
-}
-
-async function restoreCheckout({
-  cwd,
-  root,
-  branch,
-  tip,
-  previousBranch,
-  previousHead,
-}: {
-  cwd: string
-  root: string
-  branch: string
-  tip: string
-  previousBranch: string
-  previousHead: string
-}): Promise<void> {
-  if (await checkoutRoot({ cwd }) !== root) {
-    throw new Error('Handoff was not recorded and the checkout moved; inspect the worker folder before continuing')
-  }
-
-  const current = await checkoutState({ cwd })
-
-  if (current.branch === previousBranch && current.head === previousHead) {
-    return
-  }
-
-  if (current.branch !== branch || current.head !== tip || current.dirty) {
-    throw new Error('Handoff was not recorded and the checkout changed; inspect the worker folder before continuing')
-  }
-
-  if (previousBranch && await git({
-    cwd,
-    args: [
-      'rev-parse',
-      `refs/heads/${previousBranch}`,
-    ],
-  }) !== previousHead) {
-    throw new Error('Handoff was not recorded and the previous branch moved; inspect the worker folder before continuing')
-  }
-
-  const args = previousBranch ? [
-    'switch',
-    '--no-guess',
-    previousBranch,
-  ] : [
-    'switch',
-    '--detach',
-    previousHead,
-  ]
-  await git({
-    cwd,
-    args,
-  })
-  const restored = await checkoutState({ cwd })
-
-  if (await checkoutRoot({ cwd }) !== root || restored.branch !== previousBranch
-    || restored.head !== previousHead || restored.dirty) {
-    throw new Error('Handoff was not recorded and the previous checkout could not be restored; inspect the worker folder before continuing')
-  }
 }
 
 async function refreshLinks({
@@ -789,6 +640,22 @@ export async function advanceQueues({
         return false
       }
 
+      const eventId = randomUUID()
+      const handoffFile = saveHandoff({
+        hydraId,
+        intent: {
+          eventId,
+          session: id,
+          source: card.id,
+          target: next.id,
+          cwd: prepared.cwd,
+          root: prepared.root,
+          branch,
+          tip: prepared.tip,
+          previousBranch: prepared.previousBranch,
+          previousHead: prepared.head,
+        },
+      })
       let handoffEvent: string | undefined
       let recorded = false
       let handoffError: unknown
@@ -854,7 +721,10 @@ export async function advanceQueues({
               fromQueue: id,
               ref: id,
               task: next.id,
-              meta: meta(),
+              meta: {
+                ...meta(),
+                id: eventId,
+              },
             })
 
             if ('event' in decision && decision.event.type === 'task.session') {
@@ -892,26 +762,10 @@ export async function advanceQueues({
 
         if (handoffEvent) {
           try {
-            // Wait for the original transaction's row lock before deciding whether its event committed.
-            const [
-              , events,
-            ] = query({
-              transaction: true,
-              statements: [
-                {
-                  text: 'select id from hydras where id = $1 for update',
-                  values: [hydraId],
-                },
-                {
-                  text: 'select id from events where hydra_id = $1 and id = $2',
-                  values: [
-                    hydraId,
-                    handoffEvent,
-                  ],
-                },
-              ],
-            })
-            recorded = Boolean(events?.length)
+            recorded = Boolean(readHandoffEvent({
+              hydraId,
+              eventId: handoffEvent,
+            }))
           } catch (outcomeError) {
             throw new AggregateError(
               [
@@ -950,6 +804,8 @@ export async function advanceQueues({
           throw restoreError
         }
       }
+
+      clearHandoff({ path: handoffFile })
 
       if (handoffFailed) {
         throw handoffError
