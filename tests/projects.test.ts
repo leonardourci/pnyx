@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
+import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
 import { QUEUE_POLL_MS } from '#workers/queue.ts'
 
@@ -2498,34 +2499,22 @@ test(
         'refs/heads/poseidon-2/retry-allocation',
       ],
     })).toBe(reserved)
-    const other = await pnyx.hydra()
+    const other = await legacyDuplicate({
+      pnyx,
+      id: 'legacy-branch-names',
+      projects: [
+        {
+          path: cwd,
+          landing: 'branch',
+        },
+      ],
+    })
     await other.owner({
       args: [
         'hydra',
         'set',
         '--name',
         'Póseídon',
-      ],
-    })
-    const attachment = await other.owner({
-      args: [
-        'project',
-        'add',
-        cwd,
-        '--landing',
-        'branch',
-      ],
-    })
-    expect(attachment.confirmation).toBe('needed')
-    await other.owner({
-      args: [
-        'project',
-        'add',
-        cwd,
-        '--landing',
-        'branch',
-        '--confirm',
-        attachment.token,
       ],
     })
     await other.owner({

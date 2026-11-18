@@ -7,6 +7,7 @@ import { appendFileSync, copyFileSync, chmodSync, readFileSync, writeFileSync } 
 import { join } from 'node:path'
 import { createServer, type Socket } from 'node:net'
 import { startPnyx, pnyxAxi, parsed, until, type Pnyx } from './setup/pnyx.ts'
+import { legacyDuplicate } from './setup/legacy.ts'
 
 let pnyx: Pnyx
 beforeAll(async () => {
@@ -1060,56 +1061,31 @@ test(
   'project memory has one polis and requires attachment and both read locks',
   async () => {
     const allowed = await pnyx.hydra()
-    const hidden = await pnyx.hydra()
-    const unattached = await pnyx.hydra()
     const path = allowed.folder({ name: 'polis-project' })
-    const privatePath = unattached.folder({ name: 'polis-project' })
+    const privatePath = allowed.folder({ name: 'private/polis-project' })
 
-    await allowed.owner({
-      args: [
-        'project',
-        'add',
-        path,
-      ],
+    for (const project of [
+      path,
+      privatePath,
+    ]) {
+      await allowed.owner({
+        args: [
+          'project',
+          'add',
+          project,
+        ],
+      })
+    }
+
+    const hidden = await legacyDuplicate({
+      pnyx,
+      id: 'legacy-polis-hidden',
+      projects: [{ path }],
     })
-    const sharing = await hidden.owner({
-      args: [
-        'project',
-        'add',
-        path,
-      ],
-    })
-    await hidden.owner({
-      args: [
-        'project',
-        'add',
-        path,
-        '--confirm',
-        sharing.token,
-      ],
-    })
-    await unattached.owner({
-      args: [
-        'project',
-        'add',
-        privatePath,
-      ],
-    })
-    const privateSharing = await allowed.owner({
-      args: [
-        'project',
-        'add',
-        privatePath,
-      ],
-    })
-    await allowed.owner({
-      args: [
-        'project',
-        'add',
-        privatePath,
-        '--confirm',
-        privateSharing.token,
-      ],
+    const unattached = await legacyDuplicate({
+      pnyx,
+      id: 'legacy-polis-unattached',
+      projects: [{ path: privatePath }],
     })
     await allowed.owner({
       args: [
@@ -1354,6 +1330,14 @@ test(
         'pulsar',
       ],
     }))).not.toContain('Project [pulsar]')
+    // The owner settles the legacy duplicate, so the project can later be attached to its keeper again.
+    await allowed.owner({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })
     const noProjectHit = await allowed.owner({
       args: [
         'oracle',
@@ -1584,20 +1568,11 @@ test(
         ],
       })
       expect(ownerMemory.writable.learnings.text).toBe('Learning stays after project detach')
-      const reattach = await allowed.owner({
-        args: [
-          'project',
-          'add',
-          path,
-        ],
-      })
       await allowed.owner({
         args: [
           'project',
           'add',
           path,
-          '--confirm',
-          reattach.token,
         ],
       })
       expect(JSON.stringify(await allowed.owner({
@@ -1633,20 +1608,11 @@ test(
         path,
         state: 'detached',
       }))
-      const attachAgain = await allowed.owner({
-        args: [
-          'project',
-          'add',
-          path,
-        ],
-      })
       await allowed.owner({
         args: [
           'project',
           'add',
           path,
-          '--confirm',
-          attachAgain.token,
         ],
       })
       released = false
@@ -1747,20 +1713,11 @@ test(
       ).toBe(0)
       expect(digested.stdout).not.toContain('polis-project')
 
-      const restoreProject = await allowed.owner({
-        args: [
-          'project',
-          'add',
-          path,
-        ],
-      })
       await allowed.owner({
         args: [
           'project',
           'add',
           path,
-          '--confirm',
-          restoreProject.token,
         ],
       })
       await allowed.owner({
@@ -2005,7 +1962,19 @@ test(
   'Hydra proposes wider polis access for Confirm and narrows directly',
   async () => {
     const hydra = await pnyx.hydra()
-    const other = await pnyx.hydra()
+    const project = hydra.folder({ name: 'permission-project' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    const other = await legacyDuplicate({
+      pnyx,
+      id: 'legacy-permission-other',
+      projects: [{ path: project }],
+    })
     await hydra.owner({
       args: [
         'settings',
@@ -2269,30 +2238,6 @@ test(
       ],
     })).settings.poleis.controlled.readers).toEqual([hydra.id])
 
-    const project = hydra.folder({ name: 'permission-project' })
-    await hydra.owner({
-      args: [
-        'project',
-        'add',
-        project,
-      ],
-    })
-    const attach = await other.owner({
-      args: [
-        'project',
-        'add',
-        project,
-      ],
-    })
-    await other.owner({
-      args: [
-        'project',
-        'add',
-        project,
-        '--confirm',
-        attach.token,
-      ],
-    })
     expect((await pnyxAxi({
       args: [
         'project',
