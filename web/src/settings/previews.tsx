@@ -127,11 +127,8 @@ export function ThemePreview({
   view: ViewPreferences
   choose({ theme }: { theme: ViewPreferences['theme'] }): void
 }) {
-  const dark = document.documentElement.dataset.theme === 'dark'
-  const caption = `This page is ${dark ? 'dark' : 'light'} now${view.theme === 'system' ? ', following your computer' : ''}.`
-
   return (
-    <Preview caption={caption}>
+    <Preview>
       <div className="preview-theme-tiles grid grid-cols-3 gap-2">
         {THEME_TILES.map(tile => (
           <button
