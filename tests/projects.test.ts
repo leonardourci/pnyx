@@ -519,10 +519,14 @@ if (branch === 'hercules/next-chart-2') {
       ),
       `#!${process.execPath}
 const { execFileSync } = require('node:child_process')
-const { writeFileSync } = require('node:fs')
-if (execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim() === 'hercules/failure-hook') {
+const { writeFileSync, existsSync } = require('node:fs')
+const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
+if (branch === 'hercules/failure-hook') {
   writeFileSync(${JSON.stringify(failureMarker)}, 'failed')
   throw new Error('fixture checkout failure')
+}
+if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMarker)})) {
+  throw new Error('fixture rollback hook failure')
 }
 `,
     )
@@ -574,6 +578,15 @@ if (execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim
         return task.queueNote?.includes('fixture checkout failure')
       },
     })
+    const failedHandoff = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'failure',
+        '--full',
+      ],
+    })
+    expect(failedHandoff.task.queueNote).toContain('fixture rollback hook failure')
     expect(git({
       cwd: path,
       args: [

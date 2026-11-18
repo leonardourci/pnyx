@@ -783,6 +783,7 @@ export async function advanceQueues({
 
       let recorded = false
       let handoffError: unknown
+      let handoffFailed = false
 
       try {
         await git({
@@ -866,28 +867,36 @@ export async function advanceQueues({
         }))
       } catch (error) {
         handoffError = error
-        throw error
-      } finally {
-        if (!recorded) {
-          try {
-            await restoreCheckout({
-              cwd: prepared.cwd,
-              branch,
-              tip: prepared.tip,
-              previousBranch: prepared.previousBranch,
-              previousHead: prepared.head,
-            })
-          } catch (restoreError) {
-            if (handoffError instanceof Error && restoreError instanceof Error) {
-              throw new Error(
-                `${handoffError.message}\n${restoreError.message}`,
-                { cause: handoffError },
-              )
-            }
+        handoffFailed = true
+      }
 
-            throw restoreError
+      if (!recorded) {
+        try {
+          await restoreCheckout({
+            cwd: prepared.cwd,
+            branch,
+            tip: prepared.tip,
+            previousBranch: prepared.previousBranch,
+            previousHead: prepared.head,
+          })
+        } catch (restoreError) {
+          if (handoffFailed) {
+            throw new AggregateError(
+              [
+                handoffError,
+                restoreError,
+              ],
+              `${String(handoffError)}\n${String(restoreError)}`,
+              { cause: restoreError },
+            )
           }
+
+          throw restoreError
         }
+      }
+
+      if (handoffFailed) {
+        throw handoffError
       }
     } catch (error) {
       if (active()) {
