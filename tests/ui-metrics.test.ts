@@ -217,7 +217,7 @@ test(
 )
 
 test(
-  'one off switch disconnects observers, cancels drag frames and discards work spanning a disabled interval',
+  'drag sampling survives logger cleanup, while Logs Off cancels frames and pending measurements',
   () => {
     const lines = start()
     let tick: FrameRequestCallback | undefined
@@ -274,6 +274,19 @@ test(
       }),
     ]))
     expect(lines.some(line => line.operation === 'page.flow')).toBe(false)
+    const beforeCleanup = lines.length
+    trackUIDrag({ action: 'task' })
+    tick?.(200); tick?.(216); tick?.(264)
+    cleanup?.()
+    cleanup = undefined
+    expect(lines.slice(beforeCleanup)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        operation: 'page.drag-frames',
+        action: 'task',
+        frameCount: 2,
+        frames: 2,
+      }),
+    ]))
   },
 )
 

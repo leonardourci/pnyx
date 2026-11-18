@@ -558,11 +558,11 @@ export function startUIMetrics({ log }: { log: typeof pageLog }): () => void {
   }
 
   return () => {
+    endDrag?.()
+
     flush()
     write = undefined
     generation++
-
-    endDrag?.()
 
     stop?.()
     stop = undefined; start = undefined; write = undefined
