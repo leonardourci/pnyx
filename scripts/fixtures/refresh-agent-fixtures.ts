@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSyn
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { query, type SDKControlGetContextUsageResponse, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 
 const OUT = join(
   import.meta.dirname,
@@ -143,11 +143,21 @@ async function recordClaude() {
   })
   const models = await session.supportedModels()
   const turn: SDKMessage[] = []
+  let context: Pick<SDKControlGetContextUsageResponse, 'model' | 'rawMaxTokens'> | undefined
 
   for await (const message of session) {
     turn.push(...keep({ message }))
 
     if (message.type === 'result') {
+      // The window Claude Code measures the session against; the rest of the reading lists this machine's tools and files.
+      const {
+        model,
+        rawMaxTokens,
+      } = await session.getContextUsage({ detail: 'summary' })
+      context = {
+        model,
+        rawMaxTokens,
+      }
       done()
     }
   }
@@ -174,6 +184,7 @@ async function recordClaude() {
         { encoding: 'utf8' },
       ).trim(),
       models,
+      context,
       turn,
     },
   })
