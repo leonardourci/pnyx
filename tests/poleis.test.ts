@@ -1398,6 +1398,19 @@ test(
         'Learning stays after project detach',
       ],
     })
+    await allowed.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        path,
+        '--key',
+        'learnings',
+        '--text',
+        'Confirm this original learning',
+      ],
+    })
     const gateBin = allowed.folder({ name: 'git-gate' })
     const git = join(
       gateBin,
@@ -1420,7 +1433,7 @@ test(
     const gate = createServer(socket => {
       sockets.push(socket)
 
-      if (released || sockets.length > blockedReads) {
+      if (released || sockets.length === 1 || sockets.length > blockedReads) {
         socket.end()
       }
     })
@@ -1438,6 +1451,48 @@ test(
     process.env.PNYX_TEST_GIT_SOCKET = socketPath
 
     try {
+      const confirming = allowed.ownerRefused({
+        args: [
+          'project',
+          'memory',
+          'confirm',
+          '--project',
+          path,
+          '--text',
+          'Confirm this original learning',
+          '--reason',
+          'Rechecked project learning',
+        ],
+      })
+      await until({
+        what: 'confirmation write Git read is gated',
+        check: () => sockets.length >= blockedReads,
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'memory',
+          'set',
+          '--project',
+          path,
+          '--key',
+          'learnings',
+          '--text',
+          'Confirm this original learning\nEdited while confirmation waited',
+        ],
+      })
+      released = true
+      sockets.forEach(socket => socket.end())
+      expect((await confirming).code).toBe('REVISION_CONFLICT')
+      expect(JSON.stringify(await allowed.owner({
+        args: [
+          'project',
+          'show',
+          path,
+        ],
+      }))).toContain('Edited while confirmation waited')
+      released = false
+      blockedReads = sockets.length + 2
       const moving = allowed.ownerRefused({
         args: [
           'owner',
@@ -1470,7 +1525,7 @@ test(
       ])
       await until({
         what: 'both Git reads are gated',
-        check: () => sockets.length === 2,
+        check: () => sockets.length === blockedReads,
       })
       await allowed.owner({
         args: [
@@ -1479,8 +1534,7 @@ test(
           'polis-project',
         ],
       })
-      sockets[0]!.end()
-      sockets[1]!.end()
+      sockets.forEach(socket => socket.end())
       const [
         moved,
         written,
