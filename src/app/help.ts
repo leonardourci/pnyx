@@ -339,6 +339,7 @@ pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
 Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
 Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
+A handoff cut by a restart is settled at the next start: an uncommitted one gets its source checkout back, a committed one keeps its target. While a handoff is unresolved, starts, resumes, replies and copy removal for both tasks answer CONFLICT; move out any changed work in the folder, then restart to retry.
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
@@ -371,9 +372,9 @@ Fast in the Hydra's composer puts every worker on Fast where the model has it.
 environment; the session it starts attaches to the task when its hooks first report.
 The default route is firstmate for a Hydra run by a Firstmate home, otherwise pnyx.
 A task with an attached project starts in its own copy: a git worktree slot copies/<project>-<n> on branch
-pnyx/<hydra>-<task> (or the project's copy command, see project set), taken once and reused by later starts. A start
+<hydra-name-slug>/<task-title-slug> (or the project's copy command, see project set), taken once and reused by later starts. A start
 takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
-dependencies, and starts the branch from the fetched origin default branch. A failed refresh stops allocation;
+dependencies, and starts the branch from the fetched origin default branch. A failed refresh or remote branch listing stops allocation;
 projects without origin use local HEAD. --in-place works in the project folder
 itself and is refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras
 make their own copies.
@@ -382,6 +383,7 @@ commit is on the default branch or its linked pull request merged; the branch st
 command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
 A released slot goes back to the pool when fewer than ${POOL_IDLE} clean idle slots of the project are already there, or
 when an attached worker still runs in it; otherwise it is deleted. A slot a worker runs in is never handed to another task.
+Allocation reuses clean unrecorded slots whose commits landed; uncommitted or unlanded work stays and is reported to Hydra.
 Queued handoff prepares the next branch and transfers the folder; manual task attach only moves the session.
 task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
 already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.

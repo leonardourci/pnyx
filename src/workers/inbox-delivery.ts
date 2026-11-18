@@ -1,3 +1,4 @@
+import { handoffPending } from './handoff-checkout.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { HydraError } from '#store/errors.ts'
 import { copySettling } from '#projects/copy-lease.ts'
@@ -37,6 +38,16 @@ export async function notifySteering({
     return {
       result: 'deferred',
       detail: 'instruction already handled or removed',
+    }
+  }
+
+  if (handoffPending({
+    hydraId,
+    task: cardId,
+  })) {
+    return {
+      result: 'deferred',
+      detail: 'task has an unresolved handoff; restart Pnyx to recover its checkout',
     }
   }
 

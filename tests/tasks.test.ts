@@ -1,3 +1,5 @@
+// TypeScript cannot rewrite the web alias's .ts extension when checking this test.
+import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -435,5 +437,24 @@ test(
         'preview',
       ],
     })).code).toBe('NOT_FOUND')
+  },
+)
+
+test(
+  'settings take precedence over the task title and truncation keeps a whole Unicode code point',
+  () => {
+    expect(pageTitle({
+      hydra: 'Poseidon',
+      page: 'settings',
+      taskTitle: 'Add the cart',
+    })).toBe('Settings · Poseidon · Pnyx')
+    expect(pageTitle({
+      hydra: 'Poseidon',
+      taskTitle: '0123456789 0123456789 0123456789 0123456789 0123456789 123456 extra',
+    })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789… · Poseidon · Pnyx')
+    expect(pageTitle({
+      hydra: 'Poseidon',
+      taskTitle: '01234567890123456789012345678901234567890123456789012345678🚀extra',
+    })).toBe('01234567890123456789012345678901234567890123456789012345678🚀… · Poseidon · Pnyx')
   },
 )

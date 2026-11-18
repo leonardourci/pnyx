@@ -1,3 +1,4 @@
+import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
 import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
@@ -138,6 +139,11 @@ export async function sendReply({
       const card = findCard({
         state: writer.state,
         ref: request.card,
+      })
+
+      requireHandoffAvailable({
+        hydraId,
+        task: card.id,
       })
 
       if (request.expectedSession && card.sessionIds?.[0] !== request.expectedSession) {

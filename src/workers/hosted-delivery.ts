@@ -1,3 +1,4 @@
+import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { randomUUID } from 'node:crypto'
 import { enqueueSteering } from './inbox.ts'
@@ -229,6 +230,11 @@ export function createHostedDelivery({
           const card = hosted({
             writer,
             ref,
+          })
+
+          requireHandoffAvailable({
+            hydraId,
+            task: card.id,
           })
 
           const settling = copySettling({

@@ -335,7 +335,7 @@ export async function mountOwnedHydra({
   const tick = createServerTick({
     hydraId,
     state: () => state,
-    closed: () => closed,
+    closed: () => closed || !recovered,
     pump,
     followDelay,
     reminderScheduler,

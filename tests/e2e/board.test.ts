@@ -9,7 +9,7 @@ beforeAll(async () => {
 })
 
 test(
-  'the open board follows a task live from Queued to In progress to Done as the CLI and its worker change it',
+  'the open Hydra follows task moves and keeps the tab title in sync with selection and renames',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await openHydra({
@@ -17,6 +17,38 @@ test(
       hydraId: hydra.id,
     })
     await page.locator('[aria-label="Work columns"]').waitFor()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Poseidon',
+      ],
+    })
+    await until({
+      what: 'Hydra tab title',
+      check: async () => await page.title() === 'Poseidon · Pnyx',
+    })
+    const needsYou = await hydra.column({ role: 'needs_you' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Review the export',
+        '--column',
+        needsYou,
+      ],
+    })
+    await page.getByRole(
+      'button',
+      {
+        name: 'Review the export',
+        exact: true,
+      },
+    ).waitFor()
+    expect(await page.title()).toBe('Poseidon · Pnyx')
+
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })
 
@@ -32,7 +64,6 @@ test(
         folder,
       ],
     })
-    // A card is the article holding its title button.
     const shown = ({ title }: { title: string }) => page.locator(
       'article',
       {
@@ -47,6 +78,32 @@ test(
     )
     await column({ title: 'Queued' }).locator(shown({ title: 'Ship the export' }))
       .waitFor()
+    await page.getByRole(
+      'button',
+      {
+        name: 'Ship the export',
+        exact: true,
+      },
+    ).focus()
+    await page.keyboard.press('Enter')
+    await until({
+      what: 'focused task tab title without an attention count',
+      check: async () => await page.title() === 'Ship the export · Poseidon · Pnyx',
+    })
+    const longTitle = '0123456789 0123456789 0123456789 0123456789 0123456789 12345 extra'
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'export',
+        '--title',
+        longTitle,
+      ],
+    })
+    await until({
+      what: 'renamed task tab title shortened at a word boundary',
+      check: async () => await page.title() === '0123456789 0123456789 0123456789 0123456789 0123456789 12345… · Poseidon · Pnyx',
+    })
 
     await hydra.owner({
       args: [
@@ -55,7 +112,7 @@ test(
         'export',
       ],
     })
-    await column({ title: 'In progress' }).locator(shown({ title: 'Ship the export' }))
+    await column({ title: 'In progress' }).locator(shown({ title: longTitle }))
       .waitFor()
 
     const worker = await hydra.agent({ cwd: folder })
@@ -69,9 +126,9 @@ test(
         'Export shipped',
       ],
     })
-    await column({ title: 'Done' }).locator(shown({ title: 'Ship the export' }))
+    await column({ title: 'Done' }).locator(shown({ title: longTitle }))
       .waitFor()
-    expect(await shown({ title: 'Ship the export' }).count()).toBe(1)
+    expect(await shown({ title: longTitle }).count()).toBe(1)
   },
 )
 

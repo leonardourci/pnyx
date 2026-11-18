@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto'
+import { git, checkoutRoot, checkoutState, matchesCheckout, restoreCheckout, saveHandoff, clearHandoff, readHandoffEvent, otherWorkers, handoffPending } from './handoff-checkout.ts'
 import { sameProjectPath } from '#projects/identity.ts'
-import { taskBranch } from '#projects/git.ts'
+import { copySettling } from '#projects/copy-lease.ts'
+import { createTaskBranch } from '#projects/git.ts'
+import { branchHydraName, recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
-import { runFile, runProcess } from '#app/run-process.ts'
-import { statSync, realpathSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
@@ -20,45 +23,21 @@ import { sendReply } from './reply.ts'
 import { pullRequestLanding, pullRequestState } from '#integrations/github/pull-request.ts'
 import { checkAttachments, seenAt } from './presence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
+import { log } from '#app/diagnostics.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './queue.ts'
 import { pendingPermissions } from './permission-rules.ts'
 import { applyDecision } from '#app/decision.ts'
 
-const GIT_TIMEOUT_MS = 30_000
 const meta = () => ({
   actor: 'pnyx',
   at: new Date().toISOString(),
 })
 
-async function git({
-  cwd,
-  args,
-}: {
-  cwd: string
-  args: string[]
-}): Promise<string> {
-  const { stdout } = await runFile({
-    command: 'git',
-    args: [
-      '-C',
-      cwd,
-      ...args,
-    ],
-    options: {
-      timeout: GIT_TIMEOUT_MS,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-      },
-    },
-  })
-
-  return stdout.trim()
-}
+const errorText = ({ error }: { error: unknown }) =>
+  error instanceof Error ? error.message : String(error)
 
 function contextSize({ session }: { session: AgentSession }): number {
   try {
@@ -66,6 +45,36 @@ function contextSize({ session }: { session: AgentSession }): number {
   } catch {
     return 0
   }
+}
+
+function handoffBlocked({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): boolean {
+  return handoffPending({
+    hydraId,
+    task,
+  }) || copySettling({
+    hydraId,
+    task,
+  })
+}
+
+function workerIdle({
+  card,
+  session,
+}: {
+  card: Card
+  session: AgentSession
+}): boolean {
+  const busy = card.activity === 'working' || session.activity === 'working' || session.activity === 'ended'
+  const waiting = session.attention.some(a => a.blocking && !a.answered)
+    || pendingPermissions({ card }).length > 0
+
+  return !busy && !waiting
 }
 
 function releaseQueue({
@@ -159,36 +168,6 @@ function unsafeWorker({
   return undefined
 }
 
-async function checkoutRoot({ cwd }: { cwd: string }): Promise<string | undefined> {
-  const result = await runProcess({
-    command: 'git',
-    args: [
-      '-C',
-      cwd,
-      'rev-parse',
-      '--show-toplevel',
-    ],
-    timeout: GIT_TIMEOUT_MS,
-  })
-
-  return result.status === 0 ? realpathSync(result.stdout.trim()) : undefined
-}
-
-const otherWorkers = ({
-  hydraId,
-  state,
-  session,
-}: {
-  hydraId: string
-  state: HydraState
-  session: AgentSession
-}) => hydraIds().flatMap(id => {
-  const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
-
-  return Object.values(current.sessions ?? {})
-    .filter(s => (id !== hydraId || s.id !== session.id) && s.taskId && s.agent.cwd && s.activity !== 'ended')
-})
-
 // The checkout each other live worker's folder belongs to, read before the write.
 async function workerRoots({
   hydraId,
@@ -204,10 +183,14 @@ async function workerRoots({
     state: loadHydra({ hydraId }).state,
     session,
   })) {
-    roots.set(
-      other.agent.cwd!,
-      await checkoutRoot({ cwd: other.agent.cwd! }),
-    )
+    const cwd = other.agent.cwd
+
+    if (cwd && !roots.has(cwd)) {
+      roots.set(
+        cwd,
+        await checkoutRoot({ cwd }),
+      )
+    }
   }
 
   return roots
@@ -230,8 +213,12 @@ function assertUnshared({
     hydraId,
     state,
     session,
-  }).some(other => roots.get(other.agent.cwd!) === root)) {
-    throw new Error('Another worker uses this folder')
+  }).some(other => {
+    const cwd = other.agent.cwd
+
+    return cwd && (cwd === session.agent.cwd || !roots.has(cwd) || roots.get(cwd) === root)
+  })) {
+    throw new Error('Another worker uses this folder or its checkout could not be checked')
   }
 }
 
@@ -252,23 +239,23 @@ async function landedBranch({
     throw new Error('The worker needs an isolated project folder')
   }
 
-  const root = realpathSync(await git({
-    cwd,
-    args: [
-      'rev-parse',
-      '--show-toplevel',
-    ],
-  }))
-  const projectRoot = realpathSync(await git({
-    cwd: card.project,
-    args: [
-      'rev-parse',
-      '--show-toplevel',
-    ],
-  }))
+  const [
+    root,
+    projectRoot,
+  ] = await Promise.all([
+    checkoutRoot({ cwd }),
+    checkoutRoot({ cwd: card.project }),
+  ])
 
-  if (root === projectRoot) {
+  if (!root || !projectRoot || root === projectRoot) {
     throw new Error('The worker needs an isolated project folder')
+  }
+
+  if (card.copy && !sameProjectPath({
+    left: card.copy.path,
+    right: root,
+  })) {
+    throw new Error('The worker checkout is outside its recorded task copy')
   }
 
   assertUnshared({
@@ -282,35 +269,23 @@ async function landedBranch({
     }),
   })
 
-  if (await git({
-    cwd,
-    args: [
-      'status',
-      '--porcelain',
-    ],
-  })) {
+  const checkout = await checkoutState({ cwd })
+
+  if (checkout.dirty) {
     throw new Error('The worker folder has uncommitted changes')
   }
 
-  const head = await git({
-    cwd,
-    args: [
-      'rev-parse',
-      'HEAD',
-    ],
-  })
+  const {
+    head,
+    branch: previousBranch,
+  } = checkout
+
   const copy = card.copy ?? {
     path: cwd,
     project: card.project,
     via: 'worktree' as const,
     state: 'active' as const,
-    branch: await git({
-      cwd,
-      args: [
-        'branch',
-        '--show-current',
-      ],
-    }),
+    branch: previousBranch,
   }
   const context = await landingContext({
     copy: {
@@ -325,9 +300,11 @@ async function landedBranch({
 
   const prepared = {
     cwd,
+    project: copy.project,
     base: `origin/${context.base}`,
     tip: context.tip,
     head,
+    previousBranch,
     root,
   }
 
@@ -451,7 +428,7 @@ async function deliverHandoffs({
   })
 
   for (const event of events) {
-    if (event.type !== 'task.session' || !event.data.handoff) {
+    if (event.type !== 'task.session' || !event.data.handoff || event.data.brief === undefined) {
       continue
     }
 
@@ -465,7 +442,10 @@ async function deliverHandoffs({
       state,
       card,
     }).ready || card.sessionIds?.[0] !== event.data.session
-      || receipt && receipt.state !== 'failed') {
+      || receipt && receipt.state !== 'failed' || handoffPending({
+      hydraId,
+      task: card.id,
+    })) {
       continue
     }
 
@@ -474,7 +454,7 @@ async function deliverHandoffs({
       request: {
         card: card.id,
         expectedSession: event.data.session,
-        text: event.data.brief!,
+        text: event.data.brief,
         actor: 'pnyx',
         id,
         homes: [],
@@ -488,7 +468,7 @@ async function deliverHandoffs({
     hydraId,
     types: ['task.session'],
   }).find(event => {
-    if (event.type !== 'task.session' || !event.data.handoff) {
+    if (event.type !== 'task.session' || !event.data.handoff || event.data.brief === undefined) {
       return false
     }
 
@@ -553,10 +533,12 @@ export async function advanceQueues({
       continue
     }
 
-    const current = state.cards[session!.taskId!]!
+    const current = session?.taskId ? state.cards[session.taskId] : undefined
 
-    if (session!.activity === 'working' || session!.attention.some(a => a.blocking && !a.answered)
-      || pendingPermissions({ card: current }).length > 0) {
+    if (!session || !current || !workerIdle({
+      card: current,
+      session,
+    })) {
       continue
     }
 
@@ -569,11 +551,19 @@ export async function advanceQueues({
       })
       state = loadHydra({ hydraId }).state
 
-      if (state.sessions?.[id]?.taskId !== current.id) {
+      const attached = state.sessions?.[id]
+
+      if (attached?.taskId !== current.id) {
         continue
       }
 
-      const card = state.cards[current.id]!
+      const card = state.cards[current.id]
+
+      if (!card) {
+        continue
+      }
+
+      const sourceRevision = card.revision
       const prs = card.links.filter(l => l.kind === 'github_pr')
 
       const landed = prs.length ? prs.every(l => l.state === 'merged')
@@ -588,7 +578,14 @@ export async function advanceQueues({
         session: id,
       })[0]
 
-      if (!next || !taskReadiness({
+      if (!next || handoffBlocked({
+        hydraId,
+        task: card.id,
+      })
+        || handoffBlocked({
+          hydraId,
+          task: next.id,
+        }) || !taskReadiness({
         state,
         card: next,
       }).ready) {
@@ -605,129 +602,206 @@ export async function advanceQueues({
         throw new Error('The next task needs a brief and the same project with a reusable git folder')
       }
 
+      const targetRevision = next.revision
       const prepared = await landedBranch({
         readLanding,
         hydraId,
         card,
-        session: session!,
+        session: attached,
       })
 
       if (!prepared || !active()) {
         continue
       }
 
-      const branch = taskBranch({
-        hydraId,
+      let brief: string | undefined
+
+      const prepare = async ({ branch }: { branch: string }) => {
+        if (await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
+          throw new Error('The worker checkout changed during branch preparation')
+        }
+
+        brief = await taskPrompt({
+          hydraId,
+          card: next,
+          prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations.`,
+        })
+
+        const currentState = loadHydra({ hydraId }).state
+        const currentSource = currentState.cards[card.id]
+        const currentTarget = workerQueue({
+          state: currentState,
+          session: id,
+        })[0]
+
+        return currentSource?.revision === sourceRevision && currentTarget?.id === next.id
+          && currentTarget.revision === targetRevision
+          && currentState.sessions?.[id]?.agent.cwd === prepared.cwd
+      }
+
+      const branch = await createTaskBranch({
+        cwd: prepared.cwd,
+        start: prepared.tip,
+        active,
+        prepare,
+        hydraName: branchHydraName({
+          hydraId,
+          state,
+        }),
         task: next.id,
-      })
-      const brief = await taskPrompt({
-        hydraId,
-        card: next,
-        prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,
+        title: next.title,
+        reserved: recordedBranches({
+          hydraId,
+          state,
+          project: prepared.project,
+        }),
       })
 
-      if (await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
-        throw new Error('The worker checkout changed during branch preparation')
+      if (!active()) {
+        return false
+      }
+
+      if (!branch || brief === undefined) {
+        continue
       }
 
       const roots = await workerRoots({
         hydraId,
-        session: session!,
+        session: attached,
       })
-      assertUnshared({
-        hydraId,
-        state: loadHydra({ hydraId }).state,
-        session: session!,
+      const unchanged = await matchesCheckout({
+        cwd: prepared.cwd,
         root: prepared.root,
-        roots,
-      })
-      const status = await runProcess({
-        command: 'git',
-        args: [
-          '-C',
-          prepared.cwd,
-          'status',
-          '--porcelain',
-        ],
-        timeout: GIT_TIMEOUT_MS,
-      })
-      const head = await runProcess({
-        command: 'git',
-        args: [
-          '-C',
-          prepared.cwd,
-          'rev-parse',
-          'HEAD',
-        ],
-        timeout: GIT_TIMEOUT_MS,
+        branch: prepared.previousBranch,
+        head: prepared.head,
       })
 
-      if (status.status !== 0 || status.stdout.trim() || head.stdout.trim() !== prepared.head) {
+      if (!unchanged) {
         throw new Error('The worker folder changed during branch preparation')
       }
 
-      // ponytail: the branch is made before the write; a task that changed meanwhile leaves it unused, and a retry reports it exists.
-      const run = await runProcess({
-        command: 'git',
-        args: [
-          '-C',
-          prepared.cwd,
-          'switch',
-          '--no-track',
-          '-c',
-          branch,
-          prepared.tip,
-        ],
-        timeout: GIT_TIMEOUT_MS,
+      assertUnshared({
+        hydraId,
+        state: loadHydra({ hydraId }).state,
+        session: attached,
+        root: prepared.root,
+        roots,
       })
 
-      if (run.status !== 0) {
-        throw new Error(`Cannot create a fresh branch: ${run.stderr.trim()}`)
+      if (!active()) {
+        return false
       }
 
-      withWriter({
+      if (handoffBlocked({
         hydraId,
-        fn: ({ writer }) => {
-          drainSpool({ writer })
-          const source = writer.state.cards[card.id]
-          const target = workerQueue({
-            state: writer.state,
-            session: id,
-          })[0]
+        task: card.id,
+      }) || handoffBlocked({
+        hydraId,
+        task: next.id,
+      })) {
+        continue
+      }
 
-          if (source?.revision !== card.revision || target?.id !== next.id
-            || !taskReadiness({
+      const eventId = randomUUID()
+      const handoffFile = saveHandoff({
+        hydraId,
+        intent: {
+          eventId,
+          session: id,
+          source: card.id,
+          target: next.id,
+          cwd: prepared.cwd,
+          root: prepared.root,
+          branch,
+          tip: prepared.tip,
+          previousBranch: prepared.previousBranch,
+          previousHead: prepared.head,
+        },
+      })
+      let appendAttempted = false
+      let recorded = false
+      let failure: { error: unknown } | undefined
+
+      try {
+        await git({
+          cwd: prepared.cwd,
+          args: [
+            'switch',
+            '--no-guess',
+            branch,
+          ],
+        })
+        const switched = await matchesCheckout({
+          cwd: prepared.cwd,
+          root: prepared.root,
+          branch,
+          head: prepared.tip,
+        })
+
+        if (!switched) {
+          throw new Error('The worker folder changed during handoff checkout')
+        }
+
+        recorded = Boolean(withWriter({
+          hydraId,
+          fn: ({ writer }) => {
+            drainSpool({ writer })
+            const source = writer.state.cards[card.id]
+            const target = workerQueue({
+              state: writer.state,
+              session: id,
+            })[0]
+            const currentSession = writer.state.sessions?.[id]
+
+            if (!active() || source?.revision !== sourceRevision || target?.id !== next.id
+              || target.revision !== targetRevision || source.sessionIds?.[0] !== id
+              || currentSession?.taskId !== card.id || currentSession.agent.cwd !== prepared.cwd) {
+              return
+            }
+
+            if (!workerIdle({
+              card: source,
+              session: currentSession,
+            })) {
+              return
+            }
+
+            if (!taskReadiness({
               state: writer.state,
               card: target,
-            }).ready || target.revision !== next.revision
-          || source.sessionIds?.[0] !== id || source.activity === 'working') {
-            return
-          }
+            }).ready) {
+              return
+            }
 
-          assertUnshared({
-            hydraId,
-            state: writer.state,
-            session: session!,
-            root: prepared.root,
-            roots,
-          })
-          const decision = decideSession({
-            state: writer.state,
-            fromQueue: id,
-            ref: id,
-            task: next.id,
-            meta: meta(),
-          })
+            assertUnshared({
+              hydraId,
+              state: writer.state,
+              session: attached,
+              root: prepared.root,
+              roots,
+            })
+            const decision = decideSession({
+              state: writer.state,
+              fromQueue: id,
+              ref: id,
+              task: next.id,
+              meta: {
+                ...meta(),
+                id: eventId,
+              },
+            })
 
-          if ('event' in decision && decision.event.type === 'task.session') {
-            decision.event.data.handoff = {
-              folder: prepared.cwd,
-              column: roleColumn({
-                columns: hydraConfig({ state: writer.state }).columns,
-                role: 'in_progress',
-              }) ?? next.column,
-              ...(source.copy ? {
-                copy: {
+            if ('event' in decision && decision.event.type === 'task.session') {
+              decision.event.data.handoff = {
+                folder: prepared.cwd,
+                column: roleColumn({
+                  columns: hydraConfig({ state: writer.state }).columns,
+                  role: 'in_progress',
+                }) ?? next.column,
+              }
+
+              if (source.copy) {
+                decision.event.data.handoff.copy = {
                   ...source.copy,
                   branch,
                   base: prepared.base.replace(
@@ -735,21 +809,106 @@ export async function advanceQueues({
                     '',
                   ),
                   state: 'active',
-                },
-              } : {}),
+                }
+              }
+
+              decision.event.data.brief = brief
+              appendAttempted = true
+              writer.append({ event: decision.event })
+
+              return true
             }
-            decision.event.data.brief = brief
-            writer.append({ event: decision.event })
+          },
+        }))
+      } catch (error) {
+        failure = { error }
+
+        if (appendAttempted) {
+          try {
+            recorded = Boolean(readHandoffEvent({
+              hydraId,
+              eventId,
+            }))
+          } catch (outcomeError) {
+            throw new AggregateError(
+              [
+                error,
+                outcomeError,
+              ],
+              `Handoff outcome unknown; checkout retained on ${branch}`,
+              { cause: outcomeError },
+            )
           }
-        },
-      })
+        }
+
+        if (recorded) {
+          log({
+            level: 'warn',
+            operation: 'confirm committed worker handoff',
+            hydraId,
+            taskId: next.id,
+            error,
+          })
+        }
+      }
+
+      if (!recorded) {
+        try {
+          const rollbackRoots = await workerRoots({
+            hydraId,
+            session: attached,
+          })
+          assertUnshared({
+            hydraId,
+            state: loadHydra({ hydraId }).state,
+            session: attached,
+            root: prepared.root,
+            roots: rollbackRoots,
+          })
+          await restoreCheckout({
+            cwd: prepared.cwd,
+            root: prepared.root,
+            branch,
+            tip: prepared.tip,
+            previousBranch: prepared.previousBranch,
+            previousHead: prepared.head,
+          })
+        } catch (restoreError) {
+          if (failure) {
+            throw new AggregateError(
+              [
+                failure.error,
+                restoreError,
+              ],
+              `${errorText({ error: failure.error })}; ${errorText({ error: restoreError })}`,
+              { cause: restoreError },
+            )
+          }
+
+          throw restoreError
+        }
+      }
+
+      clearHandoff({ path: handoffFile })
+
+      if (failure && !recorded) {
+        throw failure.error
+      }
     } catch (error) {
+      log({
+        level: 'error',
+        operation: 'worker handoff',
+        hydraId,
+        taskId: current.id,
+        error,
+      })
+
       if (active()) {
         releaseQueue({
           hydraId,
           session: id,
           task: current.id,
-          reason: (error as Error).message,
+          reason: errorText({ error }),
         })
       }
     }

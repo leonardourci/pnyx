@@ -1,3 +1,4 @@
+import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { realpathSync } from 'node:fs'
 import { BROWSER_TOOL, requireToolAuthority, toolNames, writeTools } from './tools.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
@@ -131,6 +132,11 @@ export function createWorkerStarts({
       state: writer.state,
       ref,
     })
+    requireHandoffAvailable({
+      hydraId,
+      task: target.id,
+    })
+
     requireCopyAvailable({
       hydraId,
       task: target.id,

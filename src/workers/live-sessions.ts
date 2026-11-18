@@ -1,3 +1,4 @@
+import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -1186,6 +1187,11 @@ export function createLiveSessions({
     session?: HostedSession
     toolResume?: string
   }): Live => {
+    requireHandoffAvailable({
+      hydraId,
+      task: card.id,
+    })
+
     requireCopyAvailable({
       hydraId,
       task: card.id,
