@@ -148,7 +148,10 @@ function questionChoices({
     throw invalid({ message: 'choices must have different labels' })
   }
 
-  if (recommended !== undefined && (!Number.isInteger(recommended) || recommended < 1 || recommended > choices.length)) {
+  const invalidRecommendation = recommended !== undefined
+    && (!Number.isInteger(recommended) || recommended < 1 || recommended > choices.length)
+
+  if (invalidRecommendation) {
     throw invalid({ message: choices.length ? `--recommend takes a choice number from 1 to ${choices.length}` : '--recommend needs choices' })
   }
 
@@ -190,7 +193,10 @@ function validateOwnerQuestion({
     missing.push('at least two --choice values')
   }
 
-  if (recommended === undefined || !Number.isInteger(recommended) || recommended < 1 || recommended > options.length) {
+  const missingRecommendation = recommended === undefined || !Number.isInteger(recommended)
+    || recommended < 1 || recommended > options.length
+
+  if (missingRecommendation) {
     missing.push('--recommend with one choice number')
   }
 

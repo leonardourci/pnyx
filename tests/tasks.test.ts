@@ -1,7 +1,7 @@
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
@@ -1696,5 +1696,236 @@ test(
     })
     const unanswered = unchanged.task.asks.find((ask: { id: string }) => ask.id === third.ask)
     expect(unanswered.answered).toBeUndefined()
+  },
+)
+
+test(
+  'group delivery stops when a new question arrives between worker sends',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const parent = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export delivery batch',
+      ],
+    })
+    const session = await hydra.chat({ text: 'Coordinate worker decisions' })
+    const asHydra = hydra.as({ session })
+    const gate = hydra.folder({ name: 'delivery-gate' })
+    const bin = hydra.folder({ name: 'delivery-bin' })
+    const originalPath = process.env.PATH
+    const tmux = join(
+      bin,
+      'tmux',
+    )
+    writeFileSync(
+      tmux,
+      `#!${process.execPath}\n${readFileSync(
+        join(
+          import.meta.dirname,
+          'setup/fixtures/tmux-gate.mjs',
+        ),
+        'utf8',
+      )}`,
+    )
+    chmodSync(
+      tmux,
+      0o755,
+    )
+    writeFileSync(
+      join(
+        bin,
+        'ps',
+      ),
+      '#!/bin/sh\nprintf "ttys123\\n"\n',
+      { mode: 0o755 },
+    )
+    const asks = new Map<string, string>()
+
+    for (const key of [
+      'first',
+      'second',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          key,
+          '--key',
+          key,
+          '--parent',
+          parent.card.id,
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          agent: {
+            provider: 'codex',
+            sessionId: `outside-${key}`,
+          },
+          activity: 'finished',
+          terminal: {
+            tmux: gate,
+            tmuxPane: key === 'first' ? '%1' : '%2',
+            tty: '/dev/ttys123',
+            pid: '123',
+          },
+        }),
+      })
+      const card = await hydra.task({ key })
+      const asked = await hydra.owner({
+        args: [
+          'task',
+          'ask',
+          key,
+          '--actor',
+          `worker:${card.id}`,
+          '--question',
+          'Include archived records?',
+          '--context',
+          `Archived records change totals. I will build after your choice. [Export](pnyx-task:${card.id})`,
+          '--choice',
+          'Open only',
+          '--choice',
+          'Include archived',
+          '--recommend',
+          '1',
+        ],
+      })
+      asks.set(
+        key,
+        asked.ask,
+      )
+      await asHydra.run({
+        args: [
+          'task',
+          'escalate',
+          key,
+          asked.ask,
+          '--reason',
+          'Accounting scope',
+        ],
+      })
+    }
+
+    const grouped = await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })
+    const questions = grouped.groups[0].questions as { key: string }[]
+    const firstId = decodeURIComponent(questions[0].key.split('/')[0])
+    const firstKey = (await hydra.task({ key: 'first' })).id === firstId ? 'first' : 'second'
+    process.env.PATH = `${bin}:${originalPath}`
+    const answer = hydra.ownerRefused({
+      args: [
+        'task',
+        'answer-group',
+        parent.card.id,
+        '--questions',
+        JSON.stringify(questions.map(question => question.key)),
+        '--choice',
+        'Open only',
+        '--event-id',
+        'gated-delivery',
+      ],
+    }).then(
+      result => ({ result }),
+      error => ({ error }),
+    )
+
+    try {
+      await until({
+        what: 'the terminal receives its gated answer',
+        check: () => existsSync(join(
+          gate,
+          'received',
+        )),
+      })
+      await asHydra.run({
+        args: [
+          'task',
+          'ask',
+          parent.card.id,
+          '--to',
+          'owner',
+          '--question',
+          'Include draft records?',
+          '--context',
+          `Drafts change totals. I will build after your choice. [Batch](pnyx-task:${parent.card.id})`,
+          '--choice',
+          'Open only',
+          '--choice',
+          'Include archived',
+          '--recommend',
+          '1',
+          '--reason',
+          'New accounting scope',
+        ],
+      })
+    } finally {
+      writeFileSync(
+        join(
+          gate,
+          'release',
+        ),
+        '',
+      )
+      await answer.finally(() => {
+        process.env.PATH = originalPath
+      })
+    }
+
+    expect(await answer).toHaveProperty(
+      'result.code',
+      'CONFLICT',
+    )
+
+    for (const key of [
+      'first',
+      'second',
+    ]) {
+      const shown = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      const ask = shown.task.asks.find((ask: { id: string }) => ask.id === asks.get(key))
+
+      if (key === firstKey) {
+        expect(ask.choice).toBe('Open only')
+        expect(shown.task.replies).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            state: 'delivered',
+            decision: expect.objectContaining({ choice: 'Open only' }),
+          }),
+        ]))
+      } else {
+        expect(ask.answered).toBeUndefined()
+        expect(shown.task.replies ?? []).toHaveLength(0)
+      }
+    }
+
+    const remaining = await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })
+    expect(remaining.groups[0].count).toBe(2)
   },
 )

@@ -650,7 +650,10 @@ async function answerGroup({
     ref,
   })
   const selected = members.map(key => {
-    const [task, id] = key.split('/')
+    const [
+      task,
+      id,
+    ] = key.split('/')
     const target = Object.values(state.cards).find(card => encodeURIComponent(card.id) === task)
     const ask = target?.asks?.find(ask => encodeURIComponent(ask.id) === id && ask.audience === 'owner')
     const event = `${attempt}:${key}`
@@ -683,6 +686,7 @@ async function answerGroup({
       ask,
       event,
       repeat,
+      delivery: priorReply?.state,
     }
   })
   const pending = selected.filter(member => !member.repeat)
@@ -717,7 +721,6 @@ async function answerGroup({
 
   const answers: Output[] = []
   const remaining = new Set(pending.map(member => member.key))
-  const attempted = new Set<string>()
 
   for (const member of selected) {
     if (member.repeat) {
@@ -725,19 +728,23 @@ async function answerGroup({
         task: member.card.id,
         ask: member.ask.id,
         repeat: true,
+        state: member.delivery,
       })
       continue
     }
 
     // Sending an earlier answer can yield while the owner or a worker changes the group.
     const latest = loadHydra({ hydraId }).state
-    const latestGroup = ownerQuestionGroups({ state: latest }).find(group => group.card.id === card.id)
+    const latestGroup = ownerQuestionGroups({ state: latest })
+      .find(group => group.card.id === card.id)
     const latestKeys = latestGroup?.decisions.map(decision => decisionKey({ decision }))
-      .filter(key => !attempted.has(key))
     const latestAsk = latest.cards[member.card.id]?.asks?.find(ask => ask.id === member.ask.id)
     const index = latestAsk?.options?.findIndex(option => option.label === choice) ?? -1
 
-    if (!latestKeys || latestKeys.length !== remaining.size || latestKeys.some(key => !remaining.has(key))
+    const changed = !latestKeys || latestKeys.length !== remaining.size
+      || latestKeys.some(key => !remaining.has(key))
+
+    if (changed
       || !latestGroup?.choices.includes(choice) || index < 0) {
       throw new HydraError({
         code: 'CONFLICT',
@@ -761,8 +768,13 @@ async function answerGroup({
         id: member.event,
       },
     }))
-    attempted.add(member.key)
-    remaining.delete(member.key)
+    const after = ownerQuestionGroups({ state: loadHydra({ hydraId }).state })
+      .find(group => group.card.id === card.id)
+    const stillWaiting = after?.decisions.some(decision => decisionKey({ decision }) === member.key)
+
+    if (!stillWaiting) {
+      remaining.delete(member.key)
+    }
   }
 
   return {
