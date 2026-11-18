@@ -2288,7 +2288,12 @@ test(
       ],
     }))).not.toContain('permission-project')
     await other.owner({
-      args: ['hydra', 'set', '--read-poleis', ''],
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        '',
+      ],
     })
     expect((await hydra.ownerRefused({
       args: [
@@ -2300,10 +2305,19 @@ test(
       ],
     })).code).toBe('CONFLICT')
     await hydra.owner({
-      args: ['approval', 'dismiss', projectProposal.token],
+      args: [
+        'approval',
+        'dismiss',
+        projectProposal.token,
+      ],
     })
     await other.owner({
-      args: ['hydra', 'set', '--read-poleis', 'shared'],
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared',
+      ],
     })
     projectProposal = parsed(await pnyxAxi({
       args: projectProposalArgs,
@@ -2749,9 +2763,13 @@ test(
           import.meta.url,
         ),
         'utf8',
-      ).trimEnd().split('\n')
+      ).trimEnd()
+        .split('\n')
 
-      for (const invalidEntry of corruptMoves.slice(0, 3)) {
+      for (const invalidEntry of corruptMoves.slice(
+        0,
+        3,
+      )) {
         appendFileSync(
           path,
           `${invalidEntry}\n`,

@@ -19,7 +19,10 @@ export async function memoryHistoryFilter({ hydraId }: { hydraId: string }) {
 
   return ({ event }: { event: HydraEvent }): boolean => {
     if (event.type === 'hydra.memory') {
-      const legacyOwnerMemory = Object.hasOwn(OWNER_DOCUMENTS, event.data.key)
+      const legacyOwnerMemory = Object.hasOwn(
+        OWNER_DOCUMENTS,
+        event.data.key,
+      )
 
       return own && (!legacyOwnerMemory || reads.has(DEFAULT_POLIS_ACCESS.polis))
     }
