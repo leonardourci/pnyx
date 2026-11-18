@@ -1,3 +1,4 @@
+import { Prose } from './prose.tsx'
 import { motionDuration, REDUCED_MOTION } from '#web-shared/motion.ts'
 import { noteFrame } from '#web-app/log.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
@@ -604,7 +605,7 @@ function StreamedText({
   ] : st.done
 
   return (
-    <div className="markdown" ref={host}>
+    <Prose ref={host}>
       {parts.map(part => (
         <MarkdownBlocks
           key={part.offset}
@@ -618,7 +619,7 @@ function StreamedText({
           images={images}
         />
       ))}
-    </div>
+    </Prose>
   )
 }
 

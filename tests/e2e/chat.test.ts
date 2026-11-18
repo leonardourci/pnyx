@@ -1350,3 +1350,65 @@ test(
     }
   },
 )
+
+test(
+  'a streamed reply keeps the same prose size as older replies through settlement',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra:hydra.id,
+      text:'Older turn',
+      reply:'An older settled reply.',
+    })
+    const session = await hydra.chat({text:'Older turn'})
+    await until({
+      what:'the older reply settles',
+      check:()=>session.answered===1,
+    })
+    const page = await openHydra({
+      port:pnyx.port(),
+      hydraId:hydra.id,
+      reducedMotion:true,
+    })
+    const conversation = page.locator(CONVERSATION)
+    const older = conversation.getByText(
+      'An older settled reply.',
+      {exact:true},
+    )
+    await older.waitFor()
+
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+    const typographyOf = (element: Element) => {
+      const style = getComputedStyle(element)
+
+      return {
+        size:style.fontSize,
+        line:style.lineHeight,
+        font:style.fontFamily,
+      }
+    }
+
+    const typography = await older.evaluate(typographyOf)
+    const turn = pnyx.claude.plan({
+      hydra:hydra.id,
+      text:'Next turn',
+      partial:'The newest reply.',
+      reply:'The newest reply. Settled.',
+      hold:true,
+    })
+    await hydra.chat({text:'Next turn'})
+    const live = conversation.getByText(
+      'The newest reply.',
+      {exact:true},
+    )
+    await live.waitFor()
+    expect(await live.evaluate(typographyOf)).toEqual(typography)
+    turn.release()
+    const settled = conversation.getByText(
+      'The newest reply. Settled.',
+      {exact:true},
+    )
+    await settled.waitFor()
+    expect(await settled.evaluate(typographyOf)).toEqual(typography)
+  },
+)
