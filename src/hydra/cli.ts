@@ -25,7 +25,7 @@ import { hydraMessages, hydraSend } from './send-cli.ts'
 import { hydraResize } from '#preferences/cli.ts'
 import { hydraMemory } from '#memory/cli.ts'
 import { startHydra } from './start.ts'
-import { HYDRA_CARD } from './identity.ts'
+import { HYDRA_CARD, homeHydraId } from './identity.ts'
 import { checkSettings, readSettings, saveSettings, settingsReceipt, shownSettings } from '#settings/store.ts'
 import { SETTING_FLAGS, sharedSettingFlags, visibleSettings } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
@@ -134,7 +134,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   const id = action !== 'create'
     ? hydraId
     : positionals[1]
-      ?? (values.firstmate ? homeHydraId({ home: String(values.firstmate) }) : required({
+      ?? (values.firstmate ? homeHydraId({ name: basename(String(values.firstmate)) }) : required({
         value: undefined,
         what: 'Hydra id',
       }))
@@ -455,22 +455,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     ...settings,
     help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
   }
-}
-
-function homeHydraId({ home }: { home: string }): string {
-  return basename(home).toLowerCase()
-    .replace(
-      /[^a-z0-9._-]+/g,
-      '-',
-    )
-    .replace(
-      /^[^a-z0-9]+/,
-      '',
-    )
-    .slice(
-      0,
-      64,
-    ) || 'firstmate'
 }
 
 // What `hydra send` and Hydra's other commands take; create, list, homes, show and set take their own.
