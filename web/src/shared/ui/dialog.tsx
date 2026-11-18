@@ -47,6 +47,8 @@ export function Dialog({
   return (
     <AnimatedOverlaySurface
       layoutScroll
+      // Native modal dialogs use viewport coordinates, outside their workspace’s projection.
+      data-framer-portal-id={heading}
       open={!!layoutId}
       layoutId={layoutId}
       initial={false}
