@@ -1,0 +1,10 @@
+pages[2]{id,url,selected}:
+  1,about:blank,false
+  2,http://127.0.0.1:59064/hydra/h1/,true
+help[2]:
+  Run `chrome-devtools-axi selectpage <id>` to switch tabs
+  Run `chrome-devtools-axi newpage <url>` to open a new tab
+
+result: "\"Add the cart · Poseidon · Pnyx\""
+help[1]:
+  Run `chrome-devtools-axi snapshot` to see current page state
