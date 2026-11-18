@@ -48,7 +48,6 @@ export default defineConfig({
         test: {
           name: 'e2e',
           include: ['tests/e2e/*.test.ts'],
-          exclude: ['tests/e2e/performance.test.ts'],
           // A browser journey starts zero-cache and Chrome, which a loaded machine slows most.
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,

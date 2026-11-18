@@ -1122,6 +1122,19 @@ test(
         }),
       })
       await connected.waitFor()
+      const familyColumnWidth = 1024
+      await hydra.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({workspace: {projectWidths: {ideas: familyColumnWidth}}}),
+        ],
+      })
+      await until({
+        what: 'the family shares a column wide enough for several closed cards',
+        check: async () => (await workspace.locator('[data-column=ideas]').boundingBox())!.width >= familyColumnWidth - 1,
+      })
       await first.click()
       await until({
         what: 'an expanded closed family owns its full row',

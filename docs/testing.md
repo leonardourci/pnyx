@@ -111,3 +111,5 @@ Rules:
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions and resumed turns, on Claude and Codex.
 - `e2e/board.test.ts`: the live board and a card's Activity in Chrome.
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
+
+The 628-task/six-Hydra journey runs in both builds. The normal renderer enforces the strict 50ms drag and scroll long-task budget. The profiling renderer enforces task commit counts and DOM bounds; its extra React timing instrumentation is excluded from latency measurements. Neither run retries a budget miss.

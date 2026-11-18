@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, inject, test } from 'vitest'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { openHydra } from '../setup/browser.ts'
@@ -10,6 +10,12 @@ const PROJECTS = 12
 const PROJECT_TASKS = 44
 const MAX_MOUNTED_CARDS = 70
 const MAX_TASK_COMMITS = 4
+const DISCOVERY_READ_BUDGETS = {
+  models: 2,
+  project: 1,
+  catalog: 1,
+  rule: 2,
+}
 
 test(
   'one task update stays local and a full column drags and scrolls within its budget',
@@ -122,10 +128,28 @@ test(
         'Summarize the active work',
       ],
     })
+    const reads: {
+      name: string
+      args: string[]
+    }[] = []
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: first.id,
+      prepare: async ({page}) => {
+        page.on(
+          'websocket',
+          socket => socket.on(
+            'framesent',
+            ({payload}) => {
+              const frame = JSON.parse(String(payload))
 
+              if (frame.type === 'command') {
+                reads.push(frame)
+              }
+            },
+          ),
+        )
+      },
     })
     const workspace = page.locator(`[data-hydra-workspace="${first.id}"]`)
     const other = page.locator(`[data-hydra-workspace="${second.id}"]`)
@@ -148,6 +172,7 @@ test(
     expect(await workspace.locator('.card-open').count()).toBeLessThanOrEqual(MAX_MOUNTED_CARDS)
     expect(await workspace.locator('.project-column').count()).toBeLessThanOrEqual(4)
     expect(await other.locator('.card-open').count()).toBe(0)
+    expect(await other.locator('.hydra-page').count()).toBe(0)
     expect(await page.locator('*').count()).toBeLessThan(6000)
     const earlierProject = second.folder({ name: 'later-project' })
     mkdirSync(
@@ -174,6 +199,23 @@ test(
     })
     expect(page.url()).toContain(`/hydra/${first.id}/`)
 
+    expect(reads.some(read => read.name === 'catalog')).toBe(true)
+
+    for (const [
+      name,
+      budget,
+    ] of Object.entries(DISCOVERY_READ_BUDGETS)) {
+      expect(
+        reads.filter(read => read.name === name).length,
+        `${name} discovery is not repeated for hidden Hydras`,
+      ).toBeLessThanOrEqual(budget)
+    }
+
+    await page.evaluate(async () => {
+      await document.fonts.ready
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    })
+    expect(await page.locator('.hydra-page').count()).toBe(1)
     const finishStream = await beginUIWindow({ page })
     stream.release()
     await workspace.getByLabel(
@@ -215,18 +257,21 @@ test(
     ).waitFor()
     const update = await finishUpdate()
     const renders = update.filter(line => line.operation === 'page.react-commit' && line.surface === 'task')
-    expect(
-      renders.length,
-      'this journey requires the profiling build',
-    ).toBeGreaterThan(0)
-    expect(renders.reduce(
-      (
-        count,
-        line,
-      ) => count + line.count,
-      0,
-    )).toBeLessThanOrEqual(MAX_TASK_COMMITS)
-    expect(renders.filter(line => line.hydraId === second.id)).toEqual([])
+
+    if (inject('uiProfile')) {
+      expect(
+        renders.length,
+        'this journey requires the profiling build',
+      ).toBeGreaterThan(0)
+      expect(renders.reduce(
+        (
+          count,
+          line,
+        ) => count + line.count,
+        0,
+      )).toBeLessThanOrEqual(MAX_TASK_COMMITS)
+      expect(renders.filter(line => line.hydraId === second.id)).toEqual([])
+    }
 
     const fourth = workspace.getByRole(
       'button',
@@ -310,7 +355,10 @@ test(
     await page.mouse.up()
     await page.locator('.physical-ghost').waitFor({ state: 'detached' })
     const drag = await finishDrag()
-    expectResponsiveUI({ metrics: drag })
+
+    if (!inject('uiProfile')) {
+      expectResponsiveUI({ metrics: drag })
+    }
 
     const scroller = workspace.locator('[data-column="ideas"] .column-cards')
     await scroller.hover()
@@ -325,7 +373,11 @@ test(
       check: () => scroller.evaluate(element => element.scrollTop > 850),
     })
     const scroll = await finishScroll()
-    expectResponsiveUI({ metrics: scroll })
+
+    if (!inject('uiProfile')) {
+      expectResponsiveUI({ metrics: scroll })
+    }
+
     expect(await workspace.locator('.card-open').count()).toBeLessThanOrEqual(MAX_MOUNTED_CARDS)
     expect(errors.map(error => error.message)).toEqual([])
   },
