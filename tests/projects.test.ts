@@ -1033,29 +1033,11 @@ test(
   },
 )
 
-test.each([
-  {
-    repo: 'private-forbidden',
-    rulesError: 'error: "Insufficient permissions for this action"\ncode: FORBIDDEN',
-  },
-  {
-    repo: 'private-missing',
-    rulesError: 'error: HTTP 404: Not Found',
-  },
-  {
-    repo: 'private-http-forbidden',
-    rulesError: 'error: HTTP 403: Forbidden',
-  },
-  {
-    repo: 'private-structured-missing',
-    rulesError: 'error: "Resource not found"\ncode: NOT_FOUND',
-  },
-])(
-  'Hydra merges $repo with unreadable branch rules while enforcing approval and readable checks',
-  async ({
-    repo,
-    rulesError,
-  }) => {
+test(
+  'Hydra merges a private repository whose branch rules GitHub hides while enforcing approval and readable checks',
+  async () => {
+    const repo = 'private'
+    const rulesError = 'error: "Insufficient permissions for this action"\ncode: FORBIDDEN'
     const hydra = await pnyx.hydra()
     const folder = join(
       github,
@@ -1186,6 +1168,34 @@ test.each([
     const failed = await asHydra.refused({ args: merge })
     expect(failed.code).toBe('CONFLICT')
     expect(failed.error).toContain('check is not green')
+    // Every way GitHub hides a private repository's rules leaves the other evidence to decide.
+    publish({
+      error: 'error: HTTP 404: Not Found',
+      classic: null,
+      check: {
+        ...run,
+        conclusion: 'failure',
+      },
+    })
+    expect((await asHydra.refused({ args: merge })).error).toContain('check is not green')
+    publish({
+      error: 'error: HTTP 403: Forbidden',
+      classic: null,
+      check: {
+        ...run,
+        conclusion: 'failure',
+      },
+    })
+    expect((await asHydra.refused({ args: merge })).error).toContain('check is not green')
+    publish({
+      error: 'error: "Resource not found"\ncode: NOT_FOUND',
+      classic: null,
+      check: {
+        ...run,
+        conclusion: 'failure',
+      },
+    })
+    expect((await asHydra.refused({ args: merge })).error).toContain('check is not green')
     publish({
       check: {
         ...run,
