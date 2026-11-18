@@ -24,6 +24,14 @@ type Entry = {
     reads?: string[]
     writes?: HelperAction[]
   }
+  readOnly?({
+    args,
+    positionals,
+    values,
+  }: Args & {
+    positionals: string[]
+    values: Record<string, unknown>
+  }): boolean
   // Hydra may only propose these; the owner confirms.
   ownerOnly?({ args }: Args): boolean
 }
@@ -35,11 +43,17 @@ const flag = ({
 
 export const COMMAND_REGISTRY = {
   page: {
+    readOnly: () => true,
     page: true,
     repeatable: true,
     scope: { reads: [''] },
   },
   debug: {
+    readOnly: ({ args }) => [
+      'timeline',
+      'health',
+      'performance',
+    ].includes(args[0] ?? ''),
     scope: { reads: [''] },
     helper: {
       reads: [
@@ -60,6 +74,10 @@ export const COMMAND_REGISTRY = {
     ownerOnly: () => true,
   },
   project: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'project',
+      args,
+    }),
     page: true,
     scope: {
       reads: [
@@ -77,6 +95,35 @@ export const COMMAND_REGISTRY = {
   },
   task: {
     page: true,
+    readOnly: ({
+      positionals,
+      values,
+    }) => {
+      const action = positionals[0]
+
+      if (action === 'report') {
+        return values.file === undefined
+      }
+
+      if (action === 'tools') {
+        return values.grant === undefined && values.revoke === undefined
+      }
+
+      return [
+        'list',
+        'show',
+        'history',
+        'updates',
+        'messages',
+        'chat',
+        'sessions',
+        'reminders',
+      ].includes(action ?? '')
+        || (action === 'source' && [
+          'list',
+          'status',
+        ].includes(positionals[1] ?? ''))
+    },
     scope: {
       reads: [
         'list',
@@ -135,11 +182,32 @@ export const COMMAND_REGISTRY = {
       })),
   },
   column: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'column',
+      args,
+    }),
     page: true,
     scope: { reads: ['list'] },
   },
   hydra: {
     page: true,
+    readOnly: ({
+      positionals,
+      values,
+    }) => values.inscribe !== true && (
+      [
+        'list',
+        'homes',
+        'show',
+        'messages',
+        'message',
+        'history',
+        'check',
+        'usage',
+        'digest',
+      ].includes(positionals[0] ?? '')
+      || (positionals[0] === 'memory' && positionals[1] === 'list')
+    ),
     scope: {
       reads: [
         'list',
@@ -173,11 +241,19 @@ export const COMMAND_REGISTRY = {
     },
   },
   layout: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'layout',
+      args,
+    }),
     page: true,
     scope: { reads: ['show'] },
   },
   // Permission increases are checked against the resulting dispatch document at its write boundary.
   rule: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'rule',
+      args,
+    }),
     page: true,
     scope: {
       reads: [
@@ -193,6 +269,10 @@ export const COMMAND_REGISTRY = {
     ].includes(args[0] ?? ''),
   },
   account: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'account',
+      args,
+    }),
     page: true,
     scope: { reads: ['list'] },
   },
@@ -205,6 +285,10 @@ export const COMMAND_REGISTRY = {
   outcome: { page: true },
   undo: { page: true },
   view: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'view',
+      args,
+    }),
     page: true,
     scope: {
       reads: [
@@ -214,6 +298,10 @@ export const COMMAND_REGISTRY = {
     },
   },
   settings: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'settings',
+      args,
+    }),
     page: true,
     scope: {
       reads: [
@@ -223,21 +311,37 @@ export const COMMAND_REGISTRY = {
     },
   },
   history: {
+    readOnly: () => true,
     page: true,
     scope: { reads: [''] },
   },
   card: {
+    readOnly: () => true,
     page: true,
     scope: { reads: [''] },
   },
   integrations: {
+    readOnly: () => true,
     page: true,
     scope: { reads: [''] },
   },
-  context: { scope: { reads: [''] } },
-  logs: { scope: { reads: [''] } },
-  oracle: { scope: { reads: [''] } },
+  context: {
+    readOnly: () => true,
+    scope: { reads: [''] },
+  },
+  logs: {
+    readOnly: () => true,
+    scope: { reads: [''] },
+  },
+  oracle: {
+    readOnly: () => true,
+    scope: { reads: [''] },
+  },
   owner: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'owner',
+      args,
+    }),
     scope: { reads: ['memory list'] },
     helper: { reads: ['memory'] },
   },
@@ -261,6 +365,10 @@ export const COMMAND_REGISTRY = {
   'hydra-agent': { repeatable: true },
   'hydra-agent-change': { repeatable: true },
   setup: {
+    readOnly: ({ args }) => matchesReadScope({
+      name: 'setup',
+      args,
+    }),
     scope: { reads: ['check'] },
     ownerOnly: ({ args }) => args[0] !== 'check',
   },
@@ -269,6 +377,7 @@ export const COMMAND_REGISTRY = {
     ownerOnly: () => true,
   },
   upgrade: {
+    readOnly: ({ args }) => args.includes('--check'),
     scope: { reads: [''] },
     ownerOnly: ({ args }) => !args.includes('--check'),
   },
@@ -316,6 +425,37 @@ export const ownerOnlyCommand = ({
   name,
   args,
 }: { name: string } & Args): boolean => registered({ name })?.ownerOnly?.({ args }) ?? false
+
+function matchesReadScope({
+  name,
+  args,
+}: {
+  name: string
+  args: string[]
+}): boolean {
+  return registered({ name })?.scope?.reads?.some(path => path === '' || path.split(' ').every((
+    word,
+    index,
+  ) => args[index] === word)) ?? false
+}
+
+export function readOnlyCommand({
+  name,
+  args,
+  positionals,
+  values,
+}: {
+  name: string
+  args: string[]
+  positionals: string[]
+  values: Record<string, unknown>
+}): boolean {
+  return registered({ name })?.readOnly?.({
+    args,
+    positionals,
+    values,
+  }) ?? false
+}
 
 // Hydra and its routine helper run any pnyx-axi command without asking; the rules above refuse what they may not do.
 export const HYDRA_COMMANDS = ['pnyx-axi']
