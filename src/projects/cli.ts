@@ -1,5 +1,5 @@
 import { sharesWithMore } from '#memory/access-changes.ts'
-import { checkMemoryApproval, canRead, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
+import { checkMemoryApproval, canRead, findReadableProject, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
@@ -86,7 +86,8 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'move') {
-    const project = findProject({
+    const project = await findReadableProject({
+      hydraId,
       state: current,
       ref: required({
         value: ref,
@@ -227,8 +228,11 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
+  let projectRef = ref
+
   if (action === 'set' || action === 'remove') {
-    const project = findProject({
+    const project = await findReadableProject({
+      hydraId,
       state: current,
       ref: required({
         value: ref,
@@ -239,6 +243,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       hydraId,
       ...(await projectIdentity(project)),
     })
+    projectRef = project.path
   }
 
   if (action === 'set') {
@@ -277,7 +282,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         const before = findProject({
           state,
           ref: required({
-            value: ref,
+            value: projectRef,
             what: 'project name or path',
           }),
         })
@@ -406,7 +411,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       : findProject({
         state: current,
         ref: required({
-          value: ref,
+          value: projectRef,
           what: 'project name or path',
         }),
       }).path
