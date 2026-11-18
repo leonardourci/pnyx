@@ -28,8 +28,8 @@ function* documentChunks({
 }
 
 export function* eventDocuments({ event }: { event: HydraEvent }): Generator<Document> {
-  // Search current memory separately so a forgotten note stops appearing.
-  if (event.type === 'chat.message' || event.type === 'hydra.memory') {
+  // Timed reviews can include memory that has since been revoked or forgotten.
+  if (event.type === 'chat.message' || event.type === 'hydra.memory' || event.type === 'hydra.review') {
     return
   }
 

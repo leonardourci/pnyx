@@ -1809,6 +1809,12 @@ test(
         })
         expect(beforeDetach.events[0].data.block).toContain('Revoked project review learning')
         expect(beforeDetach.events[0].data.block).toContain('Owner review anchor')
+        expect(JSON.stringify(await allowed.owner({
+          args: [
+            'oracle',
+            'revoked',
+          ],
+        }))).toContain('[Revoked]')
         released = false
         const reviewReads = sockets.length
         blockedReads = reviewReads + 1
@@ -1842,6 +1848,12 @@ test(
         expect(afterDetach.events[0].data.block).toContain('Owner review anchor')
         expect(afterDetach.events[0].data.block).not.toContain('Revoked project review learning')
         expect(afterDetach.events[0].data.block).not.toContain('polis-project')
+        expect(JSON.stringify(await allowed.owner({
+          args: [
+            'oracle',
+            'revoked',
+          ],
+        }))).not.toContain('[Revoked]')
       } finally {
         timer.close()
         await allowed.owner({
