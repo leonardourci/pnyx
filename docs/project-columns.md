@@ -251,3 +251,17 @@ Folding also keeps the selected Hydra anchored while wheel packets continue arri
 The owner accepted the remaining open-card latency as a follow-up after merge. The interleaved-fold recheck still gates deslop and CI.
 
 Pointer title activation uses the same opening route as the card surface; only keyboard and reference navigation align a virtual row to its start. Opening an already-visible card retains its scroll position, scrolling only enough to reveal a clipped edge after layout settles. The card shell clips its contents during shared layout, so new details cannot paint outside the expanding surface. Modal pointer resizing changes real dimensions without shared-layout scaling, and its header actions stay top-aligned when the title wraps. Frame captures cover short/long titles, parents/leaves, inline/modal, narrow/wide projects and both themes.
+
+## Current owner round
+
+Implemented and checked: pointer opening retains the visible scroll anchor and clips expanding contents. The modal defaults to 70% × 80%, keeps saved dimensions and fixes action anchoring during real resizing. Shared entry/exit animation, focus, URLs and the motion off switch remain covered.
+
+The independent drag render-fan-out patch is committed separately. Lint/build and three focused reorder, wide-card grab/landing and keyboard journeys pass. The investigator measured a median peak of 60ms at 3× CPU slowdown, down from 153ms; this does not establish 50ms compliance.
+
+Open, before final proof:
+- Hide the lifted Shift keycap for sources with children; show a reason only after Shift is actually used over a refused target.
+- Shift-drag a child outside its family to lift it into the root order where it lands. Landing and repository rules match root dragging; the existing Remove from parent action keeps its repository-preserving behavior.
+- Activate project sorting from its heading only, preserving heading keyboard sorting. A task modal keeps the background inert and lets its text be selected.
+- Transcript selections offer comments for complete lines and allow partial link/reference text selection; transcript content has no browser-native drag.
+- Only the production drag/Escape latency and stationary-pointer drag responsiveness assertions become report-only. Follow-up `task-c266753d` restores blocking latency assertions. Ordinary scroll, render/DOM and functional gates stay blocking.
+- Merge main after #413 lands, run the complete affected proof, then run the single final Claude deslop pass and request exact-head CI through Hydra. Trial and final media refresh remain pending for this round.
