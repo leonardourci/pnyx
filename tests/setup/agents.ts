@@ -6,7 +6,7 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
-import type { ModelInfo, Options, PermissionResult, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { ModelInfo, Options, PermissionResult, SDKControlGetContextUsageResponse, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { transcriptPath, type QueryFn } from '#workers/claude.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 
@@ -24,6 +24,7 @@ const recording = <T>({ name }: { name: string }) => JSON.parse(readFileSync(
 
 const claudeRecording = recording<{
   models: ModelInfo[]
+  context: Pick<SDKControlGetContextUsageResponse, 'model' | 'rawMaxTokens'>
   turn: SDKMessage[]
 }>({ name: 'claude.json' })
 const codexRecording = recording<{
@@ -66,8 +67,12 @@ export interface TurnPlan {
   // Streams this prefix of the reply, then waits for release (or an interrupt) before finishing the turn.
   partial?: string
   hold?: boolean
-  // Claude reports a compaction while the turn waits, as it does for /compact.
+  // Claude reports a compaction that lasts until the turn's release, as /compact does; with compactTo it finishes at once.
   compacting?: boolean
+  // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does once released or stopped, Codex mid-turn.
+  compactTo?: number
+  // Claude Code measures the session against this window from this turn on, as after a model switch.
+  window?: number
   // Claude folds a message sent while the turn waits into it at once, as Claude Code does at a step boundary; its transcript record waits for the turn's end.
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
@@ -218,6 +223,8 @@ export function fakeClaude() {
       })}\n`,
     )
 
+    let contextWindow = claudeRecording.context.rawMaxTokens
+
     // Like the SDK, the fake reads Pnyx's messages as they are sent, not one turn at a time.
     const waiting: SDKUserMessage[] = []
     const folded: string[] = []
@@ -249,6 +256,33 @@ export function fakeClaude() {
       }
     })()
 
+    // Claude Code ends a stopped turn with an error result.
+    const stoppedResult = ({ message }: { message: SDKUserMessage }) => ({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      errors: ['Request was aborted.'],
+      session_id: id,
+      user_message_uuids: [
+        message.uuid,
+        ...foldedUuids.splice(0),
+      ],
+      queued_turn_count: 0,
+      uuid: randomUUID(),
+      duration_ms: 0,
+      duration_api_ms: 0,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      modelUsage: {},
+      permission_denials: [],
+    }) as unknown as SDKMessage
+
     async function* run(): AsyncGenerator<SDKMessage> {
       for (;;) {
         const message = waiting.shift()
@@ -278,6 +312,11 @@ export function fakeClaude() {
         })
         const answer = plan?.reply ?? recordedReply
         folding = Boolean(plan?.folds)
+
+        if (plan?.window !== undefined) {
+          contextWindow = plan.window
+        }
+
         arrived()
         let interrupted = false
         // A planned turn waits for its release, or for Pnyx to stop it.
@@ -300,7 +339,11 @@ export function fakeClaude() {
             uuid: randomUUID(),
             session_id: id,
           } as SDKMessage
-          await held
+
+          if (plan.compactTo === undefined) {
+            await held
+          }
+
           yield {
             type: 'system',
             subtype: 'status',
@@ -309,6 +352,50 @@ export function fakeClaude() {
             uuid: randomUUID(),
             session_id: id,
           } as SDKMessage
+        }
+
+        if (plan?.compacting && plan.compactTo !== undefined && !interrupted) {
+          appendFileSync(
+            transcript,
+            `${JSON.stringify({
+              type: 'system',
+              subtype: 'compact_boundary',
+              timestamp: new Date().toISOString(),
+              compactMetadata: {
+                trigger: 'manual',
+                postTokens: plan.compactTo,
+              },
+            })}\n`,
+          )
+          yield {
+            type: 'system',
+            subtype: 'compact_boundary',
+            compact_metadata: {
+              trigger: 'manual',
+              pre_tokens: 0,
+              post_tokens: plan.compactTo,
+            },
+            uuid: randomUUID(),
+            session_id: id,
+          } as SDKMessage
+          await held
+
+          // /compact sends no request after its boundary, so a released or stopped turn ends here, without the recorded request's usage.
+          if (interrupted) {
+            yield stoppedResult({ message })
+          } else {
+            yield {
+              ...claudeRecording.turn.find(recorded => recorded.type === 'result')!,
+              session_id: id,
+              user_message_uuids: [message.uuid],
+              queued_turn_count: 0,
+              result: '',
+            } as SDKMessage
+          }
+
+          stop = undefined
+          session.answered = session.received.length
+          continue
         }
 
         for (const recorded of claudeRecording.turn) {
@@ -398,32 +485,7 @@ export function fakeClaude() {
         }
 
         if (interrupted) {
-          // Claude Code ends a stopped turn with an error result.
-          yield {
-            type: 'result',
-            subtype: 'error_during_execution',
-            is_error: true,
-            errors: ['Request was aborted.'],
-            session_id: id,
-            user_message_uuids: [
-              message.uuid,
-              ...foldedUuids.splice(0),
-            ],
-            queued_turn_count: 0,
-            uuid: randomUUID(),
-            duration_ms: 0,
-            duration_api_ms: 0,
-            num_turns: 1,
-            total_cost_usd: 0,
-            usage: {
-              input_tokens: 0,
-              output_tokens: 0,
-              cache_creation_input_tokens: 0,
-              cache_read_input_tokens: 0,
-            },
-            modelUsage: {},
-            permission_denials: [],
-          } as unknown as SDKMessage
+          yield stoppedResult({ message })
         } else {
           record({
             role: 'assistant',
@@ -456,6 +518,10 @@ export function fakeClaude() {
             still_queued: queued,
           }
         },
+        getContextUsage: async () => ({
+          ...claudeRecording.context,
+          rawMaxTokens: contextWindow,
+        }),
         setModel: async () => {},
         setPermissionMode: async () => {},
         applyFlagSettings: async () => {},
@@ -463,11 +529,20 @@ export function fakeClaude() {
     )
   }) as unknown as QueryFn
 
+  const request = claudeRecording.turn.find(recorded => recorded.type === 'stream_event' && recorded.event.type === 'message_start')
+  const requestUsage = request?.type === 'stream_event' && request.event.type === 'message_start' ? request.event.message.usage : undefined
+
   return {
     query,
     sessions,
     plan: turns.plan,
     reply: recordedReply,
+    // The context the recorded turn reports: its request's input and the window Claude Code measures it against.
+    context: {
+      used: (requestUsage?.input_tokens ?? 0) + (requestUsage?.cache_creation_input_tokens ?? 0)
+        + (requestUsage?.cache_read_input_tokens ?? 0),
+      window: claudeRecording.context.rawMaxTokens,
+    },
   }
 }
 
@@ -483,6 +558,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     .join('')
   const started = codexRecording.session.find(entry => 'method' in entry && entry.method === 'thread/start') as { result: Message }
   const recordedThread = (started.result.thread as Message).id as string
+  const recordedUsage = notifications.find(n => n.method === 'thread/tokenUsage/updated')!
 
   const recorded = ({ method }: { method: string }) => {
     const name = method === 'thread/resume' ? 'thread/start' : method
@@ -554,6 +630,47 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           session.id,
         )}\n`)
       }
+    }
+
+    // Codex's auto-compaction: the compaction item, then the count it reports for the compacted context.
+    const compact = ({ tokens }: { tokens: number }) => {
+      const params = recordedUsage.params as Message & { tokenUsage: Message & { last: Message } }
+      const item = {
+        type: 'contextCompaction',
+        id: randomUUID(),
+      }
+
+      for (const method of [
+        'item/started',
+        'item/completed',
+      ]) {
+        send({
+          message: {
+            method,
+            params: {
+              threadId: params.threadId,
+              turnId: params.turnId,
+              item,
+            },
+          },
+        })
+      }
+
+      send({
+        message: {
+          ...recordedUsage,
+          params: {
+            ...params,
+            tokenUsage: {
+              ...params.tokenUsage,
+              last: {
+                ...params.tokenUsage.last,
+                totalTokens: tokens,
+              },
+            },
+          },
+        },
+      })
     }
 
     createInterface({ input: stdin }).on(
@@ -685,6 +802,10 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
             await plan?.wait
           }
 
+          if (notification.method === 'turn/completed' && plan?.compactTo !== undefined) {
+            compact({ tokens: plan.compactTo })
+          }
+
           send({ message: notification })
 
           if (notification.method === 'turn/completed') {
@@ -697,10 +818,22 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     return child as unknown as ChildProcessWithoutNullStreams
   }
 
+  const usage = (recordedUsage.params as {
+    tokenUsage: {
+      last: { totalTokens: number }
+      modelContextWindow: number
+    }
+  }).tokenUsage
+
   return {
     spawnCodex,
     sessions,
     plan: turns.plan,
     reply,
+    // The context the recorded turn reports.
+    context: {
+      used: usage.last.totalTokens,
+      window: usage.modelContextWindow,
+    },
   }
 }

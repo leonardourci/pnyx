@@ -216,6 +216,10 @@
       "supportsThinkingOff": true
     }
   ],
+  "context": {
+    "model": "claude-haiku-5-5",
+    "rawMaxTokens": 1000000
+  },
   "turn": [
     {
       "type": "system",
