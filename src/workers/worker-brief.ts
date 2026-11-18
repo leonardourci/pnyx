@@ -1,5 +1,5 @@
 import { readMemoryContext } from '#memory/context.ts'
-import { readableProjects } from '#memory/poleis.ts'
+import { memoryCaller, readableProjects } from '#memory/poleis.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
 import { projectIdentity } from '#projects/sources.ts'
@@ -121,10 +121,10 @@ export async function taskPrompt({
         state,
         hydraId,
       })).find(project => !project.detached
-    && matchesProject({
-      project,
-      ref: card.project,
-    }))
+        && matchesProject({
+          project,
+          ref: card.project,
+        }))
       const [
         identity,
         project,
@@ -145,7 +145,7 @@ export async function taskPrompt({
         hydraId,
         id: card.id,
         ownerNotes,
-        hydraNotes: state.hydraMemory?.workers?.text,
+        hydraNotes: memoryCaller({ hydraId }) ? state.hydraMemory?.workers?.text : undefined,
         projectNotes,
         stops: taskStops({
           state,

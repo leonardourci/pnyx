@@ -404,19 +404,25 @@ export function ownerMemory({
       entry,
     ] of Object.entries(readLog({ polis }).memory)) {
       const previous = memory[key]
-      memory[key] = previous ? {
-        text: mergeLines({
-          texts: [
-            previous.text,
-            entry.text,
-          ],
-        }),
+
+      if (!previous) {
+        memory[key] = entry
+        continue
+      }
+
+      const texts = [
+        previous.text,
+        entry.text,
+      ]
+
+      memory[key] = {
+        text: key === 'workers' ? texts.join('\n') : mergeLines({ texts }),
         at: entry.at,
         lines: [
           ...(previous.lines ?? []),
           ...(entry.lines ?? []),
         ],
-      } : entry
+      }
     }
   }
 

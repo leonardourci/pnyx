@@ -576,7 +576,7 @@ test(
         'worker-notes',
         'set',
         '--text',
-        'Work header quasar',
+        'Work header quasar\n\n  Keep this indentation.\nwork header quasar',
         '--reason',
         'test work instructions',
       ],
@@ -592,8 +592,20 @@ test(
         'test private instructions',
       ],
     })
+    const sharedNotes = await pnyx.hydra()
+    await sharedNotes.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'set',
+        '--text',
+        'Shared header instructions',
+        '--reason',
+        'test shared instructions',
+      ],
+    })
     const { worker } = await work.startTask({ key: 'polis-header' })
-    expect(worker.received.join('\n')).toContain('Work header quasar')
+    expect(worker.received.join('\n')).toContain('Shared header instructions\nWork header quasar\n\n  Keep this indentation.\nwork header quasar')
     expect(worker.received.join('\n')).not.toContain('Secret header nebula')
     const workerSettings = await pnyxAxi({
       args: [
@@ -1274,6 +1286,37 @@ test(
           path,
         ],
       }))).not.toContain('Detached write must not persist')
+      released = false
+      blockedReads = sockets.length + 1
+      const listing = allowed.owner({
+        args: [
+          'project',
+          'list',
+        ],
+      })
+      await until({
+        what: 'project list Git read is gated',
+        check: () => sockets.length >= blockedReads,
+      })
+      await allowed.owner({
+        args: [
+          'hydra',
+          'set',
+          '--read-poleis',
+          'shared',
+        ],
+      })
+      released = true
+      sockets.forEach(socket => socket.end())
+      expect(JSON.stringify(await listing)).not.toContain(path)
+      await allowed.owner({
+        args: [
+          'hydra',
+          'set',
+          '--read-poleis',
+          'shared,vault',
+        ],
+      })
       released = false
       const previousReads = sockets.length
       blockedReads = previousReads + 1

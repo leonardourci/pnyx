@@ -14,9 +14,7 @@ export async function readMemoryContext<T>({ read }: { read(): Promise<T> }): Pr
         return result
       }
     } catch (error) {
-      const changed = revision !== memoryAccessRevision()
-
-      if (error instanceof HydraError && error.code === 'NOT_FOUND' && changed) {
+      if (error instanceof HydraError && error.code === 'NOT_FOUND' && revision !== memoryAccessRevision()) {
         continue
       }
 

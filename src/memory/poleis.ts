@@ -72,13 +72,13 @@ export function canReadProject({
   hydraId,
   state,
   id,
+  settings = readSettings().settings,
 }: {
   hydraId: string
   state: Pick<HydraState, 'config'>
   id: string
+  settings?: Settings
 }): boolean {
-  const settings = readSettings().settings
-
   return memoryCaller({ hydraId }) && canRead({
     hydraId,
     state,
@@ -120,16 +120,29 @@ export async function readableProjects({
   }
 
   const projects = projectsFor({ state })
-  const readable = await Promise.all(projects.map(async project => canReadProject({
-    hydraId,
-    state,
-    id: (await projectIdentity(project)).id,
-  })))
+  const identities = await Promise.all(projects.map(project => projectIdentity(project)))
+  const current = loadHydra({ hydraId }).state
+  const currentProjects = new Map(projectsFor({ state: current }).map(project => [
+    project.path,
+    project,
+  ]))
+  const settings = readSettings().settings
 
-  return projects.filter((
-    _,
-    index,
-  ) => readable[index])
+  return identities.flatMap(({ id }, index) => {
+    const original = projects[index]
+    const project = original && currentProjects.get(original.path)
+
+    if (!project || !canReadProject({
+      hydraId,
+      state: current,
+      settings,
+      id,
+    })) {
+      return []
+    }
+
+    return [project]
+  })
 }
 
 export async function findReadableProject({
@@ -168,14 +181,17 @@ export function memoryAccessRevision(): string {
   const readLists = hydras.map(({
     id,
     state,
-  }) => ({
-    id,
-    reads: hydraPolisConfig({ state }).readPoleis,
-    polis: hydraPolisConfig({ state }).polis,
-    configRevision: state.configRevision ?? 0,
-    projectsRevision: state.projectsRevision ?? 0,
-    attachments: projectsFor({ state }),
-  })).sort((
+  }) => {
+    const access = hydraPolisConfig({ state })
+
+    return {
+      id,
+      ...access,
+      configRevision: state.configRevision ?? 0,
+      projectsRevision: state.projectsRevision ?? 0,
+      attachments: projectsFor({ state }),
+    }
+  }).sort((
     left,
     right,
   ) => left.id.localeCompare(right.id))
