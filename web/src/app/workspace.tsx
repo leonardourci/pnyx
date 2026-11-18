@@ -53,6 +53,7 @@ import { Detail } from '#web-tasks/detail.tsx'
 import { argument } from '#web-tasks/optimistic.ts'
 import { TaskCreate,type TaskDraft } from '#web-tasks/task-create.tsx'
 import { useTaskNavigation } from '#web-tasks/task-navigation.ts'
+import { useModalTask } from '#web-tasks/presentation.ts'
 import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
@@ -324,6 +325,7 @@ export function HydraView({
     ],
   )
   useScrollingClass()
+  const modalTask = useModalTask({ hydraId: navigation.hydraId })
   const {
     selected,
     revealing,
@@ -947,7 +949,8 @@ export function HydraView({
     column,
     ...family
   }: FamilyCard & { column: ProjectColumnData }) => {
-    const opened = expandedIds.includes(item.id)
+    const openInline = expandedIds.includes(item.id)
+    const opened = openInline || modalTask === item.id
     const parent = item.parentId ? state.cards[item.parentId] : undefined
     const crossProject = !!parent && parent.project !== item.project
     const legacyProject = !!item.project && !state.projects?.some(project =>
@@ -984,6 +987,7 @@ export function HydraView({
         action={actions[item.id]}
         answer={cardActions.answer}
         selected={opened}
+        openInline={openInline}
         onEdit={cardActions.onEdit}
         recoverSelection={cardActions.recoverSelection}
         view={cardView}

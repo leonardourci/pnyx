@@ -120,6 +120,7 @@ export const HydraCard = memo(function HydraCard({
   labelColors,
   latest,
   selected,
+  openInline = selected,
   view,
   save,
   open,
@@ -153,6 +154,8 @@ export const HydraCard = memo(function HydraCard({
   notify({ text }: { text: string }): void
   latest?: LatestMessage
   selected: boolean
+  // A modal opened from a closed card leaves that card closed on the board.
+  openInline?: boolean
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
   open({
@@ -970,8 +973,8 @@ export const HydraCard = memo(function HydraCard({
           aria-hidden
           inert
           className="invisible"
-          style={{ height }}
-        >{summary}
+          style={openInline ? { height } : undefined}
+        >{openInline ? summary : <CardContent>{closedSummary}</CardContent>}
         </CardShell>
       )}
       <AnimatePresence initial={false} onExitComplete={() => element.current?.querySelector<HTMLElement>('.card-open')?.focus({ preventScroll: true })}>

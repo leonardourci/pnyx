@@ -192,6 +192,38 @@ export function useTaskModalSize() {
   }
 }
 
+// eslint-disable-next-line pnyx/object-params -- React owns the subscription callback signature.
+const subscribeModal = (changed: () => void) => {
+  addEventListener(
+    'popstate',
+    changed,
+  )
+  addEventListener(
+    TASK_MODAL_CHANGED,
+    changed,
+  )
+
+  return () => {
+    removeEventListener(
+      'popstate',
+      changed,
+    )
+    removeEventListener(
+      TASK_MODAL_CHANGED,
+      changed,
+    )
+  }
+}
+
+// The task whose modal this Hydra's address opens; the board behind it keeps its own layout.
+export function useModalTask({ hydraId }: { hydraId: string }) {
+  return useSyncExternalStore(
+    subscribeModal,
+    () => location.pathname === `/hydra/${encodeURIComponent(hydraId)}/`
+      ? new URLSearchParams(location.search).get('task') : null,
+  )
+}
+
 export function useTaskModal({
   id,
   hydraId,
@@ -199,30 +231,7 @@ export function useTaskModal({
   id: string
   hydraId: string
 }) {
-  const matches = () => location.pathname === `/hydra/${encodeURIComponent(hydraId)}/`
-    && new URLSearchParams(location.search).get('task') === id
-  const [
-    modal,
-    setModal,
-  ] = useState(matches)
-  useEffect(
-    () => {
-      const read = () => setModal(matches())
-      addEventListener(
-        'popstate',
-        read,
-      )
-
-      return () => removeEventListener(
-        'popstate',
-        read,
-      )
-    },
-    [
-      id,
-      hydraId,
-    ],
-  )
+  const modal = useModalTask({ hydraId }) === id
 
   return {
     modal,
@@ -240,7 +249,6 @@ export function useTaskModal({
         '',
         url,
       )
-      setModal(true)
       dispatchEvent(new Event(TASK_MODAL_CHANGED))
     },
     closeModal: () => {
@@ -254,7 +262,6 @@ export function useTaskModal({
           '',
           url,
         )
-        setModal(false)
         dispatchEvent(new Event(TASK_MODAL_CHANGED))
       }
     },

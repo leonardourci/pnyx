@@ -505,10 +505,14 @@ export function useTaskNavigation({
           }).catch((error: Error) => notify({ text: error.message }))
         }
 
-        expand({
-          id,
-          focus: focusPanel && !modal,
-        })
+        if (modal) {
+          keepRevealed({ id })
+        } else {
+          expand({
+            id,
+            focus: focusPanel,
+          })
+        }
       }
 
       if (modal) {

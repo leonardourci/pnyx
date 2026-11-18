@@ -470,6 +470,7 @@ test(
           inlineFrames,
         }
       })
+      const closedWidth = (await card.boundingBox())!.width
       await openModal.click()
       const modal = page.getByRole(
         'dialog',
@@ -513,7 +514,10 @@ test(
           return !!box && Math.abs(box.width - 1008) < 1 && Math.abs(box.height - 720) < 1
         },
       })
-      expect(widths.some(width => width > 600 && width < 900)).toBe(true)
+      expect(
+        widths.some(width => width > closedWidth + 1 && width < 1007),
+        JSON.stringify(widths),
+      ).toBe(true)
       const behind = (await page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column-heading]`).first()
         .boundingBox())!
       await page.mouse.move(
@@ -624,23 +628,29 @@ test(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
       expect(await modal.evaluate(element => element.contains(document.activeElement))).toBe(true)
       const closingFrom = (await modal.boundingBox())!.height
-      const closing = page.evaluate(async () => {
-        const heights: number[] = []
+      const modalTask = (await hydra.task({ key: 'modal' })).id
+      const closing = page.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        async task => {
+          const heights: number[] = []
 
-        for (let frame = 0; frame < 30; frame++) {
-          await new Promise(requestAnimationFrame)
-          const inline = document.querySelector('.hydra-workspace .card.selected:not(dialog *)')
+          for (let frame = 0; frame < 30; frame++) {
+            await new Promise(requestAnimationFrame)
+            const inline = document.querySelector(`.hydra-workspace .card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
 
-          if (inline) {
-            heights.push(inline.getBoundingClientRect().height)
+            if (inline) {
+              heights.push(inline.getBoundingClientRect().height)
+            }
           }
-        }
 
-        return heights
-      })
+          return heights
+        },
+        modalTask,
+      )
       await page.keyboard.press('Escape')
       await modal.waitFor({ state: 'detached' })
       const closingHeights = await closing
+      expect(await title.getAttribute('aria-expanded')).toBe('false')
       const closingTo = closingHeights.at(-1)!
       expect(
         closingHeights.some(height => height > Math.min(
@@ -741,6 +751,7 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         check: () => title.evaluate(element => element === document.activeElement),
       })
+      await title.click()
       await card.getByRole(
         'button',
         {

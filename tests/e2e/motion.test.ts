@@ -429,3 +429,191 @@ test(
     }
   },
 )
+
+test(
+  'closing the task modal folds it back into the card slot it opened from',
+  async () => {
+    const hydra = await pnyx.hydra()
+
+    for (let index = 0; index < 16; index++) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          `fold-${index}`,
+          '--title',
+          `Fold back task ${index}`,
+        ],
+      })
+    }
+
+    for (const theme of [
+      'light',
+      'dark',
+    ]) {
+      const page = await openHydra({
+        port: pnyx.port(),
+        hydraId: hydra.id,
+      })
+
+      try {
+        await page.evaluate(
+          async theme => {
+            document.documentElement.dataset.theme = theme
+            await document.fonts.ready
+          },
+          theme,
+        )
+        const column = page.locator(`[data-hydra-workspace="${hydra.id}"] section[data-column="ideas"]`)
+        await column.locator('.card[data-task]').first()
+          .waitFor()
+        await column.locator('.project-cards').evaluate(scroller => {
+          scroller.scrollTop = scroller.scrollHeight
+        })
+        await until({
+          what: 'the scrolled column settles',
+          check: async () => {
+            const first = await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
+            await new Promise(resolve => setTimeout(
+              resolve,
+              200,
+            ))
+
+            return first > 0 && first === await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
+          },
+        })
+        const id = await column.evaluate(section => {
+          const visible = section.querySelector('.project-cards')!.getBoundingClientRect()
+
+          return [...section.querySelectorAll<HTMLElement>('.card[data-task]')]
+            .filter(card => {
+              const box = card.getBoundingClientRect()
+
+              return box.top >= visible.top && box.bottom <= visible.bottom
+            })
+            .at(-1)!.dataset.task!
+        })
+        const card = column.locator(`.card[data-task="${id}"]:not(dialog *)`)
+        const title = card.locator('.card-open')
+
+        const box = async () => {
+          const bounds = (await card.boundingBox())!
+
+          return [
+            bounds.x,
+            bounds.y,
+            bounds.width,
+            bounds.height,
+          ]
+        }
+
+        const foldBack = async ({ expanded }: { expanded: boolean }) => {
+          const slot = await box()
+          const scrolled = await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
+          await card.hover()
+          await page.getByRole(
+            'button',
+            {
+              name: 'Open modal',
+              exact: true,
+            },
+          ).click()
+          const modal = page.locator('dialog.task-modal')
+          await until({
+            what: 'the modal finishes opening',
+            check: async () => await modal.evaluate(element => getComputedStyle(element).transform === 'none'),
+          })
+          const placeholder = (await column.locator('.card[aria-hidden]').boundingBox())!
+          expect([
+            placeholder.x,
+            placeholder.y,
+            placeholder.width,
+            placeholder.height,
+          ]).toEqual(slot)
+          expect(await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)).toBe(scrolled)
+          const sampling = page.evaluate(
+            async ({
+              task,
+              frameCount,
+            }) => {
+              const boxes: number[][] = []
+
+              for (let frame = 0; frame < frameCount; frame++) {
+                await new Promise(requestAnimationFrame)
+                const node = document.querySelector(`.card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
+
+                if (node) {
+                  const bounds = node.getBoundingClientRect()
+                  boxes.push([
+                    bounds.x,
+                    bounds.y,
+                    bounds.width,
+                    bounds.height,
+                  ])
+                }
+              }
+
+              return boxes
+            },
+            {
+              task: id,
+              frameCount: SAMPLE_FRAMES,
+            },
+          )
+          await modal.getByRole(
+            'button',
+            {
+              name: 'Close',
+              exact: true,
+            },
+          ).first()
+            .click()
+          await modal.waitFor({ state: 'detached' })
+          const path = await sampling
+          const distance = (bounds: number[]) => Math.max(...bounds.map((
+            value,
+            index,
+          ) => Math.abs(value - slot[index]!)))
+          const distances = path.map(distance)
+          expect(
+            distances.at(-1),
+            JSON.stringify(path),
+          ).toBeLessThan(1)
+          expect(
+            distances.every((
+              value,
+              index,
+            ) => index === 0 || value <= distances[index - 1]! + 1),
+            JSON.stringify(path),
+          ).toBe(true)
+          expect(await title.getAttribute('aria-expanded')).toBe(String(expanded))
+        }
+
+        await foldBack({ expanded: false })
+        await title.click()
+        await until({
+          what: 'the card opens inline',
+          check: async () => await title.getAttribute('aria-expanded') === 'true'
+            && await card.evaluate(element => getComputedStyle(element).transform === 'none'),
+        })
+        await until({
+          what: 'the open card stops moving',
+          check: async () => {
+            const first = JSON.stringify(await box())
+            await new Promise(resolve => setTimeout(
+              resolve,
+              300,
+            ))
+
+            return first === JSON.stringify(await box())
+          },
+        })
+        await foldBack({ expanded: true })
+        await title.click()
+      } finally {
+        await page.context().close()
+      }
+    }
+  },
+)

@@ -38,12 +38,7 @@ export function openingView({
   return {
     page: 'hydra',
     selected: task ?? (openProject ? null : restored.selected ?? lastOpened),
-    expanded: task ? [
-      ...new Set([
-        ...opened,
-        task,
-      ]),
-    ] : openProject ? [] : opened,
+    expanded: openProject ? [] : opened,
     revealed: restored.revealed ?? {
       scope: '',
       ids: [],
