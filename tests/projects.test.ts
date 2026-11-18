@@ -9,6 +9,8 @@ import { git } from './setup/upgrade.ts'
 import { createTaskBranch } from '#projects/git.ts'
 
 const RESTART_FLOW_TIMEOUT_MS = 120_000
+// A scratch server reaches a newly ready handoff on its next queue poll, up to 30 seconds later.
+const HANDOFF_CRASH_WAIT_MS = 45_000
 
 let pnyx: Pnyx
 const github = join(
@@ -145,7 +147,7 @@ const pullRequest = ({
 )
 
 test(
-  'a project task runs in its own copy on its own branch, leaves the project folder alone, and is done only once its work is committed',
+  'a project task runs in its own copy on its own readable branch, leaves the project folder alone, is done only once its work is committed, and hands its worker to the queued task across declined, lost and failed checkouts',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -671,6 +673,43 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         '--unset',
         'core.hooksPath',
       ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Bystander',
+        '--key',
+        'bystander',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'bystander',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'bystander',
+        'done',
+      ],
+    })
+    await until({
+      what: 'Done cleanup settles another copy while the handoff stays unresolved',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'copy',
+          'bystander',
+        ],
+      })).copy?.state === 'removed',
     })
   },
   RESTART_FLOW_TIMEOUT_MS,
@@ -2426,7 +2465,7 @@ if (branch === 'iris/target') {
       })
       await until({
         what: 'checkout hook kills the server before handoff commit',
-        timeoutMs: 45_000,
+        timeoutMs: HANDOFF_CRASH_WAIT_MS,
         check: () => ended,
       })
       expect(readFileSync(
@@ -2544,7 +2583,7 @@ if (branch === 'iris/target') {
       })
       await until({
         what: 'server killed after durable handoff commit',
-        timeoutMs: 45_000,
+        timeoutMs: HANDOFF_CRASH_WAIT_MS,
         check: () => ended,
       })
       const committedWork = join(

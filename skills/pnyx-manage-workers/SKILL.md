@@ -71,7 +71,7 @@ reviews. After all linked pull requests merge, or a task without a pull request 
 its commit lands, an idle worker takes the first queued task. Pnyx fetches origin, discovers its current
 default branch, verifies a clean isolated folder and landed commits, creates a fresh branch, transfers
 the copy to the next task, attaches the session and sends the next brief. Old branches stay intact.
-Automatic handoff declares working and restores the next card to In progress atomically; manual attachment still leaves placement alone. Before checkout Pnyx saves a durable intent. Startup uses the committed session event to restore an uncommitted source checkout or retain a committed target. An unresolved handoff refuses starts, resumes and replies with `CONFLICT` until recovery succeeds; preserve any changed work before requesting a restart.
+Automatic handoff declares working and restores the next card to In progress atomically; manual attachment still leaves placement alone. Before checkout Pnyx saves a durable intent. Startup uses the committed session event to restore an uncommitted source checkout or retain a committed target. An unresolved handoff refuses starts, resumes, replies and copy removal with `CONFLICT` until recovery succeeds; preserve any changed work before requesting a restart, which retries recovery.
 
 Done cleanup keeps a folder while its worker has queued tasks. Project copy commands have their own
 folder contracts, so those queues return to Queued for a fresh worker rather than reusing their folder.

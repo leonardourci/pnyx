@@ -276,9 +276,7 @@ export async function startPnyx({
   }
 
   await start()
-  afterAll(async () => {
-    await server?.close()
-  })
+  afterAll(stop)
 
   const sessions = () => [
     ...claude.sessions,

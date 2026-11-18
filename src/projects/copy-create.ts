@@ -86,7 +86,8 @@ function refuseShared({
   }
 }
 
-async function landedSlotRef({
+// The slot's current branch, empty when detached, once its work is proved landed; undefined keeps it out of reuse.
+async function landedSlotBranch({
   hydraId,
   path,
   card,
@@ -109,10 +110,17 @@ async function landedSlotRef({
       '--show-current',
     ],
   })).out
-  const previous = Object.values(state.cards).find(card => card.copy?.path === path
-    && card.copy.state === 'removed' && card.copy.branch === branch)
+  const previous = Object.values(state.cards).find(owner => owner.copy?.path === path
+    && owner.copy.state === 'removed' && owner.copy.branch === branch)
 
   if (!previous?.copy) {
+    const slotCommon = await commonDir({ cwd: path })
+
+    // Projects with the same folder name share slot names; another repository's slot is that project's to settle.
+    if (slotCommon && slotCommon !== common) {
+      return undefined
+    }
+
     const copy: TaskCopy = {
       path,
       project: project.path,
@@ -124,14 +132,13 @@ async function landedSlotRef({
       copy.base = base
     }
 
-    const sameRepository = await commonDir({ cwd: path }) === common
-    const check = sameRepository ? await checkCopy({
+    const check = await checkCopy({
       card,
       copy,
-    }) : { reason: 'it belongs to a different git repository' }
+    })
 
     if (!('reason' in check)) {
-      return branch || 'HEAD'
+      return branch
     }
 
     const key = createHash('sha256').update(`${path}\0${branch}\0${check.reason}`)
@@ -330,7 +337,7 @@ async function worktreeCopy({
     let allocated = false
 
     try {
-      const slotRef = await landedSlotRef({
+      const slotBranch = await landedSlotBranch({
         hydraId,
         path,
         card,
@@ -339,14 +346,14 @@ async function worktreeCopy({
         common,
       })
 
-      if (!slotRef || !await reusable({
+      if (slotBranch === undefined || !await reusable({
         path,
         common,
       })) {
         continue
       }
 
-      if (slotRef !== branch) {
+      if (slotBranch !== branch) {
         const checkedOut = await checkout({
           cwd: path,
           branch,

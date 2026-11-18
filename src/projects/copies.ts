@@ -1,4 +1,5 @@
 import { workerQueue } from '#workers/queue.ts'
+import { handoffPending } from '#workers/handoff-checkout.ts'
 import type { Card } from '#tasks/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { settleCopy } from './copy-settle.ts'
@@ -22,11 +23,22 @@ export async function settleDone({
     return 0
   }
 
-  const due = Object.values(state.cards).filter(card => settles({ card })
-    && !workerQueue({
+  const due = Object.values(state.cards).filter(card => {
+    if (!settles({ card })) {
+      return false
+    }
+
+    const queued = workerQueue({
       state,
       session: card.sessionIds?.[0] ?? '',
-    }).length)
+    }).length > 0
+
+    // An unresolved handoff refuses settlement until restart recovery, so it must not stop the other copies settling.
+    return !queued && !handoffPending({
+      hydraId,
+      task: card.id,
+    })
+  })
 
   for (const card of due) {
     await settleCopy({

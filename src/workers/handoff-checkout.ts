@@ -362,7 +362,8 @@ export function readHandoffEvent({
   hydraId: string
   eventId: string
 }): HydraEvent | undefined {
-  // The old process's transaction can finish after it exits; wait on its row lock before reading.
+  // The old process's transaction can finish after it exits; wait on its row lock before reading, then reload so
+  // the held Hydra includes a commit whose reply was lost.
   const [
     , events,
   ] = query({

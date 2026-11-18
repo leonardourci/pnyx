@@ -63,6 +63,20 @@ function handoffBlocked({
   })
 }
 
+// A worker takes its next task only between turns, with nothing waiting on it.
+function workerIdle({
+  card,
+  session,
+}: {
+  card: Card
+  session: AgentSession
+}): boolean {
+  const busy = card.activity === 'working' || session.activity === 'working' || session.activity === 'ended'
+  const waiting = session.attention.some(a => a.blocking && !a.answered) || pendingPermissions({ card }).length > 0
+
+  return !busy && !waiting
+}
+
 function releaseQueue({
   hydraId,
   session,
@@ -521,8 +535,10 @@ export async function advanceQueues({
 
     const current = session?.taskId ? state.cards[session.taskId] : undefined
 
-    if (!session || !current || session.activity === 'working' || session.attention.some(a => a.blocking && !a.answered)
-      || pendingPermissions({ card: current }).length > 0) {
+    if (!session || !current || !workerIdle({
+      card: current,
+      session,
+    })) {
       continue
     }
 
@@ -739,10 +755,10 @@ export async function advanceQueues({
               return
             }
 
-            const workerBusy = source.activity === 'working' || currentSession.activity === 'working'
-              || currentSession.activity === 'ended' || currentSession.attention.some(a => a.blocking && !a.answered)
-
-            if (workerBusy || pendingPermissions({ card: source }).length > 0) {
+            if (!workerIdle({
+              card: source,
+              session: currentSession,
+            })) {
               return
             }
 
