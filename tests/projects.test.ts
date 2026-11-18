@@ -1795,6 +1795,22 @@ test(
         'poseidon-2/chart-2',
       ],
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'chart',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'copy',
+        'chart',
+        'remove',
+        '--safe',
+      ],
+    })
     const failingHooks = join(
       cwd,
       'failing-hooks',
@@ -1805,7 +1821,7 @@ test(
         failingHooks,
         'post-checkout',
       ),
-      '#!/bin/sh\nexit 1\n',
+      '#!/bin/sh\necho "fixture copy hook failure" >&2\nexit 1\n',
       { mode: 0o700 },
     )
     await hydra.owner({
@@ -1834,7 +1850,10 @@ test(
         'start',
         'retry',
       ],
-    })).toMatchObject({ code: 'COPY_FAILED' })
+    })).toMatchObject({
+      code: 'COPY_FAILED',
+      error: expect.stringContaining('fixture copy hook failure'),
+    })
     expect(git({
       cwd,
       args: [
