@@ -341,7 +341,6 @@ export function query({
   return reply.results
 }
 
-// Brings an older schema up to this build's, as the server does when it starts.
 export const migrateSchema = ({ progress }: { progress?(): void } = {}) => query({
   schema: 'migrate',
   timeoutMs: MIGRATION_TIMEOUT_MS,
