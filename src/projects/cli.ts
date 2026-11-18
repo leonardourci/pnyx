@@ -95,6 +95,12 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       attached: true,
     })
     const identity = await projectIdentity(project)
+    const state = loadHydra({ hydraId }).state
+    findProject({
+      state,
+      ref: project.path,
+      attached: true,
+    })
     const read = readSettings()
     const settings = read.settings
     const source = settings.projectPoleis[identity.id] ?? 'shared'
@@ -108,7 +114,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       polis,
     ].every(polis => canRead({
       hydraId,
-      state: current,
+      state,
       poleis: settings.poleis,
       polis,
     }))) {

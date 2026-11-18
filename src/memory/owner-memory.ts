@@ -1,6 +1,6 @@
 import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
-import { canRead, polisAccess, memoryMovePermission } from './poleis.ts'
+import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
@@ -388,11 +388,15 @@ export function ownerMemory({
   hydraId: string
   migrate?: boolean
 }): Memory {
+  const memory: Memory = Object.create(null) as Memory
+
+  if (!memoryCaller({ hydraId })) {
+    return memory
+  }
+
   if (migrate) {
     tryMigrate()
   }
-
-  const memory: Memory = Object.create(null) as Memory
 
   for (const polis of polisAccess({ hydraId }).reads) {
     for (const [

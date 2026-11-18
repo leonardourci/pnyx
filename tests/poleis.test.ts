@@ -932,7 +932,7 @@ test(
         PNYX_TASK: undefined,
         PNYX_HYDRA: undefined,
       },
-    })).stdout).not.toContain('Project pulsar')
+    })).stdout).not.toContain('polis-project')
     expect(JSON.stringify(await hidden.owner({
       args: [
         'oracle',
@@ -985,6 +985,27 @@ test(
         path,
       ],
     }))).toContain('Write project while')
+    await allowed.owner({
+      args: [
+        'project',
+        'memory',
+        'forget',
+        '--project',
+        path,
+        '--key',
+        'learnings',
+        '--reason',
+        'Pulsar learning is obsolete',
+      ],
+    })
+    expect(JSON.stringify(await allowed.owner({
+      args: [
+        'oracle',
+        'pulsar',
+        '--project',
+        path,
+      ],
+    }))).not.toContain('Project [pulsar]')
   },
 )
 

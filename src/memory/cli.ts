@@ -3,7 +3,8 @@ import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
-import { ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis, type OwnerMeta } from './owner-memory.ts'
+import { migrateOwnerMemory, ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis, type OwnerMeta } from './owner-memory.ts'
+import { withRegistryLock } from '#store/storage.ts'
 import { findProject } from '#projects/read.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -189,20 +190,31 @@ export const owner = guard({
     })
 
     if (action === 'list') {
-      const memory = ownerMemory({ hydraId })
-      const writable = writableOwnerMemory({ hydraId })
-
-      return {
-        ...memoryList({
-          memory,
-          budget: OWNER_MEMORY_BUDGET,
-          empty: 'none: no owner memory yet',
-        }),
-        used: `${memorySize({ memory: writable?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
-        revision: writable?.revision,
-        writable: writable?.memory,
-        archived: ownerArchive({ hydraId }),
+      if (memoryCaller({ hydraId })) {
+        migrateOwnerMemory()
       }
+
+      return withRegistryLock({
+        fn: () => {
+          const memory = ownerMemory({
+            hydraId,
+            migrate: false,
+          })
+          const writable = writableOwnerMemory({ hydraId })
+
+          return {
+            ...memoryList({
+              memory,
+              budget: OWNER_MEMORY_BUDGET,
+              empty: 'none: no owner memory yet',
+            }),
+            used: `${memorySize({ memory: writable?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
+            revision: writable?.revision,
+            writable: writable?.memory,
+            archived: ownerArchive({ hydraId }),
+          }
+        },
+      })
     }
 
     if (action === 'save' || action === 'archive') {
