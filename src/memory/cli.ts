@@ -1,3 +1,4 @@
+import { readOwnerLogs } from './owner-memory-log.ts'
 import { memorySize, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget, type Memory } from './budgets.ts'
 import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
 import { staleLearnings, learningChange } from './learnings.ts'
@@ -205,11 +206,16 @@ export const owner = guard({
 
       return withRegistryLock({
         fn: () => {
+          const logs = readOwnerLogs()
           const memory = ownerMemory({
             hydraId,
             migrate: false,
+            logs,
           })
-          const writable = writableOwnerMemory({ hydraId })
+          const writable = writableOwnerMemory({
+            hydraId,
+            logs,
+          })
 
           return {
             ...memoryList({
@@ -220,7 +226,10 @@ export const owner = guard({
             }),
             revision: writable?.revision,
             writable: writable?.memory,
-            archived: ownerArchive({ hydraId }),
+            archived: ownerArchive({
+              hydraId,
+              logs,
+            }),
           }
         },
       })

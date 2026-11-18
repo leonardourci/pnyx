@@ -2,7 +2,7 @@ import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
 import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
-import { ownerMemoryLogPath as logPath, readOwnerEntries, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
+import { ownerMemoryLogPath as logPath, readOwnerEntries, readOwnerLogs, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
 import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
 import { existsSync } from 'node:fs'
@@ -37,11 +37,20 @@ const migratedPath = () => join(
   'migrated',
 )
 
-function readLog({ polis = 'shared' }: { polis?: string } = {}): OwnerLog {
+function readLog({
+  polis = 'shared',
+  logs,
+}: {
+  polis?: string
+  logs?: ReturnType<typeof readOwnerLogs>
+} = {}): OwnerLog {
   const {
     entries,
     corrupt,
-  } = readOwnerEntries({ polis })
+  } = readOwnerEntries({
+    polis,
+    logs,
+  })
   const memory: Memory = Object.create(null) as Memory
   let archived: ArchivedLine[] = []
   let revision = 0
@@ -384,9 +393,11 @@ function tryMigrate(): void {
 export function ownerMemory({
   hydraId,
   migrate = true,
+  logs,
 }: {
   hydraId: string
   migrate?: boolean
+  logs?: ReturnType<typeof readOwnerLogs>
 }): Memory {
   const memory: Memory = Object.create(null) as Memory
 
@@ -398,11 +409,16 @@ export function ownerMemory({
     tryMigrate()
   }
 
+  const snapshot = logs ?? readOwnerLogs()
+
   for (const polis of polisAccess({ hydraId }).reads) {
     for (const [
       key,
       entry,
-    ] of Object.entries(readLog({ polis }).memory)) {
+    ] of Object.entries(readLog({
+        polis,
+        logs: snapshot,
+      }).memory)) {
       const previous = memory[key]
 
       if (!previous) {
@@ -429,18 +445,36 @@ export function ownerMemory({
   return memory
 }
 
-export function ownerArchive({ hydraId }: { hydraId: string }): ArchivedLine[] {
-  return polisAccess({ hydraId }).reads.flatMap(polis => readLog({ polis }).archived)
+export function ownerArchive({
+  hydraId,
+  logs = readOwnerLogs(),
+}: {
+  hydraId: string
+  logs?: ReturnType<typeof readOwnerLogs>
+}): ArchivedLine[] {
+  return polisAccess({ hydraId }).reads.flatMap(polis => readLog({
+    polis,
+    logs,
+  }).archived)
 }
 
-export function writableOwnerMemory({ hydraId }: { hydraId: string }) {
+export function writableOwnerMemory({
+  hydraId,
+  logs,
+}: {
+  hydraId: string
+  logs?: ReturnType<typeof readOwnerLogs>
+}) {
   const { writablePolis } = polisAccess({ hydraId })
 
   if (writablePolis === undefined) {
     return undefined
   }
 
-  const log = readLog({ polis: writablePolis })
+  const log = readLog({
+    polis: writablePolis,
+    logs,
+  })
 
   return {
     ...log,

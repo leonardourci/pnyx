@@ -171,7 +171,7 @@ function keepValidPrefix({ log }: { log: OwnerEntries }): void {
   }
 }
 
-function readOwnerLogs(): Map<string, OwnerEntries> {
+export function readOwnerLogs(): Map<string, OwnerEntries> {
   const logs = new Map<string, OwnerEntries>()
   const entries = ownerLogPoleis().flatMap(polis => {
     const log = readLogEntries({ polis })
@@ -269,8 +269,14 @@ export function ownerProjectMoves({ id }: { id: string }) {
   })
 }
 
-export function readOwnerEntries({ polis = 'shared' }: { polis?: string } = {}) {
-  return readOwnerLogs().get(polis) ?? {
+export function readOwnerEntries({
+  polis = 'shared',
+  logs = readOwnerLogs(),
+}: {
+  polis?: string
+  logs?: Map<string, OwnerEntries>
+} = {}) {
+  return logs.get(polis) ?? {
     entries: [],
     corrupt: false,
   }
