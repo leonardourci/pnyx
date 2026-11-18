@@ -496,7 +496,8 @@ export async function taskFolder({
 
         const previousCopy = now.copy
         const sameCopy = previousCopy?.path === copy.path && previousCopy.project === copy.project
-          && previousCopy.via === copy.via && previousCopy.branch === copy.branch && previousCopy.base === copy.base
+          && previousCopy.via === copy.via && previousCopy.branch === copy.branch
+          && previousCopy.base === copy.base
 
         if (!sameCopy || previousCopy?.state !== 'active') {
           const change = {
