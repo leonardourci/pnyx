@@ -502,13 +502,13 @@ test(
         'test archive',
       ],
     })
-    expect(JSON.stringify(await work.owner({
+    expect(JSON.stringify((await personal.owner({
       args: [
         'owner',
         'memory',
         'list',
       ],
-    }))).not.toContain('Private comet learning')
+    })).memory)).not.toContain('Private comet learning')
     const shown = await pnyxAxi({
       args: [
         'settings',
@@ -3678,5 +3678,312 @@ test(
       sockets.forEach(socket => socket.destroy())
       await new Promise<void>(resolve => gate.close(() => resolve()))
     }
+  },
+)
+
+test(
+  'agent update history filters before applying its page limit',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Visible update',
+        '--key',
+        'update',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'note',
+        '--text',
+        'Bookkeeping',
+        '--reason',
+        'test',
+      ],
+    })
+    const history = await pnyxAxi({
+      args: [
+        'history',
+        '--updates',
+        '--limit',
+        '1',
+        '--hydra',
+        hydra.id,
+      ],
+      env: {
+        ...process.env,
+        PNYX_ACTOR: 'hydra',
+        PNYX_HYDRA: hydra.id,
+        PNYX_TASK: undefined,
+      },
+    })
+    expect(history.status).toBe(0)
+    expect(parsed(history).events[0].type).toBe('task.created')
+  },
+)
+
+test(
+  'project listing ignores Hydra option placement across private home poleis',
+  async () => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    await target.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'private-target',
+      ],
+    })
+    const env = {
+      ...process.env,
+      PNYX_ACTOR: 'hydra',
+      PNYX_HYDRA: caller.id,
+      PNYX_TASK: undefined,
+    }
+    const listed = await pnyxAxi({
+      args: [
+        'project',
+        '--hydra',
+        target.id,
+        'list',
+      ],
+      env,
+    })
+    expect(listed.status).toBe(0)
+    expect(parsed(listed).projects).toBe('none: no projects attached')
+  },
+)
+
+test(
+  'completed project confirmation retries keep their pinned revision',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const path = hydra.folder({ name: 'confirmation-retry' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const saved = await hydra.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        path,
+        '--key',
+        'learnings',
+        '--text',
+        'Retry this learning',
+        '--reason',
+        'test',
+      ],
+    })
+    const args = [
+      'project',
+      'memory',
+      'confirm',
+      '--project',
+      path,
+      '--text',
+      'Retry this learning',
+      '--reason',
+      'Evidence',
+      '--event-id',
+      'confirmation-retry',
+      '--if-revision',
+      String(saved.revision),
+    ]
+    const first = await hydra.owner({ args })
+    const retry = await hydra.owner({ args })
+    expect(retry.skipped).toBe('duplicate')
+    expect(retry.revision).toBe(first.revision)
+    expect((await hydra.ownerRefused({
+      args: [
+        ...args.slice(
+          0,
+          -4,
+        ),
+        '--event-id',
+        'new-confirmation',
+        '--if-revision',
+        String(saved.revision),
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+  },
+)
+
+test(
+  'settings retries survive revoking the calling Hydra access',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const other = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            'retry-polis': {
+              readers: [
+                hydra.id,
+                other.id,
+              ],
+            },
+          },
+        }),
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,retry-polis',
+      ],
+    })
+    const args = [
+      'settings',
+      'set',
+      '--json',
+      JSON.stringify({ poleis: { 'retry-polis': { readers: [other.id] } } }),
+      '--event-id',
+      'settings-retry',
+      '--actor',
+      'hydra',
+      '--hydra',
+      hydra.id,
+    ]
+    const env = {
+      ...process.env,
+      PNYX_ACTOR: 'hydra',
+      PNYX_HYDRA: hydra.id,
+      PNYX_TASK: undefined,
+    }
+    const first = await pnyxAxi({
+      args,
+      env,
+    })
+    expect(first.status).toBe(0)
+    const retry = await pnyxAxi({
+      args,
+      env,
+    })
+    expect(retry.status).toBe(0)
+    expect(parsed(retry).event).toBe('none: duplicate')
+    expect(parsed(retry).revision).toBe(parsed(first).revision)
+    expect(retry.stdout).not.toContain('retry-polis')
+  },
+)
+
+test(
+  'project move confirmation pins the destination Hydra read lists',
+  async () => {
+    const author = await pnyx.hydra()
+    const reader = await pnyx.hydra()
+    const path = author.folder({ name: 'project-audience-pin' })
+    await author.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    await author.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            'project-source': { readers: [author.id] },
+            'project-destination': {
+              readers: [
+                author.id,
+                reader.id,
+              ],
+            },
+          },
+        }),
+      ],
+    })
+    await author.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,project-source,project-destination',
+      ],
+    })
+    await author.owner({
+      args: [
+        'project',
+        'move',
+        path,
+        '--polis',
+        'project-source',
+      ],
+    })
+    const proposal = parsed(await pnyxAxi({
+      args: [
+        'project',
+        'move',
+        path,
+        '--polis',
+        'project-destination',
+        '--propose',
+        '--hydra',
+        author.id,
+      ],
+      env: {
+        ...process.env,
+        PNYX_ACTOR: 'hydra',
+        PNYX_HYDRA: author.id,
+        PNYX_TASK: undefined,
+      },
+    }))
+    expect(proposal.confirmation).toBe('needed')
+    await reader.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,project-destination',
+      ],
+    })
+    expect((await author.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        proposal.token,
+        '--confirm',
+        proposal.token,
+      ],
+    })).code).toBe('CONFLICT')
+    await author.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,project-source',
+      ],
+    })
+    expect(JSON.stringify(await author.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    }))).toContain('project-audience-pin')
   },
 )
