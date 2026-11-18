@@ -79,6 +79,24 @@ export async function checkoutState({ cwd }: { cwd: string }) {
   }
 }
 
+// The folder is still a clean checkout of this branch and commit, in the same worktree.
+export async function matchesCheckout({
+  cwd,
+  root,
+  branch,
+  head,
+}: {
+  cwd: string
+  root: string
+  branch: string
+  head: string
+}): Promise<boolean> {
+  const current = await checkoutState({ cwd })
+  const sameRoot = await checkoutRoot({ cwd }) === root
+
+  return sameRoot && current.branch === branch && current.head === head && !current.dirty
+}
+
 export async function restoreCheckout({
   cwd,
   root,
@@ -131,10 +149,13 @@ export async function restoreCheckout({
     cwd,
     args,
   })
-  const restored = await checkoutState({ cwd })
 
-  if (await checkoutRoot({ cwd }) !== root || restored.branch !== previousBranch
-    || restored.head !== previousHead || restored.dirty) {
+  if (!await matchesCheckout({
+    cwd,
+    root,
+    branch: previousBranch,
+    head: previousHead,
+  })) {
     throw new Error('Handoff was not recorded and the previous checkout could not be restored; inspect the worker folder before continuing')
   }
 }
@@ -326,12 +347,14 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
     }
 
     if (committed) {
-      const current = await checkoutState({ cwd: intent.cwd })
+      const kept = await matchesCheckout({
+        cwd: intent.cwd,
+        root: intent.root,
+        branch: intent.branch,
+        head: intent.tip,
+      })
 
-      const root = await checkoutRoot({ cwd: intent.cwd })
-
-      if (root !== intent.root || current.branch !== intent.branch
-        || current.head !== intent.tip || current.dirty) {
+      if (!kept) {
         throw new Error(`Committed handoff checkout changed; inspect ${intent.cwd}`)
       }
     } else {

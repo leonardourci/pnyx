@@ -5,6 +5,8 @@ import type { HydraProject } from './model.ts'
 
 export const COPY_TIMEOUT_MS = 120_000
 
+// Git's stderr ends up in refusals and queue notes, so only its last part is kept; hook output can be long.
+const GIT_ERROR_LENGTH = 4000
 const BRANCH_SLUG_LENGTH = 40
 const BRANCH_CREATE_ATTEMPTS = 100
 const ORIGIN_REFS = 'refs/remotes/origin/'
@@ -275,7 +277,7 @@ export async function git({
   return {
     ok: run.status === 0,
     out: run.stdout.trim(),
-    err: run.stderr.trim(),
+    err: run.stderr.trim().slice(-GIT_ERROR_LENGTH),
   }
 }
 

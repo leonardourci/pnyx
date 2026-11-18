@@ -4,13 +4,14 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { CLI, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 import { createTaskBranch } from '#projects/git.ts'
+import { QUEUE_POLL_MS } from '#workers/queue.ts'
 
 const RESTART_FLOW_TIMEOUT_MS = 120_000
-// A scratch server reaches a newly ready handoff on its next queue poll, up to 30 seconds later.
-const HANDOFF_CRASH_WAIT_MS = 45_000
+// A scratch server reaches a newly ready handoff on its next queue poll.
+const HANDOFF_CRASH_WAIT_MS = QUEUE_POLL_MS + 15_000
 
 let pnyx: Pnyx
 const github = join(
@@ -326,38 +327,28 @@ const { writeFileSync } = require('node:fs')
 const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
 if (branch === 'hercules/next-chart-2') {
   execFileSync(process.execPath, ${JSON.stringify([
-    join(
-      import.meta.dirname,
-      '..',
-      'dist',
-      'cli',
-      'pnyx-axi.js',
-    ),
+    CLI,
     'task',
     'brief',
     'next',
     '--brief',
     'Updated chart brief',
     '--hydra',
-  ])}.concat(${JSON.stringify(hydra.id)}))
+    hydra.id,
+  ])})
   writeFileSync(${JSON.stringify(hookMarker)}, 'declined')
 }
 if (branch === 'hercules/add-cart') {
   execFileSync(process.execPath, ${JSON.stringify([
-    join(
-      import.meta.dirname,
-      '..',
-      'dist',
-      'cli',
-      'pnyx-axi.js',
-    ),
+    CLI,
     'task',
     'depend',
     'next',
     '--on',
     'gate',
     '--hydra',
-  ])}.concat(${JSON.stringify(hydra.id)}))
+    hydra.id,
+  ])})
 }
 `
     writeFileSync(
@@ -2251,7 +2242,7 @@ test(
 )
 
 test(
-  'a server killed after handoff checkout restores the recorded source assignment on restart',
+  'a server killed mid-handoff gets the source checkout back before the commit and keeps the target after it, refusing work on both tasks while changed work blocks recovery',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -2365,20 +2356,15 @@ const { writeFileSync } = require('node:fs')
 const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
 if (branch === 'iris/target') {
   execFileSync(process.execPath, ${JSON.stringify([
-    join(
-      import.meta.dirname,
-      '..',
-      'dist',
-      'cli',
-      'pnyx-axi.js',
-    ),
+    CLI,
     'task',
     'depend',
     'target',
     '--on',
     'gate',
     '--hydra',
-  ])}.concat(${JSON.stringify(hydra.id)}))
+    hydra.id,
+  ])})
   writeFileSync(${JSON.stringify(marker)}, branch)
   process.kill(Number(process.env.PNYX_HANDOFF_CRASH_PID), 'SIGKILL')
 }
@@ -2775,20 +2761,15 @@ test(
 const { execFileSync } = require('node:child_process')
 require('node:fs').writeFileSync(${JSON.stringify(orphanMarker)}, process.cwd())
 execFileSync(process.execPath, ${JSON.stringify([
-  join(
-    import.meta.dirname,
-    '..',
-    'dist',
-    'cli',
-    'pnyx-axi.js',
-  ),
+  CLI,
   'task',
   'project',
   'drift',
   '--project',
   'other',
   '--hydra',
-])}.concat(${JSON.stringify(hydra.id)}))
+  hydra.id,
+])})
 `,
       { mode: 0o700 },
     )
@@ -3039,7 +3020,6 @@ throw new Error('fixture allocation refusal')
       ),
       'utf8',
     )).toBe('another project’s work')
-    expect(dirtyMessages.messages).toEqual(expect.any(Array))
     expect(dirtyMessages.messages.find((event: { data: { text: string } }) => event.data.text.includes(orphan) && event.data.text.includes('uncommitted'))).toBeDefined()
     git({
       cwd: orphan,
@@ -3097,7 +3077,6 @@ throw new Error('fixture allocation refusal')
         '--full',
       ],
     })
-    expect(unlandedMessages.messages).toEqual(expect.any(Array))
     expect(unlandedMessages.messages.find((event: { data: { text: string } }) => event.data.text.includes(orphan) && event.data.text.includes('not landed'))).toBeDefined()
     await hydra.owner({
       args: [

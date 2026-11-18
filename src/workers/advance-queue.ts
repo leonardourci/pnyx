@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { git, checkoutRoot, checkoutState, restoreCheckout, saveHandoff, clearHandoff, readHandoffEvent, otherWorkers, handoffPending } from './handoff-checkout.ts'
+import { git, checkoutRoot, checkoutState, matchesCheckout, restoreCheckout, saveHandoff, clearHandoff, readHandoffEvent, otherWorkers, handoffPending } from './handoff-checkout.ts'
 import { sameProjectPath } from '#projects/identity.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { createTaskBranch } from '#projects/git.ts'
@@ -669,13 +669,14 @@ export async function advanceQueues({
         hydraId,
         session: attached,
       })
-      const beforeSwitch = await checkoutState({ cwd: prepared.cwd })
-      const checkoutChanged = beforeSwitch.head !== prepared.head
-        || beforeSwitch.branch !== prepared.previousBranch
+      const unchanged = await matchesCheckout({
+        cwd: prepared.cwd,
+        root: prepared.root,
+        branch: prepared.previousBranch,
+        head: prepared.head,
+      })
 
-      const beforeRoot = await checkoutRoot({ cwd: prepared.cwd })
-
-      if (beforeSwitch.dirty || checkoutChanged || beforeRoot !== prepared.root) {
+      if (!unchanged) {
         throw new Error('The worker folder changed during branch preparation')
       }
 
@@ -730,11 +731,14 @@ export async function advanceQueues({
             branch,
           ],
         })
-        const switched = await checkoutState({ cwd: prepared.cwd })
-        const root = await checkoutRoot({ cwd: prepared.cwd })
+        const switched = await matchesCheckout({
+          cwd: prepared.cwd,
+          root: prepared.root,
+          branch,
+          head: prepared.tip,
+        })
 
-        if (root !== prepared.root || switched.branch !== branch
-          || switched.head !== prepared.tip || switched.dirty) {
+        if (!switched) {
           throw new Error('The worker folder changed during handoff checkout')
         }
 

@@ -15,7 +15,7 @@ import { fakeClaude, fakeCodex, type AgentSession } from './agents.ts'
 
 export type { AgentSession }
 
-const CLI = join(
+export const CLI = join(
   import.meta.dirname,
   '..',
   '..',
