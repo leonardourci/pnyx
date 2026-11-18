@@ -275,7 +275,7 @@ export async function git({
   return {
     ok: run.status === 0,
     out: run.stdout.trim(),
-    err: run.stderr.trim().slice(-500),
+    err: run.stderr.trim(),
   }
 }
 
