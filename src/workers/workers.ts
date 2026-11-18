@@ -1,3 +1,4 @@
+import { readMemoryContext } from '#memory/context.ts'
 import { memoryCaller } from '#memory/poleis.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
@@ -385,34 +386,38 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
-    const owner = ownerMemory({ hydraId })
-    const current = loadHydra({ hydraId }).state
-    const state = memoryCaller({ hydraId }) ? current : {
-      ...current,
-      hydraMemory: undefined,
-    }
-    const [
-      projects,
-      items,
-    ] = await Promise.all([
-      projectDigest({
-        state,
-        hydraId,
-      }),
-      setupCheck({
-        hydraId,
-        state,
-      }),
-    ])
+    return readMemoryContext({
+      read: async () => {
+        const owner = ownerMemory({ hydraId })
+        const current = loadHydra({ hydraId }).state
+        const state = memoryCaller({ hydraId }) ? current : {
+          ...current,
+          hydraMemory: undefined,
+        }
+        const [
+          projects,
+          items,
+        ] = await Promise.all([
+          projectDigest({
+            state,
+            hydraId,
+          }),
+          setupCheck({
+            hydraId,
+            state,
+          }),
+        ])
 
-    return hydraDigest({
-      conditions: memoryConditions(),
-      hydraId,
-      owner,
-      ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
-      state,
-      projects,
-      setup: setupDigest({ items }),
+        return hydraDigest({
+          conditions: memoryConditions(),
+          hydraId,
+          owner,
+          ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
+          state,
+          projects,
+          setup: setupDigest({ items }),
+        })
+      },
     })
   },
 })

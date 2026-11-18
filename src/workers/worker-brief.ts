@@ -1,3 +1,4 @@
+import { readMemoryContext } from '#memory/context.ts'
 import { readableProjects } from '#memory/poleis.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
@@ -107,66 +108,70 @@ export async function taskPrompt({
   prompt?: string
   replacing?: string
 }): Promise<string> {
-  const instructions = prompt ?? workerPrompt({
-    hydraId,
-    id: card.id,
-    title: card.title,
-  })
-  const ownerNotes = ownerMemory({ hydraId }).workers?.text
-  const state = loadHydra({ hydraId }).state
-  const attachedProject = (await readableProjects({
-    state,
-    hydraId,
-  })).find(project => !project.detached
+  return readMemoryContext({
+    read: async () => {
+      const instructions = prompt ?? workerPrompt({
+        hydraId,
+        id: card.id,
+        title: card.title,
+      })
+      const ownerNotes = ownerMemory({ hydraId }).workers?.text
+      const state = loadHydra({ hydraId }).state
+      const attachedProject = (await readableProjects({
+        state,
+        hydraId,
+      })).find(project => !project.detached
     && matchesProject({
       project,
       ref: card.project,
     }))
-  const [
-    identity,
-    project,
-  ] = await Promise.all([
-    attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
-    projectWorkerContext({
-      hydraId,
-      state,
-      project: card.project,
-    }),
-  ])
-  const projectNotes = identity ? readProjectMemory({
-    ...identity,
-    hydraId,
-  }).documents.workers ?? '' : ''
+      const [
+        identity,
+        project,
+      ] = await Promise.all([
+        attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
+        projectWorkerContext({
+          hydraId,
+          state,
+          project: card.project,
+        }),
+      ])
+      const projectNotes = identity ? readProjectMemory({
+        ...identity,
+        hydraId,
+      }).documents.workers ?? '' : ''
 
-  const header = workerHeader({
-    hydraId,
-    id: card.id,
-    ownerNotes,
-    hydraNotes: state.hydraMemory?.workers?.text,
-    projectNotes,
-    stops: taskStops({
-      state,
-      hydraId,
-      card,
-    }),
+      const header = workerHeader({
+        hydraId,
+        id: card.id,
+        ownerNotes,
+        hydraNotes: state.hydraMemory?.workers?.text,
+        projectNotes,
+        stops: taskStops({
+          state,
+          hydraId,
+          card,
+        }),
+      })
+
+      let progress: string | undefined
+
+      if (replacing) {
+        progress = replacingNote({
+          card,
+          replacing,
+        })
+      }
+
+      return [
+        header,
+        project,
+        taskInstructions({ card }),
+        instructions,
+        progress,
+      ].filter(Boolean).join('\n\n')
+    },
   })
-
-  let progress: string | undefined
-
-  if (replacing) {
-    progress = replacingNote({
-      card,
-      replacing,
-    })
-  }
-
-  return [
-    header,
-    project,
-    taskInstructions({ card }),
-    instructions,
-    progress,
-  ].filter(Boolean).join('\n\n')
 }
 
 export const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
