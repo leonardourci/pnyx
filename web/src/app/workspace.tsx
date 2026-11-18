@@ -107,12 +107,14 @@ export function HydraView({
   edits,
   preview,
   navigatePage,
+  hydraLayout,
 }: {
   hydra: ReturnType<typeof useHydra>
   navigatePage: ReturnType<typeof useHydra>['navigate']
   active: boolean
   edits: ReturnType<typeof useHydraEdits>
   preview: SortMove | null
+  hydraLayout: string
 }) {
   const {
     state,
@@ -1022,6 +1024,7 @@ export function HydraView({
       >
         <motion.div
           layout
+          layoutDependency={`${view.workspace.collapsed}:${hydraLayout}`}
           ref={setLayer}
           className="app hydra-workspace group/workspace flex h-full w-max min-w-[calc(100vw-1.5rem)] flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-14.5 max-[760px]:min-w-[calc(100vw-0.75rem)] max-[760px]:p-1.5"
           data-ui-surface="workspace"

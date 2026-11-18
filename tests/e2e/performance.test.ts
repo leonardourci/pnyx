@@ -174,6 +174,13 @@ test(
     expect(await other.locator('.card-open').count()).toBe(0)
     expect(await other.locator('.hydra-page').count()).toBe(0)
     expect(await page.locator('*').count()).toBeLessThan(6000)
+    const visibleCard = await workspace.getByRole(
+      'button',
+      {
+        name: 'Task 1',
+        exact: true,
+      },
+    ).elementHandle()
     const earlierProject = second.folder({ name: 'later-project' })
     mkdirSync(
       join(
@@ -189,6 +196,10 @@ test(
         earlierProject,
       ],
     })
+    await other.locator(`[data-sort-kind="project"][data-sort-id="${earlierProject}"]`).waitFor()
+    await page.evaluate(() => new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    }))
     await until({
       what: 'an earlier Hydra changes width without stealing the direct address',
       check: async () => {
@@ -198,6 +209,8 @@ test(
       },
     })
     expect(page.url()).toContain(`/hydra/${first.id}/`)
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+    expect(await visibleCard!.evaluate(element => element.isConnected)).toBe(true)
 
     expect(reads.some(read => read.name === 'catalog')).toBe(true)
 

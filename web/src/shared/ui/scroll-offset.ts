@@ -54,19 +54,8 @@ export function useScrollOffset({
         setMargin(previous => previous === next ? previous : next)
       }
 
-      let frame = 0
-
-      const schedule = () => {
-        if (!frame) {
-          frame = requestAnimationFrame(() => {
-            frame = 0
-            measure()
-          })
-        }
-      }
-
-      const observer = new ResizeObserver(schedule)
-      const placement = new MutationObserver(schedule)
+      const observer = new ResizeObserver(measure)
+      const placement = new MutationObserver(measure)
       measure()
 
       for (let parent: HTMLElement | null = node; parent; parent = parent.parentElement) {
@@ -88,7 +77,6 @@ export function useScrollOffset({
       return () => {
         observer.disconnect()
         placement.disconnect()
-        cancelAnimationFrame(frame)
       }
     },
     [
