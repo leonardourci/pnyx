@@ -265,6 +265,7 @@ test(
       'button',
       { name: /Include archived/ },
     ).first()
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns evaluate callbacks.
     expect(await firstQuestion.evaluate(element => element === document.activeElement)).toBe(true)
 
     if (process.env.PNYX_KEEP_TEST_FILES) {
