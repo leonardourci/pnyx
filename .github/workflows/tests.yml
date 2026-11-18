@@ -85,6 +85,12 @@ jobs:
           PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
         run: pnpm exec vitest run
 
+      - name: Check workspace latency
+        env:
+          PNYX_PERFORMANCE: '1'
+          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
+        run: pnpm exec vitest run --project performance
+
       - name: Profile the workspace
         env:
           VITE_PNYX_PROFILE: '1'

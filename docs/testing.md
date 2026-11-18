@@ -29,15 +29,19 @@ A run starts one throwaway PostgreSQL cluster on a random port, with logical rep
 
 ### Performance journey
 
-Normal builds run the integration and ordinary browser projects. The separate `performance` project uses the existing React profiling flag, so it can count task commits through the same UI metrics written to the log file:
+Normal builds run the integration and ordinary browser projects. The separate `performance` project runs the same large-workspace journey in both renderers, after the ordinary suite has stopped:
 
 ```sh
+pnpm run build
+PNYX_PERFORMANCE=1 pnpm exec vitest run --project performance
 VITE_PNYX_PROFILE=1 pnpm run build
 VITE_PNYX_PROFILE=1 pnpm exec vitest run --project performance
 pnpm run build
 ```
 
-CI runs the normal suite first, then builds the profiling variant for this one journey. The fixture has 628 tasks, 12 project columns and six Hydras. It permits at most 70 mounted cards in the visible Hydra, four mounted project columns and 6,000 total DOM elements, with no cards in an off-screen Hydra. A task rename or streamed reply may commit at most four task surfaces, with none in the other Hydra. The same fixture checks a late Hydra address and keyboard pickup, ArrowDown and Escape without a render loop. Drag and wheel-scroll windows may contain no main-thread task above 50ms. The ordinary stationary-pointer drag/scroll journey enforces the same long-task budget with the normal renderer. Rebuild normally after local profiling; the default build bypasses all Profiler boundaries.
+The fixture has 628 tasks, 12 project columns and six Hydras. Both variants permit at most 70 mounted cards in the visible Hydra, four mounted project columns and 6,000 total DOM elements, with no off-screen Hydra bodies. Initial discovery commands stay bounded. The normal renderer enforces the strict 50ms drag and wheel-scroll long-task budget. The profiling renderer checks at most four task commits for an isolated rename, with none in another Hydra. Both check a late Hydra address, streaming and keyboard pickup, ArrowDown and Escape. Profiling timing is excluded from latency checks because React's instrumentation adds work. Neither run retries a budget miss.
+
+CI runs the normal suite first, then the isolated normal performance journey, then builds the profiling variant for the same journey. Keeping the latency journey separate prevents unrelated tests from distorting its measurement. The ordinary stationary-pointer drag/scroll journey also enforces the 50ms budget. Rebuild normally after local profiling; the default build bypasses all Profiler boundaries.
 
 ## Writing a test
 
@@ -112,4 +116,3 @@ Rules:
 - `e2e/board.test.ts`: the live board and a card's Activity in Chrome.
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
 
-The 628-task/six-Hydra journey runs in both builds. The normal renderer enforces the strict 50ms drag and scroll long-task budget. The profiling renderer enforces task commit counts and DOM bounds; its extra React timing instrumentation is excluded from latency measurements. Neither run retries a budget miss.
