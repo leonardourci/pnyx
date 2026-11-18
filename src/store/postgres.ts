@@ -16,6 +16,8 @@ const WORKER_ENTRY = new URL(
 // itself well before (STATEMENT_TIMEOUT_MS in the worker).
 const PROGRESS_POLL_MS = 1000
 const QUERY_TIMEOUT_MS = 30_000
+// Migrating a large history outlasts an ordinary statement's wait.
+const MIGRATION_TIMEOUT_MS = 10 * 60_000
 // Postgres refuses U+0000 and a lone UTF-16 surrogate even in json columns, so one stored value holding either would
 // fail every later write.
 const NUL = '\u0000'
@@ -330,3 +332,11 @@ export function query({
 
   return reply.results
 }
+
+// Brings an older schema up to this build's, as the server does when it starts.
+export const migrateSchema = ({ progress }: { progress?(): void } = {}) => query({
+  schema: 'migrate',
+  timeoutMs: MIGRATION_TIMEOUT_MS,
+  progress,
+  statements: [],
+})

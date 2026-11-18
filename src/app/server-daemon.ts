@@ -31,7 +31,7 @@ import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
 import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
 import { hydraExists } from './store.ts'
-import { query } from '#store/postgres.ts'
+import { migrateSchema, query } from '#store/postgres.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -117,12 +117,7 @@ export async function startServer({
   const releaseClaim = claimServer()
 
   try {
-    query({
-      schema: 'migrate',
-      timeoutMs: 10 * 60_000,
-      progress: reportStartup,
-      statements: [],
-    })
+    migrateSchema({ progress: reportStartup })
   } catch (error) {
     releaseClaim()
     throw error
