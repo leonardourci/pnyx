@@ -257,6 +257,8 @@ This command covers one Hydra's local task events only. Worker starts/messages, 
 
 Each polis can hold 24000 characters of owner memory. It stores `preferences`, `learnings` and standing worker instructions under `workers`. Use `owner memory list` to read the allowed poleis and `owner memory set --key <short-name> --text "<document>"` or `owner memory forget --key <short-name>` to edit the home polis. Append-only logs keep each replacement and removal. The `shared` log lives at `$PNYX_HOME/owner/memory.jsonl` and other logs live at `$PNYX_HOME/owner/poleis/<polis>/memory.jsonl`. Pass the revision from `owner memory list` unchanged as `--if-revision <revision>`. It binds the home polis and log position. The `shared` polis keeps numeric revisions for existing callers. Migration moves legacy Hydra `preferences` and `learnings` to `shared`, merging duplicate lines. The Hydra event log keeps the old text, and the next read retries any failed migration.
 
+Asynchronous memory contexts retry up to three times when access, home or project attachments change during a read. Continued changes return `CONFLICT` without the assembled memory.
+
 ### Worker instructions and memory curation
 
 Hydra reports results in plain words with full links and what happens next, in one message per result. Routine progress, checks still running and re-runs stay on the cards, questions stay on their question cards, and the Waiting on you bar shows what waits on you. Owner messages always call for an answer; if a hosted Hydra ends one with `NO_REPLY`, Pnyx asks once for a standalone reply.
