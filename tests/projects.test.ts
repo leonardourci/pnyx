@@ -478,6 +478,118 @@ if (branch === 'hercules/next-chart-2') {
       what: 'readable branch in delivered brief',
       check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-3')),
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Failure hook',
+        '--key',
+        'failure',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'failure',
+        '--brief',
+        'Check the hook failure',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'queue',
+        'failure',
+        '--behind',
+        'next',
+      ],
+    })
+    const failureMarker = join(
+      path,
+      'checkout-failed',
+    )
+    writeFileSync(
+      join(
+        hooks,
+        'post-checkout',
+      ),
+      `#!${process.execPath}
+const { execFileSync } = require('node:child_process')
+const { writeFileSync } = require('node:fs')
+if (execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim() === 'hercules/failure-hook') {
+  writeFileSync(${JSON.stringify(failureMarker)}, 'failed')
+  throw new Error('fixture checkout failure')
+}
+`,
+    )
+    git({
+      cwd: path,
+      args: [
+        'config',
+        'core.hooksPath',
+        hooks,
+      ],
+    })
+    const nextWorker = await hydra.agent({ cwd: copy })
+    await hydra.as({ session: nextWorker }).run({
+      args: [
+        'task',
+        'status',
+        'next',
+        'done',
+      ],
+    })
+    await pnyx.restart()
+    await until({
+      what: 'checkout hook failure',
+      check: () => existsSync(failureMarker),
+    })
+    await until({
+      what: 'checkout restored after the hook failed',
+      check: () =>
+        git({
+          cwd: copy,
+          args: [
+            'branch',
+            '--show-current',
+          ],
+        }) === 'hercules/next-chart-3',
+    })
+    await until({
+      what: 'hook failure reported on the released task',
+      check: async () => {
+        const { task } = await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'failure',
+            '--full',
+          ],
+        })
+
+        return task.queueNote?.includes('fixture checkout failure')
+      },
+    })
+    expect(git({
+      cwd: path,
+      args: [
+        'branch',
+        '--list',
+        'hercules/failure-hook',
+      ],
+    })).toContain('hercules/failure-hook')
+    git({
+      cwd: path,
+      args: [
+        'config',
+        '--unset',
+        'core.hooksPath',
+      ],
+    })
   },
 )
 
@@ -1400,6 +1512,22 @@ test(
         gone.branch,
       ],
     })
+    writeFileSync(
+      join(
+        gone.path,
+        'uncommitted.txt',
+      ),
+      'scratch work',
+    )
+    const flagged = await hydra.owner({
+      args: [
+        'task',
+        'copy',
+        'gone',
+        'remove',
+      ],
+    })
+    expect(flagged.copy.state).toBe('flagged')
     rmSync(
       gone.path,
       {
@@ -1704,5 +1832,111 @@ test(
         'refs/heads/poseidon-2/retry-allocation',
       ],
     })).toBe(reserved)
+    const other = await pnyx.hydra()
+    await other.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Póseídon',
+      ],
+    })
+    const attachment = await other.owner({
+      args: [
+        'project',
+        'add',
+        cwd,
+        '--landing',
+        'branch',
+      ],
+    })
+    expect(attachment.confirmation).toBe('needed')
+    await other.owner({
+      args: [
+        'project',
+        'add',
+        cwd,
+        '--landing',
+        'branch',
+        '--confirm',
+        attachment.token,
+      ],
+    })
+    await other.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shared name',
+        '--key',
+        'shared',
+        '--project',
+        'shop',
+      ],
+    })
+    const otherStarted = await other.owner({
+      args: [
+        'task',
+        'start',
+        'shared',
+      ],
+    })
+    expect(git({
+      cwd: otherStarted.agent.folder,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('poseidon-2/shared-name')
+    git({
+      cwd: otherStarted.agent.folder,
+      args: [
+        'switch',
+        '--detach',
+        'HEAD',
+      ],
+    })
+    git({
+      cwd,
+      args: [
+        'branch',
+        '-D',
+        'poseidon-2/shared-name',
+      ],
+    })
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--list',
+        'poseidon-2/shared-name',
+      ],
+    })).toBe('')
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shared name',
+        '--key',
+        'shared',
+        '--project',
+        'shop',
+      ],
+    })
+    const shared = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'shared',
+      ],
+    })
+    expect(git({
+      cwd: shared.agent.folder,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('poseidon-2/shared-name-2')
   },
 )

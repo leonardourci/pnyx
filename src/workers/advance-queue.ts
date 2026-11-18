@@ -736,7 +736,9 @@ export async function advanceQueues({
 
         const current = await checkoutState({ cwd: prepared.cwd })
 
-        if (current.dirty || current.head !== prepared.head || current.branch !== prepared.previousBranch) {
+        const changed = current.head !== prepared.head || current.branch !== prepared.previousBranch
+
+        if (current.dirty || changed) {
           throw new Error('The worker folder changed during branch preparation')
         }
 
