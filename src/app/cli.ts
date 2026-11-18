@@ -10,7 +10,7 @@ import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { readEvents, scanEvents } from './event-log.ts'
-import { historyTasks, updateTasks } from '#tasks/updates.ts'
+import { historyTasks, showsUpdate, updateTasks } from '#tasks/updates.ts'
 import { decideUndo } from './undo.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
 import { layout, view } from '#preferences/cli.ts'
@@ -125,7 +125,7 @@ export const history = guard({
         ...selection,
         descending: true,
       })) {
-        if (!visible({ event })) {
+        if (!visible({ event }) || (values.updates && !showsUpdate({ event }))) {
           continue
         }
 

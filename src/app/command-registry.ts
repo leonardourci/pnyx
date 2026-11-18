@@ -74,9 +74,9 @@ export const COMMAND_REGISTRY = {
     ownerOnly: () => true,
   },
   project: {
-    readOnly: ({ args }) => matchesReadScope({
+    readOnly: ({ positionals }) => matchesReadScope({
       name: 'project',
-      args,
+      args: positionals,
     }),
     page: true,
     scope: {
