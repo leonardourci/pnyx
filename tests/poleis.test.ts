@@ -1550,7 +1550,12 @@ test(
 
       released = false
       blockedReads = sockets.length + 1
-      const showing = allowed.owner({ args: ['hydra', 'show'] })
+      const showing = allowed.owner({
+        args: [
+          'hydra',
+          'show',
+        ],
+      })
       await until({
         what: 'Hydra show Git read is gated',
         check: () => sockets.length >= blockedReads,
