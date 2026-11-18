@@ -649,7 +649,10 @@ async function answerGroup({
     state,
     ref,
   })
-  const cardsByKey = new Map(Object.values(state.cards).map(card => [encodeURIComponent(card.id), card]))
+  const cardsByKey = new Map(Object.values(state.cards).map(card => [
+    encodeURIComponent(card.id),
+    card,
+  ]))
   const selected = members.map(key => {
     const [
       task,
@@ -673,8 +676,9 @@ async function answerGroup({
     const repeat = ask.answered === event || (priorReply !== undefined
       && (priorReply.state === 'queued' || priorReply.state === 'delivery_unknown' || priorReply.accepted === true))
     const priorChoice = priorReply?.decision?.choice ?? ask.choice
+    const recorded = ask.answered === event || priorReply !== undefined
 
-    if (repeat && priorChoice !== choice) {
+    if (recorded && priorChoice !== choice) {
       throw new HydraError({
         code: 'CONFLICT',
         message: 'This group attempt already recorded a different choice',
