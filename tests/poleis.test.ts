@@ -1851,6 +1851,33 @@ test(
         expect(readableReview.status).toBe(0)
         expect(readableReview.stdout).toContain('Revoked project review learning')
 
+        released = false
+        blockedReads = sockets.length + 1
+        const unstableHistory = pnyxAxi({
+          args: ['history', '--kind', 'hydra.review', '--full', '--hydra', allowed.id],
+          env: {
+            ...process.env,
+            PNYX_ACTOR: 'hydra',
+            PNYX_HYDRA: allowed.id,
+            PNYX_TASK: undefined,
+          },
+        })
+        for (const reads of ['shared', 'shared,vault', 'shared']) {
+          await until({
+            what: 'history visibility Git read is gated',
+            check: () => sockets.length >= blockedReads,
+          })
+          const socket = sockets.at(-1)!
+          blockedReads++
+          await allowed.owner({ args: ['hydra', 'set', '--read-poleis', reads] })
+          socket.end()
+        }
+        released = true
+        const unstableResult = await unstableHistory
+        expect(unstableResult.status).toBe(1)
+        expect(parsed(unstableResult).code).toBe('CONFLICT')
+        await allowed.owner({ args: ['hydra', 'set', '--read-poleis', 'shared,vault'] })
+
         expect(JSON.stringify(await allowed.owner({
           args: [
             'oracle',
@@ -2680,6 +2707,19 @@ test(
         'preferences',
         '--text',
         'stale replacement',
+        '--if-revision',
+        String(first.revision),
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    expect((await hydra.ownerRefused({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'preferences',
+        '--to',
+        'revision-next',
         '--if-revision',
         String(first.revision),
       ],

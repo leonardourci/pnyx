@@ -685,18 +685,17 @@ export function moveOwnerPolis({
         })
       }
 
-      if (polis === destination) {
-        return { skipped: 'unchanged' }
-      }
-
-      const source = readLog({ polis })
-      const target = readLog({ polis: destination })
+      const logs = readOwnerLogs()
+      const source = readLog({ polis, logs })
 
       checkOwnerRevision({
         polis,
         revision: source.revision,
         meta,
       })
+
+      const samePolis = polis === destination
+      const target = samePolis ? source : readLog({ polis: destination, logs })
 
       if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
         throw new HydraError({
@@ -710,6 +709,10 @@ export function moveOwnerPolis({
           message: 'Memory log is unreadable',
           code: 'LOG_CORRUPT',
         })
+      }
+
+      if (samePolis) {
+        return { skipped: 'unchanged' }
       }
 
       const text = source.memory[key]?.text
