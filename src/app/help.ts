@@ -382,6 +382,7 @@ commit is on the default branch or its linked pull request merged; the branch st
 command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
 A released slot goes back to the pool when fewer than ${POOL_IDLE} clean idle slots of the project are already there, or
 when an attached worker still runs in it; otherwise it is deleted. A slot a worker runs in is never handed to another task.
+Allocation reuses clean unrecorded slots whose commits landed; uncommitted or unlanded work stays and is reported to Hydra.
 Queued handoff prepares the next branch and transfers the folder; manual task attach only moves the session.
 task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
 already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.
