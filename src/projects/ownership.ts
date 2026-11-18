@@ -12,7 +12,7 @@ import { matchesProject } from './identity.ts'
 import { findProject, sharingHydras } from './read.ts'
 import type { HydraProject } from './model.ts'
 
-function checkKeeperRevision({
+export function checkProjectsRevision({
   state,
   meta,
 }: {
@@ -116,7 +116,7 @@ export async function keepProject({
   }
 
   const keeper = loadHydra({ hydraId }).state
-  checkKeeperRevision({
+  checkProjectsRevision({
     state: keeper,
     meta,
   })
@@ -168,7 +168,7 @@ export async function keepProject({
         attached: true,
       })
 
-      checkKeeperRevision({
+      checkProjectsRevision({
         state: target.state,
         meta,
       })

@@ -84,6 +84,7 @@ export function summarize({
       card,
       cards: state.cards,
     }).kind === 'asks')
+    const askingIds = new Set(asking.map(card => card.id))
     const projects = projectsFor({
       state,
       aliases: true,
@@ -99,7 +100,7 @@ export function summarize({
         const tasks = cards.filter(c => c.project && references.includes(c.project))
 
         const live = tasks.filter(c => c.agent && (c.sessionActivity ?? c.activity) === 'working')
-        const asks = tasks.filter(card => asking.includes(card))
+        const asks = tasks.filter(card => askingIds.has(card.id))
 
         return {
           name: p.name,
@@ -117,7 +118,7 @@ export function summarize({
       home,
       summary: {
         asks: new Set([
-          ...asking.map(card => card.id),
+          ...askingIds,
           ...openDecisions({ state }).map(decision => decision.card.id),
         ]).size,
         id,

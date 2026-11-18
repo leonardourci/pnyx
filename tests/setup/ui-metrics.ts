@@ -60,7 +60,7 @@ export function expectResponsiveUI({ metrics }: { metrics: ReturnType<typeof uiM
   expect(metrics.filter(line => line.operation === 'page.long-task' && line.ms > LONG_TASK_BUDGET_MS)).toEqual([])
 }
 
-// shortcut: drag latency is report-only until task-c266753d restores the blocking gate.
+// Drag latency is report-only until task-c266753d restores the blocking gate.
 export function reportDragResponsiveness({ metrics }: { metrics: ReturnType<typeof uiMetrics> }) {
   const longTaskMs = metrics.filter(line => line.operation === 'page.long-task').map(line => line.ms)
   console.info(JSON.stringify({

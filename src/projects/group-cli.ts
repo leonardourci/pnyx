@@ -9,6 +9,7 @@ import { HydraError } from '#store/errors.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import type { HydraProject } from './model.ts'
 import { findProject, projectFolder, sharingHydras } from './read.ts'
+import { checkProjectsRevision } from './ownership.ts'
 
 export function childRepositories({ path }: { path: string }) {
   if (existsSync(join(
@@ -73,14 +74,10 @@ export function attachProjectGroup({
           return { skipped: 'duplicate' }
         }
 
-        const revision = state.projectsRevision ?? 0
-
-        if (commandMeta.ifRevision !== undefined && commandMeta.ifRevision !== revision) {
-          throw new HydraError({
-            message: `revision ${revision}, not ${commandMeta.ifRevision}`,
-            code: 'REVISION_CONFLICT',
-          })
-        }
+        checkProjectsRevision({
+          state,
+          meta: commandMeta,
+        })
 
         const canonical = [...new Set(paths.map(path => projectFolder({ path })))]
         const knownGroup = state.projects?.find(project => project.group?.name === name)?.group
