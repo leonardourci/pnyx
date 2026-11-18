@@ -977,6 +977,68 @@ test(
       PNYX_HYDRA: hydra.id,
       PNYX_TASK: undefined,
     }
+    const concurrent = await Promise.all([
+      pnyxAxi({
+        args: [
+          'hydra',
+          'set',
+          '--read-poleis',
+          'shared',
+          '--reason',
+          'Narrow memory access',
+          '--hydra',
+          hydra.id,
+        ],
+        env,
+      }),
+      pnyxAxi({
+        args: [
+          'hydra',
+          'set',
+          '--polis',
+          'controlled',
+          '--reason',
+          'Select memory home',
+          '--hydra',
+          hydra.id,
+        ],
+        env,
+      }),
+    ])
+    expect(concurrent.map(result => result.status)).toEqual([
+      0,
+      0,
+    ])
+    const serialized = (await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra
+    expect(serialized.readPoleis).toEqual(['shared'])
+    expect(serialized.polis).toBe('controlled')
+    expect((await hydra.ownerRefused({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Unreadable home',
+      ],
+    })).code).toBe('NOT_FOUND')
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'shared',
+        '--read-poleis',
+        'shared,controlled',
+      ],
+    })
+
     const widerReads = [
       'hydra',
       'set',
@@ -1679,7 +1741,7 @@ test(
           'list',
         ],
       })
-      expect(combined.memory.preferences.text).not.toContain('Invalid destination rewrite')
+      expect(JSON.stringify(combined.memory)).not.toContain('Invalid destination rewrite')
       expect((await hydra.ownerRefused({
         args: [
           'owner',
