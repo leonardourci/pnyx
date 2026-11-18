@@ -18,14 +18,9 @@ export function widensPolisReads({
 export function widensPolisReaders({
   before,
   after,
-  hydras,
 }: {
   before: Settings
   after: Settings
-  hydras: {
-    id: string
-    state: HydraState
-  }[]
 }): boolean {
   for (const [
     polis,
@@ -38,30 +33,6 @@ export function widensPolisReaders({
     }
   }
 
-  const projects = new Set([
-    ...Object.keys(before.projectPoleis),
-    ...Object.keys(after.projectPoleis),
-  ])
-
-  for (const project of projects) {
-    const source = before.projectPoleis[project] ?? 'shared'
-    const destination = after.projectPoleis[project] ?? 'shared'
-
-    if (source === destination) {
-      continue
-    }
-
-    if (sharesWithMore({
-      source,
-      destination,
-      before,
-      after,
-      hydras,
-    })) {
-      return true
-    }
-  }
-
   return false
 }
 
@@ -69,20 +40,18 @@ export function sharesWithMore({
   source,
   destination,
   before,
-  after = before,
   hydras,
 }: {
   source: string
   destination: string
   before: Settings
-  after?: Settings
   hydras: {
     id: string
     state: HydraState
   }[]
 }): boolean {
   const existingHydras = new Set(hydras.map(hydra => hydra.id))
-  const sharedReaders = after.poleis.shared?.readers ?? []
+  const sharedReaders = before.poleis.shared?.readers ?? []
   const futureSharedReader = destination === 'shared' && source !== 'shared'
     && sharedReaders.some(reader => reader === '*' || !existingHydras.has(reader))
 
@@ -93,7 +62,7 @@ export function sharesWithMore({
     canRead({
       hydraId: id,
       state,
-      poleis: after.poleis,
+      poleis: before.poleis,
       polis: destination,
     })
     && !canRead({

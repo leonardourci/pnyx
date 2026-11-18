@@ -1,6 +1,6 @@
 import { HydraError } from '#store/errors.ts'
 import { widensPolisReaders } from '#memory/access-changes.ts'
-import { checkMemoryApproval, memoryHydras, memoryPermission, memoryCaller, memoryAgent } from '#memory/poleis.ts'
+import { checkMemoryApproval, memoryPermission, memoryCaller, memoryAgent } from '#memory/poleis.ts'
 import { patchSettings } from './settings.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { canRead } from '#memory/polis-policy.ts'
@@ -138,7 +138,6 @@ export const settings = guard({
         widening: Boolean(memoryPatch) && widensPolisReaders({
           before: read.settings,
           after,
-          hydras: memoryHydras(),
         }),
       })
 

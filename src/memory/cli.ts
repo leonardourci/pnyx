@@ -182,6 +182,14 @@ export const owner = guard({
     }
 
     const action = positionals[1] ?? 'list'
+
+    if (action !== 'list' && !memoryCaller({ hydraId })) {
+      throw new HydraError({
+        message: 'Memory is unavailable',
+        code: 'NOT_FOUND',
+      })
+    }
+
     const learning = learningChange({
       action,
       kind: values.kind as string | undefined,

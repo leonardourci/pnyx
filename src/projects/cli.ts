@@ -496,7 +496,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
 export const project = guard({ handler: projectCommand })
 export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
-Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. For every project and Hydra, use owner worker-notes.
+Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
 Each project belongs to one polis (shared by default); only attached Hydras that may read that polis see its memory. Move changes its assigned polis explicitly.

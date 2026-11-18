@@ -764,6 +764,17 @@ test(
       env: crossEnv,
     })
     expect(boundRead.stdout).not.toContain('Secret header nebula')
+    const boundWrite = await pnyxAxi({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--hydra',
+        personal.id,
+      ],
+      env: crossEnv,
+    })
+    expect(parsed(boundWrite).code).toBe('NOT_FOUND')
     await work.owner({
       args: [
         'hydra',
@@ -2700,6 +2711,30 @@ test(
       })
       expect(invalidTail.writable.preferences?.text).toBe('fresh replacement')
       expect(JSON.stringify(invalidTail.memory)).not.toContain('Rejected destination-conflict import')
+      writeFileSync(
+        path,
+        beforeCorruption,
+      )
+      appendFileSync(
+        path,
+        '{"seq":3,"key":"learnings","after":null,"projectMove":{"project":42}}\n',
+      )
+      appendFileSync(
+        path,
+        readFileSync(new URL(
+          './setup/fixtures/memory/owner-move-valid-source.jsonl',
+          import.meta.url,
+        )),
+      )
+      const malformedProjectMove = await hydra.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })
+      expect(malformedProjectMove.writable.preferences?.text).toBe('fresh replacement')
+      expect(JSON.stringify(malformedProjectMove.memory)).not.toContain('Rejected destination-conflict import')
       writeFileSync(
         path,
         beforeCorruption,

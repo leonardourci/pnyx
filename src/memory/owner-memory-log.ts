@@ -101,7 +101,7 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
     if (entry.projectMove && (entry.key !== 'learnings' || typeof entry.projectMove.project !== 'string'
       || entry.projectMove.event?.key !== 'learnings' || typeof entry.projectMove.event.after !== 'string')) {
       corrupt = true
-      continue
+      break
     }
 
     if (entry.polisMove && (typeof entry.polisMove.polis !== 'string' || !POLIS_NAME.test(entry.polisMove.polis)

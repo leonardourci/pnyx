@@ -47,7 +47,7 @@ Hide Hydras from the page list and switcher with `settings set --json '{"hiddenH
 
 ### Poleis
 
-Hydra config uses `polis` for its home and `readPoleis` for its read list. The defaults are `shared` and `["shared"]`. Change the read list separately with `--read-poleis`.
+Hydra config uses `polis` for its home and `readPoleis` for its read list. Both default to `shared`. Changing the home leaves the read list as-is unless you also pass `--read-poleis`.
 
 `shared` keeps the existing owner memory log. `work` and `personal` start empty with no readers. Reading a polis requires both the Hydra's read list and the polis's reader list to allow it. The server sends owner-memory writes to the Hydra's home polis, which must also be readable. Each polis holds up to 24000 characters of owner memory.
 
