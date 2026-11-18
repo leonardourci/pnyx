@@ -261,18 +261,23 @@ test(
     finish()
     const end = trackUIDrag({ action: 'project' })
     tick?.(100); tick?.(116); tick?.(164)
+    vi.advanceTimersByTime(1300)
     end(); end()
+    tick?.(1533)
     vi.advanceTimersByTime(UI_METRICS_INTERVAL_MS)
     expect(lines).toEqual(expect.arrayContaining([
       expect.objectContaining({
         operation: 'page.drag-frames',
         action: 'project',
         count: 1,
+        durationMs: 1300,
+        totalMs: 1300,
         frameCount: 2,
         frames: 2,
         worstFrameMs: 48,
       }),
     ]))
+    expect(lines.find(line => line.operation === 'page.drag-frames' && line.action === 'project')?.ms).toBeUndefined()
     expect(lines.some(line => line.operation === 'page.flow')).toBe(false)
     const beforeCleanup = lines.length
     trackUIDrag({ action: 'task' })

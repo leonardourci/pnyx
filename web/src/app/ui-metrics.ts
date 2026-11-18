@@ -28,7 +28,6 @@ type Group = Sample & {
   count: number
   samples: number
   totalMs: number
-  ms: number
 }
 interface SlowFrame extends PerformanceEntry {
   blockingDuration?: number
@@ -85,8 +84,9 @@ function record({
     return
   }
 
-  const ms = sampled ? sample.ms ?? 0 : 0
-  const worst = previous && previous.ms > ms ? previous : sample
+  const duration = sampled ? sample.ms ?? sample.durationMs ?? 0 : 0
+  const previousDuration = previous?.ms ?? previous?.durationMs ?? 0
+  const worst = previous && previousDuration > duration ? previous : sample
   groups.set(
     key,
     {
@@ -94,10 +94,14 @@ function record({
       name: sample.action ? `${sample.surface}.${sample.action}` : sample.surface,
       count: (previous?.count ?? 0) + 1,
       samples: (previous?.samples ?? 0) + Number(sampled),
-      totalMs: (previous?.totalMs ?? 0) + ms,
-      ms: Math.max(
+      totalMs: (previous?.totalMs ?? 0) + duration,
+      ms: sample.ms === undefined ? undefined : Math.max(
         previous?.ms ?? 0,
-        ms,
+        duration,
+      ),
+      durationMs: sample.durationMs === undefined ? undefined : Math.max(
+        previous?.durationMs ?? 0,
+        sample.durationMs,
       ),
       frameCount: (previous?.frameCount ?? 0) + (sample.frameCount ?? 0),
       frames: (previous?.frames ?? 0) + (sample.frames ?? 0),
@@ -302,7 +306,7 @@ export function trackUIDrag({
           hydraId,
           surface: 'sortable',
           action,
-          ms: performance.now() - started,
+          durationMs: performance.now() - started,
           frameCount: frames,
           frames: dropped,
           worstFrameMs: worst,
