@@ -280,7 +280,10 @@ async function worktreeCopy({
         })
       }
 
-      await verifyCopyBranch({ path, branch })
+      await verifyCopyBranch({
+        path,
+        branch,
+      })
       allocated = true
 
       return made({ path })
@@ -325,7 +328,10 @@ async function worktreeCopy({
       })
     }
 
-    await verifyCopyBranch({ path, branch })
+    await verifyCopyBranch({
+      path,
+      branch,
+    })
     const copy = made({ path: realpathSync(path) })
     allocated = true
 
