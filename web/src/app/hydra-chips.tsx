@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import { SortGroup } from '#web-shared/ui/sortable.tsx'
@@ -44,7 +45,7 @@ export function HydraChips({
               aria-current={hydra.id === current ? 'page' : undefined}
               onClick={() => navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })}
             >
-              <HydraLabel name={hydra.name} icon={hydra.icon} size={16} />
+              <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
               <WaitingCount count={waiting} />
             </SortableChip>
           )

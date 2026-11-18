@@ -28,7 +28,7 @@ import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
-import { Icon } from '#web-shared/icons.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useScrollingClass } from '#web-shared/use-scrolling-class.ts'
@@ -1017,7 +1017,7 @@ export function HydraView({
                   )}
                 />
               )}
-              <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={20} />
+              <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={ICON_SIZE.heading} />
             </div>
             <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
               <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>
@@ -1065,7 +1065,7 @@ export function HydraView({
             {(loading || !loaded || hydra.offline) && (
               <StatusMessage role="status">
                 {hydra.offline && 'Connection lost. Reconnecting automatically.'}
-                {!hydra.offline && <>{hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…</>}
+                {!hydra.offline && <>{hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={ICON_SIZE.inline} /> : 'Hydra'}</>}…</>}
               </StatusMessage>
             )}
             {error && <ErrorBanner role="alert">{error} <Button onClick={hydra.dismissError}>Dismiss</Button></ErrorBanner>}
