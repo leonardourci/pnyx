@@ -389,17 +389,23 @@ async function checkoutState({ cwd }: { cwd: string }) {
 
 async function restoreCheckout({
   cwd,
+  root,
   branch,
   tip,
   previousBranch,
   previousHead,
 }: {
   cwd: string
+  root: string
   branch: string
   tip: string
   previousBranch: string
   previousHead: string
 }): Promise<void> {
+  if (await checkoutRoot({ cwd }) !== root) {
+    throw new Error('Handoff was not recorded and the checkout moved; inspect the worker folder before continuing')
+  }
+
   const current = await checkoutState({ cwd })
 
   if (current.branch === previousBranch && current.head === previousHead) {
@@ -728,14 +734,6 @@ export async function advanceQueues({
           return false
         }
 
-        const current = await checkoutState({ cwd: prepared.cwd })
-
-        const changed = current.head !== prepared.head || current.branch !== prepared.previousBranch
-
-        if (current.dirty || changed) {
-          throw new Error('The worker folder changed during branch preparation')
-        }
-
         return true
       }
 
@@ -770,6 +768,17 @@ export async function advanceQueues({
         return false
       }
 
+      const beforeSwitch = await checkoutState({ cwd: prepared.cwd })
+      const checkoutChanged = beforeSwitch.head !== prepared.head || beforeSwitch.branch !== prepared.previousBranch
+
+      if (beforeSwitch.dirty || checkoutChanged || await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
+        throw new Error('The worker folder changed during branch preparation')
+      }
+
+      if (!active()) {
+        return false
+      }
+
       let handoffEvent: string | undefined
       let recorded = false
       let handoffError: unknown
@@ -785,8 +794,9 @@ export async function advanceQueues({
           ],
         })
         const switched = await checkoutState({ cwd: prepared.cwd })
+        const root = await checkoutRoot({ cwd: prepared.cwd })
 
-        if (switched.branch !== branch || switched.head !== prepared.tip || switched.dirty) {
+        if (root !== prepared.root || switched.branch !== branch || switched.head !== prepared.tip || switched.dirty) {
           throw new Error('The worker folder changed during handoff checkout')
         }
 
@@ -900,6 +910,7 @@ export async function advanceQueues({
         try {
           await restoreCheckout({
             cwd: prepared.cwd,
+            root: prepared.root,
             branch,
             tip: prepared.tip,
             previousBranch: prepared.previousBranch,

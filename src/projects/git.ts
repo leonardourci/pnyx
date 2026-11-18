@@ -23,12 +23,12 @@ const FILLER_WORDS = new Set([
 ])
 
 function branchSlug({ text }: { text: string }): string {
-  const words = text.normalize('NFKD').replace(
-    /[\u0300-\u036f]/g,
+  const normalized = text.normalize('NFKD')
+  const unaccented = normalized.replace(
+    /\p{Mark}/gu,
     '',
   )
-    .toLowerCase()
-    .match(/[a-z0-9]+/g) ?? []
+  const words = unaccented.toLowerCase().match(/[a-z0-9]+/g) ?? []
   let slug = ''
 
   for (const word of words) {
@@ -109,7 +109,8 @@ export async function taskBranch({
     })
   }
 
-  for (const remote of remotes.out.split('\n').filter(Boolean)) {
+  const remoteNames = remotes.out.split('\n').filter(Boolean)
+  for (const remote of remoteNames) {
     const heads = await git({
       cwd,
       args: [
@@ -123,7 +124,7 @@ export async function taskBranch({
     if (!heads.ok) {
       throw new HydraError({
         code: 'COPY_FAILED',
-        message: `could not read remote branches: ${heads.err}`,
+        message: `could not read branches on remote ${remote}: ${heads.err}`,
       })
     }
 

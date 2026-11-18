@@ -419,6 +419,10 @@ if (branch === 'hercules/add-cart') {
           ],
         }) === 'hercules/add-cart',
     })
+    await until({
+      what: 'restoration hook blocks the queued task',
+      check: async () => (await hydra.task({ key: 'next' })).readiness.ready === false,
+    })
     const declined = await hydra.owner({
       args: [
         'task',
@@ -1741,7 +1745,7 @@ test(
     }
 
     expect((await start({
-      title: 'Clientes atendídos / vendas: chart!',
+      title: 'Clientes atendídos / ven\u1ab0das: chart!',
       key: 'accents',
     })).branch).toBe('poseidon/clientes-atendidos-vendas-chart')
     expect((await start({
@@ -1883,7 +1887,10 @@ test(
         'start',
         'chart',
       ],
-    })).toMatchObject({ code: 'COPY_FAILED' })
+    })).toMatchObject({
+      code: 'COPY_FAILED',
+      error: expect.stringContaining('remote unavailable'),
+    })
     expect(git({
       cwd,
       args: [

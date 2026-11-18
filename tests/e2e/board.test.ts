@@ -9,7 +9,7 @@ beforeAll(async () => {
 })
 
 test(
-  'the open board follows a task live from Queued to In progress to Done as the CLI and its worker change it',
+  'the open Hydra follows task moves and keeps the tab title in sync with selection and renames',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await openHydra({
@@ -64,7 +64,6 @@ test(
         folder,
       ],
     })
-    // A card is the article holding its title button.
     const shown = ({ title }: { title: string }) => page.locator(
       'article',
       {

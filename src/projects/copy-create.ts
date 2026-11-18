@@ -200,7 +200,7 @@ async function worktreeCopy({
     cwd: project.path,
     branch,
   })
-  const copyBase = previous?.base ?? base
+  const copyBase = previous ? previous.base : base
 
   const made = ({ path }: { path: string }): TaskCopy => {
     const copy: TaskCopy = {
@@ -494,7 +494,11 @@ export async function taskFolder({
           ifRevision: undefined,
         }
 
-        if (now.copy?.path !== copy.path || now.copy.state !== 'active') {
+        const previousCopy = now.copy
+        const sameCopy = previousCopy?.path === copy.path && previousCopy.project === copy.project
+          && previousCopy.via === copy.via && previousCopy.branch === copy.branch && previousCopy.base === copy.base
+
+        if (!sameCopy || previousCopy?.state !== 'active') {
           const change = {
             type: 'task.copy' as const,
             data: {
