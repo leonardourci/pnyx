@@ -121,5 +121,41 @@
     "Drag frames are requestAnimationFrame interval estimates, not compositor presentation counts.",
     "Clock formatters capture the default locale/time zone until reload."
   ],
-  "polishHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab"
+  "polishHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab",
+  "ownershipScreenshots": {
+    "beforeHead": "e1e5846b87b504b62cf57fb29a5e75226f1dbaf1",
+    "afterHead": "d21b3b93a2a75bffacee6be1fa3f30dd8a2782ab",
+    "measurements": {
+      "before-light": {
+        "theme": "light",
+        "iconWidths": [
+          15,
+          15
+        ]
+      },
+      "before-dark": {
+        "theme": "dark",
+        "iconWidths": [
+          15,
+          15
+        ]
+      },
+      "after-light": {
+        "theme": "light",
+        "iconWidths": [
+          16,
+          16
+        ]
+      },
+      "after-dark": {
+        "theme": "dark",
+        "iconWidths": [
+          16,
+          16
+        ]
+      }
+    },
+    "syntheticPath": "/demo/Paperplane",
+    "staleThemeCaptionRemoved": true
+  }
 }
