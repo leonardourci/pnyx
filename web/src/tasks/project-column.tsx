@@ -128,7 +128,6 @@ export function ProjectColumn({
       ref={sort.setNodeRef}
       data-sort-key={sort.key}
       lifted={lifted}
-      onPointerDown={sort.pointerDown}
       className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere max-[760px]:snap-start ${folded ? 'folded min-w-12' : ''}`}
       data-column={column.id}
       data-resizing={preview !== null}

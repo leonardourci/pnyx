@@ -240,9 +240,10 @@ export function useSortItem({
   const capturePointerDown = useCallback<PointerEventHandler<HTMLElement>>(
     // eslint-disable-next-line pnyx/object-params -- React supplies the pointer event.
     event => {
+      const element = event.currentTarget.closest<HTMLElement>('[data-sort-key]') ?? event.currentTarget
       pickup.current = grabPoint({
         event,
-        box: event.currentTarget.getBoundingClientRect(),
+        box: element.getBoundingClientRect(),
       })
       activate?.(event)
     },

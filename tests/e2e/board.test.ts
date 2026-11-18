@@ -4413,3 +4413,118 @@ test(
     }
   },
 )
+
+test(
+  'project dragging starts on its heading and leaves its body available',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const alpha = hydra.folder({ name: 'Alpha' }), beta = hydra.folder({ name: 'Beta' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        alpha,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        beta,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: {
+            chatCollapsed: true,
+            projectWidths: {
+              ideas: 280,
+              [alpha]: 280,
+              [beta]: 280,
+            },
+          },
+        }),
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    const first = workspace.locator('.project-column[aria-label="Alpha"]')
+    const second = workspace.locator('.project-column[aria-label="Beta"]')
+
+    try {
+      await first.waitFor()
+      await second.waitFor()
+      const body = (await first.locator('.column-cards').boundingBox())!
+      await page.mouse.move(
+        body.x + body.width / 2,
+        body.y + 80,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        body.x + body.width + 70,
+        body.y + 80,
+        { steps: 16 },
+      )
+      const bodyPickedUp = await page.locator('.physical-ghost').count()
+      await page.keyboard.press('Escape')
+      await page.mouse.up()
+      expect(bodyPickedUp).toBe(0)
+      const heading = (await first.locator('.project-column-heading').boundingBox())!
+      const destination = (await second.locator('.project-column-heading').boundingBox())!
+      const x = heading.x + heading.width * 0.6, y = heading.y + heading.height / 2
+      expect(await page.evaluate(
+        ({
+          x,
+          y,
+        }) => !!document.elementFromPoint(
+          x,
+          y,
+        )?.closest('button'),
+        {
+          x,
+          y,
+        },
+      )).toBe(false)
+      await page.mouse.move(
+        x,
+        y,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        x + 12,
+        y,
+        { steps: 3 },
+      )
+      await page.locator('.physical-ghost').waitFor()
+      await page.mouse.move(
+        destination.x + destination.width * 0.6,
+        y,
+        { steps: 20 },
+      )
+      await page.mouse.up()
+      const order = () => workspace.locator('.project-column').evaluateAll(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+        elements => elements.map(element => element.getAttribute('aria-label')),
+      )
+      await until({
+        what: 'heading drag saves project order',
+        check: async () => (await order()).join('|') === 'Ideas|Beta|Alpha',
+      })
+      await page.reload()
+      await until({
+        what: 'heading order survives reload',
+        check: async () => (await order()).join('|') === 'Ideas|Beta|Alpha',
+      })
+    } finally {
+      await page.mouse.up()
+      await page.context().close()
+    }
+  },
+)

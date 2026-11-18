@@ -382,6 +382,29 @@ test(
   'task modal keeps its address, traps and returns focus, and remembers chat-only across reload',
   async () => {
     const hydra = await pnyx.hydra()
+    const repository = hydra.folder({ name: 'modal-project' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        repository,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: {
+            projectWidths: {
+              ideas: 280,
+              [repository]: 280,
+            },
+          },
+        }),
+      ],
+    })
     await hydra.owner({
       args: [
         'task',
@@ -390,6 +413,8 @@ test(
         'modal',
         '--title',
         'Modal conversation',
+        '--project',
+        repository,
         '--brief',
         'Keep these instructions visible',
       ],
@@ -489,6 +514,62 @@ test(
         },
       })
       expect(widths.some(width => width > 600 && width < 900)).toBe(true)
+      const behind = (await page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column-heading]`).first()
+        .boundingBox())!
+      await page.mouse.move(
+        behind.x + behind.width / 2,
+        behind.y + behind.height / 2,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        behind.x + behind.width / 2 + 80,
+        behind.y + behind.height / 2,
+        { steps: 12 },
+      )
+      const backgroundPickedUp = await page.locator('.physical-ghost').count()
+      await page.mouse.up()
+      expect(backgroundPickedUp).toBe(0)
+      expect(await modal.count()).toBe(1)
+      const passage = modal.getByText(
+        'Keep these instructions visible',
+        { exact: true },
+      )
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      const selection = await passage.evaluate(element => {
+        const text = element.firstChild!
+        const range = document.createRange()
+        range.setStart(
+          text,
+          0,
+        ); range.collapse(true)
+        const start = range.getBoundingClientRect()
+        range.setStart(
+          text,
+          4,
+        ); range.collapse(true)
+        const end = range.getBoundingClientRect()
+
+        return {
+          start: start.x,
+          end: end.x,
+          y: start.y + start.height / 2,
+        }
+      })
+      await page.mouse.move(
+        selection.start + 0.1,
+        selection.y,
+      )
+      await page.mouse.down()
+      await page.mouse.move(
+        selection.end + 0.1,
+        selection.y,
+        { steps: 8 },
+      )
+      const textPickedUp = await page.locator('.physical-ghost').count()
+      await page.mouse.up()
+      expect(textPickedUp).toBe(0)
+      expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('Keep')
+
       const modalWidth = modal.getByRole(
         'separator',
         {
@@ -542,6 +623,7 @@ test(
       await page.keyboard.press('Shift+Tab')
       // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
       expect(await modal.evaluate(element => element.contains(document.activeElement))).toBe(true)
+      const closingFrom = (await modal.boundingBox())!.height
       const closing = page.evaluate(async () => {
         const heights: number[] = []
 
@@ -559,8 +641,16 @@ test(
       await page.keyboard.press('Escape')
       await modal.waitFor({ state: 'detached' })
       const closingHeights = await closing
+      const closingTo = closingHeights.at(-1)!
       expect(
-        closingHeights.some(height => height > 450 && height < 510),
+        closingHeights.some(height => height > Math.min(
+          closingFrom,
+          closingTo,
+        ) + 1
+          && height < Math.max(
+            closingFrom,
+            closingTo,
+          ) - 1),
         JSON.stringify(closingHeights),
       ).toBe(true)
       await until({

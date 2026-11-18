@@ -1,4 +1,5 @@
 import { motion } from 'motion/react'
+import type { KeyboardEventHandler } from 'react'
 import type { useSortItem } from '#web-shared/ui/sortable.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
@@ -6,7 +7,7 @@ import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { ProjectCounts } from './project-counts.tsx'
 import type { ProjectColumnData } from './project-view.ts'
 
-type ColumnDrag = Pick<ReturnType<typeof useSortItem>, 'attributes' | 'listeners' | 'setActivatorNodeRef'>
+type ColumnDrag = Pick<ReturnType<typeof useSortItem>, 'attributes' | 'listeners' | 'setActivatorNodeRef' | 'pointerDown'>
 
 export function ProjectColumnHeader({
   column,
@@ -23,13 +24,15 @@ export function ProjectColumnHeader({
   fold(): unknown
   create(): void
 }) {
+  const keyDown = drag.listeners?.onKeyDown as KeyboardEventHandler<HTMLButtonElement> | undefined
+
   return (
-    <header className="project-column-heading relative flex min-h-10.75 items-center justify-between gap-2 border-b border-column-line px-2 py-1.25 group-[.folded]/project:h-full group-[.folded]/project:border-0 group-[.folded]/project:p-2">
+    <header onPointerDown={drag.pointerDown} className="project-column-heading relative flex min-h-10.75 items-center justify-between gap-2 border-b border-column-line px-2 py-1.25 group-[.folded]/project:h-full group-[.folded]/project:border-0 group-[.folded]/project:p-2">
       <div className={`contents ${hint ? 'invisible' : ''}`} aria-hidden={hint}>
         <Button
           className="min-w-0 touch-none justify-start gap-2 [&>strong]:truncate group-[.folded]/project:self-start group-[.folded]/project:[writing-mode:vertical-rl]"
           {...drag.attributes}
-          {...drag.listeners}
+          onKeyDown={keyDown}
           aria-disabled={undefined}
           ref={drag.setActivatorNodeRef}
           data-column-heading={column.id}
