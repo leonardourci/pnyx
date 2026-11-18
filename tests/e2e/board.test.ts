@@ -2689,13 +2689,25 @@ test(
         what: 'task mention waits for its missing card',
         check: () => !!release,
       })
-      await page.getByRole(
-        'button',
-        {
-          name: 'Unfold loading-atlas',
-          exact: true,
-        },
-      ).waitFor()
+      const { view } = await hydra.owner({
+        args: [
+          'view',
+          'show',
+        ],
+      })
+      expect(view.workspace.foldedProjects).toContain(atlas)
+      await page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
+        'navigation',
+        { name: 'Projects' },
+      )
+        .getByRole(
+          'button',
+          {
+            name: 'loading-boreal',
+            exact: true,
+          },
+        )
+        .click()
       await page.locator(`[data-hydra-workspace="${hydra.id}"] [data-column-heading="${boreal}"]`).click()
       await page.getByRole(
         'button',
@@ -3357,13 +3369,8 @@ test(
     })
 
     try {
-      const card = page.getByRole(
-        'button',
-        {
-          name: 'A wide closed card',
-          exact: true,
-        },
-      ).locator('xpath=ancestor::article[1]')
+      const wide = await hydra.task({ key: 'wide' })
+      const card = page.locator(`[data-hydra-workspace="${hydra.id}"] .card[data-task="${wide.id}"]`)
       await card.hover()
       const box = await card.boundingBox()
       expect(box!.width).toBeGreaterThan(900)
@@ -3416,15 +3423,28 @@ test(
           exact: true,
         },
       ).locator('xpath=ancestor::article[1]')
+      await page.mouse.move(
+        page.viewportSize()!.width - 2,
+        box!.y + box!.height / 2,
+      )
+      await targetCard.waitFor()
+      await until({
+        what: 'edge autoscroll brings the nesting target inside the viewport',
+        check: async () => {
+          const box = await targetCard.boundingBox()
+
+          return !!box && box.x >= 0 && box.x + box.width <= page.viewportSize()!.width
+        },
+      })
       const target = await targetCard.boundingBox()
       const point = {
         x: target!.x + target!.width / 2,
         y: target!.y + target!.height / 2,
       }
-      await targetCard.hover()
-      const settledTarget = await targetCard.boundingBox()
-      point.x = settledTarget!.x + settledTarget!.width / 2
-      point.y = settledTarget!.y + settledTarget!.height / 2
+      await page.mouse.move(
+        point.x,
+        point.y,
+      )
       await until({
         what: 'crossing another column compacts the wide lift',
         check: async () => Math.abs((await preview.boundingBox())!.width - 303.333) < 1,
@@ -3465,15 +3485,18 @@ test(
         return samples
       })
       const landing = landingFrames()
+      await card.locator('xpath=ancestor::*[@data-family][1]').scrollIntoViewIfNeeded()
+      const returning = await card.boundingBox()
+      const returnPoint = {
+        x: returning!.x + returning!.width * 0.82 + 20,
+        y: returning!.y + returning!.height * 0.65,
+      }
       await page.mouse.move(
-        box!.x + box!.width * 0.82 + 20,
-        box!.y + box!.height * 0.65,
+        returnPoint.x,
+        returnPoint.y,
         { steps: 12 },
       )
-      await anchored({
-        x: box!.x + box!.width * 0.82 + 20,
-        y: box!.y + box!.height * 0.65,
-      })
+      await anchored(returnPoint)
       await page.mouse.up()
       const samples = await landing
       expect(samples.some(sample => sample.width > 300 && sample.width < 850)).toBe(true)
