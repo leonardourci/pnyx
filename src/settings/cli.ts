@@ -94,20 +94,20 @@ export const settings = guard({
       current: read.settings,
       input: patch,
     })
-    const memoryPatch = patch !== null && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch)
+    const memoryPatch = patch !== null && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch) ? patch : undefined
 
     if (memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
       const state = loadHydra({ hydraId }).state
 
-      if ('projectPoleis' in patch) {
+      if ('projectPoleis' in memoryPatch) {
         throw new HydraError({
           message: 'Use project move to change the polis of an attached project',
           code: 'VALIDATION_ERROR',
         })
       }
 
-      if ('poleis' in patch && patch.poleis && typeof patch.poleis === 'object') {
-        for (const polis of Object.keys(patch.poleis)) {
+      if ('poleis' in memoryPatch && memoryPatch.poleis && typeof memoryPatch.poleis === 'object') {
+        for (const polis of Object.keys(memoryPatch.poleis)) {
           if (!canRead({
             hydraId,
             state,
@@ -135,7 +135,7 @@ export const settings = guard({
         args: proposalArgs,
         propose: Boolean(values.propose),
         actor: change.actor,
-        widening: memoryPatch && widensPolisReaders({
+        widening: Boolean(memoryPatch) && widensPolisReaders({
           before: read.settings,
           after,
           hydras: memoryHydras(),
