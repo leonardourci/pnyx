@@ -162,7 +162,8 @@ export function memoryHydras() {
 }
 
 export function memoryAccessRevision(): string {
-  const settings = readSettings().settings
+  const read = readSettings()
+  const settings = read.settings
   const hydras = memoryHydras()
   const readLists = hydras.map(({
     id,
@@ -170,6 +171,10 @@ export function memoryAccessRevision(): string {
   }) => ({
     id,
     reads: hydraPolisConfig({ state }).readPoleis,
+    polis: hydraPolisConfig({ state }).polis,
+    configRevision: state.configRevision ?? 0,
+    projectsRevision: state.projectsRevision ?? 0,
+    attachments: projectsFor({ state }),
   })).sort((
     left,
     right,
@@ -177,6 +182,7 @@ export function memoryAccessRevision(): string {
 
   return createHash('sha256').update(JSON.stringify({
     settings,
+    settingsRevision: read.revision,
     readLists,
   }))
     .digest('hex')
