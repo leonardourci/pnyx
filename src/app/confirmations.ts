@@ -35,9 +35,11 @@ const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' |
   : undefined
 
 function memoryRulesFor({ target }: { target: Target }): string | undefined {
+  const changesPolis = target.args.some(arg => /^--polis(?:=|$)/.test(arg))
+  const changesReads = target.args.some(arg => /^--read-poleis(?:=|$)/.test(arg))
   const memoryCommand = target.name === 'settings' || target.name === 'owner'
-    || (target.name === 'project' && target.args[0] === 'move')
-    || (target.name === 'hydra' && target.args.some(arg => /^--(?:polis|read-poleis)(?:=|$)/.test(arg)))
+    || (target.name === 'project' && changesPolis)
+    || (target.name === 'hydra' && (changesPolis || changesReads))
 
   return memoryCommand ? memoryAccessRevision() : undefined
 }

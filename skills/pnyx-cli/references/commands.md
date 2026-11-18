@@ -53,7 +53,7 @@ Hydra config uses `polis` for its home and `readPoleis` for its read list. The d
 
 Pnyx makes up to three attempts to assemble memory when access, home or project attachments change during the read. If all attempts see changes, the command returns `CONFLICT` without the assembled memory.
 
-Agent history omits saved memory-review blocks when their recorded poleis or project attachments are no longer readable. Owner history keeps the full record, and task events remain visible. Older reviews without source metadata are omitted from agent history.
+Agent event history shows Hydra memory changes only in the caller's own Hydra. Legacy owner-memory changes also require access to `shared`. Saved reviews require read access to their recorded poleis and project attachments. Reviews without source metadata stay visible only to the owner. Task events remain visible.
 
 To change another Hydra or control its workers, agents need read access to its home polis and every polis it can read. Missing access returns `NOT_FOUND`. Workers start with the target Hydra's memory. Direct CLI memory commands use the caller's native Hydra.
 

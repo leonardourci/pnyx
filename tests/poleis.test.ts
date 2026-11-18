@@ -216,6 +216,29 @@ test(
     })
     expect(crossHydraRead.status).toBe(0)
     expect(crossHydraRead.stdout).not.toContain('Private Hydra scope')
+    const historyArgs = [
+      'history',
+      '--kind',
+      'hydra.memory',
+      '--full',
+      '--hydra',
+      personal.id,
+    ]
+    const crossHydraHistory = await pnyxAxi({
+      args: historyArgs,
+      env: crossEnv,
+    })
+    expect(crossHydraHistory.status).toBe(0)
+    expect(crossHydraHistory.stdout).not.toContain('Private Hydra scope')
+    const nativeHistory = await pnyxAxi({
+      args: historyArgs,
+      env: {
+        ...crossEnv,
+        PNYX_HYDRA: personal.id,
+      },
+    })
+    expect(nativeHistory.status).toBe(0)
+    expect(nativeHistory.stdout).toContain('Private Hydra scope')
     expect(JSON.stringify(await personal.owner({
       args: [
         'oracle',
@@ -2244,17 +2267,18 @@ test(
       ],
       env,
     })).stdout).toContain('OWNER_ONLY')
-    const projectProposal = parsed(await pnyxAxi({
-      args: [
-        'project',
-        'move',
-        project,
-        '--polis',
-        'shared',
-        '--propose',
-        '--hydra',
-        hydra.id,
-      ],
+    const projectProposalArgs = [
+      'project',
+      '--polis',
+      'shared',
+      'move',
+      project,
+      '--propose',
+      '--hydra',
+      hydra.id,
+    ]
+    let projectProposal = parsed(await pnyxAxi({
+      args: projectProposalArgs,
       env,
     }))
     expect(JSON.stringify(await other.owner({
@@ -2263,6 +2287,28 @@ test(
         'list',
       ],
     }))).not.toContain('permission-project')
+    await other.owner({
+      args: ['hydra', 'set', '--read-poleis', ''],
+    })
+    expect((await hydra.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        projectProposal.token,
+        '--confirm',
+        projectProposal.token,
+      ],
+    })).code).toBe('CONFLICT')
+    await hydra.owner({
+      args: ['approval', 'dismiss', projectProposal.token],
+    })
+    await other.owner({
+      args: ['hydra', 'set', '--read-poleis', 'shared'],
+    })
+    projectProposal = parsed(await pnyxAxi({
+      args: projectProposalArgs,
+      env,
+    }))
     await hydra.owner({
       args: [
         'approval',
@@ -2697,12 +2743,48 @@ test(
     const beforeFirst = readFileSync(firstPath)
 
     try {
-      appendFileSync(
-        path,
-        readFileSync(new URL(
+      const corruptMoves = readFileSync(
+        new URL(
           './setup/fixtures/memory/corrupt-owner-moves.jsonl',
           import.meta.url,
-        )),
+        ),
+        'utf8',
+      ).trimEnd().split('\n')
+
+      for (const invalidEntry of corruptMoves.slice(0, 3)) {
+        appendFileSync(
+          path,
+          `${invalidEntry}\n`,
+        )
+        const memory = await hydra.owner({
+          args: [
+            'owner',
+            'memory',
+            'list',
+          ],
+        })
+        expect(memory.writable.preferences.text).toBe('fresh replacement')
+        expect(JSON.stringify(memory.memory)).not.toMatch(/Invalid (local sequence|imported sequence|source rewrite|destination rewrite)/)
+        expect((await hydra.ownerRefused({
+          args: [
+            'owner',
+            'memory',
+            'set',
+            '--key',
+            'preferences',
+            '--text',
+            'Overwrite corrupt log',
+          ],
+        })).code).toBe('LOG_CORRUPT')
+        writeFileSync(
+          path,
+          beforeCorruption,
+        )
+      }
+
+      appendFileSync(
+        path,
+        `${corruptMoves.slice(3).join('\n')}\n`,
       )
       appendFileSync(
         firstPath,
@@ -2725,7 +2807,7 @@ test(
           'list',
         ],
       })
-      expect(JSON.stringify(combined.memory)).not.toContain('Invalid destination rewrite')
+      expect(JSON.stringify(combined.memory)).not.toContain('conflicting replacement')
       expect(JSON.stringify(combined.memory)).not.toContain('Rejected source-position import')
       expect(JSON.stringify(combined.memory)).not.toContain('Rejected dependent-source import')
       expect(JSON.stringify(combined.memory)).toContain('revision-final')
