@@ -38,9 +38,11 @@ const SIGN_IN: Record<Harness, string> = {
 export async function setupCheck({
   hydraId,
   state,
+  readable,
 }: {
   hydraId: string
   state: HydraState
+  readable?: Awaited<ReturnType<typeof readableProjects>>
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
   const database = postgresIssue()
@@ -165,7 +167,7 @@ export async function setupCheck({
     })
   }
 
-  const profiles = await Promise.all((await readableProjects({
+  const profiles = await Promise.all((readable ?? await readableProjects({
     state,
     hydraId,
   })).filter(project => !project.detached)

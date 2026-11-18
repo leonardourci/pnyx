@@ -11,11 +11,14 @@ const WORKER_DOCUMENT_LIMIT = 400
 export async function projectDigest({
   state,
   hydraId,
+  readable,
 }: {
   state: HydraState
   hydraId: string
+  // The caller's own readableProjects result, so one digest reads each project's identity once.
+  readable?: Awaited<ReturnType<typeof readableProjects>>
 }): Promise<string[]> {
-  const projects = (await readableProjects({
+  const projects = (readable ?? await readableProjects({
     state,
     hydraId,
   })).filter(project => !project.detached)

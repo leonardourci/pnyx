@@ -394,6 +394,10 @@ const hydraDigestHandler = guard({
           ...current,
           hydraMemory: undefined,
         }
+        const readable = await readableProjects({
+          state,
+          hydraId,
+        })
         const [
           projects,
           items,
@@ -401,10 +405,12 @@ const hydraDigestHandler = guard({
           projectDigest({
             state,
             hydraId,
+            readable,
           }),
           setupCheck({
             hydraId,
             state,
+            readable,
           }),
         ])
 
@@ -415,10 +421,7 @@ const hydraDigestHandler = guard({
           ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
           state,
           projects,
-          readable: (await readableProjects({
-            state,
-            hydraId,
-          })).map(project => project.path),
+          readable: readable.map(project => project.path),
           setup: setupDigest({ items }),
         })
       },
