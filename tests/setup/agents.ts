@@ -69,7 +69,7 @@ export interface TurnPlan {
   hold?: boolean
   // Claude reports a compaction that lasts until the turn's release, as /compact does; with compactTo it finishes at once.
   compacting?: boolean
-  // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does once released, Codex mid-turn.
+  // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does once released or stopped, Codex mid-turn.
   compactTo?: number
   // Claude Code measures the session against this window from this turn on, as after a model switch.
   window?: number
@@ -380,7 +380,7 @@ export function fakeClaude() {
           } as SDKMessage
           await held
 
-          // /compact makes no model request, so a released or stopped turn ends here, without the recorded reply's usage.
+          // /compact sends no request after its boundary, so a released or stopped turn ends here, without the recorded request's usage.
           if (interrupted) {
             yield stoppedResult({ message })
           } else {

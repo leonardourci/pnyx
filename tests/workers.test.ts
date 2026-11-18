@@ -931,6 +931,10 @@ const refusedAsStopped = ({ events }: { events: HostedEvent[] }) => events.flatM
   && event.type === 'input' && event.receipt.phase === 'refused' && event.receipt.stopped
   ? [event.receipt.inputId] : [])
 
+const contextCounts = ({ events }: { events: HostedEvent[] }) => events.flatMap(event => typeof event === 'object'
+  && event.type === 'usage' && event.used !== undefined
+  ? [event.used] : [])
+
 test(
   'a Stop during Claude\'s context render refuses that input, and the next input still carries the context rendered for it',
   async ({ onTestFinished }) => {
@@ -990,7 +994,7 @@ test(
 )
 
 test(
-  'a Claude interrupt on an idle session does not mark the next turn interrupted, and stopping a compacted turn keeps its count',
+  'a Claude interrupt on an idle session does not mark the next turn interrupted, and a Stop after a compaction keeps the compacted context count',
   async ({ onTestFinished }) => {
     const claude = fakeClaude()
     const session = await claudeProvider({ query: claude.query }).open({
@@ -1033,14 +1037,14 @@ test(
     })
     await until({
       what: 'the compacted count before stopping',
-      check: () => events.some(event => typeof event === 'object' && event.type === 'usage' && event.used === 3_000),
+      check: () => contextCounts({ events }).at(-1) === 3_000,
     })
     await session.interrupt({ cancelQueued: false })
     await until({
       what: 'the stopped compaction result',
       check: () => session.snapshot().outcome?.status === 'interrupted',
     })
-    expect(events.filter(event => typeof event === 'object' && event.type === 'usage' && event.used !== undefined).at(-1)).toMatchObject({ used: 3_000 })
+    expect(contextCounts({ events }).at(-1)).toBe(3_000)
   },
 )
 
