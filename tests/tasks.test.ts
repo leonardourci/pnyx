@@ -2007,18 +2007,20 @@ test(
         'utf8',
       ).trim()
         .split('\n')).toHaveLength(1)
-      const changedChoice = attempt.map((
+      unlinkSync(fail)
+      const failedQuestionWithDifferentChoice = attempt.map((
         value,
         index,
       ) => {
-        if (attempt[index - 1] === '--questions') {
+        const flag = attempt[index - 1]
+
+        if (flag === '--questions') {
           return JSON.stringify([questions[1].key])
         }
 
-        return attempt[index - 1] === '--choice' ? 'Include archived' : value
+        return flag === '--choice' ? 'Include archived' : value
       })
-      expect((await hydra.ownerRefused({ args: changedChoice })).code).toBe('CONFLICT')
-      unlinkSync(fail)
+      expect((await hydra.ownerRefused({ args: failedQuestionWithDifferentChoice })).code).toBe('CONFLICT')
       const recovered = await hydra.owner({ args: attempt })
       expect(recovered.answers).toMatchObject([
         { repeat: true },

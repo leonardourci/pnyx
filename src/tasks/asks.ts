@@ -673,10 +673,9 @@ async function answerGroup({
 
     const priorReply = target.replies?.find(reply => reply.id === event
       && reply.decision?.questionId === ask.id)
-    const repeat = ask.answered === event || (priorReply !== undefined
-      && (priorReply.state === 'queued' || priorReply.state === 'delivery_unknown' || priorReply.accepted === true))
-    const priorChoice = priorReply?.decision?.choice ?? ask.choice
-    const recorded = ask.answered === event || priorReply !== undefined
+    const answeredByAttempt = ask.answered === event
+    const recorded = answeredByAttempt || priorReply !== undefined
+    const priorChoice = priorReply ? priorReply.decision?.choice : ask.choice
 
     if (recorded && priorChoice !== choice) {
       throw new HydraError({
@@ -684,6 +683,9 @@ async function answerGroup({
         message: 'This group attempt already recorded a different choice',
       })
     }
+
+    const repeat = answeredByAttempt || priorReply?.state === 'queued'
+      || priorReply?.state === 'delivery_unknown' || priorReply?.accepted === true
 
     return {
       key,
