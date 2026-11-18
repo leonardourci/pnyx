@@ -203,7 +203,10 @@ export function createHydraTurns({
             conditions: memoryConditions(),
           })
 
-          return { digest, stamp: undefined }
+          return {
+            digest,
+            stamp: undefined,
+          }
         }
 
         const [
@@ -241,7 +244,10 @@ export function createHydraTurns({
           setup: setupDigest({ items }),
         })
 
-        return { digest, stamp }
+        return {
+          digest,
+          stamp,
+        }
       },
     })
 
@@ -258,6 +264,7 @@ export function createHydraTurns({
         const owner = ownerMemory({ hydraId })
         const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
         const state = loadHydra({ hydraId }).state
+
         return JSON.stringify({
           owner,
           ownerWrite,
