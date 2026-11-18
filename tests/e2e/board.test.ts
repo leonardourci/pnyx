@@ -2149,7 +2149,13 @@ test(
           exact: true,
         },
       ).inputValue()).toContain('Shortcut Atlas')
-      await title.focus()
+      await workspace.getByRole(
+        'textbox',
+        {
+          name: 'Reply to Hydra',
+          exact: true,
+        },
+      ).focus()
       await page.keyboard.press(`${mod}+,`)
       const settings = page.locator(`[data-settings-hydra="${second.id}"]`).getByRole(
         'region',
@@ -2753,6 +2759,7 @@ test(
       const target = cards.filter({ hasText: /^Scroll task 3$/ })
       await source.waitFor()
       await target.waitFor()
+      await page.locator(`[data-hydra-workspace="${hydra.id}"][data-connected="true"]`).waitFor()
       const from = await source.boundingBox()
       const to = await target.boundingBox()
 
