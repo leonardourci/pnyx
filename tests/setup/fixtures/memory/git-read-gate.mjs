@@ -5,7 +5,7 @@ import { createConnection } from 'node:net'
 
 const args = process.argv.slice(2)
 
-if (args[1] === process.env.PNYX_TEST_GIT_PROJECT && args.includes('--git-dir')) {
+if (args[1] === process.env.PNYX_TEST_GIT_PROJECT && args.includes(process.env.PNYX_TEST_GIT_ARG ?? '--git-dir')) {
   const socket = createConnection(process.env.PNYX_TEST_GIT_SOCKET)
   socket.resume()
   await once(

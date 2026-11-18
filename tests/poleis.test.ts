@@ -1288,6 +1288,48 @@ test(
       }))).not.toContain('Detached write must not persist')
       released = false
       blockedReads = sockets.length + 1
+      process.env.PNYX_TEST_GIT_ARG = 'remote'
+      const detachListing = allowed.owner({
+        args: [
+          'project',
+          'list',
+        ],
+      })
+      await until({
+        what: 'attachment list Git read is gated',
+        check: () => sockets.length >= blockedReads,
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'remove',
+          'polis-project',
+        ],
+      })
+      released = true
+      sockets.forEach(socket => socket.end())
+      expect((await detachListing).projects).toContainEqual(expect.objectContaining({
+        path,
+        state: 'detached',
+      }))
+      const attachAgain = await allowed.owner({
+        args: [
+          'project',
+          'add',
+          path,
+        ],
+      })
+      await allowed.owner({
+        args: [
+          'project',
+          'add',
+          path,
+          '--confirm',
+          attachAgain.token,
+        ],
+      })
+      released = false
+      blockedReads = sockets.length + 1
       const listing = allowed.owner({
         args: [
           'project',
@@ -1309,6 +1351,7 @@ test(
       released = true
       sockets.forEach(socket => socket.end())
       expect(JSON.stringify(await listing)).not.toContain(path)
+      delete process.env.PNYX_TEST_GIT_ARG
       await allowed.owner({
         args: [
           'hydra',
@@ -1486,6 +1529,7 @@ test(
     } finally {
       process.env.PATH = previousPath
       delete process.env.PNYX_TEST_GIT_PROJECT
+      delete process.env.PNYX_TEST_GIT_ARG
       delete process.env.PNYX_TEST_GIT_SOCKET
       sockets.forEach(socket => socket.destroy())
       await new Promise<void>(resolve => gate.close(() => resolve()))
