@@ -1,7 +1,10 @@
+import { ProjectTasks } from './project-tasks.tsx'
+import { useFamilyFolds } from './task-view.ts'
+import { useKept } from '#web-shared/stable.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
 import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type ComponentProps } from 'react'
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode, type ComponentProps } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -27,21 +30,7 @@ export interface FamilyCard {
   toggleChildren?(): void
 }
 
-export function TaskFamily({
-  card,
-  hydraId,
-  state,
-  actions,
-  selected,
-  preview,
-  renderCard,
-}: {
-  card: Card
-  hydraId: string
-  state: HydraState
-  actions: Record<string, CurrentAction>
-  selected: string[]
-  preview: SortMove | null
+interface FamilyRenderer {
   renderCard({
     card,
     status,
@@ -50,11 +39,73 @@ export function TaskFamily({
     childrenOpen,
     toggleChildren,
   }: FamilyCard): ReactNode
-}) {
+}
+
+function FamilyTask({
+  family,
+  renderCard,
+}: FamilyRenderer & { family: FamilyCard }) {
+  const status = useKept({ value: family.status })
+
+  return renderCard({
+    ...family,
+    status,
+  })
+}
+
+export function TaskFamily({
+  card,
+  hydraId,
+  state,
+  actions,
+  selected,
+  width,
+  scroll,
+  reveal,
+  preview,
+  renderCard,
+}: {
+  card: Card
+  hydraId: string
+  state: HydraState
+  actions: Record<string, CurrentAction>
+  selected: string[]
+  width: number
+  scroll: HTMLElement | null
+  reveal?: string | null
+  preview: SortMove | null
+} & FamilyRenderer) {
   const [
-    expanded,
-    setExpanded,
-  ] = useState(false)
+    folds,
+    setFolds,
+  ] = useFamilyFolds({ hydraId })
+  const expanded = folds[card.id] ?? false
+  const setExpanded = useCallback(
+    ({ open }: { open: boolean }) => {
+      // eslint-disable-next-line pnyx/object-params -- React owns functional state updaters.
+      setFolds(current => ({
+        ...current,
+        [card.id]: open,
+      }))
+    },
+    [
+      card.id,
+      setFolds,
+    ],
+  )
+  const toggleChildren = useCallback(
+    () => {
+      // eslint-disable-next-line pnyx/object-params -- React owns functional state updaters.
+      setFolds(current => ({
+        ...current,
+        [card.id]: !current[card.id],
+      }))
+    },
+    [
+      card.id,
+      setFolds,
+    ],
+  )
   const {
     status,
     children,
@@ -79,7 +130,7 @@ export function TaskFamily({
   useEffect(
     () => {
       if (children.length > previousCount.current) {
-        setExpanded(true)
+        setExpanded({ open: true })
       }
 
       previousCount.current = children.length
@@ -99,7 +150,7 @@ export function TaskFamily({
   const drag = useSortState()
   const dragged = drag.active?.kind === 'task' && drag.active.id === card.id
     && drag.active.hydra === hydraId
-  const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length ? 'family-open basis-full' : ''}`
+  const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length || childrenOpen && children.length ? 'family-open basis-full' : ''}`
 
   return (
     <SortablePanel
@@ -109,37 +160,55 @@ export function TaskFamily({
       data-family={card.id}
       lifted={dragged}
     >
-      {renderCard({
-        card,
-        status,
-        progress: children.length ? `${done}/${children.length}` : undefined,
-        hasChildren: children.length > 0,
-        childrenOpen,
-        toggleChildren: () => setExpanded(value => !value),
-      })}
+      <FamilyTask
+        renderCard={renderCard}
+        family={{
+          card,
+          status,
+          progress: children.length ? `${done}/${children.length}` : undefined,
+          hasChildren: children.length > 0,
+          childrenOpen,
+          toggleChildren,
+        }}
+      />
       {children.length > 0 && (
         <FoldContent open={childrenOpen}>
           <Subtasks data-sort-surface={`children:${card.id}`}>
             <SortGroup namespace={`tasks:${hydraId}`} id={`children:${card.id}`} items={shown.map(child => child.id)}>
-              {shown.filter(child => !child.hidden || selected.includes(child.id)).map(child => (
-                <SortablePanel
-                  layout="position"
-                  key={child.key}
-                  data-child={child.id}
-                  lifted={drag.active?.kind === 'task' && drag.active.id === child.id
+              <ProjectTasks
+                items={shown.filter(child => !child.hidden || selected.includes(child.id))}
+                state={state}
+                actions={actions}
+                selected={selected}
+                column={`children:${card.id}`}
+                hydra={hydraId}
+                width={width - SUBTASK_INDENT}
+                scroll={scroll}
+                reveal={reveal}
+                singleColumn
+                render={({ card: child }) => (
+                  <SortablePanel
+                    layout="position"
+                    key={child.key}
+                    data-child={child.id}
+                    lifted={drag.active?.kind === 'task' && drag.active.id === child.id
                   && drag.active.hydra === hydraId}
-                >
-                  {renderCard({
-                    card: child,
-                    hasChildren: children.some(part => part.parentId === child.id),
-                    status: taskRollup({
-                      state,
-                      card: child,
-                      actions,
-                    }).status,
-                  })}
-                </SortablePanel>
-              ))}
+                  >
+                    <FamilyTask
+                      renderCard={renderCard}
+                      family={{
+                        card: child,
+                        hasChildren: children.some(part => part.parentId === child.id),
+                        status: taskRollup({
+                          state,
+                          card: child,
+                          actions,
+                        }).status,
+                      }}
+                    />
+                  </SortablePanel>
+                )}
+              />
             </SortGroup>
           </Subtasks>
         </FoldContent>

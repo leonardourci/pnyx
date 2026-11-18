@@ -1,3 +1,5 @@
+import { useSessionView, sessionViewKey } from '#web-app/session-view.ts'
+import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
@@ -193,9 +195,34 @@ export function HydraChat({
   const [
     away,
     setAway,
-  ] = useState(false)
+  ] = useSessionView({
+    key: sessionViewKey({
+      scope: 'hydra',
+      id: storageIdentity,
+      field: 'chatAway',
+    }),
+    initial: false,
+  })
+  const rememberedScroll = useRememberedScroll({
+    key: sessionViewKey({
+      scope: 'hydra',
+      id: storageIdentity,
+      field: 'chatScroll',
+    }),
+  })
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
+  const [chatFollow] = useState(() => createChatFollow({
+    away,
+    changed: ({ away }) => setAway(away),
+  }))
+  const streamRef = useCallback(
+    // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
+    (node: HTMLDivElement | null) => {
+      stream.current = node
+      rememberedScroll.ref(node)
+    },
+    [rememberedScroll.ref],
+  )
   const glide = useRef(0)
   const touchY = useRef<number | undefined>(undefined)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
@@ -1130,7 +1157,7 @@ export function HydraChat({
       <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
         <div
           className="hydra-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:outline-offset-[-3px]"
-          ref={stream}
+          ref={streamRef}
           data-key-scope="thread"
           role="region"
           aria-label="Hydra conversation"
@@ -1196,6 +1223,7 @@ export function HydraChat({
               )}
             </div>
             <Messages
+              identity={`hydra:${storageIdentity}`}
               catalog={catalog}
               labelColors={state.labelColors}
               folds={chat.folds}

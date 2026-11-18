@@ -507,7 +507,7 @@ export function createHydraConnection({
         request.dependencies.includes(intent.id) && intent.stage === 'refused')
 
       if (failed || (intent?.stage === 'refused' && intent.error)) {
-        const error = intent?.error ?? new CommandFailure({
+        const error = failed?.error ?? intent?.error ?? new CommandFailure({
           message: 'The prerequisite was refused. Your dependent action was not sent.',
           code: 'DEPENDENCY_REFUSED',
         })

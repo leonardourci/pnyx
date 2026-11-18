@@ -1,5 +1,7 @@
+import { layoutBox } from './scroll-offset.ts'
+import { useKept } from '#web-shared/stable.ts'
 import { trackUIDrag } from '#web-app/ui-metrics.ts'
-import { CARD_SIZING, liftedCardSize } from '#web-shared/card-sizing.ts'
+import { CARD_SIZING, WORKSPACE_SIZING, liftedCardSize } from '#web-shared/card-sizing.ts'
 import { motionDuration, MOTION_EASING, MOTION_CSS_EASING } from '#web-shared/motion.ts'
 import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
@@ -150,14 +152,23 @@ export function SortGroup({
     ],
   )
 
+  const stableItems = useKept({ value: items })
+  const keys = useMemo(
+    () => stableItems.map(item => itemKey({
+      group: namespace,
+      id: item,
+    })),
+    [
+      stableItems,
+      namespace,
+    ],
+  )
+
   return (
     <Group value={group}>
       <SortableContext
         id={id}
-        items={items.map(item => itemKey({
-          group: namespace,
-          id: item,
-        }))}
+        items={keys}
       >
         {children}
       </SortableContext>
@@ -480,6 +491,19 @@ function DragGhost({
   )
 }
 
+const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: ACTIVATION_DISTANCE } }
+const KEYBOARD_SENSOR_OPTIONS = {
+  coordinateGetter: keyboardCoordinates,
+  keyboardCodes: {
+    start: ['Space'],
+    end: [
+      'Space',
+      'Enter',
+    ],
+    cancel: ['Escape'],
+  },
+}
+
 export function SortableWorkspace({
   root,
   move,
@@ -560,21 +584,11 @@ export function SortableWorkspace({
   const sensors = useSensors(
     useSensor(
       WorkspacePointerSensor,
-      { activationConstraint: { distance: ACTIVATION_DISTANCE } },
+      POINTER_SENSOR_OPTIONS,
     ),
     useSensor(
       KeyboardSensor,
-      {
-        coordinateGetter: keyboardCoordinates,
-        keyboardCodes: {
-          start: ['Space'],
-          end: [
-            'Space',
-            'Enter',
-          ],
-          cancel: ['Escape'],
-        },
-      },
+      KEYBOARD_SENSOR_OPTIONS,
     ),
   )
   const setModifier = useCallback(
@@ -734,7 +748,7 @@ export function SortableWorkspace({
     const box = node?.getBoundingClientRect()
     const styles = node ? getComputedStyle(node) : null
     const grid = node?.closest<HTMLElement>('.project-card-grid')
-    const gap = grid ? parseFloat(getComputedStyle(grid).columnGap) : 0
+    const gap = WORKSPACE_SIZING.cardGap
     const family = node?.closest<HTMLElement>('[data-family]')
     const indent = item.parent && family ? parseFloat(getComputedStyle(family).getPropertyValue('--subtask-indent')) : 0
     const size = box ? {
@@ -941,11 +955,7 @@ export function SortableWorkspace({
     }
 
     const landingCard = active.node.matches('.card') ? active.node : active.node.querySelector<HTMLElement>('.card[data-task]')
-    let to = {
-      ...active.rect,
-      width: landingCard?.offsetWidth ?? active.rect.width,
-      height: landingCard?.offsetHeight ?? active.rect.height,
-    }
+    let to = landingCard ? layoutBox({ element: landingCard }) : active.rect
 
     if (destination) {
       const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(destination.hydra)}"]`)
@@ -955,7 +965,7 @@ export function SortableWorkspace({
         return
       }
 
-      to = parent.getBoundingClientRect()
+      to = layoutBox({ element: parent })
     }
 
     const from = ghost.getBoundingClientRect()
@@ -1011,6 +1021,19 @@ export function SortableWorkspace({
     }
   }
 
+  const dragState = useMemo(
+    () => ({
+      active,
+      over,
+      shift,
+    }),
+    [
+      active,
+      over,
+      shift,
+    ],
+  )
+
   return (
     <DndContext
       sensors={sensors}
@@ -1022,13 +1045,7 @@ export function SortableWorkspace({
       onDragEnd={finish}
       onDragCancel={clear}
     >
-      <DragState
-        value={{
-          active,
-          over,
-          shift,
-        }}
-      >
+      <DragState value={dragState}>
         {children}
         {createPortal(
           <DragOverlay

@@ -1,5 +1,5 @@
 import { ComposerSettings } from '#web-hydra/composer-ui.tsx'
-import { useState } from 'react'
+import { useSessionView, sessionViewKey } from '#web-app/session-view.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { DEFAULT_HARNESS, harnessOf } from '#workers/providers.ts'
@@ -36,11 +36,13 @@ export function RepositoryPicker({
 }
 
 export function useCardAgent({
+  identity,
   card,
   command,
   connected,
   initial,
 }: {
+  identity: string
   card?: Card
   initial?: AgentConfig
   command: Command
@@ -50,7 +52,14 @@ export function useCardAgent({
   const [
     chosen,
     choose,
-  ] = useState<AgentConfig | undefined>(initial)
+  ] = useSessionView<AgentConfig | undefined>({
+    key: sessionViewKey({
+      scope: 'worker',
+      id: identity,
+      field: 'agentSelection',
+    }),
+    initial,
+  })
   const attached: AgentConfig | undefined = card?.agent && {
     harness: harnessOf({ provider: card.agent.provider }),
     account: card.agent.account,

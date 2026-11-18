@@ -1,3 +1,5 @@
+import { openTaskFamily } from '#web-tasks/task-view.ts'
+import { WorkspaceViewport } from './workspace-viewport.tsx'
 import { useMotionDuration, MOTION_EASING } from '#web-shared/motion.ts'
 import { StatusNotice } from '#web-shared/ui/status-message.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
@@ -22,6 +24,7 @@ export function App() {
   const axis = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const alignment = useRef<AbortController | null>(null)
+  const ownerAxisScroll = useRef(false)
   useEffect(
     () => () => alignment.current?.abort(),
     [],
@@ -123,6 +126,10 @@ export function App() {
       }
 
       if (preview.nest) {
+        openTaskFamily({
+          hydraId: preview.hydra,
+          id: target.id,
+        })
         await command({
           name: 'task',
           args: [
@@ -204,11 +211,31 @@ export function App() {
         return
       }
 
-      const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
-      surface.scrollTo({
-        left: group.offsetLeft + inner.offsetLeft - surface.offsetLeft - padding,
-        behavior: 'instant',
-      })
+      let previous: number | undefined
+
+      const align = () => {
+        const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
+        const left = group.offsetLeft + inner.offsetLeft - surface.offsetLeft - padding
+
+        group.dataset.axisOffset = String(left)
+        group.dataset.axisRange = String(Math.max(
+          0,
+          group.offsetWidth - surface.clientWidth,
+        ))
+        surface.scrollTo({
+          left: previous === undefined ? left : surface.scrollLeft + left - previous,
+          behavior: 'instant',
+        })
+        previous = left
+      }
+
+      align()
+      const observer = new ResizeObserver(align)
+      observer.observe(inner)
+      observer.observe(surface)
+      surface.querySelectorAll('[data-hydra-workspace]').forEach(workspace => observer.observe(workspace))
+
+      return () => observer.disconnect()
     },
     [
       current,
@@ -225,8 +252,10 @@ export function App() {
         return
       }
 
+      ownerAxisScroll.current = false
+
       const follow = () => {
-        if (surface.dataset.dragging || hydra.navigation.page === 'settings') {
+        if (!ownerAxisScroll.current || !hydra.loaded || surface.dataset.dragging || hydra.navigation.page === 'settings') {
           return
         }
 
@@ -236,26 +265,98 @@ export function App() {
           .find(element => Math.abs(element.getBoundingClientRect().left - left) < 2)
           ?.dataset.hydraWorkspace
 
+        if (destination) {
+          ownerAxisScroll.current = false
+        }
+
         if (destination && destination !== current) {
           hydra.navigate({ url: `/hydra/${encodeURIComponent(destination)}/` })
             .catch((error: Error) => setRootError(error.message))
         }
       }
 
+      let pressed: {
+        x: number
+        y: number
+      } | null = null
+
+      const wheel = (event: WheelEvent) => {
+        if (Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey) {
+          ownerAxisScroll.current = true
+        }
+      }
+
+      const down = (event: PointerEvent) => {
+        pressed = {
+          x: event.clientX,
+          y: event.clientY,
+        }
+
+        if (event.target === surface) {
+          ownerAxisScroll.current = true
+        }
+      }
+
+      const move = (event: PointerEvent) => {
+        if (pressed && !surface.dataset.dragging
+          && Math.abs(event.clientX - pressed.x) > Math.abs(event.clientY - pressed.y)) {
+          ownerAxisScroll.current = true
+        }
+      }
+
+      const up = () => {
+        pressed = null
+      }
+
+      const controller = new AbortController()
+      const options = {
+        passive: true,
+        signal: controller.signal,
+      }
+      surface.addEventListener(
+        'wheel',
+        wheel,
+        options,
+      )
+      surface.addEventListener(
+        'pointerdown',
+        down,
+        options,
+      )
+      surface.addEventListener(
+        'pointermove',
+        move,
+        options,
+      )
+      addEventListener(
+        'pointerup',
+        up,
+        options,
+      )
+      addEventListener(
+        'pointercancel',
+        up,
+        options,
+      )
+
       surface.addEventListener(
         'scrollend',
         follow,
       )
 
-      return () => surface.removeEventListener(
-        'scrollend',
-        follow,
-      )
+      return () => {
+        controller.abort()
+        surface.removeEventListener(
+          'scrollend',
+          follow,
+        )
+      }
     },
     [
       current,
       hydra.navigate,
       hydra.navigation.page,
+      hydra.loaded,
     ],
   )
 
@@ -326,44 +427,46 @@ export function App() {
     >
       <ProfileSurface name="sortable">
         <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
-          <div
-            ref={axis}
-            className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
-            data-page={hydra.navigation.page}
-            aria-label="Hydras"
-          >
-            <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
-              {rootError && (
-                <StatusNotice role="alert">{rootError}<IconButton
-                  label="Dismiss"
-                  onClick={() => setRootError('')}
-                  icon="close"
-                />
-                </StatusNotice>
-              )}
-              <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
-                {workspaces.map(workspace => (
-                  <ProfileSurface key={workspace.viewKey} name="workspace" hydraId={workspace.navigation.hydraId}>
-                    <HydraView
-                      active={workspace.navigation.hydraId === current}
-                      navigatePage={hydra.navigate}
-                      edits={{
-                        ...edits,
-                        hydras: orderedHydras,
-                      }}
-                      preview={preview}
-                      hydra={{
-                        ...hydra,
-                        ...workspace,
-                        navigate,
-                        command: hydra.commandFor({ id: workspace.navigation.hydraId }),
-                      }}
-                    />
-                  </ProfileSurface>
-                ))}
-              </SortGroup>
+          <WorkspaceViewport axis={axis}>
+            <div
+              ref={axis}
+              className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
+              data-page={hydra.navigation.page}
+              aria-label="Hydras"
+            >
+              <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
+                {rootError && (
+                  <StatusNotice role="alert">{rootError}<IconButton
+                    label="Dismiss"
+                    onClick={() => setRootError('')}
+                    icon="close"
+                  />
+                  </StatusNotice>
+                )}
+                <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
+                  {workspaces.map(workspace => (
+                    <ProfileSurface key={workspace.viewKey} name="workspace" hydraId={workspace.navigation.hydraId}>
+                      <HydraView
+                        active={workspace.navigation.hydraId === current}
+                        navigatePage={hydra.navigate}
+                        edits={{
+                          ...edits,
+                          hydras: orderedHydras,
+                        }}
+                        preview={preview}
+                        hydra={{
+                          ...hydra,
+                          ...workspace,
+                          navigate,
+                          command: hydra.commandFor({ id: workspace.navigation.hydraId }),
+                        }}
+                      />
+                    </ProfileSurface>
+                  ))}
+                </SortGroup>
+              </div>
             </div>
-          </div>
+          </WorkspaceViewport>
         </SortableWorkspace>
       </ProfileSurface>
     </MotionConfig>

@@ -1,3 +1,5 @@
+import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
+import { taskViewKey } from './task-view.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
@@ -38,11 +40,19 @@ export function WorkerChat({
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
+  const scroll = useRememberedScroll({
+    key: taskViewKey({
+      hydraId,
+      id: card.id,
+      field: 'workerScroll',
+    }),
+  })
   const {
     agent,
     settings,
     outside,
   } = useCardAgent({
+    identity: card.key,
     card,
     command,
     connected,
@@ -345,10 +355,11 @@ export function WorkerChat({
 
   return (
     <section className="worker-chat flex min-h-0 min-w-0 flex-col border-l border-line pl-3 [&>.composer]:mt-2 [&>.composer]:shrink-0" aria-label={`Worker chat for ${card.title}`} data-key-scope="thread">
-      <div className="worker-messages min-h-0 flex-1 overflow-auto text-chat">
+      <div ref={scroll.ref} className="worker-messages min-h-0 flex-1 overflow-auto text-chat">
         {error && <p role="alert">{error}</p>}
         {live?.unavailable && card.agent && <Tooltip content={live.unavailable}><span aria-label="Conversation unavailable"><Icon name="warning" /></span></Tooltip>}
         <Messages
+          identity={`task:${card.key}`}
           entries={entries}
           lookup={lookup}
           drafts={drafts}

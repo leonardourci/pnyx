@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useSessionView } from '#web-app/session-view.ts'
+import { taskViewKey, useTaskEditorFocus } from './task-view.ts'
+import { useRef } from 'react'
 import type { Card } from '#tasks/model.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { ComposerField, type ComposerFieldHandle } from '#web-hydra/composer-field.tsx'
@@ -13,13 +15,17 @@ export interface TaskDraft {
 
 // Only the fields that changed are sent; automatic tasks have no brief to edit.
 export function TaskEditor({
+  hydraId,
   card,
+  version,
   draft,
   command,
   close,
   failed,
 }: {
+  hydraId: string
   card: Card
+  version: number
   draft?: TaskDraft
   command: Command
   close(): void
@@ -34,24 +40,34 @@ export function TaskEditor({
   const [
     title,
     setTitle,
-  ] = useState(draft?.title ?? card.title)
+  ] = useSessionView({
+    key: taskViewKey({
+      hydraId,
+      id: card.id,
+      field: 'editor.title',
+    }),
+    initial: draft?.title ?? card.title,
+  })
   const [
     brief,
     setBrief,
-  ] = useState(draft?.brief ?? card.brief ?? '')
+  ] = useSessionView({
+    key: taskViewKey({
+      hydraId,
+      id: card.id,
+      field: 'editor.brief',
+    }),
+    initial: draft?.brief ?? card.brief ?? '',
+  })
   const titleField = useRef<HTMLInputElement>(null)
   const briefField = useRef<ComposerFieldHandle>(null)
-  useEffect(
-    () => {
-      const field = titleField.current
-      field?.focus({ preventScroll: true })
-      field?.setSelectionRange(
-        field.value.length,
-        field.value.length,
-      )
-    },
-    [],
-  )
+  useTaskEditorFocus({
+    hydraId,
+    id: card.id,
+    kind: 'edit',
+    version,
+    field: titleField,
+  })
 
   const imagesLoading = hasPendingImage({ text: brief })
   const tooLong = brief.trim().length > MAX_BRIEF_LENGTH

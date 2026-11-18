@@ -1,6 +1,6 @@
 import { taskProjectColumn } from './project-view.ts'
 import type { Command } from '#web-app/connection.ts'
-import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { showingPage, type PageView } from '#web-app/restore.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -19,8 +19,6 @@ export function useTaskNavigation({
   notify,
   view,
   setView,
-  project,
-  projectReferences,
 }: {
   state: HydraState
   hydraId: string
@@ -29,8 +27,6 @@ export function useTaskNavigation({
   notify({ text }: { text: string }): void
   view: PageView
   setView: Dispatch<SetStateAction<PageView>>
-  project: string
-  projectReferences: string[]
 }) {
   const {
     page,
@@ -198,12 +194,18 @@ export function useTaskNavigation({
     })); pendingFocus.current = null
   }
 
-  const expandedIds = expandedByColumn({
-    ids: expanded.map(id => state.keys[id] ?? id),
-    cards: state.cards,
-    pending: pendingColumns.current,
-    state,
-  })
+  const expandedIds = useMemo(
+    () => expandedByColumn({
+      ids: expanded.map(id => state.keys[id] ?? id),
+      cards: state.cards,
+      pending: pendingColumns.current,
+      state,
+    }),
+    [
+      expanded,
+      state,
+    ],
+  )
   useEffect(
     () => {
       if (!connected || page !== 'hydra' || pendingInterest.current) {
@@ -274,14 +276,15 @@ export function useTaskNavigation({
     }
   })
   const columns = columnsFor({ state })
-  const filteredCards = filterCards({
-    state,
-  }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
+  const filteredCards = useMemo(
+    () => filterCards({ state }),
+    [state],
+  )
   // Saved reveal scopes reserve two empty slots before the project.
   const filterScope = JSON.stringify([
     '',
     '',
-    project,
+    '',
   ])
   useEffect(
     () => {
@@ -306,18 +309,27 @@ export function useTaskNavigation({
 
     return !!card && liveTask({ card })
   }) : []
-  const cards = [
-    ...filteredCards,
-    ...[
-      ...new Set([
-        ...expandedIds,
-        ...revealedIds,
-        ...(revealing ? [revealing] : []),
-      ]),
-    ]
-      .map(id => state.cards[id]).filter((item): item is Card =>
-        !!item && !filteredCards.some(card => card.id === item.id)),
-  ]
+  const cards = useMemo(
+    () => [
+      ...filteredCards,
+      ...[
+        ...new Set([
+          ...expandedIds,
+          ...revealedIds,
+          ...(revealing ? [revealing] : []),
+        ]),
+      ]
+        .map(id => state.cards[id]).filter((item): item is Card =>
+          !!item && !filteredCards.some(card => card.id === item.id)),
+    ],
+    [
+      filteredCards,
+      state.cards,
+      JSON.stringify(expandedIds),
+      JSON.stringify(revealedIds),
+      revealing,
+    ],
+  )
 
   const openHydra = () => {
     // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
@@ -414,10 +426,12 @@ export function useTaskNavigation({
     id,
     pointer = false,
     focusPanel = true,
+    modal = false,
   }: {
     id: string
     pointer?: boolean
     focusPanel?: boolean
+    modal?: boolean
   }): Promise<boolean> => {
     cancelOpen(); pendingFocus.current = null
 
@@ -481,7 +495,7 @@ export function useTaskNavigation({
               JSON.stringify({
                 workspace: {
                   collapsed: false,
-                  foldedProjects: (workspace?.foldedProjects ?? []).filter(item => item !== column),
+                  foldedProjects: { [column]: false },
                 },
               }),
               '--event-id',
@@ -494,6 +508,10 @@ export function useTaskNavigation({
           id,
           focus: false,
         })
+      }
+
+      if (modal) {
+        return !!currentCards.current[id] && !signal.aborted
       }
 
       if (pointer) {
@@ -606,6 +624,7 @@ export function useTaskNavigation({
   }
 
   return {
+    revealing,
     selected,
     expandedIds,
     cards,

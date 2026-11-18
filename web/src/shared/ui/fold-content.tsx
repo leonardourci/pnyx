@@ -18,16 +18,11 @@ export function FoldContent({
     closed,
     setClosed,
   ] = useState(!open)
-  const [
-    visited,
-    setVisited,
-  ] = useState(open)
   const reducedMotion = useReducedMotion()
   useLayoutEffect(
     () => {
       if (open) {
         setClosed(false)
-        setVisited(true)
       }
     },
     [open],
@@ -54,7 +49,7 @@ export function FoldContent({
       }}
       onAnimationComplete={() => setClosed(!open)}
       className={`overflow-hidden [&[hidden]]:hidden ${className}`}
-    >{open || visited ? children : null}
+    >{open || !closed ? children : null}
     </Surface>
   )
 }

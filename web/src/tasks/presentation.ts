@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 
 const PRESENTATION_KEY = 'pnyx:task-presentation'
+export const TASK_MODAL_CHANGED = 'pnyx:task-modal-changed'
 const CHAT_ONLY_CHANGED = 'pnyx:task-chat-only-changed'
 
 // eslint-disable-next-line pnyx/object-params -- React owns the subscription callback signature.
@@ -240,6 +241,7 @@ export function useTaskModal({
         url,
       )
       setModal(true)
+      dispatchEvent(new Event(TASK_MODAL_CHANGED))
     },
     closeModal: () => {
       if (history.state?.pnyxTaskModal === id) {
@@ -253,6 +255,7 @@ export function useTaskModal({
           url,
         )
         setModal(false)
+        dispatchEvent(new Event(TASK_MODAL_CHANGED))
       }
     },
   }

@@ -1,3 +1,5 @@
+import { useSessionView, useSessionViewResource, sessionViewKey } from '#web-app/session-view.ts'
+import { useTaskEditorFocus } from './task-view.ts'
 import { useRef, useState, useSyncExternalStore } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
@@ -19,6 +21,8 @@ export interface TaskDraft {
 export function TaskCreate({
   hydraId,
   storageIdentity,
+  identity,
+  version,
   column,
   project,
   repositories = [],
@@ -33,7 +37,9 @@ export function TaskCreate({
   notify,
 }: {
   hydraId: string
+  version: number
   storageIdentity: string
+  identity: string
   column: string
   project?: string
   repositories?: RepositoryOption[]
@@ -50,7 +56,14 @@ export function TaskCreate({
   const [
     title,
     setTitle,
-  ] = useState(draft?.title ?? '')
+  ] = useSessionView({
+    key: sessionViewKey({
+      scope: 'create',
+      id: identity,
+      field: 'title',
+    }),
+    initial: draft?.title ?? '',
+  })
   const [
     busy,
     setBusy,
@@ -58,20 +71,53 @@ export function TaskCreate({
   const [
     repository,
     setRepository,
-  ] = useState(draft?.project ?? project ?? '')
-  const attempt = useRef(draft?.attempt ?? crypto.randomUUID())
+  ] = useSessionView({
+    key: sessionViewKey({
+      scope: 'create',
+      id: identity,
+      field: 'project',
+    }),
+    initial: draft?.project ?? project ?? '',
+  })
+  const [attemptId] = useSessionView({
+    key: sessionViewKey({
+      scope: 'create',
+      id: identity,
+      field: 'attempt',
+    }),
+    initial: draft?.attempt ?? crypto.randomUUID(),
+  })
+  const attempt = useRef(attemptId)
+  const titleField = useRef<HTMLInputElement>(null)
+  useTaskEditorFocus({
+    hydraId,
+    id: `new:${attemptId}`,
+    kind: 'edit',
+    version,
+    field: titleField,
+  })
   const {
     agent,
     settings,
   } = useCardAgent({
+    identity: attemptId,
     command,
     connected,
     initial: draft?.agent,
   })
+  const prompt = useSessionViewResource({
+    key: sessionViewKey({
+      scope: 'create',
+      id: identity,
+      field: 'prompt',
+    }),
+    initial: draft?.prompt ?? '',
+  })
   const drafts = useChatDrafts({
-    text: draft?.prompt ?? '',
+    text: prompt.snapshot(),
+    identity: `new:${storageIdentity}:${attempt.current}`,
     commentsKey: `${storageIdentity}:new:${attempt.current}:comments`,
-    saveText: () => {},
+    saveText: ({ text }) => prompt.set(text),
   })
   const imagesLoading = useSyncExternalStore(
     drafts.subscribe,
@@ -96,11 +142,16 @@ export function TaskCreate({
       'create',
       '--title',
       title.trim(),
-      '--ask',
-      text,
       '--column',
       column,
     ]
+
+    if (text.trim()) {
+      args.push(
+        '--ask',
+        text,
+      )
+    }
 
     if (repository) {
       args.push(
@@ -186,7 +237,7 @@ export function TaskCreate({
       }}
     >
       <Input
-        autoFocus
+        ref={titleField}
         aria-label="Task title"
         placeholder="Task title"
         value={title}

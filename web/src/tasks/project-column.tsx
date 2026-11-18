@@ -1,8 +1,10 @@
+import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
+import { sessionViewKey } from '#web-app/session-view.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { motionDuration } from '#web-shared/motion.ts'
-import { useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import { useCallback, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
-import { PROJECT_MIN_WIDTH, DEFAULT_PROJECT_WIDTH } from '#preferences/workspace.ts'
+import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { useReducedMotion } from 'motion/react'
@@ -10,7 +12,7 @@ import { useSortItem, useSortState } from '#web-shared/ui/sortable.tsx'
 import { ProjectColumnHeader } from './project-column-header.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
 import type { ProjectColumnData } from './project-view.ts'
-import { PROJECT_CONTENT_INSET } from './project-layout.ts'
+import { PROJECT_CONTENT_INSET, projectWidth } from './project-layout.ts'
 
 export function ProjectColumn({
   column,
@@ -26,7 +28,13 @@ export function ProjectColumn({
   view: ViewPreferences
   save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
   expandedWidth: number
-  children: ReactNode
+  children({
+    scroll,
+    width,
+  }: {
+    scroll: HTMLElement | null
+    width: number
+  }): ReactNode
   create(): void
 }) {
   const [
@@ -40,21 +48,43 @@ export function ProjectColumn({
     content: grid,
   })
   const folded = view.workspace.foldedProjects.includes(column.id)
-  const saved = view.workspace.projectWidths[column.id] ?? (column.id === 'ideas' ? PROJECT_MIN_WIDTH : DEFAULT_PROJECT_WIDTH)
-  const minimum = expandedWidth ? expandedWidth + PROJECT_CONTENT_INSET : PROJECT_MIN_WIDTH
-  const width = Math.max(
-    preview ?? saved,
-    minimum,
+  const remembered = useRememberedScroll({
+    key: sessionViewKey({
+      scope: 'column',
+      id: `${hydraId}:${column.id}`,
+      field: 'scroll',
+    }),
+    active: !folded,
+  })
+  const [
+    scrollElement,
+    setScrollElement,
+  ] = useState<HTMLDivElement | null>(null)
+  const scrollRef = useCallback(
+    // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
+    (node: HTMLDivElement | null) => {
+      scroll.current = node
+      setScrollElement(node)
+      remembered.ref(node)
+    },
+    [remembered.ref],
   )
+  const viewport = useWorkspaceViewport()
+  const {
+    width,
+    minimum,
+    phone,
+  } = projectWidth({
+    id: column.id,
+    widths: view.workspace.projectWidths,
+    expandedWidth,
+    viewport: viewport.width,
+    preview,
+  })
   const toggle = () => save({
     patch: {
       workspace: {
-        foldedProjects: folded
-          ? view.workspace.foldedProjects.filter(id => id !== column.id)
-          : [
-            ...view.workspace.foldedProjects,
-            column.id,
-          ],
+        foldedProjects: { [column.id]: !folded },
       },
     },
   })
@@ -86,7 +116,7 @@ export function ProjectColumn({
       data-sort-key={sort.key}
       lifted={lifted}
       onPointerDown={sort.pointerDown}
-      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere  ${folded ? 'folded min-w-12' : ''}`}
+      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere max-[760px]:snap-start ${folded ? 'folded min-w-12' : ''}`}
       data-column={column.id}
       data-resizing={preview !== null}
       data-sort-id={column.id}
@@ -109,12 +139,18 @@ export function ProjectColumn({
       <FoldContent
         open={!folded}
         axis="none"
-        ref={scroll}
+        ref={scrollRef}
         data-sort-surface={`tasks:${hydraId}:${column.id}`}
         className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2 [&[hidden]]:hidden"
-      ><div ref={grid} className="project-card-grid relative flex flex-wrap items-start gap-2 [&>:not(.task-family)]:w-full">{children}</div>
+      >
+        <div ref={grid} className="project-card-grid relative w-(--project-card-width)">
+          {children({
+            scroll: scrollElement,
+            width: width - PROJECT_CONTENT_INSET,
+          })}
+        </div>
       </FoldContent>
-      {!folded && (
+      {!folded && !phone && (
         <Resize
           label={`Resize ${column.title}`}
           value={width}
