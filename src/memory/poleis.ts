@@ -4,7 +4,7 @@ import { sharesWithMore } from './access-changes.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { hydraActor, requestEnv } from '#app/request-context.ts'
 import { proposeOwnerCommand } from '#app/confirmations.ts'
-import { projectsFor } from '#projects/read.ts'
+import { findProject, projectsFor } from '#projects/read.ts'
 import { projectIdentity } from '#projects/sources.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
@@ -130,6 +130,28 @@ export async function readableProjects({
     _,
     index,
   ) => readable[index])
+}
+
+export async function findReadableProject({
+  hydraId,
+  state,
+  ref,
+  attached = false,
+}: {
+  hydraId: string
+  state: HydraState
+  ref: string
+  attached?: boolean
+}) {
+  return findProject({
+    state,
+    ref,
+    attached,
+    projects: await readableProjects({
+      hydraId,
+      state,
+    }),
+  })
 }
 
 export function memoryHydras() {

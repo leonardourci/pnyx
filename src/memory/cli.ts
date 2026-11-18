@@ -5,13 +5,12 @@ import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
 import { migrateOwnerMemory, ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis, type OwnerMeta } from './owner-memory.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { findProject } from '#projects/read.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
-import { memoryCaller } from './poleis.ts'
+import { findReadableProject, memoryCaller } from './poleis.ts'
 import { POLIS_NAME } from './polis-policy.ts'
 
 function memoryList({
@@ -129,7 +128,7 @@ function ownerMeta({ values }: {
 }
 
 export const owner = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const usage = 'use owner memory list|set|forget|confirm|move|save|archive or owner worker-notes set|forget'
     const workerNotes = args[0] === 'worker-notes'
 
@@ -252,7 +251,8 @@ export const owner = guard({
     }
 
     if (action === 'move') {
-      const project = findProject({
+      const project = await findReadableProject({
+        hydraId,
         state: loadHydra({ hydraId }).state,
         ref: required({
           value: values.project as string | undefined,
