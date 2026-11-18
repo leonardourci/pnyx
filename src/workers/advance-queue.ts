@@ -791,6 +791,7 @@ export async function advanceQueues({
       let handoffError: unknown
       let handoffFailed = false
 
+      // shortcut: main 045ec580:669-688 also switches before commit; add durable crash recovery.
       try {
         await git({
           cwd: prepared.cwd,
