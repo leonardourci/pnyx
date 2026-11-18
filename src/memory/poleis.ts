@@ -128,7 +128,10 @@ export async function readableProjects({
   ]))
   const settings = readSettings().settings
 
-  return identities.flatMap(({ id }, index) => {
+  return identities.flatMap((
+    { id },
+    index,
+  ) => {
     const original = projects[index]
     const project = original && currentProjects.get(original.path)
 
