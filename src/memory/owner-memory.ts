@@ -686,7 +686,10 @@ export function moveOwnerPolis({
       }
 
       const logs = readOwnerLogs()
-      const source = readLog({ polis, logs })
+      const source = readLog({
+        polis,
+        logs,
+      })
 
       checkOwnerRevision({
         polis,
@@ -695,7 +698,10 @@ export function moveOwnerPolis({
       })
 
       const samePolis = polis === destination
-      const target = samePolis ? source : readLog({ polis: destination, logs })
+      const target = samePolis ? source : readLog({
+        polis: destination,
+        logs,
+      })
 
       if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
         throw new HydraError({

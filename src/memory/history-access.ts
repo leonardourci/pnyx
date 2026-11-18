@@ -15,7 +15,10 @@ export async function memoryHistoryFilter({ hydraId }: { hydraId: string }) {
       event.type !== 'hydra.memory' && event.type !== 'hydra.review'
   }
 
-  const { paths, reads } = await readMemoryContext({
+  const {
+    paths,
+    reads,
+  } = await readMemoryContext({
     read: async () => {
       const projects = await readableProjects({
         hydraId,
