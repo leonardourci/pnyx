@@ -391,8 +391,7 @@ test(
   },
 )
 
-// The upgrade's data check, run by the new build while the old server holds the database. The owner's PATH carries
-// Postgres's pg_dump and pg_restore; the test PATH does not.
+// The owner's PATH carries Postgres's pg_dump and pg_restore; the test PATH does not.
 const dataCheck = ({ path = `${binaries()}:${process.env.PATH}` }: { path?: string } = {}) => pnyxAxi({
   args: [
     'setup',
@@ -413,7 +412,6 @@ const copyLeft = async () => (await sql({
 
 const version = async ({ client }: { client: pg.Client }) => (await client.query<{ version: number }>('select max(version) as version from schema_version')).rows[0]!.version
 
-// Every task with all its listed fields, and the one that waits on another with its prerequisites.
 const tasks = async ({ hydra }: { hydra: Hydra }) => ({
   list: (await hydra.owner({
     args: [

@@ -259,9 +259,7 @@ const ready = ({ found }: { found: Server }) => ({
   help: ['Run `pnyx-axi setup check` to see what else is missing'],
 })
 
-// Loads every Hydra in Postgres and imports every Hydra still kept in an events.jsonl in a transaction it rolls back,
-// the same way the server would, without moving any folder; a load refuses a log an older Pnyx appended to since its
-// import. Each failure names its Hydra.
+// A load refuses a log an older Pnyx appended to since its import.
 function checkHydras(): Output {
   const imported: string[] = []
   const failed: {
@@ -339,9 +337,7 @@ function copyTool({
   })
 }
 
-// An older schema is migrated and every Hydra loaded on a copy of the database, which the check drops after; the
-// running server keeps the database itself at its own schema. pg_dump copies it while that server writes to it, which
-// CREATE DATABASE ... TEMPLATE refuses.
+// pg_dump copies the database while the old server holds it, which CREATE DATABASE ... TEMPLATE refuses.
 async function checkOnCopy({
   database,
   version,
@@ -426,7 +422,7 @@ async function checkOnCopy({
   }
 }
 
-// Checks this build can use the home's data; an upgrade stops before its restart when this fails.
+// An upgrade stops before its restart when this fails.
 async function checkData(): Promise<Output> {
   requireReady({ found: server() })
   const database = targetDatabase()
