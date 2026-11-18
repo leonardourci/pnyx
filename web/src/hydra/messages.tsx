@@ -424,6 +424,7 @@ const MessageRow = memo(function MessageRow({
 })
 
 export function Messages({
+  identity,
   entries,
   lookup,
   comments,
@@ -447,6 +448,7 @@ export function Messages({
   retry,
   answerLeads,
 }: {
+  identity: string
   sendNow?({
     id,
     task,
@@ -1123,6 +1125,7 @@ export function Messages({
         }}
       >
         <MeasuredList
+          identity={identity}
           items={entries}
           itemKey={({ item }) => item.renderKey ?? item.id}
           render={({ item: entry }) => {

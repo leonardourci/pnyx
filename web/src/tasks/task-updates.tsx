@@ -109,6 +109,7 @@ export function TaskUpdates({
       </div>
       {shown.length > 0 && (
         <MeasuredList
+          identity={`task:${card.key}:updates`}
           items={rows}
           itemKey={({ item }) => item.update.id}
           stayAtTop={!oldestFirst}
