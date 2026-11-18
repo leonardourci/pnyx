@@ -2850,6 +2850,26 @@ test(
           'Overwrite rejected source move',
         ],
       })).code).toBe('LOG_CORRUPT')
+      writeFileSync(path, beforeCorruption)
+      writeFileSync(firstPath, beforeFirst)
+      appendFileSync(path, [
+        '{"v":1,"seq":4,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"Earlier logical entry","after":"Out-of-order replacement"}',
+        '{"v":1,"seq":3,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"fresh replacement","after":"Earlier logical entry"}',
+        '',
+      ].join('\n'))
+      const outOfOrder = await hydra.owner({ args: ['owner', 'memory', 'list'] })
+      expect(outOfOrder.writable.preferences.text).toBe('fresh replacement')
+      expect((await hydra.ownerRefused({
+        args: [
+          'owner',
+          'memory',
+          'set',
+          '--key',
+          'preferences',
+          '--text',
+          'Overwrite out-of-order log',
+        ],
+      })).code).toBe('LOG_CORRUPT')
     } finally {
       writeFileSync(
         path,

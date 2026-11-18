@@ -76,6 +76,7 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
 
   const entries: OwnerEntry[] = []
   let corrupt = Boolean(text) && !text.endsWith('\n')
+  let previousSequence = 0
 
   const completeLines = text.split('\n').slice(
     0,
@@ -113,7 +114,18 @@ function readLogEntries({ polis = 'shared' }: { polis?: string } = {}): {
       break
     }
 
+    const sequence = entry.seq
+
+    if (sequence <= previousSequence) {
+      corrupt = true
+      // Remove the earlier physical records at or beyond the conflicting position.
+      const conflict = entries.findIndex(previous => previous.seq >= sequence)
+      entries.splice(conflict)
+      break
+    }
+
     entries.push(entry)
+    previousSequence = sequence
   }
 
   return {

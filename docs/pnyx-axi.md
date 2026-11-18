@@ -259,7 +259,7 @@ Each polis can hold 24000 characters of owner memory. It stores `preferences`, `
 
 Pnyx makes up to three attempts to assemble memory when access, home or project attachments change during the read. If all attempts see changes, the command returns `CONFLICT` without the assembled memory.
 
-Native cross-Hydra mutations and worker control require access to the target Hydra's home polis and every polis it may read, through the same two locks. Missing access returns `NOT_FOUND`, without identifying the target's memory. Task reads, owner actions and actions on the caller's own Hydra keep their existing rules. Admitted worker starts receive the target Hydra's memory under the worker's identity; direct CLI memory calls remain bound to the caller's native Hydra.
+Agents need read access to the target Hydra's home polis and every polis the target can read before changing another Hydra or controlling its workers. Missing access returns `NOT_FOUND`. A worker starts with the target Hydra's memory under the worker's identity. Direct CLI memory calls use the caller's native Hydra.
 
 ### Worker instructions and memory curation
 
