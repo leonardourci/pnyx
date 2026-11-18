@@ -760,9 +760,12 @@ export async function advanceQueues({
         session: attached,
       })
       const beforeSwitch = await checkoutState({ cwd: prepared.cwd })
-      const checkoutChanged = beforeSwitch.head !== prepared.head || beforeSwitch.branch !== prepared.previousBranch
+      const checkoutChanged = beforeSwitch.head !== prepared.head
+        || beforeSwitch.branch !== prepared.previousBranch
 
-      if (beforeSwitch.dirty || checkoutChanged || await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
+      const beforeRoot = await checkoutRoot({ cwd: prepared.cwd })
+
+      if (beforeSwitch.dirty || checkoutChanged || beforeRoot !== prepared.root) {
         throw new Error('The worker folder changed during branch preparation')
       }
 
@@ -795,7 +798,8 @@ export async function advanceQueues({
         const switched = await checkoutState({ cwd: prepared.cwd })
         const root = await checkoutRoot({ cwd: prepared.cwd })
 
-        if (root !== prepared.root || switched.branch !== branch || switched.head !== prepared.tip || switched.dirty) {
+        if (root !== prepared.root || switched.branch !== branch
+          || switched.head !== prepared.tip || switched.dirty) {
           throw new Error('The worker folder changed during handoff checkout')
         }
 
