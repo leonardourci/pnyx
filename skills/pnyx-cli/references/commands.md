@@ -8,7 +8,7 @@ Pnyx is named after the hill in Athens where the citizens' assembly met to decid
 - **Hydra**: an orchestrator, many heads and one body. Each Hydra has its own columns and tasks, and creating a Hydra creates them.
 - **Oracle**: the search field. Search it by keyword; it returns matching tasks, messages, settings and actions, never made-up answers.
 
-A polis controls which Hydras can read a set of owner or project memory. Column names are the user's own.
+A polis groups owner and project memory by access. Column names are the user's own. Use plain names for the other features.
 
 Run `pnyx-axi` for the Hydra summary and `pnyx-axi --help` for commands. Pnyx is pre-v1: cards come from `pnyx-axi push`, from `pnyx-axi firstmate sync --home <path>` and, after `pnyx-axi setup hooks`, from Claude Code and Codex sessions. Hook events wait in the spool until the next write ingests them. `pnyx-axi oracle "<words>"` finds past work across card titles, links, events and notes by keyword, matching word forms, synonyms and near spellings. Results rank by the query words in a card's title, project and link titles, then by its best-matching entry with notes counting double. Saved task briefs, intents, owner asks and investigation reports remain searchable after edits. Read the latest stored report with `task report <task>`. Helper results match their tasks; unchanged helper waits are omitted. `pnyx-axi card <id>` shows a card's summary, decisions and context, harvested from what sessions, Firstmate and linked pull requests already recorded.
 

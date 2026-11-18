@@ -350,7 +350,10 @@ export const approval = guard({
       output = stdout.trim()
     } catch (error) {
       const stdout = error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string' ? error.stdout : ''
-      const detail = stdout.trim() || (error instanceof Error ? error.message : String(error))
+      const commandOutput = stdout.trim()
+      const detail = commandOutput.length > 0
+        ? commandOutput
+        : error instanceof Error ? error.message : String(error)
       withWriter({
         hydraId,
         fn: ({ writer }) => {

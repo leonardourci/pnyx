@@ -203,6 +203,13 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   })
 
   if (memory) {
+    if (action === 'create' && values.propose) {
+      throw new HydraError({
+        message: 'Create the Hydra before proposing a change with hydra set',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
     const proposal = memoryPermission({
       hydraId: id,
       name: 'hydra',
@@ -310,9 +317,12 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         hydra,
       }
 
-      if (memory) {
-        data.polis = memory.polis
-        data.readPoleis = memory.readPoleis
+      if (values.polis !== undefined) {
+        data.polis = memory?.polis
+      }
+
+      if (values['read-poleis'] !== undefined) {
+        data.readPoleis = memory?.readPoleis
       }
 
       if (named) {

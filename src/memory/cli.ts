@@ -199,7 +199,7 @@ export const owner = guard({
           empty: 'none: no owner memory yet',
         }),
         used: `${memorySize({ memory: writable?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
-        revision: writable?.revision ?? 0,
+        revision: writable?.revision,
         writable: writable?.memory,
         archived: ownerArchive({ hydraId }),
       }

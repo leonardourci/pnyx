@@ -36,6 +36,15 @@ test(
     })).hydra
     expect(changedHome.polis).toBe('work')
     expect(changedHome.readPoleis).toEqual(['shared'])
+    const unavailableHome = await work.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    expect(unavailableHome.writable).toBeUndefined()
+    expect(unavailableHome.revision).toBeUndefined()
     expect((await work.ownerRefused({
       args: [
         'owner',
@@ -244,7 +253,7 @@ test(
     })
     expect(crossRead.status).toBe(0)
     expect(crossRead.stdout).not.toContain('Secret nebula')
-    expect((await pnyxAxi({
+    const crossOwnerWrite = await pnyxAxi({
       args: [
         'owner',
         'memory',
@@ -257,7 +266,9 @@ test(
         personal.id,
       ],
       env: crossEnv,
-    })).stdout).toContain('NOT_FOUND')
+    })
+    expect(crossOwnerWrite.status).not.toBe(0)
+    expect(parsed(crossOwnerWrite).code).toBe('NOT_FOUND')
     expect((await pnyxAxi({
       args: [
         'hydra',

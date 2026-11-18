@@ -124,9 +124,10 @@ export function requestedPolisAccess({
   }
 
   const nextPolis = String(polis ?? current.polis)
+  const validNames = POLIS_NAME.test(nextPolis) && readPoleis.every(name => POLIS_NAME.test(name))
+  const uniqueReads = new Set(readPoleis).size === readPoleis.length
 
-  if (!POLIS_NAME.test(nextPolis) || !readPoleis.every(name => POLIS_NAME.test(name))
-    || new Set(readPoleis).size !== readPoleis.length) {
+  if (!validNames || !uniqueReads) {
     throw new HydraError({
       message: 'Polis names use lowercase letters, digits and dashes; read-poleis is a comma-separated list',
       code: 'VALIDATION_ERROR',

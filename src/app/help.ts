@@ -122,8 +122,8 @@ pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
-pnyx-axi hydra set --read-poleis <comma-separated poleis> --polis <polis> [--propose] [--hydra <id>]
-Memory reads require both allow-lists. One owner-memory write polis per Hydra; shared is the default.
+pnyx-axi hydra set [--read-poleis <comma-separated poleis>] [--polis <polis>] [--propose] [--hydra <id>]
+A Hydra must be on the polis reader list and include the polis in its own read list. The default owner-memory write polis is shared.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
 At start the server names, once, every Hydra still called by its id or by no name; a Firstmate Hydra keeps its home's name.
