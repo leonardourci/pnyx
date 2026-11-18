@@ -1234,3 +1234,67 @@ test(
     }
   },
 )
+
+test(
+  'reused provider message ids keep one streamed reply and a bounded history window',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+    const conversation = page.locator(CONVERSATION)
+    const exchanges = 16
+    const maxMountedMessages = 24
+
+    for (let exchange = 1; exchange <= exchanges; exchange++) {
+      const text = `Stream history ${exchange}`
+      const partial = `Live reply ${exchange}`
+      const complete = `Completed reply ${exchange}`
+      const paragraphs = Array.from(
+        {length: 12},
+        (
+          _,
+          index,
+        ) => `Paragraph ${index} in this made-up reply.`,
+      ).join('\n\n')
+      const plan = pnyx.claude.plan({
+        hydra: hydra.id,
+        text,
+        partial,
+        reply: `${partial}\n\n${paragraphs}\n\n${complete}`,
+        hold: true,
+      })
+      const session = await hydra.chat({text})
+      const live = conversation.getByText(
+        partial,
+        {exact: true},
+      )
+      await live.waitFor()
+      const before = await live.locator('xpath=ancestor::article').elementHandle()
+      plan.release()
+      await until({
+        what: 'the streamed turn finishes',
+        check: () => session.answered === exchange,
+      })
+      const settled = conversation.getByText(
+        complete,
+        {exact: true},
+      )
+      await settled.waitFor()
+      expect(await settled.locator('xpath=ancestor::article').evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+        (
+          node,
+          before,
+        ) => node === before,
+        before,
+      )).toBe(true)
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      const ids = await conversation.locator('article[data-entry-id]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-entry-id')))
+      expect(new Set(ids).size).toBe(ids.length)
+      expect(ids.length).toBeLessThanOrEqual(maxMountedMessages)
+    }
+  },
+)

@@ -155,6 +155,15 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
       && entry.text.startsWith(gone.text))
 
     if (settled) {
+      for (const [
+        id,
+        key,
+      ] of keys) {
+        if (key === gone.id) {
+          keys.delete(id)
+        }
+      }
+
       keys.set(
         settled.id,
         gone.id,
@@ -171,7 +180,7 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
     }
   }
 
-  // A key whose live entry is back on the page stays with it, so keys never collide.
+  // A reused provider id belongs to its live entry until that reply settles.
   return entries.map(entry => {
     const mapped = keys.get(entry.id)
     const renderKey = mapped !== undefined && !ids.has(mapped) ? mapped : undefined
