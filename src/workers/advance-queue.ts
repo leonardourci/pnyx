@@ -206,10 +206,14 @@ async function workerRoots({
     state: loadHydra({ hydraId }).state,
     session,
   })) {
-    roots.set(
-      other.agent.cwd!,
-      await checkoutRoot({ cwd: other.agent.cwd! }),
-    )
+    const cwd = other.agent.cwd
+
+    if (cwd && !roots.has(cwd)) {
+      roots.set(
+        cwd,
+        await checkoutRoot({ cwd }),
+      )
+    }
   }
 
   return roots
@@ -298,6 +302,7 @@ async function landedBranch({
     head,
     branch: previousBranch,
   } = checkout
+
   const copy = card.copy ?? {
     path: cwd,
     project: card.project,
@@ -439,6 +444,12 @@ async function restoreCheckout({
     cwd,
     args,
   })
+  const restored = await checkoutState({ cwd })
+
+  if (await checkoutRoot({ cwd }) !== root || restored.branch !== previousBranch
+    || restored.head !== previousHead || restored.dirty) {
+    throw new Error('Handoff was not recorded and the previous checkout could not be restored; inspect the worker folder before continuing')
+  }
 }
 
 async function refreshLinks({
@@ -707,15 +718,15 @@ export async function advanceQueues({
       let brief: string | undefined
 
       const prepare = async ({ branch }: { branch: string }) => {
-        brief = await taskPrompt({
-          hydraId,
-          card: next,
-          prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,
-        })
-
         if (await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
           throw new Error('The worker checkout changed during branch preparation')
         }
+
+        brief = await taskPrompt({
+          hydraId,
+          card: next,
+          prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations.`,
+        })
 
         const currentState = loadHydra({ hydraId }).state
         const currentSource = currentState.cards[card.id]
@@ -727,10 +738,6 @@ export async function advanceQueues({
         return currentSource?.revision === sourceRevision && currentTarget?.id === next.id
           && currentTarget.revision === targetRevision
           && currentState.sessions?.[id]?.agent.cwd === prepared.cwd
-      }
-
-      if (!active()) {
-        return false
       }
 
       const branch = await createTaskBranch({
@@ -748,16 +755,12 @@ export async function advanceQueues({
         }),
       })
 
-      if (!branch) {
-        if (!active()) {
-          return false
-        }
-
-        continue
-      }
-
       if (!active()) {
         return false
+      }
+
+      if (!branch || brief === undefined) {
+        continue
       }
 
       const roots = await workerRoots({
@@ -791,7 +794,6 @@ export async function advanceQueues({
       let handoffError: unknown
       let handoffFailed = false
 
-      // shortcut: main 045ec580:669-688 also switches before commit; add durable crash recovery.
       try {
         await git({
           cwd: prepared.cwd,

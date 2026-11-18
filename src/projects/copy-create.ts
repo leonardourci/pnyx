@@ -224,7 +224,8 @@ async function worktreeCopy({
     cwd: project.path,
     branch,
   })
-  const copyBase = previous ? previous.base : base
+  // A deleted branch starts again from the current base, even when it keeps its old name.
+  const copyBase = previous && exists ? previous.base : base
 
   const made = ({ path }: { path: string }): TaskCopy => {
     const copy: TaskCopy = {

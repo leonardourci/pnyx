@@ -1,4 +1,4 @@
-import { pageTitle } from '../web/src/app/view.ts'
+import { pageTitle } from '#web-app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 

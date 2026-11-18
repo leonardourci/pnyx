@@ -581,7 +581,7 @@ if (branch === 'hercules/failure-hook') {
   throw new Error('fixture checkout failure')
 }
 if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMarker)})) {
-  throw new Error('fixture rollback hook failure')
+  writeFileSync('rollback-hook-output.txt', 'checkout changed during rollback')
 }
 `,
       { mode: 0o700 },
@@ -642,7 +642,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         '--full',
       ],
     })
-    expect(failedHandoff.task.queueNote).toContain('fixture rollback hook failure')
+    expect(failedHandoff.task.queueNote).toContain('the previous checkout could not be restored')
     expect(git({
       cwd: path,
       args: [
