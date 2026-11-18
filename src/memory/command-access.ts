@@ -116,8 +116,8 @@ export function requireCommandMemoryAccess({
       requireHydraCapability({
         hydraId: id,
         create: requestedPolisAccess({
-          reads: values['read-poleis'] as string | undefined,
-          polis: values.polis as string | undefined,
+          reads: typeof values['read-poleis'] === 'string' ? values['read-poleis'] : undefined,
+          polis: typeof values.polis === 'string' ? values.polis : undefined,
         }) ?? DEFAULT_POLIS_ACCESS,
       })
     }

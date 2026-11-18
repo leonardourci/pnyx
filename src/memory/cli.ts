@@ -15,10 +15,12 @@ import { POLIS_NAME } from './polis-policy.ts'
 
 function memoryList({
   memory,
+  budgetMemory = memory,
   budget,
   empty,
 }: {
   memory: Memory
+  budgetMemory?: Memory
   budget: number
   empty: string
 }): Output {
@@ -44,7 +46,7 @@ function memoryList({
 
   return {
     memory: entries.length ? entries : empty,
-    used: `${memorySize({ memory })} of ${budget} characters`,
+    used: `${memorySize({ memory: budgetMemory })} of ${budget} characters`,
   }
 }
 
@@ -204,10 +206,10 @@ export const owner = guard({
           return {
             ...memoryList({
               memory,
+              budgetMemory: writable?.memory ?? {},
               budget: OWNER_MEMORY_BUDGET,
               empty: 'none: no owner memory yet',
             }),
-            used: `${memorySize({ memory: writable?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
             revision: writable?.revision,
             writable: writable?.memory,
             archived: ownerArchive({ hydraId }),

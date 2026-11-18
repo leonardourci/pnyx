@@ -185,14 +185,14 @@ export function createHydraTurns({
     checkpointed?: boolean
     onlyTasks?: string[]
   } = {}) => {
-    return readMemoryContext({
+    const result = await readMemoryContext({
       read: async () => {
         const owner = ownerMemory({ hydraId })
         const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
         const state = loadHydra({ hydraId }).state
 
         if (onlyTasks) {
-          return hydraDigest({
+          const digest = hydraDigest({
             hydraId,
             state,
             owner,
@@ -202,6 +202,8 @@ export function createHydraTurns({
             checkpointed,
             conditions: memoryConditions(),
           })
+
+          return { digest, stamp: undefined }
         }
 
         const [
@@ -218,16 +220,16 @@ export function createHydraTurns({
           }),
         ])
 
-        if (remember) {
-          memoryStamp = JSON.stringify({
+        const stamp = remember
+          ? JSON.stringify({
             owner,
             ownerWrite,
             hydra: state.hydraMemory,
             projects,
           })
-        }
+          : undefined
 
-        return hydraDigest({
+        const digest = hydraDigest({
           previousDigest,
           checkpointed,
           conditions: memoryConditions(),
@@ -238,17 +240,25 @@ export function createHydraTurns({
           projects,
           setup: setupDigest({ items }),
         })
+
+        return { digest, stamp }
       },
     })
+
+    if (result.stamp !== undefined) {
+      memoryStamp = result.stamp
+    }
+
+    return result.digest
   }
 
   const memoryChangeNote = async () => {
-    return readMemoryContext({
+    const stamp = await readMemoryContext({
       read: async () => {
         const owner = ownerMemory({ hydraId })
         const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
         const state = loadHydra({ hydraId }).state
-        const stamp = JSON.stringify({
+        return JSON.stringify({
           owner,
           ownerWrite,
           hydra: state.hydraMemory,
@@ -257,12 +267,12 @@ export function createHydraTurns({
             hydraId,
           }),
         })
-        const changed = memoryStamp !== undefined && memoryStamp !== stamp
-        memoryStamp = stamp
-
-        return changed ? ' Memory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
       },
     })
+    const changed = memoryStamp !== undefined && memoryStamp !== stamp
+    memoryStamp = stamp
+
+    return changed ? ' Memory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
   }
 
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.

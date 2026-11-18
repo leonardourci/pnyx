@@ -3020,6 +3020,11 @@ test(
         'Test cross-Hydra capability',
       ],
       [
+        'hydra',
+        'usage',
+        'refresh',
+      ],
+      [
         'settings',
         'set',
         '--json',
@@ -3129,6 +3134,17 @@ test(
     })
     expect(visibleTask.status).toBe(0)
     expect(parsed(visibleTask).task.id).toBe(task.id)
+    const implicitMemoryRead = await pnyxAxi({
+      args: [
+        'hydra',
+        'memory',
+        '--hydra',
+        target.id,
+      ],
+      env,
+    })
+    expect(implicitMemoryRead.status).toBe(0)
+    expect(parsed(implicitMemoryRead).memory).toBe('none: no Hydra memory yet')
     await target.owner({
       args: [
         'hydra',

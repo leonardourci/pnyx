@@ -203,10 +203,10 @@ export const COMMAND_REGISTRY = {
         'message',
         'history',
         'check',
-        'usage',
         'digest',
       ].includes(positionals[0] ?? '')
-      || (positionals[0] === 'memory' && positionals[1] === 'list')
+      || (positionals[0] === 'usage' && positionals[1] !== 'refresh')
+      || (positionals[0] === 'memory' && (positionals[1] ?? 'list') === 'list')
     ),
     scope: {
       reads: [

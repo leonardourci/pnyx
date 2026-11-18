@@ -195,31 +195,27 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     checkSettings({ patch: shared })
   }
 
-  const previousMemory = action === 'set' ? hydraPolisConfig({ state: loadHydra({ hydraId: id }).state }) : undefined
-  const memory = requestedPolisAccess({
-    current: previousMemory,
-    reads: values['read-poleis'],
-    polis: values.polis,
-  })
+  const changesMemory = values['read-poleis'] !== undefined || values.polis !== undefined
 
-  if (memory) {
-    if (action === 'create' && values.propose) {
+  if (changesMemory && values.propose) {
+    if (action === 'create') {
       throw new HydraError({
         message: 'Create the Hydra before proposing a change with hydra set',
         code: 'VALIDATION_ERROR',
       })
     }
 
+    requestedPolisAccess({
+      reads: values['read-poleis'],
+      polis: values.polis,
+    })
     const proposal = memoryPermission({
       hydraId: id,
       name: 'hydra',
       args,
-      propose: Boolean(values.propose),
+      propose: true,
       actor: m.actor,
-      widening: widensPolisReads({
-        before: previousMemory,
-        after: memory,
-      }),
+      widening: false,
     })
 
     if (proposal) {
@@ -237,6 +233,27 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     },
     decide: ({ state }) => {
       checkMemoryApproval()
+
+      const previousAccess = hydraPolisConfig({ state })
+      const nextAccess = requestedPolisAccess({
+        current: previousAccess,
+        reads: values['read-poleis'],
+        polis: values.polis,
+      })
+
+      if (nextAccess) {
+        memoryPermission({
+          hydraId: id,
+          name: 'hydra',
+          args,
+          propose: false,
+          actor: m.actor,
+          widening: widensPolisReads({
+            before: previousAccess,
+            after: nextAccess,
+          }),
+        })
+      }
 
       const current = hydraConfig({
         state,
@@ -317,12 +334,12 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         hydra,
       }
 
-      if (values.polis !== undefined) {
-        data.polis = memory?.polis
+      if (nextAccess && values.polis !== undefined) {
+        data.polis = nextAccess.polis
       }
 
-      if (values['read-poleis'] !== undefined) {
-        data.readPoleis = memory?.readPoleis
+      if (nextAccess && values['read-poleis'] !== undefined) {
+        data.readPoleis = nextAccess.readPoleis
       }
 
       if (named) {
