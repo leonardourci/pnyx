@@ -1,13 +1,13 @@
 import { closeSync, existsSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { matchesProject } from './identity.ts'
-import { COPY_TIMEOUT_MS, branchExists, commonDir, git, onBranch } from './git.ts'
+import { matchesProject, sameProjectPath } from './identity.ts'
+import { COPY_TIMEOUT_MS, commonDir, git, onBranch } from './git.ts'
 import { checkCopy, removeCopy } from './copy-check.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { isFolder } from '#workers/folders.ts'
@@ -17,6 +17,42 @@ const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
 export const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
+
+// An unnamed Hydra names its task branches after its id.
+export const branchHydraName = ({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state: HydraState
+}) => state.config?.name || hydraId
+
+export function recordedBranches({
+  hydraId,
+  state,
+  project,
+}: {
+  hydraId: string
+  state: HydraState
+  project: string
+}): string[] {
+  const branches = new Set<string>()
+
+  for (const id of hydraIds()) {
+    const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
+
+    for (const { copy } of Object.values(current.cards)) {
+      if (copy?.branch && sameProjectPath({
+        left: copy.project,
+        right: project,
+      })) {
+        branches.add(copy.branch)
+      }
+    }
+  }
+
+  return [...branches]
+}
 
 export const copiesDir = ({ hydraId }: { hydraId: string }) => join(
   hydraDir({ hydraId }),
@@ -99,34 +135,35 @@ export async function reusable({
     args: [
       'status',
       '--porcelain',
+      '--untracked-files=normal',
     ],
   })
 
   return status.ok && status.out === '' && await commonDir({ cwd: path }) === common && await onBranch({ cwd: path })
 }
 
-export const checkout = async ({
+export const checkout = ({
   cwd,
   branch,
   start,
+  exists,
 }: {
   cwd: string
   branch: string
   start: string
+  exists: boolean
 }) =>
-  await branchExists({
-    cwd,
-    branch,
-  })
-    ? await git({
+  exists
+    ? git({
       cwd,
       args: [
-        'checkout',
+        'switch',
         '--quiet',
+        '--no-guess',
         branch,
       ],
     })
-    : await git({
+    : git({
       cwd,
       args: [
         'checkout',

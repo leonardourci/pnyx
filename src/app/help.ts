@@ -123,6 +123,8 @@ pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
+pnyx-axi hydra set [--read-poleis <comma-separated poleis>] [--polis <polis>] [--propose] [--hydra <id>]
+A Hydra must be on the polis reader list and include the polis in its own read list. The default owner-memory write polis is shared.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
 At start the server names, once, every Hydra still called by its id or by no name; a Firstmate Hydra keeps its home's name.
@@ -191,17 +193,23 @@ a compact conversations digest of the owner's queued task replies (read them who
 typed straight into the session of a worker Pnyx does not run, which carry their time, count once an event follows them, wake --wait
 and are read whole with task chat <task>. Pass the printed through as the next --after.
 `,
-  owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
-pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <n>]
-Standing worker instructions for every Hydra (${WORKER_NOTES_BUDGET} characters, one rule per line, owner memory key workers) are included verbatim in every new worker header, before the Hydra's and the project's.
-Owner memory is Pnyx-wide. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
-one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
-Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
+  owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--to <polis>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <revision>]
+pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <revision>]
+New worker headers include standing instructions from readable poleis before Hydra and project instructions. The workers key holds ${WORKER_NOTES_BUDGET} characters per polis, one rule per line.
+Owner memory reads only poleis allowed by both the Hydra reads list and each polis readers list. Writes use the Hydra's one write polis, resolved by the server. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
+one line per entry, and save each document whole. Each polis holds ${OWNER_MEMORY_BUDGET} characters.
+Pass the revision from list unchanged as --if-revision; it guards the home polis and log position, so stale saves and home changes are refused.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
 Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
-Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
+Move a whole document to another readable polis with owner memory move --key <key> --to <polis> [--propose].
+Move proposals pin both source and destination with --if-revision and --if-destination-revision; a changed memory refuses confirmation.
+shared keeps $PNYX_HOME/owner/memory.jsonl; other poleis use owner/poleis/<polis>/memory.jsonl. Every replacement and removal stays in the log.
+New and existing Hydras read/write shared by default. Manage readers with settings set --json and access with hydra set --read-poleis <comma-separated poleis> --polis <polis>.
+Hydra may narrow access directly. Widening reads, readers or memory distribution needs the owner's Confirm, even in bypass modes. Repeat with --propose to save the question.
+Use owner memory list's writable documents when editing; memory combines all readable poleis.
+These checks guard Pnyx output, not raw disk access from a local shell.
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
@@ -346,6 +354,7 @@ pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
 Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
 Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
+A handoff cut by a restart is settled at the next start: an uncommitted one gets its source checkout back, a committed one keeps its target. While a handoff is unresolved, starts, resumes, replies and copy removal for both tasks answer CONFLICT; move out any changed work in the folder, then restart to retry.
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
@@ -378,9 +387,9 @@ Fast in the Hydra's composer puts every worker on Fast where the model has it.
 environment; the session it starts attaches to the task when its hooks first report.
 The default route is firstmate for a Hydra run by a Firstmate home, otherwise pnyx.
 A task with an attached project starts in its own copy: a git worktree slot copies/<project>-<n> on branch
-pnyx/<hydra>-<task> (or the project's copy command, see project set), taken once and reused by later starts. A start
+<hydra-name-slug>/<task-title-slug> (or the project's copy command, see project set), taken once and reused by later starts. A start
 takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
-dependencies, and starts the branch from the fetched origin default branch. A failed refresh stops allocation;
+dependencies, and starts the branch from the fetched origin default branch. A failed refresh or remote branch listing stops allocation;
 projects without origin use local HEAD. --in-place works in the project folder
 itself and is refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras
 make their own copies.
@@ -389,6 +398,7 @@ commit is on the default branch or its linked pull request merged; the branch st
 command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
 A released slot goes back to the pool when fewer than ${POOL_IDLE} clean idle slots of the project are already there, or
 when an attached worker still runs in it; otherwise it is deleted. A slot a worker runs in is never handed to another task.
+Allocation reuses clean unrecorded slots whose commits landed; uncommitted or unlanded work stays and is reported to Hydra.
 Queued handoff prepares the next branch and transfers the folder; manual task attach only moves the session.
 task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
 already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.

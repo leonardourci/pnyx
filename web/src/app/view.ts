@@ -1,27 +1,39 @@
-import type { HydraState } from '#app/model.ts'
-import { liveTask } from '#tasks/select.ts'
+const TAB_TITLE_LENGTH = 60
 
 export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
 
 export function pageTitle({
   page = 'hydra',
-  cards,
-  selected = null,
-  needsYou = 'needs_you',
+  taskTitle,
   hydra = 'Hydra',
 }: {
   page?: string
-  cards: HydraState['cards']
-  selected?: string | null
-  needsYou?: string
-  // The Hydra's own name, shown when no task is open.
+  taskTitle?: string
   hydra?: string
 }): string {
-  const count = Object.values(cards)
-    .filter(c => liveTask({ card: c }) && c.column === needsYou).length
-  const label = page === 'settings' ? 'Settings' : (selected && cards[selected]?.title) || hydra
+  let label = page === 'settings' ? 'Settings' : taskTitle
 
-  return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
+  const characters = label ? Array.from(label) : []
+
+  if (characters.length > TAB_TITLE_LENGTH) {
+    const prefix = characters.slice(
+      0,
+      TAB_TITLE_LENGTH,
+    ).join('')
+    const next = characters[TAB_TITLE_LENGTH]
+    const endsInsideWord = /\S$/.test(prefix) && /\S/.test(next)
+    const wholeWords = endsInsideWord ? prefix.replace(
+      /\s+\S*$/,
+      '',
+    ) : prefix
+    label = `${wholeWords.trimEnd()}…`
+  }
+
+  return [
+    label,
+    hydra,
+    'Pnyx',
+  ].filter(Boolean).join(' · ')
 }
 
 export const shouldReload = ({

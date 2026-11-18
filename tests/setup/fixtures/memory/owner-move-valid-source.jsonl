@@ -1,0 +1,1 @@
+{"v":1,"seq":3,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"fresh replacement","after":null,"polisMove":{"polis":"revision-first","entry":{"v":1,"seq":2,"at":"2026-01-01T00:00:00Z","actor":"web","key":"preferences","before":"revision-first","after":"Rejected destination-conflict import"}}}

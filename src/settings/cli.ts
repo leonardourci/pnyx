@@ -1,3 +1,9 @@
+import { HydraError } from '#store/errors.ts'
+import { widensPolisReaders } from '#memory/access-changes.ts'
+import { checkMemoryApproval, memoryPermission, memoryCaller, memoryAgent } from '#memory/poleis.ts'
+import { patchSettings } from './settings.ts'
+import { hydraActor } from '#app/request-context.ts'
+import { canRead } from '#memory/polis-policy.ts'
 import { AxiError } from 'axi-sdk-js'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
 import { readSettings, saveSettings, settingsReceipt, shownSettings } from './store.ts'
@@ -7,7 +13,6 @@ import type { AgentConfig } from '#workers/model.ts'
 import { knownHarness } from '#workers/providers.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { loadHydra } from '#app/store.ts'
-import { HydraError } from '#store/errors.ts'
 
 const USE = 'use settings show, schema or set'
 
@@ -25,6 +30,7 @@ export const settings = guard({
       options: {
         ...WRITE,
         json: { type: 'string' },
+        propose: { type: 'boolean' },
       },
       positionals: 0,
     })
@@ -33,7 +39,10 @@ export const settings = guard({
       const read = readSettings()
 
       return {
-        settings: shownSettings({ settings: read.settings }),
+        settings: visibleSettings({
+          settings: shownSettings({ settings: read.settings }),
+          hydraId,
+        }),
         revision: read.revision,
         help: ['settings set --json <patch> --if-revision <revision>'],
       }
@@ -41,10 +50,14 @@ export const settings = guard({
 
     if (sub === 'schema') {
       return {
-        defaults: DEFAULT_SETTINGS,
+        defaults: visibleSettings({
+          settings: DEFAULT_SETTINGS,
+          hydraId,
+        }),
         help: [
           'defaultColumnWidth is the fallback for every existing and future column; defaultColumnWidths holds per-column overrides',
           'Every key applies to every Hydra; a patch names only what changes',
+          'poleis patches named poleis (null removes, shared is reserved); readers are Hydra ids or *; projectPoleis patches project assignments (null restores shared); --propose saves a Confirm question',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
@@ -74,13 +87,97 @@ export const settings = guard({
       )
     }
 
-    return settingsReceipt({
+    const change = meta({ values })
+
+    const read = readSettings()
+    const duplicate = change.id !== undefined && read.ids.has(change.id)
+    const after = duplicate ? read.settings : patchSettings({
+      current: read.settings,
+      input: patch,
+    })
+    const memoryPatch = patch !== null && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch) ? patch : undefined
+
+    if (!duplicate && memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
+      const state = loadHydra({ hydraId }).state
+
+      if ('projectPoleis' in memoryPatch) {
+        throw new HydraError({
+          message: 'Use project move to change the polis of an attached project',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      if ('poleis' in memoryPatch && memoryPatch.poleis && typeof memoryPatch.poleis === 'object') {
+        for (const polis of Object.keys(memoryPatch.poleis)) {
+          if (!canRead({
+            hydraId,
+            state,
+            poleis: read.settings.poleis,
+            polis,
+          })) {
+            throw new HydraError({
+              message: 'Memory is unavailable',
+              code: 'NOT_FOUND',
+            })
+          }
+        }
+      }
+    }
+
+    if (!duplicate && (memoryPatch || values.propose)) {
+      const proposalArgs = values['if-revision'] !== undefined ? args : [
+        ...args,
+        '--if-revision',
+        String(read.revision),
+      ]
+      const proposal = memoryPermission({
+        hydraId,
+        name: 'settings',
+        args: proposalArgs,
+        propose: Boolean(values.propose),
+        actor: change.actor,
+        widening: Boolean(memoryPatch) && widensPolisReaders({
+          before: read.settings,
+          after,
+        }),
+      })
+
+      if (proposal) {
+        return proposal
+      }
+    }
+
+    const receipt = settingsReceipt({
       saved: saveSettings({
+        beforeSave: checkMemoryApproval,
         hydraId,
         patch,
-        meta: meta({ values }),
+        meta: memoryPatch ? {
+          ...change,
+          ifRevision: change.ifRevision ?? read.revision,
+        } : change,
       }),
     })
+
+    if (memoryAgent()) {
+      const visible = visibleSettings({
+        settings: shownSettings({ settings: readSettings().settings }),
+        hydraId,
+      })
+      receipt.settings = visible
+
+      if (receipt.changed && typeof receipt.changed === 'object') {
+        if ('poleis' in receipt.changed) {
+          receipt.changed.poleis = visible.poleis
+        }
+
+        if ('projectPoleis' in receipt.changed) {
+          receipt.changed.projectPoleis = visible.projectPoleis
+        }
+      }
+    }
+
+    return receipt
   },
 })
 
@@ -178,4 +275,32 @@ export function sharedSettingFlags({
   }
 
   return Object.keys(patch).length ? patch : undefined
+}
+
+export function visibleSettings({
+  settings,
+  hydraId,
+}: {
+  settings: Settings
+  hydraId: string
+}): Settings {
+  if (!memoryAgent()) {
+    return settings
+  }
+
+  const state = loadHydra({ hydraId }).state
+  const configuredPoleis = readSettings().settings.poleis
+  const readable = ({ polis }: { polis: string }) => memoryCaller({ hydraId }) && canRead({
+    hydraId,
+    state,
+    poleis: configuredPoleis,
+    polis,
+  })
+
+  return {
+    ...settings,
+    poleis: Object.fromEntries(Object.entries(settings.poleis)
+      .filter(([polis]) => readable({ polis }))),
+    projectPoleis: {},
+  }
 }

@@ -5,20 +5,255 @@ import type { HydraProject } from './model.ts'
 
 export const COPY_TIMEOUT_MS = 120_000
 
-export const taskBranch = ({
-  hydraId,
+// Git's stderr ends up in refusals and queue notes, so only its last part is kept; hook output can be long.
+const GIT_ERROR_LENGTH = 4000
+const BRANCH_SLUG_LENGTH = 40
+const BRANCH_CREATE_ATTEMPTS = 100
+const ORIGIN_REFS = 'refs/remotes/origin/'
+const FILLER_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'of',
+  'to',
+  'and',
+  'de',
+  'da',
+  'do',
+  'das',
+  'dos',
+  'e',
+])
+
+function branchSlug({ text }: { text: string }): string {
+  const normalized = text.normalize('NFKD')
+  const unaccented = normalized.replace(
+    /\p{Mark}/gu,
+    '',
+  )
+  const words = unaccented.toLowerCase().match(/[a-z0-9]+/g) ?? []
+  let slug = ''
+
+  for (const word of words) {
+    if (FILLER_WORDS.has(word)) {
+      continue
+    }
+
+    if (!slug) {
+      slug = word.slice(
+        0,
+        BRANCH_SLUG_LENGTH,
+      )
+      continue
+    }
+
+    const candidate = `${slug}-${word}`
+
+    if (candidate.length > BRANCH_SLUG_LENGTH) {
+      break
+    }
+
+    slug = candidate
+  }
+
+  return slug
+}
+
+async function taskBranch({
+  cwd,
+  hydraName,
   task,
+  title,
+  reserved = [],
 }: {
-  hydraId: string
+  cwd: string
+  hydraName: string
   task: string
-}) => `pnyx/${hydraId}-${task}`
+  title: string
+  reserved?: string[]
+}): Promise<string> {
+  // Remote-tracking refs can block a later fetch, including origin/HEAD on macOS.
+  const refs = await git({
+    cwd,
+    args: [
+      'for-each-ref',
+      '--format=%(refname)',
+      'refs/heads',
+      'refs/remotes',
+    ],
+  })
+
+  if (!refs.ok) {
+    throw new HydraError({
+      code: 'COPY_FAILED',
+      message: `could not read branches: ${refs.err}`,
+    })
+  }
+
+  // A ref that differs only in case can still block creation on a case-insensitive filesystem.
+  const existing = new Set(reserved.map(branch => branch.toLowerCase()))
+
+  for (const ref of refs.out.split('\n').filter(Boolean)) {
+    const branch = ref.replace(
+      /^refs\/(heads|remotes\/[^/]+)\//,
+      '',
+    )
+    existing.add(branch.toLowerCase())
+  }
+
+  const remotes = await git({
+    cwd,
+    args: ['remote'],
+  })
+
+  if (!remotes.ok) {
+    throw new HydraError({
+      code: 'COPY_FAILED',
+      message: `could not read remotes: ${remotes.err}`,
+    })
+  }
+
+  const remoteNames = remotes.out.split('\n').filter(Boolean)
+
+  for (const remote of remoteNames) {
+    const heads = await git({
+      cwd,
+      args: [
+        'ls-remote',
+        '--heads',
+        '--',
+        remote,
+      ],
+    })
+
+    if (!heads.ok) {
+      throw new HydraError({
+        code: 'COPY_FAILED',
+        message: `could not read branches on remote ${remote}: ${heads.err}`,
+      })
+    }
+
+    for (const line of heads.out.split('\n').filter(Boolean)) {
+      const prefix = '\trefs/heads/'
+      const separator = line.indexOf(prefix)
+
+      if (separator >= 0) {
+        existing.add(line.slice(separator + prefix.length).toLowerCase())
+      }
+    }
+  }
+
+  const shortId = task.replace(
+    /^task-/,
+    '',
+  ).split('-')[0]
+  const hydraSlug = branchSlug({ text: hydraName }) || 'hydra'
+  const titleSlug = branchSlug({ text: title }) || shortId
+  let namespace = hydraSlug
+
+  for (let suffix = 2; existing.has(namespace); suffix++) {
+    namespace = `${hydraSlug}-${suffix}`
+  }
+
+  const base = `${namespace}/${titleSlug}`
+  const occupied = new Set<string>()
+
+  for (const name of existing) {
+    const parts = name.split('/')
+    const firstTwoParts = parts.slice(
+      0,
+      2,
+    )
+    occupied.add(firstTwoParts.join('/'))
+  }
+
+  let branch = base
+
+  for (let suffix = 2; occupied.has(branch); suffix++) {
+    branch = `${base}-${suffix}`
+  }
+
+  return branch
+}
+
+// Failed copy allocations keep their refs reserved, so retries never delete or reuse those names.
+export async function createTaskBranch({
+  start,
+  active = () => true,
+  prepare,
+  ...naming
+}: Parameters<typeof taskBranch>[0] & {
+  start: string
+  active?(): boolean
+  prepare?({ branch }: { branch: string }): Promise<boolean>
+}): Promise<string | undefined> {
+  if (!active()) {
+    return undefined
+  }
+
+  let branch = await taskBranch(naming)
+
+  for (let attempt = 0; attempt < BRANCH_CREATE_ATTEMPTS; attempt++) {
+    if (!active()) {
+      return undefined
+    }
+
+    if (prepare && !await prepare({ branch })) {
+      return undefined
+    }
+
+    if (!active()) {
+      return undefined
+    }
+
+    const created = await git({
+      cwd: naming.cwd,
+      args: [
+        'branch',
+        '--no-track',
+        branch,
+        start,
+      ],
+    })
+
+    if (created.ok) {
+      return branch
+    }
+
+    if (!active()) {
+      return undefined
+    }
+
+    if (attempt + 1 === BRANCH_CREATE_ATTEMPTS) {
+      break
+    }
+
+    const nextBranch = await taskBranch(naming)
+
+    if (nextBranch === branch) {
+      throw new HydraError({
+        code: 'COPY_FAILED',
+        message: `could not create task branch: ${created.err}`,
+      })
+    }
+
+    branch = nextBranch
+  }
+
+  throw new HydraError({
+    code: 'COPY_FAILED',
+    message: 'task branch allocation kept colliding; try again',
+  })
+}
 
 export async function git({
   cwd,
   args,
+  timeout = COPY_TIMEOUT_MS,
 }: {
   cwd: string
   args: string[]
+  timeout?: number
 }): Promise<{
   ok: boolean
   out: string
@@ -31,7 +266,7 @@ export async function git({
       cwd,
       ...args,
     ],
-    timeout: COPY_TIMEOUT_MS,
+    timeout,
     env: {
       ...process.env,
       GIT_TERMINAL_PROMPT: '0',
@@ -42,7 +277,7 @@ export async function git({
   return {
     ok: run.status === 0,
     out: run.stdout.trim(),
-    err: run.stderr.trim().slice(-500),
+    err: run.stderr.trim().slice(-GIT_ERROR_LENGTH),
   }
 }
 
@@ -52,12 +287,11 @@ async function originHead({ cwd }: { cwd: string }): Promise<string | undefined>
     args: [
       'symbolic-ref',
       '--quiet',
-      '--short',
       'refs/remotes/origin/HEAD',
     ],
   })
 
-  return head.ok && head.out ? head.out : undefined
+  return head.ok && head.out.startsWith(ORIGIN_REFS) ? head.out : undefined
 }
 
 export async function gitProject({ project }: { project: HydraProject }): Promise<void> {
@@ -127,10 +361,7 @@ export async function branchStart({ project }: { project: HydraProject }): Promi
     }
 
     return {
-      base: remote.replace(
-        /^origin\//,
-        '',
-      ),
+      base: remote.slice(ORIGIN_REFS.length),
       start: remote,
     }
   }
@@ -198,22 +429,20 @@ export const onBranch = async ({ cwd }: { cwd: string }) =>
   })).out)
 
 // Best effort, so another task's branch config never stops a start: older task branches still track the default branch.
-export async function clearDefaultUpstreams({ cwd }: { cwd: string }): Promise<void> {
-  const head = await git({
-    cwd,
-    args: [
-      'symbolic-ref',
-      '--quiet',
-      'refs/remotes/origin/HEAD',
-    ],
-  })
-  const prefix = 'refs/remotes/origin/'
+export async function clearDefaultUpstreams({
+  cwd,
+  branches = [],
+}: {
+  cwd: string
+  branches?: string[]
+}): Promise<void> {
+  const head = await originHead({ cwd })
 
-  if (!head.ok || !head.out.startsWith(prefix)) {
+  if (!head) {
     return
   }
 
-  const defaultMerge = `refs/heads/${head.out.slice(prefix.length)}`
+  const defaultMerge = `refs/heads/${head.slice(ORIGIN_REFS.length)}`
   const config = await git({
     cwd,
     args: [
@@ -233,9 +462,9 @@ export async function clearDefaultUpstreams({ cwd }: { cwd: string }): Promise<v
   }>()
 
   for (const line of config.out.split('\n')) {
-    const match = /^branch\.(pnyx\/.+)\.(remote|merge) (.*)$/.exec(line)
+    const match = /^branch\.(.+)\.(remote|merge) (.*)$/.exec(line)
 
-    if (match) {
+    if (match && (match[1].startsWith('pnyx/') || branches.includes(match[1]))) {
       const [
         ,
         branch,

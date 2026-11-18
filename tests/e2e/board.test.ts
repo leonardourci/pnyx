@@ -44,6 +44,38 @@ test(
       ),
     })
     await page.locator('[aria-label="Work columns"]').waitFor()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Poseidon',
+      ],
+    })
+    await until({
+      what: 'Hydra tab title',
+      check: async () => await page.title() === 'Poseidon · Pnyx',
+    })
+    const needsYou = await hydra.column({ role: 'needs_you' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Review the export',
+        '--column',
+        needsYou,
+      ],
+    })
+    await page.getByRole(
+      'button',
+      {
+        name: 'Review the export',
+        exact: true,
+      },
+    ).waitFor()
+    expect(await page.title()).toBe('Poseidon · Pnyx')
+
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })
 
@@ -59,7 +91,6 @@ test(
         folder,
       ],
     })
-    // A card is the article holding its title button.
     const shown = ({ title }: { title: string }) => page.locator(
       'article',
       {
@@ -3316,6 +3347,72 @@ test(
       expect(await restoredFamily.getAttribute('aria-expanded')).toBe('true')
       await card({ title: 'Existing child' }).waitFor()
       expect((await hydra.task({ key: 'Existing child' })).parent).toBe(second)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'the browser tab names the Hydra and the selected task, following renames',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--name',
+          'Poseidon',
+        ],
+      })
+      await until({
+        what: 'Hydra tab title',
+        check: async () => await page.title() === 'Poseidon · Pnyx',
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'export',
+          '--title',
+          'Ship the export',
+        ],
+      })
+      const title = page.getByRole(
+        'button',
+        {
+          name: 'Ship the export',
+          exact: true,
+        },
+      )
+      await title.waitFor()
+      expect(await page.title()).toBe('Poseidon · Pnyx')
+      await title.focus()
+      await page.keyboard.press('Enter')
+      await until({
+        what: 'selected task tab title',
+        check: async () => await page.title() === 'Ship the export · Poseidon · Pnyx',
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'rename',
+          'export',
+          '--title',
+          '0123456789 0123456789 0123456789 0123456789 0123456789 12345 extra',
+        ],
+      })
+      await until({
+        what: 'renamed task tab title shortened at a word boundary',
+        check: async () => await page.title() === '0123456789 0123456789 0123456789 0123456789 0123456789 12345… · Poseidon · Pnyx',
+      })
     } finally {
       await page.context().close()
     }

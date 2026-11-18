@@ -404,9 +404,7 @@ export function HydraView({
   const shownHydra = edits.hydras.find(h => h.id === navigation.hydraId)
   const title = pageTitle({
     page,
-    cards: state.cards,
-    selected,
-    needsYou: statusColumns.find(c => c.role === 'needs_you')?.id,
+    taskTitle: selected ? state.cards[selected]?.title : undefined,
     hydra: shownHydra && hydraTitle(shownHydra),
   })
   useEffect(

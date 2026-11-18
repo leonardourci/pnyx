@@ -1,3 +1,4 @@
+import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
@@ -176,6 +177,11 @@ export async function startTask({
   const card = findCard({
     state,
     ref: task,
+  })
+
+  requireHandoffAvailable({
+    hydraId,
+    task: card.id,
   })
 
   requireCopyAvailable({

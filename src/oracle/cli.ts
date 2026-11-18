@@ -1,6 +1,8 @@
 import { readSearchFilters } from './filters.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
+import { readableProjects } from '#memory/poleis.ts'
+import type { HydraProject } from '#projects/model.ts'
 import { findProject } from '#projects/read.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -36,7 +38,9 @@ const SEARCH: Options = {
 function projectRefs({
   state,
   ref,
+  projects,
 }: {
+  projects: HydraProject[]
   state: HydraState
   ref: string
 }): string[] {
@@ -44,6 +48,7 @@ function projectRefs({
     const { path } = findProject({
       state,
       ref,
+      projects,
     })
 
     return path === ref ? [ref] : [
@@ -108,9 +113,14 @@ const oracleCommand = guard({
         state,
         ref: values.card as string,
       }).id
+    const visibleProjects = values.project === undefined ? [] : await readableProjects({
+      hydraId,
+      state,
+    })
     const projects = (values.project as string[] | undefined)?.flatMap(ref => projectRefs({
       state,
       ref,
+      projects: visibleProjects,
     }))
 
     return present({
