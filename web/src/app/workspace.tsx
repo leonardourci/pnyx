@@ -29,7 +29,7 @@ import { useHydraKeyboard } from '#web-preferences/keyboard-hydra.tsx'
 import { focusElement,KeyboardProvider } from '#web-preferences/keyboard-registry.tsx'
 import { useSaveView } from '#web-preferences/save-view.ts'
 import { useViewTheme } from '#web-preferences/view-theme.ts'
-import { useProjectsResource } from '#web-projects/project-resource.ts'
+import { useProjectIntents } from '#web-projects/project-resource.ts'
 import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -106,11 +106,7 @@ export function HydraView({
     [hydra.viewKey],
   )
   const installationPending = useInstallationPending()
-  const { intents: projectPending } = useProjectsResource({
-    command,
-    connected,
-    revision: state.projectsRevision,
-  })
+  const projectPending = useProjectIntents({ command })
   const restoreKey = storageKey({
     key: 'restore',
     hydraId: hydra.storageHydra,
@@ -992,7 +988,7 @@ export function HydraView({
       <HydraComposerSources
         state={state}
         command={command}
-        connected={connected}
+        connected={connected && workspaceWindow.mounted}
         references={references}
         openTask={revealTask}
         notify={notify}

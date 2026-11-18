@@ -172,6 +172,15 @@ function projectResource({ command }: { command: Command }) {
   return resource
 }
 
+export function useProjectIntents({ command }: { command: Command }) {
+  const resource = projectResource({ command })
+
+  return useSyncExternalStore(
+    resource.subscribe,
+    resource.snapshot,
+  ).intents
+}
+
 export function useProjectsResource({
   command,
   connected,
