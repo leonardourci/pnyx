@@ -1,0 +1,41 @@
+{
+  "baseline": {
+    "revision": "c73d7d3a^",
+    "css": {
+      "rawBytes": 150454,
+      "gzipBytes": 28379
+    },
+    "authoredRules": 1463
+  },
+  "current": {
+    "head": "949812c481b0856294d7aaac286177871b2664e5",
+    "authoredRules": 78,
+    "css": {
+      "rawBytes": 188593,
+      "gzipBytes": 33305
+    },
+    "js": {
+      "rawBytes": 1707304,
+      "gzipBytes": 546972
+    },
+    "files": [
+      {
+        "name": "index-09Baamsa.js",
+        "rawBytes": 1697163,
+        "gzipBytes": 543155
+      },
+      {
+        "name": "index-BSf59v3T.css",
+        "rawBytes": 188593,
+        "gzipBytes": 33305
+      },
+      {
+        "name": "lazy-inspector-uW5pJam7.js",
+        "rawBytes": 10141,
+        "gzipBytes": 3817
+      }
+    ]
+  },
+  "removed": 1385,
+  "method": "Qualified CSS rules including nested media/supports, excluding keyframe steps; theme declarations excluded. Current source has one CSS file. Bundle sizes are the normal production build; gzipSync defaults."
+}
