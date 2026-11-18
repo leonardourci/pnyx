@@ -8,7 +8,7 @@ const RENDER_SAMPLE = 10
 const SLOW_INTERACTION_MS = 104
 const FRAME_MS = 1000 / 60
 const FASTEST_FRAME_MS = 1000 / 240
-const TOKEN = /^[a-z][a-z0-9.-]{0,47}$/
+const TOKEN = /^[a-z][a-z0-9._-]{0,47}$/
 
 const SURFACES = [
   'workspace',

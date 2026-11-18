@@ -49,6 +49,10 @@ test(
     const before = [...scanEvents({ hydraId: hydra.id })].map(event => event.id)
     await page.evaluate(() => {
       const button = document.querySelector('button[aria-label="Settings"]')!
+      button.setAttribute(
+        'data-ui-action',
+        'settings.open_panel',
+      )
       button.addEventListener(
         'click',
         () => {
@@ -83,7 +87,7 @@ test(
       expect.objectContaining({
         operation: 'page.slow-interaction',
         surface: expect.any(String),
-        action: 'settings',
+        action: 'settings.open_panel',
         ms: expect.any(Number),
         processingMs: expect.any(Number),
       }),

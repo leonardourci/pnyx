@@ -55,7 +55,7 @@ class Control {
     }
 
     if (name === 'data-ui-action') {
-      return 'settings.open'
+      return 'fold_tasks'
     }
 
     return null
@@ -187,7 +187,7 @@ test(
       expect.objectContaining({
         operation: 'page.slow-interaction',
         surface: 'settings',
-        action: 'settings.open',
+        action: 'fold_tasks',
         count: 1,
         ms: 200,
         inputDelayMs: 30,
