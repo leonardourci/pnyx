@@ -5,8 +5,7 @@ import { hostedHydra, hydraConfig } from '#hydra/config.ts'
 import { readEvents } from './event-log.ts'
 import { homeScoped } from '#store/postgres.ts'
 import { projectsFor } from '#projects/read.ts'
-import { openDecisions } from '#tasks/decisions.ts'
-import { cardStatus } from '#tasks/card-status.ts'
+import { ownerQuestionGroups } from '#tasks/question-groups.ts'
 import { liveTask } from '#tasks/select.ts'
 import { hydraWorking } from '#hydra/chat-queue.ts'
 
@@ -80,11 +79,8 @@ export function summarize({
       id,
     })
     const cards = Object.values(state.cards).filter(c => liveTask({ card: c }))
-    const asking = cards.filter(card => cardStatus({
-      card,
-      cards: state.cards,
-    }).kind === 'asks')
-    const askingIds = new Set(asking.map(card => card.id))
+    const groups = ownerQuestionGroups({ state })
+    const askingIds = new Set(groups.map(group => group.card.id))
     const projects = projectsFor({
       state,
       aliases: true,
@@ -117,10 +113,7 @@ export function summarize({
     return {
       home,
       summary: {
-        asks: new Set([
-          ...askingIds,
-          ...openDecisions({ state }).map(decision => decision.card.id),
-        ]).size,
+        asks: groups.length,
         id,
         identity: hydraIdentity({ hydraId: id }),
         creationAttempt: creationAttempt({ event: initial }),

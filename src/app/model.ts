@@ -289,6 +289,8 @@ export type HydraChange = EventBase & (
   | {
     type: 'task.ask.escalated'
     data: {
+      options?: Ask['options']
+      recommended?: number
       ask: string
       question?: string
       context?: string

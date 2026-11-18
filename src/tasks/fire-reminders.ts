@@ -4,7 +4,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent, pnyxRunsHydra } from '#hydra/hydra.ts'
 import type { HydraMessage } from '#hydra/model.ts'
 import { loadHydra } from '#app/store.ts'
-import { withWriter, type Writer } from '#app/writer.ts'
+import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
 import { readSettings } from '#settings/store.ts'
 import { dueQuestionReminders } from './question-reminders.ts'
@@ -118,10 +118,6 @@ export function fireReminders({
           continue
         }
 
-        const column = needsYouColumn({
-          writer,
-          at,
-        })
         const text = reminderMessage({ card })
         let nextAt: string | null | undefined
 
@@ -147,7 +143,7 @@ export function fireReminders({
               reminder: reminder.id,
               nextAt,
               grouped: true,
-              column,
+              column: card.column,
               message: {
                 task: card.id,
                 action: 'send',
@@ -223,49 +219,4 @@ export function fireReminders({
   }
 
   return receipt.fired
-}
-
-function needsYouColumn({
-  writer,
-  at,
-}: {
-  writer: Writer
-  at: string
-}) {
-  const columns = hydraConfig({ state: writer.state }).columns
-  const existing = columns.find(column => column.role === 'needs_you')
-
-  if (existing) {
-    return existing.id
-  }
-
-  const column = {
-    id: `custom:${randomUUID()}` as const,
-    title: 'Needs you',
-    role: 'needs_you' as const,
-  }
-  const decision = hydraEvent({
-    state: writer.state,
-    meta: {
-      at,
-      actor: 'pnyx',
-    },
-    cardId: '$board',
-    change: {
-      type: 'board.columns',
-      data: {
-        before: columns,
-        columns: [
-          ...columns,
-          column,
-        ],
-      },
-    },
-  })
-
-  if ('event' in decision) {
-    writer.append({ event: decision.event })
-  }
-
-  return column.id
 }

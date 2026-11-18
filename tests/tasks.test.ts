@@ -1,3 +1,4 @@
+import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -100,6 +101,14 @@ test(
         'owner',
         '--question',
         'Include archived invoices?',
+        '--context',
+        `Archived invoices change the export totals. After your choice I will implement the filter. [Export](pnyx-task:${(await hydra.task({ key: 'build' })).id})`,
+        '--choice',
+        'Only open',
+        '--choice',
+        'Include archived',
+        '--recommend',
+        '1',
         '--reason',
         'Only the owner knows the accounting rule',
       ],
@@ -846,7 +855,7 @@ test(
 )
 
 test(
-  'a reminder-only task contributes to both project and Hydra waiting counts',
+  'a reminder-only task stays out of project and Hydra waiting counts',
   async () => {
     const id = 'reminder-summary'
     const folder = join(
@@ -948,8 +957,8 @@ test(
       text: 'select summary from hydras where id = $1',
       values: [id],
     })[0]?.summary).toMatchObject({
-      asks: 1,
-      projects: [expect.objectContaining({ asks: 1 })],
+      asks: 0,
+      projects: [expect.objectContaining({ asks: 0 })],
     })
   },
 )
@@ -1248,5 +1257,441 @@ test(
       hydra: 'Poseidon',
       taskTitle: '01234567890123456789012345678901234567890123456789012345678🚀extra',
     })).toBe('01234567890123456789012345678901234567890123456789012345678🚀… · Poseidon · Pnyx')
+  },
+)
+
+test(
+  'owner questions require a decision, context, card link, choices and recommendation; updates never ask for a decision',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({
+      key: 'questions',
+      harness: 'codex',
+    })
+    const session = await hydra.chat({ text: 'Decide export scope' })
+    const asHydra = hydra.as({ session })
+    const card = await hydra.task({ key: 'questions' })
+    const context = `Archived invoices change totals. After the answer I will build the export. [Export](pnyx-task:${card.id})`
+    const fields = [
+      [
+        '--question',
+        'Include archived invoices?',
+      ],
+      [
+        '--context',
+        context,
+      ],
+      [
+        '--choice',
+        'Only open',
+        '--choice',
+        'Include archived',
+      ],
+      [
+        '--recommend',
+        '1',
+      ],
+    ]
+
+    for (let omitted = 0; omitted < fields.length; omitted++) {
+      const refused = await asHydra.refused({
+        args: [
+          'task',
+          'ask',
+          'questions',
+          '--to',
+          'owner',
+          ...fields.filter((
+            _,
+            index,
+          ) => index !== omitted).flat(),
+          '--reason',
+          'Accounting decision',
+        ],
+      })
+      expect(refused.code).toBe('VALIDATION_ERROR')
+    }
+
+    for (const question of [
+      'Ready for review',
+      'Ship CSV? Or JSON?',
+    ]) {
+      expect((await asHydra.refused({
+        args: [
+          'task',
+          'ask',
+          'questions',
+          '--to',
+          'owner',
+          '--question',
+          question,
+          ...fields.slice(1).flat(),
+          '--reason',
+          'Accounting decision',
+        ],
+      })).code).toBe('VALIDATION_ERROR')
+    }
+
+    for (const badContext of [
+      'Totals change after the answer.',
+      '[Wrong](pnyx-task:another-card)',
+    ]) {
+      expect((await asHydra.refused({
+        args: [
+          'task',
+          'ask',
+          'questions',
+          '--to',
+          'owner',
+          ...fields[0]!,
+          '--context',
+          badContext,
+          ...fields[2]!,
+          ...fields[3]!,
+          '--reason',
+          'Accounting decision',
+        ],
+      })).code).toBe('VALIDATION_ERROR')
+    }
+
+    await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'status',
+        'questions',
+        'needs_you',
+        '--note',
+        'Ready for review',
+      ],
+    })
+    const inProgress = await hydra.column({ role: 'in_progress' })
+    expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
+    await hydra.owner({
+      args: [
+        'column',
+        'rule',
+        await hydra.column({ role: 'needs_you' }),
+        '--when',
+        'reminder-due',
+        '--reason',
+        'A legacy custom reminder rule',
+      ],
+    })
+    const due = new Date(Date.now() + 60_000).toISOString()
+    await hydra.owner({
+      args: [
+        'task',
+        'remind',
+        'questions',
+        due,
+      ],
+    })
+    fireReminders({
+      hydraId: hydra.id,
+      at: new Date(Date.parse(due) + 1).toISOString(),
+    })
+    expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
+    const updates = await hydra.owner({
+      args: [
+        'task',
+        'updates',
+        'questions',
+      ],
+    })
+    expect(JSON.stringify(updates)).toContain('task.reminder-due')
+
+    const asked = await asHydra.run({
+      args: [
+        'task',
+        'ask',
+        'questions',
+        '--to',
+        'owner',
+        ...fields.flat(),
+        '--reason',
+        'Accounting decision',
+      ],
+    })
+    expect((await hydra.task({ key: 'questions' })).column).toBe(await hydra.column({ role: 'needs_you' }))
+    await hydra.owner({
+      args: [
+        'task',
+        'answer',
+        'questions',
+        asked.ask,
+        '--choice',
+        '1',
+      ],
+    })
+    expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
+    const workerAsk = await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'ask',
+        'questions',
+        '--question',
+        'Which export?',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })).count).toBe(0)
+    expect(rows<{ summary: { asks: number } }>({
+      text: 'select summary from hydras where id = $1',
+      values: [hydra.id],
+    })[0]?.summary.asks).toBe(0)
+    expect((await asHydra.refused({
+      args: [
+        'task',
+        'escalate',
+        'questions',
+        workerAsk.ask,
+        '--reason',
+        'Accounting decision',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    await asHydra.run({
+      args: [
+        'task',
+        'escalate',
+        'questions',
+        workerAsk.ask,
+        ...fields.flat(),
+        '--reason',
+        'Accounting decision',
+      ],
+    })
+    expect((await hydra.task({ key: 'questions' })).column).toBe(await hydra.column({ role: 'needs_you' }))
+    const escalated = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'questions',
+        '--full',
+      ],
+    })
+    const question = escalated.task.asks.find((ask: { id: string }) => ask.id === workerAsk.ask)
+    expect(question.options.map((option: { label: string }) => option.label)).toEqual([
+      'Only open',
+      'Include archived',
+    ])
+    expect(question.recommended).toBe(1)
+  },
+)
+
+test(
+  'related owner questions form one group, share choices safely and answer once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const parent = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export batch',
+      ],
+    })
+
+    for (const key of [
+      'invoices',
+      'payments',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          key,
+          '--key',
+          key,
+          '--parent',
+          parent.card.id,
+        ],
+      })
+    }
+
+    const session = await hydra.chat({ text: 'Review the batch scope' })
+    const asHydra = hydra.as({ session })
+
+    const ask = async ({
+      key,
+      options = [
+        'Open only',
+        'Include archived',
+      ],
+    }: {
+      key: string
+      options?: string[]
+    }) => {
+      const card = await hydra.task({ key })
+
+      return asHydra.run({
+        args: [
+          'task',
+          'ask',
+          key,
+          '--to',
+          'owner',
+          '--question',
+          `Include archived ${key}?`,
+          '--context',
+          `Archived records change totals. I will build this export after your answer. [${key}](pnyx-task:${card.id})`,
+          ...options.flatMap(choice => [
+            '--choice',
+            choice,
+          ]),
+          '--recommend',
+          '1',
+          '--reason',
+          'Accounting scope',
+        ],
+      })
+    }
+
+    const first = await ask({ key: 'invoices' })
+    const second = await ask({ key: 'payments' })
+    const grouped = await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })
+    expect(grouped.count).toBe(1)
+    expect(grouped.groups[0]).toMatchObject({
+      task: parent.card.id,
+      count: 2,
+      choices: [
+        'Open only',
+        'Include archived',
+      ],
+    })
+    expect(rows<{ summary: { asks: number } }>({
+      text: 'select summary from hydras where id = $1',
+      values: [hydra.id],
+    })[0]?.summary.asks).toBe(1)
+    const keys = grouped.groups[0].questions.map((question: { key: string }) => question.key)
+    const snapshot = JSON.stringify(keys)
+    const answer = [
+      'task',
+      'answer-group',
+      parent.card.id,
+      '--questions',
+      snapshot,
+      '--choice',
+      'Open only',
+      '--event-id',
+      'batch-open-only',
+    ]
+    expect((await asHydra.refused({ args: answer })).code).toBe('OWNER_ONLY')
+    const numericChoice = answer.map((
+      value,
+      index,
+    ) => answer[index - 1] === '--choice' ? '1' : value)
+    expect((await hydra.ownerRefused({ args: numericChoice })).code).toBe('VALIDATION_ERROR')
+    await hydra.owner({ args: answer })
+    const repeated = await hydra.owner({ args: answer })
+    expect(repeated.answers.every((receipt: { repeat?: boolean }) => receipt.repeat)).toBe(true)
+    const differentRetry = answer.map((
+      value,
+      index,
+    ) => answer[index - 1] === '--choice' ? 'Include archived' : value)
+    expect((await hydra.ownerRefused({ args: differentRetry })).code).toBe('CONFLICT')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })).count).toBe(0)
+
+    for (const [
+      key,
+      asked,
+    ] of [
+        [
+          'invoices',
+          first,
+        ],
+        [
+          'payments',
+          second,
+        ],
+      ] as const) {
+      const card = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      expect(card.task.asks.find((ask: { id: string }) => ask.id === asked.ask)).toMatchObject({ choice: 'Open only' })
+    }
+
+    const third = await ask({ key: 'invoices' })
+    const old = await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })
+    await ask({
+      key: 'payments',
+      options: [
+        'Recent only',
+        'Everything',
+      ],
+    })
+    const oldKeys = old.groups[0].questions.map((question: { key: string }) => question.key)
+    const stale = JSON.stringify(oldKeys)
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'answer-group',
+        parent.card.id,
+        '--questions',
+        stale,
+        '--choice',
+        'Open only',
+        '--event-id',
+        'stale-batch',
+      ],
+    })).code).toBe('CONFLICT')
+    const different = await hydra.owner({
+      args: [
+        'task',
+        'questions',
+      ],
+    })
+    expect(different.groups[0].choices).toEqual([])
+    const currentKeys = different.groups[0].questions.map(
+      (question: { key: string }) => question.key,
+    )
+    const current = JSON.stringify(currentKeys)
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'answer-group',
+        parent.card.id,
+        '--questions',
+        current,
+        '--choice',
+        'Open only',
+        '--event-id',
+        'different-batch',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    const unchanged = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'invoices',
+        '--full',
+      ],
+    })
+    const unanswered = unchanged.task.asks.find((ask: { id: string }) => ask.id === third.ask)
+    expect(unanswered.answered).toBeUndefined()
   },
 )

@@ -1,3 +1,4 @@
+import { ownerQuestionGroups, decisionKey } from './question-groups.ts'
 import { readFileSync } from 'node:fs'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { clarificationText, decideQuestionAction } from './question-actions.ts'
@@ -591,6 +592,168 @@ async function questionActionCommand({
   return written
 }
 
+async function answerGroup({
+  ref,
+  values,
+  hydraId,
+  meta,
+}: {
+  ref: string
+  values: Values
+  hydraId: string
+  meta: Meta
+}): Promise<Output> {
+  if (!ownerActor({ actor: meta.actor })) {
+    throw new HydraError({
+      code: 'OWNER_ONLY',
+      message: 'Only the owner answers a question group; record individual owner answers with their source message',
+    })
+  }
+
+  const attempt = required({
+    value: meta.id,
+    what: '--event-id for this group answer',
+  })
+  const choice = required({
+    value: one({
+      value: values.choice,
+      flag: '--choice',
+    }),
+    what: '--choice with the shared choice label',
+  })
+  const snapshot = required({
+    value: text({ value: values.questions }),
+    what: '--questions with the question keys from task questions',
+  })
+  let members: unknown
+
+  try {
+    members = JSON.parse(snapshot)
+  } catch {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: '--questions must be a JSON array of question keys',
+    })
+  }
+
+  if (!Array.isArray(members) || !members.length || members.some(key => typeof key !== 'string')
+    || new Set(members).size !== members.length) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: '--questions must contain unique question keys',
+    })
+  }
+
+  const state = loadHydra({ hydraId }).state
+  const card = findCard({
+    state,
+    ref,
+  })
+  const selected = (members as string[]).map(key => {
+    const [
+      task,
+      id,
+    ] = key.split('/')
+    const target = task ? state.cards[task] : undefined
+    const ask = target?.asks?.find(ask => ask.id === id && ask.audience === 'owner')
+    const event = `${attempt}:${key}`
+
+    if (!target || !ask) {
+      throw new HydraError({
+        code: 'CONFLICT',
+        message: 'The question group changed; read task questions again',
+      })
+    }
+
+    const repeat = ask.answered === event || !!target.replies?.some(reply => reply.id === event
+      && (reply.state === 'queued' || reply.state === 'delivery_unknown' || reply.accepted))
+
+    const priorReply = target.replies?.find(reply => reply.id === event)
+    const priorChoice = ask.choice ?? priorReply?.decision?.choice
+
+    if (repeat && priorChoice !== choice) {
+      throw new HydraError({
+        code: 'CONFLICT',
+        message: 'This group attempt already recorded a different choice',
+      })
+    }
+
+    return {
+      key,
+      card: target,
+      ask,
+      event,
+      repeat,
+    }
+  })
+  const pending = selected.filter(member => !member.repeat)
+  const group = ownerQuestionGroups({ state }).find(group => group.card.id === card.id)
+  const current = group?.decisions.map(decision => decisionKey({ decision })) ?? []
+
+  if (current.length !== pending.length || pending.some(member => !current.includes(member.key))) {
+    throw new HydraError({
+      code: 'CONFLICT',
+      message: 'The question group changed; read task questions again',
+    })
+  }
+
+  for (const member of pending) {
+    const option = member.ask.options?.find(option => option.label === choice)
+
+    if (!option || !group?.choices.includes(choice)) {
+      throw new HydraError({
+        code: 'VALIDATION_ERROR',
+        message: 'Use a shared choice label; answer different decisions individually',
+      })
+    }
+
+    askAnswer({
+      card: member.card,
+      id: member.ask.id,
+      actor: meta.actor,
+      choice,
+      state,
+    })
+  }
+
+  const answers: Output[] = []
+
+  for (const member of selected) {
+    if (member.repeat) {
+      answers.push({
+        task: member.card.id,
+        ask: member.ask.id,
+        repeat: true,
+      })
+      continue
+    }
+
+    answers.push(await answerCommand({
+      ref: member.card.id,
+      positionals: [
+        'answer',
+        member.card.id,
+        member.ask.id,
+      ],
+      values: {
+        choice,
+        text: text({ value: values.text }),
+      },
+      hydraId,
+      meta: {
+        ...meta,
+        id: member.event,
+      },
+    }))
+  }
+
+  return {
+    group: card.id,
+    answers,
+    stateSeq: loadHydra({ hydraId }).state.seq,
+  }
+}
+
 export function askCommand({
   action,
   positionals,
@@ -598,7 +761,7 @@ export function askCommand({
   hydraId,
   meta: given,
 }: {
-  action: 'ask' | 'answer' | 'escalate' | 'close-question' | 'reopen-question' | 'reask' | 'defer-question' | 'discuss-question'
+  action: 'ask' | 'answer' | 'answer-group' | 'escalate' | 'close-question' | 'reopen-question' | 'reask' | 'defer-question' | 'discuss-question'
   positionals: string[]
   values: Values
   hydraId: string
@@ -652,6 +815,15 @@ export function askCommand({
     })
   }
 
+  if (action === 'answer-group') {
+    return answerGroup({
+      ref,
+      values,
+      hydraId,
+      meta: m,
+    })
+  }
+
   if (action === 'answer') {
     return answerCommand({
       ref,
@@ -695,6 +867,13 @@ export function askCommand({
         }),
         question: text({ value: values.question }),
         context: text({ value: values.context }),
+        options: values.choice === undefined ? undefined : strings({ value: values.choice }).map(
+          raw => choice({ raw }),
+        ),
+        recommended: values.recommend === undefined ? undefined : Number(one({
+          value: values.recommend,
+          flag: '--recommend',
+        })),
         undelivered: values.undelivered === true,
         meta: m,
       }),

@@ -118,6 +118,7 @@ export const COMMAND_REGISTRY = {
         'chat',
         'sessions',
         'reminders',
+        'questions',
       ].includes(action ?? '')
         || (action === 'source' && [
           'list',
@@ -134,6 +135,7 @@ export const COMMAND_REGISTRY = {
         'chat',
         'sessions',
         'reminders',
+        'questions',
         'tools',
         'move',
         'stop',

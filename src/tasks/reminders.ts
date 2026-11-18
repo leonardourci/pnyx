@@ -294,21 +294,8 @@ export function applyReminder({
       delete card.reminder.repeat
     }
 
-    card.column = event.data.column
     card.hidden = false
     delete card.expired
-    const declaration = {
-      id: event.id,
-      at: event.at,
-      actor: event.actor,
-      state: 'needs_you' as const,
-      note: event.data.message.text,
-    }
-    card.status = declaration
-    card.statusLog = [
-      ...(card.statusLog ?? []),
-      declaration,
-    ]
 
     if (!event.data.grouped) {
       state.hydraMessages = [

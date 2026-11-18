@@ -119,6 +119,54 @@ export function isCanonicalQuestion({
   return canonical?.card.id === card.id && canonical.ask.id === ask.id
 }
 
+export function migrateReviewQuestion({
+  state,
+  at,
+}: {
+  state: HydraState
+  at: string
+}): HydraEvent | undefined {
+  for (const card of Object.values(state.cards)) {
+    const ownerMerges = cardLanding({
+      card,
+      projects: state.projects ?? [],
+    })?.merge === 'owner'
+
+    if (ownerMerges) {
+      continue
+    }
+
+    for (const ask of openAsks({
+      card,
+      audience: 'owner',
+    }).filter(ask => ask.kind === 'merge')) {
+      const decision = hydraEvent({
+        state,
+        cardId: card.id,
+        meta: {
+          at,
+          actor: 'pnyx',
+          id: `${ask.id}:${card.id}:review-update`,
+        },
+        change: {
+          type: 'task.ask.closed',
+          data: {
+            ask: ask.id,
+            reason: 'Ready for review is an update; this task does not require an owner merge decision',
+            evidence: ask.url ?? card.id,
+          },
+        },
+      })
+
+      if ('event' in decision) {
+        return decision.event
+      }
+    }
+  }
+
+  return undefined
+}
+
 export function reconcileAsks({
   state,
   event,
@@ -269,19 +317,21 @@ function mergeQuestion({
     context.push(`${workerLabel}: ${ownerContext({ text: workerText })}`)
   }
 
-  context.push(`Checks: ${link.checks ?? 'not read yet'}`)
+  context.push(`Checks: ${link.checks ?? 'not read yet'}. Merge lands this work; Hold keeps the pull request open.`)
+  context.push(`[${card.title}](pnyx-task:${encodeURIComponent(card.id)})`)
 
   return {
     id,
     audience: 'owner',
     kind: 'merge',
     url: link.url,
-    question: `Ready for review: PR #${number}`,
+    question: `Merge PR #${number}?`,
     context: context.join('\n'),
     options: [
       { label: 'Merge' },
       { label: 'Hold' },
     ],
+    recommended: 1,
   }
 }
 

@@ -22,7 +22,7 @@ export const lifecycleMove = ({ id }: { id: string }) => id.endsWith(MOVE)
 
 // A question still waiting on Hydra does not count as waiting on the owner.
 export function asksOwner({ card }: { card: Card }): boolean {
-  return ownerGates({ card }).length > 0 || !!card.reminder?.dueAt
+  return ownerGates({ card }).length > 0
 }
 
 const moveReason = ({

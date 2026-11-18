@@ -1,3 +1,4 @@
+import { migrateReviewQuestion } from '#tasks/delivery/merge-questions.ts'
 import { applyObservation, observationKey, observationStatement, type SourceObservation } from '#tasks/observations.ts'
 import type { Output } from './cli-support.ts'
 import { transactionReceipt, transactionStatement } from './transactions.ts'
@@ -193,6 +194,21 @@ export function withWriter<T>({
 
   try {
     for (const stage of stages) {
+      if (migrate) {
+        let review = migrateReviewQuestion({
+          state: stage.writer.state,
+          at: new Date().toISOString(),
+        })
+
+        while (review) {
+          stage.writer.append({ event: review })
+          review = migrateReviewQuestion({
+            state: stage.writer.state,
+            at: new Date().toISOString(),
+          })
+        }
+      }
+
       const migrated = migrate ? migrateColumns({
         state: stage.writer.state,
         meta: {

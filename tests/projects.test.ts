@@ -3538,3 +3538,100 @@ throw new Error('fixture allocation refusal')
     })).toBe(unlanded)
   },
 )
+
+test(
+  'ready review becomes an update when its task changes to Hydra merges',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await createProject({
+      hydra,
+      landing: 'pr',
+      remote: 'https://github.com/o/shop.git',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Review cart',
+        '--key',
+        'review-update',
+        '--project',
+        'shop',
+      ],
+    })
+    const url = 'https://github.com/o/shop/pull/77'
+    writeFileSync(
+      join(
+        github,
+        'o',
+        'shop',
+        '77.json',
+      ),
+      JSON.stringify({
+        state: 'open',
+        title: 'Review cart',
+        head: 'd'.repeat(40),
+        checks: '1 passed, 0 failed, 1 total',
+      }),
+    )
+    await hydra.owner({
+      args: [
+        'link',
+        'review-update',
+        '--url',
+        url,
+      ],
+    })
+    const question = await until({
+      what: 'an owner merge decision',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'review-update',
+          '--full',
+        ],
+      })).task.asks?.find((ask: { kind: string }) => ask.kind === 'merge'),
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'review-update',
+        'needs_you',
+        '--note',
+        'Ready for review',
+      ],
+    })
+    const current = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    const retired = current.task.asks.find((ask: { id: string }) => ask.id === question.id)
+    expect(retired.closed).toBeDefined()
+    expect(current.task.column).not.toBe(await hydra.column({ role: 'needs_you' }))
+    expect(JSON.stringify(await hydra.owner({
+      args: [
+        'task',
+        'updates',
+        'review-update',
+      ],
+    }))).toContain(url)
+  },
+)
