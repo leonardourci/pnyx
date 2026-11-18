@@ -1,8 +1,21 @@
 import { useEffect, type RefObject } from 'react'
-import Lenis from 'lenis'
+import Lenis, { type VirtualScrollData } from 'lenis'
 import Snap from 'lenis/snap'
 
 const SCROLL_LERP = 0.12
+
+const scrolls = new Set<Lenis>()
+let scrollFrame: number | undefined
+
+// eslint-disable-next-line pnyx/object-params -- requestAnimationFrame supplies its timestamp.
+function advanceScroll(time: number) {
+  scrollFrame = undefined
+  scrolls.forEach(lenis => lenis.raf(time))
+
+  if (scrolls.size) {
+    scrollFrame = requestAnimationFrame(advanceScroll)
+  }
+}
 
 export const scrollBehavior = (): ScrollBehavior =>
   matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
@@ -37,11 +50,17 @@ export function useSmoothScroll({
           deltaY,
         }) => !horizontal || Math.abs(deltaX) > Math.abs(deltaY),
         smoothWheel: true,
-        autoRaf: true,
+        autoRaf: false,
         lerp: SCROLL_LERP,
         allowNestedScroll: true,
         respectReducedMotion: true,
       })
+      scrolls.add(lenis)
+
+      if (scrollFrame === undefined) {
+        scrollFrame = requestAnimationFrame(advanceScroll)
+      }
+
       const snap = horizontal ? new Snap(
         lenis,
         {
@@ -49,6 +68,24 @@ export function useSmoothScroll({
           distanceThreshold: '20%',
         },
       ) : undefined
+      // Wheel deltas are already applied when the delayed snap runs.
+      const settledSnap = ({ event }: VirtualScrollData) => snap?.onSnapDebounced({
+        event,
+        deltaX: 0,
+        deltaY: 0,
+      })
+
+      if (snap) {
+        lenis.off(
+          'virtual-scroll',
+          snap.onSnapDebounced,
+        )
+        lenis.on(
+          'virtual-scroll',
+          settledSnap,
+        )
+      }
+
       let removeSnaps: (() => void)[] = []
 
       const resize = () => {
@@ -56,12 +93,22 @@ export function useSmoothScroll({
         removeSnaps.forEach(remove => remove())
         const padding = parseFloat(getComputedStyle(wrapper).scrollPaddingLeft) || 0
         removeSnaps = [...wrapper.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
-          .flatMap(element => snap ? [
-            snap.add(Math.max(
+          .flatMap(element => {
+            if (!snap) {
+              return []
+            }
+
+            const start = element.offsetLeft + inner.offsetLeft - wrapper.offsetLeft - padding
+            const projects: number[] = JSON.parse(element.dataset.projectSnaps ?? '[]')
+
+            return [
               0,
-              element.offsetLeft + inner.offsetLeft - wrapper.offsetLeft - padding,
-            )),
-          ] : [])
+              ...projects,
+            ].map(offset => snap.add(Math.max(
+              0,
+              start + offset,
+            )))
+          })
       }
 
       resize()
@@ -94,6 +141,17 @@ export function useSmoothScroll({
 
       return () => {
         observer.disconnect(); sizes.disconnect(); removeSnaps.forEach(remove => remove())
+        scrolls.delete(lenis)
+
+        if (!scrolls.size && scrollFrame !== undefined) {
+          cancelAnimationFrame(scrollFrame)
+          scrollFrame = undefined
+        }
+
+        lenis.off(
+          'virtual-scroll',
+          settledSnap,
+        )
         snap?.destroy(); lenis.destroy()
       }
     },

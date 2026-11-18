@@ -1,4 +1,4 @@
-import { useId, useEffect, useRef, useState, useCallback, type ReactNode, type RefObject } from 'react'
+import { useId, useEffect, useLayoutEffect, useRef, useState, useCallback, type ReactNode, type RefObject } from 'react'
 import { useAnimationFrame, frame, cancelFrame } from 'motion/react'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
@@ -24,6 +24,12 @@ export function HoverActions({
 }) {
   const id = useId()
   const panel = useRef<HTMLDivElement>(null)
+  const prepared = useRef(false)
+  const opening = useRef<(() => void) | null>(null)
+  const [
+    mounted,
+    setMounted,
+  ] = useState(false)
   const [
     visible,
     setVisible,
@@ -57,6 +63,16 @@ export function HoverActions({
     [anchor],
   )
 
+  useLayoutEffect(
+    () => {
+      prepared.current = mounted
+      const show = opening.current
+      opening.current = null
+      show?.()
+    },
+    [mounted],
+  )
+
   useEffect(
     () => {
       const card = anchor.current
@@ -78,6 +94,8 @@ export function HoverActions({
       const hovered = () => card.matches(':hover') || element.matches(':hover')
 
       const hide = () => {
+        opening.current = null
+
         if (!element.isConnected) {
           return
         }
@@ -107,8 +125,20 @@ export function HoverActions({
             },
           },
         ))
-        element.showPopover()
-        position()
+
+        const open = () => {
+          if (card.isConnected && element.isConnected) {
+            element.showPopover()
+            position()
+          }
+        }
+
+        if (!prepared.current) {
+          opening.current = open
+          setMounted(true)
+        } else {
+          open()
+        }
       }
 
       const leave = (event: PointerEvent) => {
@@ -227,7 +257,7 @@ export function HoverActions({
       popover="manual"
       onToggle={() => setVisible(panel.current?.matches(':popover-open') ?? false)}
       className="card-menu fixed inset-auto m-0 hidden w-max max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 shadow-actions opacity-0 pointer-events-none transition-opacity duration-fast open:flex open:opacity-100 open:pointer-events-auto starting:open:opacity-0 motion-reduce:transition-none [&_.tooltip-anchor]:inline-flex"
-    >{visible && <TrackActions position={position} />}{children}
+    >{visible && <TrackActions position={position} />}{mounted && children}
     </div>
   )
 }

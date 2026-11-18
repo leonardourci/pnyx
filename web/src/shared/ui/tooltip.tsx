@@ -39,6 +39,7 @@ export function Tooltip({
   const id = useId()
   const anchor = useRef<HTMLSpanElement>(null)
   const panel = useRef<HTMLSpanElement>(null)
+  const dismissal = useRef<AbortController | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [
@@ -50,6 +51,8 @@ export function Tooltip({
   const hide = () => {
     clearTimeout(timer.current)
     clearTimeout(closeTimer.current)
+    dismissal.current?.abort()
+    dismissal.current = null
     setVisible(false)
   }
 
@@ -82,6 +85,36 @@ export function Tooltip({
       return
     }
 
+    if (!dismissal.current) {
+      const controller = new AbortController()
+      dismissal.current = controller
+
+      const claimed = (event: Event) => {
+        if (event instanceof CustomEvent && event.detail.id !== id) {
+          hide()
+        }
+      }
+
+      document.addEventListener(
+        HOVER_CLAIM,
+        claimed,
+        { signal: controller.signal },
+      )
+      document.addEventListener(
+        'scroll',
+        hideOnScroll,
+        {
+          capture: true,
+          signal: controller.signal,
+        },
+      )
+      window.addEventListener(
+        'resize',
+        hide,
+        { signal: controller.signal },
+      )
+    }
+
     clearTimeout(closeTimer.current)
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,
@@ -100,54 +133,25 @@ export function Tooltip({
   }
 
   useEffect(
-    () => {
-      const claimed = (event: Event) => {
-        if (event instanceof CustomEvent && event.detail.id !== id) {
-          hide()
-        }
-      }
-
-      document.addEventListener(
-        HOVER_CLAIM,
-        claimed,
-      )
-      document.addEventListener(
-        'scroll',
-        hideOnScroll,
-        true,
-      )
-      window.addEventListener(
-        'resize',
-        hide,
-      )
-
-      return () => {
-        clearTimeout(timer.current)
-        clearTimeout(closeTimer.current)
-        document.removeEventListener(
-          HOVER_CLAIM,
-          claimed,
-        )
-        document.removeEventListener(
-          'scroll',
-          hideOnScroll,
-          true,
-        )
-        window.removeEventListener(
-          'resize',
-          hide,
-        )
-      }
+    () => () => {
+      clearTimeout(timer.current)
+      clearTimeout(closeTimer.current)
+      dismissal.current?.abort()
     },
-    [id],
+    [],
   )
 
   useLayoutEffect(
     () => {
       const element = panel.current
+
+      if (!visible || !element) {
+        return
+      }
+
       const rect = anchor.current?.getBoundingClientRect()
 
-      if (!visible || !element || !rect) {
+      if (!rect) {
         return
       }
 

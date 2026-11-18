@@ -18,6 +18,7 @@ const FALLBACK_EASING = [
   0.2,
   1,
 ] as const
+const motionMedia = typeof window === 'undefined' ? undefined : window.matchMedia(REDUCED_MOTION)
 const cssEasing = typeof document === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue('--ease-ui')
 const coordinates = cssEasing.match(/cubic-bezier\(([^)]+)\)/)?.[1]?.split(',').map(Number)
 export const MOTION_EASING = coordinates?.length === 4 && coordinates.every(Number.isFinite)
@@ -30,10 +31,29 @@ export const MOTION_EASING = coordinates?.length === 4 && coordinates.every(Numb
   : FALLBACK_EASING
 export const MOTION_CSS_EASING = `cubic-bezier(${MOTION_EASING.join(', ')})`
 
+function readDurations() {
+  const styles = typeof document === 'undefined' ? undefined : getComputedStyle(document.documentElement)
+
+  return Object.fromEntries(Object.entries(MOTION_DURATIONS).map(([
+    speed,
+    fallback,
+  ]) => {
+    const css = styles?.getPropertyValue(`--transition-duration-${speed}`).trim() ?? ''
+    const value = parseFloat(css)
+
+    return [
+      speed,
+      Number.isFinite(value) ? value * (css.endsWith('ms') ? 1 : 1000) : fallback,
+    ]
+  })) as Record<keyof typeof MOTION_DURATIONS, number>
+}
+
+let durations = readDurations()
+
 export function motionDuration({
   speed = 'base',
   mode = MOTION_MODE,
-  reducedMotion = typeof window !== 'undefined' && window.matchMedia(REDUCED_MOTION).matches,
+  reducedMotion = motionMedia?.matches ?? false,
 }: {
   speed?: keyof typeof MOTION_DURATIONS
   mode?: MotionMode
@@ -41,26 +61,23 @@ export function motionDuration({
 } = {}) {
   const runtimeOff = typeof document !== 'undefined' && document.documentElement.dataset.motion === 'off'
 
-  const runtimeReduced = typeof window !== 'undefined' && window.matchMedia(REDUCED_MOTION).matches
+  const runtimeReduced = motionMedia?.matches ?? false
 
   if (mode === 'off' || runtimeOff || reducedMotion || runtimeReduced) {
     return 0
   }
 
-  const css = typeof document === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(`--transition-duration-${speed}`)
-    .trim()
-  const value = parseFloat(css)
-
-  return Number.isFinite(value) ? value * (css.endsWith('ms') ? 1 : 1000) : MOTION_DURATIONS[speed]
+  return durations[speed]
 }
 
 function motionPreference() {
-  return `${document.documentElement.dataset.motion ?? MOTION_MODE}:${window.matchMedia(REDUCED_MOTION).matches}`
+  return `${document.documentElement.dataset.motion ?? MOTION_MODE}:${motionMedia?.matches ?? false}`
 }
 
 // eslint-disable-next-line pnyx/object-params -- React owns the subscription callback signature.
 function subscribeMotion(changed: () => void) {
   const update = () => {
+    durations = readDurations()
     MotionGlobalConfig.skipAnimations = motionDuration() === 0
     changed()
   }
@@ -73,7 +90,7 @@ function subscribeMotion(changed: () => void) {
       attributeFilter: ['data-motion'],
     },
   )
-  const media = window.matchMedia(REDUCED_MOTION)
+  const media = motionMedia!
   media.addEventListener(
     'change',
     update,
