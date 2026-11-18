@@ -317,7 +317,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     page,
     cards: state.cards,
     selected,
-    needsYou: columns.find(c => c.role === 'needs_you')?.id,
     hydra: shownHydra && hydraTitle(shownHydra),
   })
   useHydraFavicon({ icon: shownHydra?.icon })

@@ -1,3 +1,4 @@
+import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -435,5 +436,27 @@ test(
         'preview',
       ],
     })).code).toBe('NOT_FOUND')
+  },
+)
+
+test(
+  'tab titles identify the Hydra, focused task and settings',
+  () => {
+    const cards = {} as Parameters<typeof pageTitle>[0]['cards']
+    expect(pageTitle({
+      cards,
+      hydra: 'Poseidon',
+    })).toBe('Poseidon · Pnyx')
+    cards.cart = { title: 'Add the cart' } as typeof cards[string]
+    expect(pageTitle({
+      cards,
+      hydra: 'Poseidon',
+      selected: 'cart',
+    })).toBe('Add the cart · Poseidon · Pnyx')
+    expect(pageTitle({
+      cards,
+      hydra: 'Poseidon',
+      page: 'settings',
+    })).toBe('Settings · Poseidon · Pnyx')
   },
 )
