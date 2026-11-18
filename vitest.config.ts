@@ -24,12 +24,13 @@ export default defineConfig({
     ],
     globalSetup: ['tests/setup/global-setup.ts'],
     setupFiles: ['tests/setup/environment.ts'],
-    // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order.
     sequence: {
       // A file's own afterAll hooks, such as stopping its server, run before the setup file deletes its scratch home.
       hooks: 'stack',
+      // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order. Files keep
+      // Vitest's order, longest first, since each runs alone in its own process, home and database.
       shuffle: {
-        files: true,
+        files: false,
         tests: true,
       },
     },
@@ -50,7 +51,10 @@ export default defineConfig({
           name: 'e2e',
           include: ['tests/e2e/*.test.ts'],
           exclude: ['tests/e2e/performance.test.ts'],
-          // A browser journey starts zero-cache and Chrome, which a loaded machine slows most.
+          // A browser journey runs zero-cache and Chrome beside its server, so the journeys run after the integration files,
+          // on half the cores, instead of starving them of CPU.
+          sequence: { groupOrder: 1 },
+          maxWorkers: '50%',
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,
         },
@@ -60,6 +64,7 @@ export default defineConfig({
         test: {
           name: 'performance',
           include: PERFORMANCE_JOURNEY ? ['tests/e2e/performance.test.ts'] : [],
+          sequence: { groupOrder: 2 },
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,
         },
