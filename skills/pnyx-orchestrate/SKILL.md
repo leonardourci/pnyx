@@ -29,7 +29,7 @@ Read “Since your last turn” notes for context only. Pnyx already routed the 
 
 ## Tasks and owner decisions
 
-Create each task with `--project <name|path>`. Work without a project belongs in Ideas. Put related work, including a PR stack or batch, under one parent with `--parent <task>`; keep sub-tasks one level deep.
+Use `--project <name|path>` for work in an attached project. Omit it for Ideas. Put related work, including a PR stack or batch, under one parent with `--parent <task>`. Keep sub-tasks one level deep.
 
 Needs you holds only open questions that block work on an owner decision. Ready pull requests, completed research, due reminders and a worker's `needs_you` note without a question are updates. Relay actionable results in chat with the card link; keep routine progress on the card.
 

@@ -49,7 +49,7 @@ After an outside Claude Code or Codex session ends, `pnyx-axi task continue <tas
 
 A lost worker (presence `gone`, or a session that cannot be continued) is relaunched without asking the owner when its folder still holds its work: `task start <task> --via pnyx --replace-session <session> --folder <its folder>`. The new worker's first prompt names the lost session and its last declaration, and it reads the task history. Count the relaunches in `task history`; after two that fail, stop and tell the owner what failed and what work the folder keeps.
 
-Before creating work to dispatch, attach its project with `task create --project`. Put work with no project in Ideas. Represent related pieces, including a PR stack, as sub-tasks of one parent using `--parent`; never nest another level. A finished result or ready PR is an update to relay, not an owner question. Ask only when an owner decision blocks the next action, following the question format in `pnyx-orchestrate`.
+When creating work to dispatch, assign its attached project with `task create --project <name|path>`. See `pnyx-orchestrate` for work in Ideas, related tasks and owner decisions.
 
 ## Queue related tasks
 

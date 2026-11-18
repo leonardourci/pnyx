@@ -51,11 +51,10 @@ export function useGroupAnswers({
     sending.current = true
     setBusy(attempt.id)
 
-    if (!pending.some(saved => saved.id === attempt.id)) {
-      setPending([
-        ...pending,
-        attempt,
-      ])
+    const alreadySaved = pending.some(saved => saved.id === attempt.id)
+
+    if (!alreadySaved) {
+      setPending([...pending, attempt])
     }
 
     try {
@@ -80,7 +79,7 @@ export function useGroupAnswers({
         dismiss({ id: attempt.id })
       }
 
-      notify({ text: 'Group answer submitted' })
+      notify({ text: unsettled ? 'Some answers still need delivery' : 'Group answer submitted' })
     } catch (error) {
       notify({ text: error instanceof Error ? error.message : String(error) })
     } finally {

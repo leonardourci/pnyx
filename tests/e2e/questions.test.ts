@@ -258,7 +258,11 @@ test(
     await waiting.click()
     const group = page.locator('.waiting-question-group')
 
-    await group.locator('summary').click()
+    const groupSummary = group.locator('summary')
+    await groupSummary.press('Space')
+    await groupSummary.press('ArrowDown')
+    const firstQuestion = group.getByRole('button', { name: /Include archived/ }).first()
+    expect(await firstQuestion.evaluate(element => element === document.activeElement)).toBe(true)
 
     if (process.env.PNYX_KEEP_TEST_FILES) {
       mkdirSync(

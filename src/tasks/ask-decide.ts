@@ -125,20 +125,30 @@ function questionChoices({
   options?: Question['options']
   recommended?: number
 }) {
-  const choices = (options ?? []).map(option => ({
-    label: text({
+  const choices = (options ?? []).map(option => {
+    const label = text({
       value: option.label,
       what: 'a choice',
       max: LABEL_MAX,
-    })!,
-    ...(option.description?.trim() ? {
+    })
+
+    if (!label) {
+      throw invalid({ message: 'a choice is empty' })
+    }
+
+    if (!option.description?.trim()) {
+      return { label }
+    }
+
+    return {
+      label,
       description: text({
         value: option.description,
         what: 'a choice description',
         max: QUESTION_MAX,
       }),
-    } : {}),
-  }))
+    }
+  })
 
   if (choices.length > OPTIONS_MAX) {
     throw invalid({ message: `use at most ${OPTIONS_MAX} choices` })
@@ -177,12 +187,15 @@ function validateOwnerQuestion({
     missing.push('--question with one plain decision ending in ?')
   }
 
-  if (!context?.trim()) {
+  const taskLinks = /\[[^\]\n]+\]\(pnyx-task:([^\s)]+)\)/g
+  const explanation = context?.replace(taskLinks, '').trim()
+
+  if (!explanation) {
     missing.push('--context explaining what changes and what happens next')
   }
 
   const taskId = encodeURIComponent(card.id)
-  const links = context?.matchAll(/\[[^\]\n]+\]\(pnyx-task:([^\s)]+)\)/g)
+  const links = context?.matchAll(taskLinks)
   const linksToCard = links && [...links].some(link => link[1] === taskId)
 
   if (!linksToCard) {
@@ -300,12 +313,13 @@ export function decideAsk({
     throw invalid({ message: 'a go question supplies its own Go and Hold choices' })
   }
 
+  const recommendation = kind === 'go' ? 1 : recommended
   const choices = questionChoices({
     options: kind === 'go' ? [
       { label: 'Go' },
       { label: 'Hold' },
     ] : options,
-    recommended,
+    recommended: recommendation,
   })
 
   const said = {
@@ -336,7 +350,7 @@ export function decideAsk({
       question: said.question,
       context: said.context,
       options: choices,
-      recommended: kind === 'go' ? 1 : recommended,
+      recommended: recommendation,
     })
   }
 
@@ -358,7 +372,7 @@ export function decideAsk({
         ...(said.context ? { context: said.context } : {}),
         ...(said.details ? { details: said.details } : {}),
         ...(choices.length ? { options: choices } : {}),
-        ...(kind === 'go' ? { recommended: 1 } : recommended ? { recommended } : {}),
+        recommended: recommendation,
       },
     },
   })

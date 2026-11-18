@@ -103,18 +103,19 @@ export function WaitingDecisions({
 
                 event.preventDefault()
                 event.stopPropagation()
-                const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
-                const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+                const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('summary, button:not(:disabled), a[href]')]
+                  .filter(element => element.getClientRects().length > 0)
+                const index = focusable.findIndex(element => element === document.activeElement)
                 const next = index + (event.key === 'ArrowDown' ? 1 : -1)
 
                 if (next < 0) {
                   close()
-                } else if (next >= buttons.length) {
+                } else if (next >= focusable.length) {
                   close()
                   event.currentTarget.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
                     ?.focus()
                 } else {
-                  buttons[next].focus()
+                  focusable[next].focus()
                 }
               }}
             >
@@ -132,7 +133,8 @@ export function WaitingDecisions({
                             <Button
                               disabled={loading}
                               onClick={async () => {
-                                close(); await open({ decision })
+                                close()
+                                await open({ decision })
                               }}
                             >
                               <span className="waiting-decision-task text-muted">{decision.card.title}</span>

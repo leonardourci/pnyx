@@ -667,10 +667,9 @@ async function answerGroup({
       })
     }
 
-    const repeat = ask.answered === event || !!target.replies?.some(reply => reply.id === event
-      && (reply.state === 'queued' || reply.state === 'delivery_unknown' || reply.accepted))
-
-    const priorReply = target.replies?.find(reply => reply.id === event)
+    const priorReply = target.replies?.find(reply => reply.id === event && reply.decision?.questionId === ask.id)
+    const repeat = ask.answered === event || (priorReply !== undefined
+      && (priorReply.state === 'queued' || priorReply.state === 'delivery_unknown' || priorReply.accepted === true))
     const priorChoice = priorReply?.decision?.choice ?? ask.choice
 
     if (repeat && priorChoice !== choice) {
@@ -693,7 +692,9 @@ async function answerGroup({
   const group = ownerQuestionGroups({ state }).find(group => group.card.id === card.id)
   const current = group?.decisions.map(decision => decisionKey({ decision })) ?? []
 
-  if (current.length !== pending.length || pending.some(member => !current.includes(member.key))) {
+  const groupChanged = current.length !== pending.length || pending.some(member => !current.includes(member.key))
+
+  if (pending.length && groupChanged) {
     throw new HydraError({
       code: 'CONFLICT',
       message: 'The question group changed; read task questions again',

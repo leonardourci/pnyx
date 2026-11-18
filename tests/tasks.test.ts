@@ -1334,6 +1334,7 @@ test(
 
     for (const badContext of [
       'Totals change after the answer.',
+      `[Export](pnyx-task:${card.id})`,
       '[Wrong](pnyx-task:another-card)',
       `Totals change after the answer. ](pnyx-task:${card.id})`,
     ]) {
@@ -1373,7 +1374,7 @@ test(
         'rule',
         await hydra.column({ role: 'needs_you' }),
         '--when',
-        'reminder-due',
+        'reminder-due,!done',
         '--when',
         'owner-question',
         '--reason',
@@ -1643,10 +1644,15 @@ test(
     await ask({
       key: 'payments',
       options: [
-        'Recent only',
+        'Open only: Include the current billing period only',
         'Everything',
       ],
     })
+    const recovered = await hydra.owner({ args: answer })
+    expect(recovered.answers).toMatchObject([
+      { repeat: true },
+      { repeat: true },
+    ])
     const oldKeys = old.groups[0].questions.map((question: { key: string }) => question.key)
     const stale = JSON.stringify(oldKeys)
     expect((await hydra.ownerRefused({

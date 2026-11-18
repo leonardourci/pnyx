@@ -65,20 +65,26 @@ const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
   ],
 }
 
-const PREVIOUS_REMINDER_RULES = Object.fromEntries(Object.entries(DEFAULT_COLUMN_RULES).map(([
-  role,
-  rule,
-]) => [
-  role,
-  role === 'needs_you' ? [
-    ...rule,
-    ['reminder-due'],
-  ] : rule.map(conditions => conditions.flatMap(condition =>
+function withReminderExclusion({ rule }: { rule: ColumnRule }): ColumnRule {
+  return rule.map(conditions => conditions.flatMap(condition =>
     condition === '!owner-question' ? [
       condition,
       '!reminder-due',
-    ] : [condition])),
-]))
+    ] : [condition]))
+}
+
+const PREVIOUS_REMINDER_RULES: Record<string, ColumnRule> = Object.fromEntries(
+  Object.entries(DEFAULT_COLUMN_RULES).map(([
+    role,
+    rule,
+  ]) => [
+    role,
+    role === 'needs_you' ? [
+      ...rule,
+      ['reminder-due'],
+    ] : withReminderExclusion({ rule }),
+  ]),
+)
 
 const PREVIOUS_HOLD_RULES: Record<string, ColumnRule> = {
   queued: [
@@ -109,16 +115,15 @@ export function columnRule({ column }: { column: HydraColumn }): ColumnRule {
 }
 
 export function migrateDefaultRule({ column }: { column: HydraColumn }): HydraColumn {
-  const previous = PREVIOUS_HOLD_RULES[column.role ?? '']?.map(conditions => conditions.flatMap(condition =>
-    condition === '!owner-question' ? [
-      condition,
-      '!reminder-due',
-    ] : [condition]))
+  const role = column.role ?? ''
+  const holdRule = PREVIOUS_HOLD_RULES[role]
+  const previous = holdRule ? withReminderExclusion({ rule: holdRule }) : undefined
+  const savedRule = JSON.stringify(column.rule)
   const unchangedDefault = [
     previous,
-    PREVIOUS_REMINDER_RULES[column.role ?? ''],
+    PREVIOUS_REMINDER_RULES[role],
   ]
-    .some(rule => rule && JSON.stringify(column.rule) === JSON.stringify(rule))
+    .some(rule => rule && savedRule === JSON.stringify(rule))
 
   if (column.rule !== undefined && !unchangedDefault) {
     return column
@@ -126,7 +131,7 @@ export function migrateDefaultRule({ column }: { column: HydraColumn }): HydraCo
 
   return {
     ...column,
-    rule: structuredClone(DEFAULT_COLUMN_RULES[column.role ?? ''] ?? []),
+    rule: structuredClone(DEFAULT_COLUMN_RULES[role] ?? []),
   }
 }
 
