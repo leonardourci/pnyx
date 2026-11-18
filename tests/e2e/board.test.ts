@@ -669,18 +669,18 @@ test(
       expect(await instruction.count()).toBe(0)
       const first = cards.filter({ hasText: 'First task' })
       const third = cards.filter({ hasText: 'Third task' })
-      await third.scrollIntoViewIfNeeded()
-      await first.scrollIntoViewIfNeeded()
+      await third.hover({
+        position: {
+          x: 12,
+          y: 8,
+        },
+      })
       const from = await third.boundingBox(), to = await first.boundingBox()
 
       if (!from || !to) {
         throw new Error('The drag cards are not visible')
       }
 
-      await page.mouse.move(
-        from.x + 12,
-        from.y + 8,
-      )
       await page.mouse.down()
       await page.mouse.move(
         from.x + 32,
