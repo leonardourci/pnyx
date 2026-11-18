@@ -63,7 +63,6 @@ function handoffBlocked({
   })
 }
 
-// A worker takes its next task only between turns, with nothing waiting on it.
 function workerIdle({
   card,
   session,
@@ -72,7 +71,8 @@ function workerIdle({
   session: AgentSession
 }): boolean {
   const busy = card.activity === 'working' || session.activity === 'working' || session.activity === 'ended'
-  const waiting = session.attention.some(a => a.blocking && !a.answered) || pendingPermissions({ card }).length > 0
+  const waiting = session.attention.some(a => a.blocking && !a.answered)
+    || pendingPermissions({ card }).length > 0
 
   return !busy && !waiting
 }
