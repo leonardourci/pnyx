@@ -29,6 +29,7 @@ const POLL_MS = 500
 // The data check's disposable copy of the database, beside it on the same server.
 const COPY_SUFFIX = '_upgrade_check'
 const COPY_MS = 10 * 60_000
+const BREW_PREFIX_MS = 30_000
 // How a connection fails when no Postgres listens, over TCP or a socket file; any other failure has a running server.
 const NOT_RUNNING = /ECONNREFUSED|ENOENT|connection refused/i
 // A server that is starting, or restarting and dropped the connection, answers once it is up.
@@ -319,7 +320,10 @@ function copyEnv(): NodeJS.ProcessEnv {
       '--prefix',
       FORMULA,
     ],
-    { encoding: 'utf8' },
+    {
+      encoding: 'utf8',
+      timeout: BREW_PREFIX_MS,
+    },
   )
 
   if (prefix.status !== 0) {
