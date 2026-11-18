@@ -1,4 +1,6 @@
 import { beforeAll, expect, test } from 'vitest'
+import { searchInBackground } from '#oracle/search-background.ts'
+import { runForClient } from '#app/request-context.ts'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { startPnyx, pnyxAxi, parsed, type Pnyx } from './setup/pnyx.ts'
@@ -215,6 +217,35 @@ test(
     })
     expect(crossHydraSearch.status).toBe(0)
     expect(crossHydraSearch.stdout).not.toContain('Private')
+    const ownerSearch = runForClient({
+      identity: {},
+      cwd: process.cwd(),
+      run: () => searchInBackground({
+        hydraId: personal.id,
+        query: { text: 'private' },
+      }),
+    })
+    const nativeSearch = runForClient({
+      identity: {
+        PNYX_ACTOR: 'hydra',
+        PNYX_HYDRA: work.id,
+      },
+      cwd: process.cwd(),
+      run: () => searchInBackground({
+        hydraId: personal.id,
+        query: { text: 'private' },
+      }),
+    })
+    const [
+      ownerResult,
+      nativeResult,
+    ] = await Promise.all([
+      ownerSearch,
+      nativeSearch,
+    ])
+    expect(JSON.stringify(ownerResult.hits)).toContain('Private')
+    expect(JSON.stringify(nativeResult.hits)).not.toContain('Private')
+
     const crossHydraWrite = await pnyxAxi({
       args: [
         'hydra',
@@ -1913,7 +1944,12 @@ test(
         '--json',
         JSON.stringify({
           poleis: {
-            'audience-private': { readers: [author.id, newcomer.id] },
+            'audience-private': {
+              readers: [
+                author.id,
+                newcomer.id,
+              ],
+            },
           },
         }),
         '--propose',
