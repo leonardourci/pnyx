@@ -1,11 +1,11 @@
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import pg from 'pg'
 import { HydraError } from '#store/errors.ts'
-import { closePostgres, configuredUrl, homeDatabase, migrateSchema, query, useDatabase } from '#store/postgres.ts'
+import { closePostgres, configuredUrl, homeDatabase, migrateSchema, query, useConfiguredDatabase, useDatabase } from '#store/postgres.ts'
 import { SCHEMA_VERSION } from '#store/schema.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { hydraExists, importLegacy, loadHydra } from '#app/store.ts'
@@ -310,12 +310,41 @@ function checkHydras(): Output {
   }
 }
 
+// Homebrew installs postgresql@17 keg-only, so its pg_dump and pg_restore are not on PATH unless the owner put them
+// there; they are searched after PATH's own.
+function copyEnv(): NodeJS.ProcessEnv {
+  const prefix = spawnSync(
+    'brew',
+    [
+      '--prefix',
+      FORMULA,
+    ],
+    { encoding: 'utf8' },
+  )
+
+  if (prefix.status !== 0) {
+    return process.env
+  }
+
+  const kegBin = join(
+    prefix.stdout.trim(),
+    'bin',
+  )
+
+  return {
+    ...process.env,
+    PATH: `${process.env.PATH}${delimiter}${kegBin}`,
+  }
+}
+
 function copyTool({
   command,
   args,
+  env,
 }: {
   command: string
   args: string[]
+  env: NodeJS.ProcessEnv
 }): void {
   const ran = spawnSync(
     command,
@@ -323,6 +352,7 @@ function copyTool({
     {
       encoding: 'utf8',
       timeout: COPY_MS,
+      env,
     },
   )
 
@@ -333,7 +363,7 @@ function copyTool({
   throw new HydraError({
     message: `${command} could not copy the database for the data check: ${ran.error ? ran.error.message : ran.stderr}`,
     code: 'POSTGRES_UNAVAILABLE',
-    help: [`Fix: put the pg_dump and pg_restore of PostgreSQL 15 or newer on PATH (\`brew install ${FORMULA}\` on macOS), then run \`pnyx-axi setup postgres --check\``],
+    help: [`Fix: put the pg_dump and pg_restore of this Postgres's version or newer on PATH (Homebrew's ${FORMULA} is found without it), then run \`pnyx-axi setup postgres --check\``],
   })
 }
 
@@ -358,6 +388,7 @@ async function checkOnCopy({
     dumpDir,
     'pnyx.dump',
   )
+  const env = copyEnv()
 
   try {
     query({
@@ -374,6 +405,7 @@ async function checkOnCopy({
         `--file=${dump}`,
         `--dbname=${live.href}`,
       ],
+      env,
     })
     copyTool({
       command: 'pg_restore',
@@ -383,6 +415,7 @@ async function checkOnCopy({
         `--dbname=${copy.href}`,
         dump,
       ],
+      env,
     })
     useDatabase({ url: copy.href })
 
@@ -414,8 +447,8 @@ async function checkOnCopy({
       },
     )
     await closePostgres()
+    useConfiguredDatabase()
     query({
-      url: live.href,
       schema: 'inspect',
       statements: [drop],
     })
@@ -444,14 +477,15 @@ async function checkData(): Promise<Output> {
     statements: [{ text: 'select max(version)::integer as version from schema_version' }],
   })
   const version = Number(versions?.[0]?.version)
+  const checked = version === SCHEMA_VERSION ? checkHydras() : await checkOnCopy({
+    database,
+    version,
+  })
 
   return {
     postgres: 'ready',
     database,
-    ...version === SCHEMA_VERSION ? checkHydras() : await checkOnCopy({
-      database,
-      version,
-    }),
+    ...checked,
   }
 }
 

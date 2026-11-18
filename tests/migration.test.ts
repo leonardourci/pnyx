@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import pg from 'pg'
 import { beforeAll, expect, test } from 'vitest'
 import { closePostgres, homeDatabase } from '#store/postgres.ts'
-import { SCHEMA_VERSION, binaries, sql } from './setup/postgres.ts'
+import { SCHEMA_VERSION } from '#store/schema.ts'
+import { binaries, sql } from './setup/postgres.ts'
 import { parsed, pnyxAxi, rows, startPnyx, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -391,8 +392,8 @@ test(
   },
 )
 
-// The owner's PATH carries Postgres's pg_dump and pg_restore; the test PATH does not.
-const dataCheck = ({ path = `${binaries()}:${process.env.PATH}` }: { path?: string } = {}) => pnyxAxi({
+// Each check gets only the PATH it names, so whether pg_dump is found does not depend on the machine's own folders.
+const dataCheck = ({ path }: { path: string }) => pnyxAxi({
   args: [
     'setup',
     'postgres',
@@ -404,13 +405,34 @@ const dataCheck = ({ path = `${binaries()}:${process.env.PATH}` }: { path?: stri
   },
 })
 
+// A PATH with only a brew whose keg-only postgresql@17 is this run's Postgres, as Homebrew installs it.
+const homebrewOnly = () => {
+  const bin = mkdtempSync(join(
+    process.env.TMPDIR!,
+    'brew-',
+  ))
+  writeFileSync(
+    join(
+      bin,
+      'brew',
+    ),
+    `#!/bin/sh\n[ "$*" = "--prefix postgresql@17" ] || exit 1\necho ${dirname(binaries())}\n`,
+    { mode: 0o755 },
+  )
+
+  return bin
+}
+
 const copyLeft = async () => (await sql({
   database: 'postgres',
   text: 'select 1 from pg_database where datname = $1',
   values: [`${homeDatabase()}_upgrade_check`],
 })).length > 0
 
-const version = async ({ client }: { client: pg.Client }) => (await client.query<{ version: number }>('select max(version) as version from schema_version')).rows[0]!.version
+const liveVersion = async () => (await sql({
+  database: homeDatabase(),
+  text: 'select max(version) as version from schema_version',
+}))[0]!.version
 
 const tasks = async ({ hydra }: { hydra: Hydra }) => ({
   list: (await hydra.owner({
@@ -425,7 +447,7 @@ const tasks = async ({ hydra }: { hydra: Hydra }) => ({
 })
 
 test(
-  'the upgrade check migrates a copy of a schema 5 database the old server still holds, and the server migrates the database itself when it starts, keeping every Hydra\'s tasks',
+  'the upgrade check migrates a copy of a schema 5 database the old server still holds, with Homebrew\'s keg-only pg_dump, and the server migrates the database itself when it starts, keeping every Hydra\'s tasks',
   async () => {
     const hydras = [
       await pnyx.hydra(),
@@ -477,7 +499,7 @@ test(
         await oldServer.connect()
 
         try {
-          const check = await dataCheck()
+          const check = await dataCheck({ path: homebrewOnly() })
           expect(
             check.status,
             check.stdout,
@@ -487,7 +509,7 @@ test(
             schema: 5,
             imported: 'none: no Hydra waiting',
           })
-          expect(await version({ client: oldServer })).toBe(5)
+          expect(await liveVersion()).toBe(5)
           expect(await copyLeft()).toBe(false)
         } finally {
           await oldServer.end()
@@ -499,7 +521,6 @@ test(
     expect(rows<{ columns: string[] }>({ text: 'select attnames as columns from pg_publication_tables where pubname = \'pnyx_page\' and tablename = \'hydras\'' })[0]!.columns).toContain('seq')
     expect(await Promise.all(hydras.map(hydra => tasks({ hydra })))).toEqual(before)
   },
-  60_000,
 )
 
 test(
@@ -517,22 +538,28 @@ test(
 
         const untouched = async () => {
           expect(await copyLeft()).toBe(false)
-          expect((await sql({
-            database,
-            text: 'select max(version) as version from schema_version',
-          }))[0]!.version).toBe(3)
+          expect(await liveVersion()).toBe(3)
         }
 
-        const withoutTools = await dataCheck({ path: dirname(process.execPath) })
-        expect(withoutTools.status).toBe(1)
-        expect(withoutTools.stdout).toContain('pg_dump could not copy the database for the data check')
-        await untouched()
+        // Put back even when an assertion fails, so the restart and the file's later tests still start.
+        try {
+          const withoutTools = await dataCheck({
+            path: mkdtempSync(join(
+              process.env.TMPDIR!,
+              'no-tools-',
+            )),
+          })
+          expect(withoutTools.status).toBe(1)
+          expect(withoutTools.stdout).toContain('pg_dump could not copy the database for the data check')
+          await untouched()
 
-        const unmigratable = await dataCheck()
-        expect(unmigratable.status).toBe(1)
-        expect(unmigratable.stdout).toContain(`a copy of database ${database} at schema 3 did not migrate to schema ${SCHEMA_VERSION}`)
-        await untouched()
-        await setVersion({ to: SCHEMA_VERSION })
+          const unmigratable = await dataCheck({ path: binaries() })
+          expect(unmigratable.status).toBe(1)
+          expect(unmigratable.stdout).toContain(`a copy of database ${database} at schema 3 did not migrate to schema ${SCHEMA_VERSION}`)
+          await untouched()
+        } finally {
+          await setVersion({ to: SCHEMA_VERSION })
+        }
       },
     })
   },

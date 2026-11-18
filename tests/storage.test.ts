@@ -3,7 +3,8 @@ import { appendFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSyn
 import { dirname, join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { closePostgres, homeDatabase } from '#store/postgres.ts'
-import { SCHEMA_VERSION, sql } from './setup/postgres.ts'
+import { SCHEMA_VERSION } from '#store/schema.ts'
+import { sql } from './setup/postgres.ts'
 import { parsed, pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx

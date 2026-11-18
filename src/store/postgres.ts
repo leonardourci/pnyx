@@ -212,12 +212,18 @@ export function configuredUrl(): string | undefined {
   return url
 }
 
-// Points the rest of this process at another database for this home, as the upgrade's data check does with its copy.
+// Points this process at another database for this home, as the upgrade's data check does with its copy, until
+// useConfiguredDatabase points it back.
 export function useDatabase({ url }: { url: string }): void {
   configuredUrls.set(
     homeDatabase(),
     url,
   )
+}
+
+// The next query reads the postgresUrl setting again.
+export function useConfiguredDatabase(): void {
+  configuredUrls.delete(homeDatabase())
 }
 
 // Replaces U+0000 and lone surrogates with U+FFFD in every string and key of a record headed for Postgres, in place, so
