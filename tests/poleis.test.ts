@@ -2192,6 +2192,58 @@ test(
           'Reuse rejected destination position',
         ],
       })).code).toBe('LOG_CORRUPT')
+      writeFileSync(
+        path,
+        beforeCorruption,
+      )
+      writeFileSync(
+        firstPath,
+        beforeFirst,
+      )
+      appendFileSync(
+        path,
+        readFileSync(new URL(
+          './setup/fixtures/memory/owner-move-valid-source.jsonl',
+          import.meta.url,
+        )),
+      )
+      appendFileSync(
+        firstPath,
+        readFileSync(new URL(
+          './setup/fixtures/memory/owner-move-destination-conflict.jsonl',
+          import.meta.url,
+        )),
+      )
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--polis',
+          'revision-next',
+        ],
+      })
+      const rejectedDestination = await hydra.owner({
+        args: [
+          'owner',
+          'memory',
+          'list',
+        ],
+      })
+      expect(rejectedDestination.writable.preferences?.text).toBe('fresh replacement')
+      expect(JSON.stringify(rejectedDestination.memory)).toContain('revision-first')
+      expect(JSON.stringify(rejectedDestination.memory)).not.toContain('Rejected destination-conflict import')
+      expect(JSON.stringify(rejectedDestination.memory)).not.toContain('Conflicting destination replacement')
+      expect((await hydra.ownerRefused({
+        args: [
+          'owner',
+          'memory',
+          'set',
+          '--key',
+          'preferences',
+          '--text',
+          'Overwrite rejected source move',
+        ],
+      })).code).toBe('LOG_CORRUPT')
     } finally {
       writeFileSync(
         path,
