@@ -8,11 +8,8 @@ import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } f
 import { git } from './setup/upgrade.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
-import { QUEUE_POLL_MS } from '#workers/queue.ts'
 
 const RESTART_FLOW_TIMEOUT_MS = 120_000
-// A scratch server reaches a newly ready handoff on its next queue poll.
-const HANDOFF_CRASH_WAIT_MS = QUEUE_POLL_MS + 15_000
 
 let pnyx: Pnyx
 const github = join(
@@ -2830,7 +2827,6 @@ if (branch === 'iris/target') {
       })
       await until({
         what: 'checkout hook kills the server before handoff commit',
-        timeoutMs: HANDOFF_CRASH_WAIT_MS,
         check: () => ended,
       })
       expect(readFileSync(
@@ -2948,7 +2944,6 @@ if (branch === 'iris/target') {
       })
       await until({
         what: 'server killed after durable handoff commit',
-        timeoutMs: HANDOFF_CRASH_WAIT_MS,
         check: () => ended,
       })
       const committedWork = join(
