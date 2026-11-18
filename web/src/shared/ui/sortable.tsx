@@ -28,7 +28,7 @@ import {
   type Modifier,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
-import { animate, motion, useAnimationControls, useReducedMotion } from 'motion/react'
+import { motion, useAnimationControls, useReducedMotion } from 'motion/react'
 import { DragPreview, dragSnapshot } from './drag-preview.tsx'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
@@ -1159,32 +1159,43 @@ export function SortableWorkspace({
     const duration = motionDuration({ speed: nest ? 'slow' : 'base' }) / 1000
 
     try {
-      await animate(
-        ghost,
+      const end = nest ? {
+        x: centerX,
+        y: centerY,
+        scale: CARD_SIZING.nest.dropScale,
+        width: from.width,
+        height: from.height,
+        opacity: 0,
+      } : {
+        x,
+        y,
+        scale: 1,
+        width: to.width,
+        height: to.height,
+        opacity: 1,
+      }
+      // A native animation, so the landing's own keyframes and timing can be read while it runs.
+      await ghost.animate(
+        [
+          {
+            transformOrigin: 'top left',
+            transform: 'translate(0px, 0px) scale(1)',
+            width: `${from.width}px`,
+            height: `${from.height}px`,
+            opacity: 1,
+          },
+          {
+            transformOrigin: 'top left',
+            transform: `translate(${end.x}px, ${end.y}px) scale(${end.scale})`,
+            width: `${end.width}px`,
+            height: `${end.height}px`,
+            opacity: end.opacity,
+          },
+        ],
         {
-          transformOrigin: 'top left',
-          x: nest ? centerX : x,
-          y: nest ? centerY : y,
-          width: [
-            from.width,
-            nest ? from.width : to.width,
-          ],
-          height: [
-            from.height,
-            nest ? from.height : to.height,
-          ],
-          scale: [
-            1,
-            nest ? CARD_SIZING.nest.dropScale : 1,
-          ],
-          opacity: [
-            1,
-            nest ? 0 : 1,
-          ],
-        },
-        {
-          duration,
-          ease: MOTION_EASING,
+          duration: duration * 1000,
+          easing: MOTION_CSS_EASING,
+          fill: 'forwards',
         },
       ).finished
 
