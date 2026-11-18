@@ -1,9 +1,12 @@
+import { checkWorkerNotes } from './workers.ts'
+import { readSettings } from '#settings/store.ts'
+import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
-import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
+import { ownerMemoryLogPath as logPath, readOwnerEntries, readOwnerLogs, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
 import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
@@ -12,6 +15,10 @@ import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
+
+export interface OwnerMeta extends Meta {
+  ifPolis?: string
+}
 
 interface OwnerLog {
   memory: Memory
@@ -30,11 +37,20 @@ const migratedPath = () => join(
   'migrated',
 )
 
-function readLog(): OwnerLog {
+function readLog({
+  polis = 'shared',
+  logs,
+}: {
+  polis?: string
+  logs?: ReturnType<typeof readOwnerLogs>
+} = {}): OwnerLog {
   const {
     entries,
     corrupt,
-  } = readOwnerEntries()
+  } = readOwnerEntries({
+    polis,
+    logs,
+  })
   const memory: Memory = Object.create(null) as Memory
   let archived: ArchivedLine[] = []
   let revision = 0
@@ -42,8 +58,8 @@ function readLog(): OwnerLog {
   for (const entry of entries) {
     revision = entry.seq
 
-    // A line moved to a project lives on there.
-    if (!entry.projectMove) {
+    // Moved lines remain in destination memory.
+    if (!entry.projectMove && !entry.polisMove) {
       archived = archiveRemoved({
         archived,
         key: entry.key,
@@ -65,7 +81,10 @@ function readLog(): OwnerLog {
 
       if (entry.key === 'learnings') {
         memory[entry.key]!.lines = dateLearnings({
-          before: previous,
+          before: [
+            ...(previous ?? []),
+            ...(entry.importedLearnings ?? []),
+          ],
           after: entry.after,
           at: entry.at,
           confirmed: entry.confirmed,
@@ -84,6 +103,28 @@ function readLog(): OwnerLog {
   }
 }
 
+function checkOwnerRevision({
+  polis,
+  revision,
+  meta,
+}: {
+  polis: string
+  revision: number
+  meta: OwnerMeta
+}): void {
+  if (meta.ifRevision === undefined) {
+    return
+  }
+
+  if (meta.ifRevision !== revision || (meta.ifPolis ?? 'shared') !== polis) {
+    throw new HydraError({
+      message: 'Owner memory changed; read its writable documents again before saving',
+      code: 'REVISION_CONFLICT',
+      help: ['Run `pnyx-axi owner memory list`, merge your change into the current text and save again'],
+    })
+  }
+}
+
 // Call only under the registry lock. `change` gets the current text and returns the new one.
 function append({
   key,
@@ -92,33 +133,35 @@ function append({
   budget,
   confirmed,
   projectMove,
+  polisMove,
   learning,
+  polis = 'shared',
 }: {
+  polis?: string
   key: string
   change: ({ before }: { before: string | null }) => string | null
-  meta: Meta
+  meta: OwnerMeta
   budget?: number
   confirmed?: string
+  polisMove?: OwnerEntry['polisMove']
   projectMove?: OwnerEntry['projectMove']
   learning?: LearningChange
 }): OwnerEntry | undefined {
-  const log = readLog()
+  const log = readLog({ polis })
 
   if (log.corrupt) {
     throw new HydraError({
       message: 'Owner memory has an unreadable line; inspect its log before writing',
       code: 'LOG_CORRUPT',
-      help: [`Inspect ${logPath()}`],
+      help: [`Inspect ${logPath({ polis })}`],
     })
   }
 
-  if (meta.ifRevision !== undefined && meta.ifRevision !== log.revision) {
-    throw new HydraError({
-      message: `Owner memory revision is ${log.revision}`,
-      code: 'REVISION_CONFLICT',
-      help: ['Run `pnyx-axi owner memory list`, merge your change into the current text and save again'],
-    })
-  }
+  checkOwnerRevision({
+    polis,
+    revision: log.revision,
+    meta,
+  })
 
   const before = log.memory[key]?.text ?? null
   const after = learningText({
@@ -179,13 +222,17 @@ function append({
     entry.projectMove = projectMove
   }
 
+  if (polisMove) {
+    entry.polisMove = polisMove
+  }
+
   if (learning) {
     entry.learning = learning
   }
 
-  privateDir({ dir: ownerDir() })
+  privateDir({ dir: dirname(logPath({ polis })) })
   writeDurably({
-    path: logPath(),
+    path: logPath({ polis }),
     data: `${JSON.stringify(entry)}\n`,
     flag: 'a',
   })
@@ -279,7 +326,7 @@ function move({
   meta,
 }: {
   hydraId: string
-  meta: Meta
+  meta: OwnerMeta
 }): void {
   withWriter({
     hydraId,
@@ -343,21 +390,103 @@ function tryMigrate(): void {
 }
 
 // Reading first moves any owner documents still held by a Hydra, so read a Hydra's state after this.
-export function ownerMemory(): Memory {
-  tryMigrate()
+export function ownerMemory({
+  hydraId,
+  migrate = true,
+  logs,
+}: {
+  hydraId: string
+  migrate?: boolean
+  logs?: ReturnType<typeof readOwnerLogs>
+}): Memory {
+  const memory: Memory = Object.create(null) as Memory
 
-  return readLog().memory
+  if (!memoryCaller({ hydraId })) {
+    return memory
+  }
+
+  if (migrate) {
+    tryMigrate()
+  }
+
+  const snapshot = logs ?? readOwnerLogs()
+
+  for (const polis of polisAccess({ hydraId }).reads) {
+    for (const [
+      key,
+      entry,
+    ] of Object.entries(readLog({
+        polis,
+        logs: snapshot,
+      }).memory)) {
+      const previous = memory[key]
+
+      if (!previous) {
+        memory[key] = entry
+        continue
+      }
+
+      const texts = [
+        previous.text,
+        entry.text,
+      ]
+
+      memory[key] = {
+        text: key === 'workers' ? texts.join('\n') : mergeLines({ texts }),
+        at: entry.at,
+        lines: [
+          ...(previous.lines ?? []),
+          ...(entry.lines ?? []),
+        ],
+      }
+    }
+  }
+
+  return memory
 }
 
-export function ownerArchive(): ArchivedLine[] {
-  return readLog().archived
+export function ownerArchive({
+  hydraId,
+  logs = readOwnerLogs(),
+}: {
+  hydraId: string
+  logs?: ReturnType<typeof readOwnerLogs>
+}): ArchivedLine[] {
+  return polisAccess({ hydraId }).reads.flatMap(polis => readLog({
+    polis,
+    logs,
+  }).archived)
 }
 
-export function ownerRevision(): number {
-  return readLog().revision
+export function writableOwnerMemory({
+  hydraId,
+  logs,
+}: {
+  hydraId: string
+  logs?: ReturnType<typeof readOwnerLogs>
+}) {
+  const { writablePolis } = polisAccess({ hydraId })
+
+  if (writablePolis === undefined) {
+    return undefined
+  }
+
+  const log = readLog({
+    polis: writablePolis,
+    logs,
+  })
+
+  return {
+    ...log,
+    revision: ownerRevision({
+      polis: writablePolis,
+      revision: log.revision,
+    }),
+  }
 }
 
 export function saveOwnerMemory({
+  hydraId,
   key,
   after,
   meta,
@@ -366,41 +495,68 @@ export function saveOwnerMemory({
 }: {
   key: string
   after: string | null
-  meta: Meta
+  meta: OwnerMeta
   confirmed?: string
   learning?: LearningChange
-}): OwnerEntry | undefined {
+  hydraId: string
+}): (OwnerEntry & { revision: string | number }) | undefined {
   tryMigrate()
 
   return withRegistryLock({
-    fn: () => append({
-      key,
-      change: ({ before }) => confirmed === undefined ? after : before,
-      meta,
-      budget: OWNER_MEMORY_BUDGET,
-      confirmed,
-      learning,
-    }),
+    fn: () => {
+      const polis = polisAccess({ hydraId }).write()
+      const entry = append({
+        polis,
+        key,
+        change: ({ before }) => confirmed === undefined ? after : before,
+        meta,
+        budget: OWNER_MEMORY_BUDGET,
+        confirmed,
+        learning,
+      })
+
+      return entry ? {
+        ...entry,
+        revision: ownerRevision({
+          polis,
+          revision: entry.seq,
+        }),
+      } : undefined
+    },
   })
 }
 
 export async function moveOwnerLearning({
+  args,
+  propose = false,
+  ifDestinationRevision,
   path,
   hydraId,
   text,
   meta,
 }: {
+  args: string[]
+  propose?: boolean
+  ifDestinationRevision?: number
   path: string
   hydraId: string
   text: string
-  meta: Meta
+  meta: OwnerMeta
 }) {
   tryMigrate()
   const facts = await projectFacts({ path })
 
   return withRegistryLock({
     fn: () => {
-      const owner = readLog()
+      const polis = polisAccess({ hydraId }).write()
+      const owner = readLog({ polis })
+
+      checkOwnerRevision({
+        polis,
+        revision: owner.revision,
+        meta,
+      })
+
       const before = owner.memory.learnings?.text ?? ''
       const lines = before.split('\n')
 
@@ -411,7 +567,18 @@ export async function moveOwnerLearning({
         })
       }
 
-      const project = projectMemoryViewUnderLock({ facts })
+      const project = projectMemoryViewUnderLock({
+        facts,
+        hydraId,
+      })
+
+      if (ifDestinationRevision !== undefined && project.revision !== ifDestinationRevision) {
+        throw new HydraError({
+          message: 'Destination memory changed; propose the move again',
+          code: 'REVISION_CONFLICT',
+        })
+      }
+
       const projectBefore = project.documents.learnings ?? null
       const projectLines = (projectBefore ?? '').split('\n')
       let projectAfter = projectBefore ?? ''
@@ -428,9 +595,23 @@ export async function moveOwnerLearning({
         key: 'learnings',
         after: projectAfter,
       })
+      const proposal = memoryMovePermission({
+        hydraId,
+        args,
+        propose,
+        actor: meta.actor,
+        revision: owner.revision,
+        destinationRevision: project.revision,
+        destination: readSettings().settings.projectPoleis[facts.identity.id] ?? 'shared',
+      })
+
+      if (proposal) {
+        return proposal
+      }
+
       const projectEvent: ProjectMemoryEvent = {
         v: 1,
-        id: `owner-move:${owner.revision + 1}`,
+        id: polis === 'shared' ? `owner-move:${owner.revision + 1}` : `owner-move:${polis}:${owner.revision + 1}`,
         seq: project.revision + 1,
         at: meta.at,
         actor: meta.actor,
@@ -444,6 +625,7 @@ export async function moveOwnerLearning({
       }
       const remaining = lines.filter(line => line !== text).join('\n')
       const entry = append({
+        polis,
         key: 'learnings',
         change: () => remaining || null,
         meta,
@@ -458,7 +640,159 @@ export async function moveOwnerLearning({
         memory: 'learnings',
         state: 'moved',
         project: project.id,
-        revision: entry?.seq,
+        revision: entry ? ownerRevision({
+          polis,
+          revision: entry.seq,
+        }) : undefined,
+      }
+    },
+  })
+}
+
+export function moveOwnerPolis({
+  args,
+  propose = false,
+  ifDestinationRevision,
+  hydraId,
+  destination,
+  key,
+  meta,
+}: {
+  args: string[]
+  propose?: boolean
+  ifDestinationRevision?: number
+  hydraId: string
+  destination: string
+  key: string
+  meta: OwnerMeta
+}) {
+  tryMigrate()
+
+  return withRegistryLock({
+    fn: () => {
+      const polis = polisAccess({ hydraId }).write()
+      const state = loadHydra({ hydraId }).state
+
+      if (!canRead({
+        hydraId,
+        state,
+        poleis: readSettings().settings.poleis,
+        polis: destination,
+      })) {
+        throw new HydraError({
+          message: 'Memory is unavailable',
+          code: 'NOT_FOUND',
+        })
+      }
+
+      const logs = readOwnerLogs()
+      const source = readLog({
+        polis,
+        logs,
+      })
+
+      checkOwnerRevision({
+        polis,
+        revision: source.revision,
+        meta,
+      })
+
+      const samePolis = polis === destination
+      const target = samePolis ? source : readLog({
+        polis: destination,
+        logs,
+      })
+
+      if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
+        throw new HydraError({
+          message: 'Destination memory changed; propose the move again',
+          code: 'REVISION_CONFLICT',
+        })
+      }
+
+      if (source.corrupt || target.corrupt) {
+        throw new HydraError({
+          message: 'Memory log is unreadable',
+          code: 'LOG_CORRUPT',
+        })
+      }
+
+      if (samePolis) {
+        return { skipped: 'unchanged' }
+      }
+
+      const text = source.memory[key]?.text
+
+      if (text === undefined) {
+        throw new HydraError({
+          message: 'Memory is unavailable',
+          code: 'NOT_FOUND',
+        })
+      }
+
+      const after = mergeLines({
+        texts: [
+          target.memory[key]?.text ?? '',
+          text,
+        ],
+      })
+
+      if (key === 'workers') {
+        checkWorkerNotes({
+          text: after,
+          reason: meta.reason,
+        })
+      }
+
+      checkBudget({
+        memory: target.memory,
+        key,
+        after,
+        budget: OWNER_MEMORY_BUDGET,
+        layer: 'Owner',
+      })
+      const proposal = memoryMovePermission({
+        hydraId,
+        destination,
+        args,
+        propose,
+        actor: meta.actor,
+        revision: source.revision,
+        destinationRevision: target.revision,
+      })
+
+      if (proposal) {
+        return proposal
+      }
+
+      const entry = append({
+        polis,
+        key,
+        change: () => null,
+        meta,
+        polisMove: {
+          polis: destination,
+          entry: {
+            v: 1,
+            seq: target.revision + 1,
+            at: meta.at,
+            actor: meta.actor,
+            reason: meta.reason,
+            key,
+            before: target.memory[key]?.text ?? null,
+            after,
+            importedLearnings: source.memory[key]?.lines,
+          },
+        },
+      })
+
+      return {
+        memory: key,
+        state: 'moved',
+        revision: entry ? ownerRevision({
+          polis,
+          revision: entry.seq,
+        }) : undefined,
       }
     },
   })

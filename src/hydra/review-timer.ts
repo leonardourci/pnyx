@@ -143,10 +143,12 @@ export function startReviewTimer({
         return
       }
 
-      const memory = await memoryReview({
-        state,
+      const reviewed = await memoryReview({
+        hydraId,
         now: new Date(time).toISOString(),
       })
+
+      const memory = reviewed.lines
 
       // The memory read waited on git; the review looks at the Hydra as it is now, as the write below does.
       if (timedReview({
@@ -200,6 +202,7 @@ export function startReviewTimer({
               type: 'hydra.review',
               data: {
                 block: review.block,
+                memoryAccess: reviewed.access,
                 reminders: [],
                 flags,
                 wake: shouldWake,

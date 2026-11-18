@@ -13,6 +13,8 @@ export interface HydraIdentity {
 }
 
 export interface HydraConfig {
+  polis?: string
+  readPoleis?: string[]
   helper?: AgentConfig | false
   id: string
   name: string

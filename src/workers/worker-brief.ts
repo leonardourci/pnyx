@@ -1,3 +1,7 @@
+import { requireHydraCapability } from '#memory/command-access.ts'
+import { runForClient, requestEnv, requestCwd } from '#app/request-context.ts'
+import { readMemoryContext } from '#memory/context.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
 import { matchesProject } from '#projects/identity.ts'
 import { projectIdentity } from '#projects/sources.ts'
@@ -6,7 +10,6 @@ import { readProjectMemory } from '#memory/project-memory.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
 import { projectWorkerContext } from '#projects/context.ts'
 import { READINESS_INSTRUCTIONS, taskStops } from '#tasks/delivery/rule.ts'
-import { projectsFor } from '#projects/read.ts'
 import { dirname, join } from 'node:path'
 import { declaredState } from '#tasks/declarations.ts'
 import type { Card } from '#tasks/model.ts'
@@ -107,60 +110,83 @@ export async function taskPrompt({
   prompt?: string
   replacing?: string
 }): Promise<string> {
-  const instructions = prompt ?? workerPrompt({
-    hydraId,
-    id: card.id,
-    title: card.title,
+  return readMemoryContext({
+    read: async () => {
+      requireHydraCapability({ hydraId })
+
+      return runForClient({
+        identity: {
+          ...requestEnv(),
+          PNYX_ACTOR: `worker:${card.id}`,
+          PNYX_HYDRA: hydraId,
+          PNYX_TASK: card.id,
+        },
+        cwd: requestCwd(),
+        run: async () => {
+          const instructions = prompt ?? workerPrompt({
+            hydraId,
+            id: card.id,
+            title: card.title,
+          })
+          const ownerNotes = ownerMemory({ hydraId }).workers?.text
+          const state = loadHydra({ hydraId }).state
+          const attachedProject = (await readableProjects({
+            state,
+            hydraId,
+          })).find(project => !project.detached
+        && matchesProject({
+          project,
+          ref: card.project,
+        }))
+          const [
+            identity,
+            project,
+          ] = await Promise.all([
+            attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
+            projectWorkerContext({
+              hydraId,
+              state,
+              project: card.project,
+            }),
+          ])
+          const projectNotes = identity ? readProjectMemory({
+            ...identity,
+            hydraId,
+          }).documents.workers ?? '' : ''
+
+          const header = workerHeader({
+            hydraId,
+            id: card.id,
+            ownerNotes,
+            hydraNotes: state.hydraMemory?.workers?.text,
+            projectNotes,
+            stops: taskStops({
+              state,
+              hydraId,
+              card,
+            }),
+          })
+
+          let progress: string | undefined
+
+          if (replacing) {
+            progress = replacingNote({
+              card,
+              replacing,
+            })
+          }
+
+          return [
+            header,
+            project,
+            taskInstructions({ card }),
+            instructions,
+            progress,
+          ].filter(Boolean).join('\n\n')
+        },
+      })
+    },
   })
-  const ownerNotes = ownerMemory().workers?.text
-  const state = loadHydra({ hydraId }).state
-  const attachedProject = projectsFor({ state }).find(project => !project.detached
-    && matchesProject({
-      project,
-      ref: card.project,
-    }))
-  const [
-    identity,
-    project,
-  ] = await Promise.all([
-    attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
-    projectWorkerContext({
-      hydraId,
-      state,
-      project: card.project,
-    }),
-  ])
-  const projectNotes = identity ? readProjectMemory(identity).documents.workers ?? '' : ''
-
-  const header = workerHeader({
-    hydraId,
-    id: card.id,
-    ownerNotes,
-    hydraNotes: state.hydraMemory?.workers?.text,
-    projectNotes,
-    stops: taskStops({
-      state,
-      hydraId,
-      card,
-    }),
-  })
-
-  let progress: string | undefined
-
-  if (replacing) {
-    progress = replacingNote({
-      card,
-      replacing,
-    })
-  }
-
-  return [
-    header,
-    project,
-    taskInstructions({ card }),
-    instructions,
-    progress,
-  ].filter(Boolean).join('\n\n')
 }
 
 export const hydraPrompt = ({ hydraId }: { hydraId: string }) =>

@@ -1,10 +1,12 @@
+import { readMemoryContext } from '#memory/context.ts'
+import { memoryCaller } from '#memory/poleis.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { queuePosition } from './queue.ts'
 import { projectRows } from '#projects/read.ts'
 import { hydraDigest } from '#hydra/digest.ts'
-import { ownerMemory } from '#memory/owner-memory.ts'
+import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { checkAttachments } from './presence.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -384,26 +386,38 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
-    const owner = ownerMemory()
-    const state = loadHydra({ hydraId }).state
-    const [
-      projects,
-      items,
-    ] = await Promise.all([
-      projectDigest({ state }),
-      setupCheck({
-        hydraId,
-        state,
-      }),
-    ])
+    return readMemoryContext({
+      read: async () => {
+        const owner = ownerMemory({ hydraId })
+        const current = loadHydra({ hydraId }).state
+        const state = memoryCaller({ hydraId }) ? current : {
+          ...current,
+          hydraMemory: undefined,
+        }
+        const [
+          projects,
+          items,
+        ] = await Promise.all([
+          projectDigest({
+            state,
+            hydraId,
+          }),
+          setupCheck({
+            hydraId,
+            state,
+          }),
+        ])
 
-    return hydraDigest({
-      conditions: memoryConditions(),
-      hydraId,
-      owner,
-      state,
-      projects,
-      setup: setupDigest({ items }),
+        return hydraDigest({
+          conditions: memoryConditions(),
+          hydraId,
+          owner,
+          ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
+          state,
+          projects,
+          setup: setupDigest({ items }),
+        })
+      },
     })
   },
 })

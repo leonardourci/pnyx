@@ -1,3 +1,7 @@
+import { requestedPolisAccess, widensPolisReads } from '#memory/access-changes.ts'
+import { readMemoryContext } from '#memory/context.ts'
+import { projectRows } from '#projects/read.ts'
+import { checkMemoryApproval, readableProjects, polisAccess, hydraPolisConfig, memoryPermission, memoryAgent } from '#memory/poleis.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -9,7 +13,6 @@ import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
 import { hydraConfig } from './config.ts'
 import { readServer, askHost } from '#app/server-state.ts'
-import { projectRows } from '#projects/read.ts'
 import { firstmateHomes } from '#integrations/cli.ts'
 import { HydraError } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
@@ -23,9 +26,9 @@ import { hydraMessages, hydraSend } from './send-cli.ts'
 import { hydraResize } from '#preferences/cli.ts'
 import { hydraMemory } from '#memory/cli.ts'
 import { startHydra } from './start.ts'
-import { HYDRA_CARD } from './identity.ts'
-import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
-import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
+import { HYDRA_CARD, homeHydraId } from './identity.ts'
+import { checkSettings, readSettings, saveSettings, settingsReceipt, shownSettings } from '#settings/store.ts'
+import { SETTING_FLAGS, sharedSettingFlags, visibleSettings } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { requireStopAuthority } from '#app/stop-authority.ts'
@@ -33,7 +36,33 @@ import { workerIdentity, workerRefusal } from '#workers/worker-identity.ts'
 import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
-function hydraConfigCommand({ args }: { args: string[] }): Output {
+function visibleHydraConfig({
+  config,
+  hydraId,
+}: {
+  config: HydraConfig
+  hydraId: string
+}): Output {
+  const shown: Output = {
+    ...config,
+    ...hydraPolisConfig({ state: { config } }),
+  }
+
+  if (memoryAgent()) {
+    const access = polisAccess({ hydraId })
+    shown.readPoleis = access.reads
+
+    if (access.writablePolis === undefined) {
+      delete shown.polis
+    } else {
+      shown.polis = access.writablePolis
+    }
+  }
+
+  return shown
+}
+
+async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
@@ -43,6 +72,9 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     options: {
       ...WRITE,
       name: { type: 'string' },
+      'read-poleis': { type: 'string' },
+      'polis': { type: 'string' },
+      propose: { type: 'boolean' },
       icon: { type: 'string' },
       position: { type: 'string' },
       identity: { type: 'string' },
@@ -103,35 +135,48 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   const id = action !== 'create'
     ? hydraId
     : positionals[1]
-      ?? (values.firstmate ? homeHydraId({ home: String(values.firstmate) }) : required({
+      ?? (values.firstmate ? homeHydraId({ name: basename(String(values.firstmate)) }) : required({
         value: undefined,
         what: 'Hydra id',
       }))
   hydraDir({ hydraId: id })
 
   if (action === 'show') {
-    const state = loadHydra({ hydraId: id }).state
+    return readMemoryContext({
+      read: async () => {
+        const state = loadHydra({ hydraId: id }).state
+        const hydra = structuredClone(hydraConfig({
+          state,
+          id,
+        }))
+        // Legacy config still carries values now owned by shared settings.
+        delete hydra.doneAfterHours
+        delete hydra.reviewMinutes
+        delete hydra.helper
+        const shared = readSettings().settings
+        const projects = await readableProjects({
+          state,
+          hydraId: id,
+        })
 
-    const hydra = structuredClone(hydraConfig({
-      state,
-      id,
-    }))
-    // These three live in the shared settings; a Hydra's own config copy is never read.
-    delete hydra.doneAfterHours
-    delete hydra.reviewMinutes
-    delete hydra.helper
-    const shared = readSettings().settings
-
-    return {
-      hydra,
-      settings: {
-        doneAfterHours: shared.doneAfterHours,
-        reviewMinutes: shared.reviewMinutes,
-        helper: shared.helper,
+        return {
+          hydra: visibleHydraConfig({
+            config: hydra,
+            hydraId: id,
+          }),
+          settings: {
+            doneAfterHours: shared.doneAfterHours,
+            reviewMinutes: shared.reviewMinutes,
+            helper: shared.helper,
+          },
+          projects: projectRows({
+            state,
+            projects,
+          }),
+          revision: state.configRevision ?? 0,
+        }
       },
-      projects: projectRows({ state }),
-      revision: state.configRevision ?? 0,
-    }
+    })
   }
 
   if (action !== 'create' && action !== 'set') {
@@ -155,6 +200,34 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     checkSettings({ patch: shared })
   }
 
+  const changesMemory = values['read-poleis'] !== undefined || values.polis !== undefined
+
+  if (changesMemory && values.propose) {
+    if (action === 'create') {
+      throw new HydraError({
+        message: 'Create the Hydra before proposing a change with hydra set',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    requestedPolisAccess({
+      reads: values['read-poleis'],
+      polis: values.polis,
+    })
+    const proposal = memoryPermission({
+      hydraId: id,
+      name: 'hydra',
+      args,
+      propose: true,
+      actor: m.actor,
+      widening: false,
+    })
+
+    if (proposal) {
+      return proposal
+    }
+  }
+
   const committed = onlySettings ? undefined : commit({
     hydraId: id,
     create: action === 'create',
@@ -164,6 +237,29 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       card: '$board',
     },
     decide: ({ state }) => {
+      checkMemoryApproval()
+
+      const previousAccess = hydraPolisConfig({ state })
+      const nextAccess = requestedPolisAccess({
+        current: previousAccess,
+        reads: values['read-poleis'],
+        polis: values.polis,
+      })
+
+      if (nextAccess) {
+        memoryPermission({
+          hydraId: id,
+          name: 'hydra',
+          args,
+          propose: false,
+          actor: m.actor,
+          widening: widensPolisReads({
+            before: previousAccess,
+            after: nextAccess,
+          }),
+        })
+      }
+
       const current = hydraConfig({
         state,
         id,
@@ -241,6 +337,14 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         id,
         name: String(values.name ?? named?.name ?? current.name),
         hydra,
+      }
+
+      if (nextAccess && values.polis !== undefined) {
+        data.polis = nextAccess.polis
+      }
+
+      if (nextAccess && values['read-poleis'] !== undefined) {
+        data.readPoleis = nextAccess.readPoleis
       }
 
       if (named) {
@@ -329,21 +433,38 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     },
   })
 
+  if (committed && memoryAgent() && 'hydra' in committed) {
+    committed.hydra = visibleHydraConfig({
+      config: hydraConfig({
+        state: loadHydra({ hydraId: id }).state,
+        id,
+      }),
+      hydraId: id,
+    })
+  }
+
   if (!shared) {
     return committed!
   }
 
-  const settings = settingsReceipt({
-    saved: saveSettings({
-      // A combined edit gets one chat notice from its Hydra receipt.
-      hydraId: onlySettings ? id : undefined,
-      patch: shared,
-      meta: {
-        ...m,
-        ifRevision: undefined,
-      },
-    }),
+  const saved = saveSettings({
+    beforeSave: onlySettings ? checkMemoryApproval : undefined,
+    // A combined edit gets one chat notice from its Hydra receipt.
+    hydraId: onlySettings ? id : undefined,
+    patch: shared,
+    meta: {
+      ...m,
+      ifRevision: undefined,
+    },
   })
+  const settings = settingsReceipt({ saved })
+
+  if (memoryAgent()) {
+    settings.settings = visibleSettings({
+      settings: shownSettings({ settings: readSettings().settings }),
+      hydraId: id,
+    })
+  }
 
   if (committed) {
     return {
@@ -356,22 +477,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     ...settings,
     help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
   }
-}
-
-function homeHydraId({ home }: { home: string }): string {
-  return basename(home).toLowerCase()
-    .replace(
-      /[^a-z0-9._-]+/g,
-      '-',
-    )
-    .replace(
-      /^[^a-z0-9]+/,
-      '',
-    )
-    .slice(
-      0,
-      64,
-    ) || 'firstmate'
 }
 
 // What `hydra send` and Hydra's other commands take; create, list, homes, show and set take their own.

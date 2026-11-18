@@ -1,3 +1,4 @@
+import { readMemoryContext } from '#memory/context.ts'
 import { createDigestContext } from './digest-context.ts'
 import { stopHydraInputs } from './stop-inputs.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
@@ -23,7 +24,7 @@ import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { memoryConditions } from '#memory/conditions.ts'
-import { ownerMemory } from '#memory/owner-memory.ts'
+import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { projectDigest } from '#projects/context.ts'
 import { activeHelperBatches, failedBatches, helperLeases, outcomeLines, ownerOutcomes } from '#routine-helper/state.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
@@ -184,59 +185,96 @@ export function createHydraTurns({
     checkpointed?: boolean
     onlyTasks?: string[]
   } = {}) => {
-    const owner = ownerMemory()
-    const state = loadHydra({ hydraId }).state
+    const result = await readMemoryContext({
+      read: async () => {
+        const owner = ownerMemory({ hydraId })
+        const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
+        const state = loadHydra({ hydraId }).state
 
-    if (onlyTasks) {
-      return hydraDigest({
-        hydraId,
-        state,
-        owner,
-        onlyTasks,
-        previousDigest,
-        checkpointed,
-        conditions: memoryConditions(),
-      })
-    }
+        if (onlyTasks) {
+          const digest = hydraDigest({
+            hydraId,
+            state,
+            owner,
+            ownerWrite,
+            onlyTasks,
+            previousDigest,
+            checkpointed,
+            conditions: memoryConditions(),
+          })
 
-    const [
-      projects,
-      items,
-    ] = await Promise.all([
-      projectDigest({ state }),
-      setupCheck({
-        hydraId,
-        state,
-      }),
-    ])
+          return {
+            digest,
+            stamp: undefined,
+          }
+        }
 
-    if (remember) {
-      memoryStamp = JSON.stringify({
-        owner,
-        hydra: state.hydraMemory,
-        projects,
-      })
-    }
+        const [
+          projects,
+          items,
+        ] = await Promise.all([
+          projectDigest({
+            state,
+            hydraId,
+          }),
+          setupCheck({
+            hydraId,
+            state,
+          }),
+        ])
 
-    return hydraDigest({
-      previousDigest,
-      checkpointed,
-      conditions: memoryConditions(),
-      hydraId,
-      state,
-      owner,
-      projects,
-      setup: setupDigest({ items }),
+        const stamp = remember
+          ? JSON.stringify({
+            owner,
+            ownerWrite,
+            hydra: state.hydraMemory,
+            projects,
+          })
+          : undefined
+
+        const digest = hydraDigest({
+          previousDigest,
+          checkpointed,
+          conditions: memoryConditions(),
+          hydraId,
+          state,
+          owner,
+          ownerWrite,
+          projects,
+          setup: setupDigest({ items }),
+        })
+
+        return {
+          digest,
+          stamp,
+        }
+      },
     })
+
+    if (result.stamp !== undefined) {
+      memoryStamp = result.stamp
+    }
+
+    return result.digest
   }
 
   const memoryChangeNote = async () => {
-    const owner = ownerMemory()
-    const state = loadHydra({ hydraId }).state
-    const stamp = JSON.stringify({
-      owner,
-      hydra: state.hydraMemory,
-      projects: await projectDigest({ state }),
+    const stamp = await readMemoryContext({
+      read: async () => {
+        const owner = ownerMemory({ hydraId })
+        const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
+        const state = loadHydra({ hydraId }).state
+
+        return JSON.stringify({
+          owner,
+          ownerWrite,
+          hydra: state.hydraMemory,
+          projects: await projectDigest({
+            state,
+            hydraId,
+          }),
+        })
+      },
     })
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp

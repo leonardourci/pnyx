@@ -1,3 +1,5 @@
+import { ownerMemory } from '#memory/owner-memory.ts'
+import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -189,11 +191,15 @@ function snippet({
 export function search({
   hydraId,
   query,
+  memoryDocuments = [],
+  includeMemory = true,
   state = loadHydra({ hydraId }).state,
 }: {
   hydraId: string
   query: Query
   state?: HydraState
+  memoryDocuments?: Document[]
+  includeMemory?: boolean
 }): {
   hits: Hit[]
   total: number
@@ -209,6 +215,33 @@ export function search({
     })
   }
 
+  const ownerDocuments = includeMemory ? Object.values(ownerMemory({
+    hydraId,
+    migrate: false,
+  })).map(entry => ({
+    card: '$board',
+    kind: 'note' as const,
+    at: entry.at,
+    text: redact({ text: entry.text }),
+  })) : []
+  const projectDocuments = (includeMemory ? memoryDocuments : []).map(document => ({
+    ...document,
+    text: redact({ text: document.text }),
+  }))
+  const hydraDocuments = includeMemory ? Object.entries(state.hydraMemory ?? {})
+    .filter(([key]) => !Object.hasOwn(
+      OWNER_DOCUMENTS,
+      key,
+    ))
+    .map(([
+      key,
+      entry,
+    ]) => ({
+      card: '$board',
+      kind: 'event' as const,
+      at: entry.at,
+      text: redact({ text: `${key}: ${entry.text}` }),
+    })) : []
   const index = openIndex({
     hydraId,
     state,
@@ -217,10 +250,21 @@ export function search({
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
 
-    for (const document of index.documents({
-      terms,
-      fuzzy,
-    })) {
+    const memoryEntries: Document[] = [
+      ...ownerDocuments,
+      ...projectDocuments,
+      ...hydraDocuments,
+    ]
+
+    function* documents() {
+      yield* index.documents({
+        terms,
+        fuzzy,
+      })
+      yield* memoryEntries
+    }
+
+    for (const document of documents()) {
       if (!terms.some(term => wordMatches({
         text: document.text,
         term,
@@ -277,16 +321,30 @@ export function search({
         continue
       }
 
-      if (query.projects?.length && !query.projects.includes(card.project ?? '')) {
+      if (query.projects?.length && card.id !== '$board' && !query.projects.includes(card.project ?? '')) {
         continue
       }
 
-      const entries = grouped.get(card.id) ?? []
+      let entries = grouped.get(card.id) ?? []
+
+      if (card.id === '$board' && query.projects?.length) {
+        const projects = new Set(query.projects)
+        entries = entries.filter(entry => {
+          if (entry.project === undefined) {
+            return false
+          }
+
+          return projects.has(entry.project)
+        })
+      }
 
       if (query.since) {
         const cutoff = Date.parse(query.since)
         const recentCard = Date.parse(card.updatedAt) >= cutoff
-        const recent = recentCard || index.newestAt({ card: card.id }) >= cutoff
+        const recent = recentCard || index.newestAt({
+          card: card.id,
+        }) >= cutoff
+          || entries.some(entry => Date.parse(entry.at) >= cutoff)
 
         if (!recent) {
           continue
@@ -314,7 +372,8 @@ export function search({
           fuzzy,
         })),
       }))
-      const scoped = Boolean(query.kind || query.card)
+      const projectMemory = card.id === '$board' && Boolean(query.projects?.length)
+      const scoped = Boolean(query.kind || query.card || projectMemory)
       const everyTermFound = terms.every((
         _,
         index,

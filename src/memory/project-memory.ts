@@ -1,5 +1,8 @@
+import { loadHydra } from '#app/store.ts'
+import { findProject } from '#projects/read.ts'
+import { requireProjectMemory } from './poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
-import { readOwnerEntries } from './owner-memory-log.ts'
+import { ownerProjectMoves } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange, type Learning } from './learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
@@ -66,8 +69,23 @@ function memoryPath({ id }: { id: string }) {
   )
 }
 
-export function readProjectMemory({ id }: { id: string }): ProjectMemory {
-  return withRegistryLock({ fn: () => readProjectMemoryLog({ id }) })
+export function readProjectMemory({
+  id,
+  hydraId,
+}: {
+  id: string
+  hydraId: string
+}): ProjectMemory {
+  return withRegistryLock({
+    fn: () => {
+      requireProjectMemory({
+        hydraId,
+        id,
+      })
+
+      return readProjectMemoryLog({ id })
+    },
+  })
 }
 
 function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
@@ -80,22 +98,7 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
     events: [],
   }
 
-  const owner = readOwnerEntries()
-
-  if (owner.corrupt) {
-    throw new HydraError({
-      message: 'Owner memory has an unreadable line; inspect its log before reading project moves',
-      code: 'LOG_CORRUPT',
-    })
-  }
-
-  const events = owner.entries.flatMap(entry => {
-    if (entry.projectMove?.project === id) {
-      return [entry.projectMove.event]
-    }
-
-    return []
-  })
+  const events = ownerProjectMoves({ id })
   const text = existsSync(file) ? readFileSync(
     file,
     'utf8',
@@ -200,6 +203,7 @@ function profileStatus({
 
 // What git says about a project, read off the event loop before any lock is taken.
 export type ProjectFacts = {
+  path: string
   identity: Awaited<ReturnType<typeof projectIdentity>>
   sources: Awaited<ReturnType<typeof projectSources>>
 }
@@ -214,22 +218,70 @@ export async function projectFacts({ path }: { path: string }): Promise<ProjectF
   ])
 
   return {
+    path,
     identity,
     sources,
   }
 }
 
-export async function projectMemoryView({ path }: { path: string }) {
+export async function projectMemoryView({
+  path,
+  hydraId,
+}: {
+  path: string
+  hydraId: string
+}) {
   const facts = await projectFacts({ path })
 
-  return withRegistryLock({ fn: () => projectMemoryViewUnderLock({ facts }) })
+  return withRegistryLock({
+    fn: () => projectMemoryViewUnderLock({
+      facts,
+      hydraId,
+    }),
+  })
 }
 
-export function projectMemoryViewUnderLock({ facts }: { facts: ProjectFacts }) {
+export async function readableProjectMemory({
+  path,
+  hydraId,
+}: {
+  path: string
+  hydraId: string
+}) {
+  try {
+    return await projectMemoryView({
+      path,
+      hydraId,
+    })
+  } catch (error) {
+    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+      return undefined
+    }
+
+    throw error
+  }
+}
+
+export function projectMemoryViewUnderLock({
+  facts,
+  hydraId,
+}: {
+  facts: ProjectFacts
+  hydraId: string
+}) {
   const {
     identity,
     sources,
   } = facts
+  findProject({
+    state: loadHydra({ hydraId }).state,
+    ref: facts.path,
+    attached: true,
+  })
+  requireProjectMemory({
+    hydraId,
+    id: identity.id,
+  })
   const memory = readProjectMemoryLog(identity)
   const changed = [
     ...new Set([
@@ -284,7 +336,10 @@ export async function writeProjectMemory({
 
   return withRegistryLock({
     fn: () => {
-      const view = projectMemoryViewUnderLock({ facts })
+      const view = projectMemoryViewUnderLock({
+        facts,
+        hydraId,
+      })
 
       const previous = view.events.find(event => event.id === meta.id)
 

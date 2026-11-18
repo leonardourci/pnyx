@@ -238,13 +238,15 @@ export function fakeClaude() {
     }
 
     const reading = (async () => {
-      for await (const message of prompt) {
-        waiting.push(message)
-        arrived()
+      try {
+        for await (const message of prompt) {
+          waiting.push(message)
+          arrived()
+        }
+      } finally {
+        ended = true
+        nudge()
       }
-
-      ended = true
-      nudge()
     })()
 
     async function* run(): AsyncGenerator<SDKMessage> {
