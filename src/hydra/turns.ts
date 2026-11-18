@@ -1,3 +1,4 @@
+import { readMemoryContext } from '#memory/context.ts'
 import { createDigestContext } from './digest-context.ts'
 import { stopHydraInputs } from './stop-inputs.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
@@ -184,76 +185,84 @@ export function createHydraTurns({
     checkpointed?: boolean
     onlyTasks?: string[]
   } = {}) => {
-    const owner = ownerMemory({ hydraId })
-    const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
-    const state = loadHydra({ hydraId }).state
+    return readMemoryContext({
+      read: async () => {
+        const owner = ownerMemory({ hydraId })
+        const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
+        const state = loadHydra({ hydraId }).state
 
-    if (onlyTasks) {
-      return hydraDigest({
-        hydraId,
-        state,
-        owner,
-        ownerWrite,
-        onlyTasks,
-        previousDigest,
-        checkpointed,
-        conditions: memoryConditions(),
-      })
-    }
+        if (onlyTasks) {
+          return hydraDigest({
+            hydraId,
+            state,
+            owner,
+            ownerWrite,
+            onlyTasks,
+            previousDigest,
+            checkpointed,
+            conditions: memoryConditions(),
+          })
+        }
 
-    const [
-      projects,
-      items,
-    ] = await Promise.all([
-      projectDigest({
-        state,
-        hydraId,
-      }),
-      setupCheck({
-        hydraId,
-        state,
-      }),
-    ])
+        const [
+          projects,
+          items,
+        ] = await Promise.all([
+          projectDigest({
+            state,
+            hydraId,
+          }),
+          setupCheck({
+            hydraId,
+            state,
+          }),
+        ])
 
-    if (remember) {
-      memoryStamp = JSON.stringify({
-        owner,
-        ownerWrite,
-        hydra: state.hydraMemory,
-        projects,
-      })
-    }
+        if (remember) {
+          memoryStamp = JSON.stringify({
+            owner,
+            ownerWrite,
+            hydra: state.hydraMemory,
+            projects,
+          })
+        }
 
-    return hydraDigest({
-      previousDigest,
-      checkpointed,
-      conditions: memoryConditions(),
-      hydraId,
-      state,
-      owner,
-      ownerWrite,
-      projects,
-      setup: setupDigest({ items }),
+        return hydraDigest({
+          previousDigest,
+          checkpointed,
+          conditions: memoryConditions(),
+          hydraId,
+          state,
+          owner,
+          ownerWrite,
+          projects,
+          setup: setupDigest({ items }),
+        })
+      },
     })
   }
 
   const memoryChangeNote = async () => {
-    const owner = ownerMemory({ hydraId })
-    const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
-    const state = loadHydra({ hydraId }).state
-    const stamp = JSON.stringify({
-      owner,
-      ownerWrite,
-      hydra: state.hydraMemory,
-      projects: await projectDigest({
-        state,
-        hydraId,
-      }),
-    })
-    const changed = memoryStamp !== undefined && memoryStamp !== stamp
-    memoryStamp = stamp
+    return readMemoryContext({
+      read: async () => {
+        const owner = ownerMemory({ hydraId })
+        const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
+        const state = loadHydra({ hydraId }).state
+        const stamp = JSON.stringify({
+          owner,
+          ownerWrite,
+          hydra: state.hydraMemory,
+          projects: await projectDigest({
+            state,
+            hydraId,
+          }),
+        })
+        const changed = memoryStamp !== undefined && memoryStamp !== stamp
+        memoryStamp = stamp
 
-    return changed ? ' Memory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
+        return changed ? ' Memory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
+      },
+    })
   }
 
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
