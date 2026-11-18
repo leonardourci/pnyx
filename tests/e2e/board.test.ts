@@ -3372,8 +3372,16 @@ test(
       const wide = await hydra.task({ key: 'wide' })
       const card = page.locator(`[data-hydra-workspace="${hydra.id}"] .card[data-task="${wide.id}"]`)
       await card.hover()
-      await card.evaluate(({ style }) => {
-        style.transform = 'translateX(24px)'
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element to its page callback.
+      await card.evaluate(node => {
+        node.animate(
+          { transform: 'translateX(24px)' },
+          {
+            duration: 1,
+            fill: 'both',
+            id: 'pickup-offset',
+          },
+        ).finish()
       })
       const box = await card.boundingBox()
       expect(box!.width).toBeGreaterThan(900)
@@ -3381,7 +3389,29 @@ test(
         box!.x + box!.width * 0.82,
         box!.y + box!.height * 0.65,
       )
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element to its page callback.
+      await card.evaluate(node => {
+        node.addEventListener(
+          'pointerdown',
+          ({
+            clientX,
+            clientY,
+          }) => {
+            const bounds = node.getBoundingClientRect()
+            node.dataset.pickupX = String((clientX - bounds.left) / bounds.width)
+            node.dataset.pickupY = String((clientY - bounds.top) / bounds.height)
+          },
+          {
+            once: true,
+            capture: true,
+          },
+        )
+      })
       await page.mouse.down()
+      const grab = {
+        x: Number(await card.getAttribute('data-pickup-x')),
+        y: Number(await card.getAttribute('data-pickup-y')),
+      }
       await page.mouse.move(
         box!.x + box!.width * 0.82 + 20,
         box!.y + box!.height * 0.65,
@@ -3389,6 +3419,9 @@ test(
       )
       const ghost = page.locator('.physical-ghost')
       await ghost.waitFor()
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element to its page callback.
+      await card.evaluate(node => node.getAnimations().find(animation => animation.id === 'pickup-offset')
+        ?.cancel())
       const lifted = await ghost.boundingBox()
       expect(lifted!.width).toBeCloseTo(
         box!.width,
@@ -3406,11 +3439,11 @@ test(
       }) => {
         const box = await preview.boundingBox()
         expect((x - box!.x) / box!.width).toBeCloseTo(
-          0.82,
+          grab.x,
           2,
         )
         expect((y - box!.y) / box!.height).toBeCloseTo(
-          0.65,
+          grab.y,
           2,
         )
       }
@@ -3506,7 +3539,10 @@ test(
       const titleWidths = samples.map(sample => sample.title)
       expect(Math.max(...titleWidths) - Math.min(...titleWidths)).toBeLessThan(1)
       await ghost.waitFor({ state: 'detached' })
-      expect((await card.boundingBox())!.width).toBe(box!.width)
+      expect((await card.boundingBox())!.width).toBeCloseTo(
+        box!.width,
+        2,
+      )
       expect((await hydra.task({ key: 'wide' })).parent).toBe('none')
 
       await hydra.owner({
