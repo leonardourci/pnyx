@@ -453,6 +453,10 @@ export function DragNestHint() {
     return <span data-drag-nest-refusal className="inline-flex max-w-full rounded border border-line bg-surface px-1.5 py-0.5 text-meta font-medium text-muted">{refusal}</span>
   }
 
+  if (active?.hasChildren) {
+    return null
+  }
+
   return <span data-drag-nest-hint data-shift={shift} className="inline-flex max-w-full items-center whitespace-nowrap rounded border border-line bg-surface px-1.5 py-0.5 text-meta font-medium text-muted transition-colors data-[shift=true]:border-gold-line data-[shift=true]:bg-gold-wash data-[shift=true]:text-gold">⇧ Sub-task</span>
 }
 

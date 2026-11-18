@@ -117,6 +117,7 @@ export function ProjectColumn({
 
   const showHint = dragging.active?.kind === 'task'
     && dragging.active.hydra === hydraId && dragging.active.column === column.id
+    && !dragging.active.hasChildren
 
   return (
     <SortablePanel

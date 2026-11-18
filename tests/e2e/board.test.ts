@@ -3209,10 +3209,12 @@ test(
         source,
         target,
         reason,
+        nestable = true,
       }: {
         source: string
         target: string
         reason?: string
+        nestable?: boolean
       }) => {
         const from = card({ title: source }), to = card({ title: target })
         await from.hover()
@@ -3223,6 +3225,7 @@ test(
             exact: true,
           },
         )
+        await handle.hover()
         const start = await handle.boundingBox()
         const end = await to.boundingBox()
         expect(start).not.toBeNull()
@@ -3238,6 +3241,8 @@ test(
           { steps: 3 },
         )
         await page.locator('.physical-ghost').waitFor()
+        expect(await page.locator('.physical-ghost [data-drag-nest-hint]').count()).toBe(nestable ? 1 : 0)
+        expect(await workspace.locator('[data-drag-column-hint]').count()).toBe(nestable ? 1 : 0)
         await page.keyboard.down('Shift')
         await page.mouse.move(
           end!.x + end!.width / 2,
@@ -3284,6 +3289,7 @@ test(
       expect((await hydra.task({ key: 'Loose task' })).parent).toBe('none')
       await drag({
         source: 'First root',
+        nestable: false,
         target: 'Second root',
         reason: "Can't nest: this task has its own sub-tasks",
       })
