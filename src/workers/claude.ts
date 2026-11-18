@@ -575,6 +575,24 @@ export function claudeProvider({
             },
           })
 
+          const session = running
+
+          // Only the window, read without a model call: the /context total overestimates, so each request sets the count.
+          const readWindow = () => {
+            session.getContextUsage({ detail: 'summary' }).then(
+              ({ rawMaxTokens }) => emit({
+                event: {
+                  type: 'usage',
+                  window: rawMaxTokens,
+                },
+              }),
+              // A missed read keeps the window last reported; the session reports its own failures.
+              () => {},
+            )
+          }
+
+          readWindow()
+
           // The SDK sends each finished block as its own message at index 0, so its text reuses the index it streamed under.
           let messageId = '', textIndex = 0, turnId = randomUUID()
           let compaction: {
@@ -634,6 +652,15 @@ export function claudeProvider({
                   ...(state === 'failed' && message.compact_error ? { error: message.compact_error } : {}),
                 }
                 compaction = undefined
+              }
+            }
+
+            // The compacted size counts at once; the next request reports the exact count.
+            if (message.type === 'system' && message.subtype === 'compact_boundary'
+              && message.compact_metadata.post_tokens !== undefined) {
+              yield {
+                type: 'usage' as const,
+                used: message.compact_metadata.post_tokens,
               }
             }
 
@@ -824,23 +851,18 @@ export function claudeProvider({
                 }
               }
 
-              const windows = Object.values(message.modelUsage ?? {})
-                .map(model => model.contextWindow)
-                .filter(size => size > 0)
-              const cost = message.total_cost_usd
               const usage = 'usage' in message ? message.usage : undefined
-
-              if (windows.length || typeof cost === 'number') {
-                yield {
-                  type: 'usage' as const,
-                  ...(windows.length ? { window: Math.max(...windows) } : {}),
-                  ...(typeof cost === 'number' ? { cost } : {}),
-                  ...(usage ? {
-                    inputTokens: usage.input_tokens + usage.cache_creation_input_tokens
-                    + usage.cache_read_input_tokens,
-                  } : {}),
-                }
+              yield {
+                type: 'usage' as const,
+                cost: message.total_cost_usd,
+                ...(usage ? {
+                  inputTokens: usage.input_tokens + usage.cache_creation_input_tokens
+                  + usage.cache_read_input_tokens,
+                } : {}),
               }
+
+              // The turn may have changed the model, and with it the window.
+              readWindow()
             }
 
             if (message.type === 'result') {
@@ -987,7 +1009,11 @@ export function readClaudeUsage({
   }
 
   if (record.type === 'system' && record.subtype === 'compact_boundary') {
-    reader.current = {}
+    const compacted = usageNumber({
+      value: object({ value: record.compactMetadata }).postTokens,
+      integer: true,
+    })
+    reader.current = compacted === undefined ? {} : { used: compacted }
 
     return
   }
