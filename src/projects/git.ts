@@ -247,9 +247,11 @@ export async function createTaskBranch({
 export async function git({
   cwd,
   args,
+  timeout = COPY_TIMEOUT_MS,
 }: {
   cwd: string
   args: string[]
+  timeout?: number
 }): Promise<{
   ok: boolean
   out: string
@@ -262,7 +264,7 @@ export async function git({
       cwd,
       ...args,
     ],
-    timeout: COPY_TIMEOUT_MS,
+    timeout,
     env: {
       ...process.env,
       GIT_TERMINAL_PROMPT: '0',

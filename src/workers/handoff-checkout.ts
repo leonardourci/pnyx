@@ -2,7 +2,7 @@ import type { AgentSession } from './model.ts'
 import { createHash } from 'node:crypto'
 import { realpathSync, readdirSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { runFile, runProcess } from '#app/run-process.ts'
+import { git as projectGit } from '#projects/git.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { loadHydra, reloadHydra } from '#app/store.ts'
 import { query } from '#store/postgres.ts'
@@ -18,38 +18,30 @@ export async function git({
   cwd: string
   args: string[]
 }): Promise<string> {
-  const { stdout } = await runFile({
-    command: 'git',
-    args: [
-      '-C',
-      cwd,
-      ...args,
-    ],
-    options: {
-      timeout: GIT_TIMEOUT_MS,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-      },
-    },
+  const result = await projectGit({
+    cwd,
+    args,
+    timeout: GIT_TIMEOUT_MS,
   })
 
-  return stdout.trim()
+  if (!result.ok) {
+    throw new Error(`git ${args[0]} failed in ${cwd}: ${result.err}`)
+  }
+
+  return result.out
 }
 
 export async function checkoutRoot({ cwd }: { cwd: string }): Promise<string | undefined> {
-  const result = await runProcess({
-    command: 'git',
+  const result = await projectGit({
+    cwd,
     args: [
-      '-C',
-      cwd,
       'rev-parse',
       '--show-toplevel',
     ],
     timeout: GIT_TIMEOUT_MS,
   })
 
-  return result.status === 0 ? realpathSync(result.stdout.trim()) : undefined
+  return result.ok ? realpathSync(result.out) : undefined
 }
 
 export async function checkoutState({ cwd }: { cwd: string }) {
@@ -73,6 +65,7 @@ export async function checkoutState({ cwd }: { cwd: string }) {
     args: [
       'status',
       '--porcelain',
+      '--untracked-files=normal',
     ],
   })
 
@@ -104,7 +97,7 @@ export async function restoreCheckout({
 
   const current = await checkoutState({ cwd })
 
-  if (current.branch === previousBranch && current.head === previousHead) {
+  if (!current.dirty && current.branch === previousBranch && current.head === previousHead) {
     return
   }
 
@@ -209,10 +202,10 @@ export function clearHandoff({ path }: { path: string }): void {
 }
 
 function readHandoff({ path }: { path: string }): HandoffIntent {
-  const intent = JSON.parse(readFileSync(
+  const intent: unknown = JSON.parse(readFileSync(
     path,
     'utf8',
-  )) as HandoffIntent
+  ))
 
   if (!intent || typeof intent !== 'object' || ![
     'eventId',
@@ -225,11 +218,11 @@ function readHandoff({ path }: { path: string }): HandoffIntent {
     'tip',
     'previousBranch',
     'previousHead',
-  ].every(key => typeof intent[key as keyof HandoffIntent] === 'string')) {
+  ].every(key => typeof Object.getOwnPropertyDescriptor(intent, key)?.value === 'string')) {
     throw new Error(`Invalid handoff intent: ${path}`)
   }
 
-  return intent
+  return intent as HandoffIntent
 }
 
 // Runs before any worker resumes, so its checkout agrees with the committed assignment.
@@ -240,7 +233,7 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
   try {
     files = readdirSync(dir).filter(file => file.endsWith('.json'))
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return
     }
 
@@ -258,7 +251,7 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
       eventId: intent.eventId,
     })
     const state = loadHydra({ hydraId }).state
-    const assigned = state.sessions?.[intent.session]?.taskId
+    const assigned = state.sessions?.[intent.session]
     const committed = event?.type === 'task.session' && event.cardId === intent.target
       && event.data.session === intent.session && event.data.handoff?.folder === intent.cwd
 
@@ -272,17 +265,19 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
     const copy = state.cards[expectedTask]?.copy
     const copyChanged = copy && (copy.path !== intent.cwd || copy.branch !== expectedBranch)
 
-    if (!state.cards[expectedTask] || assigned !== expectedTask || copyChanged
-      || state.sessions?.[intent.session]?.agent.cwd !== intent.cwd) {
+    if (!state.cards[expectedTask] || assigned?.taskId !== expectedTask || copyChanged
+      || assigned.agent.cwd !== intent.cwd) {
       throw new Error(`Handoff assignment changed; inspect ${intent.cwd}`)
     }
 
     for (const session of otherWorkers({
       hydraId,
       state,
-      session: state.sessions![intent.session]!,
+      session: assigned,
     })) {
-      if (await checkoutRoot({ cwd: session.agent.cwd! }) === intent.root) {
+      const cwd = session.agent.cwd
+
+      if (cwd && (cwd === intent.cwd || await checkoutRoot({ cwd }) === intent.root)) {
         throw new Error(`Another worker uses the handoff checkout; inspect ${intent.cwd}`)
       }
     }
@@ -292,7 +287,7 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
 
       const root = await checkoutRoot({ cwd: intent.cwd })
 
-      if (root !== intent.root || current.branch !== intent.branch) {
+      if (root !== intent.root || current.branch !== intent.branch || current.head !== intent.tip || current.dirty) {
         throw new Error(`Committed handoff checkout changed; inspect ${intent.cwd}`)
       }
     } else {

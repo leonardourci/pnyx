@@ -5,7 +5,7 @@ import { createTaskBranch } from '#projects/git.ts'
 import { recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
-import { statSync, realpathSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
@@ -204,22 +204,12 @@ async function landedBranch({
     throw new Error('The worker needs an isolated project folder')
   }
 
-  const root = realpathSync(await git({
-    cwd,
-    args: [
-      'rev-parse',
-      '--show-toplevel',
-    ],
-  }))
-  const projectRoot = realpathSync(await git({
-    cwd: card.project,
-    args: [
-      'rev-parse',
-      '--show-toplevel',
-    ],
-  }))
+  const [root, projectRoot] = await Promise.all([
+    checkoutRoot({ cwd }),
+    checkoutRoot({ cwd: card.project }),
+  ])
 
-  if (root === projectRoot) {
+  if (!root || !projectRoot || root === projectRoot) {
     throw new Error('The worker needs an isolated project folder')
   }
 

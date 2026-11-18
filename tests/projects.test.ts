@@ -2418,6 +2418,14 @@ if (branch === 'iris/target') {
         kept,
         'unfinished work',
       )
+      git({
+        cwd: project,
+        args: [
+          'config',
+          'status.showUntrackedFiles',
+          'no',
+        ],
+      })
       await pnyx.start()
       await hydra.task({ key: 'source' })
       expect(readFileSync(

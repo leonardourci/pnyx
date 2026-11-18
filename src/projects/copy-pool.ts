@@ -126,6 +126,7 @@ export async function reusable({
     args: [
       'status',
       '--porcelain',
+      '--untracked-files=normal',
     ],
   })
 

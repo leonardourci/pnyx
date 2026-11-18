@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import { matchesProject } from './identity.ts'
+import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
 import { checkout, copiesDir, freshSlot, liveCopy, recordedBranches, reusable, slots, take, unclaim } from './copy-pool.ts'
@@ -220,7 +220,7 @@ async function worktreeCopy({
     })
   }
 
-  const exists = await branchExists({
+  const exists = !previous || await branchExists({
     cwd: project.path,
     branch,
   })
@@ -508,6 +508,21 @@ export async function taskFolder({
           state: writer.state,
           ref: card.id,
         })
+        const selectedProject = taskProject({
+          state: writer.state,
+          card: now,
+        })
+
+        if (!sameProjectPath({
+          left: selectedProject?.path,
+          right: copy.project,
+        })) {
+          throw new HydraError({
+            message: `the project of task ${card.id} changed while its copy was being prepared; start it again`,
+            code: 'CONFLICT',
+          })
+        }
+
         // Another start may have won while this copy was prepared: it leaves its session and copy as they are.
         const startedMeanwhile = Boolean(now.sessionIds?.length)
         const copiedMeanwhile = now.copy?.state === 'active' && now.copy.path !== card.copy?.path
