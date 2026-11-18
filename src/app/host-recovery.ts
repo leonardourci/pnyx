@@ -199,7 +199,10 @@ export function createHostRecovery({
               resumeAttemptId = cutHydraTurn.resumeAttemptId
             }
           } else if (resumable && task && liveTask({ card: task })
-            && !handoffPending({ hydraId, task: task.id })
+            && !handoffPending({
+              hydraId,
+              task: task.id,
+            })
             && !closedTask({
               state: writer.state,
               card: task,

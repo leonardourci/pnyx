@@ -43,8 +43,20 @@ function contextSize({ session }: { session: AgentSession }): number {
   }
 }
 
-function handoffBlocked({ hydraId, task }: { hydraId: string; task: string }): boolean {
-  return handoffPending({ hydraId, task }) || copySettling({ hydraId, task })
+function handoffBlocked({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): boolean {
+  return handoffPending({
+    hydraId,
+    task,
+  }) || copySettling({
+    hydraId,
+    task,
+  })
 }
 
 function releaseQueue({
@@ -405,9 +417,9 @@ async function deliverHandoffs({
       card,
     }).ready || card.sessionIds?.[0] !== event.data.session
       || receipt && receipt.state !== 'failed' || handoffPending({
-        hydraId,
-        task: card.id,
-      })) {
+      hydraId,
+      task: card.id,
+    })) {
       continue
     }
 
@@ -538,8 +550,14 @@ export async function advanceQueues({
         session: id,
       })[0]
 
-      if (!next || handoffBlocked({ hydraId, task: card.id })
-        || handoffBlocked({ hydraId, task: next.id }) || !taskReadiness({
+      if (!next || handoffBlocked({
+        hydraId,
+        task: card.id,
+      })
+        || handoffBlocked({
+          hydraId,
+          task: next.id,
+        }) || !taskReadiness({
         state,
         card: next,
       }).ready) {
@@ -642,7 +660,13 @@ export async function advanceQueues({
         return false
       }
 
-      if (handoffBlocked({ hydraId, task: card.id }) || handoffBlocked({ hydraId, task: next.id })) {
+      if (handoffBlocked({
+        hydraId,
+        task: card.id,
+      }) || handoffBlocked({
+        hydraId,
+        task: next.id,
+      })) {
         continue
       }
 

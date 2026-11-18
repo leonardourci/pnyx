@@ -207,7 +207,10 @@ async function worktreeCopy({
   })
   const previousPath = previous?.path
   const candidates = previousPath && pooled.includes(previousPath)
-    ? [previousPath, ...pooled.filter(path => path !== previousPath)]
+    ? [
+      previousPath,
+      ...pooled.filter(path => path !== previousPath),
+    ]
     : pooled
   const common = await commonDir({ cwd: project.path })
 
