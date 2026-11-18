@@ -782,6 +782,7 @@ test(
     const hidden = await pnyx.hydra()
     const unattached = await pnyx.hydra()
     const path = allowed.folder({ name: 'polis-project' })
+    const privatePath = unattached.folder({ name: 'polis-project' })
 
     await allowed.owner({
       args: [
@@ -806,6 +807,29 @@ test(
         sharing.token,
       ],
     })
+    await unattached.owner({
+      args: [
+        'project',
+        'add',
+        privatePath,
+      ],
+    })
+    const privateSharing = await allowed.owner({
+      args: [
+        'project',
+        'add',
+        privatePath,
+      ],
+    })
+    await allowed.owner({
+      args: [
+        'project',
+        'add',
+        privatePath,
+        '--confirm',
+        privateSharing.token,
+      ],
+    })
     await allowed.owner({
       args: [
         'settings',
@@ -814,9 +838,27 @@ test(
         JSON.stringify({
           poleis: {
             shared: { readers: ['*'] },
+            'name-private': { readers: [unattached.id] },
             vault: { readers: [allowed.id] },
           },
         }),
+      ],
+    })
+    await unattached.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,name-private',
+      ],
+    })
+    await unattached.owner({
+      args: [
+        'project',
+        'move',
+        privatePath,
+        '--polis',
+        'name-private',
       ],
     })
     await allowed.owner({
@@ -849,6 +891,80 @@ test(
         path,
       ],
     }))).toContain('Project pulsar learning')
+    expect(JSON.stringify(await allowed.owner({
+      args: [
+        'project',
+        'show',
+        'polis-project',
+      ],
+    }))).toContain('Project pulsar learning')
+    await allowed.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        'polis-project',
+        '--key',
+        'preferences',
+        '--text',
+        'Visible project selected by name',
+        '--reason',
+        'test hidden name collision',
+      ],
+    })
+    await allowed.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'learnings',
+        '--text',
+        'Move learning to visible namesake',
+        '--reason',
+        'test hidden name collision',
+      ],
+    })
+    await allowed.owner({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--project',
+        'polis-project',
+        '--text',
+        'Move learning to visible namesake',
+        '--reason',
+        'test hidden name collision',
+      ],
+    })
+    await allowed.owner({
+      args: [
+        'project',
+        'set',
+        'polis-project',
+        '--copy',
+        'git clone --local',
+      ],
+    })
+    expect(JSON.stringify(await allowed.owner({
+      args: [
+        'oracle',
+        'pulsar',
+        '--project',
+        'polis-project',
+      ],
+    }))).toContain('Project [pulsar]')
+
+    expect(JSON.stringify(await allowed.owner({
+      args: [
+        'project',
+        'show',
+        path,
+      ],
+    }))).toContain('Visible project selected by name')
+
     expect((await unattached.ownerRefused({
       args: [
         'project',
@@ -875,7 +991,7 @@ test(
       args: [
         'project',
         'move',
-        path,
+        'polis-project',
         '--polis',
         'vault',
       ],
@@ -1010,6 +1126,13 @@ test(
         path,
       ],
     }))).not.toContain('Project [pulsar]')
+    await allowed.owner({
+      args: [
+        'project',
+        'remove',
+        'polis-project',
+      ],
+    })
   },
 )
 
