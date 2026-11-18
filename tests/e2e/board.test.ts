@@ -1710,7 +1710,7 @@ test(
           exact: true,
         },
       )
-      await grip.waitFor()
+      await grip.hover()
       const bounds = await column.boundingBox()
 
       if (!bounds) {
@@ -2760,6 +2760,7 @@ test(
       await source.waitFor()
       await target.waitFor()
       await page.locator(`[data-hydra-workspace="${hydra.id}"][data-connected="true"]`).waitFor()
+      await source.hover()
       const from = await source.boundingBox()
       const to = await target.boundingBox()
 

@@ -1004,6 +1004,8 @@ export function HydraView({
     )
   }
 
+  const showWorkspace = workspaceWindow.mounted && (loaded || hydra.creating) && page === 'hydra'
+
   return (
     <KeyboardProvider
       workspace={navigation.hydraId}
@@ -1200,7 +1202,7 @@ export function HydraView({
                 ...projectPending,
               ]}
             />
-            {workspaceWindow.mounted && page === 'hydra' && (
+            {showWorkspace && (
               <div className="hydra-page flex h-full min-h-0 w-max flex-row gap-2.5 overflow-visible">
                 <motion.div layout data-ui-surface="chat" className={`workspace-chat relative h-full flex-none ${view.workspace.chatCollapsed ? 'collapsed w-10 rounded-card border border-line [&>.chat-fold]:inset-x-1.25' : ''}`}>
                   <IconButton
