@@ -70,12 +70,14 @@ async function taskBranch({
   title: string
   reserved?: string[]
 }): Promise<string> {
+  // Remote-tracking refs can block a later fetch, including origin/HEAD on macOS.
   const refs = await git({
     cwd,
     args: [
       'for-each-ref',
-      '--format=%(refname:lstrip=2)',
+      '--format=%(refname)',
       'refs/heads',
+      'refs/remotes',
     ],
   })
 
@@ -89,7 +91,11 @@ async function taskBranch({
   // A ref that differs only in case can still block creation on a case-insensitive filesystem.
   const existing = new Set(reserved.map(branch => branch.toLowerCase()))
 
-  for (const branch of refs.out.split('\n').filter(Boolean)) {
+  for (const ref of refs.out.split('\n').filter(Boolean)) {
+    const branch = ref.replace(
+      /^refs\/(heads|remotes\/[^/]+)\//,
+      '',
+    )
     existing.add(branch.toLowerCase())
   }
 

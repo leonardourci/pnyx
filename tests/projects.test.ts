@@ -1739,6 +1739,13 @@ test(
       title: 'The chart of the vendas and clientes atendidos across projects',
       key: 'filler',
     })).branch).toBe('poseidon/chart-vendas-clientes-atendidos-across')
+    expect(await createTaskBranch({
+      cwd: titleProject,
+      hydraName: 'Poséidon!',
+      task: 'task-abcdef12-3456',
+      title: '',
+      start: 'HEAD',
+    })).toBe('poseidon/abcdef12')
     const punctuation = await start({
       title: '!!!',
       key: 'punctuation',
@@ -1755,7 +1762,7 @@ test(
         'hydra',
         'set',
         '--name',
-        'HEAD',
+        'Poséidon!',
       ],
     })
     git({
@@ -1778,7 +1785,7 @@ test(
       cwd: titleProject,
       args: [
         'branch',
-        'Head/Chart',
+        'Poseidon/Chart',
       ],
     })
     git({
@@ -1786,22 +1793,34 @@ test(
       args: [
         'push',
         'origin',
-        'HEAD:refs/heads/head/chart-2',
+        'HEAD:refs/heads/poseidon/chart-2',
       ],
     })
     expect((await start({
       title: 'Chart',
       key: 'head-chart',
-    })).branch).toBe('head/chart-3')
+    })).branch).toBe('poseidon/chart-3')
     expect(git({
       cwd: titleProject,
       args: [
         'log',
         '-1',
         '--format=%s',
-        'refs/heads/head/chart-3',
+        'refs/heads/poseidon/chart-3',
       ],
     })).toBe('init')
+    await titleHydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'HEAD',
+      ],
+    })
+    expect((await start({
+      title: 'Symref',
+      key: 'symref',
+    })).branch).toBe('head-2/symref')
     let active = true
     expect(await createTaskBranch({
       cwd,
