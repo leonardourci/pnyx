@@ -410,7 +410,20 @@ test(
       expect(await title.getAttribute('aria-expanded')).toBe('false')
       const card = title.locator('xpath=ancestor::article[1]')
       await card.hover()
-      const opening = page.evaluate(async () => {
+      const openModal = page.getByRole(
+        'button',
+        {
+          name: 'Open modal',
+          exact: true,
+        },
+      )
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+      const opening = openModal.evaluate(async trigger => {
+        await new Promise<void>(resolve => trigger.addEventListener(
+          'click',
+          () => resolve(),
+          { once: true },
+        ))
         const widths: number[] = []
         let inlineFrames = 0
 
@@ -432,13 +445,7 @@ test(
           inlineFrames,
         }
       })
-      await page.getByRole(
-        'button',
-        {
-          name: 'Open modal',
-          exact: true,
-        },
-      ).click()
+      await openModal.click()
       const modal = page.getByRole(
         'dialog',
         {
