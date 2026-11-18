@@ -43,8 +43,8 @@ test(
         'list',
       ],
     })
-    expect(unavailableHome.writable).toBeUndefined()
-    expect(unavailableHome.revision).toBeUndefined()
+    expect(unavailableHome.writable ?? null).toBeNull()
+    expect(unavailableHome.revision ?? null).toBeNull()
     expect((await work.ownerRefused({
       args: [
         'owner',
@@ -64,6 +64,16 @@ test(
         'shared',
       ],
     })
+    expect((await work.ownerRefused({
+      args: [
+        'hydra',
+        'create',
+        work.id,
+        '--polis',
+        'work',
+        '--propose',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
     expect((await work.ownerRefused({
       args: [
         'settings',
