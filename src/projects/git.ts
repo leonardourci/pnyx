@@ -164,15 +164,36 @@ export async function taskBranch({
 
 export async function createTaskBranch({
   start,
+  checkout = false,
+  active = () => true,
+  prepare,
   ...naming
-}: Parameters<typeof taskBranch>[0] & { start: string }): Promise<string> {
+}: Parameters<typeof taskBranch>[0] & {
+  start: string
+  checkout?: boolean
+  active?(): boolean
+  prepare?({ branch }: { branch: string }): Promise<boolean>
+}): Promise<string | undefined> {
   for (let attempt = 0; attempt < BRANCH_CREATE_ATTEMPTS; attempt++) {
     const branch = await taskBranch(naming)
+
+    if (!active()) {
+      return undefined
+    }
+
+    if (prepare && !await prepare({ branch })) {
+      return undefined
+    }
+
+    if (!active()) {
+      return undefined
+    }
+
+    const args = checkout ? ['switch', '--no-track', '-c'] : ['branch', '--no-track']
     const created = await git({
       cwd: naming.cwd,
       args: [
-        'branch',
-        '--no-track',
+        ...args,
         branch,
         start,
       ],

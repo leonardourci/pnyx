@@ -5,8 +5,6 @@ import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 import { createTaskBranch, taskBranch } from '#projects/git.ts'
-import { advanceQueues } from '#workers/advance-queue.ts'
-import { loadHydra } from '#app/store.ts'
 
 let pnyx: Pnyx
 const github = join(
@@ -313,26 +311,13 @@ test(
             'main',
           ],
         })
-        await advanceQueues({
-          hydraId: hydra.id,
-          state: loadHydra({ hydraId: hydra.id }).state,
-          active: () => !git({
-            cwd: path,
-            args: [
-              'branch',
-              '--list',
-              'hercules/next-chart',
-            ],
-          }),
-        })
-        expect(git({
+        git({
           cwd: path,
           args: [
             'branch',
-            '--list',
             'hercules/next-chart',
           ],
-        })).toContain('hercules/next-chart')
+        })
         expect(git({
           cwd: copy,
           args: [

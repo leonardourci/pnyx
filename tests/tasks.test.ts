@@ -1,4 +1,4 @@
-import { pageTitle } from '../web/src/app/view.ts'
+import { pageTitle } from '#web-app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -458,5 +458,9 @@ test(
       hydra: 'Poseidon',
       taskTitle: '0123456789 0123456789 0123456789 0123456789 0123456789 12345 extra',
     })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789 12345… · Poseidon · Pnyx')
+    expect(pageTitle({
+      hydra: 'Poseidon',
+      taskTitle: '012345678901234567890123456789012345678901234567890123456789🚀extra',
+    })).toBe('012345678901234567890123456789012345678901234567890123456789🚀… · Poseidon · Pnyx')
   },
 )

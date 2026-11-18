@@ -160,6 +160,14 @@ async function worktreeCopy({
     reserved: branches,
     start,
   })
+
+  if (!branch) {
+    throw new HydraError({
+      code: 'COPY_FAILED',
+      message: 'task branch allocation was cancelled',
+    })
+  }
+
   await clearDefaultUpstreams({
     cwd: project.path,
     branches,

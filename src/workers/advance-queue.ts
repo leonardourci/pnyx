@@ -617,9 +617,74 @@ export async function advanceQueues({
         continue
       }
 
+      let brief: string | undefined
+      let roots = new Map<string, string | undefined>()
+      const prepare = async ({ branch }: { branch: string }) => {
+        brief = await taskPrompt({
+          hydraId,
+          card: next,
+          prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,
+        })
+
+        if (await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
+          throw new Error('The worker checkout changed during branch preparation')
+        }
+
+        roots = await workerRoots({
+          hydraId,
+          session: session!,
+        })
+        const currentState = loadHydra({ hydraId }).state
+        assertUnshared({
+          hydraId,
+          state: currentState,
+          session: session!,
+          root: prepared.root,
+          roots,
+        })
+        const currentSource = currentState.cards[card.id]
+        const currentTarget = workerQueue({
+          state: currentState,
+          session: id,
+        })[0]
+
+        if (currentSource?.revision !== card.revision || currentTarget?.id !== next.id
+          || currentTarget.revision !== next.revision) {
+          return false
+        }
+
+        const status = await git({
+          cwd: prepared.cwd,
+          args: [
+            'status',
+            '--porcelain',
+          ],
+        })
+        const head = await git({
+          cwd: prepared.cwd,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        })
+
+        if (status || head !== prepared.head) {
+          throw new Error('The worker folder changed during branch preparation')
+        }
+
+        return true
+      }
+
+      if (!active()) {
+        return false
+      }
+
       const branch = await createTaskBranch({
         cwd: prepared.cwd,
         start: prepared.tip,
+        checkout: true,
+        active,
+        prepare,
         hydraName: state.config?.name || hydraId,
         task: next.id,
         title: next.title,
@@ -628,70 +693,13 @@ export async function advanceQueues({
           project: card.copy?.project ?? card.project ?? prepared.root,
         }),
       })
-      const brief = await taskPrompt({
-        hydraId,
-        card: next,
-        prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,
-      })
 
-      if (await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
-        throw new Error('The worker checkout changed during branch preparation')
-      }
+      if (!branch) {
+        if (!active()) {
+          return false
+        }
 
-      const roots = await workerRoots({
-        hydraId,
-        session: session!,
-      })
-      assertUnshared({
-        hydraId,
-        state: loadHydra({ hydraId }).state,
-        session: session!,
-        root: prepared.root,
-        roots,
-      })
-      const status = await runProcess({
-        command: 'git',
-        args: [
-          '-C',
-          prepared.cwd,
-          'status',
-          '--porcelain',
-        ],
-        timeout: GIT_TIMEOUT_MS,
-      })
-      const head = await runProcess({
-        command: 'git',
-        args: [
-          '-C',
-          prepared.cwd,
-          'rev-parse',
-          'HEAD',
-        ],
-        timeout: GIT_TIMEOUT_MS,
-      })
-
-      if (status.status !== 0 || status.stdout.trim() || head.stdout.trim() !== prepared.head) {
-        throw new Error('The worker folder changed during branch preparation')
-      }
-
-      if (!active()) {
-        return false
-      }
-
-      // Git runs outside the event write, so the task can change before the handoff is recorded.
-      const run = await runProcess({
-        command: 'git',
-        args: [
-          '-C',
-          prepared.cwd,
-          'switch',
-          branch,
-        ],
-        timeout: GIT_TIMEOUT_MS,
-      })
-
-      if (run.status !== 0) {
-        throw new Error(`Cannot create a fresh branch: ${run.stderr.trim()}`)
+        continue
       }
 
       withWriter({
