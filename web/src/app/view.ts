@@ -18,7 +18,7 @@ export function pageTitle({
   const label = page === 'settings' ? 'Settings' : selected && cards[selected]?.title
   const shortTitle = label && label.length > TAB_TITLE_LENGTH ? `${label.slice(
     0,
-    60,
+    TAB_TITLE_LENGTH,
   ).replace(
     /\s+\S*$/,
     '',
