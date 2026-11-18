@@ -667,7 +667,8 @@ async function answerGroup({
       })
     }
 
-    const priorReply = target.replies?.find(reply => reply.id === event && reply.decision?.questionId === ask.id)
+    const priorReply = target.replies?.find(reply => reply.id === event
+      && reply.decision?.questionId === ask.id)
     const repeat = ask.answered === event || (priorReply !== undefined
       && (priorReply.state === 'queued' || priorReply.state === 'delivery_unknown' || priorReply.accepted === true))
     const priorChoice = priorReply?.decision?.choice ?? ask.choice
@@ -692,7 +693,8 @@ async function answerGroup({
   const group = ownerQuestionGroups({ state }).find(group => group.card.id === card.id)
   const current = group?.decisions.map(decision => decisionKey({ decision })) ?? []
 
-  const groupChanged = current.length !== pending.length || pending.some(member => !current.includes(member.key))
+  const groupChanged = current.length !== pending.length
+    || pending.some(member => !current.includes(member.key))
 
   if (pending.length && groupChanged) {
     throw new HydraError({
