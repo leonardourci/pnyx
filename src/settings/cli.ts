@@ -90,13 +90,14 @@ export const settings = guard({
     const change = meta({ values })
 
     const read = readSettings()
-    const after = patchSettings({
+    const duplicate = change.id !== undefined && read.ids.has(change.id)
+    const after = duplicate ? read.settings : patchSettings({
       current: read.settings,
       input: patch,
     })
     const memoryPatch = patch !== null && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch) ? patch : undefined
 
-    if (memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
+    if (!duplicate && memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
       const state = loadHydra({ hydraId }).state
 
       if ('projectPoleis' in memoryPatch) {
@@ -123,7 +124,7 @@ export const settings = guard({
       }
     }
 
-    if (memoryPatch || values.propose) {
+    if (!duplicate && (memoryPatch || values.propose)) {
       const proposalArgs = values['if-revision'] !== undefined ? args : [
         ...args,
         '--if-revision',
