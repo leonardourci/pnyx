@@ -485,7 +485,7 @@ test(
         check: async () => {
           const box = await modal.boundingBox()
 
-          return !!box && Math.abs(box.width - 936) < 1 && Math.abs(box.height - 868) < 1
+          return !!box && Math.abs(box.width - 1008) < 1 && Math.abs(box.height - 720) < 1
         },
       })
       expect(widths.some(width => width > 600 && width < 900)).toBe(true)

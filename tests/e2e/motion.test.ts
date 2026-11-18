@@ -263,3 +263,169 @@ test(
     }
   },
 )
+
+test(
+  'resizing the task modal keeps its close action anchored and its icons undistorted',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const title = 'Keep a long task title readable while resizing its conversation and instructions'
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'resize-modal',
+        '--title',
+        title,
+      ],
+    })
+
+    for (const theme of [
+      'light',
+      'dark',
+    ]) {
+      const page = await openHydra({
+        port: pnyx.port(),
+        hydraId: hydra.id,
+      })
+
+      try {
+        await page.evaluate(
+          async theme => {
+            document.documentElement.dataset.theme = theme
+            await document.fonts.ready
+          },
+          theme,
+        )
+        await page.getByRole(
+          'button',
+          {
+            name: title,
+            exact: true,
+          },
+        ).hover()
+        await page.getByRole(
+          'button',
+          {
+            name: 'Open modal',
+            exact: true,
+          },
+        ).click()
+        const modal = page.getByRole(
+          'dialog',
+          {
+            name: title,
+            exact: true,
+          },
+        )
+        await until({
+          what: 'the modal finishes opening before resizing',
+          check: async () => {
+            const bounds = await modal.boundingBox()
+            const settled = await modal.evaluate(element => getComputedStyle(element).transform === 'none')
+
+            return settled && !!bounds
+              && Math.abs(bounds.width - 1008) < 1
+              && Math.abs(bounds.height - 720) < 1
+          },
+        })
+
+        for (const [
+          axis,
+          delta,
+        ] of [
+            [
+              'width',
+              -500,
+            ],
+            [
+              'height',
+              -500,
+            ],
+            [
+              'width',
+              300,
+            ],
+            [
+              'height',
+              200,
+            ],
+          ] as const) {
+          const grip = modal.getByRole(
+            'separator',
+            {
+              name: `Resize task modal ${axis}`,
+              exact: true,
+            },
+          )
+          await grip.hover()
+          const bounds = (await grip.boundingBox())!
+          const sampling = modal.evaluate(
+            async (
+              dialog,
+              frameCount,
+            ) => {
+              const close = dialog.querySelector<HTMLElement>(
+                '.dialog-head [aria-label="Close"]',
+              )!
+
+              const anchor = () => {
+                const surface = dialog.getBoundingClientRect()
+                const button = close.getBoundingClientRect()
+
+                return {
+                  right: surface.right - button.right,
+                  top: button.top - surface.top,
+                }
+              }
+
+              const initial = anchor()
+              let anchorDrift = 0, iconDistortion = 0
+
+              for (let frame = 0; frame < frameCount; frame++) {
+                await new Promise(requestAnimationFrame)
+                const current = anchor()
+                anchorDrift = Math.max(
+                  anchorDrift,
+                  Math.abs(current.right - initial.right),
+                  Math.abs(current.top - initial.top),
+                )
+
+                for (const icon of dialog.querySelectorAll<SVGElement>('.dialog-head svg, [data-card-header] svg')) {
+                  const bounds = icon.getBoundingClientRect(), style = getComputedStyle(icon)
+                  iconDistortion = Math.max(
+                    iconDistortion,
+                    Math.abs(bounds.width - parseFloat(style.width)),
+                    Math.abs(bounds.height - parseFloat(style.height)),
+                  )
+                }
+              }
+
+              return {
+                anchorDrift,
+                iconDistortion,
+              }
+            },
+            SAMPLE_FRAMES,
+          )
+          await page.mouse.move(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2,
+          )
+          await page.mouse.down()
+          await page.mouse.move(
+            bounds.x + bounds.width / 2 + (axis === 'width' ? delta : 0),
+            bounds.y + bounds.height / 2 + (axis === 'height' ? delta : 0),
+            { steps: 20 },
+          )
+          await page.mouse.up()
+          const result = await sampling
+          expect.soft(result.anchorDrift).toBeLessThan(0.5)
+          expect.soft(result.iconDistortion).toBeLessThan(0.5)
+        }
+      } finally {
+        await page.context().close()
+      }
+    }
+  },
+)

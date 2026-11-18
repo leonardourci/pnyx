@@ -1,6 +1,6 @@
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { OverlaySurface } from './overlay-surface.tsx'
-import { useLayoutEffect, useId, useRef, type ReactNode, type CSSProperties } from 'react'
+import { useLayoutEffect, useId, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { motion } from 'motion/react'
 
 import { IconButton } from './icon-button.tsx'
@@ -27,6 +27,10 @@ export function Dialog({
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const heading = useId()
+  const [
+    animating,
+    setAnimating,
+  ] = useState(false)
   // A text selection dragged out of the panel ends on the backdrop; only a press there closes.
   const pressed = useRef<EventTarget | null>(null)
   useLayoutEffect(
@@ -51,6 +55,10 @@ export function Dialog({
       data-framer-portal-id={heading}
       open={!!layoutId}
       layoutId={layoutId}
+      // Settled dialogs follow pointer sizing directly; shared entry and exit keep measuring.
+      layoutDependency={animating ? undefined : layoutId}
+      onLayoutAnimationStart={() => setAnimating(true)}
+      onLayoutAnimationComplete={() => setAnimating(false)}
       initial={false}
       exit={{ opacity: 0 }}
       style={style}
@@ -93,7 +101,7 @@ export function Dialog({
         }
       }}
     >
-      <header className="dialog-head flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-line [&>h2]:flex-1 [&>h2]:font-brand">
+      <header className="dialog-head flex items-start gap-2 px-4 pt-3.5 pb-2.5 border-b border-line [&>h2]:flex-1 [&>h2]:font-brand">
         <h2 id={heading}>{title}</h2>
         {actions}
         <IconButton

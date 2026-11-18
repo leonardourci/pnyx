@@ -156,7 +156,7 @@ export function useTaskModalSize() {
       maximum.height,
       Math.max(
         minimum.height,
-        preview.height ?? saved?.height ?? maximum.height,
+        preview.height ?? saved?.height ?? viewport.height * CARD_SIZING.modal.heightFraction,
       ),
     ),
   }

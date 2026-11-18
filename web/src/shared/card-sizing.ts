@@ -37,7 +37,8 @@ export const CARD_SIZING = {
   },
   modal: {
     margin: 16,
-    widthFraction: 0.65,
+    widthFraction: 0.7,
+    heightFraction: 0.8,
   },
 } as const
 
