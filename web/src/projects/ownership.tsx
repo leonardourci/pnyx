@@ -1,3 +1,4 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { useState } from 'react'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -57,7 +58,7 @@ export function RepositoryOwnership({
           <div className="row">
             {repository.hydras.map(hydra => (
               <div key={hydra.id} className="flex items-center gap-2">
-                <HydraLabel name={hydra.name} icon={hydra.icon} size={15} />
+                <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
                 <InlineConfirm
                   label={`Keep ${repository.name} in ${hydra.name || hydra.id}`}
                   trigger="Keep here"
