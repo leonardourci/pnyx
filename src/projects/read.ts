@@ -51,18 +51,20 @@ export function findProject({
   state,
   ref,
   attached = false,
+  projects = projectsFor({ state }),
 }: {
   state: HydraState
   ref: string
   attached?: boolean
+  projects?: HydraProject[]
 }): HydraProject {
-  const projects = projectsFor({ state }).filter(p => !attached || !p.detached)
+  const candidates = projects.filter(p => !attached || !p.detached)
   const pathRef = ref.includes('/') || ref === '.' || ref === '..'
-  const exact = projects.find(p => p.path === ref || (pathRef && sameProjectPath({
+  const exact = candidates.find(p => p.path === ref || (pathRef && sameProjectPath({
     left: p.path,
     right: ref,
   })))
-  const matches = exact ? [exact] : projects.filter(p => p.name === ref)
+  const matches = exact ? [exact] : candidates.filter(p => p.name === ref)
 
   const [
     project,
