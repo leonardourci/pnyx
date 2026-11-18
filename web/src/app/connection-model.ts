@@ -63,6 +63,7 @@ export interface Request {
   sent: boolean
   creation?: string
   saveId?: string
+  completion?: Promise<Receipt>
   checking?: boolean
   unconfirmed(): void
   timer?: ReturnType<typeof setTimeout>

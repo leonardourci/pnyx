@@ -10,7 +10,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { readSettingsSaves,saveSettingsSaves } from '#web-hydra/outbox.ts'
+import { readSavedCommands,saveCommands } from '#web-hydra/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
@@ -531,11 +531,22 @@ export function createHydraConnection({
     args: request.args,
   })
 
-  const persistSaves = ({ scope }: { scope: Scope }) => saveSettingsSaves({
-    hydraId: scope.identity,
-    commands: [...requests.values()].filter(request => request.scope === scope && request.name === 'hydra-agent')
-      .map(request => saveCommand({ request })),
-  })
+  const persistSaves = ({ scope }: { scope: Scope }) => {
+    const commands = [...requests.values()]
+      .filter(request => request.scope === scope && (request.name === 'hydra-agent'
+        || request.name === 'hydra' && request.args[0] === 'send' && !!request.saveId))
+      .map(request => saveCommand({ request }))
+    const ids = new Set(commands.map(command => saveEventId({command})))
+    const retained = scope.restoredSaves ? [] : readSavedCommands({hydraId: scope.identity})
+      .filter(command => !ids.has(saveEventId({command})))
+    saveCommands({
+      hydraId: scope.identity,
+      commands: [
+        ...retained,
+        ...commands,
+      ],
+    })
+  }
 
   const confirmSaves = ({ scope }: { scope: Scope }) => {
     for (const request of requests.values()) {
@@ -1059,9 +1070,7 @@ export function createHydraConnection({
       scope.identity = message.hydraId
 
       if (!scope.restoredSaves) {
-        scope.restoredSaves = true
-
-        for (const saved of readSettingsSaves({ hydraId: scope.identity })) {
+        for (const saved of readSavedCommands({ hydraId: scope.identity })) {
           if (!requests.has(saved.id)) {
             void command({
               scope,
@@ -1074,6 +1083,9 @@ export function createHydraConnection({
             })
           }
         }
+
+        scope.restoredSaves = true
+        persistSaves({scope})
       }
 
       if (shouldReload({

@@ -1,4 +1,8 @@
-import type { SaveCommand } from '#app/save-receipts.ts'
+import { saveEventId, type SaveCommand } from '#app/save-receipts.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { argument } from '#web-tasks/optimistic.ts'
+
+export const HYDRA_SEND_SETTLED = 'pnyx-hydra-send-settled'
 
 export function storageKey({
   key,
@@ -96,7 +100,7 @@ export function saveAttempt({
   } catch { /* The mounted composer still retains the draft when storage is blocked. */ }
 }
 
-export function readSettingsSaves({ hydraId }: { hydraId: string }): SaveCommand[] {
+export function readSavedCommands({ hydraId }: { hydraId: string }): SaveCommand[] {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey({
       key: 'settings-saves',
@@ -108,14 +112,16 @@ export function readSettingsSaves({ hydraId }: { hydraId: string }): SaveCommand
     }
 
     return saved.filter((entry): entry is SaveCommand => entry?.type === 'command'
-      && entry.name === 'hydra-agent' && typeof entry.id === 'string'
-      && Array.isArray(entry.args) && entry.args.length === 1 && typeof entry.args[0] === 'string')
+      && typeof entry.id === 'string' && !!entry.id
+      && Array.isArray(entry.args) && entry.args.every((arg: unknown) => typeof arg === 'string')
+      && ((entry.name === 'hydra-agent' && entry.args.length === 1)
+        || (entry.name === 'hydra' && entry.args[0] === 'send' && !!saveEventId({command: entry}))))
   } catch {
     return []
   }
 }
 
-export function saveSettingsSaves({
+export function saveCommands({
   hydraId,
   commands,
 }: {
@@ -186,4 +192,73 @@ export function saveUnsent({
       }))
     }
   } catch { /* The mounted chat still shows unsent messages when storage is blocked. */ }
+}
+
+export function settleSavedCommand({
+  command,
+  hydraId,
+  storageIdentity,
+  refusal,
+}: {
+  command: SaveCommand
+  hydraId: string
+  storageIdentity: string
+  refusal?: string
+}) {
+  if (command.name !== 'hydra' || command.args[0] !== 'send') {
+    return
+  }
+
+  const id = saveEventId({command})
+
+  if (!id) {
+    return
+  }
+
+  const attempt = readAttempt({
+    key: HYDRA_CARD,
+    hydraId: storageIdentity,
+  })
+
+  if (attempt?.id === id) {
+    saveAttempt({
+      key: HYDRA_CARD,
+      hydraId: storageIdentity,
+      attempt: null,
+    })
+  }
+
+  const before = readUnsent({
+    key: hydraId,
+    hydraId: storageIdentity,
+  })
+  const items = before.filter(item => item.id !== id)
+
+  if (refusal) {
+    items.push({
+      id,
+      text: argument({
+        args: command.args,
+        flag: '--text',
+      }) ?? '',
+      at: before.find(item => item.id === id)?.at ?? new Date().toISOString(),
+      failed: refusal,
+    })
+  }
+
+  saveUnsent({
+    key: hydraId,
+    hydraId: storageIdentity,
+    items,
+  })
+  dispatchEvent(new CustomEvent(
+    HYDRA_SEND_SETTLED,
+    {
+      detail: {
+        hydraId,
+        id,
+        refusal,
+      },
+    },
+  ))
 }

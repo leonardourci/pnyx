@@ -270,7 +270,12 @@ export function Composer({
 
   useEffect(
     () => {
-      if (attempt.current?.pending) {
+      const saved = readAttempt({
+        key: card,
+        hydraId: cacheIdentity,
+      })
+
+      if (attempt.current?.pending && saved?.pending && saved.id === attempt.current.id) {
         void send({ restore: true })
       }
     },

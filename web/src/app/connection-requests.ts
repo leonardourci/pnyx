@@ -1,3 +1,4 @@
+import { settleSavedCommand } from '#web-hydra/outbox.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
@@ -145,7 +146,37 @@ export function createConnectionRequests({
     onChecking?(): void
     savedId?: string
   }): Promise<Receipt> {
-    return new Promise((
+    const id = savedId ?? crypto.randomUUID()
+    const saveId = saveEventId({
+      command: {
+        type: 'command',
+        id,
+        name,
+        args,
+      },
+    })
+    const pending = saveId ? [...requests.values()].find(request => request.scope === scope
+      && request.saveId === saveId && request.name === name
+      && JSON.stringify(request.args) === JSON.stringify(args)) : undefined
+
+    if (pending?.completion) {
+      if (onChecking) {
+        const unconfirmed = pending.unconfirmed
+
+        pending.unconfirmed = () => {
+          unconfirmed()
+          onChecking()
+        }
+      }
+
+      if (pending.checking) {
+        onChecking?.()
+      }
+
+      return pending.completion
+    }
+
+    const completion = new Promise<Receipt>((
       resolve,
       reject,
     ) => {
@@ -195,7 +226,6 @@ export function createConnectionRequests({
         }
       }
 
-      const id = savedId ?? crypto.randomUUID()
       // The page keeps no event ids, so a Hydra message or agent change confirms only from its receipt.
       const confirmed = savedReply({
         command: {
@@ -284,14 +314,6 @@ export function createConnectionRequests({
         })
       }
 
-      const saveId = saveEventId({
-        command: {
-          type: 'command',
-          id,
-          name,
-          args,
-        },
-      })
       requests.set(
         id,
         {
@@ -318,6 +340,13 @@ export function createConnectionRequests({
       persistSaves({ scope })
       publish(); subscribe({ scope }); flush()
     })
+    const request = requests.get(id)
+
+    if (request) {
+      request.completion = completion
+    }
+
+    return completion
   }
 
   const respond = ({
@@ -352,6 +381,17 @@ export function createConnectionRequests({
 
     clearTimeout(request.timer)
     requests.delete(id)
+    settleSavedCommand({
+      command: {
+        type: 'command',
+        id,
+        name: request.name,
+        args: request.args,
+      },
+      hydraId: scope.id,
+      storageIdentity: scope.identity,
+      refusal: message.type === 'error' ? message.error : undefined,
+    })
     persistSaves({ scope })
 
     if (message.type === 'error') {

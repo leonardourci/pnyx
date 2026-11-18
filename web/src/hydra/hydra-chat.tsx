@@ -1,3 +1,4 @@
+import { kept } from '#web-shared/stable.ts'
 import { useSessionView, sessionViewKey } from '#web-app/session-view.ts'
 import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
@@ -47,7 +48,7 @@ import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
-import { readUnsent,saveUnsent } from './outbox.ts'
+import { HYDRA_SEND_SETTLED,readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
 import { motionDuration } from '#web-shared/motion.ts'
 
@@ -366,6 +367,77 @@ export function HydraChat({
       notify({ text: (error as Error).message })
     }
   }
+
+  useEffect(
+    () => {
+      const refresh = ({
+        id,
+        refusal,
+      }: {
+        id?: string
+        refusal?: string
+      } = {}) => {
+        const saved = readUnsent({
+          key: hydraId,
+          hydraId: storageIdentity,
+        })
+        const refused = new Map(saved.map(item => [
+          item.id,
+          item,
+        ]))
+        setSending(current => {
+          const next = current.map(item => {
+            const saved = refused.get(item.id)
+            refused.delete(item.id)
+
+            if (id === item.id && refusal === undefined) {
+              return {
+                ...item,
+                confirmed: true,
+                failed: undefined,
+              }
+            }
+
+            return saved ? {
+              ...item,
+              confirmed: false,
+              failed: saved.failed,
+            } : item
+          })
+          next.push(...[...refused.values()].map(item => ({
+            ...item,
+            confirmed: false,
+          })))
+
+          return kept({
+            previous: current,
+            next,
+          })
+        })
+      }
+
+      const settled = (event: Event) => {
+        if (event instanceof CustomEvent && event.detail.hydraId === hydraId) {
+          refresh(event.detail)
+        }
+      }
+
+      refresh()
+      window.addEventListener(
+        HYDRA_SEND_SETTLED,
+        settled,
+      )
+
+      return () => window.removeEventListener(
+        HYDRA_SEND_SETTLED,
+        settled,
+      )
+    },
+    [
+      hydraId,
+      storageIdentity,
+    ],
+  )
 
   const unsent = sending.flatMap(({
     id,

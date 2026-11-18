@@ -1113,8 +1113,12 @@ test(
     const sent: {
       scope?: string
       id?: string
+      requestId?: string
     }[] = []
     let holding = true
+    let releaseReceipt: (() => void) | undefined
+    let refuseOnReplay = false
+    let refusals = 0
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: first.id,
@@ -1124,10 +1128,28 @@ test(
         socket => {
           const server = socket.connectToServer()
           // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          server.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (holding && frame.type === 'receipt' && sent.some(send => send.requestId === frame.id)) {
+              releaseReceipt = () => socket.send(message)
+
+              return
+            }
+
+            socket.send(message)
+          })
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
           socket.onMessage(message => {
             const frame = JSON.parse(String(message))
 
             if (frame.type === 'command' && frame.name === 'hydra' && frame.args?.some((arg: string) => arg.includes('Refused second Hydra message'))) {
+              refusals++
+
+              if (!refuseOnReplay) {
+                return
+              }
+
               socket.send(JSON.stringify({
                 type: 'error',
                 scope: frame.scope,
@@ -1144,11 +1166,8 @@ test(
               sent.push({
                 scope: frame.scope,
                 id: frame.args?.at(-1),
+                requestId: frame.id,
               })
-
-              if (holding) {
-                return
-              }
             }
 
             server.send(message)
@@ -1159,6 +1178,7 @@ test(
     const workspace = page.locator(`[data-hydra-workspace="${second.id}"]`)
 
     try {
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${second.id}"]`).click()
       const composer = workspace.getByRole(
         'textbox',
         {
@@ -1179,18 +1199,33 @@ test(
         },
       ).click()
       await until({
-        what: 'second Hydra send is withheld',
+        what: 'second Hydra send awaits acknowledgment',
         check: () => sent.length === 1,
       })
       expect(sent[0]?.scope).toBe(second.id)
-      holding = false
-      await page.reload()
+      await until({
+        what: 'the first send is delivered with its acknowledgment held',
+        check: () => !!releaseReceipt && pnyx.claude.sessions.some(session =>
+          session.env.PNYX_HYDRA === second.id && session.answered === 1),
+      })
+      releaseReceipt = undefined
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${first.id}/`)
       await until({
         what: 'pending send resumes in its owning Hydra',
         check: () => sent.length === 2,
       })
       expect(sent[1]?.scope).toBe(second.id)
       expect(sent[1]?.id).toBe(sent[0]?.id)
+      expect(await workspace.locator('.hydra-page').count()).toBe(0)
+      await until({
+        what: 'the replay receipt is held',
+        check: () => !!releaseReceipt,
+      })
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${second.id}"]`).click()
+      await workspace.locator('.hydra-chat .composer [title="Sending…"]').waitFor()
+      expect(sent).toHaveLength(2)
+      holding = false
+      releaseReceipt!()
       await workspace.getByRole(
         'region',
         { name: 'Hydra conversation' },
@@ -1204,6 +1239,17 @@ test(
         { exact: true },
       )
         .count()).toBe(0)
+      await until({
+        what: 'one confirmed Hydra delivery',
+        check: () => pnyx.claude.sessions.some(session =>
+          session.env.PNYX_HYDRA === second.id && session.answered === 1),
+      })
+      const deliveries = pnyx.claude.sessions
+        .filter(session => session.env.PNYX_HYDRA === second.id)
+        .flatMap(session => session.received)
+        .filter(text => text.includes('Only the second Hydra receives this'))
+      expect(deliveries).toHaveLength(1)
+      expect(sent).toHaveLength(2)
       await composer.fill('Refused second Hydra message')
       await workspace.getByRole(
         'button',
@@ -1212,12 +1258,17 @@ test(
           exact: true,
         },
       ).click()
-      await workspace.getByRole(
-        'region',
-        { name: 'Hydra conversation' },
-      ).getByRole('alert')
-        .filter({ hasText: 'Send refused for this test' })
-        .waitFor()
+      await until({
+        what: 'the refused send is held before acknowledgment',
+        check: () => refusals === 1,
+      })
+      refuseOnReplay = true
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${first.id}/`)
+      await until({
+        what: 'the off-screen send restores its refusal',
+        check: () => refusals === 2,
+      })
+      expect(await workspace.locator('.hydra-page').count()).toBe(0)
       await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${second.id}/`)
       await workspace.getByText(
         'Refused second Hydra message',
@@ -1229,6 +1280,7 @@ test(
       ).getByRole('alert')
         .filter({ hasText: 'Send refused for this test' })
         .waitFor()
+      expect(refusals).toBe(2)
     } finally {
       await page.context().close()
     }
