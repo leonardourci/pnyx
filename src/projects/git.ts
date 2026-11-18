@@ -162,6 +162,7 @@ export async function taskBranch({
   return branch
 }
 
+// Failed copy allocations keep their refs reserved, so retries never delete or reuse those names.
 export async function createTaskBranch({
   start,
   checkout = false,
@@ -189,7 +190,14 @@ export async function createTaskBranch({
       return undefined
     }
 
-    const args = checkout ? ['switch', '--no-track', '-c'] : ['branch', '--no-track']
+    const args = checkout ? [
+      'switch',
+      '--no-track',
+      '-c',
+    ] : [
+      'branch',
+      '--no-track',
+    ]
     const created = await git({
       cwd: naming.cwd,
       args: [

@@ -293,6 +293,56 @@ test(
         'main',
       ],
     })).toBe('init')
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Handoff gate',
+        '--key',
+        'gate',
+      ],
+    })
+    const hooks = join(
+      path,
+      'test-hooks',
+    )
+    const hookMarker = join(
+      path,
+      'handoff-declined',
+    )
+    mkdirSync(hooks)
+    const hook = `#!${process.execPath}
+const { execFileSync } = require('node:child_process')
+const { writeFileSync } = require('node:fs')
+const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
+if (branch === 'hercules/next-chart-2') {
+  execFileSync(process.execPath, ${JSON.stringify([
+    join(
+      import.meta.dirname,
+      '..',
+      'dist',
+      'cli',
+      'pnyx-axi.js',
+    ),
+    'task',
+    'depend',
+    'next',
+    '--on',
+    'gate',
+    '--hydra',
+  ])}.concat(${JSON.stringify(hydra.id)}))
+  writeFileSync(${JSON.stringify(hookMarker)}, 'declined')
+}
+`
+    writeFileSync(
+      join(
+        hooks,
+        'post-checkout',
+      ),
+      hook,
+      { mode: 0o700 },
+    )
     await pnyx.restart({
       whileStopped: async () => {
         git({
@@ -318,6 +368,14 @@ test(
             'hercules/next-chart',
           ],
         })
+        git({
+          cwd: path,
+          args: [
+            'config',
+            'core.hooksPath',
+            hooks,
+          ],
+        })
         expect(git({
           cwd: copy,
           args: [
@@ -325,6 +383,74 @@ test(
             '--show-current',
           ],
         })).toBe('hercules/add-cart')
+      },
+    })
+    await until({
+      what: 'handoff declined during Git checkout',
+      check: () => existsSync(hookMarker),
+    })
+    await until({
+      what: 'original checkout restored after declined handoff',
+      check: () =>
+        git({
+          cwd: copy,
+          args: [
+            'branch',
+            '--show-current',
+          ],
+        }) === 'hercules/add-cart',
+    })
+    const declined = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'next',
+        '--full',
+      ],
+    })
+    expect(declined.task.sessionIds ?? []).toEqual([])
+    expect(git({
+      cwd: path,
+      args: [
+        'branch',
+        '--list',
+        'hercules/next-chart-2',
+      ],
+    })).toContain('hercules/next-chart-2')
+    git({
+      cwd: path,
+      args: [
+        'config',
+        '--unset',
+        'core.hooksPath',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'undepend',
+        'next',
+        '--on',
+        'gate',
+      ],
+    })
+    await pnyx.restart({
+      whileStopped: () => {
+        expect(git({
+          cwd: copy,
+          args: [
+            'branch',
+            '--show-current',
+          ],
+        })).toBe('hercules/add-cart')
+        expect(git({
+          cwd: path,
+          args: [
+            'branch',
+            '--list',
+            'hercules/next-chart-2',
+          ],
+        })).toContain('hercules/next-chart-2')
       },
     })
     await until({
@@ -338,7 +464,7 @@ test(
           ],
         })
 
-        return copy?.branch === 'hercules/next-chart-2'
+        return copy?.branch === 'hercules/next-chart-3'
       },
     })
     expect(git({
@@ -347,10 +473,10 @@ test(
         'branch',
         '--show-current',
       ],
-    })).toBe('hercules/next-chart-2')
+    })).toBe('hercules/next-chart-3')
     await until({
       what: 'readable branch in delivered brief',
-      check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-2')),
+      check: async () => (await hydra.agent({ cwd: copy })).received.some(text => text.includes('on fresh branch hercules/next-chart-3')),
     })
   },
 )
@@ -1386,6 +1512,28 @@ test(
       title: 'Chart',
       reserved: ['poseidon/chart-3'],
     })).toBe('poseidon/chart-4')
+    let active = true
+    expect(await createTaskBranch({
+      cwd,
+      hydraName: 'Iris',
+      task: 'task-cancelled',
+      title: 'Cancelled',
+      start: 'HEAD',
+      active: () => active,
+      prepare: async () => {
+        active = false
+
+        return true
+      },
+    })).toBeUndefined()
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--list',
+        'iris/cancelled',
+      ],
+    })).toBe('')
     const simultaneous = await Promise.all([
       createTaskBranch({
         cwd,
@@ -1463,5 +1611,81 @@ test(
         '--show-current',
       ],
     })).toBe('poseidon-2/chart-2')
+    const failingHooks = join(
+      cwd,
+      'failing-hooks',
+    )
+    mkdirSync(failingHooks)
+    writeFileSync(
+      join(
+        failingHooks,
+        'post-checkout',
+      ),
+      '#!/bin/sh\nexit 1\n',
+      { mode: 0o700 },
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Retry allocation',
+        '--key',
+        'retry',
+        '--project',
+        'shop',
+      ],
+    })
+    git({
+      cwd,
+      args: [
+        'config',
+        'core.hooksPath',
+        failingHooks,
+      ],
+    })
+    expect(await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'retry',
+      ],
+    })).toMatchObject({ code: 'COPY_FAILED' })
+    const reserved = git({
+      cwd,
+      args: [
+        'rev-parse',
+        'refs/heads/poseidon-2/retry-allocation',
+      ],
+    })
+    git({
+      cwd,
+      args: [
+        'config',
+        '--unset',
+        'core.hooksPath',
+      ],
+    })
+    const retried = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'retry',
+      ],
+    })
+    expect(git({
+      cwd: retried.agent.folder,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('poseidon-2/retry-allocation-2')
+    expect(git({
+      cwd,
+      args: [
+        'rev-parse',
+        'refs/heads/poseidon-2/retry-allocation',
+      ],
+    })).toBe(reserved)
   },
 )

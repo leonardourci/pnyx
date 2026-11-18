@@ -329,6 +329,13 @@ async function landedBranch({
     base: `origin/${context.base}`,
     tip: context.tip,
     head,
+    previousBranch: await git({
+      cwd,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    }),
     root,
   }
 
@@ -361,6 +368,69 @@ async function landedBranch({
   }
 
   throw new Error('Local commits are outside the merged pull request or its fetched default branch')
+}
+
+async function restoreCheckout({
+  cwd,
+  branch,
+  tip,
+  previousBranch,
+  previousHead,
+}: {
+  cwd: string
+  branch: string
+  tip: string
+  previousBranch: string
+  previousHead: string
+}): Promise<void> {
+  const currentBranch = await git({
+    cwd,
+    args: [
+      'branch',
+      '--show-current',
+    ],
+  })
+  const currentHead = await git({
+    cwd,
+    args: [
+      'rev-parse',
+      'HEAD',
+    ],
+  })
+  const status = await git({
+    cwd,
+    args: [
+      'status',
+      '--porcelain',
+    ],
+  })
+
+  if (currentBranch !== branch || currentHead !== tip || status) {
+    throw new Error('Handoff was not recorded and the checkout changed; inspect the worker folder before continuing')
+  }
+
+  if (previousBranch && await git({
+    cwd,
+    args: [
+      'rev-parse',
+      `refs/heads/${previousBranch}`,
+    ],
+  }) !== previousHead) {
+    throw new Error('Handoff was not recorded and the previous branch moved; inspect the worker folder before continuing')
+  }
+
+  const args = previousBranch ? [
+    'switch',
+    previousBranch,
+  ] : [
+    'switch',
+    '--detach',
+    previousHead,
+  ]
+  await git({
+    cwd,
+    args,
+  })
 }
 
 async function refreshLinks({
@@ -619,6 +689,7 @@ export async function advanceQueues({
 
       let brief: string | undefined
       let roots = new Map<string, string | undefined>()
+
       const prepare = async ({ branch }: { branch: string }) => {
         brief = await taskPrompt({
           hydraId,
@@ -702,64 +773,80 @@ export async function advanceQueues({
         continue
       }
 
-      withWriter({
-        hydraId,
-        fn: ({ writer }) => {
-          drainSpool({ writer })
-          const source = writer.state.cards[card.id]
-          const target = workerQueue({
-            state: writer.state,
-            session: id,
-          })[0]
+      let recorded = false
 
-          if (source?.revision !== card.revision || target?.id !== next.id
+      try {
+        recorded = Boolean(withWriter({
+          hydraId,
+          fn: ({ writer }) => {
+            drainSpool({ writer })
+            const source = writer.state.cards[card.id]
+            const target = workerQueue({
+              state: writer.state,
+              session: id,
+            })[0]
+
+            if (source?.revision !== card.revision || target?.id !== next.id
             || !taskReadiness({
               state: writer.state,
               card: target,
             }).ready || target.revision !== next.revision
           || source.sessionIds?.[0] !== id || source.activity === 'working') {
-            return
-          }
-
-          assertUnshared({
-            hydraId,
-            state: writer.state,
-            session: session!,
-            root: prepared.root,
-            roots,
-          })
-          const decision = decideSession({
-            state: writer.state,
-            fromQueue: id,
-            ref: id,
-            task: next.id,
-            meta: meta(),
-          })
-
-          if ('event' in decision && decision.event.type === 'task.session') {
-            decision.event.data.handoff = {
-              folder: prepared.cwd,
-              column: roleColumn({
-                columns: hydraConfig({ state: writer.state }).columns,
-                role: 'in_progress',
-              }) ?? next.column,
-              ...(source.copy ? {
-                copy: {
-                  ...source.copy,
-                  branch,
-                  base: prepared.base.replace(
-                    /^origin\//,
-                    '',
-                  ),
-                  state: 'active',
-                },
-              } : {}),
+              return
             }
-            decision.event.data.brief = brief
-            writer.append({ event: decision.event })
-          }
-        },
-      })
+
+            assertUnshared({
+              hydraId,
+              state: writer.state,
+              session: session!,
+              root: prepared.root,
+              roots,
+            })
+            const decision = decideSession({
+              state: writer.state,
+              fromQueue: id,
+              ref: id,
+              task: next.id,
+              meta: meta(),
+            })
+
+            if ('event' in decision && decision.event.type === 'task.session') {
+              decision.event.data.handoff = {
+                folder: prepared.cwd,
+                column: roleColumn({
+                  columns: hydraConfig({ state: writer.state }).columns,
+                  role: 'in_progress',
+                }) ?? next.column,
+                ...(source.copy ? {
+                  copy: {
+                    ...source.copy,
+                    branch,
+                    base: prepared.base.replace(
+                      /^origin\//,
+                      '',
+                    ),
+                    state: 'active',
+                  },
+                } : {}),
+              }
+              decision.event.data.brief = brief
+              writer.append({ event: decision.event })
+
+              return true
+            }
+          },
+        }))
+      } finally {
+        if (!recorded) {
+          await restoreCheckout({
+            cwd: prepared.cwd,
+            branch,
+            tip: prepared.tip,
+            previousBranch: prepared.previousBranch,
+            previousHead: prepared.head,
+          })
+        }
+      }
     } catch (error) {
       if (active()) {
         releaseQueue({
