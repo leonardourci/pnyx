@@ -1853,6 +1853,7 @@ test(
 
         released = false
         blockedReads = sockets.length + 1
+        process.env.PNYX_TEST_GIT_ARG = '--show-toplevel'
         const unstableHistory = pnyxAxi({
           args: [
             'history',
@@ -1893,6 +1894,7 @@ test(
         }
 
         released = true
+        delete process.env.PNYX_TEST_GIT_ARG
         const unstableResult = await unstableHistory
         expect(unstableResult.status).toBe(1)
         expect(parsed(unstableResult).code).toBe('CONFLICT')
