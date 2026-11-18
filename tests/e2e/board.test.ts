@@ -3412,6 +3412,14 @@ test(
         keys,
       ],
     }).map(card => card.key)
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { chatCollapsed: true } }),
+      ],
+    })
     const outdents: string[] = []
     const page = await openHydra({
       port: pnyx.port(),
@@ -3495,6 +3503,7 @@ test(
           },
         )
         await handle.hover()
+        const end = await point()
         const start = (await handle.boundingBox())!
         await page.mouse.move(
           start.x + start.width / 2,
@@ -3509,7 +3518,6 @@ test(
         const ghost = page.locator('.physical-ghost')
         await ghost.waitFor()
         await page.keyboard.down('Shift')
-        const end = await point()
         await page.mouse.move(
           end.x,
           end.y,
@@ -3556,13 +3564,6 @@ test(
       }
 
       const below = async ({ area }: { area: ReturnType<typeof column> }) => {
-        if (!await area.count()) {
-          throw new Error(JSON.stringify(await page.evaluate(() => ({
-            axis: document.querySelector('.workspace-axis')?.scrollLeft,
-            columns: [...document.querySelectorAll('section[data-column]')].map(node => `${node.closest('[data-hydra-workspace]')?.getAttribute('data-hydra-workspace')}:${node.getAttribute('aria-label')}:${Math.round(node.getBoundingClientRect().x)}`),
-          }))))
-        }
-
         const box = (await area.locator('.project-cards').boundingBox())!
         // eslint-disable-next-line pnyx/object-params -- Playwright owns the evaluate callback.
         const cards = await area.locator('.card[data-task]').evaluateAll(nodes =>
