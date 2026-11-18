@@ -3391,7 +3391,7 @@ test(
       )
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element to its page callback.
       await card.evaluate(node => {
-        node.addEventListener(
+        (node as HTMLElement).addEventListener(
           'pointerdown',
           ({
             clientX,
