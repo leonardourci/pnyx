@@ -150,12 +150,14 @@ export async function restoreCheckout({
     args,
   })
 
-  if (!await matchesCheckout({
+  const restored = await matchesCheckout({
     cwd,
     root,
     branch: previousBranch,
     head: previousHead,
-  })) {
+  })
+
+  if (!restored) {
     throw new Error('Handoff was not recorded and the previous checkout could not be restored; inspect the worker folder before continuing')
   }
 }
