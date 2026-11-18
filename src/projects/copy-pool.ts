@@ -147,8 +147,9 @@ export const checkout = ({
     ? git({
       cwd,
       args: [
-        'checkout',
+        'switch',
         '--quiet',
+        '--no-guess',
         branch,
       ],
     })

@@ -86,13 +86,15 @@ export async function taskBranch({
     })
   }
 
-  const existing = new Set(reserved)
+  // A ref that differs only in case can still block creation on a case-insensitive filesystem.
+  const existing = new Set(reserved.map(branch => branch.toLowerCase()))
 
   for (const ref of refs.out.split('\n').filter(Boolean)) {
-    existing.add(ref.replace(
+    const branch = ref.replace(
       /^refs\/(heads|remotes\/[^/]+)\//,
       '',
-    ))
+    )
+    existing.add(branch.toLowerCase())
   }
 
   const remotes = await git({
@@ -130,7 +132,7 @@ export async function taskBranch({
       const separator = line.indexOf(prefix)
 
       if (separator >= 0) {
-        existing.add(line.slice(separator + prefix.length))
+        existing.add(line.slice(separator + prefix.length).toLowerCase())
       }
     }
   }
@@ -148,11 +150,13 @@ export async function taskBranch({
   }
 
   const base = `${namespace}/${titleSlug}`
-  const occupied = new Set([...existing].map(name => name.split('/').slice(
-    0,
-    2,
-  )
-    .join('/')))
+  const occupied = new Set<string>()
+
+  for (const name of existing) {
+    const parts = name.split('/')
+    const firstTwoParts = parts.slice(0, 2)
+    occupied.add(firstTwoParts.join('/'))
+  }
   let branch = base
 
   for (let suffix = 2; occupied.has(branch); suffix++) {
@@ -204,6 +208,10 @@ export async function createTaskBranch({
 
     if (created.ok) {
       return branch
+    }
+
+    if (!active()) {
+      return undefined
     }
 
     if (await taskBranch(naming) === branch) {

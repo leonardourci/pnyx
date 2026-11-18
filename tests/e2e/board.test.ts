@@ -40,6 +40,11 @@ test(
         needsYou,
       ],
     })
+    await page.getByRole(
+      'button',
+      { name: 'Review the export', exact: true },
+    ).waitFor()
+    expect(await page.title()).toBe('Poseidon · Pnyx')
 
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })

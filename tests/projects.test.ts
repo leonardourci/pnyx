@@ -1637,7 +1637,7 @@ test(
       cwd,
       args: [
         'branch',
-        'poseidon/chart',
+        'Poseidon/Chart',
       ],
     })
     git({
@@ -1700,7 +1700,7 @@ test(
       args: [
         'branch',
         '-d',
-        'poseidon/chart',
+        'Poseidon/Chart',
       ],
     })
     git({

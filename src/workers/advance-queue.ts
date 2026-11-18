@@ -287,30 +287,13 @@ async function landedBranch({
     }),
   })
 
-  if (await git({
-    cwd,
-    args: [
-      'status',
-      '--porcelain',
-    ],
-  })) {
+  const checkout = await checkoutState({ cwd })
+
+  if (checkout.dirty) {
     throw new Error('The worker folder has uncommitted changes')
   }
 
-  const head = await git({
-    cwd,
-    args: [
-      'rev-parse',
-      'HEAD',
-    ],
-  })
-  const previousBranch = await git({
-    cwd,
-    args: [
-      'branch',
-      '--show-current',
-    ],
-  })
+  const { head, branch: previousBranch } = checkout
   const copy = card.copy ?? {
     path: cwd,
     project: card.project,
@@ -790,6 +773,7 @@ export async function advanceQueues({
           cwd: prepared.cwd,
           args: [
             'switch',
+            '--no-guess',
             branch,
           ],
         })
