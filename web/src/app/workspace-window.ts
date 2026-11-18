@@ -29,7 +29,8 @@ export function useWorkspaceWindow({
       const observer = new IntersectionObserver(
         // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
         entries => {
-          setVisible(entries.some(entry => entry.isIntersecting))
+          setVisible(entries.some(entry => entry.isIntersecting && entry.intersectionRect.width > 0
+            && entry.intersectionRect.height > 0))
         },
         { root: viewport.axis.current },
       )
