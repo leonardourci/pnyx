@@ -1,8 +1,9 @@
+import { OperationLine } from '#web-shared/ui/operation-line.tsx'
 import { useEffect, useState } from 'react'
 import type { CompactInput, Compaction } from '#workers/compaction/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 
 // m:ss since startedAt, ticking while running.
@@ -61,10 +62,10 @@ export function CompactionRow({ operation }: { operation: Compaction }) {
       : `Compaction ${operation.state === 'cancelled' ? 'cancelled' : 'failed'} after ${elapsed}`
 
   return (
-    <div className="compaction-row" data-state={operation.state} role={operation.state === 'running' ? 'status' : undefined}>
-      <Icon name={operation.state === 'running' ? 'context' : operation.state === 'done' ? 'check' : operation.state === 'cancelled' ? 'stop' : 'error'} size={14} />
-      <span>{label}{operation.state !== 'running' && operation.trigger === 'auto' && ' · automatic'}{operation.error && <span className="compaction-reason">{operation.error}</span>}</span>
-    </div>
+    <OperationLine data-state={operation.state} role={operation.state === 'running' ? 'status' : undefined}>
+      <Icon name={operation.state === 'running' ? 'context' : operation.state === 'done' ? 'check' : operation.state === 'cancelled' ? 'stop' : 'error'} size={ICON_SIZE.inline} />
+      <span>{label}{operation.state !== 'running' && operation.trigger === 'auto' && ' · automatic'}{operation.error && <span className="compaction-reason block mt-1">{operation.error}</span>}</span>
+    </OperationLine>
   )
 }
 
@@ -75,12 +76,12 @@ export function CompactionRun({ operations }: { operations: Compaction[] }) {
 
   return (
     <Disclosure
-      className="compaction-run"
+      className="compaction-run [&>summary]:block [&_.disclosure-body]:grid [&_.disclosure-body]:gap-1.5 [&_.disclosure-body]:pl-5.5"
       title={(
-        <span className="compaction-row">
-          <Icon name="context" size={14} />
+        <OperationLine as="span">
+          <Icon name="context" size={ICON_SIZE.inline} />
           <span>{label}</span>
-        </span>
+        </OperationLine>
       )}
     >
       {operations.map(operation => <CompactionRow key={operation.id} operation={operation} />)}
@@ -110,16 +111,16 @@ export function CompactionQueue({
   }
 
   return (
-    <Disclosure className="compaction-queue" title={`Queued messages (${inputs.length})`}>
+    <Disclosure className="compaction-queue mt-0 mx-4 mb-2 py-2.5 px-3 border border-line rounded-card" title={`Queued messages (${inputs.length})`}>
       {inputs.map(input => (
-        <div className="compaction-queued" key={input.id}>
+        <div className="compaction-queued flex items-center gap-1 py-1.5 px-0 [&>span:first-child]:flex-1 [&>span:first-child]:whitespace-pre-wrap [&>span:first-child]:wrap-anywhere [&>span:first-child]:min-w-0 [&>span:first-child]:text-ui [&_.tooltip-anchor]:shrink-0" key={input.id}>
           <span>{input.text}</span>
           <Tooltip content="Send now">
-            <Button aria-label="Send now" disabled={disabled} onClick={() => void sendNow({ id: input.id })}><Icon name="send" size={14} /></Button>
+            <Button aria-label="Send now" disabled={disabled} onClick={() => void sendNow({ id: input.id })}><Icon name="send" size={ICON_SIZE.inline} /></Button>
           </Tooltip>
           {removable.has(input.id) && (
             <Tooltip content="Remove">
-              <Button aria-label="Remove" disabled={!connected} onClick={() => remove({ id: input.id })}><Icon name="close" size={14} /></Button>
+              <Button aria-label="Remove" disabled={!connected} onClick={() => remove({ id: input.id })}><Icon name="close" size={ICON_SIZE.inline} /></Button>
             </Tooltip>
           )}
         </div>

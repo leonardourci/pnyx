@@ -236,7 +236,10 @@ export function decideSession({
   fromQueue?: string
   working?: boolean
 }): Decision {
-  if (meta.id && meta.id in state.eventIds) {
+  if (meta.id && Object.hasOwn(
+    state.eventIds,
+    meta.id,
+  )) {
     return { skipped: 'duplicate' }
   }
 

@@ -41,6 +41,7 @@ export function focusElement({ selector }: { selector: string }) {
 }
 
 export function KeyboardProvider({
+  workspace,
   prefs,
   onAction,
   leaveField,
@@ -48,6 +49,7 @@ export function KeyboardProvider({
   hintKey,
   children,
 }: {
+  workspace?: string
   prefs: KeyboardPreferences
   onAction({
     id,
@@ -82,6 +84,10 @@ export function KeyboardProvider({
       let progress = emptyProgress()
 
       const keydown = (event: KeyboardEvent) => {
+        if (document.querySelector('.workspace-axis[data-dragging]')) {
+          return
+        }
+
         const {
           prefs,
           onAction,
@@ -90,6 +96,16 @@ export function KeyboardProvider({
           hintKey,
         } = current.current
         const target = event.target instanceof HTMLElement ? event.target : document.body
+        const owner = target.closest<HTMLElement>('[data-hydra-workspace]')
+          ?? document.querySelector<HTMLElement>('[data-hydra-workspace][data-active=true]')
+
+        if (workspace && owner?.dataset.hydraWorkspace !== workspace) {
+          return
+        }
+
+        if (event.defaultPrevented) {
+          return
+        }
 
         if (!hints && target instanceof HTMLInputElement && target.type === 'search' && event.key === 'Escape') {
           if (composing({ event })) {

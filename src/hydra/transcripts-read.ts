@@ -1,3 +1,4 @@
+import { taskSessions } from '#workers/session-history.ts'
 import { query } from '#store/postgres.ts'
 import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
@@ -7,7 +8,7 @@ import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { AgentRef, ReplyState } from '#workers/model.ts'
+import type { AgentConfig, AgentRef, ReplyState } from '#workers/model.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
@@ -30,6 +31,7 @@ import type { HydraMessage } from './model.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
+  targetAgent?: AgentConfig
   final?: boolean
   block?: number
   reference?: string
@@ -574,9 +576,7 @@ type Candidate = {
   message?: string
 }
 
-// A transcript a thread pages through, newest first. index names an earlier Hydra session in
-// the cursor. Hydra's current session pages back through the earlier ones; a task, or another
-// session the reader chose, has one source without an index.
+// Earlier sessions use stable cursor indexes so a harness switch preserves pagination.
 type ThreadSource = {
   session?: string
   path?: string
@@ -584,16 +584,44 @@ type ThreadSource = {
 }
 
 function threadSources({
+  hydraId,
   state,
   card,
+  selectedSession,
 }: {
+  hydraId: string
   state: HydraState
   card: Card
+  selectedSession?: boolean
 }): ThreadSource[] {
   const session = cardSessionId({ card })
   const hydra = state.cards[HYDRA_CARD]
   const current = card.id === HYDRA_CARD && session !== undefined
     && session === (hydra && cardSessionId({ card: hydra }))
+
+  const task = card.id !== HYDRA_CARD && !selectedSession
+
+  if (task) {
+    const members = [
+      ...taskSessions({
+        hydraId,
+        ids: new Set([card.id]),
+      }),
+    ]
+    const previous = members.filter(id => id !== session)
+
+    return [
+      {
+        session,
+        path: threadPath({ card }),
+      },
+      ...previous.map(id => ({
+        session: id,
+        path: threadPath({ card: { agent: state.sessions?.[id]?.agent } }),
+        index: members.indexOf(id),
+      })).reverse(),
+    ]
+  }
 
   if (!current) {
     return [
@@ -809,6 +837,7 @@ type ThreadRead = {
   card: Card
   homes: string[]
   before?: string
+  selectedSession?: boolean
 }
 
 // A conversation page from the task's transcript and saved events, with a log line for how long the read took.
@@ -818,6 +847,7 @@ export function readThread({
   card,
   homes,
   before,
+  selectedSession,
 }: ThreadRead): ThreadPage {
   const started = performance.now()
   const page = readThreadPage({
@@ -826,6 +856,7 @@ export function readThread({
     card,
     homes,
     before,
+    selectedSession,
   })
   log({
     operation: 'history.read',
@@ -846,6 +877,7 @@ function readThreadPage(
     card,
     homes,
     before,
+    selectedSession,
   }: ThreadRead,
 ): ThreadPage {
   const found = replyRoute({
@@ -877,8 +909,10 @@ function readThreadPage(
   const tools = card.id === HYDRA_CARD || selected.tools
   const thinking = selected.thinking
   const sources = threadSources({
+    hydraId,
     state,
     card,
+    selectedSession,
   })
   const named = sources.findIndex(source => source.index === sourceCursor)
   // A cursor naming a session this thread no longer pages reads no transcript.

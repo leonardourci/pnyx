@@ -7,7 +7,7 @@ import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { useModels } from '#web-workers/agent-picker.tsx'
 import { resolvedAccount, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 
@@ -154,24 +154,24 @@ function HeldMessageCard({
   const neitherReason = historyKnown ? NEITHER_REASON : history.error ?? 'Counting the conversation…'
 
   return (
-    <div className="agent-change-choice" role="region" aria-label="Continue with the selected agent">
+    <div className="agent-change-choice mt-0 mb-2 p-3 border border-line rounded-card bg-surface text-ui [&_p]:mt-1 [&_p]:mx-0 [&_p]:mb-2.5 [&_p]:text-muted [&_.agent-change-caption]:mt-2 [&_.agent-change-caption]:mx-0 [&_.agent-change-caption]:mb-0 [&_.agent-change-caption]:text-meta" role="region" aria-label="Continue with the selected agent">
       <strong>{title}</strong>
       <p>{explanation}</p>
       {change.error && <p role="alert">{change.error}</p>}
-      <div className="agent-change-actions">
+      <div className="agent-change-actions flex flex-wrap gap-2 [&>.agent-change-neither]:bg-transparent [&>.agent-change-neither]:text-muted">
         <Button
           variant="primary"
           disabled={actionsDisabled}
           aria-describedby={captionId}
           onClick={() => choose({ choice: 'inscribe' })}
         >
-          <Icon name="inscribe" size={16} />
+          <Icon name="inscribe" size={ICON_SIZE.control} />
           Inscribe +{' '}
-          <Icon name="compact" size={16} />
+          <Icon name="compact" size={ICON_SIZE.control} />
           compact
         </Button>
         <Button variant="surface" disabled={actionsDisabled} onClick={() => choose({ choice: 'compact' })}>
-          <Icon name="compact" size={16} />
+          <Icon name="compact" size={ICON_SIZE.control} />
           Compact only
         </Button>
         <Button

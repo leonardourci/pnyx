@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 // Source files resolve their #imports to .ts through the `source` condition, as `node --conditions=source` does.
 const conditions = ['source']
+const BROWSER_TIMEOUT_MS = 120_000
+const PERFORMANCE_JOURNEY = process.env.PNYX_PERFORMANCE === '1' || process.env.VITE_PNYX_PROFILE === '1'
 
 export default defineConfig({
   resolve: { conditions },
@@ -12,6 +14,7 @@ export default defineConfig({
     },
   },
   test: {
+    provide: { uiProfile: process.env.VITE_PNYX_PROFILE === '1' },
     pool: 'forks',
     execArgv: [
       '--conditions=source',
@@ -46,9 +49,19 @@ export default defineConfig({
         test: {
           name: 'e2e',
           include: ['tests/e2e/*.test.ts'],
+          exclude: ['tests/e2e/performance.test.ts'],
           // A browser journey starts zero-cache and Chrome, which a loaded machine slows most.
-          testTimeout: 120_000,
-          hookTimeout: 120_000,
+          testTimeout: BROWSER_TIMEOUT_MS,
+          hookTimeout: BROWSER_TIMEOUT_MS,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'performance',
+          include: PERFORMANCE_JOURNEY ? ['tests/e2e/performance.test.ts'] : [],
+          testTimeout: BROWSER_TIMEOUT_MS,
+          hookTimeout: BROWSER_TIMEOUT_MS,
         },
       },
     ],

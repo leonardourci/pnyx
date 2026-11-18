@@ -55,7 +55,7 @@ jobs:
     # Every run waits for the owner's approval in this environment.
     environment: ci
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,6 +84,20 @@ jobs:
         env:
           PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
         run: pnpm exec vitest run
+
+      - name: Check workspace latency
+        env:
+          PNYX_PERFORMANCE: '1'
+          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
+        run: pnpm exec vitest run --project performance
+
+      - name: Profile the workspace
+        env:
+          VITE_PNYX_PROFILE: '1'
+          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
+        run: |
+          pnpm run build
+          pnpm exec vitest run --project performance
 
       # The tests' scratch homes and the Postgres log, so a failure only CI shows can be read.
       - name: Keep the test files

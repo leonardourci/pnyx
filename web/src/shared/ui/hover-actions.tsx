@@ -1,5 +1,9 @@
-import { useId, useEffect, useRef, type ReactNode, type RefObject } from 'react'
+import { useId, useEffect, useLayoutEffect, useRef, useState, useCallback, type ReactNode, type RefObject } from 'react'
+import { frame, cancelFrame } from 'motion/react'
 import { HOVER_CLAIM } from './tooltip.tsx'
+
+const VIEWPORT_GAP = 8
+const CARD_INSET = 10
 
 export function HoverActions({
   anchor,
@@ -10,6 +14,50 @@ export function HoverActions({
 }) {
   const id = useId()
   const panel = useRef<HTMLDivElement>(null)
+  const prepared = useRef(false)
+  const opening = useRef<(() => void) | null>(null)
+  const [
+    mounted,
+    setMounted,
+  ] = useState(false)
+  const position = useCallback(
+    () => {
+      const card = anchor.current, element = panel.current
+
+      if (!card || !element?.matches(':popover-open')) {
+        return
+      }
+
+      const rect = card.getBoundingClientRect()
+      const left = Math.max(
+        VIEWPORT_GAP,
+        Math.min(
+          rect.right - element.offsetWidth - CARD_INSET,
+          innerWidth - element.offsetWidth - VIEWPORT_GAP,
+        ),
+      )
+      const top = Math.max(
+        VIEWPORT_GAP,
+        Math.min(
+          rect.top - element.offsetHeight / 2,
+          innerHeight - element.offsetHeight - VIEWPORT_GAP,
+        ),
+      )
+      element.style.left = `${left}px`
+      element.style.top = `${top}px`
+    },
+    [anchor],
+  )
+
+  useLayoutEffect(
+    () => {
+      prepared.current = mounted
+      const show = opening.current
+      opening.current = null
+      show?.()
+    },
+    [mounted],
+  )
 
   useEffect(
     () => {
@@ -32,6 +80,8 @@ export function HoverActions({
       const hovered = () => card.matches(':hover') || element.matches(':hover')
 
       const hide = () => {
+        opening.current = null
+
         if (!element.isConnected) {
           return
         }
@@ -43,23 +93,8 @@ export function HoverActions({
         })
       }
 
-      const position = () => {
-        const rect = card.getBoundingClientRect()
-        element.style.left = `${Math.max(
-          8,
-          Math.min(
-            rect.right - element.offsetWidth - 10,
-            innerWidth - element.offsetWidth - 8,
-          ),
-        )}px`
-        element.style.top = `${Math.max(
-          8,
-          rect.top - element.offsetHeight / 2,
-        )}px`
-      }
-
       const show = (event: Event) => {
-        if (hiding || (event.type === 'focusin' && !keyboardFocus())) {
+        if (hiding || card.closest('[data-dragging]') || (event.type === 'focusin' && !keyboardFocus())) {
           return
         }
 
@@ -76,8 +111,20 @@ export function HoverActions({
             },
           },
         ))
-        element.showPopover()
-        position()
+
+        const open = () => {
+          if (card.isConnected && element.isConnected) {
+            element.showPopover()
+            position()
+          }
+        }
+
+        if (!prepared.current) {
+          opening.current = open
+          setMounted(true)
+        } else {
+          open()
+        }
       }
 
       const leave = (event: PointerEvent) => {
@@ -143,11 +190,32 @@ export function HoverActions({
         'resize',
         position,
       )
+
+      const track = () => {
+        if (element.matches(':popover-open')) {
+          frame.postRender(
+            position,
+            true,
+          )
+        } else {
+          cancelFrame(position)
+        }
+      }
+
+      element.addEventListener(
+        'toggle',
+        track,
+      )
       const observer = new ResizeObserver(position)
       observer.observe(card)
 
       return () => {
         observer.disconnect()
+        cancelFrame(position)
+        element.removeEventListener(
+          'toggle',
+          track,
+        )
         card.removeEventListener(
           'pointerover',
           show,
@@ -186,8 +254,16 @@ export function HoverActions({
     [
       anchor,
       id,
+      position,
     ],
   )
 
-  return <div ref={panel} popover="manual" className="card-menu">{children}</div>
+  return (
+    <div
+      ref={panel}
+      popover="manual"
+      className="card-menu fixed inset-auto m-0 hidden w-max max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 shadow-actions opacity-0 pointer-events-none transition-opacity duration-fast open:flex open:opacity-100 open:pointer-events-auto starting:open:opacity-0 motion-reduce:transition-none [&_.tooltip-anchor]:inline-flex"
+    >{mounted && children}
+    </div>
+  )
 }

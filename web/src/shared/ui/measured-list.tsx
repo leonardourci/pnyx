@@ -1,5 +1,7 @@
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { layoutOffset } from './scroll-offset.ts'
+import { useSessionViewResource, sessionViewKey } from '#web-app/session-view.ts'
+import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 const ESTIMATE = 96
 const OVERSCAN = 6
@@ -7,12 +9,14 @@ const INITIAL_HEIGHT = 1200
 
 export function MeasuredList<T>({
   items,
+  identity,
   itemKey,
   render,
   onEdge,
   stayAtTop = false,
 }: {
   items: readonly T[]
+  identity: string
   itemKey({ item }: { item: T }): string
   render({
     item,
@@ -30,19 +34,59 @@ export function MeasuredList<T>({
     setMargin,
   ] = useState(0)
 
-  const getScrollElement = () => {
-    for (let parent = list.current?.parentElement; parent; parent = parent.parentElement) {
-      const overflow = getComputedStyle(parent).overflowY
+  const scroller = useRef<HTMLElement | null>(null)
+  const atTop = useRef(true)
+  const getScrollElement = useCallback(
+    () => scroller.current,
+    [],
+  )
+  useLayoutEffect(
+    () => {
+      const element = list.current
+      let parent = element?.parentElement
 
-      if (overflow === 'auto' || overflow === 'scroll') {
-        return parent
+      while (parent) {
+        const overflow = getComputedStyle(parent).overflowY
+
+        if (overflow === 'auto' || overflow === 'scroll') {
+          break
+        }
+
+        parent = parent.parentElement
       }
-    }
 
-    return document.documentElement
-  }
+      const target = parent ?? document.documentElement
+      scroller.current = target
 
+      const position = () => {
+        atTop.current = target.scrollTop === 0
+      }
+
+      position()
+      target.addEventListener(
+        'scroll',
+        position,
+        { passive: true },
+      )
+
+      return () => target.removeEventListener(
+        'scroll',
+        position,
+      )
+    },
+    [],
+  )
+
+  const measurements = useSessionViewResource<VirtualItem[]>({
+    key: sessionViewKey({
+      scope: 'list',
+      id: identity,
+      field: 'measurements',
+    }),
+    initial: [],
+  })
   const virtualizer = useVirtualizer({
+    initialMeasurementsCache: measurements.snapshot(),
     count: items.length,
     getScrollElement,
     // eslint-disable-next-line pnyx/object-params -- TanStack owns this callback.
@@ -56,17 +100,53 @@ export function MeasuredList<T>({
     scrollMargin: margin,
     // Measuring inside the ResizeObserver pass resizes the chat's own observed ancestors and loops that pass.
     useAnimationFrameWithResizeObserver: true,
-    anchorTo: stayAtTop && (!list.current || getScrollElement().scrollTop === 0) ? 'start' : 'end',
+    anchorTo: stayAtTop && atTop.current ? 'start' : 'end',
   })
-  useLayoutEffect(() => {
-    const element = list.current
+  useLayoutEffect(
+    () => {
+      const element = list.current
+      const target = scroller.current
 
-    if (element) {
-      const scroller = getScrollElement()
-      const offset = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-      setMargin(offset + scroller.scrollTop)
-    }
-  })
+      if (!element || !target) {
+        return
+      }
+
+      const measure = () => {
+        const next = layoutOffset({
+          element,
+          horizontal: false,
+        }) - layoutOffset({
+          element: target,
+          horizontal: false,
+        })
+        setMargin(previous => previous === next ? previous : next)
+      }
+
+      measure()
+      const observer = new ResizeObserver(measure)
+
+      for (let parent: HTMLElement | null = element; parent; parent = parent.parentElement) {
+        observer.observe(parent)
+
+        if (parent === target) {
+          break
+        }
+      }
+
+      return () => observer.disconnect()
+    },
+    [],
+  )
+  useLayoutEffect(
+    () => () => {
+      measurements.remember({ value: virtualizer.takeSnapshot() })
+      measurements.flush()
+    },
+    [
+      measurements,
+      virtualizer,
+    ],
+  )
   const rows = virtualizer.getVirtualItems()
   const first = rows[0]?.index
   const last = rows.at(-1)?.index
@@ -91,6 +171,7 @@ export function MeasuredList<T>({
   return (
     <div
       ref={list}
+      data-scroll-content
       style={{
         height: virtualizer.getTotalSize(),
         position: 'relative',

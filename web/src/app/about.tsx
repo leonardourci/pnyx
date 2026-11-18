@@ -25,7 +25,7 @@ function Version({
   const build = document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content
 
   return (
-    <div className="about-version">
+    <div className="about-version flex items-center gap-3 flex-wrap">
       <p>Build <code>{build || 'unknown'}</code>. {upgradeStatus({ upgrade })}</p>
       {upgrade?.available && <Button variant="primary" onClick={startUpgrade}>Upgrade</Button>}
     </div>
@@ -40,7 +40,7 @@ export function About({
   startUpgrade(): void
 }) {
   return (
-    <section className="about" aria-label="About Pnyx">
+    <section className="about flex flex-col gap-2 text-ui [&_summary]:cursor-pointer [&_a]:underline" aria-label="About Pnyx">
       <p>Pnyx brings your agents and their work into a Hydra.</p>
       <Version upgrade={upgrade} startUpgrade={startUpgrade} />
       <Disclosure title="License notices">

@@ -1,7 +1,8 @@
+import { FloatingPanel } from './floating-panel.tsx'
 import { suggestionMatch, type SuggestionMatch } from '#hydra/suggestion-matches.ts'
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { ReactNode } from 'react'
 
 export interface PickerItem {
@@ -176,10 +177,11 @@ export function SuggestionPicker<T extends PickerItem>({
   )
 
   return (
-    <div
+    <FloatingPanel
       ref={root}
       popover="manual"
-      className={`mention-menu ${className}`}
+      className={`mention-menu group/suggestions max-h-80 border-gold-line! rounded-panel p-2.5 z-8 shadow-suggestions [&_mark]:p-0 [&_mark]:rounded-sm [&_mark]:text-inherit [&_mark]:bg-comment-emphasis [&_p]:text-muted [&_p]:text-meta ${className}`}
+      // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
       onMouseDown={event => event.preventDefault()}
     >
       <span className="eyebrow">{label} · Tab or Enter picks</span>
@@ -189,31 +191,31 @@ export function SuggestionPicker<T extends PickerItem>({
           index,
         ) => (
           <div key={item.key}>
-            {item.group && item.group !== matches[index - 1]?.group && <span className="picker-group">{item.group}</span>}
+            {item.group && item.group !== matches[index - 1]?.group && <span className="picker-group block px-2.5 pt-2 pb-1 text-muted text-meta">{item.group}</span>}
             <Button
               id={`${id}-${index}`}
               role="option"
               aria-selected={index === active}
-              className={index === active ? 'active' : ''}
+              className={`flex flex-col items-stretch w-full gap-1 text-left p-2 group-[.slash-menu]/suggestions:gap-3 group-[.slash-menu]/suggestions:[&>span]:flex-1 group-[.slash-menu]/suggestions:[&>span]:text-ui group-[.slash-menu]/suggestions:[&>span]:text-muted ${index === active ? 'active bg-hover' : ''}`}
               tabIndex={-1}
               disabled={item.disabled}
               onClick={() => choose({ item })}
             >
-              <span className="mention-heading">
-                <span className={`mention-icon ${item.tone ?? ''}`}>
-                  {(item.icons ?? ['star']).map(icon => <Icon key={icon} name={icon} size={14} />)}
+              <span className="mention-heading flex items-center gap-2 min-w-0 [&>strong]:flex-1 [&>strong]:min-w-0 [&>strong]:wrap-anywhere [&>small]:shrink [&>small]:min-w-0 [&>small]:max-w-[45%] [&>small]:truncate [&>small]:text-muted [&>small]:text-meta group-[.slash-menu]/suggestions:items-start group-[.slash-menu]/suggestions:[&_small]:block group-[.slash-menu]/suggestions:[&_small]:mt-0.75">
+                <span className={`mention-icon inline-flex text-(--column-color,currentColor) group-[.slash-menu]/suggestions:items-center group-[.slash-menu]/suggestions:h-[1lh] ${item.tone ?? ''}`}>
+                  {(item.icons ?? ['star']).map(icon => <Icon key={icon} name={icon} size={ICON_SIZE.inline} />)}
                 </span>
-                {item.badge && <span className="picker-project">{item.badge}</span>}
+                {item.badge && <span className="picker-project flex-[0_1_auto] max-w-[42%] min-w-0 [&_.task-label]:text-meta">{item.badge}</span>}
                 <strong><MatchedText text={item.title} query={query} /></strong>
                 <small>{item.detail}</small>
               </span>
-              {item.excerpt && <span className="mention-excerpt"><MatchedText text={item.excerpt} query={query} ranges={item.excerptHighlights} /></span>}
+              {item.excerpt && <span className="mention-excerpt whitespace-normal wrap-anywhere text-muted text-meta group-[.slash-menu]/suggestions:truncate"><MatchedText text={item.excerpt} query={query} ranges={item.excerptHighlights} /></span>}
             </Button>
           </div>
         ))}
       </div>
       {!matches.length && <p role="status">{loading ? 'Loading…' : empty}</p>}
       {footer}
-    </div>
+    </FloatingPanel>
   )
 }

@@ -1,3 +1,4 @@
+import { QUESTION_HEADLINE, QUESTION_SOURCE, RecommendedBadge, QuestionFields, QuestionOptions, QuestionActions, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
 import { useState } from 'react'
 import type { Ask, Card } from '#tasks/model.ts'
@@ -118,11 +119,11 @@ export function AskPanel({
 
   if (pending) {
     return (
-      <article className="ask ask-structured" aria-label="Answered question">
-        <CollapsibleText className="ask-headline" text={question} />
+      <QuestionPanel className="ask-structured" aria-label="Answered question">
+        <CollapsibleText className={`ask-headline ${QUESTION_HEADLINE}`} text={question} />
         <p className="muted small">Answer saved. Waiting to reach the worker.</p>
         {saved && <CollapsibleText text={saved.answer} />}
-      </article>
+      </QuestionPanel>
     )
   }
 
@@ -130,15 +131,19 @@ export function AskPanel({
   const label = deferred ? 'Deferred question' : 'Question for you'
 
   return (
-    <article className="ask ask-structured" aria-label={label}>
-      <div className="ask-headline"><RichText text={question} /></div>
+    <QuestionPanel className="ask-structured" aria-label={label}>
+      <div className={`ask-headline ${QUESTION_HEADLINE}`}><RichText text={question} /></div>
       {failed && <p className="muted small">Answer saved. Delivery failed; send it again below.</p>}
       {context && <div className="ask-context"><RichText text={context} /></div>}
       {ask.details && <div className="ask-details"><RichText text={ask.details} /></div>}
-      {question !== ask.question && <div className="decision-from">The worker asked:<CollapsibleText text={ask.question} /></div>}
-      <div className="ask-choices" hidden={deferred}>
+      {question !== ask.question && (
+        <div className={QUESTION_SOURCE}>
+          The worker asked:<CollapsibleText text={ask.question} />
+        </div>
+      )}
+      <QuestionFields hidden={deferred}>
         {!!options.length && (
-          <div className="ask-options" role="group" aria-label="Choices">
+          <QuestionOptions role="group" aria-label="Choices">
             {options.map((
               option,
               i,
@@ -153,10 +158,10 @@ export function AskPanel({
                   text,
                 })}
               >
-                {ask.recommended === i + 1 && <span className="decision-recommended">Recommended</span>}
+                {ask.recommended === i + 1 && <RecommendedBadge compact />}
               </ChoiceOption>
             ))}
-          </div>
+          </QuestionOptions>
         )}
         <ComposerField
           label="Your answer"
@@ -167,7 +172,7 @@ export function AskPanel({
             text,
           })}
         />
-        <div className="pending-decision-actions">
+        <QuestionActions>
           <div className="muted small">{ask.escalated ? 'Hydra passed this on' : 'Hydra asks'}{ask.escalated?.reason && <CollapsibleText text={ask.escalated.reason} />}</div>
           <Button
             disabled={busy || imagesLoading || !text.trim()}
@@ -185,8 +190,8 @@ export function AskPanel({
             }}
           >{sendLabel}
           </Button>
-        </div>
-      </div>
+        </QuestionActions>
+      </QuestionFields>
       <QuestionTiming
         card={card}
         ask={ask}
@@ -194,6 +199,6 @@ export function AskPanel({
         notify={notify}
         disabled={busy}
       />
-    </article>
+    </QuestionPanel>
   )
 }

@@ -6,7 +6,7 @@ const GAP = 8
 const CLOSE_DELAY_MS = 180
 
 export function TooltipPanel({ children }: { children: ReactNode }) {
-  return <span className="tooltip-panel">{children}</span>
+  return <span className="tooltip-panel flex flex-col gap-2.5 min-w-60 py-1 px-0.5 has-[>.shared-usage]:p-0 has-[>.shared-usage]:gap-0 [&_.usage-session-details]:pt-0 [&_.usage-session-details]:px-3.25 [&_.usage-session-details]:pb-3.25">{children}</span>
 }
 
 export function TooltipSection({
@@ -16,11 +16,12 @@ export function TooltipSection({
   children: ReactNode
   className?: string
 }) {
-  return <span className={`tooltip-section ${className}`}>{children}</span>
+  return <span className={`tooltip-section flex flex-col [:where(&)]:gap-1 ${className}`}>{children}</span>
 }
 
 export function Tooltip({
   content,
+  anchorClassName = '',
   delay = 0,
   children,
   interactive = false,
@@ -28,6 +29,7 @@ export function Tooltip({
   disabled = false,
 }: {
   content: ReactNode
+  anchorClassName?: string
   delay?: number
   children: ReactNode
   interactive?: boolean
@@ -37,6 +39,7 @@ export function Tooltip({
   const id = useId()
   const anchor = useRef<HTMLSpanElement>(null)
   const panel = useRef<HTMLSpanElement>(null)
+  const dismissal = useRef<AbortController | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [
@@ -48,6 +51,8 @@ export function Tooltip({
   const hide = () => {
     clearTimeout(timer.current)
     clearTimeout(closeTimer.current)
+    dismissal.current?.abort()
+    dismissal.current = null
     setVisible(false)
   }
 
@@ -76,8 +81,38 @@ export function Tooltip({
   }
 
   const show = () => {
-    if (disabled) {
+    if (disabled || anchor.current?.closest('[data-dragging]')) {
       return
+    }
+
+    if (!dismissal.current) {
+      const controller = new AbortController()
+      dismissal.current = controller
+
+      const claimed = (event: Event) => {
+        if (event instanceof CustomEvent && event.detail.id !== id) {
+          hide()
+        }
+      }
+
+      document.addEventListener(
+        HOVER_CLAIM,
+        claimed,
+        { signal: controller.signal },
+      )
+      document.addEventListener(
+        'scroll',
+        hideOnScroll,
+        {
+          capture: true,
+          signal: controller.signal,
+        },
+      )
+      window.addEventListener(
+        'resize',
+        hide,
+        { signal: controller.signal },
+      )
     }
 
     clearTimeout(closeTimer.current)
@@ -98,54 +133,25 @@ export function Tooltip({
   }
 
   useEffect(
-    () => {
-      const claimed = (event: Event) => {
-        if (event instanceof CustomEvent && event.detail.id !== id) {
-          hide()
-        }
-      }
-
-      document.addEventListener(
-        HOVER_CLAIM,
-        claimed,
-      )
-      document.addEventListener(
-        'scroll',
-        hideOnScroll,
-        true,
-      )
-      window.addEventListener(
-        'resize',
-        hide,
-      )
-
-      return () => {
-        clearTimeout(timer.current)
-        clearTimeout(closeTimer.current)
-        document.removeEventListener(
-          HOVER_CLAIM,
-          claimed,
-        )
-        document.removeEventListener(
-          'scroll',
-          hideOnScroll,
-          true,
-        )
-        window.removeEventListener(
-          'resize',
-          hide,
-        )
-      }
+    () => () => {
+      clearTimeout(timer.current)
+      clearTimeout(closeTimer.current)
+      dismissal.current?.abort()
     },
-    [id],
+    [],
   )
 
   useLayoutEffect(
     () => {
       const element = panel.current
+
+      if (!visible || !element) {
+        return
+      }
+
       const rect = anchor.current?.getBoundingClientRect()
 
-      if (!visible || !element || !rect) {
+      if (!rect) {
         return
       }
 
@@ -206,7 +212,7 @@ export function Tooltip({
   return (
     <span
       ref={anchor}
-      className="tooltip-anchor"
+      className={`tooltip-anchor [:where(&)]:inline-flex min-w-0 max-w-full ${anchorClassName}`}
       data-tooltip-active={visible || undefined}
       aria-describedby={visible ? id : undefined}
       onPointerEnter={show}
@@ -238,7 +244,7 @@ export function Tooltip({
           role={interactive ? 'dialog' : 'tooltip'}
           aria-label={label}
           popover="manual"
-          className="tooltip"
+          className="tooltip has-[.shared-usage]:w-84 has-[.shared-usage]:max-w-usage-tooltip has-[.shared-usage]:p-0 fixed inset-auto m-0 max-w-floating-panel py-1.25 px-2 border-0 rounded-md bg-ink text-surface text-meta leading-question wrap-anywhere overflow-y-auto overscroll-contain pointer-events-auto opacity-100 starting:opacity-0 transition-opacity duration-base ease-ui motion-reduce:transition-none [:where(&)_:is(strong,span)]:block [&_mark]:px-px [&_mark]:py-0 [&_mark]:rounded-xs [&_mark]:bg-gold/45 [&_mark]:text-inherit"
           onPointerEnter={() => clearTimeout(closeTimer.current)}
           onPointerLeave={leave}
         >{content}

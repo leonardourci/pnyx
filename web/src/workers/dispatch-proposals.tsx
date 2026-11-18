@@ -1,3 +1,4 @@
+import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { DispatchChange } from '#workers/dispatch-check.ts'
@@ -99,7 +100,7 @@ export function DispatchProposals({
       : 'Hydra proposes this change. Confirm to apply it.'
 
     return (
-      <section key={proposal.token} className="settings-box" aria-label="Pending owner question">
+      <SettingsBox key={proposal.token} aria-label="Pending owner question">
         <strong>{proposal.summary}</strong>
         <p className="muted">{note}</p>
         {proposal.error && <p role="alert">{proposal.error}</p>}
@@ -145,7 +146,7 @@ export function DispatchProposals({
           >Dismiss
           </Button>
         </div>
-      </section>
+      </SettingsBox>
     )
   })
 }

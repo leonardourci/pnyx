@@ -1,5 +1,6 @@
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import type { ReplyState } from '#workers/model.ts'
+import { queuedAgentLabel } from '#workers/providers.ts'
 import { clock, duration } from './chat.ts'
 
 const LABELS: Record<ReplyState, string> = {
@@ -107,13 +108,17 @@ export function receiptLines({ entry }: { entry: ThreadEntry }): ReceiptLine[] {
     return []
   }
 
-  return [
-    line({
-      key: 'receipt',
-      state: entry.receipt,
-      received: entry.received,
-      sent,
-      why: entry.waiting,
-    }),
-  ]
+  const receipt = line({
+    key: 'receipt',
+    state: entry.receipt,
+    received: entry.received,
+    sent,
+    why: entry.waiting,
+  })
+
+  if (entry.receipt === 'queued' && entry.targetAgent) {
+    receipt.text = queuedAgentLabel({ agent: entry.targetAgent })
+  }
+
+  return [receipt]
 }

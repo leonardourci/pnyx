@@ -73,6 +73,11 @@ if (!PAGE_PUBLICATION) {
 // schema.sql names its own version, so the number has one source.
 const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(SCHEMA)?.[1])
 
+// Saved view rows drop the retired per-card widths; the events keep them, and replay ignores them.
+const REMOVE_CARD_WIDTHS = `update hydra_values
+  set value = (value::jsonb #- '{workspace,cardWidths}')::json
+  where key = 'view' and (value::jsonb->'workspace') ? 'cardWidths'`
+
 // A database another build's schema made would fail writes this build's statements make, so it is refused by name.
 async function requireSchema({
   client,
@@ -134,7 +139,28 @@ async function requireSchema({
           'create publication pnyx_page for table',
           'alter publication pnyx_page set table',
         )};
-        insert into schema_version (version) values (5)`)
+        ${REMOVE_CARD_WIDTHS}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
+      await client.query('commit')
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    }
+
+    return
+  }
+
+  if ((current === 5 || current === 6) && migrate) {
+    await client.query('begin')
+
+    try {
+      if (current === 5) {
+        await client.query(PAGE_PUBLICATION.replace(
+          'create publication pnyx_page for table',
+          'alter publication pnyx_page set table',
+        ))
+      }
+
+      await client.query(`${REMOVE_CARD_WIDTHS}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')

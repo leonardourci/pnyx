@@ -1,3 +1,5 @@
+import { Prose } from './prose.tsx'
+import { motionDuration, REDUCED_MOTION } from '#web-shared/motion.ts'
 import { noteFrame } from '#web-app/log.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
 import { shownImageNames } from '#hydra/images.ts'
@@ -18,7 +20,7 @@ import {
 
 type MarkdownProps = ComponentProps<typeof Markdown>
 
-export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+export { REDUCED_MOTION } from '#web-shared/motion.ts'
 const FRAME = 1000 / 60
 
 const lex = ({ text }: { text: string }) => markdown.lexer(text)
@@ -27,12 +29,12 @@ const useReducedMotion = () => {
   const [
     reduced,
     setReduced,
-  ] = useState(() => matchMedia(REDUCED_MOTION).matches)
+  ] = useState(() => motionDuration() === 0)
 
   useEffect(
     () => {
       const media = matchMedia(REDUCED_MOTION)
-      const change = () => setReduced(media.matches)
+      const change = () => setReduced(motionDuration() === 0)
       media.addEventListener(
         'change',
         change,
@@ -603,7 +605,7 @@ function StreamedText({
   ] : st.done
 
   return (
-    <div className="markdown" ref={host}>
+    <Prose ref={host}>
       {parts.map(part => (
         <MarkdownBlocks
           key={part.offset}
@@ -617,10 +619,18 @@ function StreamedText({
           images={images}
         />
       ))}
-    </div>
+    </Prose>
   )
 }
 
 export function WorkingDots() {
-  return <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
+  return (
+    <span className="working-dots inline-flex gap-0.75" aria-hidden="true">
+      {[
+        0,
+        1,
+        2,
+      ].map(index => <i key={index} className="size-1 rounded-full bg-current animate-reply-dot motion-reduce:animate-reply-dot-fade [&:nth-child(2)]:[animation-delay:var(--transition-duration-fast)] [&:nth-child(3)]:[animation-delay:calc(2*var(--transition-duration-fast))]" />)}
+    </span>
+  )
 }

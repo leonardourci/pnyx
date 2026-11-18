@@ -1,16 +1,13 @@
+import { ModelPicker, ModelMenu, ModelResults } from './model-menu.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { Button, type Option } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { MenuOption } from '#web-shared/ui/menu-option.tsx'
-import { Popover } from '#web-shared/ui/popover.tsx'
 import {
   accountName,
-  MENU_MARK_ICON,
-  MENU_ROW_ICON,
   MenuHead,
   providerFor,
   SelectionMenu,
-  TRIGGER_CHEVRON,
   type Provider,
   type Selection,
 } from './account-model-picker.tsx'
@@ -168,23 +165,23 @@ function MenuList({
   )
 
   return (
-    <div
-      className="account-model-menu"
-      onKeyDown={event => listKeys({
+    <ModelMenu
+
+      keyboard={({ event }) => listKeys({
         event,
         back,
       })}
     >
       <MenuHead title={title} back={back} />
-      <div
-        className="account-model-results"
+      <ModelResults
+
         role="listbox"
         aria-label={title}
         ref={list}
       >
         {children}
-      </div>
-    </div>
+      </ModelResults>
+    </ModelMenu>
   )
 }
 
@@ -213,20 +210,22 @@ function SettingsMenuRow({
   return (
     <MenuOption
       className="account-model-option"
+      compact
       aria-label={`${name}: ${value}`}
       data-current={current || undefined}
       disabled={disabled}
     >
       <Button
-        className="account-model-choose agent-setting-row"
+        className="account-model-choose agent-setting-row aria-pressed:[&>svg:first-child]:text-gold"
+        variant="menu-choice"
         aria-pressed={pressed}
         title={note}
         disabled={disabled}
         onClick={onClick}
       >
-        <Icon name={icon} size={MENU_ROW_ICON} />
-        <span className="agent-setting-text"><span>{name}</span><small>{value}</small></span>
-        {drills && <Icon name="chevron_right" size={MENU_MARK_ICON} />}
+        <Icon name={icon} size={ICON_SIZE.toolbar} />
+        <span className="agent-setting-text flex items-baseline gap-1.5 [&>small]:text-muted [&>small]:text-ui [&>small]:truncate"><span>{name}</span><small>{value}</small></span>
+        {drills && <Icon name="chevron_right" size={ICON_SIZE.control} />}
       </Button>
     </MenuOption>
   )
@@ -247,6 +246,7 @@ function ChoiceList({
         return (
           <MenuOption
             className="account-model-option"
+            compact
             aria-label={option.label}
             selected={current}
             data-current={current || undefined}
@@ -255,15 +255,16 @@ function ChoiceList({
           >
             <Button
               className="account-model-choose"
+              variant="menu-choice"
               disabled={choice.disabled}
               onClick={() => {
                 choice.choose({ value: option.value })
                 back()
               }}
             >
-              {option.icon && <Icon name={option.icon} size={MENU_ROW_ICON} />}
+              {option.icon && <Icon name={option.icon} size={ICON_SIZE.toolbar} />}
               <span>{option.label}</span>
-              {current && <Icon name="check" size={MENU_MARK_ICON} />}
+              {current && <Icon name="check" size={ICON_SIZE.control} />}
             </Button>
           </MenuOption>
         )
@@ -389,22 +390,22 @@ export function AgentSettingsMenu({
   ].filter(Boolean).join(' · ')
 
   return (
-    <Popover
+    <ModelPicker
       label={`${label}: ${summary}`}
-      className="account-model-picker agent-settings-menu"
+      className="agent-settings-menu"
+      chevronSize={ICON_SIZE.inline}
       disabled={disabled}
       trigger={(
         <>
           <Icon name={provider.icon} size={iconSize} />
-          <span className="agent-settings-model">{modelLabel}</span>
+          <span className="agent-settings-model min-w-0 overflow-hidden text-ellipsis">{modelLabel}</span>
           {effort && (
             <Icon
               name={choiceIcon({ choice: effort })}
               size={iconSize}
             />
           )}
-          {effort && <span className="agent-settings-effort">{valueLabel({ choice: effort })}</span>}
-          <Icon name="chevron_down" size={TRIGGER_CHEVRON} />
+          {effort && <span className="agent-settings-effort text-muted">{valueLabel({ choice: effort })}</span>}
         </>
       )}
     >
@@ -418,6 +419,6 @@ export function AgentSettingsMenu({
           close={close}
         />
       )}
-    </Popover>
+    </ModelPicker>
   )
 }

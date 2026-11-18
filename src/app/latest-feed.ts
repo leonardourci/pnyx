@@ -50,7 +50,7 @@ export function createLatestFeed({
     ws: HydraClient
     message: ServerMessage
   }): void
-  threadSubscriptions: Map<HydraClient, Subscription>[]
+  threadSubscriptions(): Map<HydraClient, Subscription>[]
   refreshThread({
     ws,
     invalidate,
@@ -90,7 +90,7 @@ export function createLatestFeed({
   const transcriptChanged = ({ path }: { path: string }) => {
     touchPath({ path })
 
-    for (const map of threadSubscriptions) {
+    for (const map of threadSubscriptions()) {
       for (const [
         ws,
         sub,
@@ -341,7 +341,7 @@ export function createLatestFeed({
         .map(card => card.id),
     })
 
-    for (const map of threadSubscriptions) {
+    for (const map of threadSubscriptions()) {
       for (const [
         ws,
         sub,

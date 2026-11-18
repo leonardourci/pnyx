@@ -2,7 +2,7 @@ import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { hydraTitle } from '#web-app/view.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { ContextMenu,menuPoint,opensMenu } from '#web-shared/ui/menu.tsx'
 import { useCallback,useState,type ReactNode } from 'react'
 import { HYDRA_ICONS,HydraNameEditor,type HydraIdentity } from './hydra-title.tsx'
@@ -50,7 +50,7 @@ export function HydraHead({
 
   return (
     <header
-      className="hydra-head"
+      className="hydra-head font-brand font-bold flex items-center justify-start gap-2 py-2.5 px-3.5 border-b border-line shrink-0 text-pane [&_strong]:min-w-0 [&_strong]:truncate [&_strong]:[font-weight:inherit] [&_.hydra-name-editor]:flex-1 [&_.hydra-name-editor]:max-w-90 [&_.hydra-name-field_.input]:text-ui"
       onContextMenu={event => canEdit && openMenu({ event })}
       onKeyDown={event => canEdit && opensMenu({ event }) && openMenu({
         event: {
@@ -66,7 +66,7 @@ export function HydraHead({
             icon,
           }}
           taken={taken}
-          iconSize={24}
+          iconSize={ICON_SIZE.brand}
           save={({
             name,
             icon,
@@ -85,15 +85,15 @@ export function HydraHead({
               label="Change icon"
               value={icon}
               choices={HYDRA_ICONS}
-              size={24}
+              size={ICON_SIZE.brand}
               pick={({ icon }) => editHydra({
                 name,
                 icon,
               })}
             />
-          ) : <Icon name={icon} size={24} />}
+          ) : <Icon name={icon} size={ICON_SIZE.brand} />}
           <Button
-            className="hydra-title"
+            className="hydra-title min-w-0 min-h-0 py-0.5 px-1.5 -ml-1.5 justify-start text-[length:inherit]"
             disabled={!canEdit}
             title="Click to edit"
             aria-label={`Edit ${hydraTitle({ name })}`}

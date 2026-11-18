@@ -1,6 +1,7 @@
+import { FolderChoice, FolderDescription } from './folder-ui.tsx'
 import { useId, useState } from 'react'
 import type { Folder } from '#projects/folders.ts'
-import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { Input } from '#web-shared/ui/controls.tsx'
 
 export function FolderSearch({
   label,
@@ -30,7 +31,7 @@ export function FolderSearch({
 
   return (
     <div
-      className="folder-search"
+      className="folder-search relative grid gap-1.5 text-meta"
       onBlur={e => {
         if (!e.currentTarget.contains(e.relatedTarget)) {
           setOpen(false)
@@ -80,24 +81,24 @@ export function FolderSearch({
           id={`${id}-options`}
           role="listbox"
           aria-label={`${label} suggestions`}
-          className="folder-options"
+          className="folder-options absolute top-full left-0 z-40 w-folder-options max-w-folder-viewport max-h-65 overflow-y-auto p-1.25 border border-line rounded-lg bg-surface shadow-menu"
         >
           {folders.map((
             folder,
             n,
           ) => (
-            <Button
+            <FolderChoice
               key={folder.path}
               id={`${id}-${n}`}
               role="option"
               aria-selected={active === n}
               tabIndex={-1}
-              className={active === n ? 'active' : ''}
-              onPointerDown={e => e.preventDefault()}
+              className={active === n ? 'active bg-raised' : ''}
+              retainFocus
               onPointerMove={() => setActive(n)}
               onClick={() => choose({ path: folder.path })}
-            ><strong>{folder.name}</strong><small>{folder.path}</small>
-            </Button>
+            ><strong>{folder.name}</strong><FolderDescription>{folder.path}</FolderDescription>
+            </FolderChoice>
           ))}
         </div>
       )}

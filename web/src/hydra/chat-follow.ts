@@ -13,8 +13,14 @@ const HISTORY_FOCUS_EVENTS = [
 
 // Whether Hydra's chat follows new messages. Paging emits layout scrolls near the bottom, so only the owner's
 // scrolls, an explicit stop or a resume change it, and each change reports whether the chat is away.
-export function createChatFollow({ changed }: { changed({ away }: { away: boolean }): void }) {
-  let following = true
+export function createChatFollow({
+  changed,
+  away = false,
+}: {
+  changed({ away }: { away: boolean }): void
+  away?: boolean
+}) {
+  let following = !away
   let lastTop = 0
   let inputAt = -Infinity
   const report = () => changed({ away: !following })

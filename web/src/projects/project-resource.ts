@@ -150,11 +150,11 @@ function createProjects() {
         && row.startCommand.name === option({ flag: '--command-name' })
         && row.startCommand.bringsOwnFolder === (option({ flag: '--brings-own-folder' }) === 'true')
     },
-    read: ({ receipt }) => receipt.confirmation === 'needed' ? undefined : {
+    read: ({ receipt }) => ({
       rows: Array.isArray(receipt.projects) ? receipt.projects as ProjectRow[] : [],
       readonly: receipt.readonly === true,
       revision: Number(receipt.revision ?? 0),
-    },
+    }),
   })
 }
 
@@ -170,6 +170,15 @@ function projectResource({ command }: { command: Command }) {
   }
 
   return resource
+}
+
+export function useProjectIntents({ command }: { command: Command }) {
+  const resource = projectResource({ command })
+
+  return useSyncExternalStore(
+    resource.subscribe,
+    resource.snapshot,
+  ).intents
 }
 
 export function useProjectsResource({
@@ -215,10 +224,6 @@ export function useProjectsResource({
         name: 'project',
         args,
       })
-
-      if (receipt.confirmation === 'needed') {
-        return receipt
-      }
 
       try {
         const canonical = await command({

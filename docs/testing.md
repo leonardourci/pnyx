@@ -27,6 +27,22 @@ Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Pos
 
 A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, and none of the calling shell's identity or settings. Files run in parallel and in a random order, and so do the tests in each file: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
+### Performance journey
+
+Normal builds run the integration and ordinary browser projects. The separate `performance` project runs the same large-workspace journey in both renderers, after the ordinary suite has stopped:
+
+```sh
+pnpm run build
+PNYX_PERFORMANCE=1 pnpm exec vitest run --project performance
+VITE_PNYX_PROFILE=1 pnpm run build
+VITE_PNYX_PROFILE=1 pnpm exec vitest run --project performance
+pnpm run build
+```
+
+The fixture has 628 tasks, 12 project columns and six Hydras. Both variants permit at most 70 mounted cards in the visible Hydra, four mounted project columns and 6,000 total DOM elements, with no off-screen Hydra bodies. Initial discovery commands stay bounded. The normal renderer enforces the strict 50ms wheel-scroll long-task budget. Drag/Escape long tasks keep the same threshold and print measurements as report-only until `task-c266753d` restores the blocking gate. The profiling renderer checks at most four task commits for an isolated rename, with none in another Hydra. Both check a late Hydra address, streaming and keyboard pickup, ArrowDown and Escape. Profiling timing is excluded from latency checks because React's instrumentation adds work. Neither run retries a budget miss.
+
+CI runs the normal suite first, then the isolated normal performance journey, then builds the profiling variant for the same journey. Keeping the latency journey separate prevents unrelated tests from distorting its measurement. The ordinary stationary-pointer drag/scroll journey also reports its 50ms responsiveness measurements under `task-c266753d`; its drop-target and persisted-order assertions remain blocking. Rebuild normally after local profiling; the default build bypasses all Profiler boundaries.
+
 ## Writing a test
 
 Every change to behaviour adds or updates the tests for it; documentation-only and behaviour-preserving changes need none. A bug fix starts with a test that reproduces the bug. Before the PR is ready, revert the behaviour change in a throwaway copy, run each new test of that behaviour and see it fail; the PR's Validation names the test and what failed.
@@ -96,6 +112,13 @@ Rules:
 - `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.
 - `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
-- `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions and resumed turns, on Claude and Codex.
-- `e2e/board.test.ts`: the live board and a card's Activity in Chrome.
+- `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
+- `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
+- `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
+- `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, keyboard shortcuts and the phone layout.
+- `e2e/card-input.test.ts`: creating and starting tasks from card composers, outside-session controls and the task modal.
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
+- `e2e/controls.test.ts`: disclosure chevrons pointing toward their next action.
+- `e2e/motion.test.ts`: the motion off switch and reduced motion.
+- `e2e/performance.test.ts`: the large-workspace journey (see Performance journey).
+- `e2e/ui-metrics.test.ts`: page metrics written to the log files, never to Hydra events.

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
+import { useEffect, useState, type ComponentProps } from 'react'
 import { bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
 import { Button, useBusy } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { capturedKey } from './key-capture.ts'
 import { useKeyAction, useKeyboard } from './keyboard-registry.tsx'
 import { groupOf, keyActionsMatching } from './key-search.ts'
@@ -12,6 +13,16 @@ const MODIFIERS = [
   'Shift',
   'Alt',
 ]
+
+function KeyAction({
+  reset = false,
+  className = '',
+  ...props
+}: ComponentProps<typeof Button> & { reset?: boolean }) {
+  const appearance = reset ? 'keymap-reset text-gold' : 'keymap-add'
+
+  return <Button {...props} className={`min-h-6.5 py-0.5 px-1.75 text-meta ${appearance} ${className}`} />
+}
 
 export function KeyRows({
   prefs,
@@ -134,11 +145,11 @@ export function KeyRows({
   const groups = [...new Set(shown.map(action => groupOf({ action })))]
 
   return (
-    <div className="keymap" aria-label="Keyboard shortcuts">
-      {error && <p role="alert" className="keymap-error">{error}</p>}
+    <div className="keymap [&>[role=group]:first-of-type_.keymap-group]:mt-0" aria-label="Keyboard shortcuts">
+      {error && <p role="alert" className="keymap-error mt-2 mx-5 mb-0 text-red text-meta">{error}</p>}
       {groups.map(group => (
         <div key={group} role="group" aria-label={group}>
-          <div className="keymap-group">{group}</div>
+          <div className="keymap-group mt-4 py-2.5 px-5 border-y border-line bg-raised text-ink text-meta font-semibold uppercase tracking-keymap">{group}</div>
           {shown.filter(action => groupOf({ action }) === group).map(a => {
             const keys = bindingsFor({
               prefs,
@@ -147,48 +158,48 @@ export function KeyRows({
             const customized = a.id in prefs.bindings
 
             return (
-              <div className="keymap-row" key={a.id} data-capturing={capturing === a.id || undefined}>
-                <span className="keymap-action">{a.label}</span>
-                <span className="keymap-keys">
+              <div className="keymap-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 py-2 px-5 border-t border-subtle data-capturing:bg-gold-wash" key={a.id} data-capturing={capturing === a.id || undefined}>
+                <span className="keymap-action font-medium">{a.label}</span>
+                <span className="keymap-keys flex flex-wrap justify-end items-center gap-1">
                   {keys.map(key => (
-                    <span className="keymap-key" key={key}>
+                    <span className="keymap-key inline-flex items-center gap-0.75 py-px pl-1.5 pr-0.75 border border-line border-b-2 rounded-compact bg-raised text-muted font-mono text-meta whitespace-nowrap [&>kbd]:min-w-0 [&>kbd]:h-auto [&>kbd]:p-0 [&>kbd]:border-0 [&>kbd]:rounded-none [&>kbd]:bg-transparent [&>kbd]:shadow-none [&>kbd]:[font:inherit] [&>kbd]:text-ink" key={key}>
                       <kbd>{keyLabel({
                         keys: [key],
                         platform,
                       })}
                       </kbd>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${key} from ${a.label}`}
+                      <IconButton
+                        size="key"
+                        icon="close"
+                        iconSize={ICON_SIZE.badge}
+                        label={`Remove ${key} from ${a.label}`}
                         disabled={busy || keys.length < 2}
                         title={keys.length < 2 ? 'An action keeps at least one key' : undefined}
                         onClick={() => persist({
                           bindings: { [a.id]: keys.filter(k => k !== key) },
                         })}
-                      ><Icon name="close" size={12} />
-                      </button>
+                      />
                     </span>
                   ))}
                   {capturing === a.id
-                    ? <span className="keymap-capture" role="status">Press a key… Esc cancels</span>
+                    ? <span className="keymap-capture text-gold text-meta" role="status">Press a key… Esc cancels</span>
                     : (
-                      <Button
-                        className="keymap-add"
+                      <KeyAction
                         aria-label={`Add a key for ${a.label}`}
                         disabled={busy}
                         onClick={() => {
                           setCapturing(a.id); setError('')
                         }}
-                      ><Icon name="plus" size={14} />
-                      </Button>
+                      ><Icon name="plus" size={ICON_SIZE.inline} />
+                      </KeyAction>
                     )}
                   {customized && (
-                    <Button
-                      className="keymap-reset"
+                    <KeyAction
+                      reset
                       disabled={busy}
                       onClick={() => persist({ bindings: { [a.id]: null } })}
                     >Reset
-                    </Button>
+                    </KeyAction>
                   )}
                 </span>
               </div>

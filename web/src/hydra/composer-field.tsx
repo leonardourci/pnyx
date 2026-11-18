@@ -190,7 +190,7 @@ export function ComposerField({
     path: selectedFolder.path,
   }
 
-  const matches = mentionCandidates({
+  const matches = mention ? mentionCandidates({
     query,
     view,
     projects,
@@ -199,7 +199,7 @@ export function ComposerField({
     taskLook,
     folderItems,
     typedFolder,
-  })
+  }) : []
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -651,7 +651,8 @@ export function ComposerField({
 
   return (
     <div
-      className={`composer-field${standalone ? ' composer-compact' : ''} ${className}`}
+      className={`composer-field group/composer-field [&.comment-note]:flex-1 ${standalone ? 'composer-compact relative min-w-0 rounded-md border border-control bg-surface focus-within:border-gold-line' : 'contents'} ${className}`}
+      data-standalone={standalone}
       // Inside the chat's caret host the field edits only its own text.
       contentEditable={false}
       // Focus moving to the field's own chips stays inside it; only leaving the whole field counts as a blur.
@@ -673,7 +674,7 @@ export function ComposerField({
         }
       }}
     >
-      <div className="composer-input" data-chips={mirrored || undefined}>
+      <div className="composer-input group/composer-input relative flex min-h-(--spacing-composer-line) flex-[0_1_auto] flex-col overflow-hidden group-data-[standalone=true]/composer-field:min-h-0" data-chips={mirrored || undefined}>
         {mention && (
           <MentionPicker
             anchor={input}
@@ -748,6 +749,7 @@ export function ComposerField({
           />
         )}
         <Textarea
+          className="composer-text group-[.comment-note]/composer-field:select-text h-auto max-h-[min(50vh,var(--spacing-composer-max))] resize-none overflow-y-auto bg-transparent outline-none group-data-[standalone=true]/composer-field:max-h-[min(40vh,12lh)] in-[.task-editor]:max-h-[min(50vh,24lh)] group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
           ref={input}
           rows={1}
           data-key-scope={keyScope}

@@ -1,9 +1,12 @@
+import { DisclosureChevron } from './disclosure-chevron.tsx'
+import { FloatingPanel } from './floating-panel.tsx'
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button } from './controls.tsx'
 
 export function Popover({
   label,
   trigger,
+  chevronSize,
   children,
   className = '',
   triggerRef,
@@ -14,6 +17,7 @@ export function Popover({
 }: {
   label: string
   trigger: ReactNode
+  chevronSize?: number
   children({ close }: { close(): void }): ReactNode
   className?: string
   triggerRef?: RefObject<HTMLButtonElement | null>
@@ -120,7 +124,7 @@ export function Popover({
 
   return (
     <div
-      className={`popover ${className}`}
+      className={`popover relative min-w-0 ${className}`}
       data-key-scope={open ? 'overlay' : undefined}
       ref={root}
       onBlur={event => {
@@ -152,18 +156,20 @@ export function Popover({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => setOpen(value => !value)}
-      >{trigger}
+      >
+        {trigger}
+        {chevronSize !== undefined && <DisclosureChevron expanded={open} size={chevronSize} />}
       </Button>
       {open && (
-        <div
+        <FloatingPanel
           ref={panel}
           id={id}
-          className="popover-panel"
+          className="popover-panel p-3.5 w-floating-panel max-h-popover-height rounded-card"
           popover="manual"
           role="dialog"
           aria-label={label}
         >{children({ close })}
-        </div>
+        </FloatingPanel>
       )}
     </div>
   )

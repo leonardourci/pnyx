@@ -1,3 +1,7 @@
+import { emptyHydra, reduce, replay } from '#app/reducer.ts'
+import { readEvents } from '#app/event-log.ts'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
@@ -437,6 +441,794 @@ test(
         'preview',
       ],
     })).code).toBe('NOT_FOUND')
+  },
+)
+
+test(
+  'tasks can be nested, moved between parents and detached with one level enforced',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const parent = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Export',
+      ],
+    })
+    const other = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Import',
+      ],
+    })
+    const child = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'CSV',
+      ],
+    })
+    const leaf = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Headers',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        parent.card.id,
+      ],
+    })
+    expect((await hydra.task({ key: child.card.id })).parent).toBe(parent.card.id)
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        parent.card.id,
+        child.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        leaf.card.id,
+        child.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        parent.card.id,
+        other.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        other.card.id,
+      ],
+    })
+    expect((await hydra.task({ key: child.card.id })).parent).toBe(other.card.id)
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        'none',
+      ],
+    })
+    expect((await hydra.task({ key: child.card.id })).parent).toBe('none')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'parent',
+        child.card.id,
+        child.card.id,
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+  },
+)
+
+test(
+  'parent retention waits for every child and reopens when a child resumes',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'family',
+        '--title',
+        'Release',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'part',
+        '--title',
+        'Export',
+        '--parent',
+        'family',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'second-part',
+        '--title',
+        'Validate',
+        '--parent',
+        'family',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'family',
+        'done',
+        '--note',
+        'Parent work completed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'part',
+        'done',
+        '--note',
+        'Child completed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'second-part',
+        'done',
+        '--note',
+        'Validation completed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })[0]?.done_at).toBeTypeOf('string')
+    await hydra.owner({
+      args: [
+        'task',
+        'status',
+        'part',
+        'working',
+        '--note',
+        'Child resumed',
+      ],
+    })
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+    await pnyx.restart()
+    expect(rows({
+      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
+      values: [
+        hydra.id,
+        'family',
+      ],
+    })).toEqual([
+      {
+        done_at: null,
+        hidden: false,
+      },
+    ])
+  },
+)
+
+test(
+  'arrange retries remain duplicates after their peer changes family',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'a',
+        '--title',
+        'Atlas',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'b',
+        '--title',
+        'Boreal',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'p',
+        '--title',
+        'Parent',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'arrange',
+        'a',
+      ],
+    })
+    const args = [
+      'task',
+      'arrange',
+      'a',
+      '--before',
+      'b',
+      '--event-id',
+      'constructor',
+    ]
+    await hydra.owner({ args })
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        'b',
+        'p',
+      ],
+    })
+    expect((await hydra.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
+  },
+)
+
+test(
+  'untracked and hook pushes refuse grandchildren before persisting them',
+  async () => {
+    const id = 'unconfigured-depth'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const events = [
+      {
+        seq: 1,
+        id: 'root-push',
+        cardId: 'untracked-root',
+        data: {
+          key: 'untracked-root',
+          title: 'Root',
+        },
+      },
+      {
+        seq: 2,
+        id: 'child-push',
+        cardId: 'untracked-child',
+        data: {
+          key: 'untracked-child',
+          title: 'Child',
+          parentId: 'untracked-root',
+        },
+      },
+    ].map(event => JSON.stringify({
+      v: 1,
+      type: 'card.pushed',
+      at: '2026-11-17T00:00:00Z',
+      actor: 'cli',
+      ...event,
+    })).join('\n')
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${events}\n`,
+    )
+    const hydra = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'untracked-leaf',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Leaf',
+        parent: 'untracked-child',
+      }),
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'hook-leaf',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Hook leaf',
+        parent: 'untracked-child',
+        agent: {
+          provider: 'claude',
+          sessionId: 'hook-leaf',
+        },
+        source: {
+          adapter: 'hooks',
+          objectId: 'hook-leaf',
+          observedAt: '2026-11-17T00:00:00Z',
+        },
+      }),
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'show',
+        'untracked-leaf',
+      ],
+    })).code).toBe('NOT_FOUND')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'show',
+        'hook-leaf',
+      ],
+    })).code).toBe('NOT_FOUND')
+  },
+)
+
+test(
+  'a reminder-only task contributes to both project and Hydra waiting counts',
+  async () => {
+    const id = 'reminder-summary'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const path = join(
+      folder,
+      'repository',
+    )
+    mkdirSync(path)
+    const events = [
+      {
+        seq: 1,
+        id: 'project',
+        cardId: '$projects',
+        type: 'hydra.project',
+        data: {
+          before: null,
+          after: {
+            path,
+            name: 'reminder-repository',
+            detached: false,
+          },
+          sharedWith: [],
+        },
+      },
+      {
+        seq: 2,
+        id: 'task',
+        cardId: 'reminded-task',
+        type: 'card.pushed',
+        data: {
+          key: 'reminded',
+          title: 'Check the reminder',
+          project: path,
+        },
+      },
+      {
+        seq: 3,
+        id: 'reminder',
+        cardId: 'reminded-task',
+        type: 'task.reminder',
+        data: {
+          before: null,
+          after: '2026-11-16T00:00:00Z',
+        },
+      },
+      {
+        seq: 4,
+        id: 'due',
+        cardId: 'reminded-task',
+        type: 'task.reminder-due',
+        data: {
+          reminder: 'reminder',
+          column: 'needs_you',
+          grouped: true,
+          message: {
+            action: 'send',
+            text: 'Reminder due',
+          },
+        },
+      },
+    ].map(event => JSON.stringify({
+      v: 1,
+      at: '2026-11-16T00:00:00Z',
+      actor: 'cli',
+      ...event,
+    })).join('\n')
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${events}\n`,
+    )
+    const hydra = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'reminded',
+      ],
+    })
+    expect(rows<{
+      summary: {
+        asks: number
+        projects: { asks: number }[]
+      }
+    }>({
+      text: 'select summary from hydras where id = $1',
+      values: [id],
+    })[0]?.summary).toMatchObject({
+      asks: 1,
+      projects: [expect.objectContaining({ asks: 1 })],
+    })
+  },
+)
+
+test(
+  'predicting prototype-named events leaves the previous Hydra untouched',
+  () => {
+    for (const id of [
+      'constructor',
+      '__proto__',
+    ]) {
+      const before = emptyHydra()
+      const event = {
+        v: 1 as const,
+        seq: 1,
+        id,
+        at: '2026-11-17T00:00:00Z',
+        actor: 'cli',
+        cardId: 'predicted-task',
+        type: 'card.pushed' as const,
+        data: {
+          key: 'predicted-task',
+          title: 'Prediction',
+        },
+      }
+      const after = reduce({
+        state: before,
+        event,
+      })
+      expect(before.eventIds).toEqual({})
+      expect(before.cards).toEqual({})
+      expect(before.seq).toBe(0)
+      expect(after.eventIds[id]).toBe(1)
+      expect(after.cards['predicted-task']?.title).toBe('Prediction')
+      expect(reduce({
+        state: before,
+        event,
+      })).toEqual(after)
+    }
+  },
+)
+
+async function placementFamily() {
+  const hydra = await pnyx.hydra()
+  const entries = [
+    { key: 'first' },
+    { key: 'parent' },
+    {
+      key: 'child',
+      parent: 'parent',
+    },
+    { key: 'last' },
+    {
+      key: 'sibling',
+      parent: 'parent',
+    },
+  ]
+
+  for (const entry of entries) {
+    const args = [
+      'task',
+      'create',
+      '--key',
+      entry.key,
+      '--title',
+      entry.key,
+    ]
+
+    if (entry.parent) {
+      args.push(
+        '--parent',
+        entry.parent,
+      )
+    }
+
+    await hydra.owner({ args })
+  }
+
+  const parent = (await hydra.task({ key: 'parent' })).id
+  const child = (await hydra.task({ key: 'child' })).id
+  const order = ({ parent }: { parent?: string } = {}) => rows<{ key: string }>({
+    text: 'select key from cards where hydra_id = $1 and parent_id is not distinct from $2::text and key = any($3::text[]) order by coalesce(rank, created_seq)',
+    values: [
+      hydra.id,
+      parent ?? null,
+      entries.map(entry => entry.key),
+    ],
+  }).map(card => card.key)
+
+  return {
+    hydra,
+    parent,
+    child,
+    order,
+  }
+}
+
+test(
+  'detaching before a root records one change, retries once and undoes the complete sibling placement',
+  async () => {
+    const {
+      hydra,
+      parent,
+      child,
+      order,
+    } = await placementFamily()
+    await hydra.owner({
+      args: [
+        'task',
+        'arrange',
+        'child',
+      ],
+    })
+    const siblings = order({ parent })
+    expect(siblings).toEqual([
+      'sibling',
+      'child',
+    ])
+    const before = readEvents({ hydraId: hydra.id })
+    const args = [
+      'task',
+      'parent',
+      'child',
+      'none',
+      '--before',
+      'first',
+      '--event-id',
+      'parent-before-root',
+    ]
+    const placed = await hydra.owner({ args })
+    expect((await hydra.task({ key: 'child' })).parent).toBe('none')
+    expect(order()).toEqual([
+      'child',
+      'first',
+      'parent',
+      'last',
+    ])
+    const events = readEvents({ hydraId: hydra.id })
+    expect(events).toHaveLength(before.length + 1)
+    expect((await hydra.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
+    expect(readEvents({ hydraId: hydra.id })).toHaveLength(events.length)
+    await hydra.owner({
+      args: [
+        'undo',
+        placed.event.id,
+      ],
+    })
+    expect((await hydra.task({ key: 'child' })).parent).toBe(parent)
+    expect(order({ parent })).toEqual(siblings)
+    const event = events.at(-1)!
+
+    if (event.type !== 'card.pushed') {
+      throw new Error('Expected the parent event')
+    }
+
+    expect(event.data.rank).toBeTypeOf('number')
+    const legacy = {
+      ...event,
+      data: {
+        ...event.data,
+        before: { ...event.data.before },
+      },
+    }
+    delete legacy.data.rank
+    delete legacy.data.before.rank
+    const state = replay({
+      state: emptyHydra(),
+      events: events.slice(
+        0,
+        -1,
+      ),
+    })
+    const rank = state.cards[child]!.rank
+    const restored = reduce({
+      state,
+      event: legacy,
+    }).cards[child]!
+    expect(restored.parentId).toBeUndefined()
+    expect(restored.rank).toBe(rank)
+  },
+)
+
+test(
+  'detaching without a target places the child at the end of its project roots',
+  async () => {
+    const {
+      hydra,
+      parent,
+      order,
+    } = await placementFamily()
+    await hydra.owner({
+      args: [
+        'task',
+        'parent',
+        'child',
+        'none',
+      ],
+    })
+    expect(order()).toEqual([
+      'first',
+      'parent',
+      'last',
+      'child',
+    ])
+    expect(order({ parent })).toEqual(['sibling'])
+  },
+)
+
+test(
+  'a refused root placement changes neither parent nor rank and raw pushes cannot supply rank',
+  async () => {
+    const {
+      hydra,
+      child,
+    } = await placementFamily()
+    const repository = hydra.folder({ name: 'Other-project' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        repository,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'other',
+        '--title',
+        'Other root',
+        '--project',
+        repository,
+      ],
+    })
+    const snapshot = () => rows<{
+      parent_id: string | null
+      rank: number | null
+      updated_seq: number
+    }>({
+      text: 'select parent_id, rank, updated_seq from cards where hydra_id = $1 and id = $2',
+      values: [
+        hydra.id,
+        child,
+      ],
+    })
+    const before = snapshot()
+
+    for (const target of [
+      'sibling',
+      'other',
+    ]) {
+      expect((await hydra.ownerRefused({
+        args: [
+          'task',
+          'parent',
+          'child',
+          'none',
+          '--before',
+          target,
+        ],
+      })).code).toBe('CONFLICT')
+      expect(snapshot()).toEqual(before)
+    }
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'child',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        parent: null,
+        rank: 0,
+      }),
+    })).code).toBe('VALIDATION_ERROR')
+    expect(snapshot()).toEqual(before)
   },
 )
 

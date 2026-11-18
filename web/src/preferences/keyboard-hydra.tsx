@@ -1,13 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Command } from '#web-app/connection.ts'
+import { compareTasks, nextSibling, IDEAS_COLUMN } from '#web-tasks/project-view.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from '#web-hydra/caret.ts'
 import { focusElement, type ActionContext } from './keyboard-registry.tsx'
 import { navigate, restoreAnchor, type HydraAnchor, type ColumnCards } from './keyboard-navigation.ts'
 
-const anchorElement = ({ anchor }: { anchor: HydraAnchor }) => anchor.card
-  ? `[data-card="${CSS.escape(anchor.card)}"]`
-  : `[data-column-heading="${CSS.escape(anchor.column)}"]`
+const anchorElement = ({
+  hydraId,
+  anchor,
+}: {
+  hydraId: string
+  anchor: HydraAnchor
+}) => {
+  const target = anchor.card
+    ? `[data-card="${CSS.escape(anchor.card)}"]`
+    : `[data-column-heading="${CSS.escape(anchor.column)}"]`
+
+  return `[data-hydra-workspace="${CSS.escape(hydraId)}"] ${target}`
+}
 
 const readAnchor = ({ target }: { target: HTMLElement }): HydraAnchor | undefined => {
   const column = target.closest<HTMLElement>('[data-column]')?.dataset.column
@@ -26,7 +38,9 @@ const readAnchor = ({ target }: { target: HTMLElement }): HydraAnchor | undefine
 
 export function useHydraKeyboard({
   state,
+  hydraId,
   groups,
+  actions,
   page,
   setPage,
   selected,
@@ -41,7 +55,9 @@ export function useHydraKeyboard({
   openSettings,
 }: {
   state: HydraState
+  hydraId: string
   groups: ColumnCards[]
+  actions: Record<string, CurrentAction>
   page: string
   setPage({ page }: { page: string }): void
   selected: string | null
@@ -55,25 +71,24 @@ export function useHydraKeyboard({
   togglePanel(): void
   openSettings(): void
 }) {
-  const [
-    remembered,
-    setRemembered,
-  ] = useState<Record<string, string>>({})
+  const remembered = useRef<Record<string, string>>({})
   const focus = useRef<HydraAnchor | undefined>(undefined)
   useEffect(
     () => {
       const track = (event: FocusEvent) => {
+        const workspace = (event.target as HTMLElement).closest<HTMLElement>('[data-hydra-workspace]')
+
+        if (workspace?.dataset.hydraWorkspace !== hydraId) {
+          return
+        }
+
         const anchor = readAnchor({ target: event.target as HTMLElement })
 
         if (anchor) {
           focus.current = anchor
 
           if (anchor.card) {
-            setRemembered(r => r[anchor.column] === anchor.card
-              ? r : {
-                ...r,
-                [anchor.column]: anchor.card!,
-              })
+            remembered.current[anchor.column] = anchor.card
           }
         }
       }
@@ -88,7 +103,7 @@ export function useHydraKeyboard({
         track,
       )
     },
-    [],
+    [hydraId],
   )
 
   const leaveField = () => {
@@ -98,7 +113,12 @@ export function useHydraKeyboard({
         previous: groups,
         anchor: focus.current,
       })
-      focusElement({ selector: anchorElement({ anchor }) })
+      focusElement({
+        selector: anchorElement({
+          hydraId,
+          anchor,
+        }),
+      })
     }
   }
 
@@ -120,7 +140,8 @@ export function useHydraKeyboard({
       return
     }
 
-    let name: string, args: string[], next = anchor
+    let name: string, args: string[]
+    const next = anchor
 
     if (anchor.card) {
       const card = state.cards[anchor.card]
@@ -129,29 +150,50 @@ export function useHydraKeyboard({
         return
       }
 
-      const at = column.cards.indexOf(card.id)
-      const horizontal = direction === 'left' || direction === 'right'
-      const to = horizontal ? groups[index + (direction === 'left' ? -1 : 1)] : column
-
-      if (!to || (!horizontal && (direction === 'up' ? at === 0 : at === column.cards.length - 1))) {
+      if (direction === 'left' || direction === 'right') {
         return
       }
 
-      const before = horizontal ? undefined : column.cards[at + (direction === 'up' ? -1 : 2)]
-      name = 'move'; args = [
+      const siblings = card.parentId
+        ? Object.values(state.cards).filter(item => item.parentId === card.parentId)
+          .sort(compareTasks({
+            state,
+            actions,
+          }))
+        : column.cards.map(id => state.cards[id]).filter(item => item && !item.parentId)
+      const at = siblings.findIndex(item => item.id === card.id)
+      const target = at + (direction === 'up' ? -1 : 1)
+
+      if (at < 0 || target < 0 || target >= siblings.length) {
+        return
+      }
+
+      const reordered = [...siblings]
+      reordered.splice(
+        at,
+        1,
+      )
+      reordered.splice(
+        target,
+        0,
+        card,
+      )
+      const before = nextSibling({
+        state,
+        actions,
+        card,
+        cards: reordered,
+      })
+      name = 'task'; args = [
+        'arrange',
         card.id,
-        to.id,
         ...(before ? [
           '--before',
-          before,
+          before.id,
         ] : []),
         '--if-revision',
         String(card.revision),
       ]
-      next = {
-        column: to.id,
-        card: card.id,
-      }
     } else {
       if (![
         'left',
@@ -160,16 +202,29 @@ export function useHydraKeyboard({
         return
       }
 
-      const before = groups[index + (direction === 'left' ? -1 : 2)]?.id
-      name = 'column'; args = [
-        'reorder',
+      const order = groups.map(group => group.id).filter(id => id !== IDEAS_COLUMN)
+      const at = order.indexOf(column.id)
+      const target = at + (direction === 'left' ? -1 : 1)
+
+      if (at < 0 || target < 0 || target >= order.length) {
+        return
+      }
+
+      order.splice(
+        at,
+        1,
+      )
+      order.splice(
+        target,
+        0,
         column.id,
-        ...(before ? [
-          '--before',
-          before,
-        ] : []),
+      )
+      name = 'view'; args = [
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectOrder: order } }),
         '--if-revision',
-        String(state.configRevision ?? 0),
+        String(state.viewRevision ?? 0),
       ]
     }
 
@@ -183,7 +238,12 @@ export function useHydraKeyboard({
     })
       .catch(e => notify({ text: e.message }))
     focus.current = next
-    requestAnimationFrame(() => focusElement({ selector: anchorElement({ anchor: next }) }))
+    requestAnimationFrame(() => focusElement({
+      selector: anchorElement({
+        hydraId,
+        anchor: next,
+      }),
+    }))
   }
 
   const onAction = ({
@@ -243,9 +303,14 @@ export function useHydraKeyboard({
         columns: groups,
         current: anchor,
         action: id,
-        remembered,
+        remembered: remembered.current,
       })
-      focusElement({ selector: anchorElement({ anchor: next }) })
+      focusElement({
+        selector: anchorElement({
+          hydraId,
+          anchor: next,
+        }),
+      })
 
       return true
     }
@@ -275,7 +340,6 @@ export function useHydraKeyboard({
   }
 
   return {
-    remembered,
     onAction,
     leaveField,
     hints: [],

@@ -49,24 +49,22 @@ export function threadCommand({
   send,
   state,
   subscriptionMap,
+  retainThreads,
   bindThread,
   threadPage,
 }: CommandRequest & {
   state(): HydraState
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
+  retainThreads: ThreadSubscriptions['retainThreads']
   bindThread: ThreadSubscriptions['bindThread']
   threadPage: ThreadSubscriptions['threadPage']
 }) {
-  const map = subscriptionMap({ card: args[0] ?? '' })
-  const old = map.get(ws)
-
-  const unbind = () => {
-    old?.watcher?.close()
-    map.delete(ws)
-  }
-
   if (!args[0]) {
-    unbind()
+    // Without a card the tab stops following its task conversations; Hydra's own stays.
+    retainThreads({
+      ws,
+      cards: [],
+    })
     send({
       ws,
       message: {
@@ -82,7 +80,8 @@ export function threadCommand({
     state: state(),
     ref: args[0],
   })
-
+  const map = subscriptionMap({ card: card.id })
+  const old = map.get(ws)
   const recent = args[1] === '--recent'
   const restoring = args[1] === '--retain'
   const retain = restoring ? retainedBoundary({ value: args[2] }) : undefined

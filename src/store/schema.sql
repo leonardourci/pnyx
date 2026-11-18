@@ -266,7 +266,7 @@ create table sessions (
 -- What zero-cache replicates for the page, and no more: the tables its queries read, hydras without the columns only
 -- the server reads, and hydra_values with only the keys the page reads (src/store/zero-schema.ts PAGE_VALUES). Events,
 -- card_updates, sessions, transactions, source_observations and card_private stay with the server.
-create publication pnyx_page for table hydras (id, config, summary), settings, upgrade_status,
+create publication pnyx_page for table hydras (id, seq, config, summary), settings, upgrade_status,
   hydra_values where (key in ('configured', 'configRevision', 'view', 'viewRevision', 'labelColors', 'projects',
   'projectsRevision', 'hydraStatus', 'hydraOperation', 'hydraAgent', 'hydraAgentChange', 'helper', 'dispatchProposals',
   'upgrades', 'queue')), columns, cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
@@ -277,4 +277,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (5);
+insert into schema_version (version) values (7);

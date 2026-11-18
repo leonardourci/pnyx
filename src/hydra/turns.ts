@@ -26,6 +26,7 @@ import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { projectDigest } from '#projects/context.ts'
+import { readableProjects } from '#memory/poleis.ts'
 import { activeHelperBatches, failedBatches, helperLeases, outcomeLines, ownerOutcomes } from '#routine-helper/state.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { prepareHydraFolder } from '#setup/skills.ts'
@@ -190,6 +191,11 @@ export function createHydraTurns({
         const owner = ownerMemory({ hydraId })
         const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
         const state = loadHydra({ hydraId }).state
+        const readable = await readableProjects({
+          state,
+          hydraId,
+        })
+        const readablePaths = readable.map(project => project.path)
 
         if (onlyTasks) {
           const digest = hydraDigest({
@@ -197,6 +203,7 @@ export function createHydraTurns({
             state,
             owner,
             ownerWrite,
+            readable: readablePaths,
             onlyTasks,
             previousDigest,
             checkpointed,
@@ -214,12 +221,12 @@ export function createHydraTurns({
           items,
         ] = await Promise.all([
           projectDigest({
-            state,
             hydraId,
+            readable,
           }),
           setupCheck({
             hydraId,
-            state,
+            readable,
           }),
         ])
 
@@ -241,6 +248,7 @@ export function createHydraTurns({
           owner,
           ownerWrite,
           projects,
+          readable: readablePaths,
           setup: setupDigest({ items }),
         })
 
@@ -264,14 +272,18 @@ export function createHydraTurns({
         const owner = ownerMemory({ hydraId })
         const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
         const state = loadHydra({ hydraId }).state
+        const readable = await readableProjects({
+          state,
+          hydraId,
+        })
 
         return JSON.stringify({
           owner,
           ownerWrite,
           hydra: state.hydraMemory,
           projects: await projectDigest({
-            state,
             hydraId,
+            readable,
           }),
         })
       },

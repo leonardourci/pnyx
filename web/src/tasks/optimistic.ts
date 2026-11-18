@@ -1,3 +1,4 @@
+import { taskRank } from '#tasks/order.ts'
 import { createBeforeRank } from '#tasks/create-placement.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card, TaskReminder } from '#tasks/model.ts'
@@ -60,6 +61,26 @@ export function optimisticState({
       },
     } : state
 
+  if (name === 'task' && action === 'hold' && card) {
+    const id = option({ flag: '--event-id' })
+    const reason = option({ flag: '--reason' })
+
+    if (!id || !reason) {
+      return state
+    }
+
+    return update({
+      patch: {
+        hold: {
+          id,
+          reason,
+          actor: 'web',
+          at: new Date().toISOString(),
+        },
+      },
+    })
+  }
+
   if (name === 'task' && action === 'create') {
     const event = option({ flag: '--event-id' })
     const title = option({ flag: '--title' })?.trim()
@@ -99,6 +120,7 @@ export function optimisticState({
       key,
       title,
       titleSet: true,
+      project: option({ flag: '--project' }),
       workspace: 'unassigned',
       tags: [],
       attention: [],
@@ -219,6 +241,47 @@ export function optimisticState({
       const asks = card.asks?.map(ask => ask.id === question.id ? deferred : ask)
 
       return update({ patch: { asks } })
+    }
+
+    if (action === 'arrange') {
+      return update({
+        patch: {
+          rank: taskRank({
+            state,
+            card,
+            before: option({ flag: '--before' }),
+          }),
+        },
+      })
+    }
+
+    if (action === 'parent') {
+      const parentRef = args[2]
+
+      if (parentRef === 'none') {
+        return update({
+          patch: {
+            parentId: undefined,
+            rank: taskRank({
+              state,
+              card: {
+                ...card,
+                parentId: undefined,
+              },
+              before: option({ flag: '--before' }),
+            }),
+          },
+        })
+      }
+
+      const parent = state.cards[parentRef ?? ''] ?? state.cards[state.keys[parentRef ?? ''] ?? '']
+      const hasChildren = Object.values(state.cards).some(child => child.parentId === card.id)
+
+      if (!parent || parent.id === card.id || parent.parentId || hasChildren) {
+        return state
+      }
+
+      return update({ patch: { parentId: parent.id } })
     }
 
     if (action === 'rename') {

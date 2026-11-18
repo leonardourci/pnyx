@@ -4,8 +4,8 @@ import { ACCOUNT_LABEL_MAX, accountLabel, accountRegistration, homeFolderValid, 
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { Button, Input, Select } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
-import { SettingRow } from '#web-shared/ui/setting-row.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
+import { SettingRow, SettingsRows, SettingField, SETTING_STACK } from '#web-shared/ui/setting-row.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { PROVIDERS } from './account-model-picker.tsx'
 import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
@@ -191,13 +191,13 @@ export function AccountSettings({
     <form
       ref={form}
       id={`${errorId}-form`}
-      className="setting-stack account-form"
+      className={`${SETTING_STACK} account-form min-w-0 gap-(--settings-column-gap) [&_:is(.input,.select)]:w-settings-field [&_.select>.button]:justify-start [&_.select>.button>svg:last-child]:ml-auto`}
       onSubmit={event => {
         event.preventDefault(); commit({ left: false })
       }}
     >
-      <div className="account-form-field">
-        <span className="setting-name">Provider</span>
+      <SettingField>
+        <span className="setting-name text-ui font-semibold">Provider</span>
         <Select
           label="Account provider"
           value={draft.provider}
@@ -212,9 +212,9 @@ export function AccountSettings({
             provider: value as Harness,
           })}
         />
-      </div>
-      <div className="account-form-field">
-        <label className="setting-name" htmlFor={`${errorId}-name`}>Display name</label>
+      </SettingField>
+      <SettingField>
+        <label className="setting-name text-ui font-semibold" htmlFor={`${errorId}-name`}>Display name</label>
         <Input
           id={`${errorId}-name`}
           autoFocus
@@ -230,10 +230,10 @@ export function AccountSettings({
           })}
           onBlur={() => commit({ left: true })}
         />
-      </div>
-      <div className="account-form-field">
-        <label className="setting-name" htmlFor={`${errorId}-home`}>Existing home folder</label>
-        <p className="setting-description">Use a home folder you have already configured for this provider.</p>
+      </SettingField>
+      <SettingField>
+        <label className="setting-name text-ui font-semibold" htmlFor={`${errorId}-home`}>Existing home folder</label>
+        <p className="setting-description mt-0.75 mb-2.5 mx-0 text-muted text-ui">Use a home folder you have already configured for this provider.</p>
         <Input
           id={`${errorId}-home`}
           aria-label="Existing home folder"
@@ -248,10 +248,10 @@ export function AccountSettings({
           })}
           onBlur={() => commit({ left: true })}
         />
-      </div>
+      </SettingField>
       {visibleFailure && (
         <p
-          className="account-form-error"
+          className="account-form-error text-red text-ui"
           id={errorId}
           role="alert"
           data-account-field="form"
@@ -260,7 +260,7 @@ export function AccountSettings({
         </p>
       )}
       {!draft.key && (
-        <div className="account-form-actions">
+        <div className="account-form-actions flex flex-wrap gap-(--settings-column-gap)">
           <Button
             onClick={() => {
               setDraft(undefined); setFailure(undefined)
@@ -274,8 +274,8 @@ export function AccountSettings({
   const adding = draft && !draft.key
 
   return (
-    <div className="account-settings">
-      <div className="settings-rows">
+    <div className="account-settings flex flex-col gap-3 min-w-0 [&>.settings-rows]:border-0 [&>.settings-rows]:bg-transparent [&>:not(.settings-rows)]:mt-0 [&>:not(.settings-rows)]:mx-5 [&>:not(.settings-rows)]:mb-4">
+      <SettingsRows>
         {Object.entries(accounts).map(([
           key,
           account,
@@ -308,7 +308,7 @@ export function AccountSettings({
                       folder: account.folder,
                     })
                   }}
-                >{editing ? <><Icon name="check" size={14} />Done</> : <><Icon name="edit" size={14} />Edit</>}
+                >{editing ? <><Icon name="check" size={ICON_SIZE.inline} />Done</> : <><Icon name="edit" size={ICON_SIZE.inline} />Edit</>}
                 </Button>
               )}
             >{editing && editor}
@@ -324,7 +324,7 @@ export function AccountSettings({
           >{editor}
           </SettingRow>
         ) : (
-          <div className="account-add-row" key="add-account">
+          <div className="account-add-row py-4 px-5 border-t border-subtle" key="add-account">
             <Button
               variant="surface"
               disabled={!base}
@@ -336,11 +336,11 @@ export function AccountSettings({
                   folder: '',
                 })
               }}
-            ><Icon name="plus" size={16} />Add account
+            ><Icon name="plus" size={ICON_SIZE.control} />Add account
             </Button>
           </div>
         )}
-      </div>
+      </SettingsRows>
       {!draft && snapshot.error && <p role="alert">{snapshot.error}</p>}
       <PendingStatus intents={snapshot.intents} />
     </div>

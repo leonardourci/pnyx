@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { HYDRA_ICONS as NAME_ICONS, HYDRA_MARK, HYDRA_NAME_MAX } from '#hydra/hydra-names.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
 import { Input } from '#web-shared/ui/controls.tsx'
 import { hydraTitle } from '#web-app/view.ts'
@@ -19,7 +19,7 @@ export interface HydraIdentity {
 export function HydraLabel({
   name,
   icon,
-  size = 20,
+  size = ICON_SIZE.heading,
 }: {
   name: string
   icon?: string
@@ -28,7 +28,7 @@ export function HydraLabel({
   return (
     <>
       <Icon name={icon ?? HYDRA_MARK} size={size} />
-      <span className={name ? 'hydra-label' : 'hydra-label muted'}>{hydraTitle({ name })}</span>
+      <span className={`hydra-label min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-label ${name ? '' : 'text-muted'}`}>{hydraTitle({ name })}</span>
     </>
   )
 }
@@ -61,7 +61,7 @@ function editorNote({
 export function HydraNameEditor({
   saved,
   taken,
-  iconSize = 20,
+  iconSize = ICON_SIZE.heading,
   save,
   cancel,
 }: {
@@ -117,7 +117,7 @@ export function HydraNameEditor({
 
   return (
     <form
-      className="hydra-name-editor"
+      className="hydra-name-editor flex items-start gap-1.5 min-w-0"
       onSubmit={e => {
         e.preventDefault(); commit({ blocking: true })
       }}
@@ -136,7 +136,7 @@ export function HydraNameEditor({
           setIcon(icon); input.current?.focus()
         }}
       />
-      <span className="hydra-name-field">
+      <span className="hydra-name-field flex flex-1 flex-col gap-0.75 min-w-0 [&_.input]:w-full [&_.input]:py-1 [&_.input]:px-2 [&_.input]:font-label">
         <Input
           ref={input}
           aria-label="Hydra name"
@@ -154,7 +154,7 @@ export function HydraNameEditor({
           }}
         />
         {(note || counter) && (
-          <span className={isDuplicate ? 'hydra-name-note error' : 'hydra-name-note'} role={isDuplicate ? 'alert' : undefined}>
+          <span className={`hydra-name-note flex justify-between gap-1.5 text-meta ${isDuplicate ? 'error text-red' : 'text-muted'}`} role={isDuplicate ? 'alert' : undefined}>
             <span>{note}</span><span>{counter}</span>
           </span>
         )}

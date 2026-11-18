@@ -55,7 +55,7 @@ export function LandingFields({
   onChange({ choice }: { choice: LandingChoice }): void
 }) {
   return (
-    <div className="landing-fields">
+    <div className="landing-fields grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-y-1.5 gap-x-2.5">
       <span className="small">Work lands as</span>
       <Select
         label={`How work lands for ${name}`}

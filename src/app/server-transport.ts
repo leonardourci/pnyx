@@ -52,6 +52,7 @@ export const MIME: Record<string, string> = {
 type ServerPayload =
   | {
     type: 'hello'
+    stateSeq?: number
     build: string
     hydraId: string
     installation: string

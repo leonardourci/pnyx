@@ -39,6 +39,20 @@ export const harnessOf = ({ provider }: { provider?: string }): Harness =>
 export const providerIdOf = ({ harness }: { harness: Harness }): ProviderId =>
   PROVIDERS[harness].provider
 
+// A card send waiting for its turn names the agent it will reach; the server receipt and the page share it.
+export function queuedAgentLabel({ agent }: {
+  agent: {
+    harness: string
+    model?: string
+    effort?: string
+  }
+}) {
+  const model = agent.model ? ` / ${agent.model}` : ''
+  const effort = agent.effort ? ` · ${agent.effort}` : ''
+
+  return `Queued · ${agent.harness}${model}${effort}`
+}
+
 export const providerLabel = ({ provider }: { provider?: string }) =>
   PROVIDERS[harnessOf({ provider })].name
 

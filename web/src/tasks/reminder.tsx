@@ -1,7 +1,9 @@
-import { Icon } from '#web-shared/ui/icon.tsx'
-import { useId, useRef, useState } from 'react'
+import { useSessionView } from '#web-app/session-view.ts'
+import { taskViewKey, useTaskEditorFocus } from './task-view.ts'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
+import { useId, useRef } from 'react'
 import type { Card } from '#tasks/model.ts'
-import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { Button, Input, DATE_EDITOR } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { reminderIntervalText } from '#tasks/time.ts'
@@ -29,7 +31,7 @@ export function ReminderLabel({ card }: { card: Card }) {
   const repeat = card.reminder.repeat
   const cadence = repeat ? ` · every ${reminderIntervalText({ milliseconds: repeat.everyMs })}, until ${STOP_LABELS[repeat.until]}` : ''
 
-  return <span className="reminder-label" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}{cadence}</span>
+  return <span className="reminder-label inline-flex items-center gap-1.25 mt-2 text-gold text-meta" title={date.toISOString()}><Icon name="reminder" size={ICON_SIZE.inline} />reminds you {when}{cadence}</span>
 }
 
 export interface ReminderDraft {
@@ -39,7 +41,9 @@ export interface ReminderDraft {
 }
 
 export function ReminderEditor({
+  hydraId,
   card,
+  version,
   command,
   connected,
   close,
@@ -47,7 +51,9 @@ export function ReminderEditor({
   recover,
   draft,
 }: {
+  hydraId: string
   card: Card
+  version: number
   command: Command
   connected: boolean
   close(): void
@@ -56,13 +62,28 @@ export function ReminderEditor({
   draft?: ReminderDraft
 }) {
   const id = useId()
+  const input = useRef<HTMLInputElement>(null)
+  useTaskEditorFocus({
+    hydraId,
+    id: card.id,
+    kind: 'reminder',
+    version,
+    field: input,
+  })
   const reminder = card.reminder
   const pending = reminder && (!reminder.dueAt || reminder.repeat)
   const initialWhen = pending ? reminder.at : ''
   const [
     when,
     setWhen,
-  ] = useState(draft?.value ?? initialWhen)
+  ] = useSessionView({
+    key: taskViewKey({
+      hydraId,
+      id: card.id,
+      field: 'reminder.when',
+    }),
+    initial: draft?.value ?? initialWhen,
+  })
   const attempt = useRef(draft?.attempt ?? crypto.randomUUID())
   const sending = useRef(false)
 
@@ -121,7 +142,7 @@ export function ReminderEditor({
 
   return (
     <form
-      className="reminder-editor"
+      className={DATE_EDITOR}
       aria-label={`Reminder for ${card.title}`}
       onSubmit={event => {
         event.preventDefault(); void save({ value: when })
@@ -136,7 +157,7 @@ export function ReminderEditor({
       <Input
         id={id}
         aria-label="Reminder time"
-        autoFocus
+        ref={input}
         placeholder="tomorrow 9:00 or in 2 hours"
         value={when}
         disabled={!connected}

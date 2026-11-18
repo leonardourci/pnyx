@@ -4,8 +4,9 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { CLI, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
+import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
 import { QUEUE_POLL_MS } from '#workers/queue.ts'
 
@@ -1713,6 +1714,392 @@ test(
 )
 
 test(
+  'attaching a repository to another Hydra refuses without moving existing work',
+  async () => {
+    const owner = await pnyx.hydra()
+    const other = await pnyx.hydra()
+    const path = owner.folder({ name: 'owned-project' })
+    await owner.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const task = await owner.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Keep this work',
+        '--project',
+        path,
+      ],
+    })
+    const refused = await other.ownerRefused({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    expect(refused.code).toBe('CONFLICT')
+    expect(refused.error).toContain(owner.id)
+    expect((await owner.task({ key: task.card.id })).title).toBe('Keep this work')
+    expect((await other.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toBe('none: no projects attached')
+  },
+)
+
+test(
+  'legacy duplicates stay usable until an atomic keeper choice clears all task blockers',
+  async () => {
+    const owner = await pnyx.hydra()
+    const path = owner.folder({ name: 'legacy-shared' })
+    await owner.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const id = 'legacy-project-owner'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${JSON.stringify({
+        v: 1,
+        seq: 1,
+        id: 'legacy-project',
+        at: '2026-10-21T10:01:00Z',
+        actor: 'cli',
+        cardId: '$projects',
+        type: 'hydra.project',
+        data: {
+          before: null,
+          after: {
+            path,
+            name: 'legacy-shared',
+            detached: false,
+          },
+          sharedWith: [],
+        },
+      })}\n`,
+    )
+    const legacy = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    const task = await legacy.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Legacy work',
+        '--project',
+        path,
+      ],
+    })
+    expect((await legacy.task({ key: task.card.id })).project).toBe('legacy-shared')
+    await legacy.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const setupRun = await pnyxAxi({
+      env: process.env,
+      args: [
+        'setup',
+        'check',
+        '--hydra',
+        legacy.id,
+      ],
+    })
+    expect(setupRun.status).toBe(1)
+    const setup = parsed(setupRun)
+    expect(setup.missing).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: `project-owner:${path}`,
+        missing: expect.stringContaining(owner.id),
+        by: 'owner',
+      }),
+    ]))
+    expect(setup.missing.find((item: { name: string }) => item.name === `project-owner:${path}`).missing).toContain(legacy.id)
+    expect((await owner.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path,
+        state: 'attached',
+      }),
+    ]))
+    const dependent = await legacy.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Dependent work',
+        '--project',
+        path,
+      ],
+    })
+    const free = await legacy.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Independent work',
+        '--project',
+        path,
+      ],
+    })
+    await legacy.owner({
+      args: [
+        'task',
+        'depend',
+        dependent.card.id,
+        '--on',
+        task.card.id,
+      ],
+    })
+    const refused = await owner.ownerRefused({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })
+    expect(refused.code).toBe('CONFLICT')
+    expect(refused.error).toContain(task.card.id)
+    expect(refused.error).toContain(dependent.card.id)
+    expect((await legacy.task({ key: free.card.id })).title).toBe('Independent work')
+    expect((await legacy.task({ key: task.card.id })).title).toBe('Legacy work')
+    expect((await legacy.task({ key: dependent.card.id })).title).toBe('Dependent work')
+    expect((await owner.ownerRefused({
+      args: [
+        'task',
+        'show',
+        free.card.id,
+      ],
+    })).code).toBe('NOT_FOUND')
+    await legacy.owner({
+      args: [
+        'task',
+        'undepend',
+        dependent.card.id,
+        '--on',
+        task.card.id,
+      ],
+    })
+    const extra = legacy.folder({ name: 'legacy-extra' })
+    await legacy.owner({
+      args: [
+        'project',
+        'add',
+        extra,
+      ],
+    })
+    expect((await owner.ownerRefused({
+      args: [
+        'project',
+        'keep',
+        path,
+        '--if-revision',
+        '0',
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    const kept = await owner.owner({
+      args: [
+        'project',
+        'keep',
+        path,
+        '--if-revision',
+        '1',
+      ],
+    })
+    expect(kept.moved).toEqual(expect.arrayContaining([
+      task.card.id,
+      dependent.card.id,
+      free.card.id,
+    ]))
+    expect((await owner.task({ key: task.card.id })).title).toBe('Legacy work')
+    expect((await owner.task({ key: dependent.card.id })).title).toBe('Dependent work')
+    expect((await owner.task({ key: free.card.id })).title).toBe('Independent work')
+    expect(rows({
+      text: 'select hydra_id, type from events where card_id = $1 and type in (\'task.moved-in\', \'task.moved-out\') order by type',
+      values: [task.card.id],
+    })).toEqual([
+      {
+        hydra_id: owner.id,
+        type: 'task.moved-in',
+      },
+      {
+        hydra_id: legacy.id,
+        type: 'task.moved-out',
+      },
+    ])
+    expect((await legacy.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual([
+      expect.objectContaining({
+        path: extra,
+        state: 'attached',
+      }),
+      expect.objectContaining({
+        path,
+        state: 'detached',
+      }),
+    ])
+    expect((await owner.owner({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })).moved).toEqual([])
+  },
+)
+
+test(
+  'parent-folder attachment preserves rules, guards one revision and retries once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const parent = hydra.folder({ name: 'repositories' })
+    const first = join(
+      parent,
+      'atlas',
+    )
+    const second = join(
+      parent,
+      'boreal',
+    )
+    mkdirSync(
+      join(
+        first,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    mkdirSync(
+      join(
+        second,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    const args = [
+      'project',
+      'add',
+      parent,
+      '--landing',
+      'branch',
+      '--merge',
+      'hydra',
+      '--if-revision',
+      '0',
+      '--event-id',
+      'constructor',
+    ]
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { chatCollapsed: true } }),
+        '--event-id',
+        'constructor:0',
+      ],
+    })
+    await hydra.owner({ args })
+    expect((await hydra.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual([
+      expect.objectContaining({
+        path: first,
+        landing: 'branch',
+        merge: 'hydra',
+      }),
+      expect.objectContaining({
+        path: second,
+        landing: 'branch',
+        merge: 'hydra',
+      }),
+    ])
+    const noOpArgs = [
+      ...args.slice(
+        0,
+        -4,
+      ),
+      '--if-revision',
+      String((await hydra.owner({
+        args: [
+          'project',
+          'list',
+        ],
+      })).revision),
+      '--event-id',
+      '__proto__',
+    ]
+    await hydra.owner({ args: noOpArgs })
+    await pnyx.restart()
+    const third = join(
+      parent,
+      'cedar',
+    )
+    mkdirSync(
+      join(
+        third,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    await hydra.owner({ args: noOpArgs })
+    await hydra.owner({ args })
+    expect((await hydra.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toHaveLength(2)
+    expect((await hydra.ownerRefused({
+      args: [
+        'project',
+        'add',
+        parent,
+        '--if-revision',
+        '0',
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+  },
+)
+
+test(
   'readable branch names strip accents and punctuation, shorten at words, and avoid local and remote collisions',
   async () => {
     const hydra = await pnyx.hydra()
@@ -2112,34 +2499,22 @@ test(
         'refs/heads/poseidon-2/retry-allocation',
       ],
     })).toBe(reserved)
-    const other = await pnyx.hydra()
+    const other = await legacyDuplicate({
+      pnyx,
+      id: 'legacy-branch-names',
+      projects: [
+        {
+          path: cwd,
+          landing: 'branch',
+        },
+      ],
+    })
     await other.owner({
       args: [
         'hydra',
         'set',
         '--name',
         'Póseídon',
-      ],
-    })
-    const attachment = await other.owner({
-      args: [
-        'project',
-        'add',
-        cwd,
-        '--landing',
-        'branch',
-      ],
-    })
-    expect(attachment.confirmation).toBe('needed')
-    await other.owner({
-      args: [
-        'project',
-        'add',
-        cwd,
-        '--landing',
-        'branch',
-        '--confirm',
-        attachment.token,
       ],
     })
     await other.owner({

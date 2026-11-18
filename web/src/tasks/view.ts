@@ -1,3 +1,4 @@
+import { taskProjectGroup } from '#tasks/order.ts'
 import { tokens } from '#oracle/query.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { HydraState } from '#app/model.ts'
@@ -11,8 +12,6 @@ import { observedStatus, type ObservedStatus } from './observed-status.ts'
 import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
-
-export const TASK_DRAG = 'application/pnyx-task'
 
 // A column's icon and color come from its role; a custom column has its own icon.
 export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
@@ -55,34 +54,8 @@ export function filterCards({
     ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
 
-export function visibleParent({
-  card,
-  visible,
-}: {
-  card: Card
-  visible: Card[]
-}): Card | undefined {
-  return visible.find(c => c.id === card.parentId)
-}
-
 export const shownActivity = ({ card }: { card: Card }) =>
   card.sessionActivity && card.sessionActivity !== 'ended' ? card.sessionActivity : card.activity
-
-// The card a dragged task goes above when dropped on `over`: `over` itself, or the
-// next card when dropped on its lower half. Undefined means the end of the column.
-export function dropBefore({
-  cards,
-  over,
-  below,
-}: {
-  cards: Card[]
-  over?: string
-  below: boolean
-}): string | undefined {
-  const index = cards.findIndex(c => c.id === over)
-
-  return index < 0 ? undefined : cards[below ? index + 1 : index]?.id
-}
 
 export function cardState({
   card,
@@ -144,12 +117,24 @@ export function expandedByColumn({
   ids,
   cards,
   pending,
+  state,
 }: {
+  state?: HydraState
   ids: string[]
   cards: Record<string, Card>
   pending: Record<string, string>
 }): string[] {
-  const columnOf = ({ id }: { id: string }) => cards[id]?.column ?? pending[id] ?? id
+  const columnOf = ({ id }: { id: string }) => {
+    if (state && cards[id]) {
+      return taskProjectGroup({
+        state,
+        card: cards[id]!,
+      })
+    }
+
+    return cards[id]?.column ?? pending[id] ?? id
+  }
+
   const open = new Set<string>(), kept: string[] = []
 
   for (const id of [...ids].reverse()) {

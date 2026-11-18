@@ -112,6 +112,7 @@ export async function mountOwnedHydra({
   const catalogIndex = createCatalogIndex({ locations: catalogLocations })
   const {
     threadSubscriptions,
+    retainThreads,
     subscriptionMap,
     threadTimers,
     liveThreadTimers,
@@ -528,8 +529,21 @@ export async function mountOwnedHydra({
     kick,
     agents,
     catalogCommand,
-    showPage: tabs.show,
+    showPage: ({
+      ws,
+      interest,
+    }) => {
+      retainThreads({
+        ws,
+        cards: interest.cards,
+      })
+      tabs.show({
+        ws,
+        interest,
+      })
+    },
     subscriptionMap,
+    retainThreads,
     bindThread,
     threadPage,
     startWorker,
@@ -579,6 +593,7 @@ export async function mountOwnedHydra({
       ws,
       message: {
         type: 'hello',
+        stateSeq: state.seq,
         build: buildId(),
         hydraId: identity,
         installation: hydraIdentity({ hydraId: '' }),
@@ -621,7 +636,7 @@ export async function mountOwnedHydra({
         threadTimers.delete(ws)
         threadDelivery.removeClient({ ws })
 
-        for (const map of threadSubscriptions) {
+        for (const map of threadSubscriptions()) {
           const sub = map.get(ws)
 
           if (sub) {
@@ -681,7 +696,7 @@ export async function mountOwnedHydra({
 
     releaseHold()
 
-    const threads = threadSubscriptions.flatMap(map =>
+    const threads = threadSubscriptions().flatMap(map =>
       [...map.values()].flatMap(sub => sub.watcher ?? []))
 
     for (const w of [
@@ -699,7 +714,7 @@ export async function mountOwnedHydra({
     transcriptPolls.clear()
     threadDelivery.close()
     tabs.close()
-    threadSubscriptions.forEach(map => map.clear())
+    threadSubscriptions().forEach(map => map.clear())
     clearTimeout(feed.latestTimer)
     clearTimeout(tick.expiryTimer)
     tick.cancelReminder()
@@ -775,7 +790,7 @@ export async function mountOwnedHydra({
     settings() {
       for (const ws of clients) {
         // Focus mode and the detail switches decide what a thread page shows.
-        for (const map of threadSubscriptions) {
+        for (const map of threadSubscriptions()) {
           if (map.has(ws)) {
             refreshThread({ ws })
           }

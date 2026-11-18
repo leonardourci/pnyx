@@ -1,3 +1,9 @@
+import { taskSessions } from '#workers/session-history.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import { queueCardInput, validateCardInput } from '#workers/card-input.ts'
+import { knownHarness } from '#workers/providers.ts'
+import { reorderTask } from '#tasks/reorder.ts'
+import { taskRank } from '#tasks/order.ts'
 import { toolsCommand } from '#workers/tools-cli.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
@@ -24,7 +30,7 @@ import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
-import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
+import { startOverride, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
@@ -61,6 +67,7 @@ export const TASK_OPTIONS: Options = {
     type: 'string',
     multiple: true,
   },
+  start: { type: 'boolean' },
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
@@ -159,6 +166,30 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   })
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+  let creatingWorker: AgentConfig | undefined
+  const createText = String(values.ask ?? values.brief ?? values.title ?? '')
+
+  if (action === 'create' && values.start) {
+    const createHarness = knownHarness({ name: values.harness })
+
+    if (!createHarness) {
+      throw new HydraError({
+        message: 'Choose --harness claude|codex',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    creatingWorker = {
+      harness: createHarness,
+      ...startOverride({ values }),
+    }
+    validateCardInput({
+      text: createText,
+      agent: creatingWorker,
+      actor: m.actor,
+    })
+  }
+
   const local = await localTaskCommand({
     action,
     values,
@@ -168,6 +199,25 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   })
 
   if (local) {
+    if (creatingWorker) {
+      const card = local.card as { id: string }
+      const input = queueCardInput({
+        hydraId,
+        task: card.id,
+        text: createText,
+        agent: creatingWorker,
+        meta: {
+          ...m,
+          id: `${m.id ?? card.id}:worker`,
+        },
+      })
+
+      return {
+        ...local,
+        input,
+      }
+    }
+
     return local
   }
 
@@ -386,6 +436,41 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         }),
         actor: m.actor,
       },
+    })
+  }
+
+  if (action === 'send') {
+    if (values.mode !== undefined || values.fast !== undefined) {
+      throw new HydraError({
+        message: 'task send takes harness, account, model and effort',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    const harness = knownHarness({ name: values.harness })
+
+    if (!harness) {
+      throw new HydraError({
+        message: 'Choose --harness claude|codex',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    return queueCardInput({
+      hydraId,
+      task: required({
+        value: positionals[1],
+        what: 'task id',
+      }),
+      text: required({
+        value: values.text as string | undefined,
+        what: '--text',
+      }),
+      agent: {
+        harness,
+        ...startOverride({ values }),
+      },
+      meta: m,
     })
   }
 
@@ -824,6 +909,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         state,
         card,
         homes: [],
+        selectedSession: session !== undefined,
         before: values.before as string | undefined,
       }),
     }
@@ -983,6 +1069,90 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
   }
 
+  if (action === 'arrange') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'card.moved',
+        card: ref,
+      },
+      decide: ({ state }) => reorderTask({
+        state,
+        ref,
+        before: values.before as string | undefined,
+        meta: m,
+      }),
+    })
+  }
+
+  if (action === 'parent') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+    const parent = required({
+      value: positionals[2],
+      what: 'parent task or none',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'card.pushed',
+        card: ref,
+      },
+      decide: ({ state }) => {
+        const task = findCard({
+          state,
+          ref,
+        })
+        const target = parent === 'none' ? undefined : findCard({
+          state,
+          ref: parent,
+        })
+        const managedTarget = target !== undefined && isManagedTask({ card: target })
+
+        if (isManagedTask({ card: task }) || managedTarget) {
+          throw new HydraError({
+            message: 'Choose work tasks for a parent and sub-task',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        if (values.before !== undefined && parent !== 'none') {
+          throw new HydraError({
+            message: '--before places a detached task in the root order; use parent none',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        const rank = parent === 'none' ? taskRank({
+          state,
+          card: {
+            ...task,
+            parentId: undefined,
+          },
+          before: values.before as string | undefined,
+        }) : undefined
+
+        return decidePush({
+          state,
+          key: task.key,
+          input: { parent: target?.id ?? null },
+          rank,
+          meta: m,
+        })
+      },
+    })
+  }
+
   if (action === 'rename') {
     if (values.title === undefined && values.project === undefined) {
       throw new HydraError({
@@ -1036,7 +1206,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }

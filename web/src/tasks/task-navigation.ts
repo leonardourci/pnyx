@@ -1,5 +1,6 @@
+import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
-import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { showingPage, type PageView } from '#web-app/restore.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -12,22 +13,20 @@ const VISIBLE_TAB_PANEL = '.card-panel:not([hidden])'
 
 export function useTaskNavigation({
   state,
+  hydraId,
   command,
   connected,
   notify,
   view,
   setView,
-  project,
-  projectReferences,
 }: {
   state: HydraState
+  hydraId: string
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
   view: PageView
   setView: Dispatch<SetStateAction<PageView>>
-  project: string
-  projectReferences: string[]
 }) {
   const {
     page,
@@ -36,6 +35,8 @@ export function useTaskNavigation({
     revealed,
   } = view
   const selected = selectedRef ? state.keys[selectedRef] ?? selectedRef : null
+  const currentState = useRef(state)
+  currentState.current = state
   const currentCards = useRef(state.cards)
   currentCards.current = state.cards
   const pendingColumns = useRef<Record<string, string>>({})
@@ -193,11 +194,18 @@ export function useTaskNavigation({
     })); pendingFocus.current = null
   }
 
-  const expandedIds = expandedByColumn({
-    ids: expanded.map(id => state.keys[id] ?? id),
-    cards: state.cards,
-    pending: pendingColumns.current,
-  })
+  const expandedIds = useMemo(
+    () => expandedByColumn({
+      ids: expanded.map(id => state.keys[id] ?? id),
+      cards: state.cards,
+      pending: pendingColumns.current,
+      state,
+    }),
+    [
+      expanded,
+      state,
+    ],
+  )
   useEffect(
     () => {
       if (!connected || page !== 'hydra' || pendingInterest.current) {
@@ -216,6 +224,7 @@ export function useTaskNavigation({
           ids: ids.map(id => state.keys[id] ?? id),
           cards: state.cards,
           pending: pendingColumns.current,
+          state,
         })
         const unchanged = ids.length === next.length && ids.every((
           id,
@@ -236,6 +245,15 @@ export function useTaskNavigation({
       page,
     ],
   )
+  const cardElement = ({
+    id,
+    selected = false,
+  }: {
+    id: string
+    selected?: boolean
+  }) =>
+    document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .card[data-task="${CSS.escape(id)}"]${selected ? '.selected' : ''}`)
+
   useLayoutEffect(() => {
     const pendingId = pendingFocus.current
     const id = pendingId ? state.keys[pendingId] ?? pendingId : null
@@ -244,7 +262,10 @@ export function useTaskNavigation({
       return
     }
 
-    const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
+    const element = cardElement({
+      id,
+      selected: true,
+    })
     const panel = element?.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)
 
     if (panel) {
@@ -255,14 +276,15 @@ export function useTaskNavigation({
     }
   })
   const columns = columnsFor({ state })
-  const filteredCards = filterCards({
-    state,
-  }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
+  const filteredCards = useMemo(
+    () => filterCards({ state }),
+    [state],
+  )
   // Saved reveal scopes reserve two empty slots before the project.
   const filterScope = JSON.stringify([
     '',
     '',
-    project,
+    '',
   ])
   useEffect(
     () => {
@@ -287,18 +309,27 @@ export function useTaskNavigation({
 
     return !!card && liveTask({ card })
   }) : []
-  const cards = [
-    ...filteredCards,
-    ...[
-      ...new Set([
-        ...expandedIds,
-        ...revealedIds,
-        ...(revealing ? [revealing] : []),
-      ]),
-    ]
-      .map(id => state.cards[id]).filter((item): item is Card =>
-        !!item && !filteredCards.some(card => card.id === item.id)),
-  ]
+  const cards = useMemo(
+    () => [
+      ...filteredCards,
+      ...[
+        ...new Set([
+          ...expandedIds,
+          ...revealedIds,
+          ...(revealing ? [revealing] : []),
+        ]),
+      ]
+        .map(id => state.cards[id]).filter((item): item is Card =>
+          !!item && !filteredCards.some(card => card.id === item.id)),
+    ],
+    [
+      filteredCards,
+      state.cards,
+      JSON.stringify(expandedIds),
+      JSON.stringify(revealedIds),
+      revealing,
+    ],
+  )
 
   const openHydra = () => {
     // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
@@ -306,7 +337,7 @@ export function useTaskNavigation({
       view: current,
       page: 'hydra',
     }))
-    requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(hydraId)}"] .hydra-chat textarea` }))
   }
 
   const keepRevealed = ({ id }: { id: string }) => {
@@ -358,6 +389,7 @@ export function useTaskNavigation({
         ],
         cards: currentCards.current,
         pending: pendingColumns.current,
+        state,
       }),
       selected: id,
       page: 'hydra',
@@ -372,7 +404,7 @@ export function useTaskNavigation({
     signal: AbortSignal
   }) => openTaskCard({
     find: () => (currentCards.current[id]
-      ? document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"]`) : null),
+      ? cardElement({ id }) : null),
     expand: () => expand({
       id,
       focus: false,
@@ -386,6 +418,7 @@ export function useTaskNavigation({
     }) && scrollTask({
       element,
       signal,
+      nearest: true,
     }),
     signal,
   })
@@ -394,10 +427,12 @@ export function useTaskNavigation({
     id,
     pointer = false,
     focusPanel = true,
+    modal = false,
   }: {
     id: string
     pointer?: boolean
     focusPanel?: boolean
+    modal?: boolean
   }): Promise<boolean> => {
     cancelOpen(); pendingFocus.current = null
 
@@ -414,7 +449,7 @@ export function useTaskNavigation({
     setView(current => showingPage({
       view: current,
       page: 'hydra',
-    })); setRevealing(id)
+    })); setRevealing(pointer ? null : id)
 
     try {
       if (!currentCards.current[id]) {
@@ -444,6 +479,46 @@ export function useTaskNavigation({
         }
       }
 
+      if (!pointer) {
+        const card = currentCards.current[id]
+        const column = card && taskProjectGroup({
+          state: currentState.current,
+          card,
+        })
+        const workspace = currentState.current.view?.workspace
+
+        if (column && (workspace?.collapsed || workspace?.foldedProjects.includes(column))) {
+          command({
+            name: 'view',
+            args: [
+              'set',
+              '--json',
+              JSON.stringify({
+                workspace: {
+                  collapsed: false,
+                  foldedProjects: { [column]: false },
+                },
+              }),
+              '--event-id',
+              crypto.randomUUID(),
+            ],
+          }).catch((error: Error) => notify({ text: error.message }))
+        }
+
+        if (modal) {
+          keepRevealed({ id })
+        } else {
+          expand({
+            id,
+            focus: focusPanel,
+          })
+        }
+      }
+
+      if (modal) {
+        return !!currentCards.current[id] && !signal.aborted
+      }
+
       if (pointer) {
         const card = await openFromPointer({
           id,
@@ -457,9 +532,12 @@ export function useTaskNavigation({
         return false
       }
 
-      const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"]`)
+      const element = cardElement({ id })
 
-      if (!element || !await scrollTask({
+      if (!element || !await afterSteadyLayout({
+        element,
+        signal,
+      }) || !await scrollTask({
         element,
         signal,
       })) {
@@ -504,7 +582,10 @@ export function useTaskNavigation({
       return
     }
 
-    const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
+    const element = cardElement({
+      id,
+      selected: true,
+    })
 
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && element) {
       highlight.current = element.animate(
@@ -548,6 +629,7 @@ export function useTaskNavigation({
   }
 
   return {
+    revealing,
     selected,
     expandedIds,
     cards,

@@ -1,3 +1,4 @@
+import { MessageBubble, MessageFooter } from './message-surface.tsx'
 import { MeasuredList } from '#web-shared/ui/measured-list.tsx'
 import type { ChatDrafts } from './chat-drafts.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
@@ -11,7 +12,7 @@ import type { SavedLabelColor } from '#tasks/model.ts'
 import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SavedTaskLabels,TaskReference,TaskReferencesProvider,type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
 import {
@@ -60,6 +61,7 @@ let highlights = 0
 // A message the owner just sent shows at once, faded until the server records it.
 export type ChatEntry = ThreadEntry & {
   sending?: boolean
+  checking?: boolean
   // Why the owner's message was not sent; it stays with a retry.
   unsent?: string
   renderKey?: string
@@ -69,7 +71,7 @@ function MessageTask({ entry }: { entry: ChatEntry }) {
   const task = leadingTask({ entry })
 
   return task ? (
-    <span className="message-lead">
+    <span className="message-lead relative z-1 float-left max-w-full mr-message-reference text-chat leading-(--chat-line) font-chat [&_.task-reference-space]:hidden [&_.draft-chip]:m-0 [&:is(:has(+.markdown>:first-child:not(.message-block)),:has(+.markdown>.message-block:first-child>:first-child:not(p)))]:float-none [&:is(:has(+.markdown>:first-child:not(.message-block)),:has(+.markdown>.message-block:first-child>:first-child:not(p)))]:block [&:is(:has(+.markdown>:first-child:not(.message-block)),:has(+.markdown>.message-block:first-child>:first-child:not(p)))]:mb-(--block-gap)">
       <TaskReference id={task} />
     </span>
   ) : null
@@ -119,7 +121,7 @@ function MilestoneIcon({ text }: { text: string }) {
   })
   const name = text === 'Inscribed' ? inscribe : upgradeMilestoneIcon({ text })
 
-  return name ? <Icon name={name} size={14} /> : null
+  return name ? <Icon name={name} size={ICON_SIZE.inline} /> : null
 }
 
 interface RowComment {
@@ -207,11 +209,12 @@ const MessageRow = memo(function MessageRow({
   const stopped = state === 'failed' && (entry.delivery?.agent?.detail ?? entry.waiting) === 'stopped'
   const canResend = canSendAgain && (stopped && !entry.sentAgain || entry.task && state === 'delivery_unknown')
   const deliverNow = canSendNow && state === 'queued'
+  const retryMessage = canRetry && (entry.unsent !== undefined || state === 'failed' && !!entry.targetAgent)
   const sentAt = sentTime({ entry })
 
   return entry.kind === 'divider' ? (
     <div
-      className="chat-divider"
+      className="chat-divider flex items-center gap-2.5 my-2.5 mx-0 text-muted text-meta before:content-[''] before:flex-1 before:border-t before:border-line after:content-[''] after:flex-1 after:border-t after:border-line"
       role="separator"
       aria-label={entry.text}
     >
@@ -231,9 +234,10 @@ const MessageRow = memo(function MessageRow({
           thinkingDetails={thinkingDetails}
         />
       ) : null}
-      <article
+      <MessageBubble
         data-entry-id={entry.id}
-        className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
+        kind={entry.kind}
+        mine={ownMessage({ entry })}
         aria-label={roleLabel({
           role: entry.role,
           assistantLabel,
@@ -281,7 +285,7 @@ const MessageRow = memo(function MessageRow({
 
               return (
                 <div
-                  className="message-block"
+                  className="message-block relative min-w-0 rounded-preview"
                   data-message-block={key}
                   data-message-id={messageId}
                   data-message-at={entry.at}
@@ -336,9 +340,9 @@ const MessageRow = memo(function MessageRow({
             }}
           />
         )}
-      </article>
+      </MessageBubble>
       {ownMessage({ entry }) && !entry.continued && (
-        <div className="message-meta" contentEditable={false}>
+        <MessageFooter variant="owner" contentEditable={false}>
           <MessageReceipt entry={entry} />
           {deliverNow && (
             <InlineButton
@@ -361,12 +365,13 @@ const MessageRow = memo(function MessageRow({
               Send again
             </InlineButton>
           )}
+          {entry.checking && <span className="muted" role="status">Checking…</span>}
           {entry.unsent !== undefined && (
-            <span className="unsent" role="alert">
-              <Icon name="error" size={14} />Not sent · {entry.unsent}
+            <span className="unsent inline-flex items-center gap-1 px-1 py-0 text-red" role="alert">
+              <Icon name="error" size={ICON_SIZE.inline} />Not sent · {entry.unsent}
             </span>
           )}
-          {entry.unsent !== undefined && canRetry && (
+          {retryMessage && (
             <InlineButton onClick={() => actions.current.retry?.({ id: entry.id })}>
               Retry
             </InlineButton>
@@ -389,7 +394,7 @@ const MessageRow = memo(function MessageRow({
               title: leadingTitle,
             })}
           />
-        </div>
+        </MessageFooter>
       )}
       {trailing?.length ? (
         <TurnActionsFold
@@ -419,6 +424,7 @@ const MessageRow = memo(function MessageRow({
 })
 
 export function Messages({
+  identity,
   entries,
   lookup,
   comments,
@@ -442,6 +448,7 @@ export function Messages({
   retry,
   answerLeads,
 }: {
+  identity: string
   sendNow?({
     id,
     task,
@@ -1050,7 +1057,7 @@ export function Messages({
         }))}) { background-color: var(--comment-highlight); }`).join('')}
       </style>
       <div
-        className="messages"
+        className="messages [&_:is(a,img):not(.composer-field_*)]:[-webkit-user-drag:none] relative flex flex-col gap-message-gap pt-2 in-[.hydra-chat]:gap-(--chat-gap) data-caret-host:outline-none data-caret-host:caret-gold [--message-gap:var(--chat-gap,var(--spacing-message-gap))] [&_.measured-row]:flex [&_.measured-row]:flex-col [&_.measured-row]:gap-(--message-gap) [&_.measured-row]:pb-(--message-gap)"
         data-highlight={highlight}
         ref={root}
         contentEditable={CARET_SUPPORTED}
@@ -1095,10 +1102,7 @@ export function Messages({
           const editing = event.target instanceof Element && isEditing({ target: event.target })
 
           if (!editing) {
-            copyMessageChips({
-              selection: window.getSelection(),
-              clipboard: event.dataTransfer,
-            })
+            event.preventDefault()
           }
         }}
         onPaste={event => paste({ event })}
@@ -1118,6 +1122,7 @@ export function Messages({
         }}
       >
         <MeasuredList
+          identity={identity}
           items={entries}
           itemKey={({ item }) => item.renderKey ?? item.id}
           render={({ item: entry }) => {
@@ -1165,7 +1170,7 @@ export function Messages({
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div
-            className="comment-pill"
+            className="comment-pill absolute z-5 flex items-center gap-0.5 p-0.75 border border-gold-line rounded-lg bg-surface shadow-comment-pill whitespace-nowrap [&_.button]:min-h-6.5 [&_.button]:py-0.5 [&_.button]:px-2 [&_.button]:gap-1.25 [&_.button]:text-meta [&_.button:first-child]:text-gold [&_kbd]:py-0 [&_kbd]:px-1"
             ref={pill}
             contentEditable={false}
             onMouseDown={e => e.preventDefault()}
@@ -1175,17 +1180,17 @@ export function Messages({
               title="Enter, or start typing"
               onClick={() => addComment({ quote: selection })}
             >
-              <Icon name="comment" size={14} />
+              <Icon name="comment" size={ICON_SIZE.inline} />
               Comment
               <kbd>↵</kbd>
             </Button>
-            <span className="comment-pill-divider" />
+            <span className="comment-pill-divider w-px self-stretch my-1 mx-px bg-line" />
             <Button
               aria-label="Quote selection"
               title="Shift+Enter"
               onClick={() => quoteSelection({ passage: selection })}
             >
-              <Icon name="quote" size={14} />
+              <Icon name="quote" size={ICON_SIZE.inline} />
               Quote
               <kbd>⇧↵</kbd>
             </Button>

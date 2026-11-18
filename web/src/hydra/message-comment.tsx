@@ -1,8 +1,8 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useEffect,useRef } from 'react'
 import type { ChatDrafts } from './chat-drafts.ts'
-import { Button } from '#web-shared/ui/controls.tsx'
 import { ComposerField,type ComposerFieldHandle } from './composer-field.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { markdownText } from './markdown-text.ts'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
@@ -40,7 +40,7 @@ function CommentQuote({
   return (
     <Tooltip content={<>{before}<mark>{match}</mark>{after}</>}>
       <div
-        className="comment-quote"
+        className="comment-quote overflow-hidden text-muted text-meta leading-detail text-ellipsis whitespace-nowrap [&_mark]:py-0 [&_mark]:px-px [&_mark]:rounded-xs [&_mark]:bg-(--comment-highlight) [&_mark]:text-ink in-[.comments-dialog]:line-clamp-4 in-[.comments-dialog]:whitespace-normal"
         role={show ? 'button' : undefined}
         tabIndex={show ? 0 : undefined}
         // The quote goes back to its passage instead of the card's own click, which focuses the note.
@@ -111,7 +111,7 @@ export function MessageComment({
 
   return (
     <div
-      className="comment-card"
+      className="comment-card [transition:var(--transition-comment-card)] relative flex flex-col gap-0.75 mt-1.5 mx-0 mb-2.5 py-1.5 pr-1.5 pl-2.5 border border-line border-l-2 border-l-gold rounded-lg bg-raised text-ui select-none data-emphasis:bg-comment-card-emphasis data-emphasis:border-gold data-emphasis:shadow-comment-emphasis focus-within:border-gold-line focus-within:border-l-gold data-jump:after:content-[''] data-jump:after:absolute data-jump:after:inset-0 data-jump:after:rounded-[inherit] data-jump:after:pointer-events-none data-jump:after:bg-(--comment-jump-highlight) data-jump:after:shadow-comment-jump data-jump:after:animate-comment-jump motion-reduce:data-jump:after:animate-none motion-reduce:data-jump:after:opacity-50 motion-reduce:transition-none in-[.comments-dialog]:my-1"
       data-comment-id={inline ? comment.id : undefined}
       data-comment-number={number}
       data-comment-ref={comment.id}
@@ -123,11 +123,11 @@ export function MessageComment({
       role="group"
       aria-label={`Comment ${number}`}
     >
-      <div className="comment-heading">
+      <div className="comment-heading flex items-start gap-1.5 min-w-0 [&_.comment-quote]:flex-1 [&_.comment-quote]:min-w-0 [&>.tooltip-anchor]:flex [&>.tooltip-anchor]:flex-1 [&>.tooltip-anchor]:min-w-0">
         <CommentNumber number={number} />
         <CommentQuote comment={comment} clip={inline} show={show} />
       </div>
-      <div className="comment-row">
+      <div className="comment-row flex items-start gap-1.5">
         <ComposerField
           ref={field}
           className="comment-note"
@@ -175,18 +175,22 @@ export function MessageComment({
           }}
         />
         {show && !inline && (
-          <Button
-            className="icon-button"
-            aria-label="Show in chat"
+          <IconButton
+            size="small"
+            icon="external"
+            iconSize={ICON_SIZE.inline}
+            label="Show in chat"
             title="Show in chat"
             onClick={show}
-          >
-            <Icon name="external" size={14} />
-          </Button>
+          />
         )}
-        <Button className="icon-button" aria-label="Remove comment" onClick={remove}>
-          <Icon name="close" size={14} />
-        </Button>
+        <IconButton
+          size="small"
+          icon="close"
+          iconSize={ICON_SIZE.inline}
+          label="Remove comment"
+          onClick={remove}
+        />
       </div>
     </div>
   )

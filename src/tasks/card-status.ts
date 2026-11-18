@@ -229,7 +229,8 @@ export function waitStatus({
 }
 
 export const statusLabel = ({ status }: { status: CardStatus }) => {
-  const text = status.text.replace(
+  const label = status.kind === 'working' ? 'running' : status.text
+  const text = label.replace(
     /^./,
     c => c.toUpperCase(),
   )

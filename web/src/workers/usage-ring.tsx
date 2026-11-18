@@ -1,3 +1,4 @@
+import { USAGE_TONE } from './usage-ui.tsx'
 import { useCallback, useEffect, useState } from 'react'
 import { Tooltip, TooltipPanel } from '#web-shared/ui/tooltip.tsx'
 import type { Card } from '#tasks/model.ts'
@@ -138,7 +139,7 @@ export function UsageRing({
   return (
     <Tooltip content={panel} interactive label="Usage details">
       <span
-        className="usage-ring"
+        className={`usage-ring relative inline-flex items-center justify-center shrink-0 size-(--composer-control-h) text-muted font-sans font-normal text-usage-ring leading-none tabular-nums [&>svg]:absolute [&>svg]:inset-0 [&>svg]:size-full [&_circle]:fill-none [&_circle]:stroke-line [&_circle]:stroke-3 data-empty:[&_circle]:[stroke-dasharray:4_4] data-[tone=normal]:[&_.usage-fill]:stroke-muted! ${USAGE_TONE}`}
         role="img"
         tabIndex={0}
         aria-label={label}
@@ -159,7 +160,7 @@ export function UsageRing({
           />
           {percent !== undefined && (
             <circle
-              className="usage-fill"
+              className="usage-fill stroke-usage-tone! [stroke-linecap:round] -rotate-90 origin-center"
               cx="15"
               cy="15"
               r="13.5"
@@ -168,7 +169,7 @@ export function UsageRing({
             />
           )}
         </svg>
-        {percent !== undefined && <span className="usage-percent" aria-hidden="true">{percent}<small>%</small></span>}
+        {percent !== undefined && <span className="usage-percent relative inline-flex items-baseline [&>small]:text-usage-percent" aria-hidden="true">{percent}<small>%</small></span>}
       </span>
     </Tooltip>
   )

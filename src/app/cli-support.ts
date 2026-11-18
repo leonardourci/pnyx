@@ -432,7 +432,7 @@ function originalReceipt(
 ): Output {
   const events = readEvents({
     hydraId,
-    ids: [id],
+    before: seq + 1,
   })
   const index = events.findIndex(e => e.id === id && e.seq === seq)
   const original = events[index]!
@@ -503,7 +503,10 @@ export function commit(
     create,
     fn: ({ writer }) => {
       const spool = drainSpool({ writer })
-      const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
+      const seq = meta.id !== undefined && Object.hasOwn(
+        writer.state.eventIds,
+        meta.id,
+      ) ? writer.state.eventIds[meta.id] : undefined
       let out: Output
 
       if (seq !== undefined) {

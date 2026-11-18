@@ -1,3 +1,5 @@
+import { motionDuration } from '#web-shared/motion.ts'
+
 export const COMMENT_FOCUS = 'pnyx-comment-focus'
 export const COMMENT_REVEAL = 'pnyx-comment-reveal'
 // The owner asked for the passage, so a chat that follows new messages counts this scroll as theirs.
@@ -56,7 +58,7 @@ export function scrollMessage({
       scroller.scrollHeight - scroller.clientHeight,
     ),
   )
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const reduced = motionDuration() === 0
   const moves = Math.abs(top - scroller.scrollTop) >= 1
 
   if (moves) {
@@ -136,6 +138,16 @@ export function centerMessage({ element }: { element: HTMLElement }) {
   }
 
   pending.get(scroller)?.()
+
+  if (motionDuration() === 0) {
+    element.scrollIntoView({
+      behavior: 'instant',
+      block: 'center',
+    })
+
+    return
+  }
+
   const viewport = scroller.getBoundingClientRect()
   const bounds = element.getBoundingClientRect()
   const offset = bounds.top + bounds.height / 2 - viewport.top - viewport.height / 2

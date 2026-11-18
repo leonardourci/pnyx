@@ -19,6 +19,15 @@ interface AgentMemory {
 
 interface LogFields {
   operation: string
+  durationMs?: number
+  frameCount?: number
+  surface?: string
+  action?: string
+  samples?: number
+  totalMs?: number
+  inputDelayMs?: number
+  processingMs?: number
+  presentationMs?: number
   hydraId?: string
   taskId?: string
   sessionId?: string
@@ -84,6 +93,15 @@ interface LogFields {
 // Every field a line may carry besides its operation, id and duration: a line is built from these and nothing else
 // its object holds, and a field added above must be listed here.
 const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | 'ms'>]-?: true } = {
+  durationMs: true,
+  frameCount: true,
+  surface: true,
+  action: true,
+  samples: true,
+  totalMs: true,
+  inputDelayMs: true,
+  processingMs: true,
+  presentationMs: true,
   connectionWaitMs: true,
   commitMs: true,
   hydraId: true,
@@ -157,6 +175,8 @@ export type LogLine = LogFields & Severity
 
 // The fields a page line keeps; the server drops any other a page sends.
 export const PAGE_TEXT_FIELDS = [
+  'surface',
+  'action',
   'taskId',
   'name',
   'status',
@@ -164,6 +184,14 @@ export const PAGE_TEXT_FIELDS = [
   'script',
 ] as const
 export const PAGE_NUMBER_FIELDS = [
+  'durationMs',
+  'frameCount',
+  'samples',
+  'totalMs',
+  'inputDelayMs',
+  'processingMs',
+  'presentationMs',
+  'eventSeq',
   'ms',
   'count',
   'blockingMs',

@@ -2,6 +2,7 @@ import type { EventBase } from '#store/events.ts'
 import type { Column } from '#tasks/columns-model.ts'
 
 export interface ViewPreferences {
+  workspace: import('./workspace.ts').WorkspaceLayout
   focusMode: boolean
   lastMessageOnCards: boolean
   defaultHydraWidth: number

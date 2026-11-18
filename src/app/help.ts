@@ -17,10 +17,11 @@ description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
-  project add|list|set|remove                   Attach, list or detach projects
+  project add|group|keep|list|set|remove      Attach repositories, group projects or choose a keeper
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
+  task create|list|show|rename|parent|arrange|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
+  task send <task> --text <text> --harness claude|codex Start or message a worker directly
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   rule; account list|set|remove              Heads dispatch rules and worker login folders
@@ -231,6 +232,13 @@ Use --if-revision for the Hydra revision (the view revision for resize).
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
 pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--before <task>] [--parent <task>] [--reason <text>] [--details <text>]
 --project names a project attached to the Hydra (see project list).
+Add --start --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] to create and send directly to its worker.
+pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] [--event-id <id>]
+Only the owner sends directly. The same event ID never launches or delivers twice. With no worker,
+Send starts one in its usual repository copy. Model/effort changes wait for the next turn; changing
+harness or account starts a fresh session with the prior conversation available through task chat.
+A busy worker finishes its turn before an agent change. Stop first for an immediate change.
+Outside sessions keep their reply route and require Continue in Pnyx before an agent change.
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
@@ -249,8 +257,15 @@ pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task refresh-links <id>
 Reads the task's open pull requests now instead of at their next poll, discarding a read in flight; task show lists what was read.
+pnyx-axi task parent <task> <parent|none> [--before <task>] [--event-id <id>]
+With none, --before places it before a root task in the same project; omit it to place it last.
+Undo restores its parent and order together.
+pnyx-axi task arrange <task> [--before <task>] [--event-id <id>]
+Arrange changes visual order within a project and parent; the page keeps state groups together.
+Task reorder --behind remains the worker queue operation.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
---project adds a compact project label; an empty value clears it.
+--project assigns a repository name/path; an empty value returns the task to Ideas.
+Unmatched legacy values stay as plain tags in Ideas.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold | --wait-for <task> [--ready-when task-done|pr-opened|pr-merged]]
 Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.

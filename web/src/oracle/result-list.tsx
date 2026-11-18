@@ -1,6 +1,8 @@
+import type { CurrentAction } from '#hydra/calls.ts'
+import type { OracleWorkspace } from './workspaces.ts'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { type ReactNode } from 'react'
 import { ASK_BADGE,type Asking } from './ask-mode.ts'
@@ -31,15 +33,15 @@ function Option({
     <div
       id={id}
       role="option"
-      className="oracle-option"
+      className="oracle-option flex items-center gap-2 px-2 py-1.5 rounded-md text-ui text-muted cursor-pointer aria-selected:bg-raised aria-selected:text-ink [&_mark]:bg-gold-wash [&_mark]:text-inherit [&_mark]:rounded-xs"
       data-value={value}
       aria-selected={selected}
       onMouseDown={event => event.preventDefault()}
       onClick={pick}
     >
-      <Icon name={icon} size={15} />
-      <span className="oracle-option-label"><Highlight text={label} terms={terms} /></span>
-      {meta && <span className="oracle-option-meta">{meta}</span>}
+      <Icon name={icon} size={ICON_SIZE.control} />
+      <span className="oracle-option-label min-w-0 flex-1 truncate text-ink"><Highlight text={label} terms={terms} /></span>
+      {meta && <span className="oracle-option-meta flex-none max-w-[45%] truncate text-meta">{meta}</span>}
     </div>
   )
 }
@@ -53,7 +55,7 @@ function Group({
 }) {
   return (
     <div role="group" aria-label={label}>
-      <div className="oracle-caption" aria-hidden="true">{label}</div>
+      <div className="oracle-caption pt-2.5 px-2 pb-1 text-meta text-muted" aria-hidden="true">{label}</div>
       {children}
     </div>
   )
@@ -62,6 +64,8 @@ function Group({
 export function oracleResultList({
   terms,
   state,
+  actions,
+  workspaces,
   keys,
   now,
   choose,
@@ -85,6 +89,8 @@ export function oracleResultList({
 }: {
   terms: string[]
   state: HydraState
+  actions: Record<string, CurrentAction>
+  workspaces: OracleWorkspace[]
   keys({ id }: { id: string }): string
   now: number
   choose({
@@ -140,7 +146,9 @@ export function oracleResultList({
       terms={terms}
       meta={resultMeta({
         result,
-        state,
+        state: workspaces.find(workspace => workspace.hydra.id === result.hydra)?.state ?? state,
+        actions: workspaces.find(workspace =>
+          workspace.hydra.id === result.hydra)?.actions ?? actions,
         keys,
         now,
       })}

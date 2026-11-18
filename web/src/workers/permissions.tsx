@@ -1,10 +1,12 @@
+import { ReceiptStatus } from '#web-shared/ui/receipt-status.tsx'
+import { QuestionHeading, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { useState } from 'react'
 import type { Card } from '#tasks/model.ts'
 import type { Attention, PermissionRequest } from '#workers/model.ts'
 import { permissionDetails } from '#workers/permission-rules.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { Form, Questions } from '#web-tasks/questions.tsx'
 
@@ -19,7 +21,7 @@ function Receipt({ request }: { request: PermissionRequest }) {
       : delivery === 'submitted' ? 'Answer submitted to the agent' : undefined
 
   if (message) {
-    return <span className="receipt" role="status">{message}</span>
+    return <ReceiptStatus role="status">{message}</ReceiptStatus>
   }
 
   const answered = request.answers
@@ -31,11 +33,11 @@ function Receipt({ request }: { request: PermissionRequest }) {
       .join(' · ')
 
   return (
-    <span className="receipt">
+    <ReceiptStatus>
       {request.status === 'expired'
         ? 'Expired · agent no longer waiting'
         : request.status === 'allow' ? (answered ? `Answered · ${answered}` : 'Allowed') : request.questions || request.form ? 'Skipped' : 'Denied'}
-    </span>
+    </ReceiptStatus>
   )
 }
 
@@ -103,10 +105,10 @@ export function InlinePermissions({
         }
 
         return (
-          <article key={request.id} className={`ask${pending ? '' : ' answered'}`} aria-label={request.questions ? 'Agent question' : 'Tool permission'}>
-            <strong className="ask-title"><Icon name="agent" size={14} />{title({ request })}</strong>
+          <QuestionPanel key={request.id} answered={!pending} aria-label={request.questions ? 'Agent question' : 'Tool permission'}>
+            <QuestionHeading ><Icon name="agent" size={ICON_SIZE.inline} />{title({ request })}</QuestionHeading>
             {details.length > 0 && (
-              <dl className="permission-details">
+              <dl className="permission-details grid gap-1 m-0 text-ui [&>div]:grid [&>div]:grid-cols-[var(--spacing-permission-label)_minmax(0,1fr)] [&>div]:gap-2 [&_dt]:text-muted [&_dd]:m-0 [&_dd]:wrap-anywhere [&_dd]:whitespace-pre-wrap [&_code]:font-mono">
                 {details.map(row => (
                   <div key={row.label}>
                     <dt>{row.label}</dt>
@@ -117,7 +119,7 @@ export function InlinePermissions({
             )}
             {!request.questions && !request.form && (
               <Disclosure title={<span className="small muted">Full request</span>}>
-                <pre className="permission-input">{JSON.stringify(
+                <pre className="permission-input whitespace-pre-wrap wrap-anywhere max-h-64 overflow-auto">{JSON.stringify(
                   request.input,
                   null,
                   2,
@@ -195,7 +197,7 @@ export function InlinePermissions({
                       </Button>
                     </div>
                   )}
-          </article>
+          </QuestionPanel>
         )
       })}
     </>

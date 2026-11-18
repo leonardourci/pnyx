@@ -4,10 +4,12 @@ import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
 import type { HydraState } from '#app/model.ts'
+import type { HydraProject } from '#projects/model.ts'
 import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
 import { skillStatus } from './skills.ts'
 import { readableProjectMemory } from '#memory/project-memory.ts'
+import { sharingHydras } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
@@ -36,10 +38,10 @@ const SIGN_IN: Record<Harness, string> = {
 // Reads files, PATH, each attached project's git sources and one Postgres query: cheap enough for every session open.
 export async function setupCheck({
   hydraId,
-  state,
+  readable,
 }: {
   hydraId: string
-  state: HydraState
+  readable: HydraProject[]
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
   const database = postgresIssue()
@@ -164,10 +166,7 @@ export async function setupCheck({
     })
   }
 
-  const profiles = await Promise.all((await readableProjects({
-    state,
-    hydraId,
-  })).filter(project => !project.detached)
+  const profiles = await Promise.all(readable.filter(project => !project.detached)
     .map(async project => ({
       project,
       status: (await readableProjectMemory({
@@ -180,6 +179,24 @@ export async function setupCheck({
     project,
     status,
   } of profiles) {
+    const duplicates = sharingHydras({
+      hydraId,
+      path: project.path,
+    })
+
+    if (duplicates.length) {
+      const hydras = [
+        hydraId,
+        ...duplicates.map(hydra => hydra.id),
+      ].sort().join(', ')
+      items.push({
+        name: `project-owner:${project.path}`,
+        missing: `repository ${project.path} is attached to Hydras ${hydras}`,
+        by: 'owner',
+        fix: `Choose its keeper with pnyx-axi project keep ${JSON.stringify(project.path)} --hydra <keeper>`,
+      })
+    }
+
     if (status === 'missing') {
       items.push({
         name: `profile:${project.name}`,
@@ -222,7 +239,10 @@ export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
   const loaded = database ?? hydraIssue({ hydraId })
   const items = 'missing' in loaded ? [loaded] : await setupCheck({
     hydraId,
-    state: loaded,
+    readable: await readableProjects({
+      state: loaded,
+      hydraId,
+    }),
   })
 
   if (!items.length) {

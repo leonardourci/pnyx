@@ -5,7 +5,7 @@ import { identityIcon } from '#web-shared/ui/icons/identity.ts'
 // The identity files' text. Only Vite has import.meta.env and import.meta.glob, so code that renders a component
 // outside Vite gets no identity icons.
 const IDENTITY_FILES: Record<string, string> = import.meta.env ? import.meta.glob<string>(
-  './icons/identity/*.svg',
+  './ui/icons/identity/*.svg',
   {
     eager: true,
     query: '?raw',
@@ -18,15 +18,24 @@ const EVEN_ODD = 'fill-rule="evenodd"'
 // Thin glyphs get an outline in their own color, in 512 units: about half a pixel at 16 px.
 const BOLD_STROKE = 16
 // Line icons draw this many screen pixels wide at every size, so a 14 px and a 24 px icon match in weight.
-const LINE_PX = 1.5
+export const ICON_STROKE = 1.5
 // Identity files draw in a 512-unit box.
 const ICON_BOX = 512
 // Tabler draws in a 24-unit box.
 const TABLER_BOX = 24
 
+export const ICON_SIZE = {
+  badge: 12,
+  inline: 14,
+  control: 16,
+  toolbar: 18,
+  heading: 20,
+  brand: 24,
+} as const
+
 export const identityGlyph = ({ name }: { name: string }) => {
   const icon = identityIcon({ id: name })
-  const file = icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]
+  const file = icon && IDENTITY_FILES[`./ui/icons/identity/${icon.file}`]
   const path = file?.match(PATH_DATA)?.[1]
 
   if (!icon || !file || !path) {
@@ -64,7 +73,7 @@ export const hasIcon = ({ name }: { name: string }) =>
 
 export function Icon({
   name,
-  size = 16,
+  size = ICON_SIZE.control,
 }: {
   name: string
   size?: number
@@ -76,7 +85,7 @@ export function Icon({
     return (
       <svg
         aria-hidden="true"
-        className={name === 'hydra' ? 'identity-icon hydra-icon' : 'identity-icon'}
+        className={`icon identity-icon shrink-0 overflow-visible ${name === 'hydra' ? 'hydra-icon' : ''}`}
         data-icon={name}
         width={size}
         height={size}
@@ -94,6 +103,7 @@ export function Icon({
     return (
       <img
         aria-hidden="true"
+        className="icon shrink-0"
         src="/favicon.svg"
         width={size}
         height={size}
@@ -111,6 +121,7 @@ export function Icon({
         aria-hidden="true"
         width={size}
         height={size}
+        className="icon shrink-0"
         viewBox="0 0 24 24"
         fill="currentColor"
       ><path d={brands[name]} />
@@ -123,5 +134,14 @@ export function Icon({
     name,
   ) && TABLER_ICONS[name]) || IconRobot
 
-  return <Mark aria-hidden="true" size={size} stroke={LINE_PX * TABLER_BOX / size} />
+  const className = `icon shrink-0 ${name === 'fold_columns' ? 'rotate-90' : ''}`
+
+  return (
+    <Mark
+      aria-hidden="true"
+      className={className}
+      size={size}
+      stroke={ICON_STROKE * TABLER_BOX / size}
+    />
+  )
 }

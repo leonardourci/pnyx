@@ -1,6 +1,6 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { useEffect, useState } from 'react'
-import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { IconButton } from './icon-button.tsx'
 
 const RESULTS = {
   copied: 'Copied',
@@ -37,13 +37,18 @@ export function CopyButton({
   const title = (result && RESULTS[result]) || label
 
   return (
-    <Button
-      className={`icon-button copy-button ${className}`}
-      aria-label={title}
+    <IconButton
+      className={`copy-button data-copied:text-green ${className}`}
+      label={title}
+      icon={result === 'copied' ? 'check' : 'copy'}
+      iconSize={ICON_SIZE.inline}
+      size="copy"
       title={title}
       data-copied={result === 'copied' || undefined}
       contentEditable={false}
+      // eslint-disable-next-line pnyx/object-params -- React owns the button event signature.
       onMouseDown={event => event.preventDefault()}
+      // eslint-disable-next-line pnyx/object-params -- React owns the button event signature.
       onClick={async event => {
         // Inside a summary, a click would also fold the row.
         event.preventDefault()
@@ -56,8 +61,6 @@ export function CopyButton({
           setResult('failed')
         }
       }}
-    >
-      <Icon name={result === 'copied' ? 'check' : 'copy'} size={14} />
-    </Button>
+    />
   )
 }

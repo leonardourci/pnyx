@@ -294,3 +294,44 @@ test(
     expect((await settings({ hydra: second })).hiddenHydras).toEqual([])
   },
 )
+
+test(
+  'layout reset removes project widths and keeps card heights',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const task = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Sized card',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: { projectWidths: { ideas: 944 } },
+          cardHeights: { [task.card.id]: 640 },
+        }),
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'layout',
+        'reset',
+        '--all',
+      ],
+    })
+    const { view } = await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })
+    expect(view.workspace.projectWidths).toEqual({})
+    expect(view.cardHeights[task.card.id]).toBe(640)
+  },
+)

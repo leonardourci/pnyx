@@ -1,4 +1,8 @@
+import { ICON_SIZE } from '#web-shared/icons.tsx'
+import type { ReactNode } from 'react'
+import { OverlaySurface } from '#web-shared/ui/overlay-surface.tsx'
 import { useMemo } from 'react'
+import { workspaceResults, type OracleWorkspace } from './workspaces.ts'
 import { tokens } from '#oracle/query.ts'
 import { searchFilters } from './filters.ts'
 import type { HydraState } from '#app/model.ts'
@@ -11,9 +15,9 @@ import type { Command,Receipt } from '#web-app/connection.ts'
 import { focusElement,keyScopeOf,useKeyAction,useKeyboard,type ActionContext } from '#web-preferences/keyboard-registry.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { composing } from '#web-shared/ime.ts'
-import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { SearchBar,type SearchBadge } from '#web-shared/ui/search-bar.tsx'
+import { projectColumns } from '#web-tasks/project-view.ts'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useEffect,useId,useRef,useState,type KeyboardEvent,type MouseEvent } from 'react'
 import { createPortal,flushSync } from 'react-dom'
@@ -53,8 +57,14 @@ const onBackdrop = ({ event }: { event: MouseEvent<HTMLDialogElement> }) => {
   return event.target === event.currentTarget && !inside
 }
 
+function EmptyResult({ children }: { children: ReactNode }) {
+  return <p className="oracle-empty px-2 py-4 text-muted">{children}</p>
+}
+
 export function Oracle({
   state,
+  workspaces,
+  searchCommand,
   cardActions,
   view,
   command,
@@ -68,7 +78,6 @@ export function Oracle({
   startUpgrade,
   openTask,
   answerTask,
-  openHydra,
   selectProject,
   openSettings,
   createTask,
@@ -79,6 +88,8 @@ export function Oracle({
   openChat,
 }: {
   state: HydraState
+  workspaces: OracleWorkspace[]
+  searchCommand: Command
   cardActions: Record<string, CurrentAction>
   view: ViewPreferences
   command: Command
@@ -95,11 +106,28 @@ export function Oracle({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
-  openTask({ id }: { id: string }): unknown
+  openTask({
+    id,
+    hydra,
+  }: {
+    id: string
+    hydra?: string
+  }): unknown
   // Opens the task and Hydra's composer, ready to reply about it.
-  answerTask({ id }: { id: string }): void
-  openHydra(): void
-  selectProject({ path }: { path: string }): void
+  answerTask({
+    id,
+    hydra,
+  }: {
+    id: string
+    hydra?: string
+  }): void
+  selectProject({
+    path,
+    hydra,
+  }: {
+    path: string
+    hydra?: string
+  }): void
   openSettings({ query }: { query: string }): void
   createTask({ column }: { column: string }): void
   createColumn(): void
@@ -145,7 +173,7 @@ export function Oracle({
   const [
     badgeIds,
     setBadgeIds,
-  ] = useState(() => [hydraBadge.id])
+  ] = useState<string[]>([])
   const [
     chosen,
     setChosen,
@@ -189,11 +217,15 @@ export function Oracle({
   const listId = useId()
 
   const columns = columnsFor({ state })
-  const options = filterOptions({
-    hydra: hydraBadge,
-    columns,
-    projects,
-  })
+  const options = [
+    ...filterOptions({
+      hydra: hydraBadge,
+      columns,
+      projects,
+    }),
+    ...workspaces.filter(item => item.hydra.id !== hydra.id)
+      .map(item => hydraFilter({ hydra: item.hydra })),
+  ]
   // Badges keep only ids, so a renamed column or Hydra shows its new name and a deleted one drops out.
   const badges = badgeIds.flatMap(id => options.filter(option => option.id === id))
   // A request is not a search, so Ask mode reads no filters and sends no query.
@@ -209,9 +241,15 @@ export function Oracle({
     ],
   )
   const found = useFoundCards({
-    command,
+    command: searchCommand,
     query: open ? text : '',
-    revision: state.seq,
+    revision: workspaces.reduce(
+      (
+        sum,
+        workspace,
+      ) => sum + workspace.state.seq,
+      0,
+    ),
     filters: searchFilters({
       badges,
       now: filterNow,
@@ -223,7 +261,12 @@ export function Oracle({
     options,
   }) : []
   const actions: OracleAction[] = open ? oracleActions({
-    columns,
+    columns: projectColumns({
+      state,
+      cards: Object.values(state.cards),
+      actions: cardActions,
+      order: [],
+    }),
     scope: origin.current.scope,
   }) : []
   const now = Date.now()
@@ -234,17 +277,28 @@ export function Oracle({
     state,
     hydra,
   }) : []
-  const groups = open && !ask ? oracleResults({
-    state,
+  const globalGroups = open && !ask ? workspaceResults({
+    workspaces,
     hits: found.hits,
-    projects,
+    text,
+    badges,
+    now,
+  }) : []
+  const localGroups = open && !ask && (text || badges.length) ? oracleResults({
+    state,
+    hits: [],
+    projects: [],
     actions,
     cardActions,
     hydra,
     text,
     badges,
     now,
-  }) : []
+  }).filter(group => group.label === 'Settings and actions') : []
+  const groups = open && !ask ? [
+    ...globalGroups,
+    ...localGroups,
+  ] : []
   const results = groups.flatMap(group => group.results)
   const resultKey = JSON.stringify([
     text,
@@ -329,7 +383,7 @@ export function Oracle({
       setAsk(null)
 
       if (reset) {
-        setBadgeIds(ids ?? [hydraBadge.id])
+        setBadgeIds(ids ?? [])
       }
 
       if (opening !== undefined) {
@@ -458,9 +512,15 @@ export function Oracle({
 
     const openCard = ({ id }: { id: string }) => {
       if (elsewhere) {
-        answerTask({ id })
+        answerTask({
+          id,
+          hydra: result.hydra,
+        })
       } else {
-        openTask({ id })
+        openTask({
+          id,
+          hydra: result.hydra,
+        })
       }
     }
 
@@ -472,12 +532,15 @@ export function Oracle({
         if (result.card) {
           openCard({ id: result.card.id })
         } else {
-          openHydra()
+          openChat({ id: result.hydra ?? hydra.id })
         }
 
         break
       case 'project':
-        selectProject({ path: result.summary.path })
+        selectProject({
+          path: result.summary.path,
+          hydra: result.hydra,
+        })
         break
       case 'action':
         runAction({ entry: result.action })
@@ -763,7 +826,7 @@ export function Oracle({
     failed: found.failed,
     count: results.length,
   })
-  const searchCount = token ? MENU_LABEL : resultCount
+  const searchCount = token ? MENU_LABEL : found.partialFailure ? `${resultCount} · ${found.partialFailure}` : resultCount
   const count = ask ? 'Ask' : searchCount
   const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'hydra')
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
@@ -771,6 +834,8 @@ export function Oracle({
 
   const shownList = oracleResultList({
     terms,
+    actions: cardActions,
+    workspaces,
     state,
     keys,
     now,
@@ -795,19 +860,25 @@ export function Oracle({
   })
   // The previous results stay, dimmed, until the new query's answer arrives.
   const dimmed = found.pending && !token && !ask
-  const empty = token ? <p className="oracle-empty">Nothing matches “{token.text}” here. Esc drops it.</p> : <p className="oracle-empty">{nothing}</p>
+  const empty = token
+    ? <EmptyResult>Nothing matches “{token.text}” here. Esc drops it.</EmptyResult>
+    : <EmptyResult>{nothing}</EmptyResult>
   const listLabel = token ? MENU_LABEL : 'Oracle results'
-  const searchPlaceholder = 'Search tasks, conversations, projects and settings; > filters; ask to ask a Hydra'
+  const searchPlaceholder = 'Search…'
 
+  const previewWorkspace = workspaces.find(item => item.hydra.id === shownResult?.hydra)
   const palette = (
-    <dialog
+    <OverlaySurface
       ref={dialog}
-      className="oracle-palette"
+      variant="oracle"
+      data-ui-surface="oracle"
       aria-label="Oracle"
       onClose={() => setOpen(false)}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onCancel={event => {
         event.preventDefault(); close({ restore: true })
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onKeyDown={event => {
         if (event.key === 'Tab' && !composing({ event: event.nativeEvent })) {
           cycleFocus({ event })
@@ -815,6 +886,7 @@ export function Oracle({
           event.preventDefault(); event.stopPropagation(); close({ restore: true })
         }
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onMouseDown={event => {
         if (onBackdrop({ event })) {
           close({ restore: true })
@@ -838,11 +910,11 @@ export function Oracle({
         onKeyDown={inputKey}
       />
       {open && (
-        <div className="oracle-body">
+        <div className="oracle-body grid flex-1 min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t border-subtle max-[760px]:grid-cols-1 max-[760px]:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
           <div
             ref={list}
             id={listId}
-            className="oracle-list"
+            className="oracle-list overflow-auto pt-1 px-1.5 pb-2 border-r border-subtle transition-opacity ease-ui duration-fast data-pending:opacity-55 max-[760px]:border-r-0 max-[760px]:border-b"
             role="listbox"
             aria-label={ask ? 'Ask' : listLabel}
             data-pending={dimmed || undefined}
@@ -856,10 +928,11 @@ export function Oracle({
           </div>
           <div
             ref={preview}
-            className="oracle-preview"
+            className="oracle-preview flex flex-col gap-2.5 overflow-auto px-4 py-3.5 [&_mark]:bg-gold-wash [&_mark]:text-inherit [&_mark]:rounded-xs [&_.setting-row]:border-t-0 [&_.setting-row]:pt-0"
             role="region"
             aria-label="Preview"
             onKeyDownCapture={event => previewArrow({ event })}
+
             onKeyDown={event => previewKey({ event })}
             onFocus={event => {
               const controls = previewControls()
@@ -889,7 +962,6 @@ export function Oracle({
               <AskPreview
                 to={ask.picking ? pickedTarget : askTarget}
                 request={query}
-                picking={ask.picking}
                 sending={ask.sending}
                 checking={ask.checking === true}
                 error={ask.error}
@@ -899,8 +971,8 @@ export function Oracle({
             {!ask && shownResult && (
               <ResultPreview
                 result={shownResult}
-                state={state}
-                cardActions={cardActions}
+                state={previewWorkspace?.state ?? state}
+                cardActions={previewWorkspace?.actions ?? cardActions}
                 terms={terms}
                 doneAfterHours={shared?.doneAfterHours}
                 connected={connected}
@@ -914,22 +986,20 @@ export function Oracle({
           </div>
         </div>
       )}
-    </dialog>
+    </OverlaySurface>
   )
 
   return (
     <>
-      <Button
+      <IconButton
         className="oracle-trigger"
-        aria-label="Oracle"
+        icon="oracle"
+        iconSize={ICON_SIZE.control}
+        label="Oracle"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={event => show({ context: contextOf({ target: event.currentTarget }) })}
-      >
-        <Icon name="oracle" size={15} />
-        <span>Oracle…</span>
-        <kbd>{keys({ id: 'palette' })}</kbd>
-      </Button>
+        onClick={({ currentTarget }) => show({ context: contextOf({ target: currentTarget }) })}
+      />
       {layer && createPortal(
         palette,
         layer,

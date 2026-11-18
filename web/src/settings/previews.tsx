@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { ComponentProps, CSSProperties, ReactNode } from 'react'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -6,7 +6,7 @@ import { logDay, logged, type LogLine, type LogMode } from '#app/log-line.ts'
 import { keptDays } from '#diagnostics/retention.ts'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 
 // The board preview draws a 1440 px screen this many times smaller.
@@ -15,6 +15,77 @@ const SCREEN = 1440
 // The gaps and padding a real board spends beside the chat and between columns.
 const CHAT_GAP = 20
 const COLUMN_GAP = 12
+
+function PreviewCard({
+  variant = 'card',
+  className = '',
+  ...props
+}: ComponentProps<'div'> & { variant?: 'card' | 'done' }) {
+  const appearance = variant === 'done'
+    ? 'flex-row justify-between py-1.5 text-meta transition-opacity ease-ui duration-base data-hidden:opacity-35 data-hidden:border-dashed'
+    : 'flex-col py-2 border-t-3 border-t-blue text-ui'
+
+  return <div {...props} className={`preview-card flex gap-1.25 max-w-80 px-2.25 border border-line rounded-md bg-surface ${appearance} ${className}`} />
+}
+
+function PreviewTitle({ ...props }: ComponentProps<'span'>) {
+  return <span {...props} className="preview-card-title font-semibold leading-preview-title" />
+}
+
+function PreviewMeta({ ...props }: ComponentProps<'span'>) {
+  return <span {...props} className="preview-card-meta flex items-center flex-wrap gap-1.5 text-muted text-meta" />
+}
+
+function PreviewChip({
+  kind,
+  ...props
+}: ComponentProps<'span'> & { kind?: 'task' | 'skill' | 'command' | 'pr' }) {
+  const appearance = {
+    task: 'text-blue border-blue/35',
+    skill: 'text-purple border-purple/35',
+    command: 'text-teal border-teal/35 font-mono',
+    pr: 'text-green border-green/35',
+    plain: 'text-ink border-line',
+  }[kind ?? 'plain']
+
+  return <span {...props} data-kind={kind} className={`preview-chip inline-flex items-center gap-1 py-0 px-preview-chip rounded-full border bg-raised text-preview-chip leading-preview-chip whitespace-nowrap ${appearance}`} />
+}
+
+function PreviewConversation({ ...props }: ComponentProps<'div'>) {
+  return <div {...props} className="preview-convo flex flex-col gap-1.5 text-ui" />
+}
+
+function PreviewBubble({
+  owner = false,
+  ...props
+}: ComponentProps<'div'> & { owner?: boolean }) {
+  const appearance = owner ? 'ml-6 bg-gold-wash border-gold-line' : 'bg-surface border-line'
+
+  return <div {...props} data-from={owner ? 'owner' : undefined} className={`preview-bubble py-2 px-2.5 border rounded-lg leading-preview-bubble ${appearance}`} />
+}
+
+function PreviewTrace({ ...props }: ComponentProps<'div'>) {
+  return <div {...props} className="preview-trace flex flex-wrap items-center gap-1 py-1 px-2 border border-dashed border-line rounded-md text-muted text-meta [&>pre]:basis-full [&>pre]:mt-1 [&>pre]:mx-0 [&>pre]:mb-0 [&>pre]:whitespace-pre-wrap [&>pre]:text-ink [&>pre]:text-meta" />
+}
+
+function MiniPanel({
+  column = false,
+  ...props
+}: ComponentProps<'div'> & { column?: boolean }) {
+  const appearance = column
+    ? 'preview-board-column flex flex-col gap-0.75 p-0.75 border-subtle bg-background data-dragged:border-dashed data-dragged:border-muted [&>i]:block [&>i]:h-3.5 [&>i]:border [&>i]:border-line [&>i]:border-t-2 [&>i]:border-t-blue [&>i]:rounded-xs [&>i]:bg-surface'
+    : 'preview-board-chat border-line bg-surface'
+
+  return <div {...props} className={`relative shrink-0 rounded-preview transition-[width] ease-ui duration-base border ${appearance}`} />
+}
+
+function TimelineLabel({ ...props }: ComponentProps<'span'>) {
+  return <span {...props} className="preview-timeline-label absolute top-9.5 -translate-x-1/2 text-muted text-meta whitespace-nowrap first-of-type:translate-x-0 data-end:-translate-x-full" />
+}
+
+function PreviewLane({ ...props }: ComponentProps<'div'>) {
+  return <div {...props} className="preview-lane flex flex-col gap-0.75 py-1.75 px-2.25 border border-line rounded-control bg-surface text-muted data-on:border-gold [&>b]:inline-flex [&>b]:items-center [&>b]:gap-1.25 [&>b]:text-ink [&>b]:font-semibold" />
+}
 
 function Preview({
   caption,
@@ -25,8 +96,8 @@ function Preview({
 }) {
   return (
     <>
-      <div className="setting-preview-box">{children}</div>
-      {caption && <p className="setting-preview-caption">{caption}</p>}
+      <div className="setting-preview-box relative min-h-22.5 p-2.5 overflow-hidden border border-subtle rounded-lg bg-background">{children}</div>
+      {caption && <p className="setting-preview-caption mt-1.5 mx-0 mb-0 text-muted text-meta">{caption}</p>}
     </>
   )
 }
@@ -56,22 +127,19 @@ export function ThemePreview({
   view: ViewPreferences
   choose({ theme }: { theme: ViewPreferences['theme'] }): void
 }) {
-  const dark = document.documentElement.dataset.theme === 'dark'
-  const caption = `This page is ${dark ? 'dark' : 'light'} now${view.theme === 'system' ? ', following your computer' : ''}.`
-
   return (
-    <Preview caption={caption}>
-      <div className="preview-theme-tiles">
+    <Preview>
+      <div className="preview-theme-tiles grid grid-cols-3 gap-2">
         {THEME_TILES.map(tile => (
           <button
             key={tile.value}
             type="button"
-            className="preview-theme-tile"
+            className="preview-theme-tile relative h-16 p-0 border border-line rounded-md cursor-pointer data-[theme-tile=system]:bg-[linear-gradient(135deg,var(--color-tile-light)_50%,var(--color-tile-dark)_50%)] data-[theme-tile=light]:bg-tile-light data-[theme-tile=dark]:bg-tile-dark aria-pressed:outline-2 aria-pressed:outline-gold aria-pressed:outline-offset-1 [&>span]:absolute [&>span]:bottom-1 [&>span]:left-1.5 [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1 [&>span]:px-1.25 [&>span]:py-0 [&>span]:rounded-sm [&>span]:bg-surface [&>span]:text-ink [&>span]:text-meta"
             data-theme-tile={tile.value}
             aria-pressed={view.theme === tile.value}
             onClick={() => choose({ theme: tile.value })}
           >
-            <span><Icon name={tile.icon} size={14} />{tile.label}</span>
+            <span><Icon name={tile.icon} size={ICON_SIZE.inline} />{tile.label}</span>
           </button>
         ))}
       </div>
@@ -84,17 +152,17 @@ export function CardTextPreview({ view }: { view: ViewPreferences }) {
 
   return (
     <Preview caption={`${view.fontSize} px titles, ${detail} px details and tags`}>
-      <div className="preview-card" style={{ fontSize: view.fontSize }}>
-        <span className="preview-card-title">Add CSV export to reports</span>
-        <span className="preview-card-meta" style={{ fontSize: detail }}>
-          <Icon name="in_progress" size={12} /> In progress · <Icon name="claude-code" size={12} /> Claude Code · 12 min
-        </span>
-        <span className="preview-card-meta" style={{ fontSize: detail }}>
-          <span className="preview-chip">build</span>
-          <span className="preview-chip" data-kind="pr"><Icon name="github_pr" size={12} />PR #212</span>
-          <span className="preview-chip">atlas</span>
-        </span>
-      </div>
+      <PreviewCard style={{ fontSize: view.fontSize }}>
+        <PreviewTitle >Add CSV export to reports</PreviewTitle>
+        <PreviewMeta style={{ fontSize: detail }}>
+          <Icon name="in_progress" size={ICON_SIZE.badge} /> In progress · <Icon name="claude-code" size={ICON_SIZE.badge} /> Claude Code · 12 min
+        </PreviewMeta>
+        <PreviewMeta style={{ fontSize: detail }}>
+          <PreviewChip >build</PreviewChip>
+          <PreviewChip kind="pr"><Icon name="github_pr" size={ICON_SIZE.badge} />PR #212</PreviewChip>
+          <PreviewChip >atlas</PreviewChip>
+        </PreviewMeta>
+      </PreviewCard>
     </Preview>
   )
 }
@@ -102,17 +170,17 @@ export function CardTextPreview({ view }: { view: ViewPreferences }) {
 export function ChatTextPreview({ view }: { view: ViewPreferences }) {
   return (
     <Preview>
-      <div className="preview-convo" style={{ fontSize: view.chatFontSize }}>
-        <div className="preview-bubble" data-from="owner">
-          Ship <span className="preview-chip" data-kind="task"><Icon name="task" size={12} />Add CSV export</span> behind a flag, like
-          {' '}<span className="preview-chip" data-kind="pr"><Icon name="github_pr" size={12} />#198</span>.
-          {' '}Empty state: <span className="preview-image-chip"><span /><span>export-empty.png</span></span>
-        </div>
-        <div className="preview-bubble">
-          On it with <span className="preview-chip" data-kind="skill"><Icon name="skill" size={12} />pnyx-report-progress</span>.
-          {' '}Running <span className="preview-chip" data-kind="command"><Icon name="terminal" size={12} />/test</span> next.
-        </div>
-      </div>
+      <PreviewConversation style={{ fontSize: view.chatFontSize }}>
+        <PreviewBubble owner>
+          Ship <PreviewChip kind="task"><Icon name="task" size={ICON_SIZE.badge} />Add CSV export</PreviewChip> behind a flag, like
+          {' '}<PreviewChip kind="pr"><Icon name="github_pr" size={ICON_SIZE.badge} />#198</PreviewChip>.
+          {' '}Empty state: <span className="preview-image-chip inline-flex items-center gap-preview-image-gap h-preview-image-height pl-preview-image-left pr-preview-image-right py-0 border border-line rounded-preview-image bg-surface align-middle [&>span:first-child]:w-preview-thumbnail [&>span:first-child]:h-[1em] [&>span:first-child]:rounded-preview-thumbnail [&>span:first-child]:bg-[linear-gradient(135deg,var(--color-gold-wash),var(--color-blue))] [&>span:last-child]:text-preview-image"><span /><span>export-empty.png</span></span>
+        </PreviewBubble>
+        <PreviewBubble >
+          On it with <PreviewChip kind="skill"><Icon name="skill" size={ICON_SIZE.badge} />pnyx-report-progress</PreviewChip>.
+          {' '}Running <PreviewChip kind="command"><Icon name="terminal" size={ICON_SIZE.badge} />/test</PreviewChip> next.
+        </PreviewBubble>
+      </PreviewConversation>
     </Preview>
   )
 }
@@ -120,7 +188,7 @@ export function ChatTextPreview({ view }: { view: ViewPreferences }) {
 export function CodeTextPreview({ view }: { view: ViewPreferences }) {
   return (
     <Preview>
-      <pre className="preview-code" style={{ fontSize: view.codeFontSize }}>{'pnyx-axi task start t-41 \\\n  --rule build'}</pre>
+      <pre className="preview-code m-0 py-2 px-2.5 rounded-md bg-raised font-mono whitespace-pre" style={{ fontSize: view.codeFontSize }}>{'pnyx-axi task start t-41 \\\n  --rule build'}</pre>
     </Preview>
   )
 }
@@ -189,20 +257,20 @@ function MiniBoard({
   const scaled = ({ px }: { px: number }): CSSProperties => ({ width: px * BOARD_SCALE })
 
   return (
-    <div className="preview-board">
-      <div className="preview-board-chat" data-marked={mark === 'chat' || undefined} style={scaled({ px: widths.chat })} />
+    <div className="preview-board relative flex gap-0.75 h-23 p-0.75 overflow-hidden rounded-compact bg-raised [&_[data-marked]]:outline-2 [&_[data-marked]]:outline-gold [&_[data-marked]]:-outline-offset-1">
+      <MiniPanel data-marked={mark === 'chat' || undefined} style={scaled({ px: widths.chat })} />
       {widths.columns.map(column => (
-        <div
+        <MiniPanel
+          column
           key={column.id}
-          className="preview-board-column"
           data-marked={mark === 'columns' || undefined}
           data-dragged={column.dragged || undefined}
           style={scaled({ px: column.width })}
         >
           <i /><i />
-        </div>
+        </MiniPanel>
       ))}
-      <span className="preview-board-screen" style={{ left: SCREEN * BOARD_SCALE }} />
+      <span className="preview-board-screen absolute top-0 bottom-0 w-0.5 bg-red opacity-70" style={{ left: SCREEN * BOARD_SCALE }} />
     </div>
   )
 }
@@ -236,11 +304,11 @@ export function BoardPreview({
 export function CardUpdatesPreview({ view }: { view: ViewPreferences }) {
   return (
     <Preview>
-      <div className="preview-card">
-        <span className="preview-card-title">Fix login redirect loop</span>
-        <span className="preview-card-meta"><Icon name="in_progress" size={12} /> In progress · <Icon name="codex" size={12} /> Codex · 4 min</span>
-        {view.lastMessageOnCards && <span className="preview-card-latest"><b>Latest:</b> Found it: the session cookie is set after the redirect. Writing the fix now.</span>}
-      </div>
+      <PreviewCard >
+        <PreviewTitle >Fix login redirect loop</PreviewTitle>
+        <PreviewMeta ><Icon name="in_progress" size={ICON_SIZE.badge} /> In progress · <Icon name="codex" size={ICON_SIZE.badge} /> Codex · 4 min</PreviewMeta>
+        {view.lastMessageOnCards && <span className="preview-card-latest pt-1 border-t border-subtle text-meta [&_b]:text-muted [&_b]:font-medium"><b>Latest:</b> Found it: the session cookie is set after the redirect. Writing the fix now.</span>}
+      </PreviewCard>
     </Preview>
   )
 }
@@ -260,22 +328,22 @@ export function ConversationPreview({
 
   return (
     <Preview caption={caption}>
-      <div className="preview-convo">
-        <div className="preview-bubble" data-from="owner">Why does the export test fail?</div>
+      <PreviewConversation >
+        <PreviewBubble owner>Why does the export test fail?</PreviewBubble>
         {traces && (
-          <div className="preview-trace">
-            <Icon name="thinking" size={12} /> Thinking
+          <PreviewTrace >
+            <Icon name="thinking" size={ICON_SIZE.badge} /> Thinking
             {view.thinkingDetails && <pre>{THINKING}</pre>}
-          </div>
+          </PreviewTrace>
         )}
         {traces && (
-          <div className="preview-trace">
-            <Icon name="tool" size={12} /> Ran <code>pnpm test reports</code>
+          <PreviewTrace >
+            <Icon name="tool" size={ICON_SIZE.badge} /> Ran <code>pnpm test reports</code>
             {view.toolDetails && <pre>{'✓ 41 passed  ✗ 1 failed\n  export › empty report'}</pre>}
-          </div>
+          </PreviewTrace>
         )}
-        <div className="preview-bubble">The empty report skips its header row. Fixing it.</div>
-      </div>
+        <PreviewBubble >The empty report skips its header row. Fixing it.</PreviewBubble>
+      </PreviewConversation>
     </Preview>
   )
 }
@@ -315,12 +383,12 @@ export function DonePreview({ hours }: { hours: DoneAfterHours }) {
 
   return (
     <Preview caption={caption}>
-      <div className="preview-done">
+      <div className="preview-done flex flex-col gap-1 max-w-80">
         {DONE_CARDS.map(card => (
-          <div key={card.title} className="preview-card" data-hidden={hidden({ card }) || undefined}>
+          <PreviewCard variant="done" key={card.title} data-hidden={hidden({ card }) || undefined}>
             <span>{card.title}</span>
-            <span className="preview-card-meta">{age({ hours: card.hours })}</span>
-          </div>
+            <PreviewMeta >{age({ hours: card.hours })}</PreviewMeta>
+          </PreviewCard>
         ))}
       </div>
     </Preview>
@@ -348,12 +416,12 @@ export function ReviewPreview({ minutes }: { minutes: number }) {
 
   return (
     <Preview caption={caption}>
-      <div className="preview-timeline">
-        <span className="preview-timeline-axis" />
-        {ticks.map(at => <span key={at} className="preview-timeline-tick" style={{ left: `${at / TIMELINE_MINUTES * 100}%` }} />)}
-        <span className="preview-timeline-label" style={{ left: '0%' }}>now</span>
-        <span className="preview-timeline-label" style={{ left: '50%' }}>+1.5 h</span>
-        <span className="preview-timeline-label" data-end style={{ left: '100%' }}>+3 h</span>
+      <div className="preview-timeline relative h-13.5 mt-1 mx-2 mb-0">
+        <span className="preview-timeline-axis absolute top-6 left-0 right-0 h-0.5 rounded-hairline bg-line" />
+        {ticks.map(at => <span key={at} className="preview-timeline-tick absolute top-4 w-0.5 h-4.5 rounded-hairline bg-gold" style={{ left: `${at / TIMELINE_MINUTES * 100}%` }} />)}
+        <TimelineLabel style={{ left: '0%' }}>now</TimelineLabel>
+        <TimelineLabel style={{ left: '50%' }}>+1.5 h</TimelineLabel>
+        <TimelineLabel data-end style={{ left: '100%' }}>+3 h</TimelineLabel>
       </div>
     </Preview>
   )
@@ -399,7 +467,7 @@ const LOG_CAPTIONS: Record<LogMode, string> = {
 export function LogLinesPreview({ mode }: { mode: LogMode }) {
   return (
     <Preview caption={LOG_CAPTIONS[mode]}>
-      <div className="preview-log">
+      <div className="preview-log flex flex-col gap-0.75 max-w-90 [&>code]:py-0.75 [&>code]:px-2 [&>code]:border [&>code]:border-line [&>code]:rounded-md [&>code]:bg-surface [&>code]:text-meta [&>code]:wrap-anywhere [&>code]:transition-opacity [&>code]:ease-ui [&>code]:duration-base [&>code[data-detailed]]:border-gold/50 [&>code[data-hidden]]:opacity-35 [&>code[data-hidden]]:border-dashed">
         {LOG_LINES.map(({
           text,
           line,
@@ -489,11 +557,11 @@ export function LogDaysPreview({
 
   return (
     <Preview caption={caption}>
-      <div className="preview-days">
+      <div className="preview-days grid grid-cols-5 gap-1 max-w-90">
         {files.map(file => (
-          <div key={file.name} className="preview-day" data-hidden={!file.kept || undefined}>
+          <div key={file.name} className="preview-day flex flex-col gap-0.5 py-1 px-1.25 border border-line rounded-md bg-surface text-meta whitespace-nowrap transition-opacity ease-ui duration-base data-hidden:opacity-35 data-hidden:border-dashed" data-hidden={!file.kept || undefined}>
             <span>{file.name}</span>
-            <span className="preview-card-meta">{file.size} MB</span>
+            <PreviewMeta >{file.size} MB</PreviewMeta>
           </div>
         ))}
       </div>
@@ -529,7 +597,7 @@ export function LogSizePreview({
 
   return (
     <Preview caption={caption}>
-      <div className="preview-meter" role="presentation">
+      <div className="preview-meter flex gap-0.25 h-3 mt-1.5 mx-0 mb-1 rounded-md bg-line overflow-hidden [&>span]:shrink-0 [&>span]:h-full [&>span]:bg-gold [&>span]:transition-[width] [&>span]:ease-ui [&>span]:duration-base" role="presentation">
         {kept.map(file => (
           <span
             key={file.name}
@@ -542,7 +610,7 @@ export function LogSizePreview({
           />
         ))}
       </div>
-      <p className="preview-meter-label">{`${used} of ${maxMB} MB`}</p>
+      <p className="preview-meter-label text-muted text-meta">{`${used} of ${maxMB} MB`}</p>
     </Preview>
   )
 }
@@ -563,7 +631,7 @@ function Pill({
   label: string
   helper?: boolean
 }) {
-  return <span className="preview-pill" data-helper={helper || undefined}><Icon name={icon} size={12} />{label}</span>
+  return <span className="preview-pill inline-flex items-center gap-1 justify-self-start max-w-full min-w-0 wrap-anywhere py-px px-2 border border-line rounded-full bg-surface whitespace-normal data-helper:border-gold/50 data-helper:text-gold" data-helper={helper || undefined}><Icon name={icon} size={ICON_SIZE.badge} />{label}</span>
 }
 
 export function HelperPreview({
@@ -598,14 +666,14 @@ export function HelperPreview({
 
   return (
     <Preview>
-      <div className="preview-route">
+      <div className="preview-route grid gap-2.5 text-meta">
         {rows.map(([
           what,
           who,
         ]) => (
-          <div key={what} className="preview-route-row">
+          <div key={what} className="preview-route-row grid grid-cols-[auto_minmax(0,1fr)] gap-y-1 gap-x-1.5 items-center [&>span:first-child]:col-span-full [&>span:first-child]:text-muted [&>svg]:text-muted">
             <span>{what}</span>
-            <Icon name="arrow_right" size={12} />
+            <Icon name="arrow_right" size={ICON_SIZE.badge} />
             {who}
           </div>
         ))}
@@ -624,15 +692,15 @@ export function AgentPreview({ agent }: { agent: Partial<AgentConfig> }) {
 
   return (
     <Preview>
-      <div className="preview-lanes">
-        <div className="preview-lane" data-on>
-          <b><Icon name="hydra" size={14} />Hydra, the orchestrator</b>
+      <div className="preview-lanes grid gap-1.5 text-meta">
+        <PreviewLane data-on>
+          <b><Icon name="hydra" size={ICON_SIZE.inline} />Hydra, the orchestrator</b>
           <span>{details}</span>
-        </div>
-        <div className="preview-lane">
-          <b><Icon name="workers" size={14} />Workers</b>
+        </PreviewLane>
+        <PreviewLane >
+          <b><Icon name="workers" size={ICON_SIZE.inline} />Workers</b>
           <span>Picked per task by heads dispatch, not by this setting.</span>
-        </div>
+        </PreviewLane>
       </div>
     </Preview>
   )
@@ -675,9 +743,9 @@ export function ResetPreview({
 
   return (
     <Preview caption={moved ? 'Dashed outlines: where Reset puts each pane.' : 'Widths match the saved settings.'}>
-      <div className="preview-board-frame">
+      <div className="preview-board-frame relative">
         <MiniBoard widths={now} mark="none" />
-        {outlines.map(outline => <span key={outline.left} className="preview-board-ghost" style={outline} />)}
+        {outlines.map(outline => <span key={outline.left} className="preview-board-ghost absolute top-0.75 bottom-0.75 border border-dashed border-gold rounded-preview pointer-events-none" style={outline} />)}
       </div>
     </Preview>
   )

@@ -39,7 +39,7 @@ Optimistic page edits confirm from their request's scoped receipt once the page 
 
 The offline badge appears after the page detects a connection failure or a missed heartbeat and clears when its WebSocket opens again. Initial loading, switching Hydras and resynchronizing state do not imply that the page is offline. Actions still wait for the selected Hydra's subscription to be ready. The socket retries automatically with backoff capped at ten seconds and no attempt limit. Returning to a visible page, restoring it from the browser cache or coming back online replaces a stale connection immediately. Restarting or upgrading the server reloads the selected Hydra's state and conversation subscriptions automatically. A rejected handshake refreshes the page token for the same installation; an installation change or missing token asks for a page reload.
 
-Hydra subscriptions have their own loading deadline, which runs until both the socket and Zero have shown the Hydra, and retry transient failures automatically, even while socket heartbeats still succeed. A query Zero cannot answer shows its reason and a retry, which builds the failed views again, since a Zero view that failed never reads again by itself. When Zero's connection stops (after an error, a refused login or a close), the page says so and its retry reconnects, with a new client after a close. A permanent refusal, such as a missing Hydra or denied access, shows its reason and a retry for that Hydra. Ordinary command errors keep their own message and a Dismiss button.
+Hydra subscriptions have their own loading deadline, which runs until both the socket and Zero have shown the Hydra, and retry transient failures automatically, even while socket heartbeats still succeed. A query Zero cannot answer shows its reason and automatically rebuilds the failed views with backoff capped at ten seconds. When Zero's connection stops (after an error, a refused login or a close), the page refreshes its data cookie and opens a new client, restoring the open cards as well as the Hydra. Pending edits and the current view stay visible while reads recover. Structured `page.recovery` lines record stale, retry and reconciled transitions; `page.zero` lines record connection state changes. A permanent refusal, such as a missing Hydra or denied access, shows its reason and a retry for that Hydra. Ordinary command errors keep their own message and a Dismiss button.
 
 Completed native replies and explicit chat updates remain visible when a later turn ends quietly. During an owner's running turn, its latest commentary stays visible as streaming text becomes a native transcript record. Finished turns fold commentary into progress notes. A running turn keeps its tool calls and thinking in progress below its latest message, never as chat rows. Native commentary does not become a background notification. Older archived records without completion metadata retain their previous conservative rendering.
 
@@ -123,3 +123,44 @@ Hosted agent processes lead their own process groups. Completing or archiving a 
 Copy settlement holds the task lease until its folder decision is saved. A server start drops settlement leases a stopped server left behind, since only the server settles copies. Ordinary replies stay in the existing inbox until then; new starts and native controls can be retried after cleanup. A released pool slot cannot resume the old session, including an older session recorded through a folder alias. New hosted starts record canonical folders. Copy removal also refuses while a launch or notification is pending; notification ownership lasts through its saved receipt and preserves delivery while the routine helper holds a task.
 
 Older child records without the background-preservation marker retain the earlier startup group cleanup behavior. New records preserve background tools across restart.
+
+## Web UI
+
+Motion timing lives in `web/src/shared/motion.ts` and the matching `@theme` tokens in `web/src/index.css`; change `MOTION_MODE` to `off` for instant motion, and keep token values together when changing the timings.
+
+Interface icons share `web/src/shared/icons.tsx`: `Icon`, `hasIcon`, `ICON_SIZE` and `ICON_STROKE`. Use the size roles (`badge`, `inline`, `control`, `toolbar`, `heading`, `brand`) instead of pixel literals. Line glyphs use Tabler at a constant 1.5 screen-pixel stroke; identity and provider marks retain their licensed filled artwork. The registry and identity assets live in `web/src/shared/ui/icons/`. All marks resist flex shrinking so adjacent text cannot change their size.
+
+Card geometry lives in `web/src/shared/card-sizing.ts`, with persisted view limits in `src/preferences/workspace.ts`; shared controls live in `web/src/shared/ui/` (`IconButton`, `DisclosureChevron`, `Resize`, `HoverActions`, `Dialog`). Change those primitives for repeated patterns instead of styling a second version inside a feature.
+
+### UI performance measurements
+
+The page's metrics use the existing fire-and-forget log path: `web/src/app/ui-metrics.ts` aggregates measurements, `web/src/app/log.ts` batches them over the existing socket, and the server appends `source: "web"` JSONL lines to `$PNYX_HOME/logs/YYYY-MM-DD.jsonl`. Metrics never enter Hydra events, Zero rows or a server-side metrics cache. `pnyx-axi logs` shows the folder; `pnyx-axi debug performance` groups logged durations by the metric’s static surface/action name; its percentiles describe window maxima, not raw interactions. Filter by `operation`, `surface`, `action`, `hydraId` and `tab` when reading individual lines.
+
+The single runtime switch is the existing Logs setting. `pnyx-axi settings set --json '{"logs":"off"}'` disconnects the performance observers, input capture listeners and metrics timer, cancels drag sampling, and drops pending metric aggregates. Ordinary warning/error logging keeps its existing behavior. Logs On resumes collection. No owner text, field values, task titles, DOM paths or keystrokes enter these metrics; action names are static tokens.
+
+The required CI job runs the ordinary suite with the normal renderer, then runs the dedicated performance journey alone with `PNYX_PERFORMANCE=1` for its 50ms drag/scroll budget. It rebuilds with `VITE_PNYX_PROFILE=1` and repeats that journey for local task redraws and DOM bounds; every other journey keeps the normal build. The normal build uses the ordinary React renderer. For React measurements, run `VITE_PNYX_PROFILE=1 pnpm run build` (or the same flag with `pnpm run web:dev`). That one build flag aliases `react-dom/client` to `react-dom/profiling`, emits source maps for Chrome stack attribution and enables `ProfileSurface` in `web/src/app/profile-surface.tsx`. Rebuild without the flag after diagnosis. Normal builds bypass the profiler boundaries and collect only browser measurements.
+
+Components and flows use the same API:
+
+```tsx
+<ProfileSurface name="chat" hydraId={hydraId}>
+  <Chat />
+</ProfileSurface>
+```
+
+`ProfileSurface` reports React's `actualDuration` through `recordUIRender({ surface, hydraId, ms })`. This is render work associated with a commit, not the duration of DOM mutations. `page.react-commit` counts every observed commit, samples the first and every tenth duration per aggregate, and reports `samples`, `totalMs` and worst `ms`. Nested surfaces overlap; do not sum their render durations. The named boundaries cover workspace, chat, Settings, Oracle and sortable rendering.
+
+```ts
+const finish = timeUIFlow({ surface: 'workspace', action: 'settings.open' })
+try {
+  await operation()
+} finally {
+  finish()
+}
+```
+
+`timeUIFlow` records `page.flow` once when `finish()` runs; work spanning Logs Off is discarded. Settings navigation uses it. `trackUIDrag({ action: 'task' })` returns the same kind of cleanup function and is connected to the existing sortable lifetime. Its `page.drag-frames` line reports the longest gesture in `durationMs` (separate from frame intervals), `frameCount` observed intervals, `frames` estimated missed intervals and `worstFrameMs`. The estimate starts with a 60 Hz budget and learns the shortest observed interval down to 240 Hz. Hidden-tab gaps are excluded. These are requestAnimationFrame estimates; use Chrome traces to inspect actual rendering and presentation.
+
+`page.long-task` summarizes supported Long Tasks entries; existing Long Animation Frame diagnostics remain as bounded `page.slow-frame` summaries. `page.slow-interaction` keeps the worst Event Timing entry per interaction ID above 104 ms, with `inputDelayMs`, `processingMs` and `presentationMs`. It is an INP-style diagnostic sample, not a page-level INP score. Static `data-ui-surface` and `data-ui-action` attributes name controls; otherwise the collector uses known patterns or the control's role/tag. Input capture retains those names before React changes the target. Browser support is feature-detected; unsupported APIs produce no samples. Existing idle `page.memory` samples include `heapUsed` where the browser exposes it, plus retained chat and DOM sizes.
+
+Aggregates flush every ten seconds and on page hide, with at most 32 groups, 128 entries per observer callback and 128 retained interaction IDs/input contexts. The existing logger caps disconnected queues at 1,000 lines and batches socket payloads within the wire limit. `count` is the number of aggregated observations, `samples` the measured subset, `ms` the worst sampled duration and `totalMs` the sampled total. `page.metrics-overhead` instead records measured collector/heap-sampling/serialization work in `ms`, elapsed sampling-window time in `totalMs`, callback count and discarded entries in `samples`. It excludes the browser's internal observer/profiler cost; compare normal/profiling and Logs On/Off Chrome traces for that overhead.

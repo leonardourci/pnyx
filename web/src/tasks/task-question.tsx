@@ -1,3 +1,4 @@
+import { QuestionActions } from '#web-shared/ui/question-panel.tsx'
 import type { Card } from '#tasks/model.ts'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -48,7 +49,7 @@ export function TaskQuestion({
   }
 
   return (
-    <div className="task-requests">
+    <div className="task-requests shrink-0 empty:hidden">
       <InlinePermissions
         card={{
           ...card,
@@ -83,12 +84,12 @@ export function TaskQuestion({
       ))}
       <AnsweredQuestions card={card} command={command} notify={notify} />
       {prompts.map(question => (
-        <div key={question.attention!.key} className="pending-decision">
+        <div key={question.attention!.key} className="pending-decision flex flex-col items-start gap-2">
           <CollapsibleText text={question.text} />
-          <div className="pending-decision-actions">
+          <QuestionActions>
             <span className="muted small">Awaiting your answer</span>
             <Button variant="surface" onClick={() => answer({ card })}>Answer</Button>
-          </div>
+          </QuestionActions>
         </div>
       ))}
     </div>

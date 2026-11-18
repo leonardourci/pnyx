@@ -27,6 +27,7 @@ export interface Scope {
   resource: HydraResource
   hasSnapshot: boolean
   ready: boolean
+  expectedSeq?: number
   subscribed: boolean
   subscription: string | null
   // The cards the tab opened, sent with each subscribe so the server sends their live activity.
@@ -62,6 +63,7 @@ export interface Request {
   sent: boolean
   creation?: string
   saveId?: string
+  completion?: Promise<Receipt>
   checking?: boolean
   unconfirmed(): void
   timer?: ReturnType<typeof setTimeout>

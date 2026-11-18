@@ -4,7 +4,7 @@ import { ATTACHMENT_NAME, imageLine, imageType } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 // A Hydra serves its stored attachments and the images inside its task copies; any other path has no source.
 export function attachmentSource({ path }: { path: string }) {
@@ -35,7 +35,7 @@ export function AttachedImage({ path }: { path: string }) {
 
   return (
     <a
-      className="attached-image"
+      className="attached-image inline-block max-w-full [&>img]:block [&>img]:max-w-full [&>img]:max-h-60 [&>img]:border [&>img]:border-line [&>img]:rounded-md"
       href={src}
       target="_blank"
       rel="noreferrer noopener"
@@ -112,7 +112,7 @@ export function ImageViewer({
   return createPortal(
     <Dialog
       title={label}
-      className="image-viewer"
+      className="image-viewer w-(--spacing-image-viewer)! max-w-none! [&>img]:block [&>img]:max-w-full [&>img]:max-h-(--spacing-image-viewer-content) [&>img]:mx-auto [&>img]:mt-0 [&>img]:mb-4 [&>img]:px-4 [&>img]:py-0 [&>img]:object-contain"
       actions={src && <CopyButton label="Copy image" write={() => copyImage({ src })} />}
       close={close}
     >
@@ -135,12 +135,12 @@ export const ImageThumb = memo(function ImageThumb({ path }: { path: string }) {
   const src = attachmentSource({ path })
 
   if (!src || failed) {
-    return <Icon name="image" size={13} />
+    return <Icon name="image" size={ICON_SIZE.inline} />
   }
 
   return (
     <>
-      {!loaded && <Icon name="image" size={13} />}
+      {!loaded && <Icon name="image" size={ICON_SIZE.inline} />}
       <img
         src={src}
         alt=""
@@ -193,7 +193,7 @@ export function MessageImage({
   const label = alt || 'Image'
 
   if (!attachmentSource({ path: src })) {
-    return <span className="message-image-fallback" title={title}>Image unavailable: {label}</span>
+    return <span className="message-image-fallback inline text-xs text-muted" title={title}>Image unavailable: {label}</span>
   }
 
   return <ImageChip path={src} label={label} />

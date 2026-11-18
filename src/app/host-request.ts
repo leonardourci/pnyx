@@ -249,6 +249,11 @@ export async function hostRequestUnlocked({
       }
 
       return host.start({
+        inputId: field({
+          body,
+          name: 'inputId',
+          optional: true,
+        }),
         tools,
         dispatch,
         task,

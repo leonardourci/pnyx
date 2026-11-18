@@ -1,3 +1,5 @@
+import { SearchBadgeLabel } from '#web-shared/ui/search-bar.tsx'
+import type { ReactNode } from 'react'
 import { useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -23,14 +25,16 @@ import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { SETTING_PREVIEWS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { markdownText } from '#web-hydra/markdown-text.ts'
 import { Highlight, SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
-import { CardState } from '#web-tasks/card-state.tsx'
-import { ColumnChip } from '#web-tasks/column-chip.tsx'
-import { cardState, columnLook, columnsFor } from '#web-tasks/view.ts'
+import { CardSummary } from '#web-tasks/card-summary.tsx'
+import { CardContent } from '#web-tasks/card-shell.tsx'
+import { taskRollup } from '#web-tasks/project-view.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
+import { cardState } from '#web-tasks/view.ts'
 import type { AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
 import { ACTION_ICONS, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
@@ -50,6 +54,10 @@ const KIND_NAMES: Record<string, string> = {
   action: 'actions',
 }
 
+function PreviewTitle({ children }: { children: ReactNode }) {
+  return <h3 className="oracle-preview-title flex flex-wrap items-center gap-2">{children}</h3>
+}
+
 function Snippets({
   hit,
   now,
@@ -62,13 +70,13 @@ function Snippets({
   }
 
   return (
-    <section className="oracle-snippets" aria-label="Matches">
+    <section className="oracle-snippets flex flex-col gap-1.5" aria-label="Matches">
       <h3 className="eyebrow">Matches</h3>
       {hit.snippets.map((
         snippet,
         index,
       ) => (
-        <p key={index} className="oracle-snippet">
+        <p key={index} className="oracle-snippet flex flex-col gap-0.5 max-h-[9em] overflow-hidden px-2 py-1.5 border-l-2 border-gold-line rounded-sm bg-background whitespace-pre-wrap wrap-anywhere">
           <span className="muted small">{SNIPPET_SOURCES[snippet.kind]} · {relativeTime({
             at: snippet.at,
             now,
@@ -85,29 +93,12 @@ function Snippets({
   )
 }
 
-function ColumnOf({
-  state,
-  card,
-}: {
-  state: HydraState
-  card: Card
-}) {
-  const column = columnsFor({ state }).find(item => item.id === card.column)
-
-  if (!column) {
-    return null
-  }
-
-  const look = columnLook({ column })
-
-  return <ColumnChip icon={look.icon} tone={look.tone} label={column.title} />
-}
-
 function TaskPreview({
   card,
   hit,
   state,
   action,
+  actions,
   connected,
   terms,
   doneAfterHours,
@@ -117,34 +108,48 @@ function TaskPreview({
   hit?: Hit
   state: HydraState
   action?: CurrentAction
+  actions: Record<string, CurrentAction>
   connected: boolean
   terms: string[]
   doneAfterHours?: DoneAfterHours
   now: number
 }) {
-  const status = cardState({
-    card,
-    hours: doneAfterHours,
-    connected,
-    state,
-    action,
-    now,
-  })
+  const hasChildren = Object.values(state.cards).some(child => child.parentId === card.id)
+  const isFamily = card.parentId || hasChildren
+  const status = isFamily
+    ? taskRollup({
+      state,
+      card,
+      actions,
+    }).status
+    : cardState({
+      card,
+      hours: doneAfterHours,
+      connected,
+      state,
+      action,
+      now,
+    })
   const said = currentState({ card })
 
   return (
     <>
-      <div className="oracle-card">
-        <CardState
-          card={card}
-          status={status}
-          now={now}
-          labelColors={state.labelColors}
-        />
-        <h3 className="oracle-card-title"><Highlight text={card.title} terms={terms} /></h3>
-        <ColumnOf state={state} card={card} />
-        {said && <p className="oracle-card-said"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
-        <CardLinks links={card.links} expanded={false} />
+      <div className="oracle-card flex flex-col items-start gap-1.75 px-3 py-2.5 border border-line rounded-card bg-background">
+        <CardContent className="w-full">
+          <CardSummary
+            card={card}
+            status={status}
+            now={now}
+            colors={state.labelColors}
+            legacyProject={taskProjectGroup({
+              state,
+              card,
+            }) === 'ideas'}
+            heading={<h3 className="oracle-card-title font-semibold"><Highlight text={card.title} terms={terms} /></h3>}
+          />
+          {said && <p className="oracle-card-said text-muted line-clamp-4"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
+          <CardLinks links={card.links} expanded={false} />
+        </CardContent>
       </div>
       <Snippets hit={hit} now={now} />
     </>
@@ -163,14 +168,13 @@ function ProjectPreview({
 
   return (
     <>
-      <h3 className="oracle-preview-title"><Icon name="project" size={16} />{project.name}</h3>
+      <PreviewTitle><Icon name="project" size={ICON_SIZE.control} />{project.name}</PreviewTitle>
       <p className="muted small"><code>{project.path}</code></p>
-      <section className="oracle-project-tasks" aria-label="Live tasks">
+      <section className="oracle-project-tasks flex flex-col gap-1.5" aria-label="Live tasks">
         <h3 className="eyebrow">{tasks.length === 1 ? '1 live task' : `${tasks.length} live tasks`}</h3>
         {tasks.map(card => (
-          <p key={card.id} className="oracle-project-task">
+          <p key={card.id} className="oracle-project-task flex items-center justify-between gap-2">
             <span>{card.title}</span>
-            <ColumnOf state={state} card={card} />
           </p>
         ))}
       </section>
@@ -184,7 +188,9 @@ function ActionPreview({ action }: { action: OracleAction }) {
 
   return (
     <>
-      <h3 className="oracle-preview-title"><Icon name={ACTION_ICONS[action.run]} size={16} />{action.label}</h3>
+      <PreviewTitle>
+        <Icon name={ACTION_ICONS[action.run]} size={ICON_SIZE.control} />{action.label}
+      </PreviewTitle>
       <p>{action.does}</p>
       {keys && <p className="muted small">Its shortcut: <kbd>{keys}</kbd></p>}
     </>
@@ -221,7 +227,12 @@ export function FilterPreview({
 
   return (
     <>
-      <h3 className="oracle-preview-title">{TYPE_LABELS[filter.type]}: <span className="search-badge" data-kind={filter.type}><Icon name={filter.icon} size={14} />{filter.label}</span></h3>
+      <PreviewTitle>
+        {TYPE_LABELS[filter.type]}:
+        <SearchBadgeLabel kind={filter.type}>
+          <Icon name={filter.icon} size={ICON_SIZE.inline} />{filter.label}
+        </SearchBadgeLabel>
+      </PreviewTitle>
       <p className="muted"><kbd>Space</kbd>, <kbd>Tab</kbd> or <kbd>Enter</kbd> makes it a badge.</p>
       <p className="muted">{filterReach({ filter })}{either}</p>
     </>
@@ -361,14 +372,6 @@ const OPEN_LABELS: Record<OracleResult['kind'], string> = {
   panel: 'Edit here',
   action: 'Run',
 }
-const hints = ({ mod }: { mod: string }): Record<OracleResult['kind'], string> => ({
-  task: `↵ opens the task · ${mod}↵ opens it with Hydra’s reply composer`,
-  conversation: '↵ opens the chat',
-  project: '↵ shows the project’s tasks in the Hydra',
-  setting: `↵ flips a switch or moves to its control · ${mod}↵ opens it on the Settings page`,
-  panel: '↵ moves into its controls',
-  action: '↵ runs it',
-})
 
 export function ResultPreview({
   result,
@@ -389,13 +392,11 @@ export function ResultPreview({
   settings: SettingProps
   choose({ elsewhere }: { elsewhere: boolean }): void
 }) {
-  const { platform } = useKeyboard()
   const now = Date.now()
   const elsewhere = result.kind === 'setting'
   // A task's conversation opens its task, so it reads like one.
   const card = result.kind === 'conversation' ? result.card : undefined
   const shownKind = card ? 'task' : result.kind
-  const hint = hints({ mod: platform === 'mac' ? '⌘' : 'Ctrl+' })[shownKind]
 
   return (
     <>
@@ -405,6 +406,7 @@ export function ResultPreview({
           hit={result.hit}
           state={state}
           action={cardActions[result.card.id]}
+          actions={cardActions}
           connected={connected}
           terms={terms}
           doneAfterHours={doneAfterHours}
@@ -417,6 +419,7 @@ export function ResultPreview({
           hit={result.hit}
           state={state}
           action={cardActions[result.card.id]}
+          actions={cardActions}
           connected={connected}
           terms={terms}
           doneAfterHours={doneAfterHours}
@@ -425,7 +428,7 @@ export function ResultPreview({
       )}
       {result.kind === 'conversation' && !card && (
         <>
-          <h3 className="oracle-preview-title"><Icon name="comments" size={16} />{result.title}</h3>
+          <PreviewTitle><Icon name="comments" size={ICON_SIZE.control} />{result.title}</PreviewTitle>
           <Snippets hit={result.hit} now={now} />
         </>
       )}
@@ -440,66 +443,35 @@ export function ResultPreview({
         />
       )}
       {result.kind === 'action' && <ActionPreview action={result.action} />}
-      <div className="oracle-preview-foot">
+      <div className="oracle-preview-foot mt-auto flex flex-col items-start gap-1.5 pt-2 border-t border-subtle">
         <Button variant="surface" onClick={() => choose({ elsewhere })}>{OPEN_LABELS[shownKind]}</Button>
-        <p className="muted small">{hint}. → or Tab moves here; ↑ ↓ move between its controls; ← or Esc goes back to the bar.</p>
       </div>
     </>
   )
-}
-
-const askHint = ({
-  picking,
-  targeted,
-  mod,
-}: {
-  picking: boolean
-  targeted: boolean
-  mod: string
-}) => {
-  if (picking) {
-    return `↑ ↓ pick the Hydra · ↵ sends · ${mod}↵ sends and opens its chat · Esc goes back to the request`
-  }
-
-  if (!targeted) {
-    return '↵ picks the Hydra · Esc leaves Ask mode and keeps the text as a search'
-  }
-
-  return `↵ sends · ${mod}↵ sends and opens its chat · Esc leaves Ask mode and keeps the text as a search`
 }
 
 // The request exactly as Hydra will read it, with where it goes.
 export function AskPreview({
   to,
   request,
-  picking,
   sending,
   checking,
   error,
 }: {
   to?: AskTarget
   request: string
-  picking: boolean
   sending: boolean
   checking: boolean
   error?: string
 }) {
-  const { platform } = useKeyboard()
-  const hint = askHint({
-    picking,
-    targeted: !!to,
-    mod: platform === 'mac' ? '⌘' : 'Ctrl+',
-  })
   const progress = checking ? 'Checking…' : 'Sending…'
 
   return (
     <>
-      <h3 className="oracle-preview-title"><Icon name={to?.icon ?? HYDRA_MARK} size={16} />Request to {to?.name ?? 'a Hydra'}</h3>
-      {request.trim()
-        ? <p className="oracle-ask-message">{request.trim()}</p>
-        : <p className="muted">Type what you want to ask.</p>}
-      {error && <p className="oracle-ask-error" role="alert">{error}</p>}
-      <p className="muted small" role="status">{sending ? progress : hint}</p>
+      <PreviewTitle><Icon name={to?.icon ?? HYDRA_MARK} size={ICON_SIZE.control} />Request to {to?.name ?? 'a Hydra'}</PreviewTitle>
+      {request.trim() && <p className="oracle-ask-message m-0 px-3 py-2.5 border border-subtle rounded-lg bg-background whitespace-pre-wrap wrap-anywhere">{request.trim()}</p>}
+      {error && <p className="oracle-ask-error text-red" role="alert">{error}</p>}
+      {sending && <p className="muted small" role="status">{progress}</p>}
     </>
   )
 }

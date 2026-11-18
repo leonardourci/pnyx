@@ -1,0 +1,38 @@
+import { scanEvents } from '#app/event-log.ts'
+
+export function taskSessions({
+  hydraId,
+  ids,
+}: {
+  hydraId: string
+  ids: Set<string>
+}): Set<string> {
+  const sessions = new Set<string>()
+
+  for (const event of scanEvents({
+    hydraId,
+    cardIds: [...ids],
+    types: [
+      'task.session',
+      'task.moved-in',
+      'card.pushed',
+    ],
+  })) {
+    if (event.type === 'task.session' && (ids.has(event.data.before ?? '') || ids.has(event.data.after ?? ''))) {
+      sessions.add(event.data.session)
+    }
+
+    if (ids.has(event.cardId) && event.type === 'task.moved-in') {
+      for (const session of event.data.sessions) {
+        sessions.add(session.id)
+      }
+    }
+
+    if (ids.has(event.cardId) && event.type === 'card.pushed' && event.data.agent) {
+      const agent = event.data.agent
+      sessions.add(`${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`)
+    }
+  }
+
+  return sessions
+}

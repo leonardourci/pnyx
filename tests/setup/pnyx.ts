@@ -56,6 +56,7 @@ export async function until<T>({
 
 export interface Run {
   status: number | null
+  signal: NodeJS.Signals | null
   stdout: string
   stderr: string
 }
@@ -102,8 +103,12 @@ export function pnyxAxi({
     )
     child.once(
       'close',
-      status => resolve({
+      (
         status,
+        signal,
+      ) => resolve({
+        status,
+        signal,
         stdout,
         stderr,
       }),
@@ -378,7 +383,9 @@ function hydraClient({
     })
 
     if (run.status !== 0) {
-      throw new Error(`pnyx-axi ${args.join(' ')} exited ${run.status}:\n${run.stdout}${run.stderr}`)
+      const outcome = run.status === null ? `signal ${run.signal}` : `status ${run.status}`
+
+      throw new Error(`pnyx-axi ${args.join(' ')} exited with ${outcome}:\n${run.stdout}${run.stderr}`)
     }
 
     return parsed(run)
@@ -600,11 +607,13 @@ export async function openPage({
   hydraId,
   cards,
   token = localToken(),
+  receive,
 }: {
   port: number
   hydraId: string
   cards?: string[]
   token?: string
+  receive?({ message }: { message: ServerMessage }): void
 }) {
   const opened = cards ? `&page=${encodeURIComponent(JSON.stringify(cards))}` : ''
   const socket = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${token}${opened}`)
@@ -613,6 +622,7 @@ export async function openPage({
     'message',
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
+      receive?.({ message })
 
       if ((message.type === 'receipt' || message.type === 'error') && message.id) {
         answers.set(

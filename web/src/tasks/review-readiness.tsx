@@ -1,3 +1,5 @@
+import { SummaryPanel } from '#web-shared/ui/summary-panel.tsx'
+import { QuestionActions, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
@@ -85,7 +87,7 @@ export function ReviewReadiness({
   }
 
   return (
-    <section className="ask ask-structured" aria-label="Pull request review">
+    <QuestionPanel as="section" className="ask-structured" aria-label="Pull request review">
       <strong className="eyebrow">{state}</strong>
       <CollapsibleText text={ask.context ?? link.title ?? link.url} />
       <p className="muted small">Checks: {link.checks ?? 'not read yet'}. Hydra merges after the required checks pass.</p>
@@ -97,7 +99,7 @@ export function ReviewReadiness({
           change={({ text }) => setNote(text)}
         />
       )}
-      <div className="pending-decision-actions">
+      <QuestionActions>
         <Button
           disabled={locked || !noted || !!ask.answered}
           onClick={async () => {
@@ -119,7 +121,7 @@ export function ReviewReadiness({
           }}
         >Hold
         </Button>
-      </div>
+      </QuestionActions>
       {!ask.answered && (
         <QuestionTiming
           card={card}
@@ -129,7 +131,7 @@ export function ReviewReadiness({
           disabled={busy || inFlight}
         />
       )}
-    </section>
+    </QuestionPanel>
   )
 }
 
@@ -141,10 +143,15 @@ export function ReviewSummary({
   open(): void
 }) {
   return (
-    <div className="card-question" aria-label="Pull request review summary">
+    <SummaryPanel
+      as="div"
+      tone="accent"
+      className="card-question"
+      aria-label="Pull request review summary"
+    >
       <strong className="eyebrow">{reviewState({ request })}</strong>
       <CollapsibleText text={request.link.title ?? request.link.url} />
       <Button variant="primary" onClick={open}>Answer</Button>
-    </div>
+    </SummaryPanel>
   )
 }

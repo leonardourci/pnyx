@@ -10,8 +10,9 @@ beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
 })
 
-const CONVERSATION = '[aria-label="Hydra conversation"]'
-const COMPOSER = '[aria-label="Reply to Hydra"]'
+const ACTIVE_WORKSPACE = '[data-hydra-workspace][data-active=true]'
+const CONVERSATION = `${ACTIVE_WORKSPACE} [aria-label="Hydra conversation"]`
+const COMPOSER = `${ACTIVE_WORKSPACE} [aria-label="Reply to Hydra"]`
 
 // The page types about seven letters a frame, so the text has stopped moving a few dozen frames later.
 const streamedText = ({ page }: { page: Page }) => until({
@@ -62,7 +63,7 @@ test(
       COMPOSER,
       'Plan the release',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('Plan the release').waitFor()
     await conversation.getByText('Release plan:').waitFor()
     const streamed = await streamedText({ page })
@@ -76,14 +77,14 @@ test(
       COMPOSER,
       'Also list the risks',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('Queued').waitFor()
 
-    await page.click('[aria-label="Stop Hydra"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Stop Hydra"]`)
     await conversation.getByText('Not delivered: stopped').waitFor()
     expect(await conversation.textContent()).not.toContain('ship on Thursday')
     expect(await conversation.textContent()).not.toContain('Risks:')
-    await page.click('[aria-label="Send this message again"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send this message again"]`)
     await conversation.getByText('Risks: the migration and the new billing page.').waitFor()
     // Raw HTML and a javascript: link in a reply show as text, never as a tag or a link.
     expect(await conversation.textContent()).toContain('<img src=x onerror=alert(1)>')
@@ -122,8 +123,9 @@ test(
       COMPOSER,
       'Summarize the plan',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('Plan:').waitFor()
+    expect(new URL(page.url()).pathname).toBe(`/hydra/${hydra.id}/`)
     const partial = await conversation.textContent() ?? ''
     expect(partial).not.toContain('**')
     expect(partial).not.toContain('freeze')
@@ -273,10 +275,11 @@ test.each([
               type?: string
               id?: string
               name?: string
+              scope?: string
               args?: string[]
             }
 
-            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1) {
+            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1 && (!sent.scope || sent.scope === hydra.id)) {
               olderReads.add(sent.id!)
             }
 
@@ -311,6 +314,62 @@ test.each([
     ).count()).toBe(0)
 
     await conversation.hover()
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+    const beforeVertical = await conversation.evaluate(element => {
+      const axis = document.querySelector<HTMLElement>('.workspace-axis')!
+      const track = axis.querySelector<HTMLElement>('.workspace-track')!
+      const group = element.closest<HTMLElement>('[data-hydra-workspace]')!
+      const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
+      const snap = group.offsetLeft + track.offsetLeft - axis.offsetLeft - padding
+      const target = snap > 40 ? snap - 40 : snap + 40
+      axis.scrollTo({
+        left: target,
+        behavior: 'instant',
+      })
+      const groups = [...track.querySelectorAll<HTMLElement>('[data-hydra-workspace]')]
+      const distance = Math.min(...groups.map(workspace => {
+        const position = workspace.offsetLeft + track.offsetLeft - axis.offsetLeft - padding
+
+        return Math.abs(axis.scrollLeft - position)
+      }))
+
+      return {
+        x: axis.scrollLeft,
+        y: element.scrollTop,
+        distance,
+        range: axis.scrollWidth - axis.clientWidth,
+        threshold: axis.clientWidth * 0.2,
+      }
+    })
+    expect(beforeVertical.range).toBeGreaterThan(80)
+    expect(beforeVertical.distance).toBe(40)
+    expect(beforeVertical.distance).toBeLessThan(beforeVertical.threshold)
+    await page.evaluate(() => new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    await page.mouse.wheel(
+      0,
+      -160,
+    )
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+    const vertical = await conversation.evaluate(async element => {
+      const axis = document.querySelector<HTMLElement>('.workspace-axis')!
+      const horizontal: number[] = []
+
+      for (let frame = 0; frame < 60; frame++) {
+        await new Promise(requestAnimationFrame)
+        horizontal.push(axis.scrollLeft)
+      }
+
+      return {
+        horizontal,
+        y: element.scrollTop,
+      }
+    })
+    expect(vertical.y).toBeLessThan(beforeVertical.y)
+    expect(Math.max(...vertical.horizontal)).toBe(beforeVertical.x)
+    expect(Math.min(...vertical.horizontal)).toBe(beforeVertical.x)
+    await conversation.hover()
     holding = true
     await until({
       what: 'scrolling up to ask for an older page',
@@ -342,7 +401,7 @@ test.each([
     const overlaps = await loader.evaluate(element => {
       const bounds = element.querySelector('span')!.getBoundingClientRect()
 
-      return [...document.querySelectorAll('article[data-entry-id]')].some(row => {
+      return [...element.closest('[aria-label="Hydra conversation"]')!.querySelectorAll('article[data-entry-id]')].some(row => {
         const rect = row.getBoundingClientRect()
 
         return rect.top < bounds.bottom && rect.bottom > bounds.top
@@ -404,6 +463,32 @@ test.each([
     })
     expect(olderReads.size).toBe(reads)
     expect(await loader.count()).toBe(0)
+
+    const input = page.locator(COMPOSER)
+    const composer = page.locator(`${ACTIVE_WORKSPACE} .hydra-chat .composer`)
+    const note = conversation.getByRole(
+      'textbox',
+      {
+        name: 'Your answer',
+        exact: true,
+      },
+    )
+    await note.waitFor()
+
+    for (const theme of [
+      'light',
+      'dark',
+    ]) {
+      await page.evaluate(
+        ({ theme }) => {
+          document.documentElement.dataset.theme = theme
+        },
+        { theme },
+      )
+      expect((await composer.boundingBox())!.height).toBe(106)
+      expect((await input.boundingBox())!.height).toBe(48)
+      expect((await note.boundingBox())!.height).toBe(48)
+    }
   },
 )
 
@@ -456,7 +541,7 @@ const compactedConversation = async () => {
   return hydra
 }
 
-const LOADING = '[aria-label="Loading earlier messages"]'
+const LOADING = `${ACTIVE_WORKSPACE} [aria-label="Loading earlier messages"]`
 
 // The conversation's rendered rows top to bottom: each message's text start, and "compaction" for each notice.
 const timeline = ({ page }: { page: Page }) => page.evaluate(
@@ -498,10 +583,11 @@ test(
               type?: string
               id?: string
               name?: string
+              scope?: string
               args?: string[]
             }
 
-            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1) {
+            if (sent.type === 'command' && sent.name === 'thread' && sent.args !== undefined && sent.args.length > 1 && (!sent.scope || sent.scope === hydra.id)) {
               olderReads.add(sent.id!)
             }
 
@@ -666,9 +752,10 @@ const openCounted = async ({
             const sent = JSON.parse(String(frame.payload)) as {
               type?: string
               name?: string
+              scope?: string
             }
 
-            if (sent.type === 'command' && sent.name === 'thread') {
+            if (sent.type === 'command' && sent.name === 'thread' && (!sent.scope || sent.scope === hydraId)) {
               reads.push(String(frame.payload))
             }
           },
@@ -751,7 +838,7 @@ test(
       COMPOSER,
       'one more',
     )
-    await page.click('[aria-label="Send reply"]')
+    await page.click(`${ACTIVE_WORKSPACE} [aria-label="Send reply"]`)
     await conversation.getByText('A longer reply that streams in').waitFor()
     await streamedText({ page })
     reads.length = 0
@@ -813,8 +900,24 @@ const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>>
       'Emulation.setTouchEmulationEnabled',
       { enabled: true },
     )
+    await page.locator(CONVERSATION).scrollIntoViewIfNeeded()
     await page.evaluate(() => new Promise(requestAnimationFrame))
     await page.evaluate(() => new Promise(requestAnimationFrame))
+    const bounds = await page.locator(CONVERSATION).boundingBox()
+
+    if (!bounds) {
+      throw new Error('Conversation is not visible')
+    }
+
+    const width = await page.evaluate(() => innerWidth)
+    const right = Math.min(
+      bounds.x + bounds.width,
+      width,
+    )
+    const x = (Math.max(
+      0,
+      bounds.x,
+    ) + right) / 2
     const move = ({
       type,
       y,
@@ -827,7 +930,7 @@ const UPWARD_INPUTS: Record<string, ({ page }: { page: Page }) => Promise<void>>
         type,
         touchPoints: type === 'touchEnd' ? [] : [
           {
-            x: 700,
+            x,
             y,
           },
         ],
@@ -999,5 +1102,313 @@ test(
       'inscribed',
     ])
     await conversation.getByText('Not delivered').waitFor()
+  },
+)
+
+test(
+  'a pending send belongs to its composer Hydra through reload',
+  async () => {
+    const first = await pnyx.hydra()
+    const second = await pnyx.hydra()
+    const sent: {
+      scope?: string
+      id?: string
+      requestId?: string
+    }[] = []
+    let holding = true
+    let releaseReceipt: (() => void) | undefined
+    let refuseOnReplay = false
+    let refusals = 0
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: first.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          server.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (holding && frame.type === 'receipt' && sent.some(send => send.requestId === frame.id)) {
+              releaseReceipt = () => socket.send(message)
+
+              return
+            }
+
+            socket.send(message)
+          })
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.type === 'command' && frame.name === 'hydra' && frame.args?.some((arg: string) => arg.includes('Refused second Hydra message'))) {
+              refusals++
+
+              if (!refuseOnReplay) {
+                return
+              }
+
+              socket.send(JSON.stringify({
+                type: 'error',
+                scope: frame.scope,
+                id: frame.id,
+                error: 'Send refused for this test',
+                saved: false,
+                code: 'VALIDATION_ERROR',
+              }))
+
+              return
+            }
+
+            if (frame.type === 'command' && frame.name === 'hydra' && frame.args?.[0] === 'send') {
+              sent.push({
+                scope: frame.scope,
+                id: frame.args?.at(-1),
+                requestId: frame.id,
+              })
+            }
+
+            server.send(message)
+          })
+        },
+      ),
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${second.id}"]`)
+
+    try {
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${second.id}"]`).click()
+      const composer = workspace.getByRole(
+        'textbox',
+        {
+          name: 'Reply to Hydra',
+          exact: true,
+        },
+      )
+      await composer.fill('Only the second Hydra receives this')
+      await page.evaluate(() => {
+        const meta = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')!
+        meta.content = 'unrelated-selected-Hydra'
+      })
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Send reply',
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'second Hydra send awaits acknowledgment',
+        check: () => sent.length === 1,
+      })
+      expect(sent[0]?.scope).toBe(second.id)
+      await until({
+        what: 'the first send is delivered with its acknowledgment held',
+        check: () => !!releaseReceipt && pnyx.claude.sessions.some(session =>
+          session.env.PNYX_HYDRA === second.id && session.answered === 1),
+      })
+      releaseReceipt = undefined
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${first.id}/`)
+      await until({
+        what: 'pending send resumes in its owning Hydra',
+        check: () => sent.length === 2,
+      })
+      expect(sent[1]?.scope).toBe(second.id)
+      expect(sent[1]?.id).toBe(sent[0]?.id)
+      expect(await workspace.locator('.hydra-page').count()).toBe(0)
+      await until({
+        what: 'the replay receipt is held',
+        check: () => !!releaseReceipt,
+      })
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${second.id}"]`).click()
+      await workspace.locator('.hydra-chat .composer [title="Sending…"]').waitFor()
+      expect(sent).toHaveLength(2)
+      holding = false
+      releaseReceipt!()
+      await workspace.getByRole(
+        'region',
+        { name: 'Hydra conversation' },
+      ).getByText(
+        'Only the second Hydra receives this',
+        { exact: true },
+      )
+        .waitFor()
+      expect(await page.locator(`[data-hydra-workspace="${first.id}"]`).getByText(
+        'Only the second Hydra receives this',
+        { exact: true },
+      )
+        .count()).toBe(0)
+      await until({
+        what: 'one confirmed Hydra delivery',
+        check: () => pnyx.claude.sessions.some(session =>
+          session.env.PNYX_HYDRA === second.id && session.answered === 1),
+      })
+      const deliveries = pnyx.claude.sessions
+        .filter(session => session.env.PNYX_HYDRA === second.id)
+        .flatMap(session => session.received)
+        .filter(text => text.includes('Only the second Hydra receives this'))
+      expect(deliveries).toHaveLength(1)
+      expect(sent).toHaveLength(2)
+      await composer.fill('Refused second Hydra message')
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Send reply',
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'the refused send is held before acknowledgment',
+        check: () => refusals === 1,
+      })
+      refuseOnReplay = true
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${first.id}/`)
+      await until({
+        what: 'the off-screen send restores its refusal',
+        check: () => refusals === 2,
+      })
+      expect(await workspace.locator('.hydra-page').count()).toBe(0)
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${second.id}/`)
+      await workspace.getByText(
+        'Refused second Hydra message',
+        { exact: true },
+      ).waitFor()
+      await workspace.getByRole(
+        'region',
+        { name: 'Hydra conversation' },
+      ).getByRole('alert')
+        .filter({ hasText: 'Send refused for this test' })
+        .waitFor()
+      expect(refusals).toBe(2)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'reused provider message ids keep one streamed reply and a bounded history window',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+    const conversation = page.locator(CONVERSATION)
+    const exchanges = 16
+    const maxMountedMessages = 24
+
+    for (let exchange = 1; exchange <= exchanges; exchange++) {
+      const text = `Stream history ${exchange}`
+      const partial = `Live reply ${exchange}`
+      const complete = `Completed reply ${exchange}`
+      const paragraphs = Array.from(
+        {length: 12},
+        (
+          _,
+          index,
+        ) => `Paragraph ${index} in this made-up reply.`,
+      ).join('\n\n')
+      const plan = pnyx.claude.plan({
+        hydra: hydra.id,
+        text,
+        partial,
+        reply: `${partial}\n\n${paragraphs}\n\n${complete}`,
+        hold: true,
+      })
+      const session = await hydra.chat({text})
+      const live = conversation.getByText(
+        partial,
+        {exact: true},
+      )
+      await live.waitFor()
+      const before = await live.locator('xpath=ancestor::article').elementHandle()
+      plan.release()
+      await until({
+        what: 'the streamed turn finishes',
+        check: () => session.answered === exchange,
+      })
+      const settled = conversation.getByText(
+        complete,
+        {exact: true},
+      )
+      await settled.waitFor()
+      expect(await settled.locator('xpath=ancestor::article').evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+        (
+          node,
+          before,
+        ) => node === before,
+        before,
+      )).toBe(true)
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+      const ids = await conversation.locator('article[data-entry-id]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-entry-id')))
+      expect(new Set(ids).size).toBe(ids.length)
+      expect(ids.length).toBeLessThanOrEqual(maxMountedMessages)
+    }
+  },
+)
+
+test(
+  'a streamed reply keeps the same prose size as older replies through settlement',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra:hydra.id,
+      text:'Older turn',
+      reply:'An older settled reply.',
+    })
+    const session = await hydra.chat({text:'Older turn'})
+    await until({
+      what:'the older reply settles',
+      check:()=>session.answered===1,
+    })
+    const page = await openHydra({
+      port:pnyx.port(),
+      hydraId:hydra.id,
+      reducedMotion:true,
+    })
+    const conversation = page.locator(CONVERSATION)
+    const older = conversation.getByText(
+      'An older settled reply.',
+      {exact:true},
+    )
+    await older.waitFor()
+
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+    const typographyOf = (element: Element) => {
+      const style = getComputedStyle(element)
+
+      return {
+        size:style.fontSize,
+        line:style.lineHeight,
+        font:style.fontFamily,
+      }
+    }
+
+    const typography = await older.evaluate(typographyOf)
+    const turn = pnyx.claude.plan({
+      hydra:hydra.id,
+      text:'Next turn',
+      partial:'The newest reply.',
+      reply:'The newest reply. Settled.',
+      hold:true,
+    })
+    await hydra.chat({text:'Next turn'})
+    const live = conversation.getByText(
+      'The newest reply.',
+      {exact:true},
+    )
+    await live.waitFor()
+    expect(await live.evaluate(typographyOf)).toEqual(typography)
+    turn.release()
+    const settled = conversation.getByText(
+      'The newest reply. Settled.',
+      {exact:true},
+    )
+    await settled.waitFor()
+    expect(await settled.evaluate(typographyOf)).toEqual(typography)
   },
 )

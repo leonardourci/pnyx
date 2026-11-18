@@ -1,3 +1,5 @@
+import { childRepositories, attachProjectGroup, projectGroupCommand } from './group-cli.ts'
+import { keepProject } from './ownership.ts'
 import { sharesWithMore } from '#memory/access-changes.ts'
 import { canRead, findReadableProject, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
@@ -19,6 +21,10 @@ import { findProject, projectFolder, projectName, projectRows, sharingHydras } f
 import { parseLanding, parseMerger } from '#tasks/delivery/rule.ts'
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
+  if (args[0] === 'group') {
+    return projectGroupCommand({ args })
+  }
+
   if (args[0] === 'worker-notes') {
     return projectMemoryCommand({
       args: [
@@ -82,6 +88,17 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     throw new HydraError({
       message: 'Command settings need project set <name|path>',
       code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (action === 'keep') {
+    return keepProject({
+      hydraId,
+      ref: required({
+        value: ref,
+        what: 'repository path',
+      }),
+      meta: m,
     })
   }
 
@@ -217,7 +234,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (action !== 'add' && action !== 'remove' && action !== 'set') {
     throw new HydraError({
-      message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project show <name|path>, project set <name|path> or project remove <name|path>',
+      message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project show <name|path>, project keep <path>, project set <name|path> or project remove <name|path>',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -353,7 +370,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
-  if (m.id && current.eventIds[m.id] !== undefined) {
+  if (m.id && Object.hasOwn(
+    current.eventIds,
+    m.id,
+  )) {
     return commit({
       hydraId,
       meta: m,
@@ -425,6 +445,30 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       }).path
   }
 
+  if (action === 'add') {
+    const repositories = childRepositories({ path })
+
+    if (repositories.length) {
+      for (const repository of repositories) {
+        requireProjectMemory({
+          hydraId,
+          ...(await projectIdentity({ path: repository })),
+        })
+      }
+
+      return attachProjectGroup({
+        hydraId,
+        paths: repositories,
+        landing,
+        merge,
+        name: projectName({ path }),
+        groupId: path,
+        meta: m,
+        attach: true,
+      })
+    }
+  }
+
   requireProjectMemory({
     hydraId,
     ...(await projectIdentity({ path })),
@@ -438,10 +482,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         type: 'hydra.project',
         card: '$projects',
       },
-      confirmation: action === 'add' ? {
-        token: values.confirm as string | undefined,
-        when: ({ event }) => event.type === 'hydra.project' && event.data.sharedWith.length > 0,
-      } : undefined,
       decide: ({ state }) => {
         if (state.config?.hydra.kind === 'firstmate') {
           throw new HydraError({
@@ -456,6 +496,22 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         })) ?? null
 
         const detached = action === 'remove'
+        const sharedWith = detached ? [] : sharingHydras({
+          hydraId,
+          path,
+        })
+        const newlyAttached = !detached && (!before || before.detached)
+
+        if (newlyAttached && sharedWith.length) {
+          const owners = sharedWith.map(hydra => hydra.id).sort()
+            .join(', ')
+          throw new HydraError({
+            message: `project ${path} is already attached to Hydra ${owners}`,
+            code: 'CONFLICT',
+            help: ['A project belongs to one Hydra; use its existing Hydra for this work'],
+          })
+        }
+
         const after = {
           ...before,
           path: before?.path ?? path,
@@ -484,10 +540,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
             data: {
               before,
               after,
-              sharedWith: detached ? [] : sharingHydras({
-                hydraId,
-                path,
-              }),
+              sharedWith,
             },
           },
         })
@@ -495,15 +548,17 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }),
   })
 
-  if (values.clone && result.confirmation === 'needed') {
-    result.help = [`Clone completed. Attach its folder with \`pnyx-axi project add ${JSON.stringify(path)} --hydra ${hydraId} --confirm ${result.token}\``]
-  }
-
   return result
 }
 
 export const project = guard({ handler: projectCommand })
-export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
+export const PROJECT_HELP = `pnyx-axi project group <name> <repo-path>... [--hydra <id>]
+Groups attached repositories into one project column, preserving each repository's settings and memory.
+Project add accepts a repository folder or a parent folder whose direct children are repositories.
+A parent folder attaches those repositories as a named project in one transaction.
+pnyx-axi project keep <path> --hydra <keeper>
+Moves a legacy duplicate repository to its chosen Hydra atomically; any blocking task refuses the whole move.
+pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
@@ -528,8 +583,8 @@ pnyx-axi project set <name|path> [--landing pr|branch] [--merge owner|hydra] [--
 A project is a folder on this laptop, shown by its folder name. Relative paths are accepted.
 Clone runs git directly; --into always names the destination. No agent receives the URL.
 Remove detaches only; tasks and history stay. Add the path again to re-attach.
-Sharing a folder with another Hydra first names those Hydras and returns confirmation: needed.
-Repeat with --confirm <token> to attach it. Firstmate-linked Hydras list their home’s projects read-only.
+A project belongs to one Hydra. Attaching its folder to another Hydra is refused.
+Existing duplicate attachments keep working until the owner chooses a keeper. Firstmate-linked Hydras list their home’s projects read-only.
 Set saves a named start command; an empty --command clears it. --brings-own-folder declares that the command creates its worker’s folder.
 Workers start in their task's own copy: a git worktree on branch <hydra-name-slug>/<task-title-slug> with no upstream, kept under the Hydra's folder.
 --copy sets a command run in the project folder instead; it gets PNYX_TASK, PNYX_TASK_TITLE and PNYX_PROJECT and prints the new folder's path last.

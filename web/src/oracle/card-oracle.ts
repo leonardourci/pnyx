@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Hit } from '#oracle/model.ts'
+import type { ScopedHit as Hit } from './workspaces.ts'
 import type { SearchFilters } from '#oracle/filters.ts'
 import type { Command } from '#web-app/connection.ts'
 
@@ -41,7 +41,10 @@ export const findCards = async ({
     args,
   })
 
-  return result.hits as Hit[]
+  return {
+    hits: result.hits as Hit[],
+    partialFailure: String(result.partialFailure ?? ''),
+  }
 }
 
 export interface Search {
@@ -58,7 +61,10 @@ export function searchSchedule({
   cancel,
 }: {
   cancel?(): void
-  find({ search }: { search: Search }): Promise<Hit[]>
+  find({ search }: { search: Search }): Promise<Hit[] | {
+    hits: Hit[]
+    partialFailure: string
+  }>
   show({
     key,
     hits,
@@ -67,6 +73,7 @@ export function searchSchedule({
     key: string
     hits: Hit[]
     failed: boolean
+    partialFailure?: string
   }): void
 }) {
   let current: Search | null = null
@@ -85,7 +92,9 @@ export function searchSchedule({
     running += 1
 
     try {
-      const hits = await find({ search })
+      const result = await find({ search })
+      const hits = Array.isArray(result) ? result : result.hits
+      const partialFailure = Array.isArray(result) ? '' : result.partialFailure
 
       if (stillCurrent()) {
         shown = key
@@ -93,6 +102,7 @@ export function searchSchedule({
           key,
           hits,
           failed: false,
+          partialFailure,
         })
       }
     } catch {
@@ -192,6 +202,7 @@ export function useFoundCards({
   hits: Hit[]
   pending: boolean
   failed: boolean
+  partialFailure?: string
 } {
   const [
     found,
@@ -200,6 +211,7 @@ export function useFoundCards({
     key: string
     hits: Hit[]
     failed: boolean
+    partialFailure?: string
   } | null>(null)
   const text = query.trim()
   const search = text ? {
@@ -258,5 +270,6 @@ export function useFoundCards({
     hits: answered ? found.hits : [],
     pending,
     failed: answered && !pending && found.failed,
+    partialFailure: answered && !pending ? found.partialFailure : undefined,
   }
 }

@@ -1,6 +1,21 @@
-import { Icon } from './icon.tsx'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { FloatingPanel } from './floating-panel.tsx'
+import { Icon } from '#web-shared/icons.tsx'
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
+
+function MenuSurface({
+  variant = 'menu',
+  className = '',
+  ...props
+}: ComponentProps<'div'> & { variant?: 'menu' | 'confirm' }) {
+  const layout = variant === 'confirm'
+    ? 'delete-confirm flex'
+    : 'menu-items z-30 min-w-menu max-w-menu-viewport max-h-menu-height p-1 rounded-lg'
+
+  const Surface = variant === 'confirm' ? 'div' : FloatingPanel
+
+  return <Surface {...props} className={`${layout} [&>.button]:flex [&>.button]:w-full [&>.button]:min-h-8.5 [&>.button]:px-2.5 [&>.button]:py-1.75 [&>.button]:text-ui [&>.button]:justify-start [&>.button]:text-left [&>.button]:border-0 [&>.button]:rounded-sm [&>.button]:text-ink [&>.button]:normal-case ${className}`} />
+}
 
 export function Menu({
   label,
@@ -102,7 +117,7 @@ export function Menu({
 
   return (
     <div
-      className="menu"
+      className="menu relative"
       ref={root}
       onKeyDown={event => {
         if (event.key === 'Escape') {
@@ -118,10 +133,10 @@ export function Menu({
       ><Icon name="more" />
       </Button>
       {open && (
-        <div
-          className="menu-items"
+        <MenuSurface
           ref={menu}
           popover="manual"
+          // eslint-disable-next-line pnyx/object-params -- React owns the div event signature.
           onClick={e => {
             const button = (e.target as Element).closest('button')
 
@@ -130,7 +145,7 @@ export function Menu({
             }
           }}
         >{children}
-        </div>
+        </MenuSurface>
       )}
     </div>
   )
@@ -155,8 +170,8 @@ export function DeleteItem({
       setBusy,
     ] = useState(false)
 
-  return asking && refusal ? <p className="delete-refused" role="status">{refusal}</p> : asking ? (
-    <div className="delete-confirm" aria-label={`Confirm ${label}`}>
+  return asking && refusal ? <p className="delete-refused m-0 px-2.5 py-1.75 max-w-65 text-ui text-muted" role="status">{refusal}</p> : asking ? (
+    <MenuSurface variant="confirm" aria-label={`Confirm ${label}`}>
       <Button
         data-menu-keep
         disabled={busy}
@@ -168,7 +183,7 @@ export function DeleteItem({
       >Yes
       </Button>
       <Button data-menu-keep disabled={busy} onClick={() => setAsking(false)}>No</Button>
-    </div>
+    </MenuSurface>
   ) : <Button data-menu-keep disabled={disabled} onClick={() => setAsking(true)}>{label}</Button>
 }
 
@@ -236,17 +251,19 @@ export function ContextMenu({
   )
 
   return (
-    <div
-      className="menu-items context-menu"
+    <MenuSurface
+      className="context-menu"
       role="menu"
       aria-label={label}
       ref={menu}
       popover="manual"
+      // eslint-disable-next-line pnyx/object-params -- React owns the div event signature.
       onKeyDown={event => {
         if (event.key === 'Escape') {
           event.stopPropagation(); close()
         }
       }}
+      // eslint-disable-next-line pnyx/object-params -- React owns the div event signature.
       onClick={e => {
         const button = (e.target as Element).closest('button')
 
@@ -255,7 +272,7 @@ export function ContextMenu({
         }
       }}
     >{children}
-    </div>
+    </MenuSurface>
   )
 }
 

@@ -1,13 +1,13 @@
+import { ComposerAction, ComposerBar, ComposerFrame } from './composer-ui.tsx'
 import type { ChatDrafts } from './chat-drafts.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { COMPOSER_ICON } from '#web-workers/agent-pickers.tsx'
 import { sendableRequest } from './project-request.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
@@ -18,11 +18,9 @@ import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
 import { draftView, hasPendingImage } from './draft.ts'
 
-// Icons beside the text of the composer's menu items.
-const MENU_ICON = 16
-
 export function Composer({
   hydraId,
+  storageIdentity,
   card,
   title,
   drafts,
@@ -33,12 +31,23 @@ export function Composer({
   settings,
   meter,
   stop,
+  stopLabel = 'Stop Hydra',
+  stopTitle = 'Stop Hydra’s turn; workers keep going',
   compacting = false,
   focusAbove,
   projectRequest = false,
   projectRequested,
+  fieldLabel,
+  placeholder,
+  sendLabel = 'Send reply',
+  unavailable = false,
 }: {
+  fieldLabel?: string
+  placeholder?: string
+  sendLabel?: string
+  unavailable?: boolean
   hydraId: string
+  storageIdentity: string
   card: string
   title: string
   drafts: ChatDrafts
@@ -51,6 +60,8 @@ export function Composer({
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   compacting?: boolean
   stop?(): Promise<void>
+  stopLabel?: string
+  stopTitle?: string
   focusAbove?(): boolean
   // An Add project request to write into the draft; projectRequested clears it once written.
   projectRequest?: boolean
@@ -100,7 +111,7 @@ export function Composer({
     [drafts],
   )
 
-  const cacheIdentity = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
+  const cacheIdentity = storageIdentity
   const attempt = useRef(readAttempt({
     key: card,
     hydraId: cacheIdentity,
@@ -187,7 +198,7 @@ export function Composer({
     })
     const text = request.text
 
-    if (sending || !text.trim()) {
+    if (unavailable || sending || !text.trim()) {
       return
     }
 
@@ -259,7 +270,12 @@ export function Composer({
 
   useEffect(
     () => {
-      if (attempt.current?.pending) {
+      const saved = readAttempt({
+        key: card,
+        hydraId: cacheIdentity,
+      })
+
+      if (attempt.current?.pending && saved?.pending && saved.id === attempt.current.id) {
         void send({ restore: true })
       }
     },
@@ -313,18 +329,20 @@ export function Composer({
   return (
     <>
       {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
-      <form
+      <ComposerFrame
         ref={form}
         aria-busy={sending}
-        className="composer"
+        // eslint-disable-next-line pnyx/object-params -- React owns form event handlers.
         onSubmit={e => {
           e.preventDefault(); void send()
         }}
+        // eslint-disable-next-line pnyx/object-params -- React owns form event handlers.
         onDragOver={event => {
           if (event.dataTransfer.types.includes('Files')) {
             event.preventDefault()
           }
         }}
+        // eslint-disable-next-line pnyx/object-params -- React owns form event handlers.
         onDrop={event => {
           if (event.dataTransfer.files.length) {
             event.preventDefault(); field.current?.attach({ files: [...event.dataTransfer.files] })
@@ -354,15 +372,15 @@ export function Composer({
           keyScope="composer"
           value={drafts.read().text}
           change={setDraft}
-          label={`Reply to ${title}`}
-          placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
+          label={fieldLabel ?? `Reply to ${title}`}
+          placeholder={placeholder ?? (title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…')}
           onKeyDown={leaveUp}
           projectRequests
           projectRequest={projectRequest}
           projectRequested={projectRequested}
         />
-        <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={COMPOSER_ICON} />}>
+        <ComposerBar>
+          <Popover label="Add to message" className="composer-add [&>.button]:size-(--spacing-composer-control) [&>.button]:min-h-(--spacing-composer-control) [&>.button]:justify-center [&>.button]:p-0 [&>.popover-panel]:w-max! [&>.popover-panel]:p-1.25! [&>.popover-panel>.button]:flex [&>.popover-panel>.button]:w-full [&>.popover-panel>.button]:justify-start [&>.popover-panel>.button]:gap-2 [&>.popover-panel>.button]:whitespace-nowrap" trigger={<Icon name="paperclip" size={ICON_SIZE.toolbar} />}>
             {({ close }) => (
               <>
                 <Button
@@ -370,14 +388,14 @@ export function Composer({
                     close(); files.current?.click()
                   }}
                 >
-                  <Icon name="paperclip" size={MENU_ICON} />Insert files or images
+                  <Icon name="paperclip" size={ICON_SIZE.control} />Insert files or images
                 </Button>
                 <Button
                   onClick={() => {
                     close(); field.current?.mention()
                   }}
                 >
-                  <Icon name="mention" size={MENU_ICON} />Mention
+                  <Icon name="mention" size={ICON_SIZE.control} />Mention
                 </Button>
               </>
             )}
@@ -433,11 +451,10 @@ export function Composer({
                     card,
                   })
                   const id = crypto.randomUUID()
-                  const name = 'hydra'
+                  const name = 'reply'
                   const args = [
-                    'send',
-                    `--text=${text}`,
-                    '--event-id',
+                    card,
+                    text,
                     id,
                   ]
 
@@ -460,27 +477,27 @@ export function Composer({
           {settings}
           {meter}
           {stop && (
-            <Button
-              className="composer-stop"
-              aria-label={compacting ? 'Cancel compaction' : 'Stop Hydra'}
-              title={compacting ? 'Cancel compaction' : 'Stop Hydra’s turn; workers keep going'}
+            <ComposerAction
+              kind="stop"
+              aria-label={compacting ? 'Cancel compaction' : stopLabel}
+              title={compacting ? 'Cancel compaction' : stopTitle}
               onClick={() => void stop()}
             >
-              <Icon name="stop" size={12} />
-            </Button>
+              <Icon name="stop" size={ICON_SIZE.badge} />
+            </ComposerAction>
           )}
-          <Button
+          <ComposerAction
+            kind="send"
             type="submit"
             variant="primary"
-            className="composer-send"
-            aria-label="Send reply"
+            aria-label={sendLabel}
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
-            disabled={sending || disabled}
+            disabled={unavailable || sending || disabled}
           >
-            <Icon name="send" size={COMPOSER_ICON} />
-          </Button>
-        </div>
-      </form>
+            <Icon name="send" size={ICON_SIZE.toolbar} />
+          </ComposerAction>
+        </ComposerBar>
+      </ComposerFrame>
     </>
   )
 }

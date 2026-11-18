@@ -1,3 +1,6 @@
+import { kept } from '#web-shared/stable.ts'
+import { useSessionView, sessionViewKey } from '#web-app/session-view.ts'
+import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
@@ -15,7 +18,7 @@ import { RECENT_THREAD_PAGES, pageCount } from '#hydra/thread-history.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { InlineQuestions } from '#web-tasks/questions.tsx'
 import { AnsweredQuestions } from '#web-tasks/answered-questions.tsx'
@@ -45,9 +48,9 @@ import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
-import { readUnsent,saveUnsent } from './outbox.ts'
+import { HYDRA_SEND_SETTLED,readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
-import { REDUCED_MOTION } from './streaming.tsx'
+import { motionDuration } from '#web-shared/motion.ts'
 
 // The share of the distance to the bottom that following covers per frame.
 const GLIDE = 0.3
@@ -102,6 +105,7 @@ const withFailure = ({
 
 export function HydraChat({
   hydraId,
+  storageIdentity,
   state,
   command,
   connected,
@@ -122,6 +126,7 @@ export function HydraChat({
   selectedTask,
 }: {
   hydraId: string
+  storageIdentity: string
   // The Hydra's name and icon for the header, and the names of the owner's other Hydras.
   identity?: {
     name: string
@@ -181,16 +186,44 @@ export function HydraChat({
   const [
     sending,
     setSending,
-  ] = useState<Sending[]>(() => readUnsent({ key: hydraId }).map(item => ({
+  ] = useState<Sending[]>(() => readUnsent({
+    key: hydraId,
+    hydraId: storageIdentity,
+  }).map(item => ({
     ...item,
     confirmed: false,
   })))
   const [
     away,
     setAway,
-  ] = useState(false)
+  ] = useSessionView({
+    key: sessionViewKey({
+      scope: 'hydra',
+      id: storageIdentity,
+      field: 'chatAway',
+    }),
+    initial: false,
+  })
+  const rememberedScroll = useRememberedScroll({
+    key: sessionViewKey({
+      scope: 'hydra',
+      id: storageIdentity,
+      field: 'chatScroll',
+    }),
+  })
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const [chatFollow] = useState(() => createChatFollow({ changed: ({ away }) => setAway(away) }))
+  const [chatFollow] = useState(() => createChatFollow({
+    away,
+    changed: ({ away }) => setAway(away),
+  }))
+  const streamRef = useCallback(
+    // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
+    (node: HTMLDivElement | null) => {
+      stream.current = node
+      rememberedScroll.ref(node)
+    },
+    [rememberedScroll.ref],
+  )
   const glide = useRef(0)
   const touchY = useRef<number | undefined>(undefined)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
@@ -335,6 +368,77 @@ export function HydraChat({
     }
   }
 
+  useEffect(
+    () => {
+      const refresh = ({
+        id,
+        refusal,
+      }: {
+        id?: string
+        refusal?: string
+      } = {}) => {
+        const saved = readUnsent({
+          key: hydraId,
+          hydraId: storageIdentity,
+        })
+        const refused = new Map(saved.map(item => [
+          item.id,
+          item,
+        ]))
+        setSending(current => {
+          const next = current.map(item => {
+            const saved = refused.get(item.id)
+            refused.delete(item.id)
+
+            if (id === item.id && refusal === undefined) {
+              return {
+                ...item,
+                confirmed: true,
+                failed: undefined,
+              }
+            }
+
+            return saved ? {
+              ...item,
+              confirmed: false,
+              failed: saved.failed,
+            } : item
+          })
+          next.push(...[...refused.values()].map(item => ({
+            ...item,
+            confirmed: false,
+          })))
+
+          return kept({
+            previous: current,
+            next,
+          })
+        })
+      }
+
+      const settled = (event: Event) => {
+        if (event instanceof CustomEvent && event.detail.hydraId === hydraId) {
+          refresh(event.detail)
+        }
+      }
+
+      refresh()
+      window.addEventListener(
+        HYDRA_SEND_SETTLED,
+        settled,
+      )
+
+      return () => window.removeEventListener(
+        HYDRA_SEND_SETTLED,
+        settled,
+      )
+    },
+    [
+      hydraId,
+      storageIdentity,
+    ],
+  )
+
   const unsent = sending.flatMap(({
     id,
     text,
@@ -353,10 +457,12 @@ export function HydraChat({
   useEffect(
     () => saveUnsent({
       key: hydraId,
+      hydraId: storageIdentity,
       items: unsent,
     }),
     [
       hydraId,
+      storageIdentity,
       unsentKey,
     ],
   )
@@ -896,7 +1002,7 @@ export function HydraChat({
         const left = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
 
         // A page load or a jump of more than a screen snaps; only a growing reply glides.
-        if (left > scroller.clientHeight || matchMedia(REDUCED_MOTION).matches) {
+        if (left > scroller.clientHeight || motionDuration() === 0) {
           bottom()
         } else {
           glide.current = requestAnimationFrame(settle)
@@ -975,9 +1081,13 @@ export function HydraChat({
           failed: reason,
         }))
         // Saved here too, so a refusal that arrives after the owner left this Hydra is still there on return.
-        const saved = readUnsent({ key: hydraId })
+        const saved = readUnsent({
+          key: hydraId,
+          hydraId: storageIdentity,
+        })
         saveUnsent({
           key: hydraId,
+          hydraId: storageIdentity,
           items: [
             ...saved.filter(item => item.id !== id),
             {
@@ -1041,6 +1151,7 @@ export function HydraChat({
       command,
       notify,
       hydraId,
+      storageIdentity,
     ],
   )
 
@@ -1098,7 +1209,7 @@ export function HydraChat({
 
   return (
     <aside
-      className="hydra-chat"
+      className="hydra-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-[760px]:w-70 max-[760px]:basis-70 [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.agent-change-choice,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto"
       aria-label="Hydra’s chat"
       style={{
         width: width ?? view.hydraWidth,
@@ -1113,12 +1224,12 @@ export function HydraChat({
         addProject={addProject}
         connected={connected}
       >
-        {down && <span className="hydra-status" role="status">{down}</span>}
+        {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans leading-[normal] not-italic tracking-normal" role="status">{down}</span>}
       </HydraHead>
-      <div className="hydra-body">
+      <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
         <div
-          className="hydra-messages thread"
-          ref={stream}
+          className="hydra-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:outline-offset-[-3px]"
+          ref={streamRef}
           data-key-scope="thread"
           role="region"
           aria-label="Hydra conversation"
@@ -1175,15 +1286,16 @@ export function HydraChat({
             })
           }}
         >
-          <div className="hydra-stream" ref={content}>
-            <div ref={olderMarker} className="hydra-older">
+          <div className="hydra-stream max-w-(--chat-max) mx-auto" ref={content}>
+            <div ref={olderMarker} className="hydra-older h-7">
               {loadingEarlier && (
-                <div className="hydra-loading" role="status" aria-label="Loading earlier messages">
-                  <span className="hydra-spinner" aria-hidden="true" />
+                <div className="hydra-loading h-full flex items-center justify-center pointer-events-none" role="status" aria-label="Loading earlier messages">
+                  <span className="hydra-spinner size-4 border-2 border-line border-t-muted rounded-full animate-hydra-spin motion-reduce:animate-hydra-spin-reduced" aria-hidden="true" />
                 </div>
               )}
             </div>
             <Messages
+              identity={`hydra:${storageIdentity}`}
               catalog={catalog}
               labelColors={state.labelColors}
               folds={chat.folds}
@@ -1247,12 +1359,12 @@ export function HydraChat({
               notify={notify}
             />
             {!entries.length && (
-              <p className="hydra-empty">
+              <p className="hydra-empty mt-3 text-muted text-ui">
                 What are we working on?
-                {offerProject && <> <InlineButton className="hydra-empty-action" onClick={addProject}>Add a project</InlineButton></>}
+                {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
               </p>
             )}
-            {errors.map(a => <p key={a.key} className="chat-error" role="alert"><Icon name="error" size={16} />{a.text}</p>)}
+            {errors.map(a => <p key={a.key} className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert"><Icon name="error" size={ICON_SIZE.control} />{a.text}</p>)}
             {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
             {card && (
               <InlinePermissions
@@ -1289,9 +1401,9 @@ export function HydraChat({
         )}
         {away && (
           <>
-            <div className="chat-fade" aria-hidden="true" />
+            <div className="chat-fade absolute inset-x-0 bottom-0 z-2 h-(--chat-end) pointer-events-none bg-linear-to-b/srgb from-transparent to-surface animate-chat-fade motion-reduce:animate-none" aria-hidden="true" />
             <Button
-              className="jump"
+              className="jump absolute bottom-2.5 left-[calc(50%-var(--spacing-jump)/2)] z-3 size-jump p-0 justify-center border border-line rounded-full bg-surface text-ink shadow-jump animate-chat-fade enabled:hover:bg-raised motion-reduce:animate-none"
               aria-label="Jump to latest"
               title="Jump to latest"
               onClick={() => {
@@ -1302,7 +1414,7 @@ export function HydraChat({
                 })
               }}
             >
-              <Icon name="chevron_down" size={18} />
+              <Icon name="chevron_down" size={ICON_SIZE.toolbar} />
             </Button>
           </>
         )}
@@ -1362,6 +1474,7 @@ export function HydraChat({
       />
       <Composer
         hydraId={hydraId}
+        storageIdentity={storageIdentity}
         loadComment={loadComment}
         compacting={compactionRunning}
         focusAbove={() => {

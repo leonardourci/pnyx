@@ -1,3 +1,4 @@
+import { SummaryPanel } from '#web-shared/ui/summary-panel.tsx'
 import { useEffect, useState } from 'react'
 import type { Card } from '#tasks/model.ts'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
@@ -95,7 +96,7 @@ export function TaskReport({
   const loading = connected && report === null && !error
 
   return (
-    <section className="task-report" aria-label="Report" aria-busy={loading}>
+    <SummaryPanel className="task-report" aria-label="Report" aria-busy={loading}>
       <strong className="eyebrow">Report</strong>
       <span className="muted small">Stored {relativeTime({
         at: card.report.at,
@@ -103,7 +104,7 @@ export function TaskReport({
       })}
       </span>
       {error && <span className="muted small">{error}</span>}
-      {report !== null && <div className="task-report-body"><CollapsibleText text={report} /></div>}
-    </section>
+      {report !== null && <div className="task-report-body self-stretch max-h-90 overflow-auto text-ui"><CollapsibleText text={report} /></div>}
+    </SummaryPanel>
   )
 }

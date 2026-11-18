@@ -1,3 +1,4 @@
+import { DEFAULT_WORKSPACE, patchWorkspace, workspaceLayout } from './workspace.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
@@ -17,6 +18,7 @@ const LEGACY_DEFAULT_WIDTHS = {
 } as const
 
 export const DEFAULT_VIEW: ViewPreferences = {
+  workspace: DEFAULT_WORKSPACE,
   theme: 'system',
   focusMode: true,
   lastMessageOnCards: true,
@@ -59,7 +61,6 @@ export const VIEW_SIZE_LIMITS = {
   },
   cardHeight: { min: 120 },
   columnWidth: { min: 240 },
-  cardWidth: { min: 200 },
   columnHeight: { min: 200 },
 } as const
 
@@ -181,6 +182,7 @@ export const viewFor = ({
 
   return {
     ...view,
+    workspace: workspaceLayout({ input: view.workspace }),
     defaultColumnWidth,
     keyboard: {
       ...view.keyboard,
@@ -262,6 +264,12 @@ export const viewFor = ({
 
 export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
   hydraWidth: view.defaultHydraWidth,
+  workspace: {
+    projectWidths: Object.fromEntries(Object.keys(view.workspace.projectWidths).map(id => [
+      id,
+      null,
+    ])),
+  },
   columnWidths: {
     ...Object.fromEntries(Object.keys(view.columnWidths).map(id => [
       id,
@@ -389,6 +397,11 @@ export function patchView({
       [b],
     ) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
     switch (key) {
+      case 'workspace':
+        next.workspace = patchWorkspace({
+          current: next.workspace,
+          input: value,
+        }); break
       case 'keyboard': {
         const keyboard = record({ value })
 

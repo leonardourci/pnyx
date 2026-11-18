@@ -20,6 +20,7 @@ type Stored<T> = unknown extends T ? ReadonlyJSONValue
 const hydras = table('hydras')
   .columns({
     id: string(),
+    seq: number(),
     config: json<Stored<Omit<HydraConfig, 'columns'>>>().optional(),
     summary: json<Stored<HydraSummary>>(),
   })

@@ -11,7 +11,10 @@ import { learningConditions, learningDigest, type LearningConditions } from '#me
 import { OWNER_DOCUMENTS, usage, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, type Memory } from '#memory/budgets.ts'
 import { hydraConfig } from './config.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { liveTask, rankOf } from '#tasks/select.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
+import { projectGroup } from '#projects/groups.ts'
+import { cardStatus } from '#tasks/card-status.ts'
+import { liveTask, rankOf, taskDone } from '#tasks/select.ts'
 import { helperLeases } from '#routine-helper/state.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 import { countTokens, ESTIMATED_TOKEN_BYTES } from '#workers/token-count.ts'
@@ -190,6 +193,7 @@ function digestParts({
   state,
   owner,
   projects,
+  readable,
   setup,
   onlyTasks,
 }: {
@@ -197,30 +201,31 @@ function digestParts({
   state: HydraState
   owner: string
   projects: string[]
+  readable?: string[]
   setup: string[]
   onlyTasks?: string[]
 }): Map<string, string> {
-  const config = hydraConfig({
-    state,
-    id: hydraId,
-  })
-  const titles = new Map(config.columns.map(column => [
-    column.id as string,
-    column.title,
-  ]))
-  const done = new Set(config.columns.filter(column => column.role === 'done').map(column => column.id as string))
-  const order = new Map(config.columns.map((
-    column,
-    index,
-  ) => [
-    column.id as string,
-    index,
-  ]))
+  const projectOrder = [
+    'ideas',
+    ...(state.projects ?? []).map(project => projectGroup({ project }).id),
+  ]
   const tasks = Object.values(state.cards)
     .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
     .filter(card => !onlyTasks || onlyTasks.includes(card.id))
-  const place = ({ card }: { card: Card }) => order.get(card.column) ?? order.size
-  const open = tasks.filter(card => !done.has(card.column)).sort((
+
+  const place = ({ card }: { card: Card }) => {
+    const position = projectOrder.indexOf(taskProjectGroup({
+      state,
+      card,
+    }))
+
+    return position < 0 ? projectOrder.length : position
+  }
+
+  const open = tasks.filter(card => !taskDone({
+    state,
+    card,
+  })).sort((
     a,
     b,
   ) => place({ card: a }) - place({ card: b }) || rankOf({ card: a }) - rankOf({ card: b }))
@@ -247,12 +252,81 @@ function digestParts({
     'setup',
     setupText,
   )
+  const groups = new Map([
+    [
+      'ideas',
+      'Ideas',
+    ],
+  ])
+
+  for (const project of state.projects ?? []) {
+    const group = projectGroup({ project })
+    const hidden = !!readable && !readable.includes(project.path)
+
+    if (!hidden && (!project.detached || tasks.some(card => card.project === project.path))) {
+      groups.set(
+        group.id,
+        group.name,
+      )
+    }
+  }
+
+  for (const card of tasks) {
+    const group = taskProjectGroup({
+      state,
+      card,
+    })
+
+    if (!groups.has(group)) {
+      groups.set(
+        group,
+        group,
+      )
+    }
+  }
+
   parts.set(
     'columns',
     [
-      'Columns (id · title · tasks · description):',
-      ...config.columns.map(column => `- ${column.id} · ${column.title} · ${tasks.filter(task => task.column === column.id).length} · ${clip({ text: column.description ?? 'no description' })}`),
-      `Placement rules: \`pnyx-axi column list --hydra ${hydraId}\` when needed.`,
+      'Project columns (id · name · needs you / running / waiting / done):',
+      ...[...groups].map(([
+        id,
+        name,
+      ]) => {
+        const members = tasks.filter(card => taskProjectGroup({
+          state,
+          card,
+        }) === id)
+        const counts = {
+          asks: 0,
+          working: 0,
+          waiting: 0,
+          done: 0,
+        }
+
+        for (const card of members) {
+          const status = cardStatus({
+            card,
+            cards: state.cards,
+          }).kind
+
+          if (status === 'asks') {
+            counts.asks++
+          } else if (status === 'working') {
+            counts.working++
+          } else if (taskDone({
+            state,
+            card,
+          })) {
+            counts.done++
+          } else {
+            counts.waiting++
+          }
+        }
+
+        return `- ${id} · ${name} · ${counts.asks} / ${counts.working} / ${counts.waiting} / ${counts.done}`
+      }),
+      'Counts include sub-tasks. Lifecycle columns and rules remain available through column list for compatibility.',
     ].join('\n'),
   )
   parts.set(
@@ -261,7 +335,7 @@ function digestParts({
   )
   parts.set(
     'tasks',
-    'Open tasks (id · title · column · declared status · worker):',
+    'Open tasks (id · title · project · declared status · worker):',
   )
 
   for (const card of open.slice(
@@ -273,7 +347,10 @@ function digestParts({
       taskLine({
         state,
         card,
-        column: titles.get(card.column) ?? card.column,
+        column: groups.get(taskProjectGroup({
+          state,
+          card,
+        })) ?? card.project ?? 'Ideas',
       }),
     )
   }
@@ -433,6 +510,7 @@ export function hydraDigest({
   owner,
   ownerWrite = owner,
   projects = [],
+  readable,
   setup = [],
   previousDigest,
   checkpointed = false,
@@ -445,6 +523,8 @@ export function hydraDigest({
   owner: Memory
   ownerWrite?: Memory
   projects?: string[]
+  // Attached repositories this Hydra may read; the others stay out of its project columns.
+  readable?: string[]
   setup?: string[]
   previousDigest?: string
   checkpointed?: boolean
@@ -463,6 +543,7 @@ export function hydraDigest({
       now,
     }),
     projects,
+    readable,
     setup,
   })
   const before = previousCheckpoint({

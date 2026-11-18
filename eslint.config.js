@@ -15,6 +15,7 @@ export default tseslint.config(
       'dist/**',
       'dist.next.*/**',
       'dist.old/**',
+      '.vitest/**',
       'node_modules/**',
     ],
   },

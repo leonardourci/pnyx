@@ -69,7 +69,7 @@ export function AgentDetails({
   return (
     <TooltipPanel>
       <Usage usage={card.usage} {...reading} />
-      <Disclosure title="Session details" className="usage-session-details">
+      <Disclosure title="Session details" className="usage-session-details px-3.25 pb-3.25">
         <TooltipSection>
           {settings.map(([
             key,

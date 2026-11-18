@@ -43,3 +43,25 @@ export function base({
 
   return event
 }
+
+export function recordEventId({
+  state,
+  id,
+  seq,
+}: {
+  state: Pick<HydraState, 'eventIds'>
+  id: string
+  seq: number
+}) {
+  // Reducer proxies track assignments; defineProperty would mutate the previous event-ID map.
+  if (id === '__proto__') {
+    state.eventIds = {
+      ...state.eventIds,
+      [id]: seq,
+    }
+
+    return
+  }
+
+  state.eventIds[id] = seq
+}

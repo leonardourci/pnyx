@@ -228,7 +228,7 @@ export function createServerRoutes({
     }
     serveStatic({
       res,
-      path,
+      path: path === '/settings/' ? '/' : path,
       home: `${page.base}${search}`,
       page,
     })

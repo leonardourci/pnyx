@@ -2,7 +2,7 @@ import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import { memo, useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { commentUpdates, groupComments, orderedComments, sendableComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
@@ -22,10 +22,10 @@ export function CommentsPill({
   ] = useState(false)
 
   return (
-    <div className="composer-comments" data-armed={armed || undefined}>
+    <div className="composer-comments group/comments inline-flex self-start text-chat data-armed:[&_.card-x]:w-auto data-armed:[&_.card-x]:px-1.75 data-armed:[&_.card-x]:text-red" data-armed={armed || undefined}>
       <AttachmentCard
         tone="comments"
-        slot={<Icon name="comments" size={13} />}
+        slot={<Icon name="comments" size={ICON_SIZE.inline} />}
         label={`Comments · ${count}`}
         title="Show comments"
         open={open}
@@ -85,10 +85,10 @@ export const CommentsDialog = memo(function CommentsDialog({
   }
 
   return (
-    <Dialog title={`Comments · ${listed.length}`} className="comments-dialog" close={finish}>
-      <div className="dialog-body">
+    <Dialog title={`Comments · ${listed.length}`} className="comments-dialog [&_.comment-card]:my-1 [&_.comment-card]:mx-0 [&_.comment-quote]:line-clamp-4 [&_.comment-quote]:whitespace-normal" close={finish}>
+      <div className="dialog-body flex flex-col gap-1 min-h-0 overflow-auto px-4 pt-2 pb-3.5">
         {[...replies.values()].map(items => (
-          <section key={items[0]!.id} className="comment-group">
+          <section key={items[0]!.id} className="comment-group flex flex-col mt-2">
             <span className="eyebrow">{replyLabel(items[0]!)}</span>
             {items.map(comment => (
               <MessageComment
@@ -110,7 +110,7 @@ export const CommentsDialog = memo(function CommentsDialog({
           </section>
         ))}
       </div>
-      <footer className="dialog-foot">
+      <footer className="dialog-foot flex items-center justify-between gap-1.5 px-4 py-2.5 border-t border-line">
         <span className="small muted">Numbered in reading order through the replies.</span>
         <Button variant="primary" onClick={finish}>Done</Button>
       </footer>

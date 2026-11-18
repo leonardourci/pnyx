@@ -153,6 +153,13 @@ export function applyReplyReceipt({
     ...(taskMessage ? { route: event.data.route } : {}),
   }
 
+  const worker = event.data.worker ?? previous?.worker
+
+  if (worker) {
+    reply.worker = worker
+    reply.text = event.data.text ?? previous?.text
+  }
+
   if (event.data.detail) {
     reply.detail = event.data.detail
   }

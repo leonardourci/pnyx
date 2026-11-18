@@ -1,6 +1,10 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { loadHydra } from '#app/store.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import { parsed, pnyxAxi, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
@@ -312,5 +316,91 @@ test(
       'hydras',
       'typo-oracle',
     ))).toBe(false)
+  },
+)
+
+test(
+  'Oracle result metadata and family previews include a child’s live native work',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const parent = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Family preview',
+        '--key',
+        'preview-family',
+      ],
+    })
+    const child = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Live child',
+        '--parent',
+        'preview-family',
+      ],
+    })
+    const state = structuredClone(loadHydra({ hydraId: hydra.id }).state)
+    const actions: Record<string, CurrentAction> = {
+      [child.card.id]: {
+        calls: [],
+        done: false,
+        work: {
+          runningTurns: ['live-turn'],
+          runningTools: [],
+          unsettledInputs: [],
+          pendingControls: [],
+          queue: {
+            knowledge: 'known',
+            count: 0,
+          },
+          background: {
+            knowledge: 'known',
+            tasks: [],
+          },
+        },
+      },
+    }
+    // Web modules are source-only; a runtime import keeps them out of the CLI's TypeScript emit graph.
+    const resultsModule: string = '#web-oracle/results.ts'
+    const previewModule: string = '#web-oracle/oracle-preview.tsx'
+    const { resultMeta } = await import(resultsModule)
+    vi.stubGlobal(
+      'CSS',
+      { supports: () => false },
+    )
+    const { ResultPreview } = await import(previewModule)
+    vi.unstubAllGlobals()
+    const result = {
+      kind: 'task',
+      id: parent.card.id,
+      card: state.cards[parent.card.id],
+      title: 'Family preview',
+      at: parent.card.updatedAt,
+    }
+    expect(resultMeta({
+      result,
+      state,
+      actions,
+      keys: () => '',
+      now: Date.now(),
+    })).toContain('Running')
+    const markup = renderToStaticMarkup(createElement(
+      ResultPreview,
+      {
+        result,
+        state,
+        cardActions: actions,
+        terms: [],
+        connected: true,
+        settings: {},
+        choose: () => {},
+      },
+    ))
+    expect(markup).toContain('activity-working')
+    expect(markup).toContain('Running')
   },
 )

@@ -9,31 +9,35 @@ export type Restore = {
     ids: string[]
   }
   page?: string
-  panel?: boolean
   drafts?: Record<string, string>
   scroll?: Record<string, [number, number]>
 }
 
-// What the open Hydra shows: its page, whether the panel is open, the selected and opened cards and the revealed ones.
+// What the open Hydra shows: its page, the selected and opened cards and the revealed ones.
 export type PageView = {
   page: string
-  panel: boolean
   selected: string | null
   expanded: string[]
   revealed: NonNullable<Restore['revealed']>
 }
 
 // The view a Hydra opens with: the one it saved, unless its link opens a project or settings.
-export function openingView({ restored }: { restored: Restore }): PageView {
+export function openingView({
+  restored,
+  hydraId,
+}: {
+  restored: Restore
+  hydraId: string
+}): PageView {
   const search = new URLSearchParams(location.search)
+  const task = location.pathname === `/hydra/${encodeURIComponent(hydraId)}/` ? search.get('task') : null
   const openProject = search.has('open-project')
   const opened = restored.expanded ?? (restored.selected ? [restored.selected] : [])
   const lastOpened = restored.expanded?.at(-1) ?? null
 
   return {
-    page: search.has('settings') || restored.page === 'settings' ? 'settings' : 'hydra',
-    panel: restored.panel ?? true,
-    selected: openProject ? null : restored.selected ?? lastOpened,
+    page: 'hydra',
+    selected: task ?? (openProject ? null : restored.selected ?? lastOpened),
     expanded: openProject ? [] : opened,
     revealed: restored.revealed ?? {
       scope: '',
@@ -64,11 +68,8 @@ export function restoreView({ key }: { key: string }): Restore {
   }
 }
 
-const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
-  .map(el => [
-    el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban',
-    el,
-  ] as const)
+const workspaceElement = ({ workspace }: { workspace: string }) =>
+  document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(workspace)}"]`)
 
 export const hydraViews = new Map<string, Restore>()
 
@@ -82,17 +83,8 @@ function persistView({
   value: Restore
 }) {
   const restored: Restore = {
+    ...restoreView({ key }),
     ...value,
-    scroll: Object.fromEntries(scrollers().map(([
-      key,
-      el,
-    ]) => [
-      key,
-      [
-        el.scrollLeft,
-        el.scrollTop,
-      ],
-    ])),
   }
 
   if (viewKey !== undefined) {
@@ -113,21 +105,23 @@ function persistView({
 }
 
 export function usePersistView({
+  workspace,
   viewKey,
   key,
   selected,
   expanded,
   revealed,
   page,
-  panel,
   drafts,
   scroll,
   seq,
 }: Restore & {
   viewKey: string
+  workspace: string
   key: string
   seq: number
 }) {
+  const positions = useRef(scroll ?? {})
   useLayoutEffect(
     () => () => {
       persistView({
@@ -138,8 +132,8 @@ export function usePersistView({
           expanded,
           revealed,
           page,
-          panel,
           drafts,
+          scroll: positions.current,
         },
       })
     },
@@ -149,7 +143,6 @@ export function usePersistView({
       expanded,
       revealed,
       page,
-      panel,
       drafts,
       key,
     ],
@@ -165,8 +158,8 @@ export function usePersistView({
             expanded,
             revealed,
             page,
-            panel,
             drafts,
+            scroll: positions.current,
           },
         })
       }
@@ -186,37 +179,100 @@ export function usePersistView({
       expanded,
       revealed,
       page,
-      panel,
       drafts,
       key,
     ],
   )
   useEffect(
     () => {
+      const group = workspaceElement({ workspace })
+      const axis = group?.closest<HTMLElement>('.workspace-axis')
+
+      if (!axis || !group) {
+        return
+      }
+
+      let frame = 0
+
+      const keep = () => {
+        if (group.dataset.active !== 'true') {
+          return
+        }
+
+        const offset = axis.scrollLeft - Number(group.dataset.axisOffset ?? axis.scrollLeft)
+        const maximum = Number(group.dataset.axisRange ?? 0)
+
+        if (offset < 0 || offset > maximum) {
+          return
+        }
+
+        positions.current = {
+          ...positions.current,
+          workspaceAxis: [
+            offset,
+            0,
+          ],
+        }
+
+        if (!frame) {
+          frame = requestAnimationFrame(() => {
+            frame = 0
+            const value = restoreView({ key })
+            persistView({
+              key,
+              value: {
+                ...value,
+                scroll: positions.current,
+              },
+            })
+          })
+        }
+      }
+
+      axis.addEventListener(
+        'scroll',
+        keep,
+        { passive: true },
+      )
+
+      return () => {
+        axis.removeEventListener(
+          'scroll',
+          keep,
+        )
+        cancelAnimationFrame(frame)
+      }
+    },
+    [
+      workspace,
+      key,
+    ],
+  )
+
+  useEffect(
+    () => {
       const scroll = pendingScroll.current
 
-      if (scroll && seq > 0) {
-        pendingScroll.current = undefined
-        requestAnimationFrame(() => {
-          for (const [
-            key,
-            el,
-          ] of scrollers()) {
-            const [
-              left,
-              top,
-            ] = scroll[key] ?? [
-              0,
-              0,
-            ]
-            el.scrollTo({
-              left,
-              top,
-              behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
-            })
-          }
-        })
+      if (!scroll || seq <= 0) {
+        return
       }
+
+      pendingScroll.current = undefined
+      requestAnimationFrame(() => {
+        const group = workspaceElement({ workspace })
+        const axis = group?.closest<HTMLElement>('.workspace-axis')
+        const offset = scroll.workspaceAxis
+
+        if (offset && group?.dataset.active === 'true' && axis) {
+          axis.scrollTo({
+            left: Number(group.dataset.axisOffset ?? 0) + Math.max(
+              0,
+              offset[0],
+            ),
+            behavior: 'instant',
+          })
+        }
+      })
     },
     [seq],
   )
